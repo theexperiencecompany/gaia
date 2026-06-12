@@ -13,15 +13,57 @@
 
 import { z } from "zod";
 
-export const outboundMessageEnvelopeSchema = z.object({
-  /** Unique id (idempotency + tracing). */
-  id: z.string().min(1),
-  /** Target platform — informational; each queue is already platform-specific. */
-  platform: z.string().min(1),
-  /** Platform-native destination id (wa_id, Discord/Telegram/Slack user id). */
-  destination_id: z.string().min(1),
-  /** Raw CommonMark message body. */
-  text: z.string().min(1),
-  /** ISO-8601 enqueue timestamp. */
-  enqueued_at: z.string(),
+/**
+ * A file the bot should deliver. Bytes are NOT inlined — the bot fetches the
+ * artifact from the backend (bot-authenticated) and uploads it to the platform.
+ */
+export const outboundAttachmentSchema = z.object({
+  conversation_id: z.string().min(1),
+  /**
+   * Artifact path relative to the session's artifacts/ dir. Rejected at the
+   * queue boundary if absolute or containing a `..` segment, so a malformed
+   * envelope can't turn into arbitrary-file access in the artifact fetch.
+   */
+  path: z
+    .string()
+    .min(1)
+    .refine((p) => !p.startsWith("/") && !p.split("/").includes(".."), {
+      message: "path must be relative to artifacts/ (no leading '/' or '..')",
+    }),
+  filename: z.string().min(1),
+  content_type: z.string().nullish(),
+  caption: z.string().nullish(),
 });
+
+export const outboundMessageEnvelopeSchema = z
+  .object({
+    /** Unique id (idempotency + tracing). */
+    id: z.string().min(1),
+    /** Target platform — informational; each queue is already platform-specific. */
+    platform: z.string().min(1),
+    /** Platform-native destination id (wa_id, Discord/Telegram/Slack user id). */
+    destination_id: z.string().min(1),
+    /** Raw CommonMark message body. Optional when an attachment is present. */
+    text: z.string().min(1).nullish(),
+    /**
+     * Ordered CommonMark bubbles delivered as ONE message. The consumer sends
+     * them sequentially so their order is preserved — used for multi-bubble
+     * notifications (e.g. a workflow completion: header, results, footer) that
+     * would otherwise race each other if published as separate envelopes.
+     */
+    text_parts: z.array(z.string()).nullish(),
+    /** A file to deliver (PDF/docx/etc.) — optional. */
+    attachment: outboundAttachmentSchema.nullish(),
+    /** ISO-8601 enqueue timestamp. */
+    enqueued_at: z.string(),
+  })
+  .refine(
+    (e) =>
+      Boolean(e.text) || Boolean(e.text_parts?.length) || Boolean(e.attachment),
+    { message: "envelope requires text, text_parts, or attachment" },
+  );
+
+export type OutboundAttachment = z.infer<typeof outboundAttachmentSchema>;
+export type OutboundMessageEnvelope = z.infer<
+  typeof outboundMessageEnvelopeSchema
+>;

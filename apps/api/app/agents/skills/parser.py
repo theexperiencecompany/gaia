@@ -64,29 +64,6 @@ def parse_skill_md(content: str) -> tuple[SkillMetadata, str]:
     return metadata, body
 
 
-def strip_frontmatter(content: str) -> str:
-    """Strip YAML frontmatter from SKILL.md content, returning only the body.
-
-    Used when writing to VFS — we store body-only in VFS since metadata
-    lives in MongoDB.
-
-    Args:
-        content: Raw SKILL.md file content (with or without frontmatter)
-
-    Returns:
-        Body content without frontmatter delimiters
-    """
-    if not content:
-        return ""
-
-    split = split_yaml_frontmatter(content)
-    if not split:
-        return content.strip()
-
-    _, body_raw = split
-    return body_raw.strip()
-
-
 def validate_skill_content(content: str) -> list[str]:
     """Validate a SKILL.md file and return a list of errors.
 

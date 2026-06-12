@@ -108,16 +108,9 @@ class TriggerConfig(BaseModel):
     def calculate_next_run(
         self, base_time: datetime | None = None, user_timezone: str | None = None
     ) -> datetime | None:
-        """
-        Calculate the next run time based on cron expression with timezone awareness.
+        """Calculate the next run time from the cron expression. Returns UTC.
 
-        Args:
-            base_time: Base time for calculation (defaults to current UTC)
-            user_timezone: User's timezone for cron calculation (defaults to trigger config timezone)
-                          Supports both IANA names (e.g., "America/New_York") and offset strings (e.g., "+05:30")
-
-        Returns:
-            Next run time in UTC
+        user_timezone accepts IANA names ("America/New_York") or offset strings ("+05:30").
         """
         if self.type != TriggerType.SCHEDULE or not self.cron_expression:
             return None
@@ -155,16 +148,7 @@ class TriggerConfig(BaseModel):
     def update_next_run(
         self, base_time: datetime | None = None, user_timezone: str | None = None
     ) -> bool:
-        """
-        Update the next_run field with timezone awareness and return True if changed.
-
-        Args:
-            base_time: Base time for calculation
-            user_timezone: User's timezone for cron calculation
-
-        Returns:
-            True if next_run was updated
-        """
+        """Update the next_run field; return True if it changed."""
         old_next_run = self.next_run
         self.next_run = self.calculate_next_run(base_time, user_timezone)
         return old_next_run != self.next_run
@@ -211,10 +195,19 @@ class Workflow(BaseScheduledTask):
         default=True,
         description="Whether the workflow is activated and can be executed",
     )
+    notify_on_completion: bool = Field(
+        default=True,
+        description=(
+            "Whether GAIA sends the automatic completion notification when a run "
+            "finishes. When False the run is silent (failures still notify) and the "
+            "agent only notifies if the workflow's own instructions ask it to."
+        ),
+    )
     last_executed_at: datetime | None = Field(default=None)
 
     @field_serializer("last_executed_at")
     def serialize_last_executed_at(self, value: datetime | None) -> str | None:
+        """Serialize the last-executed timestamp to an ISO string (or None)."""
         return value.isoformat() if value is not None else None
 
     # Community features
@@ -313,10 +306,10 @@ class Workflow(BaseScheduledTask):
                 ):
                     data["repeat"] = trigger_config.cron_expression
 
-        # Set default scheduled_at if still not provided
-        if "scheduled_at" not in data:
-            data["scheduled_at"] = datetime.now(UTC)
-
+        # A workflow only has a scheduled_at when it is a schedule-triggered (cron)
+        # workflow with a next_run (mapped above). Manual / integration / todo
+        # workflows have no scheduled run — leave scheduled_at as None rather than
+        # fabricating "now", which would make them look due to the recovery scan.
         super().__init__(**data)
 
     @model_validator(mode="before")
@@ -357,6 +350,10 @@ class CreateWorkflowRequest(BaseModel):
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
     )
+    notify_on_completion: bool = Field(
+        default=True,
+        description="Whether GAIA sends the automatic completion notification when a run finishes.",
+    )
     selected_integrations: list[str] | None = Field(
         default=None,
         description="Integration slugs selected by the user to hint step generation.",
@@ -379,6 +376,7 @@ class CreateWorkflowRequest(BaseModel):
     @field_validator("title", "prompt")
     @classmethod
     def validate_non_empty_strings(cls, v):
+        """Require non-blank title/prompt and strip surrounding whitespace."""
         if not v or not v.strip():
             raise ValueError("Field cannot be empty or contain only whitespace")
         return v.strip()
@@ -386,6 +384,7 @@ class CreateWorkflowRequest(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_optional_description(cls, v):
+        """Normalize an optional description, coercing blank values to None/empty."""
         if v is not None and not v.strip():
             return ""
         return v.strip() if v else None
@@ -400,11 +399,13 @@ class UpdateWorkflowRequest(BaseModel):
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: TriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
+    notify_on_completion: bool | None = Field(default=None)
     selected_integrations: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")
     @classmethod
     def validate_optional_non_empty_strings(cls, v):
+        """Strip provided title/prompt updates and reject blank-only values."""
         if v is not None:
             if not v.strip():
                 raise ValueError("Field cannot be empty or contain only whitespace")
@@ -414,6 +415,7 @@ class UpdateWorkflowRequest(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_optional_update_description(cls, v):
+        """Normalize a description update, coercing blank values to None."""
         if v is None:
             return None
         stripped = v.strip()
@@ -473,18 +475,6 @@ class RegenerateStepsRequest(BaseModel):
         default=None,
         description="Integration slugs to bias regeneration; falls back to persisted selection.",
     )
-
-
-class PublishWorkflowRequest(BaseModel):
-    """Request model for publishing a workflow to the community."""
-
-    workflow_id: str = Field(description="ID of the workflow to publish")
-
-
-class UnpublishWorkflowRequest(BaseModel):
-    """Request model for unpublishing a workflow from the community."""
-
-    workflow_id: str = Field(description="ID of the workflow to unpublish")
 
 
 class PublicWorkflowsResponse(BaseModel):

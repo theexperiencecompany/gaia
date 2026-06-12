@@ -131,7 +131,11 @@ export default function HeroImage({
             pngSrc={wallpaper.png}
             alt="Hero wallpaper"
             className="object-cover"
-            shouldHaveInitialFade={true}
+            // LCP element: render immediately (no JS-gated opacity fade) so it
+            // paints from the SSR HTML + preload as soon as bytes arrive, rather
+            // than waiting for hydration + onLoad. Time-of-day transitions still
+            // animate via the clip-path on the wrapping m.div.
+            shouldHaveInitialFade={false}
             priority={true}
           />
         </m.div>

@@ -7,6 +7,7 @@ runs to completion and the conversation lands in MongoDB.
 
 import asyncio
 from collections.abc import AsyncGenerator
+from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -26,6 +27,9 @@ from shared.py.wide_events import ChatContext, log
 
 # asyncio.create_task only keeps a weakref; without this set the task can be GC'd mid-flight.
 _background_tasks: set[asyncio.Task] = set()
+
+_USER_ID_REQUIRED = "user_id is required"
+_SSE_MEDIA_TYPE = "text/event-stream"
 
 router = APIRouter()
 
@@ -80,8 +84,8 @@ async def chat_stream_endpoint(
     request: Request,
     body: MessageRequestWithHistory,
     background_tasks: BackgroundTasks,
-    user: dict = Depends(get_current_user),
-    tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
+    user: Annotated[dict, Depends(get_current_user)],
+    tz_info: Annotated[GET_USER_TZ_TYPE, Depends(get_user_timezone)],
 ) -> StreamingResponse:
     """Stream a chat turn. Continues in the background if the client disconnects."""
     stream_id = str(uuid4())
@@ -90,7 +94,7 @@ async def chat_stream_endpoint(
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="user_id is required",
+            detail=_USER_ID_REQUIRED,
         )
     log.set(
         user={"id": user_id},
@@ -125,7 +129,7 @@ async def chat_stream_endpoint(
     # pin a single origin and break the desktop app + alternate domains.
     return StreamingResponse(
         _stream_from_redis(stream_id, request, start_event=start_event),
-        media_type="text/event-stream",
+        media_type=_SSE_MEDIA_TYPE,
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -145,7 +149,7 @@ async def cancel_stream_endpoint(
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="user_id is required",
+            detail=_USER_ID_REQUIRED,
         )
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
@@ -176,7 +180,7 @@ async def cancel_stream_endpoint(
 async def subscribe_executor_stream(
     stream_id: str,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> StreamingResponse:
     """
     Subscribe to a background executor SSE stream by stream_id.
@@ -189,7 +193,7 @@ async def subscribe_executor_stream(
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="user_id is required",
+            detail=_USER_ID_REQUIRED,
         )
 
     progress = await stream_manager.get_progress(stream_id)
@@ -217,7 +221,7 @@ async def subscribe_executor_stream(
 
         return StreamingResponse(
             _already_done(),
-            media_type="text/event-stream",
+            media_type=_SSE_MEDIA_TYPE,
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
@@ -230,7 +234,7 @@ async def subscribe_executor_stream(
 
     return StreamingResponse(
         _stream_from_redis(stream_id, request),
-        media_type="text/event-stream",
+        media_type=_SSE_MEDIA_TYPE,
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",

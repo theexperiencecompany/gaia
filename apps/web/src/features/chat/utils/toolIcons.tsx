@@ -16,6 +16,7 @@ import {
   CheckListIcon,
   CheckmarkCircle02Icon,
   ClipboardIcon,
+  Clock04Icon,
   ComputerTerminal01Icon,
   ConnectIcon,
   FileEmpty02Icon,
@@ -74,6 +75,7 @@ const isRenderableIconSrc = (src: string): boolean => {
 /** Map icon component names to actual React components */
 const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   CheckListIcon,
+  Clock04Icon,
   CheckmarkCircle02Icon,
   ClipboardIcon,
   AlarmClockIcon,

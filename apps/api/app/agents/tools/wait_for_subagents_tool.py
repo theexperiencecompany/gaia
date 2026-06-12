@@ -24,7 +24,10 @@ from shared.py.wide_events import log
 @tool
 async def wait_for_subagents(
     config: RunnableConfig,
-    timeout: Annotated[
+    # NOSONAR python:S7483 — `timeout` is part of this tool's LLM-facing input
+    # schema (the model chooses how long to wait); it is not an internal call
+    # timeout that an asyncio.timeout() context manager could replace.
+    timeout: Annotated[  # NOSONAR python:S7483
         int,
         "Maximum seconds to wait for all background subagents. Default 120.",
     ] = 120,

@@ -78,6 +78,10 @@ EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 EXECUTOR_QUEUE_PREFIX = "executor:queue:"
 EXECUTOR_QUEUE_TTL = ONE_HOUR_TTL  # Tasks expire if not picked up within 1 hour
+# Max time a caller waits for a detached executor to finish before draining
+# whatever tool events were collected. Matches the busy lock TTL — the executor
+# cannot outlive its lock, so waiting longer would be pointless.
+EXECUTOR_WAIT_TIMEOUT = THIRTY_MINUTES_TTL
 # Upper bound a voice-mode stream waits for a delegated executor's narrated
 # answer before sending [DONE] anyway. Real action turns resolve in a few
 # seconds; on timeout the answer still reaches the user via the WebSocket push.

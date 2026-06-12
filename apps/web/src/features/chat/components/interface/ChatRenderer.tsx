@@ -22,6 +22,7 @@ import {
   isBotMessageEmpty,
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
+import { useChatStore } from "@/stores/chatStore";
 import type {
   ChatBubbleBotProps,
   ChatBubbleUserProps,
@@ -37,6 +38,36 @@ export default function ChatRenderer() {
   const { isLoading } = useLoading();
   const { loadingText, loadingTextKey, toolInfo } = useLoadingText();
   const { id: convoIdParam } = useParams<{ id: string }>();
+  const streamingConversationId = useChatStore(
+    (state) => state.streamingConversationId,
+  );
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
+  const executorPendingConversationId = useChatStore(
+    (state) => state.executorPendingConversationId,
+  );
+  // While this conversation is "in progress", suppress follow-up actions and
+  // the hover action/timestamp row — they belong to a *finished* turn. A turn
+  // is in progress while its SSE stream runs (including the executor phase) AND,
+  // for turns that delegated to a background executor, until that executor's
+  // result message arrives via WebSocket (a few seconds after SSE close).
+  //
+  // NB: compare against the store's `activeConversationId`, not the route param
+  // — new conversations rewrite the URL via `history.replaceState`, which does
+  // not update Next's `useParams`, so `convoIdParam` is stale during streaming.
+  const isAwaitingExecutorResult =
+    !!executorPendingConversationId &&
+    executorPendingConversationId === activeConversationId;
+  const isConversationStreaming =
+    (!!streamingConversationId &&
+      streamingConversationId === activeConversationId) ||
+    isAwaitingExecutorResult;
+  // The conversation is "working" while the bottom loading indicator is visible
+  // (`isLoading || awaiting`) or its SSE stream runs. This is used to suppress
+  // the follow-ups + action row on the *active turn's* bubble only (see
+  // `suppressForBusy` below) — finished turns above it keep their follow-ups.
+  const isConversationBusy = isConversationStreaming || isLoading;
   const scrolledToMessageRef = useRef<string | null>(null);
   const { retryMessage, isRetrying } = useRetryMessage();
   const [imageData, setImageData] = useState<SetImageDataType>({
@@ -166,12 +197,28 @@ export default function ChatRenderer() {
   // avatar/timestamp/follow-up actions when followed by an empty bot message.
   const rendersAsBotBubble = useCallback(
     (message: MessageType | undefined): boolean => {
-      if (!message || message.type !== "bot") return false;
+      if (message?.type !== "bot") return false;
       const props = getMessageProps(message, "bot", messagePropsOptions);
-      return !!props && !isBotMessageEmpty(props as ChatBubbleBotProps);
+      return !!props && !isBotMessageEmpty(props);
     },
     [messagePropsOptions],
   );
+
+  // The busy/streaming suppression of follow-ups + the action row applies only
+  // to the turn that is *currently in progress* — i.e. the last rendered bubble,
+  // the one sitting directly above the loading indicator. Earlier, finished
+  // turns keep their follow-ups even after a new message starts streaming.
+  const lastRenderedIndex = useMemo(() => {
+    for (let i = messagesWithDeduplicatedToolCalls.length - 1; i >= 0; i--) {
+      const candidate = messagesWithDeduplicatedToolCalls[i];
+      if (candidate.type === "bot") {
+        if (rendersAsBotBubble(candidate)) return i;
+        continue; // empty bot message — never renders, keep scanning back
+      }
+      return i; // user messages always render
+    }
+    return -1;
+  }, [messagesWithDeduplicatedToolCalls, rendersAsBotBubble]);
 
   // Walk in `step` direction from `index`, skipping empty bot messages, and
   // report whether the next/previous *rendered* bubble is a bot bubble.
@@ -250,6 +297,10 @@ export default function ChatRenderer() {
           // grouping reflects the actually-visible bubbles, not raw adjacency.
           const isFollowedByBot = hasRenderedBotInDirection(index, 1);
           const isPrecededByBot = hasRenderedBotInDirection(index, -1);
+          // Only the active turn's bubble (the last rendered one) is suppressed
+          // while the conversation is busy — finished turns keep their actions.
+          const suppressForBusy =
+            index === lastRenderedIndex && isConversationBusy;
 
           if (
             message.type === "bot" &&
@@ -259,9 +310,11 @@ export default function ChatRenderer() {
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
-                disableActions={isFollowedByBot}
+                disableActions={isFollowedByBot || suppressForBusy}
                 follow_up_actions={
-                  isFollowedByBot ? undefined : messageProps.follow_up_actions
+                  isFollowedByBot || suppressForBusy
+                    ? undefined
+                    : messageProps.follow_up_actions
                 }
                 date={isFollowedByBot ? undefined : messageProps.date}
                 isGroupedWithNext={isFollowedByBot}
@@ -277,7 +330,7 @@ export default function ChatRenderer() {
           );
         },
       )}
-      {isLoading && (
+      {(isLoading || isAwaitingExecutorResult) && (
         <AnimatePresence>
           <LoadingIndicator
             loadingText={loadingText}

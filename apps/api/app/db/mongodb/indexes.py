@@ -49,16 +49,7 @@ from shared.py.wide_events import log
 
 
 async def create_all_indexes():
-    """
-    Create all database indexes for optimal performance.
-    This is the main function called during application startup.
-
-    Indexes are created with best practices:
-    - User-specific compound indexes for multi-tenant queries
-    - Date-based sorting indexes for pagination
-    - Text search indexes for full-text search
-    - Unique indexes for data integrity    - Compound indexes ordered by: equality → range → sort
-    """
+    """Create all database indexes. Called during application startup."""
     try:
         log.set(db={"operation": "create_indexes", "collection": "all"})
         log.info("Starting comprehensive database index creation...")
@@ -959,57 +950,6 @@ async def create_installed_skills_indexes() -> None:
         raise
 
 
-async def get_index_status() -> dict[str, list[str]]:
-    """
-    Get the current index status for all collections.
-    Useful for monitoring and debugging index usage.
-
-    Returns:
-        Dict mapping collection names to lists of index names
-    """
-    try:
-        collections = {
-            "users": users_collection,
-            "conversations": conversations_collection,
-            "todos": todos_collection,
-            "projects": projects_collection,
-            "goals": goals_collection,
-            "notes": notes_collection,
-            "files": files_collection,
-            "mail": mail_collection,
-            "calendar": calendars_collection,
-            "blog": blog_collection,
-            "notifications": notifications_collection,
-            "reminders": reminders_collection,
-            "workflows": workflows_collection,
-            "skills": skills_collection,
-        }
-
-        # Get all collection indexes concurrently
-        async def get_collection_indexes(name: str, collection):
-            try:
-                indexes = await collection.list_indexes().to_list(length=None)
-                return name, [idx.get("name", "unnamed") for idx in indexes]
-            except Exception as e:
-                log.error(f"Failed to get indexes for {name}: {e!s}")
-                return name, [f"ERROR: {e!s}"]
-
-        # Execute all index status queries concurrently
-        tasks = [
-            get_collection_indexes(name, collection) for name, collection in collections.items()
-        ]
-        results = await asyncio.gather(*tasks)
-
-        # Convert results to dictionary
-        index_status = dict(results)
-
-        return index_status
-
-    except Exception as e:
-        log.error(f"Error getting index status: {e!s}")
-        return {"error": [str(e)]}
-
-
 async def create_e2b_sandbox_indexes() -> None:
     """
     Create indexes for e2b_sandboxes and e2b_warm_pool collections.
@@ -1035,28 +975,3 @@ async def create_e2b_sandbox_indexes() -> None:
     except Exception as e:
         log.error(f"Error creating e2b sandbox indexes: {e!s}")
         raise
-
-
-async def log_index_summary():
-    """Log a summary of all collection indexes for monitoring purposes."""
-    try:
-        index_status = await get_index_status()
-
-        log.info("=== DATABASE INDEX SUMMARY ===")
-
-        total_indexes = 0
-        for collection_name, indexes in index_status.items():
-            if not indexes or (len(indexes) == 1 and indexes[0].startswith("ERROR")):
-                log.warning(f"{collection_name}: No indexes or error")
-            else:
-                index_count = len(indexes)
-                total_indexes += index_count
-                log.info(
-                    f"INDEX CREATED: {collection_name}: {index_count} indexes - {', '.join(indexes)}"
-                )
-
-        log.info(f"Total indexes across all collections: {total_indexes}")
-        log.info("=== END INDEX SUMMARY ===")
-
-    except Exception as e:
-        log.error(f"Error logging index summary: {e!s}")

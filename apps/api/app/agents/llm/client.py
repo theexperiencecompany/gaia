@@ -19,10 +19,8 @@ from typing_extensions import TypedDict
 
 from app.config.settings import settings
 from app.constants.llm import (
-    DEFAULT_GEMINI_FREE_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
-    GEMINI_FREE_FALLBACK_MODELS,
     OPENROUTER_BASE_URL,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -144,21 +142,10 @@ def init_llm(
     preferred_provider: str | None = None,
     fallback_enabled: bool = True,
 ):
-    """
-    Initialize LLM with configurable alternatives based on provider priority.
+    """Initialize an LLM with configurable fallback alternatives by provider priority.
 
-    Args:
-        preferred_provider (Optional[str]): Specific provider to prefer (e.g., "openai", "gemini").
-                                          If None, uses default priority order.
-        fallback_enabled (bool): Whether to enable fallback to other providers
-                               if preferred provider is not available.
-
-    Returns:
-        Configured LLM instance with alternatives
-
-    Raises:
-        RuntimeError: If no LLM providers are properly configured
-        ValueError: If preferred_provider is not a valid provider name
+    Without a preferred_provider, uses the default priority order. Raises
+    ValueError on an unknown provider, RuntimeError if none are configured.
     """
     # Validate preferred provider if specified
     if preferred_provider and preferred_provider not in PROVIDER_MODELS:
@@ -200,12 +187,8 @@ def init_llm(
 
 
 def _get_available_providers() -> dict[str, Any]:
-    """
-    Retrieve available LLM provider instances from global providers registry.
-
-    Returns:
-        Dict mapping provider names to their instances
-    """
+    """Retrieve available LLM provider instances from the global registry,
+    mapped by provider name."""
     # Mapping of provider names to their instance keys in the providers registry
     provider_instance_mapping = {
         "openai": "openai_llm",
@@ -227,17 +210,8 @@ def _get_ordered_providers(
     preferred_provider: str | None,
     fallback_enabled: bool,
 ) -> list[LLMProvider]:
-    """
-    Determine the order of providers based on preferences and availability.
-
-    Args:
-        available_providers: Dict of available provider instances
-        preferred_provider: Specific provider name to prefer
-        fallback_enabled: Whether to include fallback providers
-
-    Returns:
-        List of LLMProvider objects in priority order
-    """
+    """Order providers by preference and availability, returning LLMProvider
+    objects in priority order."""
     ordered = []
     remaining_providers = available_providers.copy()
 
@@ -265,16 +239,7 @@ def _get_ordered_providers(
 
 
 def _create_configurable_llm(primary: LLMProvider, alternatives: list[LLMProvider]):
-    """
-    Create a configurable LLM instance with alternatives.
-
-    Args:
-        primary: Primary LLM provider to use
-        alternatives: List of alternative providers for fallback
-
-    Returns:
-        Configured LLM instance with alternatives
-    """
+    """Create a configurable LLM instance with fallback alternatives."""
     if not alternatives:
         # Return primary instance directly if no alternatives
         return primary["instance"]
@@ -300,52 +265,17 @@ def register_llm_providers():
 
 
 def get_free_llm_chain() -> list[BaseChatModel]:
-    """
-    Get a chain of free/low-cost LLMs for auxiliary tasks with fallback support.
+    """Get a chain of low-cost LLMs for auxiliary tasks (suggestions, follow-ups,
+    research helpers), tried in order. Uses the direct Gemini API."""
+    if not settings.GOOGLE_API_KEY:
+        raise RuntimeError("No LLM provider configured for auxiliary tasks. Set GOOGLE_API_KEY.")
 
-    Returns a list of LLMs in priority order:
-    1. OpenRouter free models (Gemini 2.0 Flash free tier)
-    2. Direct Gemini API (as fallback if OpenRouter fails)
-
-    Returns:
-        List of LLM instances to try in order
-    """
-    llms: list[BaseChatModel] = []
-
-    # Primary: OpenRouter free model with automatic model fallback
-    if settings.OPENROUTER_API_KEY:
-        llms.append(
-            ChatOpenAI(
-                model=DEFAULT_GEMINI_FREE_MODEL_NAME,
-                temperature=0.1,
-                streaming=False,
-                api_key=settings.OPENROUTER_API_KEY,
-                base_url=OPENROUTER_BASE_URL,
-                default_headers={
-                    "HTTP-Referer": settings.FRONTEND_URL,
-                    "X-Title": "GAIA",
-                },
-                extra_body={
-                    "models": GEMINI_FREE_FALLBACK_MODELS,
-                },
-            )
+    return [
+        ChatGoogleGenerativeAI(
+            model=DEFAULT_GEMINI_MODEL_NAME,
+            temperature=0.1,
         )
-
-    # Fallback: Direct Gemini API
-    if settings.GOOGLE_API_KEY:
-        llms.append(
-            ChatGoogleGenerativeAI(
-                model=DEFAULT_GEMINI_MODEL_NAME,
-                temperature=0.1,
-            )
-        )
-
-    if not llms:
-        raise RuntimeError(
-            "No free LLM providers configured. Set OPENROUTER_API_KEY or GOOGLE_API_KEY."
-        )
-
-    return llms
+    ]
 
 
 async def invoke_with_fallback(
@@ -353,22 +283,10 @@ async def invoke_with_fallback(
     messages: Sequence[BaseMessage],
     config: RunnableConfig | None = None,
 ) -> BaseMessage:
-    """
-    Invoke LLMs in sequence until one succeeds.
+    """Invoke LLMs in sequence until one succeeds, returning its response.
 
-    Tries each LLM in the chain, falling back to the next on failure.
-    Useful for auxiliary tasks like follow-up actions and description generation.
-
-    Args:
-        llm_chain: List of LLM instances to try in order
-        messages: Messages to send to the LLM
-        config: Optional config to pass to the LLM
-
-    Returns:
-        The response from the first successful LLM
-
-    Raises:
-        RuntimeError: If all LLMs in the chain fail
+    Tries each LLM in the chain, falling back to the next on failure. Raises
+    RuntimeError if all fail.
     """
     last_error: Exception | None = None
 

@@ -201,114 +201,14 @@ class TestUnregisterDeviceToken:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-class TestUnregisterUserDevices:
-    async def test_unregisters_all_devices(self, service, mock_collection):
-        mock_collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=3))
-
-        result = await service.unregister_user_devices("user1")
-
-        assert result == 3
-        mock_collection.delete_many.assert_awaited_once_with({"user_id": "user1"})
-
-    async def test_returns_zero_when_no_devices(self, service, mock_collection):
-        mock_collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=0))
-
-        result = await service.unregister_user_devices("user1")
-
-        assert result == 0
-
-    async def test_returns_zero_on_error(self, service, mock_collection):
-        mock_collection.delete_many = AsyncMock(side_effect=Exception("DB error"))
-
-        result = await service.unregister_user_devices("user1")
-
-        assert result == 0
-
-
 # ---------------------------------------------------------------------------
 # get_user_tokens
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-class TestGetUserTokens:
-    async def test_returns_active_tokens(self, service, mock_collection):
-        docs = [
-            {"token": "tok1"},
-            {"token": "tok2"},
-        ]
-        mock_collection.find = MagicMock(return_value=_AsyncIterator(docs))
-
-        result = await service.get_user_tokens("user1")
-
-        assert result == ["tok1", "tok2"]
-        mock_collection.find.assert_called_once_with({"user_id": "user1", "is_active": True})
-
-    async def test_returns_all_tokens_when_not_active_only(self, service, mock_collection):
-        docs = [{"token": "tok1"}]
-        mock_collection.find = MagicMock(return_value=_AsyncIterator(docs))
-
-        result = await service.get_user_tokens("user1", active_only=False)
-
-        assert result == ["tok1"]
-        mock_collection.find.assert_called_once_with({"user_id": "user1"})
-
-    async def test_returns_empty_on_error(self, service, mock_collection):
-        mock_collection.find = MagicMock(side_effect=Exception("DB error"))
-
-        result = await service.get_user_tokens("user1")
-
-        assert result == []
-
-    async def test_returns_empty_when_no_tokens(self, service, mock_collection):
-        mock_collection.find = MagicMock(return_value=_AsyncIterator([]))
-
-        result = await service.get_user_tokens("user1")
-
-        assert result == []
-
-
 # ---------------------------------------------------------------------------
 # deactivate_invalid_token
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestDeactivateInvalidToken:
-    async def test_deactivates_token(self, service, mock_collection):
-        mock_collection.update_one = AsyncMock()
-
-        result = await service.deactivate_invalid_token("ExponentPushToken[abc]")
-
-        assert result is True
-        call_args = mock_collection.update_one.call_args
-        assert call_args[0][0] == {"token": "ExponentPushToken[abc]"}
-        set_data = call_args[0][1]["$set"]
-        assert set_data["is_active"] is False
-        assert "updated_at" in set_data
-
-    async def test_returns_false_on_error(self, service, mock_collection):
-        mock_collection.update_one = AsyncMock(side_effect=Exception("DB error"))
-
-        result = await service.deactivate_invalid_token("tok")
-
-        assert result is False
-
-    async def test_masking_short_token(self, service, mock_collection):
-        """Short tokens get fully masked."""
-        mock_collection.update_one = AsyncMock()
-
-        result = await service.deactivate_invalid_token("short_tok")
-        assert result is True
-
-    async def test_masking_long_token(self, service, mock_collection):
-        """Long tokens are partially masked in logs."""
-        mock_collection.update_one = AsyncMock()
-
-        long_token = "ExponentPushToken[abcdefghij123456789]"
-        result = await service.deactivate_invalid_token(long_token)
-        assert result is True
 
 
 # ---------------------------------------------------------------------------

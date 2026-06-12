@@ -1,15 +1,9 @@
-"""Agent execution module with streaming and silent modes.
+"""Agent execution: streaming and silent modes.
 
-Two execution patterns due to Python async limitations:
-
-1. call_agent() - Returns AsyncGenerator for real-time SSE streaming
-   Use for: Interactive chat, voice agents, frontend interfaces
-
-2. call_agent_silent() - Returns complete results tuple
-   Use for: Workflows, batch processing, API integrations
+- call_agent() returns an AsyncGenerator for SSE streaming (interactive chat).
+- call_agent_silent() returns a results tuple (workflows, background tasks).
 
 Both share _core_agent_logic() for common setup (messages, graph, config).
-Choose streaming for user interactions, silent for background processing.
 """
 
 import asyncio
@@ -17,9 +11,16 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 import json
 from typing import Literal, cast
+from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
+from app.agents.core.background.executor_capture import (
+    await_executor_done,
+    drain_executor_tool_data,
+    register_executor_capture,
+    teardown_executor_capture,
+)
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
 from app.config.langfuse import trace_id_for_message
@@ -51,11 +52,10 @@ async def _core_agent_logic(
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
 ):
-    """Core agent initialization logic shared between streaming and silent execution modes.
+    """Shared setup for streaming and silent execution.
 
-    Handles the common setup required for both streaming and silent agent execution
-    including message construction, graph initialization, state building, and
-    background memory storage. Centralizes the preparation logic to avoid duplication.
+    Constructs messages, initializes the graph, builds state, and kicks off
+    background memory storage.
 
     Args:
         request: Message request with conversation history and file data
@@ -137,6 +137,16 @@ async def _core_agent_logic(
         langfuse_trace_id=langfuse_trace_id,
         langfuse_tags=langfuse_tags,
     )
+
+    # Workflow runs carry their id/title so the background executor's delivery
+    # path can route the final result to the workflow-completion notification
+    # instead of a normal conversation message. Absent for interactive chat.
+    if trigger_context and trigger_context.get("workflow_id"):
+        config["configurable"]["workflow_id"] = trigger_context["workflow_id"]
+        config["configurable"]["workflow_title"] = trigger_context.get("workflow_title", "")
+        config["configurable"]["workflow_notify_on_completion"] = trigger_context.get(
+            "workflow_notify_on_completion", True
+        )
 
     log.set(
         agent=dict(
@@ -230,7 +240,14 @@ async def call_agent_silent(
     Execute agent in silent mode for background processing.
 
     Returns a tuple of (complete_message, tool_data_dict).
+
+    The comms agent may delegate to the executor, which runs as a detached
+    background task. We register an executor capture for this run's stream_id,
+    wait for the executor to finish, then merge its (and its subagents') grouped
+    tool_data into the returned tool_data — so background/workflow runs render
+    tool calls identically to live chat.
     """
+    stream_id = str(uuid4())
     try:
         graph, initial_state, config = await _core_agent_logic(
             request,
@@ -243,7 +260,23 @@ async def call_agent_silent(
             source=source,
         )
 
-        result = await execute_graph_silent(graph, initial_state, config)
+        # Mirror the live-chat path: comms delegates to the executor (which runs
+        # detached and delivers its result as its own message), then we wait for
+        # it to finish and fold its reconstructed tool_data onto this comms
+        # message — exactly like chat_service attaches it to the comms ack. Bind
+        # the stream_id + register the collector before the graph runs so the
+        # executor's tool events are captured.
+        config["configurable"]["stream_id"] = stream_id
+        register_executor_capture(stream_id)
+
+        complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)
+
+        # Wait for the detached executor (if one was spawned) and fold its
+        # reconstructed tool_data into this message's tool_data.
+        await await_executor_done(stream_id)
+        executor_tool_data = drain_executor_tool_data(stream_id)
+        if executor_tool_data:
+            tool_data["tool_data"] = [*tool_data.get("tool_data", []), *executor_tool_data]
 
         if usage_metadata_callback and hasattr(usage_metadata_callback, "usage_metadata"):
             usage = usage_metadata_callback.usage_metadata or {}
@@ -260,8 +293,10 @@ async def call_agent_silent(
                 token_total=total_input + total_output,
             )
 
-        return result
+        return complete_message, tool_data
 
     except Exception as exc:
         log.error(f"Error when calling silent agent: {exc}")
         return f"Error when calling silent agent: {exc!s}", {}
+    finally:
+        teardown_executor_capture(stream_id)

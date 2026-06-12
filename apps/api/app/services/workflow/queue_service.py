@@ -1,6 +1,7 @@
 """Unified workflow queue service for background job management."""
 
-from datetime import UTC, datetime
+import hashlib
+import json
 
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
@@ -32,101 +33,49 @@ class WorkflowQueueService:
     async def queue_workflow_execution(
         workflow_id: str, user_id: str, context: dict | None = None
     ) -> bool:
-        """Queue workflow execution as a background task."""
+        """Queue workflow execution as a background task.
+
+        Uses a deterministic ``_job_id`` hashed from workflow + user + context so
+        a duplicate enqueue collapses to one run while queued/executing (ARQ
+        rejects a same-id job). ``keep_result=0`` frees the id once the run
+        finishes, so a later legitimate re-run is never blocked.
+        """
         try:
             pool = await RedisPoolManager.get_pool()
 
-            job = await pool.enqueue_job("execute_workflow_by_id", workflow_id, context or {})
+            dedup_payload = json.dumps(
+                {"workflow_id": workflow_id, "user_id": user_id, "context": context or {}},
+                sort_keys=True,
+                default=str,
+            )
+            job_id = (
+                "execute_workflow_by_id:" + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
+            )
 
-            if job:
-                log.set(
-                    workflow={"id": workflow_id, "status": "execution_queued"},
-                    arq_job_id=job.job_id,
-                    queue_mode="immediate",
-                    defer_seconds=0,
+            job = await pool.enqueue_job(
+                "execute_workflow_by_id", workflow_id, context or {}, _job_id=job_id
+            )
+
+            if job is None:
+                # A job with this id is already queued or running — the duplicate
+                # enqueue was deduped. That's the intended outcome, not a failure.
+                log.info(
+                    f"Workflow execution already queued for {workflow_id}; "
+                    f"deduped duplicate enqueue (job ID {job_id})"
                 )
-                log.info(f"Queued workflow execution for {workflow_id} with job ID {job.job_id}")
                 return True
-            log.error(f"Failed to queue workflow execution for {workflow_id}")
-            return False
+
+            log.set(
+                workflow={"id": workflow_id, "status": "execution_queued"},
+                arq_job_id=job.job_id,
+                queue_mode="immediate",
+                defer_seconds=0,
+            )
+            log.info(f"Queued workflow execution for {workflow_id} with job ID {job.job_id}")
+            return True
 
         except Exception as e:
             log.error(f"Error queuing workflow execution for {workflow_id}: {e!s}")
-            return False
-
-    @staticmethod
-    async def queue_scheduled_workflow_execution(
-        workflow_id: str, scheduled_at: datetime, context: dict | None = None
-    ) -> bool:
-        """Queue a scheduled workflow execution with defer_until."""
-        try:
-            pool = await RedisPoolManager.get_pool()
-
-            tz_was_naive = scheduled_at.tzinfo is None
-            if tz_was_naive:
-                log.warning(
-                    f"queue_scheduled_workflow_execution: naive scheduled_at for "
-                    f"{workflow_id}, assuming UTC — check caller",
-                )
-                scheduled_at = scheduled_at.replace(tzinfo=UTC)
-            now = datetime.now(UTC)
-            defer_seconds = int((scheduled_at - now).total_seconds())
-
-            job = await pool.enqueue_job(
-                "execute_workflow_by_id",
-                workflow_id,
-                context or {},
-                _defer_until=scheduled_at,
-            )
-
-            if job:
-                log.set(
-                    workflow={"id": workflow_id, "status": "scheduled_queued"},
-                    arq_job_id=job.job_id,
-                    queue_mode="scheduled",
-                    scheduled_at_utc=scheduled_at.isoformat(),
-                    scheduled_at_was_naive=tz_was_naive,
-                    defer_seconds=defer_seconds,
-                )
-                log.info(
-                    f"Queued scheduled workflow execution for {workflow_id} at {scheduled_at} with job ID {job.job_id}"
-                )
-                return True
-            log.error(f"Failed to queue scheduled workflow execution for {workflow_id}")
-            return False
-
-        except Exception as e:
-            log.error(f"Error queuing scheduled workflow execution for {workflow_id}: {e!s}")
-            return False
-
-    @staticmethod
-    async def queue_workflow_regeneration(
-        workflow_id: str,
-        user_id: str,
-        regeneration_reason: str,
-        force_different_tools: bool = True,
-    ) -> bool:
-        """Queue workflow step regeneration as a background task."""
-        try:
-            pool = await RedisPoolManager.get_pool()
-
-            job = await pool.enqueue_job(
-                "regenerate_workflow_steps",
-                workflow_id,
-                user_id,
-                regeneration_reason,
-                force_different_tools,
-            )
-
-            if job:
-                log.set(workflow={"id": workflow_id, "status": "regeneration_queued"})
-                log.info(f"Queued workflow regeneration for {workflow_id} with job ID {job.job_id}")
-                return True
-            log.error(f"Failed to queue workflow regeneration for {workflow_id}")
-            return False
-
-        except Exception as e:
-            log.error(f"Error queuing workflow regeneration for {workflow_id}: {e!s}")
             return False
 
     @staticmethod

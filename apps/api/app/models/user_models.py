@@ -25,10 +25,6 @@ class BioStatus(str, Enum):
     NO_GMAIL = "no_gmail"  # No Gmail connected, showing placeholder
 
 
-class UserUpdateRequest(BaseModel):
-    name: str | None = Field(None, description="New name for the user")
-
-
 class UserUpdateResponse(BaseModel):
     user_id: str = Field(..., description="Unique identifier for the user")
     name: str = Field(..., description="Name of the user")
@@ -87,44 +83,6 @@ class OnboardingPreferences(BaseModel):
             return v
         # Return None for empty strings to normalize the data
         return None if v == "" else v
-
-
-class OnboardingData(BaseModel):
-    completed: bool = Field(default=False, description="Whether onboarding is completed")
-    completed_at: datetime | None = Field(
-        None, description="Timestamp when onboarding was completed"
-    )
-    phase: OnboardingPhase = Field(
-        default=OnboardingPhase.INITIAL, description="Current onboarding phase"
-    )
-    preferences: OnboardingPreferences | None = Field(
-        None, description="User's onboarding preferences"
-    )
-    house: str | None = Field(None, description="Assigned house name")
-    personality_phrase: str | None = Field(None, description="LLM-generated personality phrase")
-    user_bio: str | None = Field(None, description="LLM-generated bio paragraph")
-    bio_status: BioStatus = Field(default=BioStatus.PENDING, description="Status of bio generation")
-    suggested_workflows: list[str] | None = Field(
-        default_factory=list, description="Workflow IDs suggested via RAG"
-    )
-    overlay_color: str | None = Field(None, description="Personalization overlay color")
-    overlay_opacity: int | None = Field(None, description="Personalization overlay opacity")
-    account_number: int | None = Field(None, description="User's account number")
-    member_since: str | None = Field(None, description="Member since date string")
-    integration_scan_states: dict[str, dict[str, Any]] | None = Field(
-        default_factory=dict,
-        description="Map of integration IDs to their scan state data (e.g. {'gmail': {'last_scan': timestamp}})",
-    )
-    writing_style: dict | None = Field(
-        None, description="Learned writing style profile from sent emails"
-    )
-    first_message_conversation_id: str | None = Field(
-        None, description="ID of the seeded onboarding conversation"
-    )
-    intelligence_job_id: str | None = Field(
-        None,
-        description="ARQ job id of the in-flight intelligence pipeline; used to abort on reset/re-enqueue",
-    )
 
 
 class ClarifyAnswer(BaseModel):

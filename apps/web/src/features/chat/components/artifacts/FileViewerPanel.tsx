@@ -170,6 +170,67 @@ function FileContentRenderer({
   );
 }
 
+interface FileViewerBodyProps {
+  isImage: boolean;
+  loading: boolean;
+  error: boolean;
+  content: string | null;
+  contentType: string;
+  filename: string;
+  conversationId: string;
+  path: string;
+  viewMode: ViewMode;
+}
+
+function FileViewerBody({
+  isImage,
+  loading,
+  error,
+  content,
+  contentType,
+  filename,
+  conversationId,
+  path,
+  viewMode,
+}: Readonly<FileViewerBodyProps>) {
+  if (isImage) {
+    return (
+      <div className="flex h-full items-center justify-center bg-zinc-950 p-4">
+        <img
+          src={sessionFilesApi.artifactUrl(conversationId, path)}
+          alt={filename}
+          className="max-h-full max-w-full object-contain"
+        />
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-red-400">Failed to load file</p>
+      </div>
+    );
+  }
+  if (content === null) {
+    return null;
+  }
+  return (
+    <FileContentRenderer
+      content={content}
+      contentType={contentType}
+      filename={filename}
+      viewMode={viewMode}
+    />
+  );
+}
+
 export default function FileViewerPanel({
   conversationId,
   path,
@@ -229,7 +290,7 @@ export default function FileViewerPanel({
 
   const ext = getExtension(filename).toUpperCase();
   const sizeLabel =
-    sizeBytes !== undefined ? ` · ${formatFileSize(sizeBytes)}` : "";
+    sizeBytes === undefined ? "" : ` · ${formatFileSize(sizeBytes)}`;
   const isHtmlPreview = contentType === "text/html" && viewMode === "preview";
 
   const handleContentWheel = useCallback(
@@ -333,30 +394,17 @@ export default function FileViewerPanel({
         className={`min-h-0 flex-1 ${isHtmlPreview ? "overflow-hidden" : "overflow-y-auto overscroll-contain"}`}
         onWheel={handleContentWheel}
       >
-        {isImage ? (
-          <div className="flex h-full items-center justify-center bg-zinc-950 p-4">
-            <img
-              src={sessionFilesApi.artifactUrl(conversationId, path)}
-              alt={filename}
-              className="max-h-full max-w-full object-contain"
-            />
-          </div>
-        ) : loading ? (
-          <div className="flex h-full items-center justify-center">
-            <Spinner size="lg" />
-          </div>
-        ) : error ? (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-red-400">Failed to load file</p>
-          </div>
-        ) : content !== null ? (
-          <FileContentRenderer
-            content={content}
-            contentType={contentType}
-            filename={filename}
-            viewMode={viewMode}
-          />
-        ) : null}
+        <FileViewerBody
+          isImage={isImage}
+          loading={loading}
+          error={error}
+          content={content}
+          contentType={contentType}
+          filename={filename}
+          conversationId={conversationId}
+          path={path}
+          viewMode={viewMode}
+        />
       </div>
     </div>
   );

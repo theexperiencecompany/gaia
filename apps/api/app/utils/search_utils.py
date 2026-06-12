@@ -63,18 +63,7 @@ async def fetch_tavily_search(
     search_topic: str = "general",
     extra_params: dict | None = None,
 ) -> dict:
-    """
-    Call Tavily API with Redis caching.
-
-    Args:
-        query: The search query.
-        count: Number of results to return.
-        search_topic: Type of search ("general", "news", "finance").
-        extra_params: Additional search parameters.
-
-    Returns:
-        The search results as a dictionary, or an empty dict on error.
-    """
+    """Call the Tavily search API (Redis-cached). Returns {} on error."""
     log.set(
         operation="fetch_tavily_search",
         search_query=query,
@@ -113,16 +102,7 @@ async def fetch_tavily_search(
     namespace="search",
 )
 async def perform_search(query: str, count: int) -> dict:
-    """
-    Perform Tavily search and return comprehensive results.
-
-    Args:
-        query (str): The search query string.
-        count (int): Number of results to fetch per category.
-
-    Returns:
-        dict: Formatted search results with web, news, images, and videos data.
-    """
+    """Perform a Tavily search, returning web/news/images/answer results."""
     try:
         # Perform general search with all features enabled
         general_data = await fetch_tavily_search(query, count, "general")
@@ -160,16 +140,7 @@ async def perform_search(query: str, count: int) -> dict:
     namespace="web",
 )
 async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
-    """
-    Fetch webpage content using Firecrawl with stealth mode support.
-
-    Args:
-        url: The URL to scrape
-        use_stealth: Whether to use stealth proxy mode
-
-    Returns:
-        The scraped content in markdown format
-    """
+    """Scrape a webpage to markdown via Firecrawl, retrying with stealth mode on block."""
     try:
         writer = get_stream_writer()
         writer({"progress": f"Fetching URL with Firecrawl: {url[:50]}..."})
@@ -283,6 +254,15 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
             )
             response.raise_for_status()
 
+        # DDG Lite serves an anti-bot CAPTCHA (HTTP 202) that raise_for_status()
+        # treats as success; without this guard it parses as a silent "0 results".
+        if response.status_code == 202 or "bots use duckduckgo" in response.text[:2000].lower():
+            log.warning(
+                f"DuckDuckGo served a bot-challenge page "
+                f"(status {response.status_code}) for query: {query[:60]}"
+            )
+            return {"results": []}
+
         soup = BeautifulSoup(response.text, "lxml")
         results = []
 
@@ -310,3 +290,20 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
     except Exception as e:
         log.error(f"DuckDuckGo search failed: {e}")
         return {"results": []}
+
+
+async def search_for_research(query: str, count: int = 5) -> dict:
+    """Search for the deep-research pipeline: Tavily primary, DuckDuckGo fallback.
+
+    Returns ``{"results": [...]}`` in the shared url/title/content/score shape.
+    """
+    try:
+        tavily_result = await fetch_tavily_search(query, count, "general")
+        results = tavily_result.get("results") if isinstance(tavily_result, dict) else None
+        if results:
+            return {"results": results}
+        log.warning(f"Tavily returned no results, falling back to DuckDuckGo for: {query[:60]}")
+    except Exception as e:
+        log.warning(f"Tavily research search failed, falling back to DuckDuckGo: {e}")
+
+    return await search_with_duckduckgo(query, count)

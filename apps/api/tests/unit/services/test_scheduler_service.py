@@ -392,7 +392,7 @@ class TestScanAndSchedulePendingTasks:
 
 
 # ---------------------------------------------------------------------------
-# _handle_recurring_task
+# handle_recurring_task
 # ---------------------------------------------------------------------------
 
 
@@ -401,7 +401,7 @@ class TestHandleRecurringTask:
     async def test_no_repeat_returns_early(self, service, sample_task):
         sample_task.repeat = None
 
-        await service._handle_recurring_task(sample_task, 1)
+        await service.handle_recurring_task(sample_task, 1)
 
         # Should not try to reschedule
         service.arq_pool.enqueue_job.assert_not_awaited()
@@ -409,7 +409,7 @@ class TestHandleRecurringTask:
     async def test_no_task_id_returns_early(self, service, recurring_task):
         recurring_task.id = None
 
-        await service._handle_recurring_task(recurring_task, 1)
+        await service.handle_recurring_task(recurring_task, 1)
 
         service.arq_pool.enqueue_job.assert_not_awaited()
 
@@ -421,7 +421,7 @@ class TestHandleRecurringTask:
             "app.services.scheduler_service.get_next_run_time",
             return_value=datetime.now(UTC) + timedelta(days=1),
         ):
-            await service._handle_recurring_task(recurring_task, 1)
+            await service.handle_recurring_task(recurring_task, 1)
 
         service.mock_update_task_status.assert_awaited()
         status_call = service.mock_update_task_status.call_args
@@ -437,7 +437,7 @@ class TestHandleRecurringTask:
             "app.services.scheduler_service.get_next_run_time",
             return_value=datetime.now(UTC) + timedelta(days=1),
         ):
-            await service._handle_recurring_task(recurring_task, 1)
+            await service.handle_recurring_task(recurring_task, 1)
 
         # Should still reschedule because next_run < stop_after
         status_call = service.mock_update_task_status.call_args
@@ -467,7 +467,7 @@ class TestHandleRecurringTask:
             "app.services.scheduler_service.get_next_run_time",
             return_value=datetime.now(UTC) + timedelta(days=1),
         ) as mock_next_run:
-            await service._handle_recurring_task(task, 1)
+            await service.handle_recurring_task(task, 1)
 
             mock_next_run.assert_called_once()
             call_args = mock_next_run.call_args
@@ -490,7 +490,10 @@ class TestEnqueueTask:
 
         assert result is True
         service.arq_pool.enqueue_job.assert_awaited_once_with(
-            "test_job", "task1", _defer_until=future
+            "test_job",
+            "task1",
+            _job_id=f"test_job:task1:{int(future.timestamp())}",
+            _defer_until=future,
         )
 
     async def test_enqueue_no_pool(self, service):

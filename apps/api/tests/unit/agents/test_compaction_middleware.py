@@ -81,13 +81,13 @@ class TestShouldCompact:
 class TestContextUsage:
     def test_no_state_is_zero(self) -> None:
         mw = WorkspaceCompactionMiddleware()
-        assert mw._get_context_usage(SimpleNamespace(state=None)) == 0.0
+        assert mw._get_context_usage(SimpleNamespace(state=None)) == pytest.approx(0.0)
 
     def test_usage_is_capped_at_one(self) -> None:
         mw = WorkspaceCompactionMiddleware(context_window=1000)
         msgs = [SimpleNamespace(content="z" * 8000)]  # 8000 chars // 4 = 2000 tokens > window
         usage = mw._get_context_usage(SimpleNamespace(state={"messages": msgs}))
-        assert usage == 1.0
+        assert usage == pytest.approx(1.0)
 
 
 @pytest.mark.unit
@@ -97,7 +97,9 @@ class TestAwrapToolCall:
         big = json.dumps([{"i": i} for i in range(500)])
         request = _request()
 
-        async def handler(_req):
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
             return _tool_msg(big)
 
         with patch(
@@ -122,7 +124,9 @@ class TestAwrapToolCall:
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
         original = _tool_msg("small result")
 
-        async def handler(_req):
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
             return original
 
         with patch(
@@ -139,7 +143,9 @@ class TestAwrapToolCall:
         mw = WorkspaceCompactionMiddleware(max_output_chars=10)
         big = "x" * 5000
 
-        async def handler(_req):
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
             return _tool_msg(big)
 
         with patch(
@@ -156,7 +162,9 @@ class TestAwrapToolCall:
         mw = WorkspaceCompactionMiddleware(max_output_chars=1)
         sentinel = SimpleNamespace(kind="command")  # not a ToolMessage
 
-        async def handler(_req):
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
             return sentinel
 
         with patch(
@@ -178,7 +186,9 @@ class TestAwrapToolCall:
             state={"messages": []},
         )
 
-        async def handler(_req):
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
             return _tool_msg(big)
 
         with patch(

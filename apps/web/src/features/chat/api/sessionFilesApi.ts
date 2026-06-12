@@ -35,12 +35,12 @@ export function resolveArtifactSrc(
   conversationId: string | undefined,
 ): string | undefined {
   if (!src) return src;
-  const m = src.match(/^(?:\.?\/)?artifacts\/(.+)$/);
+  const m = /^(?:\.?\/)?artifacts\/(.+)$/.exec(src);
   if (!m) return src;
   let convId = conversationId;
-  if (!convId && typeof window !== "undefined") {
-    const pathMatch = window.location.pathname.match(
-      /\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?c\/([^/?#]+)/,
+  if (!convId && globalThis.window !== undefined) {
+    const pathMatch = /\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?c\/([^/?#]+)/.exec(
+      globalThis.window.location.pathname,
     );
     if (pathMatch) convId = pathMatch[1];
   }

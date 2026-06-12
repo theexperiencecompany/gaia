@@ -1,10 +1,12 @@
-import { Input, Textarea } from "@heroui/input";
+import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { useEffect, useState } from "react";
+import { Clock01Icon } from "@icons";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   buildCronExpression,
   type CronSchedule,
+  describeCron,
   parseCronExpression,
 } from "../utils/cronUtils";
 
@@ -157,6 +159,10 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
     setCustomCron(cron);
     onChange(cron);
   };
+
+  // Live preview/validation of the custom cron expression
+  const cronPreview = useMemo(() => describeCron(customCron), [customCron]);
+  const showCronError = customCron.trim().length > 0 && !cronPreview.isValid;
 
   // Get 12-hour display values from 24-hour stored value
   const hour24 = parseInt(simpleSchedule.hour, 10) || 0;
@@ -339,15 +345,23 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
       </div>
 
       {simpleSchedule.frequency === "custom" && (
-        <div className="mt-4 w-full">
-          <Textarea
+        <div className="mt-4 w-full space-y-2">
+          <Input
             placeholder="0 9 * * *"
             description="Format: minute hour day-of-month month day-of-week"
             value={customCron}
             label="Cron Job"
             fullWidth
+            isInvalid={showCronError}
+            errorMessage={cronPreview.error}
             onChange={(e) => handleCustomCronChange(e.target.value)}
           />
+          {cronPreview.isValid && cronPreview.description && (
+            <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+              <Clock01Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+              <span>{cronPreview.description}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

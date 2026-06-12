@@ -100,7 +100,14 @@ def _format_memory_read(
     session_id: str | None,
 ) -> str:
     """Slice + format an in-memory system file the same way a host read would."""
-    all_lines = body.splitlines()
+    # Split on "\n" ONLY, matching read_user_file's file iteration. str.splitlines
+    # also breaks on \f, \v, \x1c-\x1e, \x85, U+2028/U+2029, which the on-disk and
+    # sandbox paths do not — using it here would diverge line numbers/total for a
+    # file containing any of those. A trailing newline does not start a new line
+    # (and an empty body is zero lines), so drop a trailing "" element.
+    all_lines = body.split("\n")
+    if all_lines and all_lines[-1] == "":
+        all_lines.pop()
     start, end = page_bounds(offset, limit)
     sliced = all_lines[start - 1 : end]
     return _format_read(abs_path, sliced, len(all_lines), offset, limit, session_id)

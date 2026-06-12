@@ -53,7 +53,7 @@ async function request<T = unknown>(
       (error as { handled?: boolean }).handled === true;
 
     // Track API errors in PostHog (client-only; analytics.ts is "use client")
-    if (typeof window !== "undefined") {
+    if (globalThis.window !== undefined) {
       trackEvent(ANALYTICS_EVENTS.API_ERROR, {
         method,
         url,

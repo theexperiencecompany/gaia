@@ -462,6 +462,69 @@ async def check_connected_integrations(client: httpx.AsyncClient, token: str) ->
     return connected
 
 
+def _check_todo_count(scenario: TestScenario, new_todos: list[dict]) -> list[str]:
+    """Validate the number of created todos against the scenario expectation."""
+    actual = len(new_todos)
+    if scenario.expected_todo_created and actual == 0:
+        return ["Expected ≥1 tracked todo to be created, but got 0"]
+    titles = [t.get("title", "?") for t in new_todos]
+    if not scenario.expected_todo_created and actual > 0:
+        return [f"Expected NO tracked todo (read-only action), but {actual} created: {titles}"]
+    if scenario.expected_todo_created and actual != scenario.expected_todo_count:
+        return [f"Expected {scenario.expected_todo_count} todo(s), got {actual}: {titles}"]
+    return []
+
+
+def _check_search_first(chat_results: list[ChatResult]) -> tuple[list[str], list[str]]:
+    """Verify search_todo_context was called before create_tracked_todo."""
+    all_tool_calls: list[dict] = []
+    for cr in chat_results:
+        all_tool_calls.extend(cr.tool_calls)
+
+    tool_names_ordered = [t["name"] for t in all_tool_calls]
+    if "create_tracked_todo" not in tool_names_ordered:
+        return [], []
+
+    create_idx = tool_names_ordered.index("create_tracked_todo")
+    search_before = any(t["name"] == "search_todo_context" for t in all_tool_calls[:create_idx])
+    if not search_before:
+        return [
+            "create_tracked_todo called WITHOUT prior search_todo_context "
+            "(search-first rule violated)"
+        ], []
+    return [], ["✓ search_todo_context was called before create_tracked_todo"]
+
+
+def _check_recurring_fields(scenario: TestScenario, new_todos: list[dict]) -> list[str]:
+    """Validate recurring-todo fields for the recurring scenario (tagged ``recurring``)."""
+    if "recurring" not in scenario.tags or not new_todos:
+        return []
+    todo = new_todos[0]
+    failures = []
+    if not todo.get("scheduled_at"):
+        failures.append("Recurring todo missing scheduled_at field")
+    if not todo.get("recurrence"):
+        failures.append("Recurring todo missing recurrence field")
+    return failures
+
+
+def _evaluate_scenario(
+    scenario: TestScenario, new_todos: list[dict], chat_results: list[ChatResult]
+) -> tuple[list[str], list[str]]:
+    """Collect all failures and notes for a completed scenario run."""
+    failures = _check_todo_count(scenario, new_todos)
+
+    search_failures, notes = _check_search_first(chat_results)
+    failures += search_failures
+
+    for i, cr in enumerate(chat_results):
+        if cr.error:
+            failures.append(f"Chat {i + 1} errored: {cr.error[:200]}")
+
+    failures += _check_recurring_fields(scenario, new_todos)
+    return failures, notes
+
+
 async def run_scenario(
     scenario: TestScenario,
     token: str,
@@ -529,57 +592,8 @@ async def run_scenario(
         new_todos = [t for t in todos_after if t["id"] not in before_ids]
 
         # Evaluate
-        failures: list[str] = []
-        notes: list[str] = []
-
-        actual_new_count = len(new_todos)
-
-        if scenario.expected_todo_created and actual_new_count == 0:
-            failures.append("Expected ≥1 tracked todo to be created, but got 0")
-        elif not scenario.expected_todo_created and actual_new_count > 0:
-            todo_titles = [t.get("title", "?") for t in new_todos]
-            failures.append(
-                f"Expected NO tracked todo (read-only action), but {actual_new_count} created: {todo_titles}"
-            )
-        elif scenario.expected_todo_created and actual_new_count != scenario.expected_todo_count:
-            todo_titles = [t.get("title", "?") for t in new_todos]
-            failures.append(
-                f"Expected {scenario.expected_todo_count} todo(s), got {actual_new_count}: {todo_titles}"
-            )
-
-        # Check search_todo_context was called before create_tracked_todo
-        all_tool_calls = []
-        for cr in chat_results:
-            all_tool_calls.extend(cr.tool_calls)
-
-        tool_names_ordered = [t["name"] for t in all_tool_calls]
-        if "create_tracked_todo" in tool_names_ordered:
-            create_idx = tool_names_ordered.index("create_tracked_todo")
-            search_before = any(
-                t["name"] == "search_todo_context" for t in all_tool_calls[:create_idx]
-            )
-            if not search_before:
-                failures.append(
-                    "create_tracked_todo called WITHOUT prior search_todo_context (search-first rule violated)"
-                )
-            else:
-                notes.append("✓ search_todo_context was called before create_tracked_todo")
-
-        # Check for errors
-        for i, cr in enumerate(chat_results):
-            if cr.error:
-                failures.append(f"Chat {i + 1} errored: {cr.error[:200]}")
-
+        failures, notes = _evaluate_scenario(scenario, new_todos, chat_results)
         passed = len(failures) == 0
-
-        # Check recurring fields for S04
-        if scenario.id == "S04" and new_todos:
-            todo = new_todos[0]
-            if not todo.get("scheduled_at"):
-                failures.append("Recurring todo missing scheduled_at field")
-            if not todo.get("recurrence"):
-                failures.append("Recurring todo missing recurrence field")
-            passed = len(failures) == 0
 
         print(f"  Result: {'✅ PASS' if passed else '❌ FAIL'}")
         for f in failures:
@@ -607,10 +621,85 @@ async def run_scenario(
 # ── Reporter ──────────────────────────────────────────────────────────────────
 
 
+def _is_skipped(r: ScenarioResult) -> bool:
+    return bool(r.notes and any("Skipped" in n for n in r.notes))
+
+
+def _summary_status(r: ScenarioResult) -> str:
+    if _is_skipped(r):
+        return "⏭️ SKIP"
+    return "✅ PASS" if r.passed else "❌ FAIL"
+
+
+def _report_summary_rows(results: list[ScenarioResult]) -> list[str]:
+    rows = []
+    for r in results:
+        tags = ", ".join(r.scenario.tags)
+        rows.append(
+            f"| {r.scenario.id} | {r.scenario.name} | {tags} | {_summary_status(r)} "
+            f"| {len(r.todos_after)} | {len(r.failures)} |"
+        )
+    return rows
+
+
+def _report_created_todos(r: ScenarioResult) -> list[str]:
+    if not r.todos_after:
+        return []
+    out = ["**Created todos:**"]
+    for t in r.todos_after:
+        sched = t.get("scheduled_at", "")
+        recur = t.get("recurrence", "")
+        out.append(
+            f"- `{t.get('title', '?')}` (priority={t.get('priority', 'none')}"
+            + (f", scheduled_at={sched}" if sched else "")
+            + (f", recurrence={recur}" if recur else "")
+            + ")"
+        )
+    out.append("")
+    return out
+
+
+def _report_transcript(r: ScenarioResult) -> list[str]:
+    out = ["**Chat transcript:**", ""]
+    for i, cr in enumerate(r.chat_results):
+        out.append(f"*Chat {i + 1}:* `{cr.message[:100]}`")
+        if cr.tool_calls:
+            tools = ", ".join(t["name"] for t in cr.tool_calls)
+            out.append(f"- Tools called: {tools}")
+        if cr.response_text:
+            preview = cr.response_text[:300].replace("\n", " ")
+            out.append(f"- Response: {preview}...")
+        if cr.error:
+            out.append(f"- ERROR: {cr.error[:200]}")
+        out.append("")
+    return out
+
+
+def _report_detail(r: ScenarioResult) -> list[str]:
+    status = _summary_status(r)
+    out = [
+        f"### [{r.scenario.id}] {r.scenario.name} — {status}",
+        "",
+        f"**Description:** {r.scenario.description}  ",
+        f"**Tags:** {', '.join(r.scenario.tags)}  ",
+        f"**Expected todo:** {'yes' if r.scenario.expected_todo_created else 'no'}  ",
+        f"**Todos created:** {len(r.todos_after)}  ",
+        "",
+    ]
+    out += _report_created_todos(r)
+    if r.failures:
+        out += ["**Failures:**", *[f"- ✗ {f}" for f in r.failures], ""]
+    if r.notes:
+        out += ["**Notes:**", *[f"- {n}" for n in r.notes], ""]
+    out += _report_transcript(r)
+    out += ["---", ""]
+    return out
+
+
 def generate_report(results: list[ScenarioResult], duration_s: float) -> str:
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    skipped = [r for r in results if r.notes and any("Skipped" in n for n in r.notes)]
-    run = [r for r in results if not (r.notes and any("Skipped" in n for n in r.notes))]
+    skipped = [r for r in results if _is_skipped(r)]
+    run = [r for r in results if not _is_skipped(r)]
     passed = [r for r in run if r.passed]
     failed = [r for r in run if not r.passed]
 
@@ -629,73 +718,10 @@ def generate_report(results: list[ScenarioResult], duration_s: float) -> str:
         "| ID | Name | Tags | Result | Todos Created | Failures |",
         "|----|------|------|--------|---------------|---------|",
     ]
-
-    for r in results:
-        is_skipped = r.notes and any("Skipped" in n for n in r.notes)
-        status = "⏭️ SKIP" if is_skipped else ("✅ PASS" if r.passed else "❌ FAIL")
-        tags = ", ".join(r.scenario.tags)
-        todo_count = len(r.todos_after)
-        fail_count = len(r.failures)
-        lines.append(
-            f"| {r.scenario.id} | {r.scenario.name} | {tags} | {status} | {todo_count} | {fail_count} |"
-        )
-
+    lines += _report_summary_rows(results)
     lines += ["", "---", "", "## Detailed Results", ""]
-
     for r in results:
-        status = "✅ PASS" if r.passed else "❌ FAIL"
-        lines += [
-            f"### [{r.scenario.id}] {r.scenario.name} — {status}",
-            "",
-            f"**Description:** {r.scenario.description}  ",
-            f"**Tags:** {', '.join(r.scenario.tags)}  ",
-            f"**Expected todo:** {'yes' if r.scenario.expected_todo_created else 'no'}  ",
-            f"**Todos created:** {len(r.todos_after)}  ",
-            "",
-        ]
-
-        if r.todos_after:
-            lines.append("**Created todos:**")
-            for t in r.todos_after:
-                sched = t.get("scheduled_at", "")
-                recur = t.get("recurrence", "")
-                lines.append(
-                    f"- `{t.get('title', '?')}` (priority={t.get('priority', 'none')}"
-                    + (f", scheduled_at={sched}" if sched else "")
-                    + (f", recurrence={recur}" if recur else "")
-                    + ")"
-                )
-            lines.append("")
-
-        if r.failures:
-            lines.append("**Failures:**")
-            for f in r.failures:
-                lines.append(f"- ✗ {f}")
-            lines.append("")
-
-        if r.notes:
-            lines.append("**Notes:**")
-            for n in r.notes:
-                lines.append(f"- {n}")
-            lines.append("")
-
-        # Chat transcript
-        lines.append("**Chat transcript:**")
-        lines.append("")
-        for i, cr in enumerate(r.chat_results):
-            lines.append(f"*Chat {i + 1}:* `{cr.message[:100]}`")
-            if cr.tool_calls:
-                tools = ", ".join(t["name"] for t in cr.tool_calls)
-                lines.append(f"- Tools called: {tools}")
-            if cr.response_text:
-                preview = cr.response_text[:300].replace("\n", " ")
-                lines.append(f"- Response: {preview}...")
-            if cr.error:
-                lines.append(f"- ERROR: {cr.error[:200]}")
-            lines.append("")
-
-        lines.append("---")
-        lines.append("")
+        lines += _report_detail(r)
 
     return "\n".join(lines)
 
@@ -703,35 +729,50 @@ def generate_report(results: list[ScenarioResult], duration_s: float) -> str:
 # ── Improver ──────────────────────────────────────────────────────────────────
 
 
+def _categorize_failure(f_lower: str) -> str:
+    """Map a lowercased failure message to a failure-pattern bucket."""
+    if "read-only" in f_lower or "no tracked todo" in f_lower:
+        return "read_only_created_todo"
+    if "expected 1" in f_lower and "got" in f_lower:
+        return "dedup_failed"
+    if "search_todo_context" in f_lower and "without" in f_lower:
+        return "search_first_violated"
+    if "scheduled_at" in f_lower or "recurrence" in f_lower:
+        return "recurring_missing_fields"
+    if "errored" in f_lower or "http" in f_lower:
+        return "api_errors"
+    return "other_failures"
+
+
+def _categorize_failures(failed: list[ScenarioResult]) -> dict[str, list[tuple]]:
+    """Group all failure messages from failed scenarios into pattern buckets."""
+    buckets: dict[str, list[tuple]] = {
+        "read_only_created_todo": [],
+        "dedup_failed": [],
+        "search_first_violated": [],
+        "recurring_missing_fields": [],
+        "api_errors": [],
+        "other_failures": [],
+    }
+    for r in failed:
+        for f in r.failures:
+            buckets[_categorize_failure(f.lower())].append((r.scenario.id, r.scenario.name, f))
+    return buckets
+
+
 def generate_improvement_plan(results: list[ScenarioResult]) -> str:
-    skipped = [r for r in results if r.notes and any("Skipped" in n for n in r.notes)]
-    run = [r for r in results if not (r.notes and any("Skipped" in n for n in r.notes))]
+    skipped = [r for r in results if _is_skipped(r)]
+    run = [r for r in results if not _is_skipped(r)]
     failed = [r for r in run if not r.passed]
     passed = [r for r in run if r.passed]
 
-    # Categorize failure patterns
-    read_only_created_todo = []
-    dedup_failed = []
-    search_first_violated = []
-    recurring_missing_fields = []
-    api_errors = []
-    other_failures = []
-
-    for r in failed:
-        for f in r.failures:
-            f_lower = f.lower()
-            if "read-only" in f_lower or "no tracked todo" in f_lower:
-                read_only_created_todo.append((r.scenario.id, r.scenario.name, f))
-            elif "expected 1" in f_lower and "got" in f_lower:
-                dedup_failed.append((r.scenario.id, r.scenario.name, f))
-            elif "search_todo_context" in f_lower and "without" in f_lower:
-                search_first_violated.append((r.scenario.id, r.scenario.name, f))
-            elif "scheduled_at" in f_lower or "recurrence" in f_lower:
-                recurring_missing_fields.append((r.scenario.id, r.scenario.name, f))
-            elif "errored" in f_lower or "http" in f_lower:
-                api_errors.append((r.scenario.id, r.scenario.name, f))
-            else:
-                other_failures.append((r.scenario.id, r.scenario.name, f))
+    buckets = _categorize_failures(failed)
+    read_only_created_todo = buckets["read_only_created_todo"]
+    dedup_failed = buckets["dedup_failed"]
+    search_first_violated = buckets["search_first_violated"]
+    recurring_missing_fields = buckets["recurring_missing_fields"]
+    api_errors = buckets["api_errors"]
+    other_failures = buckets["other_failures"]
 
     pct = (100 * len(passed) // len(run)) if run else 0
     lines: list[str] = [

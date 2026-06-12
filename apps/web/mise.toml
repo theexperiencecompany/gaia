@@ -24,6 +24,13 @@ run = "pnpm dev:webpack"
 description = "Build for production"
 run = "pnpm build"
 
+[tasks.deploy]
+description = "Build + deploy to Cloudflare Workers (bakes the production API URL)"
+# Overrides the localhost [env] above so the production build points at the real
+# API. Task-level env takes precedence over the global [env] in mise.
+env = { NEXT_PUBLIC_API_BASE_URL = "https://api.heygaia.io/api/v1/" }
+run = "pnpm run deploy"
+
 [tasks.start]
 description = "Start production server"
 run = "pnpm start"

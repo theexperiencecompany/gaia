@@ -37,6 +37,53 @@ const sanitizeSchema = {
   },
 };
 
+interface MarkdownImageProps {
+  src?: string;
+  alt?: string;
+  conversationId: string | undefined;
+  onOpen: (src: string) => void;
+}
+
+const MarkdownImage: React.FC<MarkdownImageProps> = ({
+  src,
+  alt,
+  conversationId,
+  onOpen,
+}) => {
+  const resolved = resolveArtifactSrc(src, conversationId) ?? src;
+  if (!resolved) return null;
+  return (
+    <Image
+      width={500}
+      height={500}
+      alt={alt || "image"}
+      className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
+      src={resolved}
+      onClick={() => onOpen(resolved)}
+      unoptimized
+    />
+  );
+};
+
+const MarkdownImageNode: React.FC<{ src?: string | Blob; alt?: string }> = ({
+  src,
+  alt,
+}) => {
+  const { openDialog } = useImageDialog();
+  const params = useParams<{ id?: string }>();
+  // Markdown image sources are always URL strings; ignore the Blob case the
+  // react-markdown prop type technically allows.
+  const imageSrc = typeof src === "string" ? src : undefined;
+  return (
+    <MarkdownImage
+      src={imageSrc}
+      alt={alt}
+      conversationId={params?.id}
+      onOpen={openDialog}
+    />
+  );
+};
+
 export interface MarkdownRendererProps {
   content: string;
   className?: string;
@@ -50,10 +97,6 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   isStreaming,
   hideCodeToolbar,
 }) => {
-  const { openDialog } = useImageDialog();
-  const params = useParams<{ id?: string }>();
-  const conversationId = params?.id;
-
   return (
     <div
       className={cn(
@@ -103,22 +146,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           ),
           p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
           li: ({ ...props }) => <li className="mb-2" {...props} />,
-          img: ({ ...props }) => {
-            const resolved =
-              resolveArtifactSrc(props.src as string, conversationId) ??
-              (props.src as string);
-            return (
-              <Image
-                width={500}
-                height={500}
-                alt={(props.alt as string) || "image"}
-                className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
-                src={resolved}
-                onClick={() => openDialog(resolved)}
-                unoptimized
-              />
-            );
-          },
+          img: MarkdownImageNode,
           pre: ({ ...props }) => (
             <pre className="font-serif! text-wrap" {...props} />
           ),

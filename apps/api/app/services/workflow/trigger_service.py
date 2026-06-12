@@ -9,7 +9,6 @@ from typing import Any
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import workflows_collection
-from app.models.trigger_config import WorkflowTriggerSchema
 from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError
@@ -61,57 +60,14 @@ class TriggerService:
         return triggers
 
     @staticmethod
-    def get_trigger_by_slug(slug: str) -> WorkflowTriggerSchema | None:
-        """Get a workflow trigger schema by its slug."""
-        for integration in OAUTH_INTEGRATIONS:
-            for trigger_config in integration.associated_triggers:
-                if (
-                    trigger_config.workflow_trigger_schema
-                    and trigger_config.workflow_trigger_schema.slug == slug
-                ):
-                    return trigger_config.workflow_trigger_schema
-        return None
-
-    @staticmethod
-    async def get_trigger_reference_count(trigger_id: str) -> int:
-        """
-        Count how many workflows reference a specific Composio trigger ID.
-
-        Composio uses upsert for triggers, so multiple workflows may share
-        the same trigger ID if they have identical configurations.
-
-        Args:
-            trigger_id: The Composio trigger ID to check
-
-        Returns:
-            Number of workflows referencing this trigger
-        """
-        try:
-            count = await workflows_collection.count_documents(
-                {"trigger_config.composio_trigger_ids": trigger_id}
-            )
-            return count
-        except Exception as e:
-            log.error(f"Error counting trigger references for {trigger_id}: {e}")
-            return 0
-
-    @staticmethod
     async def get_triggers_safe_to_delete(
         trigger_ids: list[str], excluding_workflow_id: str | None = None
     ) -> list[str]:
-        """
-        Filter trigger IDs to only those safe to delete from Composio.
+        """Filter trigger IDs to those safe to delete from Composio.
 
         A trigger is safe to delete if no other workflows reference it.
-        When excluding_workflow_id is provided, we check if any OTHER workflows
-        reference the trigger (used during workflow deletion/update).
-
-        Args:
-            trigger_ids: List of Composio trigger IDs to check
-            excluding_workflow_id: Workflow ID to exclude from reference count
-
-        Returns:
-            List of trigger IDs that are safe to delete
+        ``excluding_workflow_id`` is excluded from the reference count (used
+        during workflow deletion/update).
         """
         safe_to_delete = []
 
@@ -147,24 +103,11 @@ class TriggerService:
         trigger_config: TriggerConfig,
         raise_on_failure: bool = False,
     ) -> list[str]:
-        """
-        Register triggers for a workflow using the appropriate handler.
+        """Register triggers for a workflow using the appropriate handler.
 
-        Args:
-            user_id: The user ID
-            workflow_id: The workflow ID
-            trigger_name: The trigger name (e.g., 'calendar_event_created')
-            trigger_config: The TriggerConfig object with properly typed trigger_data
-            raise_on_failure: If True, raise when the handler is missing or
-                raises. An empty list is a legitimate success (e.g. account-level
-                Gmail has no per-workflow IDs), NOT a failure.
-
-        Returns:
-            List of registered Composio trigger IDs (may be empty on success)
-
-        Raises:
-            TypeError: If trigger_data type doesn't match expected type
-            TriggerRegistrationError: If the handler raises or is missing
+        Returns the registered Composio trigger IDs (may be empty on success, e.g.
+        account-level Gmail has no per-workflow IDs). With ``raise_on_failure``,
+        raises TriggerRegistrationError when the handler is missing or raises.
         """
         handler = get_handler_by_name(trigger_name)
         if not handler:
@@ -200,21 +143,12 @@ class TriggerService:
         trigger_ids: list[str],
         workflow_id: str | None = None,
     ) -> bool:
-        """
-        Unregister triggers using the appropriate handler.
+        """Unregister triggers using the appropriate handler.
 
-        Only deletes triggers from Composio if no other workflows reference them.
-        This is important because Composio uses upsert - multiple workflows may
-        share the same trigger ID if they have identical configurations.
-
-        Args:
-            user_id: The user ID
-            trigger_name: The trigger name to find the right handler
-            trigger_ids: List of Composio trigger IDs to unregister
-            workflow_id: The workflow being deleted/updated (to exclude from ref count)
-
-        Returns:
-            True if operation completed (even if some triggers weren't deleted due to refs)
+        Only deletes triggers from Composio when no other workflows reference
+        them: Composio upserts, so workflows with identical configs share a
+        trigger ID. Returns True once the operation completes, even if some
+        triggers were kept due to remaining references.
         """
         if not trigger_ids:
             return True

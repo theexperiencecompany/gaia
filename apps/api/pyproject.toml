@@ -33,6 +33,7 @@ dependencies = [
   "alt-profanity-check>=1.6.1",
   "e2b>=2.10.2",
   "playwright>=1.58.0",
+  "psutil>=7.0.0",
 ]
 
 [tool.taskipy.tasks]
@@ -126,7 +127,6 @@ backend = [
   "mem0ai>=0.1.118",
   "llama-cloud-services>=0.6.15",
   "pymupdf>=1.25.5",
-  "pypandoc>=1.15",
   "markdown2>=2.5.3",
   "pillow==12.1.1",
   "pandas>=2.3.0",
@@ -144,9 +144,9 @@ backend = [
   "googleapis-common-protos==1.66.0",
   "cloudinary==1.41.0",
   "resend>=2.10.0",
-  "composio>=0.8.19",
-  "composio-langchain>=0.8.0",
-  "composio-client>=1.10.0",
+  "composio>=0.13.1",
+  "composio-langchain>=0.13.1",
+  "composio-client>=1.39.0",
   "dodopayments>=1.49.0",
   "standardwebhooks>=1.0.0",
   "mcp-use>=1.5.1",

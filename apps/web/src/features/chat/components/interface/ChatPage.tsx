@@ -15,7 +15,6 @@ import {
   VoiceControlBarSlot,
 } from "@/features/chat/components/voice-agent/VoiceControlBarContainer";
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
-import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -39,7 +38,6 @@ const ChatPage = React.memo(function MainChat() {
   const voiceModeActive = useVoiceModeActive();
   const storeDiscoveredId = useDiscoveredConversationId();
   const { enterVoiceMode, exitVoiceMode } = useVoiceModeActions();
-  const { convoMessages } = useConversation();
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
   const setActiveConversationId = useChatStore(
@@ -134,10 +132,10 @@ const ChatPage = React.memo(function MainChat() {
 
   const {
     scrollContainerRef,
+    contentRef,
     scrollToBottom,
-    handleScroll,
     shouldShowScrollButton,
-  } = useScrollBehavior(hasMessages, convoMessages?.length);
+  } = useScrollBehavior();
 
   const { isDragging, dragHandlers } = useDragAndDrop({
     onDrop: (files: File[]) => {
@@ -229,8 +227,8 @@ const ChatPage = React.memo(function MainChat() {
           <VoiceModeBackground />
           <ChatWithMessages
             scrollContainerRef={scrollContainerRef}
+            contentRef={contentRef}
             chatRef={chatRef}
-            handleScroll={handleScroll}
             dragHandlers={dragHandlers}
             bottomBar={<VoiceControlBarSlot onEndCall={handleEndVoiceCall} />}
           />
@@ -252,8 +250,8 @@ const ChatPage = React.memo(function MainChat() {
         <>
           <ChatWithMessages
             scrollContainerRef={scrollContainerRef}
+            contentRef={contentRef}
             chatRef={chatRef}
-            handleScroll={handleScroll}
             dragHandlers={dragHandlers}
             bottomBar={<Composer {...composerProps} />}
           />
@@ -267,8 +265,8 @@ const ChatPage = React.memo(function MainChat() {
         <>
           <NewChatLayout
             scrollContainerRef={scrollContainerRef}
+            contentRef={contentRef}
             dummySectionRef={dummySectionRef}
-            handleScroll={handleScroll}
             dragHandlers={dragHandlers}
             composerProps={composerProps}
           />

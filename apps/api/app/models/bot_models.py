@@ -69,32 +69,6 @@ class CreateLinkTokenResponse(BaseModel):
     auth_url: str = Field(..., description="Full auth URL for the user to visit")
 
 
-class BotWorkflowsListResponse(BaseModel):
-    """Response model for listing bot workflows."""
-
-    workflows: list = Field(..., description="List of workflow objects")
-
-
-class BotWorkflowResponse(BaseModel):
-    """Response model for single workflow operations."""
-
-    workflow: dict = Field(..., description="Workflow object")
-
-
-class BotConversationResponse(BaseModel):
-    """Response model for single conversation."""
-
-    conversation_id: str = Field(..., description="Conversation ID")
-    user_id: str = Field(..., description="User ID")
-    description: str | None = Field(None, description="Conversation description")
-    messages: list = Field(default_factory=list, description="List of messages")
-    created_at: str | None = Field(None, description="Creation timestamp")
-    updated_at: str | None = Field(None, description="Last update timestamp")
-
-    class Config:
-        extra = "allow"  # Allow additional fields from MongoDB
-
-
 class ResetSessionRequest(BaseModel):
     """Request model for resetting a bot session (starting a new conversation)."""
 
@@ -120,13 +94,7 @@ class IntegrationInfo(BaseModel):
 
 
 class BotSettingsResponse(BaseModel):
-    """
-    Response model for user settings.
-
-    This is a union type:
-    - If authenticated=False: Only authenticated field is relevant
-    - If authenticated=True: All other fields contain user data (nullable where appropriate)
-    """
+    """Response model for user settings. When authenticated=False only that field is relevant."""
 
     authenticated: bool = Field(..., description="Whether user is linked")
     user_name: str | None = Field(None, description="User's display name (null if not set)")

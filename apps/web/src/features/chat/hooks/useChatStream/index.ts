@@ -7,19 +7,21 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
 import { toast } from "@/lib/toast";
-import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
+import { useLoadingStore } from "@/stores/loadingStore";
 import type { MessageType } from "@/types/features/convoTypes";
-import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared/fileTypes";
 import fetchDate from "@/utils/date/dateUtils";
 import { useLoadingText } from "../useLoadingText";
 import { createConversationInitHandlers } from "./conversationInit";
 import { createIMessage, createMessageHelpers } from "./messageBuilder";
 import { createPersistenceHelpers } from "./persistence";
 import { createStreamHandlers } from "./streamHandlers";
-import type { PendingStreamArgs, StreamContext } from "./types";
+import type { PendingStreamArgs, StreamContext, StreamOptions } from "./types";
+
+// Fallback for the rare case a background executor never delivers its result
+// message — clears the "awaiting executor result" UI so it can't stick forever.
+const EXECUTOR_RESULT_TIMEOUT_MS = 120_000;
 
 export const useChatStream = () => {
   const { setIsLoading, setAbortController } = useLoading();
@@ -99,54 +101,40 @@ export const useChatStream = () => {
     refs.current.currentStreamingMessages = [];
     refs.current.newConversation = { id: null, description: null };
     setIsLoading(false);
+    useLoadingStore.getState().setMainResponseStreaming(false);
     resetLoadingText();
     streamController.clear();
     setAbortController(null);
 
     useChatStore.getState().setStreamingConversationId(null);
+    useChatStore.getState().setExecutorPendingConversationId(null);
     useChatStore.getState().clearOptimisticMessage();
   };
 
   const streamFunction = async (
     inputText: string,
     currentMessages: MessageType[],
-    fileData: FileData[] = [],
-    selectedTool: string | null = null,
-    toolCategory: string | null = null,
-    selectedWorkflow: WorkflowData | null = null,
-    selectedCalendarEvent: SelectedCalendarEventData | null = null,
-    optimisticUserId?: string,
-    replyToMessage: {
-      id: string;
-      content: string;
-      role: "user" | "assistant";
-    } | null = null,
-    conversationId: string | null = null,
-    isOnboardingDemo: boolean = false,
+    options: StreamOptions = {},
   ) => {
+    const {
+      fileData = [],
+      selectedTool = null,
+      toolCategory = null,
+      selectedWorkflow = null,
+      selectedCalendarEvent = null,
+      optimisticUserId,
+      replyToMessage = null,
+      conversationId = null,
+      isOnboardingDemo = false,
+    } = options;
+
     if (streamInProgressRef.current) {
       console.warn(
         "[useChatStream] stream already in progress, queuing for later",
       );
-      pendingStreamArgsRef.current = [
-        inputText,
-        currentMessages,
-        fileData,
-        selectedTool,
-        toolCategory,
-        selectedWorkflow,
-        selectedCalendarEvent,
-        optimisticUserId,
-        replyToMessage,
-        conversationId,
-        isOnboardingDemo,
-      ];
+      pendingStreamArgsRef.current = [inputText, currentMessages, options];
       return;
     }
-    console.log(
-      "[useChatStream] starting stream, activeConversationId:",
-      useChatStore.getState().activeConversationId,
-    );
 
     streamInProgressRef.current = true;
 
@@ -233,15 +221,6 @@ export const useChatStream = () => {
           streamState.setPendingSave(false);
         }
       });
-
-      console.log(
-        "[useChatStream] calling chatApi.fetchChatStream, inputText:",
-        inputText,
-        "msgs:",
-        currentMessages.length,
-        "workflow:",
-        selectedWorkflow?.id,
-      );
       await chatApi.fetchChatStream(
         inputText,
         [...refs.current.convoMessages, ...currentMessages],
@@ -274,35 +253,70 @@ export const useChatStream = () => {
     }
   };
 
+  // Reset all stream refs/state when the SSE closes before any bot message id
+  // was assigned — nothing to persist, so just unwind the in-progress turn.
+  const handleStreamCloseWithoutMessage = () => {
+    console.warn(
+      "[handleStreamClose] No bot message ID - resetting state without persistence",
+    );
+    setIsLoading(false);
+    resetLoadingText();
+    streamController.clear();
+    streamState.endStream();
+    streamInProgressRef.current = false;
+    refs.current.botMessage = null;
+    refs.current.currentStreamingMessages = [];
+    refs.current.newConversation = { id: null, description: null };
+    useChatStore.getState().setStreamingConversationId(null);
+    // Keep the composer locked if a message is queued (it streams next);
+    // otherwise this turn is fully done.
+    if (!pendingStreamArgsRef.current) {
+      useLoadingStore.getState().setMainResponseStreaming(false);
+    }
+    dispatchPending();
+  };
+
+  // Set the executor-pending bridge BEFORE clearing isLoading so the loading
+  // indicator never drops between SSE close and the result message arriving.
+  const markExecutorPending = (conversationId: string) => {
+    useChatStore.getState().setExecutorPendingConversationId(conversationId);
+    setTimeout(() => {
+      const store = useChatStore.getState();
+      if (store.executorPendingConversationId === conversationId) {
+        store.setExecutorPendingConversationId(null);
+      }
+    }, EXECUTOR_RESULT_TIMEOUT_MS);
+  };
+
   const handleStreamClose = async () => {
-    console.log("[useChatStream] handleStreamClose called");
     if (streamCloseHandledRef.current) return;
     streamCloseHandledRef.current = true;
 
     try {
       if (!refs.current.botMessage?.message_id) {
-        console.warn(
-          "[handleStreamClose] No bot message ID - resetting state without persistence",
-        );
-        setIsLoading(false);
-        resetLoadingText();
-        streamController.clear();
-        streamState.endStream();
-        streamInProgressRef.current = false;
-        refs.current.botMessage = null;
-        refs.current.currentStreamingMessages = [];
-        refs.current.newConversation = { id: null, description: null };
-        useChatStore.getState().setStreamingConversationId(null);
-        console.log(
-          "[useChatStream] dispatching pending stream after early close",
-        );
-        dispatchPending();
+        handleStreamCloseWithoutMessage();
         return;
       }
 
       updateBotMessage({ loading: false });
 
+      // A turn that delegated to a background executor (tool_category "executor")
+      // delivers its real answer later via a `conversation.new_message` event.
+      // Keep the turn visually "in progress" until that arrives.
+      const delegatedToExecutor =
+        refs.current.botMessage?.tool_data?.some(
+          (e) => (e as { tool_category?: string }).tool_category === "executor",
+        ) ?? false;
+
       const conversationId = resolveConversationId();
+
+      if (delegatedToExecutor && conversationId) {
+        markExecutorPending(conversationId);
+      }
+      // NB: a later non-delegating turn must NOT clear executorPending here — an
+      // earlier message's background executor may still be running. It is cleared
+      // only when its result message arrives (useBgMessageWebSocket), on
+      // abort/reset, or by the safety timeout above.
 
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);
@@ -313,15 +327,9 @@ export const useChatStream = () => {
       }
 
       setIsLoading(false);
-      resetLoadingText();
+      // Keep the last tool context on screen while the executor result is pending.
+      if (!delegatedToExecutor) resetLoadingText();
       streamController.clear();
-
-      console.log("[handleStreamClose] Persisting bot message:", {
-        hasConversationId: !!conversationId,
-        conversationId,
-        botMessageId: refs.current.botMessage.message_id,
-        responseLength: refs.current.accumulatedResponse.length,
-      });
 
       if (conversationId) {
         try {
@@ -335,10 +343,6 @@ export const useChatStream = () => {
           );
 
           await db.putMessage(finalMessage);
-          console.log(
-            "[handleStreamClose] Bot message persisted successfully:",
-            finalMessage.id,
-          );
 
           await db.updateConversationFields(conversationId, {
             updatedAt: new Date(),
@@ -364,17 +368,17 @@ export const useChatStream = () => {
 
       useChatStore.getState().setStreamingConversationId(null);
 
-      console.log(
-        "[useChatStream] dispatching pending stream after stream close",
-      );
+      // Keep the composer locked if a message is queued (it streams next);
+      // otherwise this turn is fully done. (Normal turns already cleared this at
+      // main_response_complete — this covers turns that closed without one.)
+      if (!pendingStreamArgsRef.current) {
+        useLoadingStore.getState().setMainResponseStreaming(false);
+      }
       dispatchPending();
     } catch (error) {
       console.error("Error handling stream close:", error);
       streamState.endStream();
       resetStreamState();
-      console.log(
-        "[useChatStream] dispatching pending stream after stream error",
-      );
       dispatchPending();
     }
   };

@@ -102,7 +102,9 @@ class TestConnectLinkToken:
                 "jti": "x",
                 "exp": datetime.now(UTC) + timedelta(hours=1),
             },
-            secret="not-our-secret-key-at-all-0123456789abcdef",
+            # NOSONAR python:S6418 deliberately-wrong fake key used to assert
+            # tokens signed with the wrong secret are rejected; not a real secret.
+            secret="not-our-secret-key-at-all-0123456789abcdef",  # NOSONAR python:S6418
         )
         assert await verify_and_consume_connect_link_token(token) is None
 

@@ -26,6 +26,8 @@ import hashlib
 from pathlib import Path
 import re
 
+from shared.py.wide_events import log
+
 # Skills live as siblings in source: apps/api/app/agents/skills/builtin/<slug>/SKILL.md.
 # Resolved relative to this file so prod (the docker image), tests, and the dev
 # server all pick up the same library.
@@ -64,12 +66,22 @@ class BuiltinSkill:
     target: str  # frontmatter `target` (raw)
     subagent_id: str  # mapped subagent id (executor for general skills)
     body: str  # SKILL.md body without the frontmatter block
+    # Sibling files bundled with the skill (templates/, reference.md, scripts/…),
+    # as (path-relative-to-the-skill-dir, text-content) pairs. These ride the same
+    # _system + symlink + memory-read path as the body. Text only — a skill that
+    # needs a binary asset is out of scope for the in-memory model.
+    resources: tuple[tuple[str, str], ...] = ()
 
 
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+# Input is a trusted, bounded builtin SKILL.md frontmatter block bundled in the
+# repo — never user-supplied — so the lazy `.*?` cannot be driven into pathological
+# backtracking by an adversary.
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)  # NOSONAR python:S5852
 # Forgiving YAML reader: builtins only ever use scalar key: value pairs and we
-# don't want to depend on PyYAML in this hot path.
-_KV_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.+?)\s*$")
+# don't want to depend on PyYAML in this hot path. The leading-whitespace gap is
+# matched possessively (`\s*+`) so it never backtracks into the value group,
+# keeping the match linear. Trailing whitespace is stripped by the caller.
+_KV_RE = re.compile(r"^([A-Za-z_]\w*):\s*+(.+)$")
 
 
 def _parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
@@ -82,9 +94,39 @@ def _parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
             continue
         kv = _KV_RE.match(line)
         if kv:
-            meta[kv.group(1)] = kv.group(2).strip('"').strip("'")
+            meta[kv.group(1)] = kv.group(2).strip().strip('"').strip("'")
     body = raw[match.end() :]
     return meta, body
+
+
+def _load_resources(skill_dir: Path) -> tuple[tuple[str, str], ...]:
+    """Read every sibling text file in the skill dir (templates/, reference.md,
+    scripts/…) as ``(rel_path, content)`` pairs. ``SKILL.md`` is excluded — its
+    body is captured separately. Non-UTF-8 files are skipped (the in-memory
+    system-file model is text only)."""
+    resources: list[tuple[str, str]] = []
+    for path in sorted(skill_dir.rglob("*")):
+        if not path.is_file() or path.name == "SKILL.md":
+            continue
+        # Skip build/junk artifacts (e.g. __pycache__/*.pyc, dotfiles) so a stray
+        # local file never gets materialized + symlinked as a skill "resource".
+        rel_parts = path.relative_to(skill_dir).parts
+        if any(part == "__pycache__" or part.startswith(".") for part in rel_parts):
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            # Binary asset — the in-memory system-file model is text only, so
+            # skipping it is by design (see the docstring), not an error.
+            continue
+        except OSError as exc:
+            # A repo-owned template/script that can't be read signals broken
+            # packaging or image contents — surface it so the gap is detectable
+            # at load time instead of as an opaque downstream docgen failure.
+            log.warning(f"skill_loader: skipping unreadable resource {path}: {exc}")
+            continue
+        resources.append((path.relative_to(skill_dir).as_posix(), content))
+    return tuple(resources)
 
 
 def _load_one(skill_dir: Path) -> BuiltinSkill | None:
@@ -102,6 +144,7 @@ def _load_one(skill_dir: Path) -> BuiltinSkill | None:
         target=target,
         subagent_id=_target_to_subagent(target),
         body=body,
+        resources=_load_resources(skill_dir),
     )
 
 
@@ -167,6 +210,11 @@ def library_hash() -> str:
         digest.update(b"\0")
         digest.update(skill.body.encode("utf-8"))
         digest.update(b"\0")
+        for rel, content in skill.resources:
+            digest.update(rel.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(content.encode("utf-8"))
+            digest.update(b"\0")
     return digest.hexdigest()[:32]
 
 

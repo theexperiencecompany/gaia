@@ -61,7 +61,7 @@ class TestProviderRegistration:
     """Register a provider and verify it is tracked by LazyLoader."""
 
     def test_register_provider_tracked_in_registry(self) -> None:
-        """After registration the provider name appears in list_providers."""
+        """After registration the provider name appears in the internal registry."""
         registry = ProviderRegistry()
         registry.register(
             name="tracking_test",
@@ -70,10 +70,9 @@ class TestProviderRegistration:
             strategy=MissingKeyStrategy.WARN,
         )
 
-        listing = registry.list_providers()
-        assert "tracking_test" in listing
-        assert listing["tracking_test"]["available"] is True
-        assert listing["tracking_test"]["initialized"] is False
+        assert "tracking_test" in registry._providers
+        assert registry.is_available("tracking_test") is True
+        assert registry.is_initialized("tracking_test") is False
 
     def test_register_returns_lazy_loader_instance(self) -> None:
         """register() should return a LazyLoader, not the provider value."""
@@ -86,18 +85,6 @@ class TestProviderRegistration:
         )
         assert isinstance(loader, LazyLoader)
         assert not loader.is_initialized()
-
-    def test_get_loader_returns_same_object(self) -> None:
-        """get_loader() should return the exact LazyLoader that was registered."""
-        registry = ProviderRegistry()
-        returned_loader = registry.register(
-            name="same_obj",
-            loader_func=lambda: "value",
-            required_keys=["ok"],
-            strategy=MissingKeyStrategy.WARN,
-        )
-        retrieved_loader = registry.get_loader("same_obj")
-        assert returned_loader is retrieved_loader
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +361,7 @@ class TestProviderTeardown:
         assert isinstance(result, FakeClient)
         assert registry.is_initialized("teardown_sync")
 
-        loader = registry.get_loader("teardown_sync")
+        loader = registry._providers["teardown_sync"]
         loader.reset()
 
         assert not registry.is_initialized("teardown_sync")
@@ -398,7 +385,7 @@ class TestProviderTeardown:
         first = registry.get("reinit")
         assert first == "v1"
 
-        registry.get_loader("reinit").reset()
+        registry._providers["reinit"].reset()
         second = registry.get("reinit")
 
         assert second == "v2"
@@ -460,7 +447,7 @@ class TestTeardownOrder:
         assert registry.is_initialized("prov_a")
         assert registry.is_initialized("prov_b")
 
-        registry.get_loader("prov_a").reset()
+        registry._providers["prov_a"].reset()
 
         assert not registry.is_initialized("prov_a")
         assert registry.is_initialized("prov_b"), "prov_b must remain initialized"
@@ -484,7 +471,7 @@ class TestTeardownOrder:
 
         # Teardown in reverse order
         for name in reversed(names):
-            registry.get_loader(name).reset()
+            registry._providers[name].reset()
 
         for name in names:
             assert not registry.is_initialized(name)

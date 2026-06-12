@@ -8,15 +8,7 @@ from shared.py.wide_events import log
 
 
 def convert_markdown_to_html(markdown_text: str) -> str:
-    """
-    Convert markdown text to HTML.
-
-    Args:
-        markdown_text: The markdown text to convert
-
-    Returns:
-        str: HTML string
-    """
+    """Convert markdown text to HTML."""
     log.set(operation="convert_markdown_to_html", input_length=len(markdown_text))
     try:
         html = markdown2.markdown(
@@ -69,53 +61,6 @@ def normalize_email_body_to_html(body: str) -> str:
     if looks_like_html(body):
         return body
     return convert_markdown_to_html(body)
-
-
-def convert_markdown_to_plain_text(markdown_text: str) -> str:
-    """
-    Convert markdown text to plain text by stripping markdown syntax.
-
-    Args:
-        markdown_text: The markdown text to convert
-
-    Returns:
-        str: Plain text string
-    """
-    try:
-        text = markdown_text
-
-        # Remove code blocks
-        text = re.sub(r"```[\s\S]*?```", "", text)
-
-        # Remove inline code
-        text = re.sub(r"`([^`]+)`", r"\1", text)
-
-        # Remove bold/italic
-        text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
-        text = re.sub(r"__([^_]+)__", r"\1", text)
-        text = re.sub(r"\*([^*]+)\*", r"\1", text)
-        text = re.sub(r"_([^_]+)_", r"\1", text)
-
-        # Convert links to just text
-        text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
-
-        # Remove headers
-        text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
-
-        # Remove blockquotes
-        text = re.sub(r"^>\s+", "", text, flags=re.MULTILINE)
-
-        # Remove list markers
-        text = re.sub(r"^[-*+]\s+", "", text, flags=re.MULTILINE)
-        text = re.sub(r"^\d+\.\s+", "", text, flags=re.MULTILINE)
-
-        # Clean up extra whitespace
-        text = re.sub(r"\n{3,}", "\n\n", text)
-
-        return text.strip()
-    except Exception as e:
-        log.error(f"Error converting markdown to plain text: {e}")
-        return markdown_text
 
 
 def split_yaml_frontmatter(content: str) -> tuple[str, str] | None:

@@ -223,7 +223,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             tool_space="googlecalendar",
             handoff_tool_name="call_calendar_agent",
             domain="calendar and event management",
-            capabilities="creating events, scheduling meetings, managing availability, setting reminders, updating calendar entries, and organizing schedules",
+            capabilities="creating events, scheduling meetings, managing availability, setting event notifications, updating calendar entries, and organizing schedules",
             use_cases="scheduling meetings, managing calendar events, checking availability, or any calendar-related task",
             system_prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
@@ -369,8 +369,8 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             tool_space="reminders",
             handoff_tool_name="call_reminder_agent",
             domain="scheduling and time-based notifications",
-            capabilities="creating reminders, scheduling notifications, setting recurring reminders, managing reminder statuses, searching reminders",
-            use_cases="scheduling reminders, setting up recurring notifications, managing time-based alerts, or any reminder-related task",
+            capabilities="creating reminders and timed pings ('remind me to ...', 'ping me', 'alert me at ...', 'notify me in N minutes', 'set a timer'), scheduling one-off and recurring notifications that fire at a set time, managing reminder statuses, searching reminders",
+            use_cases="any 'remind me' / 'ping me' / 'alert me' / 'notify me at' / 'set a timer' request — a time-based notification that fires at a scheduled time (NOT a todo list item)",
             system_prompt=REMINDER_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
             disable_retrieve_tools=True,
@@ -2009,16 +2009,7 @@ def get_integration_by_config(auth_config_id: str) -> OAuthIntegration | None:
 
 
 def get_memory_extraction_prompt(integration_id: str) -> str | None:
-    """Get the memory extraction prompt for a specific integration.
-
-    This is the single source of truth for memory prompts.
-
-    Args:
-        integration_id: The integration ID (e.g., 'slack', 'github')
-
-    Returns:
-        The memory extraction prompt for this integration, or None if not found
-    """
+    """Get the memory extraction prompt for an integration, or None. Single source of truth."""
     integration = get_integration_by_id(integration_id)
     if not integration or not integration.subagent_config:
         return None
@@ -2027,14 +2018,10 @@ def get_memory_extraction_prompt(integration_id: str) -> str | None:
 
 @cache
 def get_toolkit_to_integration_map() -> dict[str, str]:
-    """Get mapping of Composio toolkit names to integration IDs.
+    """Map Composio toolkit names (e.g. 'GMAIL') to integration IDs (e.g. 'gmail').
 
-    This is the single source of truth for tool prefix -> integration category mapping.
-    Used by workflow context extractor to infer categories from tool names.
-
-    Returns:
-        Dict mapping toolkit name (e.g., 'GMAIL', 'GOOGLECALENDAR') to integration ID
-        (e.g., 'gmail', 'googlecalendar')
+    Single source of truth for tool-prefix -> integration-category mapping; used by the
+    workflow context extractor to infer categories from tool names.
     """
     mapping = {}
     for integration in OAUTH_INTEGRATIONS:

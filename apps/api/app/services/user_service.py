@@ -21,35 +21,13 @@ async def get_user_by_id(user_id: str) -> dict | None:
         raise HTTPException(status_code=404, detail="User not found")
 
 
-async def get_user_by_email(email: str) -> dict | None:
-    """Get user by email from database."""
-    try:
-        user = await users_collection.find_one({"email": email})
-        if user:
-            user["_id"] = str(user["_id"])
-        return user
-    except Exception as e:
-        log.error(f"Error fetching user by email {email}: {e}")
-        raise HTTPException(status_code=404, detail="User not found")
-
-
 async def update_user_profile(
     user_id: str,
     name: str | None = None,
     picture_data: bytes | None = None,
     data: dict | None = None,
 ) -> dict:
-    """
-    Update user profile information.
-
-    Args:
-        user_id: User ID
-        name: New name (optional)
-        picture_data: New profile picture data (optional)
-
-    Returns:
-        Updated user data
-    """
+    """Update user profile information."""
     log.set(
         service="user_service",
         user_id=user_id,

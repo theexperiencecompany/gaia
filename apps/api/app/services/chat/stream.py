@@ -20,13 +20,15 @@ from uuid import uuid4
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.core.agent import call_agent
-from app.agents.core.background.inbox import (
-    deregister_executor_done_event,
-    register_executor_done_event,
-    was_executor_spawned,
+from app.agents.core.background.executor_capture import (
+    await_executor_done,
+    drain_executor_tool_data,
+    register_executor_capture,
+    teardown_executor_capture,
 )
-from app.constants.cache import VOICE_EXECUTOR_RESULT_TIMEOUT_S
+from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.core.stream_manager import stream_manager
+from app.db.mongodb.collections import conversations_collection
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
@@ -45,6 +47,7 @@ from app.services.chat.workspace import (
 )
 from app.services.storage import flush_fs_metrics
 from app.utils.chat_utils import generate_and_update_description
+from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, log, wide_task
 
 
@@ -92,6 +95,7 @@ class _StreamState:
         "complete_message",
         "follow_up_actions",
         "is_cancelled",
+        "saved",
         "todo_progress_accumulated",
         "tool_data",
         "tool_outputs",
@@ -108,6 +112,9 @@ class _StreamState:
         self.follow_up_actions: list[str] = []
         self.usage_metadata: dict[str, Any] = {}
         self.is_cancelled: bool = False
+        # Whether the turn was persisted in the try block (early save). When
+        # False, the finally block does a fallback save.
+        self.saved: bool = False
         self.user_message_id: str = str(uuid4())
         self.bot_message_id: str = str(uuid4())
         # When comms finished — stamped before any voice-mode executor wait so
@@ -131,6 +138,13 @@ async def _run_chat_stream(
     artifact_task: asyncio.Task[None] | None = None
     description_task: asyncio.Task[str] | None = None
 
+    # Register the executor-done event + tool-event collector before the comms
+    # agent runs, so ``call_executor``'s background task can append events while
+    # the stream stays open. Drained into the comms ack's tool_data once the
+    # executor finishes; torn down in ``_finalize_stream``. Voice-mode streams
+    # are marked so the executor publishes a ``voice_tts`` frame to speak.
+    register_executor_capture(stream_id, voice_mode=body.voice_mode)
+
     try:
         description_task = _start_description_task(is_new_conversation, body, conversation_id, user)
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
@@ -138,7 +152,9 @@ async def _run_chat_stream(
         if user_id:
             await prepare_user_workspace(user_id, conversation_id)
             artifact_task = asyncio.create_task(
-                forward_artifact_events(user_id, conversation_id, stream_id, state.tool_data)
+                forward_artifact_events(
+                    user_id, conversation_id, stream_id, state.tool_data, source
+                )
             )
 
         await _publish_init_chunk(
@@ -167,8 +183,14 @@ async def _run_chat_stream(
         # Stamp turn completion BEFORE any executor wait so the user/comms
         # messages sort ahead of a delegated executor's mid-wait answer.
         state.turn_completed_at = datetime.now(UTC)
+
+        # Early save: persist the comms ack immediately after the streaming loop
+        # so its array position is correct even if a concurrent stream finishes
+        # while we wait for the executor below.
+        await _persist_turn(stream_id, body, user, conversation_id, state)
+        await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
+
         await _finalize_description(description_task, stream_id)
-        await _await_voice_executor_result(body, stream_id)
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
 
@@ -290,31 +312,6 @@ async def _publish_init_chunk(
     await stream_manager.publish_chunk(stream_id, init_data)
 
 
-async def _await_voice_executor_result(
-    body: MessageRequestWithHistory,
-    stream_id: str,
-) -> None:
-    """Voice mode only: hold the stream open until a delegated executor delivers
-    its narrated answer.
-
-    ``call_executor`` is fire-and-forget, so the executor's substantive answer
-    normally lands after the comms turn's ``[DONE]`` and reaches the client only
-    over the WebSocket — which the voice agent has no access to. When this turn
-    delegated to an executor, wait for it to finish (it publishes a ``voice_tts``
-    SSE frame for the agent to speak, then sets the done-event) before sending
-    ``[DONE]``. No-op for text turns or turns that didn't delegate.
-    """
-    if not body.voice_mode or not was_executor_spawned(stream_id):
-        return
-    done_event = register_executor_done_event(stream_id)
-    try:
-        await asyncio.wait_for(done_event.wait(), timeout=VOICE_EXECUTOR_RESULT_TIMEOUT_S)
-    except TimeoutError:
-        log.warning(f"Voice executor result wait timed out for stream {stream_id}")
-    finally:
-        deregister_executor_done_event(stream_id)
-
-
 async def _consume_agent_stream(
     body: MessageRequestWithHistory,
     user: dict,
@@ -338,6 +335,7 @@ async def _consume_agent_stream(
         user_time=user_time,
         usage_metadata_callback=usage_callback,
         stream_id=stream_id,
+        user_message_id=state.user_message_id,
         bot_message_id=state.bot_message_id,
         source=source,
     ):
@@ -446,30 +444,25 @@ async def _handle_stream_error(
     await stream_manager.set_error(stream_id, str(error))
 
 
-async def _finalize_stream(
+async def _persist_turn(
     stream_id: str,
     body: MessageRequestWithHistory,
     user: dict,
     conversation_id: str,
     state: _StreamState,
-    artifact_task: asyncio.Task[None] | None,
 ) -> None:
-    """Always-run cleanup: cancel artifact forwarder, recover state, persist,
-    cleanup Redis, emit final wide event."""
-    if artifact_task is not None:
-        artifact_task.cancel()
-        with contextlib.suppress(BaseException):
-            await artifact_task
+    """Recover final state, group subagents, persist the turn, mark it saved.
 
-    # On cancellation, complete_message may be empty because nostream: marker
-    # never arrives — recover from Redis progress which tracks accumulated text.
+    On cancellation/error paths ``complete_message`` may be empty because the
+    ``nostream`` marker never arrived — ``recover_stream_state`` rebuilds it from
+    Redis progress. Callers guard re-entry with ``state.saved``.
+    """
     state.complete_message, state.tool_data = await recover_stream_state(
         stream_id, state.complete_message, state.tool_data
     )
-
     merge_tool_outputs(state.tool_data, state.tool_outputs)
     inject_todo_progress(state.tool_data, state.todo_progress_accumulated)
-
+    reconstruct_subagent_groups(state.tool_data)
     await save_conversation_async(
         body=body,
         user=user,
@@ -481,6 +474,74 @@ async def _finalize_stream(
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
     )
+    state.saved = True
+
+
+async def _attach_executor_tool_data(
+    stream_id: str,
+    body: MessageRequestWithHistory,
+    user: dict,
+    conversation_id: str,
+    state: _StreamState,
+) -> None:
+    """Wait for the background executor, then push its tool events onto the
+    already-saved comms ack message.
+
+    The SSE stream stays open while the executor produces tool events so the
+    frontend renders them live. Comms re-narration runs separately in the
+    executor's finally block and is delivered via WebSocket.
+
+    Voice-mode turns cap the wait much lower: the user is in a live audio
+    session, and on timeout the narrated answer still reaches them via the
+    WebSocket push (the voice agent just won't speak it).
+    """
+    if state.is_cancelled:
+        return
+    timeout = VOICE_EXECUTOR_RESULT_TIMEOUT_S if body.voice_mode else EXECUTOR_WAIT_TIMEOUT
+    await await_executor_done(stream_id, timeout=timeout)
+    executor_td = drain_executor_tool_data(stream_id)
+    if not executor_td:
+        return
+    try:
+        await conversations_collection.update_one(
+            {
+                "user_id": user.get("user_id"),
+                "conversation_id": conversation_id,
+                "messages.message_id": state.bot_message_id,
+            },
+            {"$push": {"messages.$.tool_data": {"$each": executor_td}}},
+        )
+    except Exception as e:  # noqa: BLE001 — executor tool_data attach is best-effort
+        log.error(f"Failed to update bot message tool_data: {e}")
+
+
+async def _finalize_stream(
+    stream_id: str,
+    body: MessageRequestWithHistory,
+    user: dict,
+    conversation_id: str,
+    state: _StreamState,
+    artifact_task: asyncio.Task[None] | None,
+) -> None:
+    """Always-run cleanup: tear down executor capture, cancel artifact
+    forwarder, persist (if not already saved), cleanup Redis, emit final wide
+    event."""
+    teardown_executor_capture(stream_id)
+
+    if artifact_task is not None:
+        artifact_task.cancel()
+        with contextlib.suppress(BaseException):
+            await artifact_task
+
+    # Error / early-exit path: the turn wasn't saved in the try block. The
+    # happy path already saved early (before the executor wait), so this is a
+    # fallback. _persist_turn recovers complete_message from Redis progress when
+    # the nostream: marker never arrived (cancellation).
+    if not state.saved:
+        try:
+            await _persist_turn(stream_id, body, user, conversation_id, state)
+        except Exception as save_err:  # noqa: BLE001 — best-effort fallback save
+            log.error(f"Fallback save failed for stream {stream_id}: {save_err}")
 
     await stream_manager.cleanup(stream_id)
 

@@ -902,27 +902,6 @@ class TestCustomToolsRegistry:
         assert registry.get_tool_names("Gmail") == ["GMAIL_TOOL_A"]
         assert registry.get_tool_names("gmail") == ["GMAIL_TOOL_A"]
 
-    def test_get_all_tool_names(self) -> None:
-        """get_all_tool_names returns tools from all toolkits."""
-
-        registry = CustomToolsRegistry()
-        registry._tools_by_toolkit = {
-            "gmail": ["GMAIL_A", "GMAIL_B"],
-            "slack": ["SLACK_A"],
-        }
-
-        all_names = registry.get_all_tool_names()
-        assert set(all_names) == {"GMAIL_A", "GMAIL_B", "SLACK_A"}
-
-    def test_get_registered_toolkits(self) -> None:
-        """get_registered_toolkits returns sorted toolkit names."""
-
-        registry = CustomToolsRegistry()
-        registry._registered_toolkits = {"slack", "gmail", "calendar"}
-
-        result = registry.get_registered_toolkits()
-        assert result == ["calendar", "gmail", "slack"]
-
     def test_uninitialized_registry_raises_on_register(self) -> None:
         """Calling _register_all_tools before initialize raises RuntimeError."""
 

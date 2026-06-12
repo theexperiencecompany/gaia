@@ -58,7 +58,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
 
         result = await super().abefore_model(state, runtime)
         if result is not None and archive_path:
-            result = self._inject_archive_path(result, archive_path)
+            self._inject_archive_path(result, archive_path)
         return result
 
     def _should_trigger_summarization(self, state: AgentState[Any]) -> bool:
@@ -131,10 +131,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             history.append(entry)
         return history
 
-    def _inject_archive_path(self, result: dict[str, Any], archive_path: str) -> dict[str, Any]:
+    def _inject_archive_path(self, result: dict[str, Any], archive_path: str) -> None:
+        """Annotate the summary HumanMessage in ``result`` with the archive path.
+
+        Mutates ``result``'s messages in place.
+        """
         messages = result.get("messages", [])
-        if not messages:
-            return result
         for msg in messages:
             if isinstance(msg, HumanMessage):
                 additional_kwargs = getattr(msg, "additional_kwargs", {})
@@ -146,4 +148,3 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
                         )
                     additional_kwargs["archive_path"] = archive_path
                     break
-        return result

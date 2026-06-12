@@ -159,8 +159,11 @@ def build(name: str) -> str:
         # ships as a push-on-demand diagnostic (upload via sbx.files.write,
         # run, delete) so the sandbox surface stays minimal. The source
         # script lives at apps/api/scripts/verify_sandbox_hardening.sh.
-        .copy("mount_juicefs.sh", "/tmp/mount.sh", mode=0o755)
-        .copy("jfs_launcher.py", "/tmp/jfs_launcher.py", mode=0o755)
+        # NOSONAR python:S5443 build-time staging only: fixed, code-controlled
+        # /tmp paths (no attacker input) immediately moved into root-owned
+        # /etc/gaia in the next root run_cmd; never read back from /tmp.
+        .copy("mount_juicefs.sh", "/tmp/mount.sh", mode=0o755)  # NOSONAR python:S5443
+        .copy("jfs_launcher.py", "/tmp/jfs_launcher.py", mode=0o755)  # NOSONAR python:S5443
         .run_cmd(
             "mkdir -p /etc/gaia && "
             "mv /tmp/mount.sh /etc/gaia/mount.sh && "

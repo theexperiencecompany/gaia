@@ -18,29 +18,17 @@ from shared.py.wide_events import log
 
 
 class GmailMessageParser:
-    """
-    A class to parse Gmail messages using Python's email library.
-    Handles raw Gmail data and exposes clean methods for content extraction.
-    """
+    """Parse Gmail messages via Python's email library, exposing clean
+    content-extraction methods over raw Gmail API data."""
 
     def __init__(self, gmail_message: dict):
-        """
-        Initialize parser with Gmail message data.
-
-        Args:
-            gmail_message (dict): Gmail API message object
-        """
+        """Initialize the parser with a Gmail API message object."""
         self.gmail_message = gmail_message
         self.email_message: email.message.EmailMessage | None = None
         self._parsed = False
 
     def parse(self) -> bool:
-        """
-        Parse the Gmail message using email.parser.
-
-        Returns:
-            bool: True if parsing succeeded, False otherwise
-        """
+        """Parse the Gmail message. Returns True on success, False otherwise."""
         message_id = self.gmail_message.get("id") or self.gmail_message.get("messageId", "")
         log.set(gmail_message_id=message_id, mail_op="parse_gmail_message")
         try:
@@ -157,18 +145,6 @@ class GmailMessageParser:
                     msg.set_content(decoded_content)
             except Exception:
                 msg.set_content(body_data)
-
-    def _handle_composio_message(self):
-        """Handle Composio message format."""
-        content = self.gmail_message.get("message_text", "")
-        # Create a simple email message for Composio data
-        self.email_message = email.message.EmailMessage()
-        if "<" in content and ">" in content:
-            self.email_message.set_content("", subtype="html")
-            self.email_message.set_payload(content)
-        else:
-            self.email_message.set_content(content)
-        self._parsed = True
 
     # ========================================================================
     # Public getter methods
@@ -321,11 +297,6 @@ class GmailMessageParser:
         """Check if email is read."""
         return "UNREAD" not in self.labels
 
-    @property
-    def has_attachments(self) -> bool:
-        """Check if email has attachments."""
-        return len(self.attachments) > 0 or "HAS_ATTACHMENT" in self.labels
-
 
 def _get_text_from_html(html_content):
     """Extract text from HTML content."""
@@ -340,17 +311,9 @@ def _get_text_from_html(html_content):
 def minimal_message_template(
     email_data: dict[str, Any], short_body=True, include_both_formats=False
 ) -> dict[str, Any]:
-    """
-    Convert a Gmail message to a minimal representation with only essential fields.
-
-    Args:
-        email_data: The full Gmail message data
-        short_body: Whether to truncate body content to 100 characters
-        include_both_formats: Whether to include both text and HTML content
-
-    Returns:
-        A dictionary with only the most essential email fields
-    """
+    """Convert a Gmail message to a minimal representation with only essential
+    fields. short_body truncates the body to 100 chars; include_both_formats
+    adds text and HTML content."""
     # Use GmailMessageParser directly for efficiency
     parser = GmailMessageParser(email_data)
     parser.parse()
@@ -388,15 +351,8 @@ def minimal_message_template(
 
 # Template for message details (when a single message needs more detail)
 def detailed_message_template(email_data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Convert a Gmail message to a detailed but optimized representation including both text and HTML content.
-
-    Args:
-        email_data: The full Gmail message data
-
-    Returns:
-        A dictionary with the essential email fields plus body content in both formats
-    """
+    """Convert a Gmail message to a detailed representation: essential fields
+    plus body content in both text and HTML."""
     # Use GmailMessageParser directly for efficiency
     parser = GmailMessageParser(email_data)
     parser.parse()
@@ -423,15 +379,8 @@ def detailed_message_template(email_data: dict[str, Any]) -> dict[str, Any]:
 
 # Template for thread information
 def thread_template(thread_data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Convert a Gmail thread to a minimal representation.
-
-    Args:
-        thread_data: The full Gmail thread data
-
-    Returns:
-        A dictionary with thread ID and minimized messages
-    """
+    """Convert a Gmail thread to a minimal representation (thread ID + minimized
+    messages)."""
     return {
         "id": thread_data.get("id", ""),
         "messages": [
@@ -444,15 +393,8 @@ def thread_template(thread_data: dict[str, Any]) -> dict[str, Any]:
 
 # Template for draft information
 def draft_template(draft_data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Convert a Gmail draft to a minimal representation including both text and HTML content.
-
-    Args:
-        draft_data: The full Gmail draft data
-
-    Returns:
-        A dictionary with the essential draft fields including text and HTML content
-    """
+    """Convert a Gmail draft to a minimal representation: essential fields plus
+    text and HTML content."""
     message = draft_data.get("message", {})
 
     # Use GmailMessageParser directly for efficiency

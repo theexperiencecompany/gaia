@@ -187,35 +187,6 @@ class TestSaveUsageSnapshot:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-class TestGetLatestUsageSnapshot:
-    async def test_returns_snapshot_when_found(self, mock_usage_collection, sample_mongo_doc):
-        mock_usage_collection.find_one = AsyncMock(return_value=sample_mongo_doc)
-
-        result = await UsageService.get_latest_usage_snapshot("user123")
-
-        assert result is not None
-        assert isinstance(result, UserUsageSnapshot)
-        assert result.user_id == "user123"
-        assert result.plan_type == "pro"
-
-    async def test_returns_none_when_not_found(self, mock_usage_collection):
-        mock_usage_collection.find_one = AsyncMock(return_value=None)
-
-        result = await UsageService.get_latest_usage_snapshot("user_nonexistent")
-
-        assert result is None
-
-    async def test_sort_by_created_at_desc(self, mock_usage_collection):
-        mock_usage_collection.find_one = AsyncMock(return_value=None)
-
-        await UsageService.get_latest_usage_snapshot("user123")
-
-        mock_usage_collection.find_one.assert_awaited_once_with(
-            {"user_id": "user123"}, sort=[("created_at", -1)]
-        )
-
-
 # ---------------------------------------------------------------------------
 # UsageService.get_usage_history
 # ---------------------------------------------------------------------------

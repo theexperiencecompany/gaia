@@ -14,7 +14,6 @@ export type {
   EnhancedWebResult,
 } from "./cards/deep-research-card";
 export { DeepResearchCard } from "./cards/deep-research-card";
-export * from "./cards/document-card";
 export * from "./cards/email-fetch-card";
 export * from "./cards/email-sent-card";
 export * from "./cards/email-thread-card";

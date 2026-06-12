@@ -7,15 +7,6 @@ export type ImageData = {
   improved_prompt?: string | null;
 };
 
-// Define document data structure for document processing
-export type DocumentData = {
-  filename: string;
-  url: string;
-  is_plain_text: boolean;
-  title: string;
-  metadata: Record<string, unknown>;
-};
-
 // Define memory data structure for memory operations
 export type MemoryData = {
   operation?: string;

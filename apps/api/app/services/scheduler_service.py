@@ -3,6 +3,7 @@ Base scheduler service for managing scheduled tasks.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -34,12 +35,7 @@ class BaseSchedulerService(ABC):
     """
 
     def __init__(self, redis_settings: RedisSettings | None = None):
-        """
-        Initialize the scheduler service.
-
-        Args:
-            redis_settings: Redis connection settings for ARQ
-        """
+        """Initialize the scheduler service."""
         self.redis_settings = redis_settings or RedisSettings.from_dsn(settings.REDIS_URL)
         self.arq_pool = None
 
@@ -55,16 +51,7 @@ class BaseSchedulerService(ABC):
         log.info(f"{self.__class__.__name__} closed")
 
     async def schedule_task(self, task_id: str, schedule_config: ScheduleConfig) -> bool:
-        """
-        Schedule a task using the provided configuration.
-
-        Args:
-            task_id: Unique identifier for the task
-            schedule_config: Scheduling configuration
-
-        Returns:
-            True if scheduled successfully
-        """
+        """Schedule a task using the provided configuration."""
         scheduled_at = schedule_config.scheduled_at
 
         # If no scheduled_at but has repeat, calculate next run time
@@ -79,34 +66,12 @@ class BaseSchedulerService(ABC):
         return await self._enqueue_task(task_id, scheduled_at)
 
     async def reschedule_task(self, task_id: str, new_scheduled_at: datetime) -> bool:
-        """
-        Reschedule an existing task to a new time.
-
-        Args:
-            task_id: Task ID to reschedule
-            new_scheduled_at: New scheduled time
-
-        Returns:
-            True if rescheduled successfully
-        """
+        """Reschedule an existing task to a new time."""
         return await self._enqueue_task(task_id, new_scheduled_at)
 
     async def process_task_execution(self, task_id: str) -> TaskExecutionResult:
-        """
-        Process a scheduled task execution.
-
-        This method handles the complete task execution lifecycle:
-        1. Get and validate the task
-        2. Execute the task
-        3. Handle recurring logic
-        4. Update task status
-
-        Args:
-            task_id: Task ID to process
-
-        Returns:
-            Task execution result
-        """
+        """Process a scheduled task execution: validate, execute, then handle
+        recurring logic or update final status."""
         log.set(scheduler_task_id=task_id, scheduler_class=self.__class__.__name__)
         # Get the task
         task = await self.get_task(task_id)
@@ -122,57 +87,48 @@ class BaseSchedulerService(ABC):
 
         log.info(f"Processing task {task_id}")
 
+        occurrence_count = task.occurrence_count + 1
+
         try:
-            # Mark task as executing
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.EXECUTING,
                 {"updated_at": datetime.now(UTC)},
             )
-
-            # Execute the task
             execution_result = await self.execute_task(task)
-
-            # Increment occurrence count
-            occurrence_count = task.occurrence_count + 1
-
-            # Handle recurring tasks
-            if task.repeat:
-                await self._handle_recurring_task(task, occurrence_count)
-            else:
-                # One-time task - mark as completed
-                await self.update_task_status(
-                    task_id,
-                    ScheduledTaskStatus.COMPLETED,
-                    {"occurrence_count": occurrence_count},
-                )
-                log.info(f"Completed one-time task {task_id}")
-
-            return execution_result
-
         except Exception as e:
-            log.error(f"Failed to process task {task_id}: {e!s}")
+            log.error(f"Failed to execute task {task_id}: {e!s}")
+            execution_result = TaskExecutionResult(
+                success=False, message=f"Task execution failed: {e!s}"
+            )
+
+        if task.repeat:
+            # Recurring tasks advance to the next occurrence on success AND failure:
+            # a transient error must not silently kill the series (mirrors the workflow
+            # executor). max_occurrences / stop_after still terminate the series.
+            await self.handle_recurring_task(task, occurrence_count)
+        elif execution_result.success:
+            await self.update_task_status(
+                task_id,
+                ScheduledTaskStatus.COMPLETED,
+                {"occurrence_count": occurrence_count},
+            )
+            log.info(f"Completed one-time task {task_id}")
+        else:
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.FAILED,
-                {"updated_at": datetime.now(UTC)},
+                {"occurrence_count": occurrence_count, "updated_at": datetime.now(UTC)},
             )
-            return TaskExecutionResult(success=False, message=f"Task execution failed: {e!s}")
+            log.warning(f"One-time task {task_id} failed: {execution_result.message}")
+
+        return execution_result
 
     async def cancel_task(self, task_id: str, user_id: str) -> bool:
-        """
-        Cancel a scheduled task.
+        """Cancel a scheduled task.
 
-        Note: ARQ doesn't support direct job cancellation, so this marks the task
-        as cancelled in the database. The task execution will check this status
-        and skip execution if cancelled.
-
-        Args:
-            task_id: Task ID to cancel
-            user_id: User ID for authorization
-
-        Returns:
-            True if cancelled successfully
+        ARQ has no direct job cancellation, so this marks the task cancelled in
+        the DB; execution checks the status and skips if cancelled.
         """
         success = await self.update_task_status(
             task_id,
@@ -187,28 +143,25 @@ class BaseSchedulerService(ABC):
         return success
 
     async def scan_and_schedule_pending_tasks(self):
-        """
-        Scan for scheduled tasks and enqueue them in ARQ.
-        Called during service startup.
-        """
+        """Scan for due scheduled tasks and enqueue them in ARQ (called at startup)."""
         now = datetime.now(UTC)
         tasks = await self.get_pending_task(now)
 
         scheduled_count = 0
         for task in tasks:
-            if task.id:
+            if task.id and task.scheduled_at:
                 await self._enqueue_task(task.id, task.scheduled_at)
                 scheduled_count += 1
 
         log.info(f"Scheduled {scheduled_count} pending tasks")
 
-    async def _handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int):
+    async def handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int):
         """
-        Handle rescheduling logic for recurring tasks.
+        Reschedule the next occurrence of a recurring task, or mark it completed
+        once max_occurrences / stop_after is reached.
 
-        Args:
-            task: The task to handle
-            occurrence_count: Current occurrence count
+        Shared by the reminder path (via process_task_execution) and the workflow
+        executor, so recurrence behaves identically for both.
         """
         log.set(
             scheduler_task_id=task.id,
@@ -233,41 +186,13 @@ class BaseSchedulerService(ABC):
             user_timezone = trigger_config.timezone
             log.debug(f"Using workflow timezone: {user_timezone}")
 
-        next_run = get_next_run_time(task.repeat, task.scheduled_at, user_timezone)
+        # Advance from now, not from a (possibly stale) scheduled_at, so a dormant
+        # task resumes at its next future occurrence instead of replaying missed runs.
+        next_run = get_next_run_time(task.repeat, datetime.now(UTC), user_timezone)
 
-        # Check if we should continue scheduling
-        should_continue = True
-
-        # Check max occurrences
-        if task.max_occurrences and occurrence_count >= task.max_occurrences:
-            should_continue = False
-            log.info(f"Task {task.id} reached max occurrences ({task.max_occurrences})")
-
-        # Check stop_after date
-        if task.stop_after:
-            stop_after = task.stop_after
-            if stop_after.tzinfo is None:
-                stop_after = stop_after.replace(tzinfo=UTC)
-                log.warning(f"Task {task.id} stop_after was offset-naive, assuming UTC")
-
-            if next_run >= stop_after:
-                should_continue = False
-                log.info(f"Task {task.id} reached stop_after date ({stop_after})")
-
-        if should_continue:
-            # Update and reschedule
-            await self.update_task_status(
-                task.id,
-                ScheduledTaskStatus.SCHEDULED,
-                {
-                    "scheduled_at": next_run.isoformat(),
-                    "occurrence_count": occurrence_count,
-                },
-            )
-            await self.reschedule_task(task.id, next_run)
-            log.info(f"Rescheduled recurring task {task.id} for {next_run}")
+        if self._should_continue_recurring(task, occurrence_count, next_run):
+            await self._reschedule_recurring_task(task, occurrence_count, next_run, trigger_config)
         else:
-            # Mark as completed
             await self.update_task_status(
                 task.id,
                 ScheduledTaskStatus.COMPLETED,
@@ -275,17 +200,52 @@ class BaseSchedulerService(ABC):
             )
             log.info(f"Completed recurring task {task.id}")
 
+    @staticmethod
+    def _should_continue_recurring(
+        task: BaseScheduledTask, occurrence_count: int, next_run: datetime
+    ) -> bool:
+        """Decide whether a recurring task has more occurrences to schedule."""
+        if task.max_occurrences and occurrence_count >= task.max_occurrences:
+            log.info(f"Task {task.id} reached max occurrences ({task.max_occurrences})")
+            return False
+
+        if task.stop_after:
+            stop_after = task.stop_after
+            if stop_after.tzinfo is None:
+                stop_after = stop_after.replace(tzinfo=UTC)
+                log.warning(f"Task {task.id} stop_after was offset-naive, assuming UTC")
+
+            if next_run >= stop_after:
+                log.info(f"Task {task.id} reached stop_after date ({stop_after})")
+                return False
+
+        return True
+
+    async def _reschedule_recurring_task(
+        self,
+        task: BaseScheduledTask,
+        occurrence_count: int,
+        next_run: datetime,
+        trigger_config: Any,
+    ) -> None:
+        """Persist the next occurrence and re-enqueue the recurring task."""
+        # Store scheduled_at as a native datetime so the `$lte` scan can match it.
+        update_fields: dict[str, Any] = {
+            "scheduled_at": next_run,
+            "occurrence_count": occurrence_count,
+        }
+        if trigger_config is not None and hasattr(trigger_config, "next_run"):
+            update_fields["trigger_config.next_run"] = next_run
+        await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
+        await self.reschedule_task(task.id, next_run)
+        log.info(f"Rescheduled recurring task {task.id} for {next_run}")
+
+    def _build_job_args(self, task_id: str) -> tuple:
+        """Positional args passed to the ARQ job. Subclasses may add context."""
+        return (task_id,)
+
     async def _enqueue_task(self, task_id: str, scheduled_at: datetime) -> bool:
-        """
-        Enqueue a task in ARQ.
-
-        Args:
-            task_id: Task ID
-            scheduled_at: When to execute the task
-
-        Returns:
-            True if enqueued successfully
-        """
+        """Enqueue a task in ARQ."""
         log.set(scheduler_task_id=task_id, scheduler_scheduled_at=str(scheduled_at))
         if not self.arq_pool:
             log.error("ARQ pool not initialized")
@@ -317,43 +277,71 @@ class BaseSchedulerService(ABC):
         )
 
         job_name = self.get_job_name()
-        job = await self.arq_pool.enqueue_job(job_name, task_id, _defer_until=scheduled_at)
+        # Deterministic job id: ARQ dedupes a task+fire-time so concurrent scans or
+        # repeated enqueues can't stack duplicate jobs for the same occurrence.
+        job_id = f"{job_name}:{task_id}:{int(scheduled_at.timestamp())}"
+        job = await self.arq_pool.enqueue_job(
+            job_name, *self._build_job_args(task_id), _job_id=job_id, _defer_until=scheduled_at
+        )
 
         if not job:
-            log.error(f"Failed to enqueue task {task_id}")
+            log.warning(f"Task {task_id} already enqueued for {scheduled_at.isoformat()}; skipping")
             return False
 
         log.set(arq_job_id=job.job_id, arq_job_name=job_name)
         log.debug(f"Enqueued task {task_id} with job ID {job.job_id}")
         return True
 
+    async def _query_pending_tasks(
+        self,
+        collection: Any,
+        current_time: datetime,
+        doc_to_task: Callable[[dict[str, Any]], BaseScheduledTask],
+        extra_filter: dict[str, Any] | None = None,
+    ) -> list[BaseScheduledTask]:
+        """Shared recovery-scan query for every scheduler subclass.
+
+        Selects tasks that are SCHEDULED and DUE (``scheduled_at <= now``). The
+        ``$lte`` due-semantics live here, in one place, so the reminder and
+        workflow scans can never diverge on the operator again (they once did:
+        reminders used ``$gte`` and silently dropped every overdue task).
+
+        Subclasses supply only their collection, a document->model mapper, and
+        any extra filter (e.g. workflows additionally require ``activated: True``).
+        """
+        query: dict[str, Any] = {
+            "status": ScheduledTaskStatus.SCHEDULED.value,
+            "scheduled_at": {"$lte": current_time},
+        }
+        if extra_filter:
+            query.update(extra_filter)
+
+        tasks: list[BaseScheduledTask] = []
+        try:
+            cursor = collection.find(query)
+            async for doc in cursor:
+                try:
+                    tasks.append(doc_to_task(doc))
+                except Exception as e:
+                    log.error(f"Error building pending task from document: {e}")
+                    continue
+        except Exception as e:
+            log.error(f"Error fetching pending tasks: {e}")
+            return []
+
+        log.info(f"Found {len(tasks)} pending tasks")
+        return tasks
+
     # Abstract methods that subclasses must implement
 
     @abstractmethod
     async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
-        """
-        Get a task by ID.
-
-        Args:
-            task_id: Task ID
-            user_id: User ID for authorization (optional)
-
-        Returns:
-            Task model or None if not found
-        """
+        """Get a task by ID, or None if not found."""
         pass
 
     @abstractmethod
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
-        """
-        Execute the actual task logic.
-
-        Args:
-            task: Task to execute
-
-        Returns:
-            Task execution result
-        """
+        """Execute the actual task logic."""
         pass
 
     @abstractmethod
@@ -364,39 +352,15 @@ class BaseSchedulerService(ABC):
         update_data: dict[str, Any] | None = None,
         user_id: str | None = None,
     ) -> bool:
-        """
-        Update task status and additional data.
-
-        Args:
-            task_id: Task ID to update
-            status: New status
-            update_data: Additional fields to update
-            user_id: User ID for authorization (optional)
-
-        Returns:
-            True if updated successfully
-        """
+        """Update task status and any additional fields."""
         pass
 
     @abstractmethod
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
-        """
-        Get all tasks that should be scheduled.
-
-        Args:
-            current_time: Current time for filtering
-
-        Returns:
-            List of tasks to schedule
-        """
+        """Get all tasks that are due to be scheduled at current_time."""
         pass
 
     @abstractmethod
     def get_job_name(self) -> str:
-        """
-        Get the ARQ job name for this scheduler.
-
-        Returns:
-            Job name string
-        """
+        """Get the ARQ job name for this scheduler."""
         pass

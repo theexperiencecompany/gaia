@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
-import { CheckmarkBadge01Icon } from "@icons";
+import { CheckmarkCircle02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
@@ -69,7 +69,7 @@ export const NotificationItem = ({
                 onPress={() => onMarkAsRead(notification.id)}
                 title="Mark as read"
               >
-                <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
+                <CheckmarkCircle02Icon className="h-[18px] w-[18px]" />
               </Button>
             </Tooltip>
           </div>

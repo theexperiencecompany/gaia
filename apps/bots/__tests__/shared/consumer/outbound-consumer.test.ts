@@ -25,6 +25,7 @@ vi.mock("amqplib", () => ({
   connect: vi.fn().mockResolvedValue(connection),
 }));
 
+import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import { OutboundConsumer } from "../../../../../libs/shared/ts/src/bots/consumer/outbound-consumer";
 
 type Handler = (msg: unknown) => unknown;
@@ -42,8 +43,17 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 async function startAndCaptureHandler(
   platform: "whatsapp" | "discord",
   deliver: (id: string, text: string) => Promise<void>,
+  deliverFile: (
+    id: string,
+    attachment: OutboundAttachment,
+  ) => Promise<void> = async () => undefined,
 ): Promise<Handler> {
-  const consumer = new OutboundConsumer(platform, "amqp://test", deliver);
+  const consumer = new OutboundConsumer(
+    platform,
+    "amqp://test",
+    deliver,
+    deliverFile,
+  );
   await consumer.start();
   const calls = channel.consume.mock.calls;
   const last = calls[calls.length - 1];
@@ -167,5 +177,151 @@ describe("OutboundConsumer message handling", () => {
     await deliverMessage(handle, msg);
 
     expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ
+  });
+
+  it("dead-letters non-empty text that renders to nothing instead of acking", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler("whatsapp", deliver);
+    // A lone horizontal rule is non-empty source but renders to "" on WhatsApp,
+    // so there is nothing sendable. The backend already recorded it DELIVERED;
+    // acking here would lose it silently, so it must dead-letter instead.
+    const msg = msgFor({
+      id: "1",
+      platform: "whatsapp",
+      destination_id: "1555",
+      text: "---",
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ, not acked
+    expect(channel.ack).not.toHaveBeenCalled();
+  });
+
+  it("routes an attachment to deliverFile (not the text path) and acks", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const deliverFile = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      deliverFile,
+    );
+    const msg = msgFor({
+      id: "1",
+      platform: "whatsapp",
+      destination_id: "1555",
+      attachment: {
+        conversation_id: "conv-1",
+        path: "artifacts/report.pdf",
+        filename: "report.pdf",
+      },
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(deliverFile).toHaveBeenCalledWith(
+      "1555",
+      expect.objectContaining({
+        conversation_id: "conv-1",
+        path: "artifacts/report.pdf",
+        filename: "report.pdf",
+      }),
+    );
+    expect(deliver).not.toHaveBeenCalled(); // file path, never the text sender
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+  });
+
+  it("dead-letters a failed file delivery WITHOUT requeue, even on first attempt", async () => {
+    // A file send isn't idempotent and a failure can surface after the platform
+    // already accepted the upload — requeueing would deliver a duplicate. So,
+    // unlike the text path, the file path never requeues (requeue=false here).
+    const deliver = vi.fn();
+    const deliverFile = vi.fn().mockRejectedValue(new Error("upload failed"));
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      deliverFile,
+    );
+    const msg = msgFor(
+      {
+        id: "1",
+        platform: "whatsapp",
+        destination_id: "1555",
+        attachment: {
+          conversation_id: "conv-1",
+          path: "artifacts/report.pdf",
+          filename: "report.pdf",
+        },
+        enqueued_at: "t",
+      },
+      false, // first attempt — the text path WOULD requeue here; the file path must not
+    );
+
+    await deliverMessage(handle, msg);
+
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ, no requeue
+    expect(channel.ack).not.toHaveBeenCalled();
+  });
+
+  it("dead-letters a PARTIALLY-sent multi-chunk message without requeue", async () => {
+    // First chunk delivers, the second throws. Requeue re-delivers the WHOLE
+    // envelope, so once any chunk is out, requeueing would re-send the delivered
+    // chunk(s). Policy: requeue only when delivered === 0; here it must DLQ.
+    const deliver = vi
+      .fn()
+      .mockResolvedValueOnce(undefined) // chunk 1 sent
+      .mockRejectedValueOnce(new Error("send failed")); // chunk 2 fails
+    const handle = await startAndCaptureHandler("discord", deliver); // 2000-char limit
+    const big = "word ".repeat(800); // ~4000 chars → multiple chunks
+    const msg = msgFor(
+      {
+        id: "1",
+        platform: "discord",
+        destination_id: "d1",
+        text: big,
+        enqueued_at: "t",
+      },
+      false, // first attempt — but delivered>0 must still prevent requeue
+    );
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ, NOT requeue
+    expect(channel.ack).not.toHaveBeenCalled();
+  });
+
+  it("when an envelope carries BOTH text and attachment, the file path wins (text not double-sent)", async () => {
+    // Our producers never set both (file envelopes have no text), but pin the
+    // precedence so a future change that starts setting both is a visible
+    // decision rather than a silent double-send.
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const deliverFile = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      deliverFile,
+    );
+    const msg = msgFor({
+      id: "1",
+      platform: "whatsapp",
+      destination_id: "1555",
+      text: "some caption-ish text",
+      attachment: {
+        conversation_id: "c",
+        path: "a/f.pdf",
+        filename: "f.pdf",
+      },
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(deliverFile).toHaveBeenCalledTimes(1);
+    expect(deliver).not.toHaveBeenCalled(); // text is not also sent as a message
+    expect(channel.ack).toHaveBeenCalledWith(msg);
   });
 });

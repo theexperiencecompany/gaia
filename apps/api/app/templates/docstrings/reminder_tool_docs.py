@@ -39,6 +39,10 @@ WORKFLOW:
 
 PAYLOAD:
   STATIC → {"title": str, "body": str}
+  Write title and body as a natural, human-readable message the user reads directly,
+  the way you'd text them (e.g. title "Drink water", body "time to drink some water,
+  stay hydrated!"). It's delivered as a push / WhatsApp / email notification, so use
+  second person, no IDs, no internal jargon, no markdown.
 
 Args:
     agent: "static" (default)

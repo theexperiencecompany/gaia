@@ -1,23 +1,11 @@
-"""
-Subagent Execution Core - Shared logic for subagent invocation.
+"""Shared logic for subagent invocation, used by handoff_tools.py and
+executor_tool.py.
 
-This module contains the reusable classes and functions for invoking subagents.
-Both handoff_tools.py, executor_tool.py, and direct call_subagent use these.
-
-Keeping shared code here avoids cyclic dependencies since handoff_tools.py
-imports from this file, not the other way around.
-
-Key exports:
-- SubagentExecutionContext: Container for execution data
-- build_initial_messages(): Construct standard message list with context
-- execute_subagent_stream(): Unified streaming with configurable tool tracking
-- prepare_subagent_execution(): Prepare context for platform subagents
-- prepare_executor_execution(): Prepare context for executor agent
+Lives here (rather than in handoff_tools.py) so those modules import from it,
+avoiding a cyclic dependency.
 """
 
-from collections.abc import AsyncGenerator
 from datetime import datetime
-import json
 import uuid
 
 from langchain_core.messages import (
@@ -28,21 +16,21 @@ from langchain_core.messages import (
 )
 
 from app.agents.core.graph_manager import GraphManager
-from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
-    create_subagent_system_message,
+)
+from app.agents.prompts.workflow_prompts import (
+    WORKFLOW_AUTO_NOTIFY_SECTION,
+    WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.constants.general import FINISH_TASK_NAME
-from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.message_helpers import (
     build_current_time_message,
     create_system_message,
 )
-from app.models.models_models import ModelConfig
-from app.services.oauth.oauth_service import check_integration_status
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
 from app.utils.stream_utils import extract_tool_entries_from_update, normalize_custom_event
 from shared.py.wide_events import log
@@ -155,147 +143,19 @@ async def build_initial_messages(
     ]
 
 
-async def prepare_subagent_execution(
-    subagent_id: str,
-    task: str,
-    user: dict,
-    user_time: datetime,
-    conversation_id: str,
-    base_configurable: dict | None = None,
-    user_model_config: ModelConfig | None = None,
-    stream_id: str | None = None,
-) -> tuple[SubagentExecutionContext | None, str | None]:
-    """
-    Prepare everything needed to execute a subagent.
-
-    This is the shared setup logic used by both handoff tool and call_subagent.
-
-    Args:
-        subagent_id: The subagent ID (e.g., "googlecalendar", "gmail")
-        task: The task/query to execute
-        user: User dict with user_id, email, name
-        user_time: User's local time
-        conversation_id: Thread/conversation ID
-        base_configurable: Optional configurable to inherit from (for handoff tool)
-        user_model_config: Optional model configuration for LLM settings
-
-    Returns:
-        Tuple of (SubagentExecutionContext, None) on success, or
-        (None, error_message) on failure
-    """
-    user_id = user.get("user_id")
-    clean_id = subagent_id.replace("subagent:", "").strip()
-
-    # Resolve subagent
-    subagent = get_subagent_by_id(clean_id)
-    if not subagent:
-        available = [s.id for s in all_subagents()][:5]
-        return None, (
-            f"Subagent '{subagent_id}' not found. "
-            f"Available: {', '.join(available)}{'...' if len(available) == 5 else ''}"
-        )
-
-    agent_name = subagent.config.agent_name
-    log.set(
-        subagent={
-            "name": agent_name,
-            "provider": subagent.provider,
-            "task_length": len(task),
-        }
-    )
-
-    # Load subagent graph
-    subagent_graph = await providers.aget(agent_name)
-    if not subagent_graph:
-        return None, f"Subagent {agent_name} not available"
-
-    # Build thread ID and config
-    subagent_thread_id = f"{subagent.id}_{conversation_id}"
-    config = build_agent_config(
-        conversation_id=conversation_id,
-        user=user,
-        user_time=user_time,
-        thread_id=subagent_thread_id,
-        base_configurable=base_configurable,
-        agent_name=agent_name,
-        user_model_config=user_model_config,
-        subagent_id=agent_name,
-    )
-    configurable = config.get("configurable", {})
-
-    # Create messages using shared helper
-    system_message = await create_subagent_system_message(
-        integration_id=subagent.id,
-        agent_name=agent_name,
-        user_id=user_id,
-    )
-
-    # Pass provider metadata (usernames/emails) into the DYNAMIC context
-    # message so the STATIC subagent prompt stays byte-identical across users.
-    # Handoff payload can pre-fetch memories/skills at the executor level and
-    # forward them here via base_configurable["__pinned_memories__" /
-    # "__pinned_skills__"] to avoid a duplicate ChromaDB round-trip.
-    pinned_memories = (base_configurable or {}).get("__pinned_memories__")
-    pinned_skills = (base_configurable or {}).get("__pinned_skills__")
-
-    messages = await build_initial_messages(
-        system_message=system_message,
-        agent_name=agent_name,
-        configurable=configurable,
-        task=task,
-        user_id=user_id,
-        subagent_id=agent_name,
-        integration_id=subagent.id,
-        memories_text=pinned_memories,
-        skills_text=pinned_skills,
-    )
-
-    initial_state = {"messages": messages, "todos": []}
-
-    log.set(
-        subagent_prep={
-            "agent_name": agent_name,
-            "integration_id": subagent.id,
-            "thread_id": subagent_thread_id,
-            "had_pinned_memories": pinned_memories is not None,
-            "had_pinned_skills": pinned_skills is not None,
-        }
-    )
-
-    return SubagentExecutionContext(
-        subagent_graph=subagent_graph,
-        agent_name=agent_name,
-        config=config,
-        configurable=configurable,
-        integration_id=subagent.id,
-        initial_state=initial_state,
-        user_id=user_id,
-        stream_id=stream_id,
-    ), None
-
-
 async def execute_subagent_stream(
     ctx: SubagentExecutionContext,
     stream_writer: StreamWriterCallable | None = None,
     integration_metadata: IntegrationMetadata | None = None,
     subagent_id: str | None = None,
 ) -> str:
-    """
-    Execute subagent with streaming and tool tracking.
+    """Execute a subagent with streaming and tool tracking, returning the
+    complete message.
 
-    Args:
-        ctx: SubagentExecutionContext from prepare_subagent_execution
-        stream_writer: Callback for custom events (from get_stream_writer())
-        integration_metadata: Optional dict with {icon_url, integration_id, name}
-                              for custom MCP icon display
-
-    Returns:
-        Complete message string
-
-    Stream Event Flow:
-        1. "updates" - Emit tool_data with complete args when tool is called
-        2. "messages" - Stream content, emit tool_output when ToolMessage arrives
-        3. "custom" - Forward custom events (progress messages, etc.) to parent
+    Stream event flow:
+        - "updates": emit tool_data with complete args when a tool is called
+        - "messages": stream content, emit tool_output when a ToolMessage arrives
+        - "custom": forward custom events (progress, etc.) to the parent
     """
     log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
     complete_message = ""
@@ -371,7 +231,7 @@ async def execute_subagent_stream(
                 if stream_writer:
                     tool_output_data: dict = {
                         "tool_call_id": chunk.tool_call_id,
-                        "output": content_str[:3000],
+                        "output": content_str,
                     }
                     if subagent_id:
                         tool_output_data["subagent_id"] = subagent_id
@@ -406,22 +266,14 @@ async def prepare_executor_execution(
     user_time: datetime,
     stream_id: str | None = None,
 ) -> tuple[SubagentExecutionContext | None, str | None]:
-    """
-    Prepare execution context for the executor agent.
+    """Prepare execution context for the executor agent.
 
-    Similar to prepare_subagent_execution but:
-    - Uses GraphManager for graph resolution (not providers)
-    - Uses create_system_message for executor-specific prompts
-    - Injects direct handoff hints when selected_tool/tool_category is known
+    Like the platform-subagent prepare flow but resolves the graph via
+    GraphManager, uses executor-specific prompts, and injects direct handoff
+    hints when selected_tool/tool_category is known.
 
-    Args:
-        task: The task/query to execute
-        configurable: Config dict from RunnableConfig (with user_id, user_time, etc.)
-        user_time: User's local time
-
-    Returns:
-        Tuple of (SubagentExecutionContext, None) on success, or
-        (None, error_message) on failure
+    Returns (SubagentExecutionContext, None) on success, or (None, error) on
+    failure.
     """
     user_id = configurable.get("user_id")
     thread_id = configurable.get("thread_id", "")
@@ -498,6 +350,19 @@ async def prepare_executor_execution(
             }
         )
 
+    # Workflow runs: the executor owns send_notification, but it only sees the
+    # task text comms writes. Inject the notification mode here, keyed off the
+    # run's own configurable, so the no-double-notify guarantee never depends
+    # on comms forwarding the rule. Skip if the task already carries the section
+    # (format_workflow_execution_message embeds it) to avoid duplicating it.
+    if configurable.get("workflow_id") and "NOTIFICATIONS:" not in enhanced_task:
+        notification_section = (
+            WORKFLOW_AUTO_NOTIFY_SECTION
+            if configurable.get("workflow_notify_on_completion", True)
+            else WORKFLOW_SILENT_NOTIFY_SECTION
+        )
+        enhanced_task = f"{enhanced_task}\n{notification_section}"
+
     # Build messages using shared helper.
     # Pass original task as retrieval_query so memory/context semantic search
     # is not polluted by the DIRECT EXECUTION HINT injected into enhanced_task.
@@ -520,167 +385,3 @@ async def prepare_executor_execution(
         user_id=user_id,
         stream_id=stream_id,
     ), None
-
-
-async def check_subagent_integration(
-    integration_id: str,
-    user_id: str,
-) -> str | None:
-    """
-    Check if integration is connected. Returns error message if not connected.
-
-    This is a simpler version that doesn't use stream_writer (for direct calls).
-    """
-    try:
-        is_connected = await check_integration_status(integration_id, user_id)
-        if is_connected:
-            return None
-        return f"Integration {integration_id} is not connected. Please connect it first."
-    except Exception as e:
-        log.warning(f"Integration check failed: {e}")
-        return None
-
-
-async def call_subagent(
-    subagent_id: str,
-    query: str,
-    user: dict,
-    conversation_id: str,
-    user_time: datetime,
-    skip_integration_check: bool = True,
-    user_model_config: ModelConfig | None = None,
-    stream_id: str | None = None,
-) -> AsyncGenerator[str, None]:
-    """
-    Directly invoke a subagent with streaming - drop-in for call_agent in chat_service.
-
-    Primarily used for testing subagents directly without going through the main agent.
-
-    Args:
-        subagent_id: e.g., "googlecalendar", "gmail", "github"
-        query: The user's message/query
-        user: User dict with user_id, email, name
-        conversation_id: Conversation thread ID
-        user_time: User's local time
-        skip_integration_check: Skip OAuth check (default True for testing)
-        user_model_config: Optional model configuration
-
-    Yields:
-        SSE-formatted strings compatible with chat_service streaming
-
-    Usage:
-        async for chunk in call_subagent(
-            subagent_id="googlecalendar",
-            query="What's on my calendar today?",
-            user=user,
-            conversation_id=conversation_id,
-            user_time=user_time,
-        ):
-            yield chunk
-    """
-    user_id = user.get("user_id")
-
-    # Optional integration check (before prepare to fail fast)
-    if not skip_integration_check and user_id:
-        clean_id = subagent_id.replace("subagent:", "").strip()
-        subagent = get_subagent_by_id(clean_id)
-        if subagent:
-            error_message = await check_subagent_integration(subagent.id, user_id)
-            if error_message:
-                yield f"data: {json.dumps({'error': error_message})}\n\n"
-                yield "data: [DONE]\n\n"
-                return
-
-    ctx, error = await prepare_subagent_execution(
-        subagent_id=subagent_id,
-        task=query,
-        user=user,
-        user_time=user_time,
-        conversation_id=conversation_id,
-        user_model_config=user_model_config,
-        stream_id=stream_id,
-    )
-
-    if error or ctx is None:
-        log.error(error or "Failed to prepare subagent execution")
-        yield f"data: {json.dumps({'error': error or 'Failed to prepare subagent execution'})}\n\n"
-        yield "data: [DONE]\n\n"
-        return
-
-    log.info(f"[DIRECT] Invoking subagent '{ctx.agent_name}' with query: {query[:80]}...")
-
-    complete_message = ""
-    finish_task_result: str | None = None
-    emitted_tool_calls: set[str] = set()
-
-    async for event in ctx.subagent_graph.astream(
-        ctx.initial_state,
-        stream_mode=["messages", "custom", "updates"],
-        config=ctx.config,
-    ):
-        # Check for cancellation
-        if stream_id and await stream_manager.is_cancelled(stream_id):
-            log.info(f"Subagent stream {stream_id} cancelled by user")
-            break
-        # Handle 2-tuple format only (no subgraphs)
-        if len(event) != 2:
-            continue
-        stream_mode, payload = event
-
-        if stream_mode == "updates":
-            for node_name, state_update in payload.items():
-                # Only emit tool_data from the LLM ("agent") node.
-                # Pre-model hooks produce "updates" events containing historical
-                # AIMessages from previous checkpoint runs — skip them.
-                if node_name != "agent":
-                    continue
-                # Use shared helper to extract and format tool entries
-                entries = await extract_tool_entries_from_update(
-                    state_update=state_update,
-                    emitted_tool_calls=emitted_tool_calls,
-                )
-                for tc_id, tool_entry in entries:
-                    yield f"data: {json.dumps({'tool_data': tool_entry})}\n\n"
-            continue
-
-        if stream_mode == "messages":
-            chunk, metadata = payload
-            if metadata.get("silent"):
-                continue
-
-            # Stream AI response content
-            if chunk and isinstance(chunk, AIMessageChunk):
-                content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-                if content:
-                    complete_message += content
-                    yield f"data: {json.dumps({'response': content})}\n\n"
-
-            # Emit tool_output when ToolMessage arrives
-            elif chunk and isinstance(chunk, ToolMessage):
-                content_str = (
-                    chunk.content if isinstance(chunk.content, str) else str(chunk.content)
-                )
-                complete_message = _capture_finish_task_content(chunk, complete_message)
-                if chunk.name == FINISH_TASK_NAME:
-                    yield f"data: {json.dumps({'response': content_str})}\n\n"
-                yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': content_str[:3000]}})}\n\n"
-            continue
-
-        if stream_mode == "custom":
-            yield f"data: {json.dumps(normalize_custom_event(payload))}\n\n"
-
-    final_message = finish_task_result if finish_task_result is not None else complete_message
-    # Final message for DB storage
-    yield f"nostream: {json.dumps({'complete_message': final_message})}"
-    yield "data: [DONE]\n\n"
-
-    log.set(
-        subagent={
-            "name": ctx.agent_name,
-            "provider": ctx.integration_id,
-            "response_length": len(final_message),
-        }
-    )
-    log.info(
-        f"[DIRECT] Subagent '{ctx.agent_name}' completed. Response: {len(final_message)} chars"
-    )

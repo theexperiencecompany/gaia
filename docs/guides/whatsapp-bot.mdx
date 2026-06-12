@@ -1,0 +1,86 @@
+---
+title: "Using GAIA on WhatsApp"
+description: "Text GAIA like you'd text a friend, voice notes, photos, and plain language included"
+icon: "/images/icons/whatsapp.webp"
+---
+
+import { Chat } from "/snippets/chat-bubbles.jsx";
+import { PlatformDemo } from "/snippets/platform-demos.jsx";
+
+WhatsApp is where you already talk to everyone else, GAIA fits right in. Text it in plain language, send a voice note, or forward a document, and it handles the rest.
+
+<PlatformDemo platform="whatsapp" />
+
+## Getting started
+
+<Steps>
+  <Step title="Open a chat with GAIA">
+    Message GAIA at [wa.me/12762088737](https://wa.me/12762088737). You'll get a welcome message the first time you write.
+  </Step>
+
+  <Step title="Link your GAIA account">
+    Send `/auth`. You'll get a link, tap it, sign in, and your account is connected.
+
+    ```
+    /auth
+    ```
+  </Step>
+
+  <Step title="Just type">
+    Every message you send goes straight to GAIA. No command prefix needed.
+
+    <Chat
+      messages={[
+        { from: "user", text: "What's on my calendar this week?" },
+        { from: "user", text: "Draft a reply to the last email from Sam" },
+      ]}
+    />
+  </Step>
+</Steps>
+
+## What you can do
+
+Talk to GAIA in plain language, or use the same commands as the other bots:
+
+<Chat
+  messages={[
+    { from: "user", text: "Summarize my unread emails from today" },
+    { from: "user", text: "Add \"renew passport\" to my todos for next week" },
+    { from: "gaia", text: "Added to your todos, due next week." },
+  ]}
+/>
+
+| Command                  | What it does               |
+| ------------------------ | -------------------------- |
+| `/todo list`             | Show all active todos      |
+| `/todo add <title>`      | Create a new todo          |
+| `/workflow list`         | List all your workflows    |
+| `/workflow execute <id>` | Run a workflow manually    |
+| `/new`                   | Start a fresh conversation |
+| `/help`                  | Show all available commands |
+
+For the complete reference, see the [Bot Commands Reference](/bots/commands).
+
+### Voice notes and files
+
+- **Voice notes** are transcribed automatically and treated as your message, talk instead of typing.
+- **Photos and documents** are uploaded to GAIA so you can ask questions about them.
+- **Videos and stickers** aren't supported, GAIA will let you know politely.
+
+## Good to know
+
+- Responses arrive as complete messages rather than streaming in, and GAIA sends a new message instead of editing, that's how WhatsApp's API works.
+- Formatting uses WhatsApp's native markdown (*bold*, _italic_), with a 4,096-character limit per message.
+- **Start fresh when switching topics.** Send `/new` to clear conversation context.
+
+## Troubleshooting
+
+| Problem                     | Solution                                                          |
+| --------------------------- | ------------------------------------------------------------------ |
+| Bot does not respond        | Check the bot is online with `/status`.                            |
+| Authentication link expired | Send `/auth` again to get a fresh link.                            |
+| Voice note not understood   | Audio over 25 MB can't be transcribed, try a shorter note.        |
+
+<Note>
+  Want to run the WhatsApp bot on your own instance? See [WhatsApp Bot Development](/bots/whatsapp).
+</Note>

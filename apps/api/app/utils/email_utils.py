@@ -1,19 +1,8 @@
-"""
-Email utilities for sending various types of emails and parsing email content.
+"""Email utilities: send transactional emails (Jinja2 templates + Resend)."""
 
-This module provides functions for:
-- Sending different types of emails (support, onboarding, engagement)
-- Parsing and extracting content from email messages (Gmail/Composio formats)
-
-All emails use Jinja2 templates for HTML generation and Resend for email delivery.
-"""
-
-import base64
 from datetime import UTC, datetime
-from html import unescape
 import os
 
-from bs4 import BeautifulSoup
 from bson import ObjectId
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import resend
@@ -44,15 +33,7 @@ TWITTER_URL = "https://twitter.com/trygaia"
 async def send_support_team_notification(
     notification_data: SupportEmailNotification,
 ) -> None:
-    """
-    Send email notification to support team when a new support/feature request is created.
-
-    Args:
-        notification_data: Support email notification data containing ticket details
-
-    Raises:
-        Exception: If email sending fails
-    """
+    """Email the support team when a new support/feature request is created."""
     log.set(
         ticket_id=notification_data.ticket_id,
         request_type=notification_data.type.value,
@@ -84,15 +65,7 @@ async def send_support_team_notification(
 async def send_support_to_user_email(
     notification_data: SupportEmailNotification,
 ) -> None:
-    """
-    Send confirmation email to user that their support request has been received.
-
-    Args:
-        notification_data: Support email notification data containing ticket details
-
-    Raises:
-        Exception: If email sending fails
-    """
+    """Email the user confirming their support request was received."""
     try:
         subject = f"[{notification_data.ticket_id}] Your {notification_data.type.value} request has been received"
         html_content = generate_support_to_user_email_html(notification_data)
@@ -112,18 +85,7 @@ async def send_support_to_user_email(
 
 
 def generate_support_team_email_html(data: SupportEmailNotification) -> str:
-    """
-    Generate HTML email content for support team notifications using Jinja2 template.
-
-    Args:
-        data: Support email notification data
-
-    Returns:
-        str: Rendered HTML email content
-
-    Raises:
-        Exception: If template rendering fails
-    """
+    """Render the support-team notification email HTML."""
     try:
         template = jinja_env.get_template("support_to_admin.html")
 
@@ -150,18 +112,7 @@ def generate_support_team_email_html(data: SupportEmailNotification) -> str:
 
 
 def generate_support_to_user_email_html(data: SupportEmailNotification) -> str:
-    """
-    Generate HTML email content for user confirmation emails using Jinja2 template.
-
-    Args:
-        data: Support email notification data
-
-    Returns:
-        str: Rendered HTML email content
-
-    Raises:
-        Exception: If template rendering fails
-    """
+    """Render the user confirmation email HTML."""
     try:
         template = jinja_env.get_template("support_to_user.html")
 
@@ -294,16 +245,9 @@ def generate_welcome_email_html(user_name: str | None = None) -> str | None:
 async def send_inactive_user_email(
     user_email: str, user_name: str | None = None, user_id: str | None = None
 ) -> bool:
-    """
-    Send email to inactive user and track when sent to prevent spam.
+    """Email an inactive user, tracking sends to avoid spam.
 
-    Args:
-        user_email: Email address of the inactive user
-        user_name: Name of the user (optional)
-        user_id: User ID for tracking (optional)
-
-    Returns:
-        True if email was sent, False if skipped
+    Returns True if sent, False if skipped.
     """
 
     try:
@@ -398,207 +342,3 @@ def generate_inactive_user_email_html(user_name: str | None = None) -> str:
     except Exception as e:
         log.error(f"Error generating inactive user email HTML: {e!s}")
         raise
-
-
-# ============================================================================
-# Email Parsing and Extraction Utilities
-# ============================================================================
-
-
-def extract_string_content(message: dict) -> str:
-    """
-    Extracts the string content from a Gmail message or Composio email data.
-    Extracted content can be plain text or HTML, depending on the message format.
-    If the message is in HTML format, it will be converted to plain text.
-
-    Args:
-        message (dict): The Gmail message object or Composio converted message.
-
-    Returns:
-        str: The extracted string content.
-    """
-    payload = message.get("payload", {})
-    mime_type = payload.get("mimeType", "")
-
-    content = ""
-
-    # Check if this is a Composio message (has message_text directly)
-    if "message_text" in message:
-        content = message.get("message_text", "")
-        # If it's HTML, convert to plain text
-        if "<" in content and ">" in content:  # Simple HTML detection
-            soup = BeautifulSoup(unescape(content), "html.parser")
-            content = soup.get_text()
-        return content.strip()
-
-    # Handle Gmail API format
-    if mime_type == "text/plain":
-        # If the message is already in plain text format, extract directly
-        data = payload.get("body", {}).get("data", "")
-        if data:
-            # Check if data is already decoded (from Composio conversion)
-            if isinstance(data, str) and not data.startswith("="):  # Not base64
-                content = data
-            else:
-                decoded_bytes = base64.urlsafe_b64decode(data)
-                content += decoded_bytes.decode("utf-8").strip()
-    elif mime_type == "text/html":
-        # If the message is in HTML format, decode and extract text
-        data = payload.get("body", {}).get("data", "")
-        if data:
-            # Check if data is already decoded (from Composio conversion)
-            if isinstance(data, str) and not data.startswith("="):  # Not base64
-                soup = BeautifulSoup(unescape(data), "html.parser")
-                content = soup.get_text()
-            else:
-                decoded_bytes = base64.urlsafe_b64decode(data)
-                html_data = decoded_bytes.decode("utf-8")
-                soup = BeautifulSoup(unescape(html_data), "html.parser")
-                content += soup.get_text()
-    elif mime_type.startswith("multipart/"):
-        # If the message is multipart, we need to check its parts
-        parts = payload.get("parts", [])
-        if parts:
-            content += _parse_mail_parts(parts)
-
-    return content.strip()
-
-
-def _parse_mail_parts(parts: list[dict]) -> str:
-    """
-    Recursively parses the parts of a Gmail message to extract text content.
-
-    Args:
-        parts (list[dict]): The list of parts in the Gmail message.
-
-    Returns:
-        str: The combined text content from all parts.
-    """
-    content = ""
-    for part in parts:
-        mime_type = part.get("mimeType", "")
-        if mime_type == "text/plain":
-            data = part.get("body", {}).get("data", "")
-            if data:
-                decoded_bytes = base64.urlsafe_b64decode(data)
-                content += decoded_bytes.decode("utf-8")
-        elif mime_type == "text/html":
-            data = part.get("body", {}).get("data", "")
-            if data:
-                decoded_bytes = base64.urlsafe_b64decode(data)
-                html_data = decoded_bytes.decode("utf-8")
-                soup = BeautifulSoup(unescape(html_data), "html.parser")
-                content += soup.get_text()
-        elif "parts" in part:
-            content += _parse_mail_parts(part["parts"])
-    return content.strip()
-
-
-def extract_subject(message: dict) -> str:
-    """
-    Extracts the subject from a Gmail message.
-
-    Args:
-        message (dict): The Gmail message object.
-
-    Returns:
-        str: The subject of the email.
-    """
-    headers = message.get("payload", {}).get("headers", [])
-    for header in headers:
-        if header.get("name") == "Subject":
-            return header.get("value", "")
-    return ""
-
-
-def extract_sender(message: dict) -> str:
-    """
-    Extracts the sender's email address from a Gmail message.
-
-    Args:
-        message (dict): The Gmail message object.
-
-    Returns:
-        str: The sender's email address.
-    """
-    headers = message.get("payload", {}).get("headers", [])
-    for header in headers:
-        if header.get("name") == "From":
-            return header.get("value", "")
-    return ""
-
-
-def extract_date(message: dict) -> str:
-    """
-    Extracts the date from a Gmail message.
-
-    Args:
-        message (dict): The Gmail message object.
-
-    Returns:
-        str: The date of the email.
-    """
-    headers = message.get("payload", {}).get("headers", [])
-    for header in headers:
-        if header.get("name") == "Date":
-            return header.get("value", "")
-    return ""
-
-
-def extract_labels(message: dict) -> list[str]:
-    """
-    Extracts the labels from a Gmail message.
-
-    Args:
-        message (dict): The Gmail message object.
-
-    Returns:
-        list[str]: A list of labels associated with the email.
-    """
-    return message.get("labelIds", [])
-
-
-def convert_composio_to_gmail_format(email_data: dict) -> dict:
-    """
-    Convert Composio email data to Gmail API message format for compatibility
-    with existing processing functions.
-
-    Args:
-        email_data (dict): Email data from Composio webhook
-
-    Returns:
-        dict: Gmail API compatible message format
-    """
-    # Extract data
-    payload_data = email_data.get("payload", {})
-    headers = payload_data.get("headers", [])
-
-    # Create Gmail-compatible headers list
-    gmail_headers = []
-
-    # Add standard headers from Composio data
-    if email_data.get("subject"):
-        gmail_headers.append({"name": "Subject", "value": email_data["subject"]})
-    if email_data.get("sender"):
-        gmail_headers.append({"name": "From", "value": email_data["sender"]})
-    if email_data.get("message_timestamp"):
-        gmail_headers.append({"name": "Date", "value": email_data["message_timestamp"]})
-
-    # Add any additional headers from payload
-    if isinstance(headers, list):
-        gmail_headers.extend(headers)
-
-    # Create Gmail-compatible message structure
-    gmail_message = {
-        "id": email_data.get("message_id", ""),
-        "threadId": email_data.get("thread_id", ""),
-        "labelIds": email_data.get("label_ids", []),
-        "payload": {
-            "mimeType": payload_data.get("mimeType", "text/plain"),
-            "headers": gmail_headers,
-            "body": {"data": email_data.get("message_text", "")},
-            "parts": payload_data.get("parts", []),
-        },
-    }
-
-    return gmail_message

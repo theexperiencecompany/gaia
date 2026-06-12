@@ -40,7 +40,8 @@ class _FakeCursor:
     def __init__(self, docs: list[dict]):
         self._docs = docs
 
-    async def to_list(self, length: int | None = None) -> list[dict]:
+    # async to match the awaited Motor cursor interface the service relies on.
+    async def to_list(self, length: int | None = None) -> list[dict]:  # NOSONAR python:S7503
         return self._docs if length is None else self._docs[:length]
 
 
@@ -60,7 +61,10 @@ class FakeCollection:
     def __init__(self) -> None:
         self.docs: list[dict] = []
 
-    async def update_one(self, flt: dict, update: dict, upsert: bool = False) -> None:
+    # async to match the awaited Motor collection interface the service relies on.
+    async def update_one(  # NOSONAR python:S7503
+        self, flt: dict, update: dict, upsert: bool = False
+    ) -> None:
         for doc in self.docs:
             if _matches(doc, flt):
                 doc.update(update.get("$set", {}))
@@ -71,7 +75,10 @@ class FakeCollection:
             new["_id"] = f"oid-{len(self.docs)}"
             self.docs.append(new)
 
-    async def find_one(self, flt: dict, projection: Any = None) -> dict | None:
+    # async to match the awaited Motor collection interface the service relies on.
+    async def find_one(  # NOSONAR python:S7503
+        self, flt: dict, projection: Any = None
+    ) -> dict | None:
         for doc in self.docs:
             if _matches(doc, flt):
                 return dict(doc)
@@ -98,11 +105,12 @@ def _uid() -> str:
     return f"itest-{uuid4().hex}"
 
 
-async def _always_connected(*_args: Any, **_kwargs: Any) -> bool:
+# async to match the awaited check_user_has_integration coroutine they replace.
+async def _always_connected(*_args: Any, **_kwargs: Any) -> bool:  # NOSONAR python:S7503
     return True
 
 
-async def _never_connected(*_args: Any, **_kwargs: Any) -> bool:
+async def _never_connected(*_args: Any, **_kwargs: Any) -> bool:  # NOSONAR python:S7503
     return False
 
 

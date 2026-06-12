@@ -25,6 +25,8 @@ from app.utils.canvas_vector_utils import search_canvas_context
 from shared.py.wide_events import log
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
+_UTC_OFFSET = "+00:00"
+_ERR_NO_USER_ID = "Error: user_id not found in config"
 
 
 async def _get_user_tz(user_id: str) -> str:
@@ -81,7 +83,7 @@ def _fire_and_forget(coro) -> None:
 def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
     """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
     try:
-        parsed = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(iso_str.replace("Z", _UTC_OFFSET))
     except ValueError:
         return None, f"Error: invalid {field_name} format '{iso_str}'."
     if parsed <= datetime.now(UTC):
@@ -163,7 +165,9 @@ async def _persist_scheduling_fields(
         update_fields["recurrence"] = recurrence
     if expires_at:
         try:
-            update_fields["expires_at"] = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            update_fields["expires_at"] = datetime.fromisoformat(
+                expires_at.replace("Z", _UTC_OFFSET)
+            )
         except ValueError:
             return f"Error: invalid expires_at format '{expires_at}'."
     await todos_collection.update_one(
@@ -236,7 +240,7 @@ def _build_clearable_datetime_update(
         update_fields[field_name] = None
         return None
     try:
-        update_fields[field_name] = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        update_fields[field_name] = datetime.fromisoformat(value.replace("Z", _UTC_OFFSET))
     except ValueError:
         return f"Error: invalid {field_name} format '{value}'."
     return None
@@ -263,7 +267,7 @@ def _build_scheduled_at_update(
         update_fields["scheduled_at"] = None
         return None
     try:
-        parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", _UTC_OFFSET))
     except ValueError:
         return f"Error: invalid scheduled_at format '{scheduled_at}'."
     if parsed_at <= datetime.now(UTC):
@@ -460,33 +464,45 @@ async def create_tracked_todo(
     ] = None,
 ) -> str:
     """
-    Create a tracked todo with VFS canvas for persistent working memory.
+    Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
 
-    These are GAIA's internal memory for long-term goals, projects, and multi-conversation
-    initiatives — NOT the user's personal action-item todos (those live in providers like
-    Todoist, Google Tasks, Apple Reminders, Gaia Todos, etc.).
+    A tracked todo shows on the user's todos page like a normal todo, but GAIA
+    owns it: it carries canvas.md (GAIA's working notes — key IDs, current state,
+    activity log, learnings) plus an optional schedule/recurrence so GAIA can act
+    on it over time. It is distinct from the user's own hand-created action items
+    (which live in providers like Todoist, Google Tasks, Apple Reminders, Gaia
+    Todos).
 
-    Use when work will span multiple conversations, expects external
-    responses, or needs future follow-up. The todo gets a VFS directory
-    with canvas.md (your brain) and log.md (system audit trail).
+    Create one ONLY when GAIA itself performs or schedules a real action on an
+    external system that it needs to remember, follow up on, or repeat: sent an
+    email and awaits a reply, created an issue, posted to Slack, scheduled
+    recurring work, or an ongoing multi-step initiative.
 
-    Do NOT use for one-shot actions with no expected follow-up.
+    Do NOT create one for read-only work — fetching, listing, searching, or
+    summarizing data — no matter how complex it is or how often it runs (a
+    recurring daily summary is still a read). Saving or persisting a summary,
+    digest, or briefing is NOT tracking: return the summary, do not store it as a
+    tracked todo. Search existing tracked todos first (search_todo_context) and
+    update a match instead of creating a duplicate.
 
     IMPORTANT: Before creating a tracked todo with scheduling (scheduled_at, recurrence),
     read the "tracked-todo-working-memory" skill first for scheduling best practices,
     canvas template guidelines, and lifecycle rules.
 
     scheduled_at: ISO datetime with the user's timezone offset (e.g., "2026-03-20T09:00:00+05:30").
-                  Always use the user's timezone offset from config, never raw 'Z' unless user says UTC.
+                  For a one-time run, or as the first-fire anchor for a delta recurrence
+                  ('daily'/'weekly'/'every_4h'). For cron recurrence, OMIT it — the first fire is
+                  computed in the user's timezone. Never use raw 'Z' unless the user says UTC.
     recurrence: How often to repeat. Options: 'daily', 'weekly', 'every_4h', or a cron expression.
-                Requires scheduled_at to also be set.
+                Cron does NOT require scheduled_at; delta shortcuts use scheduled_at as their
+                first-fire anchor.
     expires_at: ISO datetime string when this todo becomes irrelevant regardless of completion.
                 Different from due_date: due_date = deadline (overdue = still needs doing),
                 expires_at = relevance window (expired = no longer worth tracking).
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     # Recurrence is always evaluated in the user's stored timezone. We only
     # look it up here to (a) compute the first cron fire correctly and (b)
@@ -543,7 +559,7 @@ async def search_todo_context(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     matches = await search_canvas_context(
         query=query,
@@ -600,7 +616,7 @@ async def update_tracked_todo_canvas(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     if mode not in ("replace", "append", "section"):
         return f"Error: invalid mode '{mode}'. Use 'replace', 'append', or 'section'."
@@ -648,7 +664,7 @@ async def complete_tracked_todo(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     success = await tracked_todo_service.complete_tracked_todo(
         todo_id=todo_id, user_id=user_id, summary=summary
@@ -718,7 +734,7 @@ async def update_tracked_todo(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     update_fields: dict[str, object] = {}
     notes: list[str] = []
@@ -801,7 +817,7 @@ async def list_tracked_todos(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     cursor = (
         todos_collection.find(

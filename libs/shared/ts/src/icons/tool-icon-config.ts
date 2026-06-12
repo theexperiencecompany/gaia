@@ -452,6 +452,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#a78bfa",
     isImage: false,
   },
+  wait_for_subagents: {
+    icon: "Clock04Icon",
+    bgColor: "bg-yellow-500/20 backdrop-blur",
+    iconColor: "text-yellow-400",
+    bgColorRaw: "rgba(234, 179, 8, 0.2)",
+    iconColorRaw: "#facc15",
+    isImage: false,
+  },
   retrieve_tools: {
     icon: "PackageOpenIcon",
     bgColor: "bg-indigo-500/20 backdrop-blur",

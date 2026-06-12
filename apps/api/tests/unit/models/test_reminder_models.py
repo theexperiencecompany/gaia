@@ -11,7 +11,6 @@ from app.models.reminder_models import (
     CreateReminderRequest,
     CreateReminderToolRequest,
     ReminderModel,
-    ReminderProcessingAgentResult,
     ReminderResponse,
     ReminderStatus,
     StaticReminderPayload,
@@ -218,7 +217,7 @@ class TestCreateReminderRequest:
             scheduled_at=future,
             base_time=future,
         )
-        data = m.model_dump()
+        data = m.model_dump(mode="json")
         assert isinstance(data["scheduled_at"], str)
         assert isinstance(data["base_time"], str)
 
@@ -431,7 +430,7 @@ class TestUpdateReminderRequest:
     def test_serializer_datetime_to_iso(self):
         future = datetime.now(UTC) + timedelta(days=30)
         m = UpdateReminderRequest(scheduled_at=future, stop_after=future)
-        data = m.model_dump()
+        data = m.model_dump(mode="json")
         assert isinstance(data["scheduled_at"], str)
         assert isinstance(data["stop_after"], str)
 
@@ -514,35 +513,3 @@ class TestReminderResponse:
     def test_all_statuses(self, status):
         m = ReminderResponse(**self._base_data(status=status))
         assert m.status.value == status
-
-
-# ---------------------------------------------------------------------------
-# ReminderProcessingAgentResult
-# ---------------------------------------------------------------------------
-@pytest.mark.unit
-class TestReminderProcessingAgentResult:
-    def test_valid(self):
-        m = ReminderProcessingAgentResult(
-            title="Weather Update",
-            body="It will rain today",
-            message="Here is your weather update for the day...",
-        )
-        assert m.title == "Weather Update"
-        assert m.body == "It will rain today"
-        assert m.message.startswith("Here is")
-
-    def test_missing_title(self):
-        with pytest.raises(ValidationError):
-            ReminderProcessingAgentResult(body="Body", message="Message")
-
-    def test_missing_body(self):
-        with pytest.raises(ValidationError):
-            ReminderProcessingAgentResult(title="Title", message="Message")
-
-    def test_missing_message(self):
-        with pytest.raises(ValidationError):
-            ReminderProcessingAgentResult(title="Title", body="Body")
-
-    def test_all_missing(self):
-        with pytest.raises(ValidationError):
-            ReminderProcessingAgentResult()

@@ -1,14 +1,6 @@
-"""
-Middleware Factory - Centralized creation of agent middleware.
-
-Provides factory functions for creating the standard middleware stack
-used across agents (executor, comms, subagents).
-
-This module consolidates middleware creation to:
-- Avoid code duplication across build_graph.py and base_subagent.py
-- Centralize configuration (thresholds, models, etc.)
-- Make it easy to modify middleware behavior globally
-"""
+"""Factory functions for the standard agent middleware stack (executor, comms,
+subagents). Centralized here so build_graph.py and base_subagent.py share one
+configuration."""
 
 from collections.abc import Mapping
 from typing import Any
@@ -44,14 +36,8 @@ _summarization_llm: BaseChatModel | None = None
 
 
 def get_summarization_llm() -> BaseChatModel | None:
-    """
-    Get the LLM instance for summarization.
-
-    Uses Gemini Flash 2 for fast, cost-effective context summarization.
-    Returns None if Google API key is not configured.
-
-    The LLM is cached for reuse across middleware instances.
-    """
+    """Get the cached summarization LLM (Gemini Flash 2), or None if the Google
+    API key is not configured."""
     global _summarization_llm
 
     if _summarization_llm is not None:
@@ -220,14 +206,10 @@ def create_executor_middleware(
 
 
 def create_comms_middleware() -> list[Any]:
-    """
-    Create middleware stack for the comms agent.
+    """Create the middleware stack for the comms agent.
 
-    The comms agent handles user communication and delegates complex work
-    to the executor. Only includes summarization and compaction middleware.
-
-    Returns:
-        List of middleware for comms agent
+    Comms delegates complex work to the executor, so it only gets summarization
+    and compaction middleware.
     """
     return create_middleware_stack(
         agent_name="comms_agent",
@@ -238,7 +220,6 @@ def create_comms_middleware() -> list[Any]:
 
 def create_subagent_middleware(
     *,
-    todo_source: str = "subagent",
     subagent_llm: LanguageModelLike | None = None,
     subagent_tools: list[BaseTool] | None = None,
     subagent_registry: Mapping[str, BaseTool] | None = None,
@@ -258,7 +239,6 @@ def create_subagent_middleware(
     SubagentMiddleware itself which excludes spawn_subagent from child tools).
 
     Args:
-        todo_source: Kept for API compatibility (unused — todo source set in todo_tools)
         subagent_llm: LLM for spawned sub-subagent execution
         subagent_tools: Tools available to spawned sub-subagents
         subagent_registry: Alternative tool registry for spawned sub-subagents

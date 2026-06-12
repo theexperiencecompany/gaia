@@ -70,6 +70,6 @@ export const getCaretCoordinates = (
     height: lineHeight,
   };
 
-  document.body.removeChild(div);
+  div.remove();
   return coords;
 };

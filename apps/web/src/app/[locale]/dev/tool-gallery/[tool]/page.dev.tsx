@@ -12,7 +12,6 @@ import CalendarEventSection from "@/features/chat/components/bubbles/bot/Calenda
 import CodeExecutionSection from "@/features/chat/components/bubbles/bot/CodeExecutionSection";
 import ContactListSection from "@/features/chat/components/bubbles/bot/ContactListSection";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
-import DocumentSection from "@/features/chat/components/bubbles/bot/DocumentSection";
 import EmailComposeSection from "@/features/chat/components/bubbles/bot/EmailComposeSection";
 import EmailSentSection from "@/features/chat/components/bubbles/bot/EmailSentSection";
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
@@ -27,6 +26,7 @@ import RedditCommentSection from "@/features/chat/components/bubbles/bot/RedditC
 import RedditPostSection from "@/features/chat/components/bubbles/bot/RedditPostSection";
 import RedditSearchSection from "@/features/chat/components/bubbles/bot/RedditSearchSection";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
+import SendNotificationSection from "@/features/chat/components/bubbles/bot/SendNotificationSection";
 import SupportTicketSection from "@/features/chat/components/bubbles/bot/SupportTicketSection";
 import TodoProgressSection from "@/features/chat/components/bubbles/bot/TodoProgressSection";
 import TodoSection from "@/features/chat/components/bubbles/bot/TodoSection";
@@ -124,9 +124,6 @@ function GalleryRenderer({ fixture }: { fixture: ToolFixture }): JSX.Element {
         />
       );
     }
-    case "document_data":
-      // biome-ignore lint/suspicious/noExplicitAny: gallery-only
-      return <DocumentSection document_data={data as any} />;
     case "google_docs_data":
       // biome-ignore lint/suspicious/noExplicitAny: gallery-only
       return <GoogleDocsSection google_docs_data={data as any} />;
@@ -189,6 +186,11 @@ function GalleryRenderer({ fixture }: { fixture: ToolFixture }): JSX.Element {
         />
       );
     }
+    case "send_notification_data":
+      return (
+        // biome-ignore lint/suspicious/noExplicitAny: gallery-only
+        <SendNotificationSection send_notification_data={data as any} />
+      );
     case "rate_limit_data":
       // biome-ignore lint/suspicious/noExplicitAny: gallery-only
       return <RateLimitCard data={data as any} />;

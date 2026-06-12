@@ -46,13 +46,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libdrm2 libxcomposite1 libxdamage1 libxrandr2 \
     libgbm1 libasound2 libdbus-1-3 \
     tesseract-ocr \
-    pandoc \
-    texlive-xetex \
-    texlive-fonts-recommended \
-    texlive-latex-recommended \
-    texlive-latex-extra \
-    lmodern \
-    texlive-plain-generic \
     fuse3 \
     postgresql-client \
     curl

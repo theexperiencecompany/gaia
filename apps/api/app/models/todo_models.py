@@ -141,13 +141,6 @@ class ProjectCreate(ProjectBase):
     pass
 
 
-class ProjectModel(ProjectBase):
-    """Model with timestamps"""
-
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-
 class UpdateProjectRequest(BaseModel):
     """Model for updating projects - all fields optional"""
 

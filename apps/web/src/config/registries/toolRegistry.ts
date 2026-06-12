@@ -17,7 +17,10 @@ import type {
   EmailThreadData,
   PeopleSearchData,
 } from "@/types/features/mailTypes";
-import type { NotificationRecord } from "@/types/features/notificationTypes";
+import type {
+  NotificationRecord,
+  SendNotificationData,
+} from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
 import type {
   DeepResearchResults,
@@ -29,7 +32,6 @@ import type { TodoToolData } from "@/types/features/todoToolTypes";
 import type {
   ArtifactData,
   CodeData,
-  DocumentData,
   GoalDataMessageType,
   GoogleDocsData,
   WorkflowCreatedData,
@@ -140,12 +142,12 @@ export const TOOL_REGISTRY = {
   calendar_list_fetch_data: null as unknown as CalendarListFetchData[],
   support_ticket_data: null as unknown as SupportTicketData[],
   reddit_data: null as unknown as RedditData,
-  document_data: null as unknown as DocumentData,
   google_docs_data: null as unknown as GoogleDocsData,
   code_data: null as unknown as CodeData,
   todo_data: null as unknown as TodoToolData,
   goal_data: null as unknown as GoalDataMessageType,
   notification_data: null as unknown as { notifications: NotificationRecord[] },
+  send_notification_data: null as unknown as SendNotificationData,
   integration_connection_required: null as unknown as IntegrationConnectionData,
   integration_list_data: null as unknown as IntegrationListStreamData,
   tool_calls_data: null as unknown as ToolCallEntry[],

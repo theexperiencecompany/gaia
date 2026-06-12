@@ -1,6 +1,6 @@
 """Unit tests for calendar Pydantic models."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from pydantic import ValidationError
 import pytest
@@ -12,13 +12,12 @@ from app.models.calendar_models import (
     BatchEventDeleteRequest,
     BatchEventUpdateRequest,
     CalendarEventsQueryRequest,
-    CalendarEventToolRequest,
+    # CalendarEventToolRequest,  # Unwired as of 2026-06; see calendar_models.py
     CalendarPreferencesUpdateRequest,
     CreateEventInput,
     DeleteEventInput,
     EventCreateRequest,
     EventDeleteRequest,
-    EventLookupRequest,
     EventReference,
     EventUpdateRequest,
     FetchEventsInput,
@@ -129,38 +128,6 @@ class TestEventDeleteRequest:
     def test_missing_event_id(self):
         with pytest.raises(ValidationError):
             EventDeleteRequest()
-
-
-# ---------------------------------------------------------------------------
-# EventLookupRequest
-# ---------------------------------------------------------------------------
-@pytest.mark.unit
-class TestEventLookupRequest:
-    def test_valid_with_both_ids(self):
-        m = EventLookupRequest(event_id="evt1", calendar_id="cal1")
-        assert m.event_id == "evt1"
-        assert m.calendar_id == "cal1"
-        assert m.query is None  # query is cleared when both IDs provided
-
-    def test_valid_with_query(self):
-        m = EventLookupRequest(query="team standup")
-        assert m.query == "team standup"
-
-    def test_both_ids_clears_query(self):
-        m = EventLookupRequest(event_id="evt1", calendar_id="cal1", query="ignored")
-        assert m.query is None
-
-    def test_only_event_id_raises(self):
-        with pytest.raises(ValidationError, match="Both event_id and calendar_id"):
-            EventLookupRequest(event_id="evt1")
-
-    def test_only_calendar_id_raises(self):
-        with pytest.raises(ValidationError, match="Both event_id and calendar_id"):
-            EventLookupRequest(calendar_id="cal1")
-
-    def test_no_fields_raises(self):
-        with pytest.raises(ValidationError, match="Either both event_id"):
-            EventLookupRequest()
 
 
 # ---------------------------------------------------------------------------
@@ -424,176 +391,6 @@ class TestBaseCalendarEvent:
     def test_missing_summary(self):
         with pytest.raises(ValidationError):
             BaseCalendarEvent()
-
-
-# ---------------------------------------------------------------------------
-# CalendarEventToolRequest
-# ---------------------------------------------------------------------------
-@pytest.mark.unit
-class TestCalendarEventToolRequest:
-    def test_valid_timed_absolute(self):
-        m = CalendarEventToolRequest(
-            summary="Meeting",
-            time_str="2025-06-01T10:00:00",
-            duration_minutes=60,
-        )
-        assert m.time_str == "2025-06-01T10:00:00"
-        assert m.duration_minutes == 60
-
-    def test_valid_timed_relative(self):
-        m = CalendarEventToolRequest(
-            summary="Meeting",
-            time_str="+02:30",
-        )
-        assert m.time_str == "+02:30"
-
-    def test_valid_all_day(self):
-        m = CalendarEventToolRequest(
-            summary="Holiday",
-            is_all_day=True,
-        )
-        assert m.is_all_day is True
-
-    def test_timed_missing_time_str(self):
-        with pytest.raises(ValidationError, match="time_str is required"):
-            CalendarEventToolRequest(summary="Meeting", is_all_day=False)
-
-    def test_invalid_relative_format(self):
-        with pytest.raises(ValidationError, match="Relative time offset"):
-            CalendarEventToolRequest(summary="Meeting", time_str="+2:30")
-
-    def test_invalid_absolute_time(self):
-        with pytest.raises(ValidationError, match="Invalid time format"):
-            CalendarEventToolRequest(summary="Meeting", time_str="not-a-time")
-
-    @pytest.mark.parametrize("offset", ["+05:30", "-08:00", "+00:00", "-12:00"])
-    def test_valid_timezone_offsets(self, offset):
-        m = CalendarEventToolRequest(
-            summary="Meeting",
-            time_str="2025-06-01T10:00:00",
-            timezone_offset=offset,
-        )
-        assert m.timezone_offset == offset
-
-    @pytest.mark.parametrize("offset", ["5:30", "UTC", "+5", "05:30", "abc"])
-    def test_invalid_timezone_offsets(self, offset):
-        with pytest.raises(ValidationError, match="Timezone offset must be"):
-            CalendarEventToolRequest(
-                summary="Meeting",
-                time_str="2025-06-01T10:00:00",
-                timezone_offset=offset,
-            )
-
-    def test_duration_min_boundary(self):
-        m = CalendarEventToolRequest(
-            summary="Quick",
-            time_str="2025-06-01T10:00:00",
-            duration_minutes=1,
-        )
-        assert m.duration_minutes == 1
-
-    def test_duration_zero_invalid(self):
-        with pytest.raises(ValidationError):
-            CalendarEventToolRequest(
-                summary="Quick",
-                time_str="2025-06-01T10:00:00",
-                duration_minutes=0,
-            )
-
-    def test_default_duration(self):
-        m = CalendarEventToolRequest(
-            summary="Meeting",
-            time_str="2025-06-01T10:00:00",
-        )
-        assert m.duration_minutes == 30
-
-    def test_event_date_all_day_no_time_str(self):
-        m = CalendarEventToolRequest(summary="Holiday", is_all_day=True)
-        date = m.event_date
-        # Should return today's date
-        assert date == datetime.now().strftime("%Y-%m-%d")
-
-    def test_event_date_absolute_time(self):
-        m = CalendarEventToolRequest(
-            summary="Meeting",
-            time_str="2025-06-15T10:00:00",
-        )
-        assert m.event_date == "2025-06-15"
-
-    def test_event_date_relative_time(self):
-        m = CalendarEventToolRequest(
-            summary="Soon",
-            time_str="+01:00",
-        )
-        assert m.event_date == datetime.now().strftime("%Y-%m-%d")
-
-    def test_absolute_time_with_space(self):
-        m = CalendarEventToolRequest(
-            summary="Meeting",
-            time_str="2025-06-01 10:00:00",
-        )
-        assert m.time_str == "2025-06-01 10:00:00"
-
-
-# ---------------------------------------------------------------------------
-# CalendarEventToolRequest.process_times
-# ---------------------------------------------------------------------------
-@pytest.mark.unit
-class TestCalendarEventToolRequestProcessTimes:
-    def test_all_day_event(self):
-        m = CalendarEventToolRequest(summary="Holiday", is_all_day=True)
-        user_time = "2025-06-01T10:00:00+05:30"
-        result = m.process_times(user_time)
-        assert isinstance(result, EventCreateRequest)
-        assert result.is_all_day is True
-
-    def test_relative_time(self):
-        m = CalendarEventToolRequest(summary="Later", time_str="+02:00", duration_minutes=45)
-        user_time = "2025-06-01T10:00:00+05:30"
-        result = m.process_times(user_time)
-        assert isinstance(result, EventCreateRequest)
-        start = datetime.fromisoformat(result.start)
-        end = datetime.fromisoformat(result.end)
-        assert (end - start) == timedelta(minutes=45)
-
-    def test_absolute_time_with_user_tz(self):
-        m = CalendarEventToolRequest(
-            summary="Meeting",
-            time_str="2025-06-15T14:00:00",
-            duration_minutes=60,
-        )
-        user_time = "2025-06-15T10:00:00+05:30"
-        result = m.process_times(user_time)
-        start = datetime.fromisoformat(result.start)
-        assert start.tzinfo is not None
-
-    def test_absolute_time_with_explicit_tz_offset(self):
-        m = CalendarEventToolRequest(
-            summary="Meeting",
-            time_str="2025-06-15T14:00:00",
-            duration_minutes=60,
-            timezone_offset="-08:00",
-        )
-        user_time = "2025-06-15T10:00:00+05:30"
-        result = m.process_times(user_time)
-        start = datetime.fromisoformat(result.start)
-        assert start.utcoffset() == timedelta(hours=-8)
-
-    def test_process_times_preserves_fields(self):
-        rule = RecurrenceRule(frequency="DAILY")
-        m = CalendarEventToolRequest(
-            summary="Recurring",
-            time_str="+01:00",
-            recurrence=RecurrenceData(rrule=rule),
-            attendees=["a@b.com"],
-            create_meeting_room=True,
-        )
-        user_time = "2025-06-01T10:00:00+00:00"
-        result = m.process_times(user_time)
-        assert result.summary == "Recurring"
-        assert result.recurrence is not None
-        assert result.attendees == ["a@b.com"]
-        assert result.create_meeting_room is True
 
 
 # ---------------------------------------------------------------------------

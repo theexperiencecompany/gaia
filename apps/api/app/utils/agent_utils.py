@@ -1,23 +1,16 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 import json
-from typing import Any, TypedDict, cast
-from uuid import uuid4
+from typing import Any, TypedDict
 
 from langchain_core.messages import ToolCall
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
+from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.mongodb.collections import integrations_collection
 from app.decorators.caching import Cacheable
-from app.models.chat_models import (
-    MessageModel,
-    ToolDataEntry,
-    UpdateMessagesRequest,
-    tool_fields,
-)
 from app.services.chat.chunks import extract_tool_data
-from app.services.conversation_service import update_messages
 from shared.py.wide_events import log
 
 # Type for the stream_writer callable used across agent execution paths.
@@ -128,17 +121,12 @@ async def emit_subagent_tool_calls(
 ) -> None:
     """Emit tool_data events for each tool call made inside a spawned subagent.
 
-    Called from SubagentMiddleware._execute_subagent before parallel tool
-    invocation so the frontend can show tools as they are dispatched.
-
     Reuses ``format_tool_call_entry`` so categories, icons, and special-tool
-    display names match the post-execution emission path exactly — without
-    that, e.g. ``vfs_read`` would render with its raw tool name as the
-    category (wrench icon) instead of ``filesystem`` (FolderFileStorageIcon).
+    display names match the post-execution path; otherwise e.g. ``vfs_read``
+    renders with its raw name as the category instead of ``filesystem``.
 
-    When ``user_id`` is provided, MCP tool calls resolve their integration
-    metadata (icon, integration name) via the user's MCPClient — required
-    after the cross-user-leak fix removed MCP tools from the global registry.
+    With ``user_id``, MCP tool calls resolve their integration metadata via
+    the user's MCPClient (MCP tools no longer live in the global registry).
     """
     for tc in tool_calls:
         entry = await format_tool_call_entry(tc, user_id=user_id)
@@ -154,24 +142,21 @@ async def format_tool_call_entry(
     integration_name: str | None = None,
     user_id: str | None = None,
 ) -> dict | None:
-    """Format tool call as tool_data entry for frontend streaming.
+    """Format a tool call as a tool_data entry for frontend streaming.
 
-    Creates a unified tool_data entry that the frontend can directly append
-    to the message's tool_data array. This is emitted once per tool call
-    from the 'updates' stream when complete args are available.
+    Emitted once per tool call from the 'updates' stream when complete args
+    are available; the frontend appends it to the message's tool_data array.
 
     Args:
-        tool_call: LangChain ToolCall object containing tool execution details
-        icon_url: Optional icon URL for custom integrations
-        integration_id: Optional integration ID to use as category (for custom MCPs)
-        integration_name: Optional friendly name for display (e.g., 'Researcher')
-        user_id: Optional user ID used to resolve MCP tool provenance via the
-            user's MCPClient — required for MCP-tool icons / names after the
-            cross-user-leak fix moved MCP tools out of the global registry.
+        tool_call: LangChain ToolCall object.
+        icon_url: Icon URL for custom integrations.
+        integration_id: Integration ID to use as category (for custom MCPs).
+        integration_name: Friendly display name (e.g. 'Researcher').
+        user_id: Used to resolve MCP tool provenance via the user's MCPClient
+            (MCP tools no longer live in the global registry).
 
     Returns:
-        Dictionary in tool_data entry format with tool_name="tool_calls_data",
-        or None if tool name is missing
+        tool_data entry dict, or None if the tool name is missing.
     """
     tool_registry = await get_tool_registry()
     tool_name_raw = tool_call.get("name")
@@ -183,13 +168,14 @@ async def format_tool_call_entry(
     # Special tools with custom display names and categories
     # Format: (category, display_name, show_category)
     special_tools = {
-        "retrieve_tools": ("retrieve_tools", "Retrieving tools", False),
+        "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
         "call_executor": ("executor", "Delegating to executor", False),
         "handoff": ("handoff", None, False),  # message will be set from args
-        "spawn_subagent": ("spawn_subagent", "Spawning subagent", False),
-        "plan_tasks": ("plan_tasks", "Planning tasks", True),
-        "update_tasks": ("plan_tasks", "Updating tasks", True),
-        "finish_task": ("finish_task", "Finishing task", False),
+        "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
+        "wait_for_subagents": ("wait_for_subagents", "Wait for subagents", False),
+        "plan_tasks": ("plan_tasks", "Plan tasks", False),
+        "update_tasks": ("plan_tasks", "Update tasks", False),
+        "finish_task": ("finish_task", "Finish task", False),
     }
 
     if tool_name_raw in special_tools:
@@ -226,8 +212,13 @@ async def format_tool_call_entry(
             if tool_category and tool_category.startswith("mcp_"):
                 tool_category = tool_category[4:]
 
-        tool_display_name = tool_name_raw.replace("_", " ").title()
-        show_category = True
+        tool_display_name = humanize_tool_name(tool_name_raw, tool_category)
+        # show_category=False marks "the primary is a custom/curated label" (the
+        # tool name isn't already in the primary text). The frontend uses this as
+        # the single signal: the live LoadingIndicator drops the "Category:" prefix,
+        # and the tool thread shows the raw tool name as the secondary line. When
+        # uncurated, the primary IS the tool name, so the category is shown instead.
+        show_category = tool_name_raw not in TOOL_DISPLAY_NAMES
 
         # When a core tool runs inside an MCP subagent, also drop the
         # integration's icon_url / display name so the secondary label
@@ -351,49 +342,19 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
 
 
 def format_sse_response(content: str) -> str:
-    """Format text content as Server-Sent Events (SSE) response.
-
-    Wraps content in the standard SSE data format with JSON encoding
-    for transmission to frontend clients via EventSource connections.
-
-    Args:
-        content: Text content to be streamed to the client
-
-    Returns:
-        SSE-formatted string with 'data:' prefix and proper line endings
-    """
+    """Wrap text content as a JSON-encoded SSE ``data:`` line."""
     return f"data: {json.dumps({'response': content})}\n\n"
 
 
 def format_sse_data(data: dict) -> str:
-    """Format structured data as Server-Sent Events (SSE) response.
-
-    Converts dictionary data to JSON and wraps it in SSE format for
-    streaming structured information like tool progress, errors, or
-    custom events to frontend clients.
-
-    Args:
-        data: Dictionary containing structured data to stream
-
-    Returns:
-        SSE-formatted string with JSON-encoded data and proper line endings
-    """
+    """Wrap a dict as a JSON-encoded SSE ``data:`` line."""
     return f"data: {json.dumps(data)}\n\n"
 
 
 def process_custom_event_for_tools(payload) -> dict:
-    """Extract and process tool execution data from custom LangGraph events.
+    """Extract tool execution data from a custom LangGraph event payload.
 
-    Safely processes custom event payloads from LangGraph streams to extract
-    tool execution results and data. Handles serialization and delegates to
-    the chat service for tool-specific data extraction.
-
-    Args:
-        payload: Raw event payload from LangGraph custom events
-
-    Returns:
-        Dictionary containing extracted tool data, or empty dict if
-        extraction fails or no data is available
+    Returns the extracted tool data, or an empty dict on failure / no data.
     """
     try:
         serialized = json.dumps(payload) if payload else "{}"
@@ -402,84 +363,3 @@ def process_custom_event_for_tools(payload) -> dict:
     except Exception as e:
         log.error(f"Error extracting tool data: {e}")
         return {}
-
-
-async def store_agent_progress(
-    conversation_id: str, user_id: str, current_message: str, current_tool_data: dict
-) -> None:
-    """Store agent execution progress in real-time.
-
-    Generic function for storing bot messages during agent execution.
-    Works for any agent execution - workflows, normal chat, etc.
-    Only stores messages that have meaningful content (message text or tool data).
-
-    Args:
-        conversation_id: Conversation ID for storage
-        user_id: User ID for authorization
-        current_message: Current accumulated LLM response
-        current_tool_data: Current accumulated tool outputs (can contain both unified tool_data and legacy individual fields)
-    """
-    log.set(conversation_id=conversation_id, user_id=user_id)
-    try:
-        # Check if there's meaningful content
-        has_tool_data = False
-        if current_tool_data:
-            # Check for unified tool_data format
-            if current_tool_data.get("tool_data") or any(current_tool_data.values()):
-                has_tool_data = True
-
-        has_content = current_message.strip() or has_tool_data
-
-        if not has_content:
-            return  # Skip storing empty messages
-
-        # Create bot message using same pattern as chat_service.py
-        bot_message = MessageModel(
-            type="bot",
-            response=current_message,
-            date=datetime.now(UTC).isoformat(),
-            message_id=str(uuid4()),
-        )
-
-        # Handle tool data in unified format
-        if current_tool_data:
-            # If we have unified tool_data, use it directly
-            if "tool_data" in current_tool_data:
-                bot_message.tool_data = current_tool_data["tool_data"]
-            else:
-                # Legacy support: convert individual fields to unified format
-                tool_data_entries = []
-                timestamp = datetime.now(UTC).isoformat()
-
-                # Convert individual tool fields to unified ToolDataEntry format using tool_fields list
-                for field_name in tool_fields:
-                    if (
-                        field_name in current_tool_data
-                        and current_tool_data[field_name] is not None
-                    ):
-                        tool_entry = {
-                            "tool_name": field_name,
-                            "data": current_tool_data[field_name],
-                            "timestamp": timestamp,
-                        }
-                        tool_data_entries.append(tool_entry)
-
-                if tool_data_entries:
-                    bot_message.tool_data = cast(list[ToolDataEntry], tool_data_entries)
-
-            # Handle follow_up_actions separately (it's a core field, not tool data)
-            if "follow_up_actions" in current_tool_data:
-                bot_message.follow_up_actions = current_tool_data["follow_up_actions"]
-
-        # Store immediately using existing service
-        await update_messages(
-            UpdateMessagesRequest(
-                conversation_id=conversation_id,
-                messages=[bot_message],
-            ),
-            user={"user_id": user_id},
-        )
-
-    except Exception as e:
-        # Don't break agent execution for storage failures
-        log.error(f"Failed to store agent progress: {e!s}")

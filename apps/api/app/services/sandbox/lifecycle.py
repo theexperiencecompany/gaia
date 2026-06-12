@@ -172,6 +172,10 @@ async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
         log.warning(f"[sandbox] ephemeral /workspace fallback: {stderr.strip()}")
 
 
+# NOSONAR python:S7483 — `timeout` is the E2B server-side command timeout
+# forwarded to `sbx.commands.run`; it kills the remote process, which an
+# asyncio.timeout() context manager (which only cancels the local coroutine)
+# cannot do.
 async def _run_silent(sbx: Any, cmd: str, *, timeout: int = 10) -> tuple[int, str, str]:
     """Run a command, returning (exit_code, stdout, stderr) without raising.
 
@@ -254,7 +258,7 @@ async def _try_connect_or_resume(sandbox_id: str) -> Any | None:
                 continue
             try:
                 return await asyncio.wait_for(method(sandbox_id), timeout=10)
-            except (TimeoutError, Exception) as e:
+            except Exception as e:
                 log.info(
                     f"AsyncSandbox.{method_name}({sandbox_id}) failed: {e}",
                 )
@@ -313,6 +317,52 @@ async def _seed_user_subtrees(user_id: str) -> None:
         return
 
 
+async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> PooledSandbox | None:
+    """Return a healthy cached PooledSandbox, or None if it must be recreated.
+
+    Evicts the cached entry when it is unhealthy or its canary is stale.
+    """
+    pool = get_sandbox_pool()
+    entry = pool.get(user_id)
+    if entry is None or entry.sandbox is None:
+        return None
+
+    if entry.pause_task is not None and not entry.pause_task.done():
+        entry.pause_task.cancel()
+        entry.pause_task = None
+
+    # Cheap liveness check first — if the cached handle is stale (sandbox
+    # was paused / killed since we last touched it), evict and create
+    # fresh. Otherwise we'd hang for the full command timeout below.
+    if not await _health_probe(entry.sandbox):
+        log.info(f"[sandbox] cached handle unhealthy for {user_id}; evicting")
+        await _hard_evict(user_id, entry)
+        return None
+
+    await _ensure_mounted(entry.sandbox, mount_env)
+    if not await _verify_canary_or_die(entry):
+        log.warning(f"Canary stale for user {user_id}; recreating sandbox")
+        await _hard_evict(user_id, entry)
+        return None
+
+    await _ensure_watcher(user_id, entry)
+    return entry
+
+
+async def _resume_existing_sandbox(doc: dict[str, Any], mount_env: dict[str, str]) -> Any | None:
+    """Try to connect/resume a recorded sandbox; return None if unusable."""
+    sbx = await _try_connect_or_resume(doc["sandbox_id"])
+    if sbx is not None and not await _health_probe(sbx):
+        log.info(
+            f"[sandbox] resumed sandbox {doc['sandbox_id']} still unhealthy "
+            f"after connect/resume; falling through to fresh create"
+        )
+        sbx = None
+    if sbx is not None:
+        await _ensure_mounted(sbx, mount_env)
+    return sbx
+
+
 async def _acquire_or_create(user_id: str) -> PooledSandbox:
     """Return a PooledSandbox for the user, creating/resuming as needed."""
     pool = get_sandbox_pool()
@@ -321,27 +371,9 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     # stale FUSE without resorting to sandbox-wide credential env vars.
     mount_env = _mount_env(user_id, shard_id)
 
-    entry = pool.get(user_id)
-    if entry is not None and entry.sandbox is not None:
-        if entry.pause_task is not None and not entry.pause_task.done():
-            entry.pause_task.cancel()
-            entry.pause_task = None
-        # Cheap liveness check first — if the cached handle is stale (sandbox
-        # was paused / killed since we last touched it), evict and create
-        # fresh. Otherwise we'd hang for the full command timeout below.
-        if not await _health_probe(entry.sandbox):
-            log.info(f"[sandbox] cached handle unhealthy for {user_id}; evicting")
-            await _hard_evict(user_id, entry)
-            entry = None  # type: ignore[assignment]
-        else:
-            await _ensure_mounted(entry.sandbox, mount_env)
-            if not await _verify_canary_or_die(entry):
-                log.warning(f"Canary stale for user {user_id}; recreating sandbox")
-                await _hard_evict(user_id, entry)
-                entry = None  # type: ignore[assignment]
-            else:
-                await _ensure_watcher(user_id, entry)
-                return entry
+    cached = await _reuse_cached_entry(user_id, mount_env)
+    if cached is not None:
+        return cached
 
     doc = await e2b_sandboxes_collection.find_one({"user_id": user_id})
 
@@ -349,16 +381,8 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     workspace_version = 0
 
     if doc and doc.get("sandbox_id"):
-        sbx = await _try_connect_or_resume(doc["sandbox_id"])
+        sbx = await _resume_existing_sandbox(doc, mount_env)
         workspace_version = doc.get("workspace_version", 0)
-        if sbx is not None and not await _health_probe(sbx):
-            log.info(
-                f"[sandbox] resumed sandbox {doc['sandbox_id']} still unhealthy "
-                f"after connect/resume; falling through to fresh create"
-            )
-            sbx = None
-        if sbx is not None:
-            await _ensure_mounted(sbx, mount_env)
 
     if sbx is None:
         # Pre-create the per-user subtrees host-side so the sandbox's
@@ -396,28 +420,28 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     return entry
 
 
-async def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
+def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
     """Pause the sandbox after the idle window if no further work arrives."""
 
     async def _pause_after_delay() -> None:
-        try:
-            await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
-            if entry.refcount > 0:
-                return
-            pause = getattr(entry.sandbox, "pause", None)
-            if pause is None:
-                return
-            await _stop_watcher(entry)
-            try:
-                await pause()
-                await e2b_sandboxes_collection.update_one(
-                    {"user_id": user_id},
-                    {"$set": {"state": "paused", "paused_at": _now()}},
-                )
-            except Exception as e:
-                log.warning(f"Pause failed for user {user_id}: {e}")
-        except asyncio.CancelledError:
+        # CancelledError (from the sleep or the pause) propagates naturally — the
+        # inner ``except Exception`` never catches it — so the idle-pause task
+        # cancels cleanly when work arrives.
+        await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
+        if entry.refcount > 0:
             return
+        pause = getattr(entry.sandbox, "pause", None)
+        if pause is None:
+            return
+        await _stop_watcher(entry)
+        try:
+            await pause()
+            await e2b_sandboxes_collection.update_one(
+                {"user_id": user_id},
+                {"$set": {"state": "paused", "paused_at": _now()}},
+            )
+        except Exception as e:
+            log.warning(f"Pause failed for user {user_id}: {e}")
 
     entry.pause_task = asyncio.create_task(_pause_after_delay())
 
@@ -495,6 +519,6 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[Any]:
                 {"$set": {"last_used_at": _now()}},
             )
             if entry.refcount <= 0:
-                await _schedule_pause(user_id, entry)
+                _schedule_pause(user_id, entry)
     finally:
         lock.release()

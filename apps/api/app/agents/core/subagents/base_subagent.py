@@ -1,16 +1,8 @@
-"""
-Base sub-agent factory for creating provider-specific agents.
+"""Factory for provider-specific sub-agents.
 
-This module provides the core framework for building specialized sub-agents
-that can handle specific tool categories with deep domain expertise.
-
-Subagents are now standalone graphs with their own checkpointers,
-invoked via tool-calling pattern similar to executor_agent.
-
-MEMORY LEARNING: Each subagent has memory_learning_node as an end_graph_hook.
-This allows subagents to learn both:
-- User memories: IDs, preferences, contacts - stored per user
-Both are stored in separate mem0 namespaces and don't interfere.
+Subagents are standalone graphs with their own checkpointers, invoked via the
+tool-calling pattern like executor_agent. Each runs memory_node as an
+end_graph_hook to learn user memories (IDs, preferences, contacts) per user.
 """
 
 import asyncio
@@ -128,12 +120,11 @@ class SubAgentFactory:
                 `disable_retrieve_tools`. Reduces latency for
                 frequently-used tools.
             include_finish_task: When True (default), the subagent gets the
-                `finish_task` tool which it calls to signal completion.
-                When False, finish_task is omitted and the subagent
-                terminates naturally with an AIMessage; the streaming
-                layer captures that text as the final answer. Use False
-                for answer-only subagents like documentation/knowledge
-                fetchers where finish_task adds latency without value.
+                `finish_task` tool to signal completion. When False, it
+                terminates with a normal AIMessage that the streaming layer
+                captures as the final answer. Use False for answer-only
+                subagents (e.g. documentation fetchers) where finish_task adds
+                latency without value.
 
         Returns:
             Compiled LangGraph agent with tool registry, retrieval, and checkpointer
@@ -161,7 +152,6 @@ class SubAgentFactory:
         full_tool_dict = tool_registry.get_tool_dict()
 
         middleware = create_subagent_middleware(
-            todo_source=provider,
             subagent_llm=llm,
             subagent_registry=full_tool_dict,
             subagent_tool_space=tool_space,

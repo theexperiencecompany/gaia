@@ -7,10 +7,11 @@ functions that run identically locally and in CI.
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Annotated
 
 import dagger
-from dagger import Doc, DefaultPath, Ignore, dag, function, object_type
+from dagger import DefaultPath, Doc, Ignore, dag, function, object_type
 
 # Patterns excluded from the source context for all functions.
 # Keep this tight -- unnecessary files slow down the filesync to the engine.
@@ -177,9 +178,7 @@ class GaiaCi:
         """Build all projects."""
         return await (
             self.ci_env(source)
-            .with_env_variable(
-                "NEXT_PUBLIC_API_BASE_URL", "http://fake-api-for-build.example.com"
-            )
+            .with_env_variable("NEXT_PUBLIC_API_BASE_URL", "http://fake-api-for-build.example.com")
             .with_exec(["npx", "nx", "run-many", "-t", "build", "--parallel=3"])
             .stdout()
         )
@@ -196,54 +195,58 @@ class GaiaCi:
             sections.append(f"{'=' * 60}\n {label}\n{'=' * 60}\n{output}")
         return "\n\n".join(sections)
 
+    @staticmethod
+    def _assert_pytest_passed(output: str) -> None:
+        """Fail on a real pytest failure using pytest's own exit code.
+
+        The container appends `GAIA_PYTEST_EXIT=<code>` as the final stdout line.
+        We key off that authoritative code rather than grepping a summary line
+        that Dagger can truncate from long logs. A missing sentinel means the run
+        never finished cleanly (e.g. an xdist worker crash) and is a failure.
+        """
+        codes = re.findall(r"GAIA_PYTEST_EXIT=(\d+)", output)
+        if not codes:
+            raise RuntimeError(
+                "pytest did not report an exit code — the run was interrupted "
+                "(worker crash or container error), treating as a failure."
+            )
+        code = int(codes[-1])
+        if code != 0:
+            raise RuntimeError(f"pytest failed with exit code {code}.")
+
     @function
     async def test_python(self, source: Source) -> str:
         """Run all Python tests with live service containers and pytest-xdist."""
-        return await (
+        pytest_cmd = (
+            "uv run --frozen pytest -n auto -m 'not composio' "
+            "--tb=short -q --override-ini=addopts=--strict-markers"
+        )
+        output = await (
             self._service_test_container(source)
-            .with_exec(
-                [
-                    "uv",
-                    "run",
-                    "--frozen",
-                    "pytest",
-                    "-n",
-                    "auto",
-                    "-m",
-                    "not composio",
-                    "--tb=short",
-                    "-q",
-                    "--override-ini=addopts=--strict-markers",
-                ]
-            )
+            # Run pytest, then emit its real exit code as the final line. The shell
+            # exits 0 so Dagger returns the full (untruncated) stdout instead of an
+            # ExecError; this function fails itself on a non-zero pytest code.
+            .with_exec(["sh", "-c", f'{pytest_cmd}; echo "GAIA_PYTEST_EXIT=$?"'])
             .stdout()
         )
+        self._assert_pytest_passed(output)
+        return output
 
     @function
     async def test_python_coverage(self, source: Source) -> str:
         """Run all Python tests with live services and coverage reporting."""
-        return await (
+        pytest_cmd = (
+            "uv run --frozen pytest -n auto -m 'not composio' --tb=short -q "
+            "--cov=app --cov-report=term-missing --cov-fail-under=80 "
+            "--override-ini=addopts=--strict-markers"
+        )
+        output = await (
             self._service_test_container(source)
-            .with_exec(
-                [
-                    "uv",
-                    "run",
-                    "--frozen",
-                    "pytest",
-                    "-n",
-                    "auto",
-                    "-m",
-                    "not composio",
-                    "--tb=short",
-                    "-q",
-                    "--cov=app",
-                    "--cov-report=term-missing",
-                    "--cov-fail-under=80",
-                    "--override-ini=addopts=--strict-markers",
-                ]
-            )
+            .with_exec(["sh", "-c", f'{pytest_cmd}; echo "GAIA_PYTEST_EXIT=$?"'])
             .stdout()
         )
+        self._assert_pytest_passed(output)
+        return output
 
     @function
     async def test_typescript(self, source: Source, projects: str = "") -> str:
@@ -251,9 +254,7 @@ class GaiaCi:
         cmd = ["npx", "nx", "run-many", "-t", "test", "--parallel=3"]
         if projects:
             cmd.extend(["-p", projects])
-        return await (
-            self.ci_env(source).with_env_variable("ENV", "test").with_exec(cmd).stdout()
-        )
+        return await self.ci_env(source).with_env_variable("ENV", "test").with_exec(cmd).stdout()
 
     @function
     async def dead_code(self, source: Source) -> str:
@@ -319,22 +320,12 @@ class GaiaCi:
     @function
     def chroma_service(self) -> dagger.Service:
         """Start a ChromaDB service container."""
-        return (
-            dag.container()
-            .from_("chromadb/chroma:latest")
-            .with_exposed_port(8000)
-            .as_service()
-        )
+        return dag.container().from_("chromadb/chroma:latest").with_exposed_port(8000).as_service()
 
     @function
     def rabbitmq_service(self) -> dagger.Service:
         """Start a RabbitMQ 3 service container."""
-        return (
-            dag.container()
-            .from_("rabbitmq:3-alpine")
-            .with_exposed_port(5672)
-            .as_service()
-        )
+        return dag.container().from_("rabbitmq:3-alpine").with_exposed_port(5672).as_service()
 
     def _service_test_container(self, source: Source) -> dagger.Container:
         """Create a test container wired to all live service containers.
@@ -454,9 +445,7 @@ class GaiaCi:
         source: Source,
         app: Annotated[
             str,
-            Doc(
-                "App to build: api, web, voice-agent, bot-discord, bot-slack, bot-telegram"
-            ),
+            Doc("App to build: api, web, voice-agent, bot-discord, bot-slack, bot-telegram"),
         ],
     ) -> dagger.Container:
         """Build a production Docker image for the specified app using its Dockerfile."""
@@ -522,9 +511,7 @@ class GaiaCi:
 
         # Run all checks concurrently. Dagger deduplicates the shared ci_env
         # container automatically -- each branch forks from the cached base.
-        lint_task = env.with_exec(
-            ["npx", "nx", "run-many", "-t", "lint", "--parallel=3"]
-        ).stdout()
+        lint_task = env.with_exec(["npx", "nx", "run-many", "-t", "lint", "--parallel=3"]).stdout()
 
         type_check_task = (
             env.with_workdir("/app/apps/api")
@@ -555,9 +542,7 @@ class GaiaCi:
             .stdout()
         )
 
-        validate_task = env.with_exec(
-            ["node", "scripts/ci/validate-release-manifest.mjs"]
-        ).stdout()
+        validate_task = env.with_exec(["node", "scripts/ci/validate-release-manifest.mjs"]).stdout()
 
         trivy_task = (
             dag.container()

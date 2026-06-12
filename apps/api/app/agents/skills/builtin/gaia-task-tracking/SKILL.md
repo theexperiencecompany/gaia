@@ -8,7 +8,7 @@ target: executor
 
 ## Philosophy
 
-Tracked todos are **GAIA's memory** — not the user's todo list. They record what GAIA did, when, how, and why, so future conversations can find and build on past work.
+Tracked todos are **GAIA-managed todos**: they show on the user's todos page like a normal todo, but GAIA owns them and keeps a canvas of working notes (and an optional schedule) so it can act on them over time. They are distinct from the user's own hand-created action items. They record what GAIA did, when, how, and why, so future conversations can find and build on past work.
 
 When the user says "email Rahul about the contract" and months later asks "what happened with Rahul's contract?", the tracked todo and its canvas surface the answer.
 
@@ -35,13 +35,13 @@ search_todo_context(query="relevant keywords")
 
 - Active match → update its canvas; do NOT create. "Related action" = same initiative, person, system, or goal. Always update, even for follow-on steps.
 - Completed match, same initiative resuming → create new ONLY if the user explicitly asked GAIA to DO something for this initiative again. Never create just because search returned a historical match during an unrelated request.
-- No match → create — only if a write action was performed this turn.
+- No match → create — only if GAIA performed or scheduled a real write/action this turn.
 
-**Create when** GAIA takes an action on an external system (email, calendar, Slack, Linear, Notion, etc.) and nothing relevant already exists in memory.
+**Create when** GAIA performs or schedules an action on an external system (email, calendar, Slack, Linear, Notion, etc.) that it needs to remember, follow up on, or repeat — and nothing relevant already exists in memory.
 
 **Do NOT create for:**
 
-- Pure lookups with no side effects ("what's the weather?", "summarize my emails")
+- Pure reads with no side effects ("what's the weather?", "summarize my emails") — no matter how complex or how often they run; a recurring daily summary is still a read, and saving the summary as a todo is not tracking
 - Steps in your current orchestration (use `plan_tasks`)
 - Casual conversation or one-off questions
 - Anything clearly continuing an existing tracked todo — update that one instead

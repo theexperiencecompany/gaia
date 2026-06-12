@@ -9,6 +9,7 @@ import {
 } from "@heroui/dropdown";
 import { ArrowDown01Icon, Copy01Icon, Tick01Icon } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
+import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -128,12 +129,21 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
   const [copied, setCopied] = React.useState(false);
 
   const editor = useEditor({
-    extensions: [StarterKit, Underline],
+    extensions: [
+      StarterKit,
+      Underline,
+      // StarterKit v2 ships no Link mark, so URLs in the body would be dropped.
+      Link.configure({
+        autolink: true,
+        openOnClick: true,
+        HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" },
+      }),
+    ],
     content: body,
     editorProps: {
       attributes: {
         class:
-          "outline-none text-sm text-zinc-200 leading-relaxed space-y-1 min-h-[120px]",
+          "outline-none text-sm text-zinc-200 leading-relaxed min-h-[120px]",
       },
     },
   });
@@ -305,7 +315,28 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       )}
 
       {/* Editor */}
-      <div className="[&_.ProseMirror_h1]:text-xl [&_.ProseMirror_h1]:font-semibold [&_.ProseMirror_h1]:text-zinc-100 [&_.ProseMirror_h1]:mb-2 [&_.ProseMirror_h2]:text-base [&_.ProseMirror_h2]:font-semibold [&_.ProseMirror_h2]:text-zinc-100 [&_.ProseMirror_h2]:mb-1.5 [&_.ProseMirror_p]:text-sm [&_.ProseMirror_p]:text-zinc-200 [&_.ProseMirror_p]:leading-relaxed [&_.ProseMirror_p+p]:mt-2">
+      <div
+        className={[
+          "[&_.ProseMirror>*:first-child]:mt-0",
+          "[&_.ProseMirror_h1]:mt-5 [&_.ProseMirror_h1]:mb-2 [&_.ProseMirror_h1]:text-lg [&_.ProseMirror_h1]:font-semibold [&_.ProseMirror_h1]:leading-snug [&_.ProseMirror_h1]:text-zinc-100",
+          "[&_.ProseMirror_h2]:mt-4 [&_.ProseMirror_h2]:mb-1.5 [&_.ProseMirror_h2]:text-base [&_.ProseMirror_h2]:font-semibold [&_.ProseMirror_h2]:leading-snug [&_.ProseMirror_h2]:text-zinc-100",
+          "[&_.ProseMirror_h3]:mt-3 [&_.ProseMirror_h3]:mb-1 [&_.ProseMirror_h3]:text-sm [&_.ProseMirror_h3]:font-semibold [&_.ProseMirror_h3]:text-zinc-200",
+          "[&_.ProseMirror_h4]:mt-3 [&_.ProseMirror_h4]:mb-1 [&_.ProseMirror_h4]:text-sm [&_.ProseMirror_h4]:font-semibold [&_.ProseMirror_h4]:text-zinc-300",
+          "[&_.ProseMirror_:is(h5,h6)]:mt-3 [&_.ProseMirror_:is(h5,h6)]:mb-1 [&_.ProseMirror_:is(h5,h6)]:text-xs [&_.ProseMirror_:is(h5,h6)]:font-semibold [&_.ProseMirror_:is(h5,h6)]:uppercase [&_.ProseMirror_:is(h5,h6)]:tracking-wide [&_.ProseMirror_:is(h5,h6)]:text-zinc-400",
+          "[&_.ProseMirror_p]:text-sm [&_.ProseMirror_p]:leading-relaxed [&_.ProseMirror_p]:text-zinc-300 [&_.ProseMirror_p+p]:mt-2.5",
+          "[&_.ProseMirror_strong]:font-semibold [&_.ProseMirror_strong]:text-zinc-100",
+          "[&_.ProseMirror_em]:italic [&_.ProseMirror_s]:line-through [&_.ProseMirror_s]:text-zinc-400",
+          "[&_.ProseMirror_a]:font-medium [&_.ProseMirror_a]:text-primary [&_.ProseMirror_a]:underline [&_.ProseMirror_a]:decoration-primary/40 [&_.ProseMirror_a]:underline-offset-2 [&_.ProseMirror_a]:transition-colors hover:[&_.ProseMirror_a]:decoration-primary",
+          "[&_.ProseMirror_ul]:my-2 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-5",
+          "[&_.ProseMirror_ol]:my-2 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5",
+          "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li]:text-sm [&_.ProseMirror_li]:leading-relaxed [&_.ProseMirror_li]:text-zinc-300 [&_.ProseMirror_li]:marker:text-zinc-500",
+          "[&_.ProseMirror_li>ul]:my-1 [&_.ProseMirror_li>ol]:my-1",
+          "[&_.ProseMirror_blockquote]:my-2 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-zinc-600 [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-zinc-400 [&_.ProseMirror_blockquote]:italic",
+          "[&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:bg-zinc-800 [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:font-mono [&_.ProseMirror_code]:text-[0.8125rem] [&_.ProseMirror_code]:text-zinc-200",
+          "[&_.ProseMirror_pre]:my-2 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:rounded-xl [&_.ProseMirror_pre]:bg-zinc-950 [&_.ProseMirror_pre]:p-3 [&_.ProseMirror_pre]:text-[0.8125rem] [&_.ProseMirror_pre]:leading-relaxed [&_.ProseMirror_pre_code]:bg-transparent [&_.ProseMirror_pre_code]:p-0",
+          "[&_.ProseMirror_hr]:my-4 [&_.ProseMirror_hr]:border-zinc-700",
+        ].join(" ")}
+      >
         <EditorContent editor={editor} />
       </div>
     </ToolCard>

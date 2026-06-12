@@ -19,7 +19,7 @@ from app.services.sandbox import mark_sandbox_dead
 from shared.py.wide_events import log, wide_task
 
 
-async def sweep_idle_sandboxes(ctx: dict[str, Any]) -> str:
+async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
     """Evict sandboxes whose last_used_at is older than the eviction window."""
     async with wide_task("sweep_idle_sandboxes"):
         cutoff = datetime.now(UTC) - timedelta(days=settings.E2B_SANDBOX_EVICT_DAYS)

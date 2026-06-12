@@ -44,18 +44,10 @@ class MissingKeyStrategy(Enum):
 
 
 class LazyLoader(Generic[T]):
-    """
-    Lazy loader that defers provider initialization until first get() access.
-    Supports both sync and async loader functions.
+    """Defers provider initialization until first get() access.
 
-    Features:
-    - Thread-safe singleton pattern per loader
-    - Configurable error handling for missing values
-    - Validation caching to avoid repeated checks
-    - Flexible warning system at registration time
-    - Type safety with generics
-    - Support for global context providers (like Cloudinary)
-    - Support for both sync and async loader functions
+    Thread-safe singleton per loader; supports sync/async loaders, global-context
+    providers (e.g. Cloudinary), and configurable missing-key handling.
     """
 
     def __init__(
@@ -634,12 +626,6 @@ class ProviderRegistry:
                         self.get(dep)
         return await loader.aget()
 
-    def get_loader(self, name: str) -> LazyLoader:
-        """Get the loader itself (not the instance)."""
-        if name not in self._providers:
-            raise KeyError(f"Provider '{name}' not found in registry")
-        return self._providers[name]
-
     def is_available(self, name: str) -> bool:
         """Check if a provider is available."""
         if name not in self._providers:
@@ -651,18 +637,6 @@ class ProviderRegistry:
         if name not in self._providers:
             return False
         return self._providers[name].is_initialized()
-
-    def list_providers(self) -> dict[str, dict[str, bool]]:
-        """List all providers with their status."""
-        return {
-            name: {
-                "available": loader.is_available(),
-                "initialized": loader.is_initialized(),
-                "is_global_context": loader.is_global_context,
-                "is_async": loader.is_async,
-            }
-            for name, loader in self._providers.items()
-        }
 
 
 # Global registry instance

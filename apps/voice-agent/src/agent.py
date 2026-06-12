@@ -235,7 +235,7 @@ async def entrypoint(ctx: JobContext) -> None:
         )
 
     @ctx.room.on("participant_metadata_changed")
-    def _on_participant_metadata_changed(p: rtc.Participant, old_md: str, new_md: str) -> None:
+    def _on_participant_metadata_changed(p: rtc.Participant, _old_md: str, new_md: str) -> None:
         _make_background_task(
             _apply_participant_credentials(new_md, "participant_metadata_changed", p.identity)
         )

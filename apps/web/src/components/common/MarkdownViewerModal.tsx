@@ -16,6 +16,42 @@ interface MarkdownViewerModalProps {
   errorMessage?: string;
 }
 
+function renderBody({
+  isLoading,
+  hasError,
+  errorMessage,
+  content,
+}: {
+  isLoading?: boolean;
+  hasError?: boolean;
+  errorMessage: string;
+  content: string | null;
+}): React.ReactNode {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Spinner size="md" color="default" />
+      </div>
+    );
+  }
+  if (hasError) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-12 text-center">
+        <AlertCircleIcon width={28} height={28} className="text-red-400" />
+        <p className="text-sm text-zinc-400">{errorMessage}</p>
+      </div>
+    );
+  }
+  if (content) {
+    return <MarkdownRenderer content={content} className="text-sm" />;
+  }
+  return (
+    <p className="py-8 text-center text-sm text-zinc-500">
+      No content available.
+    </p>
+  );
+}
+
 const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
   isOpen,
   onClose,
@@ -42,26 +78,7 @@ const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
           {title}
         </ModalHeader>
         <ModalBody>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Spinner size="md" color="default" />
-            </div>
-          ) : hasError ? (
-            <div className="flex flex-col items-center gap-2 py-12 text-center">
-              <AlertCircleIcon
-                width={28}
-                height={28}
-                className="text-red-400"
-              />
-              <p className="text-sm text-zinc-400">{errorMessage}</p>
-            </div>
-          ) : content ? (
-            <MarkdownRenderer content={content} className="text-sm" />
-          ) : (
-            <p className="py-8 text-center text-sm text-zinc-500">
-              No content available.
-            </p>
-          )}
+          {renderBody({ isLoading, hasError, errorMessage, content })}
         </ModalBody>
       </ModalContent>
     </Modal>

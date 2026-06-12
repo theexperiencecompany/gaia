@@ -15,7 +15,6 @@ import FilePreview, {
 } from "@/features/chat/components/files/FilePreview";
 import FileUpload from "@/features/chat/components/files/FileUpload";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
-import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -27,6 +26,7 @@ import {
   useComposerUI,
   useInputText,
 } from "@/stores/composerStore";
+import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import type { FileData } from "@/types/shared/fileTypes";
@@ -102,8 +102,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const { autoSend } = useWorkflowSelectionStore();
 
   const sendMessage = useSendMessage();
-  const { isLoading } = useLoading();
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
+  const isMainResponseStreaming = useIsMainResponseStreaming();
   const currentMode = useMemo(
     () => Array.from(selectedMode)[0],
     [selectedMode],
@@ -222,7 +222,10 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (
     event,
   ) => {
-    if (event.key === "Enter" && !event.shiftKey && !isLoading) {
+    // Block Enter only during the initial response (send → main_response_complete).
+    // After that, Enter submits and the message is queued behind the running
+    // background executor (see useChatStream's pending-stream queue).
+    if (event.key === "Enter" && !event.shiftKey && !isMainResponseStreaming) {
       event.preventDefault();
       handleFormSubmit();
     }

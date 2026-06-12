@@ -32,6 +32,11 @@ interface ChatState {
   messagesByConversation: Record<string, IMessage[]>;
   activeConversationId: string | null;
   streamingConversationId: string | null; // ID of conversation currently streaming
+  // Conversation whose SSE stream has closed but is still awaiting a background
+  // executor's final result message (delivered separately via WebSocket). The
+  // turn is not visually "done" until that arrives, so the loading indicator
+  // stays on and follow-up actions stay suppressed during this window.
+  executorPendingConversationId: string | null;
   hydrationCompleted: boolean; // True when IndexedDB hydration is done
   // Single optimistic message for new conversations (not yet persisted to IndexedDB)
   // Only ONE optimistic message can exist at a time - enforced by using single object instead of array
@@ -51,6 +56,7 @@ interface ChatState {
   removeMessage: (messageId: string, conversationId: string) => void;
   setActiveConversationId: (id: string | null) => void;
   setStreamingConversationId: (id: string | null) => void;
+  setExecutorPendingConversationId: (id: string | null) => void;
   setHydrationCompleted: (completed: boolean) => void;
   // Optimistic message management for new conversations (single message only)
   setOptimisticMessage: (message: OptimisticMessage | null) => void;
@@ -62,6 +68,7 @@ export const useChatStore = create<ChatState>((set) => ({
   messagesByConversation: {},
   activeConversationId: null,
   streamingConversationId: null, // Track which conversation is streaming
+  executorPendingConversationId: null, // Awaiting a background executor's result
   hydrationCompleted: false, // Becomes true when IndexedDB hydration is done
   // Single optimistic message for new conversations (prevents IndexedDB pollution)
   // Only one message at a time - enforced by type
@@ -178,6 +185,9 @@ export const useChatStore = create<ChatState>((set) => ({
   setActiveConversationId: (id) => set({ activeConversationId: id }),
 
   setStreamingConversationId: (id) => set({ streamingConversationId: id }),
+
+  setExecutorPendingConversationId: (id) =>
+    set({ executorPendingConversationId: id }),
 
   setHydrationCompleted: (completed) => set({ hydrationCompleted: completed }),
 

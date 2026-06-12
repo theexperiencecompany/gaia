@@ -20,9 +20,9 @@
 set -u
 
 fail=0
-pass() { printf '  \033[32mPASS\033[0m %s\n' "$1"; }
-warn() { printf '  \033[33mWARN\033[0m %s\n' "$1"; }
-crit() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=1; }
+pass() { local msg="$1"; printf '  \033[32mPASS\033[0m %s\n' "$msg"; return 0; }
+warn() { local msg="$1"; printf '  \033[33mWARN\033[0m %s\n' "$msg"; return 0; }
+crit() { local msg="$1"; printf '  \033[31mFAIL\033[0m %s\n' "$msg"; fail=1; return 0; }
 
 echo
 echo "===> Sandbox hardening verification"
@@ -48,7 +48,7 @@ fi
 # ---------------------------------------------------------------------------
 echo "[2/7] hidepid hides root-owned processes from /proc listings"
 jfs_pid=$(pgrep -x juicefs 2>/dev/null | head -1 || true)
-if [ -z "$jfs_pid" ]; then
+if [[ -z "$jfs_pid" ]]; then
     pass "juicefs PID not visible to unprivileged user (hidepid working)"
 else
     # PID is visible — hidepid may not be applied. Continue checks but flag.
@@ -59,9 +59,9 @@ fi
 # Wall 3: PR_SET_DUMPABLE on juicefs daemon
 # ---------------------------------------------------------------------------
 echo "[3/7] juicefs /proc/<pid>/cmdline is not readable by unprivileged user"
-if [ -n "${jfs_pid:-}" ]; then
+if [[ -n "${jfs_pid:-}" ]]; then
     cmd_out=$(cat "/proc/$jfs_pid/cmdline" 2>&1 || true)
-    if [ -z "$cmd_out" ] || echo "$cmd_out" | grep -qi "permission denied"; then
+    if [[ -z "$cmd_out" ]] || echo "$cmd_out" | grep -qi "permission denied"; then
         pass "cmdline blocked"
     else
         crit "cmdline leaked: $cmd_out"
@@ -72,9 +72,9 @@ else
 fi
 
 echo "[4/7] juicefs /proc/<pid>/environ is not readable by unprivileged user"
-if [ -n "${jfs_pid:-}" ]; then
+if [[ -n "${jfs_pid:-}" ]]; then
     env_out=$(cat "/proc/$jfs_pid/environ" 2>&1 || true)
-    if [ -z "$env_out" ] || echo "$env_out" | grep -qi "permission denied"; then
+    if [[ -z "$env_out" ]] || echo "$env_out" | grep -qi "permission denied"; then
         pass "environ blocked"
     else
         crit "environ leaked: $(echo "$env_out" | tr '\0' '\n' | grep -E 'JFS_|R2_|META_' | head -3)"
@@ -88,7 +88,7 @@ fi
 # ---------------------------------------------------------------------------
 echo "[5/7] User shell environ contains no JuiceFS / R2 credentials"
 leaked=$(env | grep -E '^(JFS_|R2_|META_PASSWORD=|AWS_ACCESS|AWS_SECRET)' || true)
-if [ -z "$leaked" ]; then
+if [[ -z "$leaked" ]]; then
     pass "user environ is clean"
 else
     crit "creds present in user shell:"
@@ -101,7 +101,7 @@ fi
 echo "[6/7] /workspace mount is healthy (JuiceFS or ephemeral)"
 if mountpoint -q /workspace; then
     pass "/workspace is a mount"
-elif [ -d /workspace ] && [ -w /workspace ]; then
+elif [[ -d /workspace ]] && [[ -w /workspace ]]; then
     warn "/workspace is ephemeral (not a JuiceFS mount) — fine for dev, durability lost"
 else
     crit "/workspace missing or not writable"
@@ -112,14 +112,14 @@ ok_python=0
 ok_pip=0
 python3 -c "print('hi')" >/dev/null 2>&1 && ok_python=1
 pip install --user --dry-run pyyaml >/dev/null 2>&1 && ok_pip=1
-if [ "$ok_python" = 1 ] && [ "$ok_pip" = 1 ]; then
+if [[ "$ok_python" = 1 ]] && [[ "$ok_pip" = 1 ]]; then
     pass "python + pip --user work without root"
 else
     crit "agent capability regression: python=$ok_python pip=$ok_pip"
 fi
 
 echo
-if [ "$fail" = 0 ]; then
+if [[ "$fail" = 0 ]]; then
     printf '\033[32m===> ALL CHECKS PASSED\033[0m\n'
     exit 0
 else

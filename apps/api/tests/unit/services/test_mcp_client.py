@@ -542,38 +542,6 @@ class TestMCPClientGetTools:
 
 
 @pytest.mark.unit
-class TestMCPClientHealthCheck:
-    async def test_healthy(self):
-        client = MCPClient(user_id=USER_ID)
-        mock_base = MagicMock()
-        mock_session = AsyncMock()
-        mock_session.list_tools = AsyncMock(return_value=[])
-        mock_base.get_session = MagicMock(return_value=mock_session)
-        client._clients[INTEGRATION_ID] = mock_base
-
-        result = await client.health_check(INTEGRATION_ID)
-        assert result["status"] == "healthy"
-        assert "latency_ms" in result
-
-    async def test_disconnected(self):
-        client = MCPClient(user_id=USER_ID)
-        result = await client.health_check(INTEGRATION_ID)
-        assert result["status"] == "disconnected"
-
-    async def test_unhealthy_on_error(self):
-        client = MCPClient(user_id=USER_ID)
-        mock_base = MagicMock()
-        mock_session = AsyncMock()
-        mock_session.list_tools = AsyncMock(side_effect=Exception("timeout"))
-        mock_base.get_session = MagicMock(return_value=mock_session)
-        client._clients[INTEGRATION_ID] = mock_base
-
-        result = await client.health_check(INTEGRATION_ID)
-        assert result["status"] == "unhealthy"
-        assert "timeout" in result["error"]
-
-
-@pytest.mark.unit
 class TestMCPClientIsConnected:
     def test_is_connected_true(self):
         client = MCPClient(user_id=USER_ID)
@@ -625,108 +593,6 @@ class TestMCPClientEnsureConnected:
         with patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False):
             with pytest.raises(ValueError, match="not connected"):
                 await client.ensure_connected(INTEGRATION_ID)
-
-
-@pytest.mark.unit
-class TestMCPClientEnsureTokenValid:
-    async def test_noop_when_no_credentials(self):
-        client = MCPClient(user_id=USER_ID)
-        client.token_store.has_credentials = AsyncMock(return_value=False)
-        await client.ensure_token_valid(INTEGRATION_ID)
-
-    async def test_refreshes_expiring_token(self):
-        client = MCPClient(user_id=USER_ID)
-        client.token_store.has_credentials = AsyncMock(return_value=True)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=True)
-
-        resolved = MagicMock()
-        resolved.mcp_config = _make_mcp_config(requires_auth=True)
-        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
-            mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client._try_refresh_token = AsyncMock(return_value=True)
-            await client.ensure_token_valid(INTEGRATION_ID)
-            client._try_refresh_token.assert_awaited_once()
-
-    async def test_no_refresh_when_not_expiring(self):
-        client = MCPClient(user_id=USER_ID)
-        client.token_store.has_credentials = AsyncMock(return_value=True)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
-        client._try_refresh_token = AsyncMock()
-        await client.ensure_token_valid(INTEGRATION_ID)
-        client._try_refresh_token.assert_not_awaited()
-
-
-@pytest.mark.unit
-class TestMCPClientTryTokenRefresh:
-    async def test_refresh_success_evicts_stale_session(self):
-        client = MCPClient(user_id=USER_ID)
-        mock_base = AsyncMock()
-        client._clients[INTEGRATION_ID] = mock_base
-        client._tools[INTEGRATION_ID] = [_mock_tool()]
-
-        resolved = MagicMock()
-        resolved.mcp_config = _make_mcp_config(requires_auth=True)
-
-        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
-            mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client._try_refresh_token = AsyncMock(return_value=True)
-            result = await client.try_token_refresh(INTEGRATION_ID)
-
-        assert result is True
-        assert INTEGRATION_ID not in client._tools
-        assert INTEGRATION_ID not in client._clients
-        mock_base.close_all_sessions.assert_awaited_once()
-
-    async def test_refresh_returns_false_when_not_oauth(self):
-        client = MCPClient(user_id=USER_ID)
-        resolved = MagicMock()
-        resolved.mcp_config = _make_mcp_config(requires_auth=False)
-
-        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
-            mock_resolver.resolve = AsyncMock(return_value=resolved)
-            result = await client.try_token_refresh(INTEGRATION_ID)
-        assert result is False
-
-
-@pytest.mark.unit
-class TestMCPClientGetAllConnectedTools:
-    async def test_returns_cached_and_connects_new(self):
-        client = MCPClient(user_id=USER_ID)
-        cached_tools = [_mock_tool("cached")]
-        client._tools["already_connected"] = cached_tools
-
-        resolved = MagicMock()
-        resolved.mcp_config = _make_mcp_config()
-        new_tools = [_mock_tool("new")]
-
-        with (
-            patch(
-                "app.services.mcp.mcp_client.get_user_connected_integrations",
-                new_callable=AsyncMock,
-                return_value=[
-                    {"integration_id": "already_connected"},
-                    {"integration_id": "new_one"},
-                ],
-            ),
-            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
-        ):
-            mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client._safe_connect = AsyncMock(return_value=new_tools)
-
-            result = await client.get_all_connected_tools()
-
-        assert "already_connected" in result
-        assert "new_one" in result
-
-    async def test_returns_empty_when_no_integrations(self):
-        client = MCPClient(user_id=USER_ID)
-        with patch(
-            "app.services.mcp.mcp_client.get_user_connected_integrations",
-            new_callable=AsyncMock,
-            return_value=[],
-        ):
-            result = await client.get_all_connected_tools()
-        assert result == {}
 
 
 @pytest.mark.unit
@@ -792,15 +658,6 @@ class TestMCPClientCloseAllSessions:
         client._clients["a"] = mock1
         # Should not raise
         await client.close_all_client_sessions()
-
-
-@pytest.mark.unit
-class TestMCPClientGetActiveIntegrationIds:
-    def test_returns_client_keys(self):
-        client = MCPClient(user_id=USER_ID)
-        client._clients["a"] = MagicMock()
-        client._clients["b"] = MagicMock()
-        assert set(client.get_active_integration_ids()) == {"a", "b"}
 
 
 @pytest.mark.unit
@@ -1220,26 +1077,6 @@ class TestMCPTokenStoreDeleteCredentials:
 
 
 @pytest.mark.unit
-class TestMCPTokenStoreHasCredentials:
-    async def test_true_with_token(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        cred = _make_credential(access_token="enc_tok")
-        store.get_credential = AsyncMock(return_value=cred)
-        assert await store.has_credentials(INTEGRATION_ID) is True
-
-    async def test_false_without_token(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        cred = _make_credential(access_token=None)
-        store.get_credential = AsyncMock(return_value=cred)
-        assert await store.has_credentials(INTEGRATION_ID) is False
-
-    async def test_false_when_no_credential(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        store.get_credential = AsyncMock(return_value=None)
-        assert await store.has_credentials(INTEGRATION_ID) is False
-
-
-@pytest.mark.unit
 class TestMCPTokenStoreIsConnected:
     async def test_true_when_connected(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1344,16 +1181,6 @@ class TestMCPTokenStoreOAuthDiscovery:
             result = await store.get_oauth_discovery(INTEGRATION_ID)
             assert result is None
 
-    async def test_delete_discovery(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        with patch(
-            "app.services.mcp.mcp_token_store.delete_cache",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await store.delete_oauth_discovery(INTEGRATION_ID)
-            assert result is True
-
 
 @pytest.mark.unit
 class TestMCPTokenStoreOAuthNonce:
@@ -1422,17 +1249,6 @@ class TestMCPTokenStoreIntrospect:
 
 
 @pytest.mark.unit
-class TestMCPTokenStoreCleanupIntegration:
-    async def test_cleanup_removes_all(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        store.delete_oauth_discovery = AsyncMock()
-        store.delete_credentials = AsyncMock()
-        await store.cleanup_integration(INTEGRATION_ID)
-        store.delete_oauth_discovery.assert_awaited_once_with(INTEGRATION_ID)
-        store.delete_credentials.assert_awaited_once_with(INTEGRATION_ID)
-
-
-@pytest.mark.unit
 class TestMCPTokenStoreStoreUnauthenticated:
     async def test_creates_record_if_missing(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1449,26 +1265,6 @@ class TestMCPTokenStoreStoreUnauthenticated:
         with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
             await store.store_unauthenticated(INTEGRATION_ID)
         mock_session.add.assert_not_called()
-        mock_session.commit.assert_not_awaited()
-
-
-@pytest.mark.unit
-class TestMCPTokenStoreUpdateStatus:
-    async def test_updates_status(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        existing = _make_credential()
-        ctx_fn, mock_session = _fake_db_session(existing)
-        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
-            await store.update_status(INTEGRATION_ID, MCPCredentialStatus.ERROR, "fail")
-        assert existing.status == MCPCredentialStatus.ERROR
-        assert existing.error_message == "fail"
-        mock_session.commit.assert_awaited_once()
-
-    async def test_noop_when_not_found(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        ctx_fn, mock_session = _fake_db_session(None)
-        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
-            await store.update_status(INTEGRATION_ID, MCPCredentialStatus.ERROR)
         mock_session.commit.assert_not_awaited()
 
 
@@ -2464,20 +2260,6 @@ class TestMCPClientReadUiResource:
         result = await client.read_ui_resource_details(SERVER_URL, "ui://tool/app.html")
         assert result is None
 
-    async def test_read_ui_resource_wrapper_returns_html(self):
-        client = MCPClient(user_id=USER_ID)
-        client.read_ui_resource_details = AsyncMock(
-            return_value={"html": "<div>Hi</div>", "csp": None, "permissions": None}
-        )
-        result = await client.read_ui_resource(SERVER_URL, "ui://t/a.html")
-        assert result == "<div>Hi</div>"
-
-    async def test_read_ui_resource_wrapper_returns_none(self):
-        client = MCPClient(user_id=USER_ID)
-        client.read_ui_resource_details = AsyncMock(return_value=None)
-        result = await client.read_ui_resource(SERVER_URL, "ui://t/a.html")
-        assert result is None
-
     async def test_read_ui_resource_with_meta(self):
         client = MCPClient(user_id=USER_ID)
         mock_base = MagicMock()
@@ -2645,67 +2427,6 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         ):
             mock_resolver.resolve = AsyncMock(side_effect=Exception("Resolve error"))
             result = await client._find_integration_id_by_server_url(SERVER_URL)
-        assert result is None
-
-
-# ===========================================================================
-# MCPClient _safe_connect Tests
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestMCPClientSafeConnect:
-    async def test_returns_tools_on_success(self):
-        client = MCPClient(user_id=USER_ID)
-        tools = [_mock_tool()]
-        client.connect = AsyncMock(return_value=tools)
-
-        result = await client._safe_connect(INTEGRATION_ID)
-        assert result is tools
-
-    async def test_returns_none_on_failure(self):
-        client = MCPClient(user_id=USER_ID)
-        client.connect = AsyncMock(side_effect=Exception("Connection error"))
-
-        with patch(
-            "app.services.mcp.mcp_client.update_user_integration_status",
-            new_callable=AsyncMock,
-        ):
-            result = await client._safe_connect(INTEGRATION_ID)
-
-        assert result is None
-
-    async def test_does_not_reset_status_on_transient_failure(self):
-        """Transient batch-connect blips must not wipe a still-valid integration.
-
-        PR #719 deliberately removed the eager status reset from `_safe_connect`
-        — only `_do_connect`'s own classification path resets on terminal auth
-        failures. A bare exception here represents a transient hiccup and the
-        user's tokens are still good; flipping status to 'created' would force
-        them to reconnect every blip. Assert no update happens.
-        """
-        client = MCPClient(user_id=USER_ID)
-        client.connect = AsyncMock(side_effect=Exception("Connection error"))
-
-        with patch(
-            "app.services.mcp.mcp_client.update_user_integration_status",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await client._safe_connect(INTEGRATION_ID)
-
-        mock_update.assert_not_awaited()
-
-    async def test_handles_status_reset_error(self):
-        client = MCPClient(user_id=USER_ID)
-        client.connect = AsyncMock(side_effect=Exception("Connection error"))
-
-        with patch(
-            "app.services.mcp.mcp_client.update_user_integration_status",
-            new_callable=AsyncMock,
-            side_effect=Exception("Status error"),
-        ):
-            result = await client._safe_connect(INTEGRATION_ID)
-
         assert result is None
 
 

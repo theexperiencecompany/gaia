@@ -106,6 +106,7 @@ ensure_workspace_writable() {
     # access. Single-uid sandbox today, but tight perms close the door against
     # a future second-uid feature inheriting world-rwx by accident.
     chmod 0750 "$WORKSPACE" "$WORKSPACE/.gaia" "$WORKSPACE/.gaia/runs" 2>/dev/null || true
+    return 0
 }
 
 # Fast path — /workspace is already a real mount, nothing to do.
@@ -237,16 +238,14 @@ chmod 0750 "$WORKSPACE" 2>/dev/null || true
 # materialized executor-skills subdir under /workspace/skills/.
 mkdir -p "$WORKSPACE/skills"
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/skills" 2>/dev/null || true
-if mount_skills_subdir; then
-    # `mount --bind ... -o ro` is honoured on the bind itself only on newer
-    # kernels; older kernels silently ignore the flag and require a remount to
-    # actually mark the bind read-only. The underlying FUSE is `--read-only`
-    # already (mount_skills_subdir uses --read-only), so writes still fail in
-    # either case — but pin the bind itself ro explicitly so the read-only
-    # surface is consistent at every layer.
-    if mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills"; then
-        mount -o remount,bind,ro "$WORKSPACE/skills" 2>/dev/null || true
-    fi
+# `mount --bind ... -o ro` is honoured on the bind itself only on newer
+# kernels; older kernels silently ignore the flag and require a remount to
+# actually mark the bind read-only. The underlying FUSE is `--read-only`
+# already (mount_skills_subdir uses --read-only), so writes still fail in
+# either case — but pin the bind itself ro explicitly so the read-only
+# surface is consistent at every layer.
+if mount_skills_subdir && mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills"; then
+    mount -o remount,bind,ro "$WORKSPACE/skills" 2>/dev/null || true
 fi
 
 # Optional shared-system overlay — best-effort. Backs /workspace/.system with the
@@ -255,10 +254,8 @@ fi
 # exist or the mount fails, per-user workspaces simply keep their own copies.
 mkdir -p "$WORKSPACE/.system"
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/.system" 2>/dev/null || true
-if mount_system_subdir; then
-    if mount --bind "$JFS_SYSTEM_MOUNT" "$WORKSPACE/.system"; then
-        mount -o remount,bind,ro "$WORKSPACE/.system" 2>/dev/null || true
-    fi
+if mount_system_subdir && mount --bind "$JFS_SYSTEM_MOUNT" "$WORKSPACE/.system"; then
+    mount -o remount,bind,ro "$WORKSPACE/.system" 2>/dev/null || true
 fi
 
 mkdir -p "$WORKSPACE/.gaia/runs"

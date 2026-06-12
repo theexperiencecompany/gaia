@@ -197,7 +197,8 @@ function renderTelegramTable(block: string): string {
 function stashTables(text: string, hold: (html: string) => string): string {
   const lines = text.split("\n");
   const out: string[] = [];
-  for (let i = 0; i < lines.length; i += 1) {
+  let i = 0;
+  while (i < lines.length) {
     const header = lines[i] ?? "";
     if (isTableRow(header) && isTableSeparator(lines[i + 1] ?? "")) {
       const block = [header, lines[i + 1] ?? ""];
@@ -207,9 +208,10 @@ function stashTables(text: string, hold: (html: string) => string): string {
         j += 1;
       }
       out.push(hold(renderTelegramTable(block.join("\n"))));
-      i = j - 1;
+      i = j;
     } else {
       out.push(header);
+      i += 1;
     }
   }
   return out.join("\n");

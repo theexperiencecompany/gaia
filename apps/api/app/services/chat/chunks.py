@@ -14,6 +14,12 @@ from typing import Any
 
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
+from app.utils.stream_publishers import (
+    accumulate_todo_progress,
+    publish_other_data,
+    publish_tool_data,
+    publish_tool_output,
+)
 
 
 async def process_data_chunk(
@@ -35,74 +41,47 @@ async def process_data_chunk(
     """
     chunk_payload = chunk[6:]
 
-    chunk_json: dict[str, Any] | None = None
-    try:
-        chunk_json = json.loads(chunk_payload)
-    except json.JSONDecodeError:
-        chunk_json = None
-
-    if chunk_json and "todo_progress" in chunk_json:
-        snapshot = chunk_json["todo_progress"]
-        source = snapshot.get("source", "executor")
-        todo_progress_accumulated[source] = snapshot
+    chunk_json = _parse_chunk_json(chunk_payload)
+    accumulate_todo_progress(chunk_json, todo_progress_accumulated)
 
     new_data = extract_tool_data(chunk_payload)
-    if new_data:
-        if "other_data" in new_data:
-            other_data_dict = new_data["other_data"]
-            if "follow_up_actions" in other_data_dict:
-                follow_up_actions = other_data_dict["follow_up_actions"]
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
-                )
-
-        if "tool_data" in new_data:
-            for tool_entry in new_data["tool_data"]:
-                tool_data["tool_data"].append(tool_entry)
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
-                )
-
-        # Capture tool_output events for merging before save AND stream to
-        # frontend for real-time UI updates.
-        if "tool_output" in new_data:
-            output_data = new_data["tool_output"]
-            tool_call_id = output_data.get("tool_call_id")
-            output = output_data.get("output")
-            if tool_call_id and output:
-                tool_outputs[tool_call_id] = output
-            await stream_manager.publish_chunk(
-                stream_id,
-                f"data: {json.dumps({'tool_output': output_data})}\n\n",
-            )
-
-        if chunk_json and "todo_progress" in chunk_json:
-            await stream_manager.publish_chunk(
-                stream_id,
-                f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
-            )
-
+    if not new_data:
+        # No tool data — pass through as-is.
+        await stream_manager.publish_chunk(stream_id, chunk)
         response_text = extract_response_text(chunk)
-        if response_text or new_data:
+        if response_text:
             await stream_manager.update_progress(
                 stream_id,
                 message_chunk=response_text,
-                tool_data=new_data,
+                tool_data=None,
             )
         return follow_up_actions, True
 
-    # No tool data — pass through as-is.
-    await stream_manager.publish_chunk(stream_id, chunk)
-    response_text = extract_response_text(chunk)
-    if response_text:
-        await stream_manager.update_progress(
+    follow_up_actions = await publish_other_data(stream_id, new_data, follow_up_actions)
+    await publish_tool_data(stream_id, new_data, tool_data)
+    await publish_tool_output(stream_id, new_data, tool_outputs)
+
+    if chunk_json and "todo_progress" in chunk_json:
+        await stream_manager.publish_chunk(
             stream_id,
-            message_chunk=response_text,
-            tool_data=None,
+            f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
         )
+
+    response_text = extract_response_text(chunk)
+    await stream_manager.update_progress(
+        stream_id,
+        message_chunk=response_text,
+        tool_data=new_data,
+    )
     return follow_up_actions, True
+
+
+def _parse_chunk_json(chunk_payload: str) -> dict[str, Any] | None:
+    """Parse a chunk payload as JSON, returning ``None`` on malformed input."""
+    try:
+        return json.loads(chunk_payload)
+    except json.JSONDecodeError:
+        return None
 
 
 def extract_response_text(chunk: str) -> str:

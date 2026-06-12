@@ -1,8 +1,4 @@
-"""
-Rate limiting decorators for API endpoints and LangChain tools.
-
-This module provides decorators for rate limiting based on user subscription plans.
-"""
+"""Rate limiting decorators for API endpoints and LangChain tools, keyed on user plan."""
 
 from collections.abc import Callable
 from contextvars import ContextVar
@@ -36,21 +32,14 @@ def with_rate_limiting(
     count_tokens: bool = False,
     bypass_for_system: bool = False,
 ):
-    """
-    Rate limiting decorator that can be stacked with LangChain's @tool decorator.
+    """Rate limiting decorator stackable with LangChain's @tool.
 
     Args:
-        feature_key: Feature key for rate limiting. If None, auto-derives from tool name
-        count_tokens: Whether to validate token usage after execution
-        bypass_for_system: Skip rate limiting for system/background operations
+        feature_key: Rate-limit key. If None, auto-derives from the tool name.
+        count_tokens: Whether to validate token usage after execution.
+        bypass_for_system: Skip rate limiting for system/background operations.
 
-    Usage:
-        @tool
-        @with_rate_limiting()  # Auto-derives feature key
-        async def tool_function(prompt: str) -> str:
-            ...
-    Raises:
-        LangChainRateLimitException: When rate limits are exceeded (agent-friendly)
+    Raises LangChainRateLimitException (agent-friendly) when limits are exceeded.
     """
 
     def rate_limit_decorator(func):
@@ -295,10 +284,6 @@ class LangChainRateLimitException(Exception):
             message += f" Upgrade to {detail['plan_required'].upper()} for higher limits."
 
         super().__init__(message)
-
-    def to_agent_message(self) -> str:
-        """Convert to user-friendly message for agent responses."""
-        return f"I've reached the usage limit for {self.feature.replace('_', ' ')}. Please try again later or upgrade your plan for higher limits."
 
 
 async def _get_cached_subscription(user_id: str):

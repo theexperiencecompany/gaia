@@ -1,95 +1,48 @@
-import fs from "fs";
-import matter from "gray-matter";
-import path from "path";
-import { cache } from "react";
-import type { BlogPost, BlogPostFrontmatter } from "./blog.types";
+import {
+  getAllFeatureEntries,
+  getFeatureEntry,
+  getFeatureSlugs,
+} from "@/lib/feature-data";
+import type { BlogPost } from "./blog.types";
 
-export type {
-  Author,
-  BlogPost,
-  BlogPostFrontmatter,
-  BlogPostMeta,
-} from "./blog.types";
+export type { Author, BlogPost, BlogPostMeta } from "./blog.types";
 
-const postsDirectory = path.join(process.cwd(), "content/blog");
+// Posts are generated from content/blog/*.mdx into public/data/blog/*.json by
+// scripts/extract-blog-data.mjs and loaded via the feature-data loader (fs at
+// build, the Cloudflare ASSETS binding at runtime) — never fs at request time,
+// which would fail on Cloudflare Workers.
+const FEATURE = "blog";
 
 /**
- * Get all blog post slugs
+ * Get all blog post slugs.
  */
-export const getAllBlogSlugs = cache(async (): Promise<string[]> => {
-  try {
-    const files = fs.readdirSync(postsDirectory);
-    return files.flatMap((file) => {
-      if (!file.endsWith(".mdx") && !file.endsWith(".md")) return [];
-      const slug = file.replace(/\.(mdx|md)$/, "");
-      if (slug === "README" || slug === "TEMPLATE") return [];
-      return [slug];
-    });
-  } catch (error) {
-    console.error("Error reading blog directory:", error);
-    return [];
-  }
-});
+export async function getAllBlogSlugs(): Promise<string[]> {
+  return getFeatureSlugs(FEATURE);
+}
 
 /**
- * Get a single blog post by slug
+ * Get a single blog post by slug.
  */
-export const getBlogPost = cache(
-  async (slug: string): Promise<BlogPost | null> => {
-    try {
-      const fullPath = path.join(postsDirectory, `${slug}.mdx`);
-      const fileContents = fs.readFileSync(fullPath, "utf8");
-
-      // Parse the markdown with frontmatter
-      const { data, content } = matter(fileContents);
-      const frontmatter = data as BlogPostFrontmatter;
-
-      return {
-        slug: frontmatter.slug || slug,
-        title: frontmatter.title,
-        date: frontmatter.date,
-        authors: frontmatter.authors,
-        category: frontmatter.category,
-        image: frontmatter.image,
-        content,
-        featured: frontmatter.featured,
-      };
-    } catch (error) {
-      console.error(`Error reading blog post ${slug}:`, error);
-      return null;
-    }
-  },
-);
+export async function getBlogPost(slug: string): Promise<BlogPost | null> {
+  return (await getFeatureEntry<BlogPost>(FEATURE, slug)) ?? null;
+}
 
 /**
- * Get all blog posts sorted by date (newest first)
+ * Get all blog posts sorted by date (newest first), featured first.
  */
 export async function getAllBlogPosts(
   includeContent: boolean = false,
 ): Promise<BlogPost[]> {
-  const slugs = await getAllBlogSlugs();
-  const posts = await Promise.all(
-    slugs.map(async (slug) => {
-      const post = await getBlogPost(slug);
-      if (!post) return null;
-
-      // Optionally exclude content for better performance
-      if (!includeContent) {
-        return { ...post, content: "" };
-      }
-
-      return post;
-    }),
-  );
+  const posts = await getAllFeatureEntries<BlogPost>(FEATURE);
 
   return posts
-    .filter((post): post is BlogPost => post !== null)
+    .map((post) => (includeContent ? post : { ...post, content: "" }))
     .toSorted((a, b) => {
       // Featured posts come first
       if (a.featured && !b.featured) return -1;
       if (!a.featured && b.featured) return 1;
 
-      // Then sort by date, newest first
+      // Then newest first
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
 }

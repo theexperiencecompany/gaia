@@ -370,7 +370,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                             {
                                 "tool_output": {
                                     "tool_call_id": tc_id or "",
-                                    "output": result_str[:3000],
+                                    "output": result_str,
                                     "subagent_id": subagent_id,
                                 }
                             }

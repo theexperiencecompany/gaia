@@ -1,10 +1,4 @@
-"""
-Prompts and tool descriptions for agent task management tools.
-
-This file contains all text content for the todo management tools:
-- System prompts
-- Tool descriptions
-"""
+"""Prompts and tool descriptions for the agent task management tools."""
 
 # System prompt appended to model context
 TODO_SYSTEM_PROMPT = """You have TWO separate task systems — do not confuse them.
@@ -14,10 +8,14 @@ Ephemeral step tracking for YOUR current work. Use for 2+ step tasks.
 These disappear after execution. Not saved anywhere.
 
 — GAIA TRACKED TODOS (create_tracked_todo / update_tracked_todo) —
-GAIA's memory of what it did, when, and how — not the user's todo list.
-These track long-term goals, projects, and multi-conversation initiatives. They are NOT the user's day-to-day action items (those live in providers like Todoist, Google Tasks, Apple Reminders, etc.).
-Create for ANY action touching external systems (email, calendar, Slack, etc.),
-even if it completes immediately. One todo per initiative.
+GAIA-managed todos that show on the user's todos page but carry a canvas of GAIA's working
+notes. They are distinct from the user's own day-to-day action items (those live in providers
+like Todoist, Google Tasks, Apple Reminders, etc.).
+Create only when GAIA itself performs or schedules a real action on an external system that it
+needs to remember, follow up on, or repeat (sent an email, created an issue, posted to Slack,
+scheduled recurring work). Reads never qualify: fetching, listing, searching, or summarizing
+data never creates a tracked todo, no matter how complex it is or how often it runs, and saving
+a summary as a todo is not tracking. One todo per initiative.
 Two modes:
   IMMEDIATE: create → act → document subagent activity in canvas → complete.
   LONG-RUNNING: create → act → update canvas → leave open for future follow-up.

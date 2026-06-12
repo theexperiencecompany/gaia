@@ -1,5 +1,7 @@
 // Comprehensive cron expression builder and parser
 
+import cronstrue from "cronstrue";
+
 export interface CronSchedule {
   type: "daily" | "weekly" | "monthly" | "yearly" | "custom";
   minute?: number;
@@ -175,5 +177,32 @@ export const getScheduleDescription = (cron: string): string => {
 
     default:
       return cron;
+  }
+};
+
+export interface CronValidation {
+  isValid: boolean;
+  description?: string;
+  error?: string;
+}
+
+// Parse an arbitrary cron expression into a human-readable description,
+// reporting invalid expressions. Handles step/range/list syntax that the
+// simple parser above treats as opaque "custom" expressions.
+export const describeCron = (cron: string): CronValidation => {
+  if (!cron.trim()) {
+    return { isValid: false };
+  }
+
+  try {
+    const description = cronstrue.toString(cron, {
+      throwExceptionOnParseError: true,
+      verbose: false,
+    });
+    return { isValid: true, description };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Invalid cron expression";
+    return { isValid: false, error: message.replace(/^Error:\s*/, "") };
   }
 };

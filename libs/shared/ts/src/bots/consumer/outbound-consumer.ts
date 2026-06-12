@@ -14,7 +14,11 @@ import type { PlatformName } from "../types";
 import { renderForPlatform } from "../utils/formatters";
 import { type BotLogger, createBotLogger } from "../utils/logger";
 import { chunkResponse } from "../utils/text";
-import { outboundMessageEnvelopeSchema } from "./envelope";
+import {
+  type OutboundAttachment,
+  type OutboundMessageEnvelope,
+  outboundMessageEnvelopeSchema,
+} from "./envelope";
 import {
   dlqName,
   OUTBOUND_DLX,
@@ -30,6 +34,12 @@ const RECONNECT_MAX_MS = 30_000;
 /** Sends one already-rendered message to a platform destination. */
 type DeliverFn = (destinationId: string, text: string) => Promise<void>;
 
+/** Sends one file attachment to a platform destination. */
+type DeliverFileFn = (
+  destinationId: string,
+  attachment: OutboundAttachment,
+) => Promise<void>;
+
 export class OutboundConsumer {
   private conn: Awaited<ReturnType<typeof connect>> | null = null;
   private channel: Channel | null = null;
@@ -42,6 +52,7 @@ export class OutboundConsumer {
     private readonly platform: PlatformName,
     private readonly url: string,
     private readonly deliver: DeliverFn,
+    private readonly deliverFile: DeliverFileFn,
   ) {
     this.logger = createBotLogger(platform, "outbound-consumer");
   }
@@ -105,8 +116,8 @@ export class OutboundConsumer {
     if (this.reconnectTimer) return;
     // Close the (possibly still-open) connection before dropping the reference,
     // so a channel-level failure after connect() succeeded does not leak it.
-    void this.channel?.close().catch(() => undefined);
-    void this.conn?.close().catch(() => undefined);
+    this.channel?.close().catch(() => undefined);
+    this.conn?.close().catch(() => undefined);
     this.channel = null;
     this.conn = null;
     const delay = this.reconnectDelayMs;
@@ -148,12 +159,44 @@ export class OutboundConsumer {
     // platform, add a dedupe check on `env.id` backed by SHARED state (e.g.
     // Redis SETNX with a TTL) here — an in-process cache will not work because
     // duplicates land on a different worker process.
+    const env = this.parseEnvelope(channel, msg);
+    if (!env) return;
+
+    if (env.attachment) {
+      await this.handleAttachment(
+        channel,
+        msg,
+        env.id,
+        env.destination_id,
+        env.attachment,
+      );
+      return;
+    }
+
+    await this.handleText(
+      channel,
+      msg,
+      env.id,
+      env.destination_id,
+      env.text,
+      env.text_parts,
+    );
+  }
+
+  /**
+   * Parse, validate, and platform-check the envelope. Dead-letters and returns
+   * `null` on any failure; returns the validated envelope otherwise.
+   */
+  private parseEnvelope(
+    channel: Channel,
+    msg: ConsumeMessage,
+  ): OutboundMessageEnvelope | null {
     let raw: unknown;
     try {
       raw = JSON.parse(msg.content.toString());
     } catch {
       this.settle(channel, () => channel.nack(msg, false, false)); // unparseable → DLQ
-      return;
+      return null;
     }
     const parsed = outboundMessageEnvelopeSchema.safeParse(raw);
     if (!parsed.success) {
@@ -161,7 +204,7 @@ export class OutboundConsumer {
         issues: parsed.error.issues.length,
       });
       this.settle(channel, () => channel.nack(msg, false, false)); // schema mismatch → DLQ
-      return;
+      return null;
     }
     const env = parsed.data;
 
@@ -174,27 +217,84 @@ export class OutboundConsumer {
         got: env.platform,
       });
       this.settle(channel, () => channel.nack(msg, false, false)); // wrong platform → DLQ
+      return null;
+    }
+
+    return env;
+  }
+
+  /**
+   * File attachment: hand the artifact reference to the platform's file sender
+   * (it fetches the bytes and uploads them). No chunking/rendering.
+   */
+  private async handleAttachment(
+    channel: Channel,
+    msg: ConsumeMessage,
+    id: string,
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    try {
+      await this.deliverFile(destinationId, attachment);
+      this.settle(channel, () => channel.ack(msg));
+    } catch (err) {
+      this.logger.error(
+        "outbound_file_delivery_failed",
+        { id, redelivered: msg.fields.redelivered },
+        err,
+      );
+      // Never requeue a file: deliverFile fetches the bytes AND uploads +
+      // sends them, and a failure can surface AFTER the platform already
+      // accepted the upload (e.g. a timeout reading the response). We can't
+      // tell a pre-send fetch failure from a post-send one, so requeueing
+      // risks delivering the file to the user twice. Dead-letter it instead —
+      // the envelope is preserved in the DLQ for inspection/manual replay.
+      this.settle(channel, () => channel.nack(msg, false, false));
+    }
+  }
+
+  /**
+   * Text path. The schema's refine guarantees text or text_parts when there is
+   * no attachment; a multi-bubble notification arrives as ordered `text_parts`
+   * (one logical message) and its bubbles MUST be sent in order, so they are
+   * delivered sequentially within this single handle.
+   */
+  private async handleText(
+    channel: Channel,
+    msg: ConsumeMessage,
+    id: string,
+    destinationId: string,
+    text: string | null | undefined,
+    textParts: string[] | null | undefined,
+  ): Promise<void> {
+    const sources = resolveSources(text, textParts);
+    if (sources.length === 0) {
+      this.settle(channel, () => channel.nack(msg, false, false)); // nothing to send → DLQ
       return;
     }
 
-    let delivered = 0;
+    // Track delivered count by reference so a throw mid-send still exposes how
+    // many chunks already went out — a partial send must NOT requeue.
+    const progress = { delivered: 0 };
     try {
-      // Chunk the raw markdown by the platform limit, then render each chunk so
-      // every sent message is valid platform markdown.
-      for (const chunk of chunkResponse(env.text, this.platform)) {
-        const rendered = renderForPlatform(chunk, this.platform);
-        // A chunk made up solely of strippable markup (e.g. a lone horizontal
-        // rule) renders to nothing; platform send APIs reject empty text, so
-        // skip it instead of throwing and dead-lettering the whole envelope.
-        if (!rendered.trim()) continue;
-        await this.deliver(env.destination_id, rendered);
-        delivered += 1;
+      await this.deliverSources(destinationId, sources, progress);
+      // Non-empty source text that rendered to nothing on every chunk: don't
+      // silently ack it away (the backend recorded it DELIVERED). Dead-letter
+      // it so the dropped message is visible for inspection.
+      if (progress.delivered === 0) {
+        this.logger.warn("outbound_text_rendered_empty", { id });
+        this.settle(channel, () => channel.nack(msg, false, false));
+        return;
       }
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
       this.logger.error(
         "outbound_delivery_failed",
-        { id: env.id, delivered, redelivered: msg.fields.redelivered },
+        {
+          id,
+          delivered: progress.delivered,
+          redelivered: msg.fields.redelivered,
+        },
         err,
       );
       // Requeue for one retry ONLY if nothing was sent yet. Requeue re-delivers
@@ -202,8 +302,49 @@ export class OutboundConsumer {
       // already-delivered chunks. After a partial send (or on the second
       // attempt) dead-letter instead — the message lands in the DLQ for
       // inspection rather than spamming the user with duplicates.
-      const requeue = delivered === 0 && !msg.fields.redelivered;
+      const requeue = progress.delivered === 0 && !msg.fields.redelivered;
       this.settle(channel, () => channel.nack(msg, false, requeue));
     }
   }
+
+  /**
+   * Chunk the raw markdown by the platform limit, then render each chunk so
+   * every sent message is valid platform markdown. The renderer is passed into
+   * chunkResponse so chunks are sized by their RENDERED length — otherwise
+   * markdown that expands when rendered (e.g. Telegram tables padded into
+   * <pre> blocks) can overflow the platform's message limit and be rejected.
+   * Increments `progress.delivered` for each non-empty message sent, so the
+   * caller sees the partial count even if a later send throws.
+   */
+  private async deliverSources(
+    destinationId: string,
+    sources: string[],
+    progress: { delivered: number },
+  ): Promise<void> {
+    const render = (chunk: string): string =>
+      renderForPlatform(chunk, this.platform);
+    // Await each send before the next so the bubbles arrive in the published
+    // order — never fan these out concurrently.
+    for (const source of sources) {
+      for (const chunk of chunkResponse(source, this.platform, render)) {
+        const rendered = render(chunk);
+        // A chunk made up solely of strippable markup (e.g. a lone horizontal
+        // rule) renders to nothing; platform send APIs reject empty text, so
+        // skip it instead of throwing and dead-lettering the whole envelope.
+        if (!rendered.trim()) continue;
+        await this.deliver(destinationId, rendered);
+        progress.delivered += 1;
+      }
+    }
+  }
+}
+
+/** Ordered list of raw markdown sources to send: text_parts wins over text. */
+function resolveSources(
+  text: string | null | undefined,
+  textParts: string[] | null | undefined,
+): string[] {
+  if (textParts?.length) return textParts;
+  if (text) return [text];
+  return [];
 }

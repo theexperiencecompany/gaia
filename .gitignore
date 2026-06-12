@@ -156,3 +156,5 @@ skills-lock.json
 
 # JSCPD copy-paste reports
 .jscpd-report/
+
+infra/load-testing

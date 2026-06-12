@@ -3,8 +3,7 @@
 Covers:
 - integration_service.py (get_user_available_tool_namespaces, build_creator_lookup_stages,
   format_community_integrations)
-- integration_resolver.py (IntegrationResolver.resolve, get_mcp_config, get_server_url,
-  is_mcp_integration, requires_authentication)
+- integration_resolver.py (IntegrationResolver.resolve, get_mcp_config, get_server_url)
 - integration_connection_service.py (build_integrations_config, connect_mcp_integration,
   connect_composio_integration, connect_self_integration, disconnect_integration,
   _invalidate_caches)
@@ -344,70 +343,6 @@ class TestIntegrationResolverHelpers:
 
         result = await IntegrationResolver.get_server_url("x")
         assert result is None
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_is_mcp_integration_true(self, mock_resolve):
-        mock_resolve.return_value = ResolvedIntegration(
-            integration_id="x",
-            name="X",
-            description="",
-            category="c",
-            managed_by="mcp",
-            source="custom",
-            requires_auth=False,
-            auth_type=None,
-            mcp_config=None,
-            platform_integration=None,
-            custom_doc=None,
-        )
-
-        assert await IntegrationResolver.is_mcp_integration("x") is True
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_is_mcp_integration_false_composio(self, mock_resolve):
-        mock_resolve.return_value = ResolvedIntegration(
-            integration_id="x",
-            name="X",
-            description="",
-            category="c",
-            managed_by="composio",
-            source="platform",
-            requires_auth=True,
-            auth_type="oauth",
-            mcp_config=None,
-            platform_integration=None,
-            custom_doc=None,
-        )
-
-        assert await IntegrationResolver.is_mcp_integration("x") is False
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_is_mcp_integration_not_found(self, mock_resolve):
-        mock_resolve.return_value = None
-        assert await IntegrationResolver.is_mcp_integration("x") is False
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_requires_authentication_true(self, mock_resolve):
-        mock_resolve.return_value = ResolvedIntegration(
-            integration_id="x",
-            name="X",
-            description="",
-            category="c",
-            managed_by="mcp",
-            source="custom",
-            requires_auth=True,
-            auth_type="oauth",
-            mcp_config=None,
-            platform_integration=None,
-            custom_doc=None,
-        )
-
-        assert await IntegrationResolver.requires_authentication("x") is True
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_requires_authentication_not_found(self, mock_resolve):
-        mock_resolve.return_value = None
-        assert await IntegrationResolver.requires_authentication("x") is False
 
 
 # ---------------------------------------------------------------------------

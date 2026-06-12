@@ -38,6 +38,29 @@ def deregister_executor_spawned(stream_id: str) -> None:
     _executor_spawned_streams.discard(stream_id)
 
 
+# ── Voice-mode streams ──────────────────────────────────────────────
+# Marks streams driven by the voice agent so the executor's finalize step
+# knows to publish a TTS-only ``voice_tts`` SSE frame with its narrated
+# answer. The done-event alone can't signal this — it is registered for
+# every live stream, voice or not.
+_voice_streams: set[str] = set()
+
+
+def mark_voice_stream(stream_id: str) -> None:
+    """Record that this stream belongs to a voice-mode turn."""
+    _voice_streams.add(stream_id)
+
+
+def is_voice_stream(stream_id: str) -> bool:
+    """Return True if this stream belongs to a voice-mode turn."""
+    return stream_id in _voice_streams
+
+
+def deregister_voice_stream(stream_id: str) -> None:
+    """Remove the voice-mode flag. Safe to call multiple times."""
+    _voice_streams.discard(stream_id)
+
+
 # ── Executor done events ────────────────────────────────────────────
 # Live chat streams need to know when the background executor finishes
 # so they can publish [DONE] and close the SSE connection. The executor

@@ -4,22 +4,26 @@ import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
-export type PendingStreamArgs = [
-  inputText: string,
-  currentMessages: MessageType[],
-  fileData?: FileData[],
-  selectedTool?: string | null,
-  toolCategory?: string | null,
-  selectedWorkflow?: WorkflowData | null,
-  selectedCalendarEvent?: SelectedCalendarEventData | null,
-  optimisticUserId?: string,
+export interface StreamOptions {
+  fileData?: FileData[];
+  selectedTool?: string | null;
+  toolCategory?: string | null;
+  selectedWorkflow?: WorkflowData | null;
+  selectedCalendarEvent?: SelectedCalendarEventData | null;
+  optimisticUserId?: string;
   replyToMessage?: {
     id: string;
     content: string;
     role: "user" | "assistant";
-  } | null,
-  conversationId?: string | null,
-  isOnboardingDemo?: boolean,
+  } | null;
+  conversationId?: string | null;
+  isOnboardingDemo?: boolean;
+}
+
+export type PendingStreamArgs = [
+  inputText: string,
+  currentMessages: MessageType[],
+  options?: StreamOptions,
 ];
 
 export interface StreamRefs {

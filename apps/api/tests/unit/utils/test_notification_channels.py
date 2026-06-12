@@ -31,6 +31,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.services.outbound_delivery import OutboundResult
 from app.utils.notification.channels.discord import DiscordChannelAdapter
 from app.utils.notification.channels.inapp import InAppChannelAdapter
 from app.utils.notification.channels.slack import SlackChannelAdapter
@@ -219,22 +220,36 @@ class TestExternalPlatformDeliver:
         with patch(
             "app.utils.notification.channels.external.publish_outbound_message",
             new_callable=AsyncMock,
-            return_value=True,
+            return_value=OutboundResult.PUBLISHED,
         ) as pub:
             status = await DiscordChannelAdapter().deliver({"parts": ["hello"]}, "user-1")
         pub.assert_awaited_once_with(ConversationSource.DISCORD, "user-1", ["hello"])
         assert status.status == NotificationStatus.DELIVERED
         assert status.skipped is False
 
-    async def test_deliver_maps_failure_to_skipped(self) -> None:
+    async def test_deliver_maps_skipped_to_skipped(self) -> None:
+        # Unsupported platform / unlinked account / nothing to send: a genuine
+        # skip, flagged so it isn't treated as a failure.
         with patch(
             "app.utils.notification.channels.external.publish_outbound_message",
             new_callable=AsyncMock,
-            return_value=False,
+            return_value=OutboundResult.SKIPPED,
         ):
             status = await DiscordChannelAdapter().deliver({"parts": ["hello"]}, "user-1")
         assert status.status == NotificationStatus.FAILED
         assert status.skipped is True
+
+    async def test_deliver_maps_failed_to_error_not_skipped(self) -> None:
+        # Broker down / publish error: a real failure, NOT a skip — so retries
+        # and alerting that key off non-skipped FAILED still fire in an outage.
+        with patch(
+            "app.utils.notification.channels.external.publish_outbound_message",
+            new_callable=AsyncMock,
+            return_value=OutboundResult.FAILED,
+        ):
+            status = await DiscordChannelAdapter().deliver({"parts": ["hello"]}, "user-1")
+        assert status.status == NotificationStatus.FAILED
+        assert status.skipped is False
 
 
 @pytest.mark.unit

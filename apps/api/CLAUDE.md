@@ -71,8 +71,8 @@ Providers are registered (not initialized) during `unified_startup()` in `app/co
 
 Pre-model hooks in `app/agents/core/nodes/`:
 
-- `filter_messages_node` — trims history to fit context window
-- `manage_system_prompts_node` — injects dynamic system prompt
+- `filter_messages_node` — strips unanswered tool calls from AI messages (does NOT trim by length; context-window trimming is the summarization middleware's job)
+- `manage_system_prompts_node` — keeps only the latest of each system-message slot (static prompt / dynamic-context / todo-context / time) and drops stale copies, to hold the prompt-cache prefix stable; it does not inject prompts (that's `construct_langchain_messages`)
 - `follow_up_actions_node` — end-of-graph hook on `comms_agent` only
 
 ### Tools

@@ -78,7 +78,10 @@ def _format_due_string(due_date: datetime | None, now: datetime) -> str:
     return f" due({days_until}d)"
 
 
-_KEY_DETAILS_RE = re.compile(r"## Key Details\n(.*?)(?:\n## |\Z)", re.DOTALL)
+# Capture everything under the "## Key Details" heading up to the next "## "
+# heading (or end of text). A tempered greedy token — "any char that does not
+# begin a new section" — avoids a reluctant quantifier entirely.
+_KEY_DETAILS_RE = re.compile(r"## Key Details\n((?:(?!\n## ).)*)", re.DOTALL)
 _KEY_DETAILS_MAX_LINES = 5
 
 

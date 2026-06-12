@@ -18,11 +18,45 @@ provider string. Pick a unique value for each builtin.
 
 from typing import Final
 
-from app.agents.prompts.subagent_prompts import GAIA_AGENT_SYSTEM_PROMPT
+from app.agents.prompts.subagent_prompts import (
+    DOCGEN_AGENT_SYSTEM_PROMPT,
+    GAIA_AGENT_SYSTEM_PROMPT,
+)
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
 
 BUILTIN_SUBAGENTS: Final[tuple[Subagent, ...]] = (
+    Subagent(
+        id="docgen",
+        name="Document Generator",
+        provider="docgen",
+        managed_by="internal",
+        config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="docgen_agent",
+            tool_space="docgen",
+            handoff_tool_name="call_docgen",
+            domain="creating downloadable documents — PDF, Word (docx), PowerPoint (pptx), Excel (xlsx), and CSV — from a request and its source data",
+            capabilities=(
+                "writing document source in the sandbox and compiling it with "
+                "the right toolchain (Typst/tectonic for PDF, docx-js, pptxgenjs, "
+                "openpyxl), driven by the create-pdf / create-docx / create-pptx / "
+                "create-spreadsheet skills, then delivering the finished file"
+            ),
+            use_cases=(
+                "any request to produce or export a document file — 'make a PDF "
+                "report', 'export this as a Word doc', 'build a slide deck', "
+                "'create a spreadsheet', 'generate an invoice'. Use this whenever "
+                "the deliverable is a downloadable file rather than a chat answer. "
+                "Do NOT use it for editing third-party docs in connected apps "
+                "(Google Docs/Sheets) — those belong to their integration subagents."
+            ),
+            system_prompt=DOCGEN_AGENT_SYSTEM_PROMPT,
+            use_direct_tools=True,
+            disable_retrieve_tools=True,
+            include_finish_task=True,
+        ),
+    ),
     Subagent(
         id="gaia_knowledge_guide",
         name="GAIA Knowledge Guide",

@@ -21,6 +21,7 @@ async def _deliver(conv_source, *, comms_text="result text", result_text="raw"):
     """
     with (
         patch.object(er, "_invoke_comms_graph", new_callable=AsyncMock, return_value=comms_text),
+        patch.object(er, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
         patch.object(er, "update_messages", new_callable=AsyncMock) as save,
         patch.object(
             er, "_get_conversation_source", new_callable=AsyncMock, return_value=conv_source

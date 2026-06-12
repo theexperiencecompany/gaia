@@ -99,10 +99,10 @@ export const integrationsApi = {
   getIntegrationInstructions: async (
     integrationId: string,
   ): Promise<IntegrationInstructions> => {
-    return (await apiService.get(
+    return await apiService.get<IntegrationInstructions>(
       `/integrations/users/me/integrations/${integrationId}/instructions`,
       { silent: true },
-    )) as IntegrationInstructions;
+    );
   },
 
   /**
@@ -112,11 +112,11 @@ export const integrationsApi = {
     integrationId: string,
     content: string,
   ): Promise<IntegrationInstructions> => {
-    return (await apiService.put(
+    return await apiService.put<IntegrationInstructions>(
       `/integrations/users/me/integrations/${integrationId}/instructions`,
       { content },
       { silent: true },
-    )) as IntegrationInstructions;
+    );
   },
 
   /**

@@ -1,8 +1,6 @@
-import base64
 from enum import Enum
-import json
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class EmailRequest(BaseModel):
@@ -73,55 +71,6 @@ class DraftRequest(BaseModel):
     body: str
     cc: list[str] | None = None
     bcc: list[str] | None = None
-
-
-class EmailWebhookMessage(BaseModel):
-    """
-    Model for the message part of the webhook request.
-    The `data` field is a base64 encoded JSON string containing `emailAddress` and `historyId`.
-    """
-
-    messageId: str
-    publishTime: str
-    data: str = Field(
-        ...,
-        description="Base64 encoded string of the email data. Contains emailAddress and historyId.",
-    )
-
-    # Decoded fields extracted from data
-    emailAddress: str | None = None
-    historyId: int | None = None
-
-    @model_validator(mode="before")
-    def decode_data(cls, values):
-        try:
-            encoded = values.get("data")
-            decoded_bytes = base64.urlsafe_b64decode(encoded + "==")
-            decoded_str = decoded_bytes.decode("utf-8")
-            decoded_json = json.loads(decoded_str)
-
-            values["emailAddress"] = decoded_json.get("emailAddress")
-            values["historyId"] = decoded_json.get("historyId")
-        except Exception as e:
-            raise ValueError(f"Failed to decode message data: {e!s}")
-
-        return values
-
-
-class EmailWorkflowFilterDecision(BaseModel):
-    """Model for LLM decision on whether to process an email for a specific workflow"""
-
-    should_process: bool = Field(
-        description="Boolean decision: true if this email should trigger the workflow, false if it should be skipped"
-    )
-    reasoning: str = Field(
-        description="Brief explanation of why this email should or should not trigger the workflow"
-    )
-    confidence: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Confidence level in the decision (0.0 to 1.0)",
-    )
 
 
 class EmailImportanceLevelEnum(str, Enum):

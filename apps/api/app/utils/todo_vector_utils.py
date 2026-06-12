@@ -10,15 +10,7 @@ from shared.py.wide_events import log
 
 
 def create_todo_content_for_embedding(todo_data: dict) -> str:
-    """
-    Create a comprehensive text representation of a todo for embedding generation.
-
-    Args:
-        todo_data: The todo document from MongoDB
-
-    Returns:
-        str: Formatted text representation for embedding
-    """
+    """Build a text representation of a todo for embedding generation."""
     parts = []
 
     # Add title (most important)
@@ -58,17 +50,7 @@ def create_todo_content_for_embedding(todo_data: dict) -> str:
 
 
 async def store_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> bool:
-    """
-    Generate and store embedding for a todo in ChromaDB.
-
-    Args:
-        todo_id: The todo ID
-        todo_data: The todo document data
-        user_id: The user ID
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
+    """Generate and store a todo's embedding in ChromaDB. Returns success."""
     log.set(operation="store_todo_embedding", todo_id=todo_id, user_id=user_id)
     try:
         # Create content for embedding
@@ -131,17 +113,7 @@ async def store_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> b
 
 
 async def update_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> bool:
-    """
-    Update existing todo embedding in ChromaDB.
-
-    Args:
-        todo_id: The todo ID
-        todo_data: The updated todo document data
-        user_id: The user ID
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
+    """Replace a todo's embedding in ChromaDB. Returns success."""
     try:
         # Delete existing embedding
         await delete_todo_embedding(todo_id)
@@ -155,15 +127,7 @@ async def update_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> 
 
 
 async def delete_todo_embedding(todo_id: str) -> bool:
-    """
-    Delete todo embedding from ChromaDB.
-
-    Args:
-        todo_id: The todo ID
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
+    """Delete a todo's embedding from ChromaDB. Returns success."""
     try:
         # Get ChromaDB collection
         chroma_collection = await ChromaClient.get_langchain_client(
@@ -190,20 +154,10 @@ async def semantic_search_todos(
     project_id: str | None = None,
     include_traditional_search: bool = True,
 ) -> list[TodoResponse]:
-    """
-    Perform semantic search on todos using ChromaDB.
+    """Semantic-search todos via ChromaDB, with optional filters.
 
-    Args:
-        query: The search query
-        user_id: The user ID
-        top_k: Maximum number of results to return
-        completed: Filter by completion status
-        priority: Filter by priority
-        project_id: Filter by project
-        include_traditional_search: Whether to fallback to traditional search if no vector results
-
-    Returns:
-        List[TodoResponse]: List of matching todos
+    Falls back to traditional search on error when
+    ``include_traditional_search`` is set.
     """
     log.set(
         operation="semantic_search_todos",
@@ -271,65 +225,13 @@ async def semantic_search_todos(
         return []
 
 
-async def bulk_index_todos(user_id: str, batch_size: int = 100) -> int:
-    """
-    Bulk index all todos for a user in ChromaDB.
-
-    Args:
-        user_id: The user ID
-        batch_size: Number of todos to process in each batch
-
-    Returns:
-        int: Number of todos successfully indexed
-    """
-    log.set(operation="bulk_index_todos", user_id=user_id, batch_size=batch_size)
-    try:
-        indexed_count = 0
-        skip = 0
-
-        while True:
-            # Fetch batch of todos
-            cursor = todos_collection.find({"user_id": user_id}).skip(skip).limit(batch_size)
-            todos = await cursor.to_list(length=batch_size)
-
-            if not todos:
-                break
-
-            # Index each todo
-            for todo in todos:
-                success = await store_todo_embedding(str(todo["_id"]), todo, user_id)
-                if success:
-                    indexed_count += 1
-
-            skip += batch_size
-
-            # Break if we got less than batch_size (last batch)
-            if len(todos) < batch_size:
-                break
-
-        log.info(f"Bulk indexed {indexed_count} todos for user {user_id}")
-        return indexed_count
-
-    except Exception as e:
-        log.error(f"Error in bulk indexing todos for user {user_id}: {e!s}")
-        return 0
-
-
 async def hybrid_search_todos(
     query: str, user_id: str, top_k: int = 10, semantic_weight: float = 0.7, **filters
 ) -> list[TodoResponse]:
-    """
-    Perform hybrid search combining semantic and traditional search.
+    """Hybrid search combining semantic and traditional results.
 
-    Args:
-        query: The search query
-        user_id: The user ID
-        top_k: Maximum number of results to return
-        semantic_weight: Weight for semantic results (0.0 to 1.0)
-        **filters: Additional filters (completed, priority, project_id)
-
-    Returns:
-        List[TodoResponse]: Combined and ranked results
+    ``semantic_weight`` (0.0-1.0) weights the semantic ranking; ``**filters``
+    accepts completed/priority/project_id.
     """
     try:
         # Get semantic results

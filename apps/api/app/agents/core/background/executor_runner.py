@@ -3,7 +3,7 @@
 Spawned by call_executor tool via asyncio.create_task(). Runs the
 executor agent graph with a Redis stream writer for tool events. When
 the executor finishes, its terminal text is handed to the comms agent
-as INTERNAL CONTEXT (SystemMessage with an [EXECUTOR_RESULT] prefix);
+as INTERNAL CONTEXT (HumanMessage with an [EXECUTOR_RESULT] prefix);
 comms then generates the user-facing message in its own voice and that
 message is saved + WS-broadcast.
 
@@ -17,26 +17,28 @@ import json
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage
 from langsmith import traceable
 
+from app.agents.core.background.executor_capture import (
+    build_returned_to_frontend_note,
+    drain_executor_tool_data,
+    teardown_executor_capture,
+)
 from app.agents.core.background.inbox import (
-    deregister_bg_subagent_results,
-    deregister_executor_done_event,
-    deregister_executor_spawned,
-    deregister_pending_subagents,
-    deregister_tool_event_collector,
     get_executor_done_event,
-    get_tool_event_collector,
+    is_voice_stream,
     mark_executor_spawned,
     register_tool_event_collector,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.graph_manager import GraphManager
+from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
 from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
+from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
@@ -48,11 +50,6 @@ from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
 from app.utils.agent_utils import format_sse_data
-from app.utils.stream_utils import (
-    absorb_collector_event,
-    apply_outputs_to_tool_data,
-    reconstruct_subagent_groups,
-)
 from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
@@ -75,17 +72,32 @@ async def _invoke_comms_graph(
     msg_type: str,
     conversation_id: str,
     user: dict,
+    returned_note: str = "",
+    workflow_id: str | None = None,
 ) -> str:
     """Invoke the comms graph silently with the executor result as internal context.
 
-    The result is injected as a SystemMessage with a stable prefix so comms
-    treats it as ground-truth internal data (not a user turn). Comms applies
-    its voice/persona and returns the user-facing text. The graph's
-    checkpoint is updated naturally — no manual aupdate_state.
+    The result is injected as a HumanMessage with a stable prefix so comms
+    treats it as ground-truth internal data and re-voices it. Comms applies its
+    voice/persona (loaded from the checkpoint) and returns the user-facing text.
+    The graph's checkpoint is updated naturally — no manual aupdate_state.
 
     Returns the comms-generated text, or an empty string on failure.
     """
     prefix = EXECUTOR_ERROR_MARKER if msg_type == "error" else EXECUTOR_RESULT_MARKER
+    if workflow_id:
+        # Text-only platform delivery: tell comms to restate everything. The
+        # card-suppression note (returned_note) is deliberately dropped here —
+        # it would tell comms NOT to list data that has no card to fall back on.
+        content = f"{PLATFORM_DELIVERY_NOTE}{prefix}\n{result_text}"
+    else:
+        # Interactive chat: prepend the "already shown as a card" note (if any)
+        # so comms doesn't re-narrate data the frontend rendered natively.
+        content = (
+            f"{returned_note}{prefix}\n{result_text}"
+            if returned_note
+            else f"{prefix}\n{result_text}"
+        )
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
         if not comms_graph:
@@ -99,8 +111,19 @@ async def _invoke_comms_graph(
         )
         initial_state = {
             "messages": [
-                SystemMessage(
-                    content=f"{prefix}\n{result_text}",
+                # MUST be a HumanMessage. The message type is load-bearing here:
+                #   - SystemMessage: manage_system_prompts_node treats it as the
+                #     static-prompt slot and EVICTS COMMS_AGENT_PROMPT, leaving
+                #     comms with no persona — so it parrots the raw [EXECUTOR_RESULT]
+                #     instead of speaking in GAIA's voice.
+                #   - AIMessage: Gemini sees a trailing assistant turn as already
+                #     answered and returns an empty completion.
+                #   - HumanMessage: not a system message, so it's immune to the
+                #     prompt pruning (the checkpoint's persona survives) and Gemini
+                #     treats it as a turn to respond to. This is how it worked
+                #     before the HumanMessage→SystemMessage regression.
+                HumanMessage(
+                    content=content,
                     name="background_executor",
                 ),
             ],
@@ -151,26 +174,6 @@ async def _get_conversation_source(conversation_id: str, user_id: str) -> Conver
     return ConversationSource.coerce(doc.get("source")) if doc else None
 
 
-def _collect_queued_tool_events(
-    stream_id: str,
-) -> list[dict[str, Any]] | None:
-    """Drain the tool event collector for a queued stream into a tool_data list.
-
-    Only called for queued tasks — live tasks already have tool_data on the
-    comms ack message (attached by chat_service after the executor finishes).
-    """
-    collector = get_tool_event_collector(stream_id)
-    if not collector:
-        return None
-    accumulated: dict[str, Any] = {"tool_data": []}
-    tool_outputs: dict[str, str] = {}
-    for evt in collector:
-        absorb_collector_event(evt, accumulated, tool_outputs)
-    apply_outputs_to_tool_data(accumulated["tool_data"], tool_outputs)
-    reconstruct_subagent_groups(accumulated)
-    return accumulated.get("tool_data") or None
-
-
 async def _broadcast_message(user_id: str, ws_event: dict[str, Any]) -> None:
     """Best-effort WebSocket broadcast with one retry."""
     for attempt in range(2):
@@ -198,6 +201,10 @@ async def _deliver_bg_notification(
     user_message_id: str | None = None,
     tool_data: list[dict[str, Any]] | None = None,
     is_queued: bool = False,
+    returned_note: str = "",
+    workflow_id: str | None = None,
+    workflow_title: str = "",
+    workflow_notify_on_completion: bool = True,
 ) -> str | None:
     """Run comms once with the executor result, then save + deliver the message.
 
@@ -230,7 +237,14 @@ async def _deliver_bg_notification(
     """
     user_id = user.get("user_id", "")
 
-    notification_text = await _invoke_comms_graph(result_text, msg_type, conversation_id, user)
+    notification_text = await _invoke_comms_graph(
+        result_text,
+        msg_type,
+        conversation_id,
+        user,
+        returned_note=returned_note,
+        workflow_id=workflow_id,
+    )
     # If comms is unavailable, fall back to the raw executor text rather than
     # dropping the message entirely.
     if not notification_text:
@@ -255,6 +269,15 @@ async def _deliver_bg_notification(
             role="user",
         )
 
+    follow_up_actions = await _build_follow_up_actions(
+        msg_type=msg_type,
+        notification_text=notification_text,
+        user_msg_content=user_msg_content,
+        user_id=user_id,
+    )
+    if follow_up_actions:
+        bot_message.follow_up_actions = follow_up_actions
+
     try:
         await update_messages(
             UpdateMessagesRequest(
@@ -266,6 +289,23 @@ async def _deliver_bg_notification(
     except Exception as e:
         log.error("_deliver_bg_notification: failed to save message", error=str(e))
         return None
+
+    # Workflow run: the result was produced with no human watching, so deliver it
+    # as the proactive completion notification (multi-channel, "Done with X")
+    # carrying the real voiced result, instead of pushing to one conversation
+    # transport. The bot message is already saved above for "View Results".
+    if workflow_id:
+        await _dispatch_workflow_notification(
+            msg_type=msg_type,
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            notification_text=notification_text,
+            message_id=bot_message.message_id,
+            notify_on_completion=workflow_notify_on_completion,
+        )
+        return notification_text
 
     # Deliver over exactly one transport, decided by the conversation's source.
     # Bot conversations go to their platform's API; web/mobile/system go to the
@@ -280,29 +320,17 @@ async def _deliver_bg_notification(
         )
         transport = "platform"
     else:
-        ws_payload: dict[str, Any] = {
-            "type": "bot",
-            "response": notification_text,
-            "message_id": bot_message.message_id,
-            "date": bot_message.date,
-        }
-        if tool_data:
-            ws_payload["tool_data"] = tool_data
-        if task_id:
-            ws_payload["task_id"] = task_id
-        if show_reply_quote:
-            ws_payload["replyToMessage"] = {
-                "id": user_message_id,
-                "content": user_msg_content,
-                "role": "user",
-            }
-        await _broadcast_message(
-            user_id,
-            {
-                "type": "conversation.new_message",
-                "conversation_id": conversation_id,
-                "message": ws_payload,
-            },
+        await _broadcast_bot_message(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            bot_message=bot_message,
+            notification_text=notification_text,
+            tool_data=tool_data,
+            follow_up_actions=follow_up_actions,
+            task_id=task_id,
+            show_reply_quote=show_reply_quote,
+            user_message_id=user_message_id,
+            user_msg_content=user_msg_content,
         )
         delivered = True
         transport = "websocket"
@@ -319,6 +347,127 @@ async def _deliver_bg_notification(
     return notification_text
 
 
+async def _build_follow_up_actions(
+    *,
+    msg_type: str,
+    notification_text: str,
+    user_msg_content: str,
+    user_id: str,
+) -> list[str]:
+    """Generate follow-up suggestions on the executor's final answer.
+
+    Suggestions are computed on the real result (not the intermediate comms ack)
+    so they appear once. Only successful results get suggestions — an error
+    message gets none.
+    """
+    if msg_type != "final":
+        return []
+    follow_up_context = (
+        f"User request: {user_msg_content}\n\nAssistant response: {notification_text}"
+        if user_msg_content
+        else notification_text
+    )
+    return await generate_follow_up_actions(
+        follow_up_context,
+        user_id,
+        {"configurable": {"user_id": user_id}},
+    )
+
+
+async def _dispatch_workflow_notification(
+    *,
+    msg_type: str,
+    workflow_id: str,
+    workflow_title: str,
+    conversation_id: str,
+    user_id: str,
+    notification_text: str,
+    message_id: str,
+    notify_on_completion: bool = True,
+) -> None:
+    """Send the proactive workflow completion/failure notification.
+
+    Failures always notify — the user must learn their automation broke. The
+    success notification respects the workflow's ``notify_on_completion``
+    setting: silent workflows keep their result in the conversation and leave
+    any user-facing alerting to the agent's own send_notification calls (driven
+    by the workflow's instructions).
+    """
+    from app.services.workflow.notifications import (
+        send_workflow_completion_notification,
+        send_workflow_failure_notification,
+    )
+
+    if msg_type == "error":
+        await send_workflow_failure_notification(
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
+            user_id=user_id,
+        )
+    elif not notify_on_completion:
+        log.info(
+            "_deliver_bg_notification: completion notification skipped (workflow is silent)",
+            workflow_id=workflow_id,
+            message_id=message_id,
+        )
+        return
+    else:
+        await send_workflow_completion_notification(
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            result_text=notification_text,
+        )
+    log.info(
+        "_deliver_bg_notification: workflow notification dispatched",
+        workflow_id=workflow_id,
+        message_id=message_id,
+    )
+
+
+async def _broadcast_bot_message(
+    *,
+    user_id: str,
+    conversation_id: str,
+    bot_message: MessageModel,
+    notification_text: str,
+    tool_data: list[dict[str, Any]] | None,
+    follow_up_actions: list[str],
+    task_id: str | None,
+    show_reply_quote: bool,
+    user_message_id: str | None,
+    user_msg_content: str,
+) -> None:
+    """Push the bot message to web/mobile/system clients over the WebSocket."""
+    ws_payload: dict[str, Any] = {
+        "type": "bot",
+        "response": notification_text,
+        "message_id": bot_message.message_id,
+        "date": bot_message.date,
+    }
+    if tool_data:
+        ws_payload["tool_data"] = tool_data
+    if follow_up_actions:
+        ws_payload["follow_up_actions"] = follow_up_actions
+    if task_id:
+        ws_payload["task_id"] = task_id
+    if show_reply_quote:
+        ws_payload["replyToMessage"] = {
+            "id": user_message_id,
+            "content": user_msg_content,
+            "role": "user",
+        }
+    await _broadcast_message(
+        user_id,
+        {
+            "type": "conversation.new_message",
+            "conversation_id": conversation_id,
+            "message": ws_payload,
+        },
+    )
+
+
 def _user_from_configurable(configurable: dict[str, Any]) -> dict:
     """Shape a comms-friendly user dict from the executor's configurable."""
     return {
@@ -326,18 +475,6 @@ def _user_from_configurable(configurable: dict[str, Any]) -> dict:
         "email": configurable.get("email", ""),
         "name": configurable.get("user_name", ""),
     }
-
-
-def _cleanup_queued_stream_state(stream_id: str) -> None:
-    """Tear down per-stream orchestration state that chat_service would normally clean.
-
-    Queued streams have no chat_service finally block, so this mirror is needed.
-    """
-    deregister_executor_done_event(stream_id)
-    deregister_tool_event_collector(stream_id)
-    deregister_pending_subagents(stream_id)
-    deregister_executor_spawned(stream_id)
-    deregister_bg_subagent_results(stream_id)
 
 
 async def _dispatch_executor_result(
@@ -350,16 +487,22 @@ async def _dispatch_executor_result(
     user_message_id: str | None,
     stream_id: str,
     is_queued: bool,
+    returned_note: str = "",
+    workflow_id: str | None = None,
+    workflow_title: str = "",
+    workflow_notify_on_completion: bool = True,
 ) -> str | None:
     """Hand the executor's terminal text to comms and surface the message to the user.
 
     Live tasks have tool_data attached to the comms ack message by chat_service.
-    Queued tasks have no live SSE consumer, so we attach tool_data here instead.
+    Queued tasks and workflow runs have no live SSE consumer attaching the cards,
+    so we drain and attach the executor's tool_data here instead (otherwise the
+    workflow result message renders with no email/calendar cards).
 
     Returns the comms-narrated text that was shown to the user, so a voice-mode
     stream can also speak it.
     """
-    queued_tool_data = _collect_queued_tool_events(stream_id) if is_queued else None
+    attach_tool_data = drain_executor_tool_data(stream_id) if (is_queued or workflow_id) else None
     try:
         return await _deliver_bg_notification(
             result_text=result_text,
@@ -368,8 +511,12 @@ async def _dispatch_executor_result(
             user=user,
             task_id=task_id,
             user_message_id=user_message_id,
-            tool_data=queued_tool_data,
+            tool_data=attach_tool_data,
             is_queued=is_queued,
+            returned_note=returned_note,
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
+            workflow_notify_on_completion=workflow_notify_on_completion,
         )
     except Exception as e:
         log.error("Background notification delivery failed", error=str(e))
@@ -385,13 +532,22 @@ async def _finalize_executor_run(
     result_type: str,
     task_id: str | None,
     user_message_id: str | None,
+    workflow_id: str | None = None,
+    workflow_title: str = "",
+    workflow_notify_on_completion: bool = True,
 ) -> None:
     """The full post-run cleanup: signal done, notify, tear down state, hand off lock."""
     was_cancelled = bool(stream_id) and await StreamManager.is_cancelled(stream_id)
     is_queued = stream_id.startswith("queued_")
 
-    # A registered done-event means a live (voice-mode) stream is holding [DONE]
-    # open until the executor's narrated answer is ready, so it can speak it.
+    # Snapshot which native cards were returned to the frontend BEFORE signalling
+    # done — for live streams the chat path drains + tears down the collector in
+    # parallel once done_event fires, so reading it after would race teardown.
+    returned_note = "" if was_cancelled else build_returned_to_frontend_note(stream_id)
+
+    # Set once the executor (and its narration) is done — live streams hold
+    # [DONE] open on this event so they can drain the collector into the comms
+    # ack (and, for voice, speak the narrated answer) before ending the turn.
     done_event = get_executor_done_event(stream_id)
 
     if was_cancelled:
@@ -410,23 +566,27 @@ async def _finalize_executor_run(
             user_message_id=user_message_id,
             stream_id=stream_id,
             is_queued=is_queued,
+            returned_note=returned_note,
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
+            workflow_notify_on_completion=workflow_notify_on_completion,
         )
         # Voice mode: push the narrated answer through the SSE channel so the
         # voice agent speaks it. The frontend still renders it from the WebSocket
         # push delivered above, so this is TTS-only (never forwarded to the UI).
-        if done_event is not None and notification_text:
+        if is_voice_stream(stream_id) and notification_text:
             await StreamManager.publish_chunk(
                 stream_id,
                 format_sse_data({VOICE_TTS_KEY: notification_text}),
             )
 
-    # Signal the waiting voice-mode stream that the executor (and its narration)
-    # is done, so it can publish [DONE] and end the turn.
+    # Signal the waiting live stream that the executor (and its narration) is
+    # done, so it can drain the collector and publish [DONE] to end the turn.
     if done_event is not None:
         done_event.set()
 
     if is_queued:
-        _cleanup_queued_stream_state(stream_id)
+        teardown_executor_capture(stream_id)
         if not was_cancelled:
             await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
             await StreamManager.complete_stream(stream_id)
@@ -437,6 +597,36 @@ async def _finalize_executor_run(
     spawned_next = await _process_next_queued_task(conversation_id) if not was_cancelled else False
     if not spawned_next:
         await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+
+
+async def _execute_executor(
+    task: str,
+    configurable: dict[str, Any],
+    user_time: datetime,
+    stream_id: str,
+) -> tuple[str, str]:
+    """Run the executor agent graph once. Returns (result_text, result_type).
+
+    Tool events stream to the per-stream collector via make_redis_stream_writer
+    so the caller can persist the executor's tool_data. Never raises — errors
+    come back as ("...", "error").
+    """
+    try:
+        ctx, error = await prepare_executor_execution(
+            task=task,
+            configurable=configurable,
+            user_time=user_time,
+            stream_id=stream_id,
+        )
+        if error or ctx is None:
+            log.error("Executor prep failed", error=error)
+            return (error or "Executor agent not available"), "error"
+        writer = make_redis_stream_writer(stream_id)
+        result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
+        return result_text, "final"
+    except Exception as e:
+        log.error("Executor run failed", stream_id=stream_id, error=str(e))
+        return str(e), "error"
 
 
 @traceable(name="executor_background", run_type="chain")
@@ -465,32 +655,18 @@ async def run_executor_background(
     LLM/tool spans land on the same Langfuse trace as comms.
     """
     user = _user_from_configurable(configurable)
+    # Workflow runs tag their executor task so the delivery path routes the
+    # final result to the workflow-completion notification (multi-channel)
+    # instead of a normal conversation message. Unset for interactive chat.
+    workflow_id = configurable.get("workflow_id")
+    workflow_title = configurable.get("workflow_title", "")
+    workflow_notify_on_completion = configurable.get("workflow_notify_on_completion", True)
     result_text = ""
     result_type = "final"
 
     try:
-        ctx, error = await prepare_executor_execution(
-            task=task,
-            configurable=configurable,
-            user_time=user_time,
-            stream_id=stream_id,
-        )
-        if error or ctx is None:
-            result_text = error or "Executor agent not available"
-            result_type = "error"
-            log.error("Background executor prep failed", error=result_text)
-        else:
-            writer = make_redis_stream_writer(stream_id)
-            result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
-            log.info(
-                "Background executor completed",
-                task_id=task_id,
-                stream_id=stream_id,
-            )
-    except Exception as e:
-        log.error("Background executor failed", stream_id=stream_id, error=str(e))
-        result_text = str(e)
-        result_type = "error"
+        result_text, result_type = await _execute_executor(task, configurable, user_time, stream_id)
+        log.info("Background executor completed", task_id=task_id, stream_id=stream_id)
     finally:
         await _finalize_executor_run(
             stream_id=stream_id,
@@ -500,6 +676,9 @@ async def run_executor_background(
             result_type=result_type,
             task_id=task_id,
             user_message_id=user_message_id,
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
+            workflow_notify_on_completion=workflow_notify_on_completion,
         )
 
 

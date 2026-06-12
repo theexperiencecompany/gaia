@@ -37,12 +37,12 @@ def _get_original_init_fn():
         except Exception:
             pass
     try:
-        loader = providers.get_loader("postgresql_engine")
+        loader = providers._providers["postgresql_engine"]
         return loader.loader_func
     except KeyError:
         # Force registration
         init_postgresql_engine()
-        loader = providers.get_loader("postgresql_engine")
+        loader = providers._providers["postgresql_engine"]
         return loader.loader_func
 
 

@@ -1,5 +1,11 @@
 import type { KnipConfig } from "knip";
 
+// knip — TS/JS dead-code detection (scripts/dead-code-check.sh + CI, --strict).
+// Only suppress when a symbol is genuinely consumed in a way knip can't trace
+// (dynamic-by-name renderers, framework-by-convention files, config/CSS-subpath
+// imports, parked WIP features). Never add an entry to silence a real finding —
+// if nothing uses it, delete the code or the dependency. Every entry needs a
+// one-line reason; entries without a live consumer should be removed.
 const config: KnipConfig = {
   // ─── Global: suppress exports/types for dynamically-consumed files ───
   // ignoreIssues is root-only (not valid at workspace level).
@@ -80,6 +86,12 @@ const config: KnipConfig = {
     ".agents/skills/**",
     ".claude/skills/**",
 
+    // Builtin docgen skill templates: .mjs/.typ/.py/.tex files materialized into
+    // the agent workspace and executed by the skills' build.sh scripts (e.g.
+    // `node report.mjs`), never imported as modules — so knip reads them as
+    // unused files.
+    "apps/api/app/agents/skills/builtin/**",
+
     // SEO content source-of-truth: human-edited `entries/*.ts` are read by the
     // static-data codegen (scripts/extract-static-data*, which knip ignores) and
     // emitted to public/data/{feature}/*.json — the runtime fetches the JSON via
@@ -118,6 +130,10 @@ const config: KnipConfig = {
     // One-shot maintenance scripts, not imported by app code.
     "apps/mobile/src/scripts/**",
     "docs/scripts/**",
+
+    // Mintlify React snippets: consumed via `import` in .mdx files, which knip
+    // cannot trace. These are legitimately used — knip has no MDX resolver.
+    "docs/snippets/**",
 
     // Tailwind v4 entry: knip misreads the `@source` content globs as JS
     // imports. Tailwind scans these paths; they are not module imports.
@@ -259,19 +275,6 @@ const config: KnipConfig = {
         "@react-types/shared", // `declare module` augmentation in HeroUIProvider
         "animated-number-react", // ambient module declaration in src/types
 
-        // TODO(team): the following have no remaining importers and look prunable
-        // from apps/web/package.json. Left ignored here to keep this dead-code PR
-        // from churning the root lockfile; remove in a dependency-cleanup pass.
-        "@composio/core",
-        "@internationalized/date",
-        "@lottiefiles/dotlottie-react",
-        "coolshapes-react",
-        "gsap",
-        "react-pdf",
-        "react-swipeable-list",
-        "string-similarity",
-        "ts-key-enum",
-        "next-themes",
         "madge", // dev-only circular-dep tool, invoked via script
         // Next.js CSS inliner — optimizeCss is disabled in next.config.mjs, so
         // nothing imports it directly, but it stays a managed Next dependency.

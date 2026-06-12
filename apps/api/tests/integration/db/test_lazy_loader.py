@@ -121,25 +121,6 @@ class TestProviderRegistry:
         assert first == second == "value-1"
         assert call_count["n"] == 1
 
-    def test_list_providers(self):
-        """list_providers should return status for all registered providers."""
-        registry = ProviderRegistry()
-        registry.register(
-            name="p1",
-            loader_func=lambda: "v1",
-            required_keys=["ok"],
-        )
-        registry.register(
-            name="p2",
-            loader_func=lambda: "v2",
-            required_keys=[None],
-        )
-        listing = registry.list_providers()
-        assert "p1" in listing
-        assert "p2" in listing
-        assert listing["p1"]["available"] is True
-        assert listing["p2"]["available"] is False
-
     def test_is_available_checks_keys(self):
         """is_available should reflect whether required keys are present."""
         registry = ProviderRegistry()

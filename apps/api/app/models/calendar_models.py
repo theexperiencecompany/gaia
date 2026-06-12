@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime
 import re
 from typing import Literal
 
@@ -61,49 +61,8 @@ class BatchEventDeleteRequest(BaseModel):
     events: list[EventDeleteRequest] = Field(..., title="List of events to delete")
 
 
-class EventLookupRequest(BaseModel):
-    event_id: str | None = Field(None, title="Event ID to lookup")
-    calendar_id: str | None = Field(None, title="Calendar ID containing the event")
-    query: str | None = Field(
-        None,
-        title="Query string to search for event if event_id/calendar_id not provided",
-    )
-
-    @model_validator(mode="after")
-    def validate_lookup(self):
-        event_id = self.event_id
-        calendar_id = self.calendar_id
-        query = self.query
-
-        # If both event_id and calendar_id are provided, ignore query
-        if event_id and calendar_id:
-            self.query = None
-            return self
-
-        # If only one of event_id or calendar_id is provided, error
-        if (event_id and not calendar_id) or (calendar_id and not event_id):
-            raise ValueError("Both event_id and calendar_id must be provided together.")
-
-        # If neither event_id/calendar_id nor query is provided, error
-        if not query:
-            raise ValueError("Either both event_id and calendar_id, or query, must be provided.")
-
-        return self
-
-
 class RecurrenceRule(BaseModel):
-    """
-    Model representing a recurrence rule (RRULE) for a recurring event following RFC 5545.
-
-    This model supports the core components needed to define recurring events in Google Calendar:
-    - FREQ: Required frequency of repetition (daily, weekly, monthly, yearly)
-    - INTERVAL: Optional interval between occurrences (default: 1)
-    - COUNT: Optional number of occurrences
-    - UNTIL: Optional end date (inclusive)
-    - BYDAY: Optional days of week (e.g., for weekly events)
-    - BYMONTHDAY: Optional days of month (e.g., for monthly events)
-    - BYMONTH: Optional months of year (e.g., for yearly events)
-    """
+    """Recurrence rule (RRULE) for a recurring event following RFC 5545."""
 
     frequency: Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] = Field(
         ..., title="Frequency of repetition"
@@ -155,17 +114,11 @@ class RecurrenceRule(BaseModel):
 
     @model_validator(mode="after")
     def validate_recurrence(self) -> "RecurrenceRule":
-        """
-        Validate the recurrence rule based on frequency type
-        """
-        # Cannot specify both count and until
         if self.count is not None and self.until is not None:
             raise ValueError("Cannot specify both 'count' and 'until' in a recurrence rule")
 
-        # Validate the until date format if provided
         if self.until:
             try:
-                # Try to parse the date to validate it
                 if "T" in self.until:  # ISO datetime format
                     datetime.fromisoformat(self.until.replace("Z", "+00:00"))
                 else:  # Simple date format
@@ -175,11 +128,6 @@ class RecurrenceRule(BaseModel):
                     "Invalid 'until' date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS±HH:MM)"
                 )
 
-        # Specific validations based on frequency
-        if self.frequency == "WEEKLY" and not self.by_day:
-            # For weekly frequency, by_day should typically be specified
-            pass  # This is just a recommendation, not an error
-
         if self.frequency == "MONTHLY" and self.by_day and self.by_month_day:
             raise ValueError(
                 "Cannot specify both 'by_day' and 'by_month_day' for monthly recurrence"
@@ -188,9 +136,7 @@ class RecurrenceRule(BaseModel):
         return self
 
     def to_rrule_string(self) -> str:
-        """
-        Convert the RecurrenceRule object to an RFC 5545 RRULE string
-        """
+        """Convert to an RFC 5545 RRULE string."""
         components = [f"FREQ={self.frequency}"]
 
         if self.interval != 1:
@@ -248,24 +194,12 @@ class RecurrenceRule(BaseModel):
 
 
 class RecurrenceData(BaseModel):
-    """
-    Model representing the complete recurrence data for an event.
-
-    This can include:
-    - rrule: The main recurrence rule
-    - exclude_dates: Specific dates to exclude from the recurrence pattern
-    - include_dates: Additional specific dates to include in the pattern
-    """
+    """Complete recurrence data for an event."""
 
     rrule: RecurrenceRule = Field(..., title="Recurrence rule")
 
     def to_google_calendar_format(self) -> list[str]:
-        """
-        Convert the recurrence data to the format expected by Google Calendar API.
-
-        Returns:
-            List[str]: List of recurrence rules in RFC 5545 format
-        """
+        """Convert to the format expected by the Google Calendar API."""
         rules = [self.rrule.to_rrule_string()]
 
         if self.rrule.include_dates:
@@ -319,183 +253,184 @@ class BaseCalendarEvent(BaseModel):
     model_config = {"extra": "ignore"}
 
 
-class CalendarEventToolRequest(BaseCalendarEvent):
-    """Model for LLM tool input with time string and duration approach."""
-
-    # Input fields for time specification
-    time_str: str | None = Field(
-        None,
-        title="Time string: either a relative offset like '+02:30' or an ISO 8601 time",
-    )
-    duration_minutes: int | None = Field(
-        30, title="Duration of the event in minutes, defaults to 30 minutes", ge=1
-    )
-    timezone_offset: str | None = Field(
-        None,
-        title="Timezone offset in `(+|-)HH:MM` format. Only provide when user explicitly mentions a timezone.",
-    )
-
-    @field_validator("timezone_offset")
-    @classmethod
-    def validate_timezone_offset(cls, v):
-        """Validate timezone offset format (+|-)HH:MM"""
-        if v is not None:
-            if not re.match(r"^[+-]\d{2}:\d{2}$", v):
-                raise ValueError("Timezone offset must be in (+|-)HH:MM format")
-        return v
-
-    @model_validator(mode="after")
-    def validate_event_times(self) -> "CalendarEventToolRequest":
-        """
-        Validate event data based on event type after model initialization.
-        """
-        if not self.is_all_day:
-            # For timed events, time_str is required
-            if not self.time_str:
-                raise ValueError("time_str is required for timed events")
-
-            # Validate the format of time_str
-            if self.time_str.startswith("+"):
-                # This is a relative time offset, validate the format
-                if not re.match(r"^\+\d{2}:\d{2}$", self.time_str):
-                    raise ValueError("Relative time offset must be in the format '+HH:MM'")
-            else:
-                # This is an absolute time, try to parse it
-                try:
-                    # Replace space with T if needed
-                    time_str = (
-                        self.time_str.replace(" ", "T") if " " in self.time_str else self.time_str
-                    )
-                    datetime.fromisoformat(time_str)
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid time format: {self.time_str}. Use ISO format (YYYY-MM-DDTHH:MM:SS) for absolute times."
-                    )
-
-        # For recurring events, ensure time_str is provided for non-all-day events
-        if self.recurrence and not self.is_all_day and not self.time_str:
-            raise ValueError("Recurring events must have time_str specified")
-
-        return self
-
-    @property
-    def event_date(self) -> str:
-        """
-        Returns the date part for all-day events.
-        For all-day events without time_str, returns today's date in YYYY-MM-DD format.
-        """
-        if self.is_all_day and not self.time_str:
-            return datetime.now().strftime("%Y-%m-%d")
-        if self.time_str and not self.time_str.startswith("+"):
-            # Extract date part from ISO datetime string
-            return self.time_str.split("T")[0] if "T" in self.time_str else self.time_str
-
-        return datetime.now().strftime("%Y-%m-%d")
-
-    def _apply_timezone_offset(self, dt: datetime, offset_str: str) -> datetime:
-        """Apply timezone offset to datetime object."""
-        # Parse offset string (+|-)HH:MM
-        sign = 1 if offset_str.startswith("+") else -1
-        hours, minutes = map(int, offset_str[1:].split(":"))
-        offset_seconds = sign * (hours * 3600 + minutes * 60)
-        tz = timezone(timedelta(seconds=offset_seconds))
-        return dt.replace(tzinfo=tz)
-
-    def process_times(self, user_time: str) -> "EventCreateRequest":
-        """
-        Process time strings and calculate start/end times, converting to EventCreateRequest.
-
-        Args:
-            user_time: Current user time in ISO format for timezone reference
-
-        Returns:
-            EventCreateRequest with processed start/end times
-        """
-        # Extract user's timezone from user_time
-        user_datetime = datetime.fromisoformat(user_time)
-        user_timezone = user_datetime.tzinfo if user_datetime.tzinfo else UTC
-
-        # Skip processing for all-day events
-        if self.is_all_day:
-            # For all-day events, use the date without time component
-            event_date = self.event_date
-
-            # Return a new EventCreateRequest with start/end set to event_date
-            return EventCreateRequest(
-                summary=self.summary,
-                description=self.description,
-                is_all_day=True,
-                start=event_date,
-                end=event_date,
-                calendar_id=self.calendar_id,
-                recurrence=self.recurrence,
-                timezone=None,
-                attendees=self.attendees,
-                create_meeting_room=self.create_meeting_room,
-            )
-
-        # Check if time_str is provided
-        if not self.time_str:
-            raise ValueError("time_str is required for timed events")
-
-        # Process time based on format
-        try:
-            if self.time_str.startswith("+"):
-                # Relative time offset (e.g., "+02:30")
-                offset_hours, offset_minutes = map(int, self.time_str[1:].split(":"))
-                offset_seconds = offset_hours * 3600 + offset_minutes * 60
-
-                # Calculate the future time (from user's current time)
-                start_time = user_datetime + timedelta(seconds=offset_seconds)
-
-                # Calculate end time based on duration
-                end_time = start_time + timedelta(minutes=self.duration_minutes or 30)
-
-                # Return new EventCreateRequest with calculated times
-                return EventCreateRequest(
-                    summary=self.summary,
-                    description=self.description,
-                    is_all_day=False,
-                    start=start_time.isoformat(),
-                    end=end_time.isoformat(),
-                    calendar_id=self.calendar_id,
-                    recurrence=self.recurrence,
-                    timezone=None,
-                    attendees=self.attendees,
-                    create_meeting_room=self.create_meeting_room,
-                )
-
-            # Absolute time (ISO format)
-            time_str = self.time_str.replace(" ", "T") if " " in self.time_str else self.time_str
-            dt = datetime.fromisoformat(time_str)
-
-            # Apply timezone if specified
-            if self.timezone_offset:
-                # User explicitly provided timezone
-                start_time = self._apply_timezone_offset(dt, self.timezone_offset)
-            else:
-                # Use user's timezone
-                start_time = dt.replace(tzinfo=user_timezone)
-
-            # Calculate end time based on duration
-            end_time = start_time + timedelta(minutes=self.duration_minutes or 30)
-
-            # Return new EventCreateRequest with calculated times
-            return EventCreateRequest(
-                summary=self.summary,
-                description=self.description,
-                is_all_day=False,
-                start=start_time.isoformat(),
-                end=end_time.isoformat(),
-                calendar_id=self.calendar_id,
-                recurrence=self.recurrence,
-                timezone=None,
-                attendees=self.attendees,
-                create_meeting_room=self.create_meeting_room,
-            )
-
-        except ValueError as e:
-            raise ValueError(f"Invalid time format: {self.time_str}. Error: {e}")
+# Unwired as of 2026-06; calendar agent-tool input. Kept for future use.
+# class CalendarEventToolRequest(BaseCalendarEvent):
+#     """Model for LLM tool input with time string and duration approach."""
+#
+#     # Input fields for time specification
+#     time_str: str | None = Field(
+#         None,
+#         title="Time string: either a relative offset like '+02:30' or an ISO 8601 time",
+#     )
+#     duration_minutes: int | None = Field(
+#         30, title="Duration of the event in minutes, defaults to 30 minutes", ge=1
+#     )
+#     timezone_offset: str | None = Field(
+#         None,
+#         title="Timezone offset in `(+|-)HH:MM` format. Only provide when user explicitly mentions a timezone.",
+#     )
+#
+#     @field_validator("timezone_offset")
+#     @classmethod
+#     def validate_timezone_offset(cls, v):
+#         """Validate timezone offset format (+|-)HH:MM"""
+#         if v is not None:
+#             if not re.match(r"^[+-]\d{2}:\d{2}$", v):
+#                 raise ValueError("Timezone offset must be in (+|-)HH:MM format")
+#         return v
+#
+#     @model_validator(mode="after")
+#     def validate_event_times(self) -> "CalendarEventToolRequest":
+#         """
+#         Validate event data based on event type after model initialization.
+#         """
+#         if not self.is_all_day:
+#             # For timed events, time_str is required
+#             if not self.time_str:
+#                 raise ValueError("time_str is required for timed events")
+#
+#             # Validate the format of time_str
+#             if self.time_str.startswith("+"):
+#                 # This is a relative time offset, validate the format
+#                 if not re.match(r"^\+\d{2}:\d{2}$", self.time_str):
+#                     raise ValueError("Relative time offset must be in the format '+HH:MM'")
+#             else:
+#                 # This is an absolute time, try to parse it
+#                 try:
+#                     # Replace space with T if needed
+#                     time_str = (
+#                         self.time_str.replace(" ", "T") if " " in self.time_str else self.time_str
+#                     )
+#                     datetime.fromisoformat(time_str)
+#                 except ValueError:
+#                     raise ValueError(
+#                         f"Invalid time format: {self.time_str}. Use ISO format (YYYY-MM-DDTHH:MM:SS) for absolute times."
+#                     )
+#
+#         # For recurring events, ensure time_str is provided for non-all-day events
+#         if self.recurrence and not self.is_all_day and not self.time_str:
+#             raise ValueError("Recurring events must have time_str specified")
+#
+#         return self
+#
+#     @property
+#     def event_date(self) -> str:
+#         """
+#         Returns the date part for all-day events.
+#         For all-day events without time_str, returns today's date in YYYY-MM-DD format.
+#         """
+#         if self.is_all_day and not self.time_str:
+#             return datetime.now().strftime("%Y-%m-%d")
+#         if self.time_str and not self.time_str.startswith("+"):
+#             # Extract date part from ISO datetime string
+#             return self.time_str.split("T")[0] if "T" in self.time_str else self.time_str
+#
+#         return datetime.now().strftime("%Y-%m-%d")
+#
+#     def _apply_timezone_offset(self, dt: datetime, offset_str: str) -> datetime:
+#         """Apply timezone offset to datetime object."""
+#         # Parse offset string (+|-)HH:MM
+#         sign = 1 if offset_str.startswith("+") else -1
+#         hours, minutes = map(int, offset_str[1:].split(":"))
+#         offset_seconds = sign * (hours * 3600 + minutes * 60)
+#         tz = timezone(timedelta(seconds=offset_seconds))
+#         return dt.replace(tzinfo=tz)
+#
+#     def process_times(self, user_time: str) -> "EventCreateRequest":
+#         """
+#         Process time strings and calculate start/end times, converting to EventCreateRequest.
+#
+#         Args:
+#             user_time: Current user time in ISO format for timezone reference
+#
+#         Returns:
+#             EventCreateRequest with processed start/end times
+#         """
+#         # Extract user's timezone from user_time
+#         user_datetime = datetime.fromisoformat(user_time)
+#         user_timezone = user_datetime.tzinfo if user_datetime.tzinfo else UTC
+#
+#         # Skip processing for all-day events
+#         if self.is_all_day:
+#             # For all-day events, use the date without time component
+#             event_date = self.event_date
+#
+#             # Return a new EventCreateRequest with start/end set to event_date
+#             return EventCreateRequest(
+#                 summary=self.summary,
+#                 description=self.description,
+#                 is_all_day=True,
+#                 start=event_date,
+#                 end=event_date,
+#                 calendar_id=self.calendar_id,
+#                 recurrence=self.recurrence,
+#                 timezone=None,
+#                 attendees=self.attendees,
+#                 create_meeting_room=self.create_meeting_room,
+#             )
+#
+#         # Check if time_str is provided
+#         if not self.time_str:
+#             raise ValueError("time_str is required for timed events")
+#
+#         # Process time based on format
+#         try:
+#             if self.time_str.startswith("+"):
+#                 # Relative time offset (e.g., "+02:30")
+#                 offset_hours, offset_minutes = map(int, self.time_str[1:].split(":"))
+#                 offset_seconds = offset_hours * 3600 + offset_minutes * 60
+#
+#                 # Calculate the future time (from user's current time)
+#                 start_time = user_datetime + timedelta(seconds=offset_seconds)
+#
+#                 # Calculate end time based on duration
+#                 end_time = start_time + timedelta(minutes=self.duration_minutes or 30)
+#
+#                 # Return new EventCreateRequest with calculated times
+#                 return EventCreateRequest(
+#                     summary=self.summary,
+#                     description=self.description,
+#                     is_all_day=False,
+#                     start=start_time.isoformat(),
+#                     end=end_time.isoformat(),
+#                     calendar_id=self.calendar_id,
+#                     recurrence=self.recurrence,
+#                     timezone=None,
+#                     attendees=self.attendees,
+#                     create_meeting_room=self.create_meeting_room,
+#                 )
+#
+#             # Absolute time (ISO format)
+#             time_str = self.time_str.replace(" ", "T") if " " in self.time_str else self.time_str
+#             dt = datetime.fromisoformat(time_str)
+#
+#             # Apply timezone if specified
+#             if self.timezone_offset:
+#                 # User explicitly provided timezone
+#                 start_time = self._apply_timezone_offset(dt, self.timezone_offset)
+#             else:
+#                 # Use user's timezone
+#                 start_time = dt.replace(tzinfo=user_timezone)
+#
+#             # Calculate end time based on duration
+#             end_time = start_time + timedelta(minutes=self.duration_minutes or 30)
+#
+#             # Return new EventCreateRequest with calculated times
+#             return EventCreateRequest(
+#                 summary=self.summary,
+#                 description=self.description,
+#                 is_all_day=False,
+#                 start=start_time.isoformat(),
+#                 end=end_time.isoformat(),
+#                 calendar_id=self.calendar_id,
+#                 recurrence=self.recurrence,
+#                 timezone=None,
+#                 attendees=self.attendees,
+#                 create_meeting_room=self.create_meeting_room,
+#             )
+#
+#         except ValueError as e:
+#             raise ValueError(f"Invalid time format: {self.time_str}. Error: {e}")
 
 
 class EventCreateRequest(BaseCalendarEvent):

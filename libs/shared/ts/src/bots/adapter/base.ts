@@ -36,6 +36,7 @@
 import { Analytics, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
+import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import type {
   BotCommand,
@@ -44,7 +45,7 @@ import type {
   PlatformName,
   RichMessageTarget,
 } from "../types";
-import { formatBotError } from "../utils/formatters";
+import { formatBotError, renderForPlatform } from "../utils/formatters";
 import {
   type BotLogger,
   createBotLogger,
@@ -54,6 +55,7 @@ import {
 import {
   type IncomingMedia,
   type MediaOutcome,
+  OUTBOUND_FILE_LIMITS,
   processBotMedia,
 } from "../utils/media";
 import { BotServer } from "./base-server";
@@ -234,6 +236,7 @@ export abstract class BaseBotAdapter {
       this.platform,
       url,
       (id, text) => this.deliverOutbound(id, text),
+      (id, attachment) => this.deliverOutboundFile(id, attachment),
     );
     void this._outboundConsumer.start();
   }
@@ -292,6 +295,64 @@ export abstract class BaseBotAdapter {
     destinationId: string,
     text: string,
   ): Promise<void>;
+
+  /**
+   * Fetches an outbound artifact's bytes, enforcing this platform's file-size
+   * cap. Returns the bytes, or `null` after sending a short "too large" note via
+   * {@link deliverOutbound} when the artifact exceeds the limit — so an oversized
+   * file tells the user instead of silently dead-lettering on a rejected upload.
+   *
+   * Adapter `deliverOutboundFile` overrides should fetch through this helper
+   * rather than calling `gaia.downloadArtifact` directly.
+   */
+  protected async fetchOutboundArtifact(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<{ data: Buffer; contentType: string } | null> {
+    const artifact = await this.gaia.downloadArtifact(
+      attachment.conversation_id,
+      attachment.path,
+      { platform: this.platform, platformUserId: destinationId },
+    );
+    const limit = OUTBOUND_FILE_LIMITS[this.platform];
+    if (artifact.data.length > limit) {
+      this.logger.warn("outbound_file_too_large", {
+        platform: this.platform,
+        filename: attachment.filename,
+        bytes: artifact.data.length,
+        limit,
+      });
+      await this.deliverOutbound(
+        destinationId,
+        renderForPlatform(
+          `I generated *${attachment.filename}*, but it's too large to send on ${this.platform} (max ${Math.floor(limit / (1024 * 1024))} MB).`,
+          this.platform,
+        ),
+      );
+      return null;
+    }
+    return artifact;
+  }
+
+  /**
+   * Delivers a file artifact to `destinationId`. Called by the outbound consumer
+   * when an envelope carries an `attachment`. The default sends a short text note
+   * via {@link deliverOutbound}; platforms that support attachments (e.g.
+   * WhatsApp) override this to fetch the artifact bytes and upload them.
+   */
+  protected async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    this.logger.warn("outbound_file_fallback_text", {
+      platform: this.platform,
+      filename: attachment.filename,
+    });
+    await this.deliverOutbound(
+      destinationId,
+      `I created *${attachment.filename}*, but I can't send files on ${this.platform} yet.`,
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Shared helpers — used by adapter subclasses

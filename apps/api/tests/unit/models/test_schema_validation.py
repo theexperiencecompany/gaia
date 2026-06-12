@@ -27,9 +27,6 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import (
-    BioStatus,
-    OnboardingData,
-    OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
     UserUpdateResponse,
@@ -331,21 +328,6 @@ class TestOnboardingPreferences:
     def test_custom_instructions_too_long(self):
         with pytest.raises(ValidationError):
             OnboardingPreferences(custom_instructions="x" * 501)
-
-
-@pytest.mark.unit
-class TestOnboardingData:
-    def test_defaults(self):
-        d = OnboardingData()
-        assert d.completed is False
-        assert d.phase == OnboardingPhase.INITIAL
-        assert d.bio_status == BioStatus.PENDING
-        assert d.house is None
-
-    def test_all_phases(self):
-        for phase in OnboardingPhase:
-            d = OnboardingData(phase=phase)
-            assert d.phase == phase
 
 
 @pytest.mark.unit

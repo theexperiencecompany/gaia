@@ -3,6 +3,7 @@ import type React from "react";
 import { useMemo } from "react";
 
 import { ChevronRight } from "@/components/shared/icons";
+import { useFittingIconCount } from "@/features/chat/hooks/useFittingIconCount";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface Integration {
@@ -28,6 +29,11 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
     [integrations],
   );
 
+  const { containerRef, visibleCount } = useFittingIconCount(
+    shuffledIntegrations.length,
+  );
+  const overflowCount = shuffledIntegrations.length - visibleCount;
+
   if (isLoading || integrations.length === 0 || hasMessages) {
     return null;
   }
@@ -38,15 +44,20 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
     <div className="absolute -top-9 flex w-full justify-center pointer-events-none pb-10">
       <button
         type="button"
-        className="flex w-[90%] items-center justify-between rounded-full bg-zinc-800/40 pr-8 pl-8 pt-2 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer pb-14!"
+        className="flex w-[90%] items-center gap-3 rounded-full bg-zinc-800/40 pr-8 pl-8 pt-2 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer pb-14!"
         onClick={onToggleSlashCommand}
       >
-        <span className="text-xs">Connect your tools to GAIA</span>
-        <div className="ml-3 flex items-center gap-1">
-          {shuffledIntegrations.slice(0, 10).map((integration) => (
+        <span className="text-xs whitespace-nowrap shrink-0">
+          Connect your tools to GAIA
+        </span>
+        <div
+          ref={containerRef}
+          className="flex min-w-0 flex-1 items-center justify-end gap-1 overflow-hidden"
+        >
+          {shuffledIntegrations.slice(0, visibleCount).map((integration) => (
             <div
               key={integration.id}
-              className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-120"
+              className="shrink-0 opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-100"
               title={integration.name}
             >
               {getToolCategoryIcon(integration.id, {
@@ -58,13 +69,11 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
               })}
             </div>
           ))}
-          {shuffledIntegrations.length > 10 && (
-            <div className="text-xs ml-1">
-              +{shuffledIntegrations.length - 10}
-            </div>
+          {overflowCount > 0 && visibleCount > 0 && (
+            <div className="text-xs ml-1 shrink-0">+{overflowCount}</div>
           )}
-          <ChevronRight width={18} height={18} className="ml-3" />
         </div>
+        <ChevronRight width={18} height={18} className="shrink-0" />
       </button>
     </div>
   );

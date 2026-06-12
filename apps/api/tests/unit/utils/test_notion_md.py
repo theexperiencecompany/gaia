@@ -23,7 +23,6 @@ from app.utils.notion_md import (
     _link,
     _quote,
     _strikethrough,
-    _table,
     _todo,
     _toggle,
     _underline,
@@ -33,7 +32,6 @@ from app.utils.notion_md import (
     markdown_to_notion_blocks,
     rich_text_to_markdown,
     simplify_block,
-    simplify_blocks,
 )
 
 # =============================================================================
@@ -242,40 +240,6 @@ class TestAddTabSpace:
     )
     def test_add_tab_space(self, text: str, n: int, expected: str) -> None:
         assert _add_tab_space(text, n) == expected
-
-
-@pytest.mark.unit
-class TestTable:
-    def test_empty_cells(self) -> None:
-        assert _table([]) == ""
-
-    def test_single_row_header_only(self) -> None:
-        result = _table([["A", "B", "C"]])
-        assert result == "| A | B | C |\n| --- | --- | --- |"
-
-    def test_multiple_rows(self) -> None:
-        cells = [["Name", "Age"], ["Alice", "30"], ["Bob", "25"]]
-        result = _table(cells)
-        lines = result.split("\n")
-        assert lines[0] == "| Name | Age |"
-        assert lines[1] == "| --- | --- |"
-        assert lines[2] == "| Alice | 30 |"
-        assert lines[3] == "| Bob | 25 |"
-
-    def test_rows_shorter_than_header_are_padded(self) -> None:
-        cells = [["A", "B", "C"], ["1"]]
-        result = _table(cells)
-        lines = result.split("\n")
-        assert lines[2] == "| 1 |  |  |"
-
-    def test_single_column(self) -> None:
-        cells = [["Header"], ["Value1"], ["Value2"]]
-        result = _table(cells)
-        lines = result.split("\n")
-        assert lines[0] == "| Header |"
-        assert lines[1] == "| --- |"
-        assert lines[2] == "| Value1 |"
-        assert lines[3] == "| Value2 |"
 
 
 @pytest.mark.unit
@@ -1224,30 +1188,6 @@ class TestSimplifyBlock:
         }
         result = simplify_block(block)
         assert result["text"] == "Hello World"
-
-
-@pytest.mark.unit
-class TestSimplifyBlocks:
-    def test_empty(self) -> None:
-        assert simplify_blocks([]) == []
-
-    def test_multiple_blocks(self) -> None:
-        blocks = [
-            {
-                "id": "1",
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"plain_text": "A"}]},
-            },
-            {
-                "id": "2",
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"plain_text": "B"}]},
-            },
-        ]
-        result = simplify_blocks(blocks)
-        assert len(result) == 2
-        assert result[0]["text"] == "A"
-        assert result[1]["text"] == "B"
 
 
 # =============================================================================

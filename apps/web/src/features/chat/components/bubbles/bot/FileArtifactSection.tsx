@@ -95,7 +95,7 @@ function normalize(input: ArtifactData | ArtifactData[]): ArtifactData[] {
   const list = Array.isArray(input) ? input : [input];
   const byPath = new Map<string, ArtifactData>();
   for (const a of list) {
-    if (!a || !a.session_id || !a.path) continue;
+    if (!a?.session_id || !a.path) continue;
     if (a.event === "remove") {
       byPath.delete(a.path);
       continue;

@@ -1,59 +1,76 @@
 ---
 title: Introduction
-description: "GAIA - the open-source, proactive AI assistant that manages your work so you can focus on what matters."
+description: "GAIA is your personal AI assistant. It manages your email, calendar, and tasks, and gets things done before you ask."
 icon: "book-open"
 ---
 
-<img
-  src="/images/og-image.webp"
-  alt="GAIA dashboard interface"
-  style={{ width: "60vw" }}
-  className="rounded-lg"
+import { Chat } from "/snippets/chat-bubbles.jsx";
+
+<Frame>
+  <img src="/images/og-image.webp" alt="GAIA dashboard interface" />
+</Frame>
+
+GAIA is a personal AI assistant that works across your tools, your inbox, calendar, tasks, and 60+ connected apps. You talk to it like a person, and it handles the rest. No dashboards to babysit, no new system to learn.
+
+It's also proactive: GAIA watches what's happening in the background and acts before you ask, drafting replies to important emails, blocking focus time before your calendar fills up, and turning commitments into tasks.
+
+## What you can do
+
+Just tell GAIA what you need:
+
+<Chat
+  messages={[
+    { from: "user", text: "Move my 3pm with Sam to tomorrow morning and let him know" },
+    { from: "gaia", text: "Moved to 9:30 AM tomorrow, and I've emailed Sam the new time." },
+    { from: "user", text: "Remind me to follow up on the invoice if no one replies by Friday" },
+    { from: "gaia", text: "Will do. I'm watching the thread." },
+    { from: "user", text: "Every morning at 8, send me my schedule and top 3 priorities" },
+    { from: "gaia", text: "Done, I set that up as a workflow. It runs every morning on its own." },
+  ]}
 />
 
-## The problem
+That last one becomes a [workflow](/workflows), an automation that runs on its own, built by describing it in plain language.
 
-Modern knowledge workers juggle dozens of apps, hundreds of notifications, and an endless stream of tasks that demand constant attention. Your calendar, inbox, task manager, and messaging tools don't talk to each other — so you become the glue.
+## Start here
 
-You spend hours every week triaging emails, scheduling meetings, chasing follow-ups, and deciding what to work on next. Not because you're inefficient — but because the tools you use were never designed to think for you.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quick-start">
+    Set up your account and send your first message in a few minutes.
+  </Card>
+  <Card title="Chatting Effectively" icon="comments" href="/guides/chatting-effectively">
+    Learn how to phrase requests so GAIA nails them on the first try.
+  </Card>
+  <Card title="Connect Your Apps" icon="plug" href="/guides/connecting-integrations">
+    Link Gmail, Calendar, GitHub, Notion, and more so GAIA can act on your behalf.
+  </Card>
+  <Card title="Use GAIA Anywhere" icon="message" href="/guides/slack-bot">
+    Talk to GAIA on WhatsApp, Slack, Discord, Telegram, or the desktop app.
+  </Card>
+</CardGroup>
 
-The result: decision fatigue, context switching, and the feeling that you're always reacting instead of making real progress.
-
-## The solution
-
-GAIA is a proactive personal AI assistant that works across your tools — not inside a single one. It monitors your inbox, calendar, and tasks in the background, surfaces what matters, and takes action before you have to ask.
-
-Instead of waiting for commands, GAIA anticipates what you need:
-
-- Drafts replies to important emails
-- Blocks focus time before your calendar fills up
-- Creates tasks from conversations and commitments
-- Runs multi-step workflows triggered by real events
-- Remembers your preferences and adapts over time
-
-GAIA connects to 50+ integrations and operates with a long-term memory of your context — so it gets more useful the longer you use it.
-
-## Open source & self-hostable
-
-GAIA is fully open source, with the ability to self-host on your own infrastructure. That means:
-
-- **Complete data ownership** — your conversations and context stay on your servers
-- **Full customization** — modify GAIA to fit your specific workflow
-- **No vendor lock-in** — deploy, migrate, or fork whenever you want
-- **Community-driven** — built in the open, improved by contributors worldwide
-
-GAIA is licensed under the [Polyform Strict License 1.0.0](https://polyformproject.org/licenses/strict/1.0.0/), which permits noncommercial, personal, and research use.
-
-## Get started
+## Go deeper
 
 <CardGroup cols={3}>
-  <Card title="Use GAIA Cloud" icon="cloud" href="https://heygaia.io" arrow>
-    No setup required — start immediately at heygaia.io
+  <Card title="Build Workflows" icon="bolt" href="/guides/building-workflows">
+    Automate the things you ask for every day.
   </Card>
-  <Card title="Self-host" icon="server" href="/self-hosting/overview" arrow>
-    Deploy GAIA on your own infrastructure for complete control
+  <Card title="Memory" icon="brain" href="/guides/memory">
+    How GAIA remembers your preferences and context over time.
   </Card>
-  <Card title="Contribute" icon="code" href="/developers/introduction" arrow>
-    Help build the future of AI assistants
+  <Card title="Marketplace" icon="store" href="/guides/marketplace">
+    Install workflows other people have built.
+  </Card>
+</CardGroup>
+
+## Open source
+
+GAIA is fully open source and self-hostable. Your conversations and context can live on your own servers, and you can modify anything to fit how you work. It's licensed under the [Polyform Strict License 1.0.0](https://polyformproject.org/licenses/strict/1.0.0/), which permits noncommercial, personal, and research use.
+
+<CardGroup cols={2}>
+  <Card title="Self-host GAIA" icon="server" href="/self-hosting/overview">
+    Deploy on your own infrastructure for complete control.
+  </Card>
+  <Card title="Contribute" icon="code" href="/developers/introduction">
+    Development setup, architecture, and contribution guide.
   </Card>
 </CardGroup>

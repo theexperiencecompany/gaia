@@ -220,7 +220,7 @@ class ArtifactWatcher:
             user="root",
         )
 
-    async def _on_accesslog_line(self, line: str) -> None:
+    def _on_accesslog_line(self, line: str) -> None:
         if not line:
             return
         lowered = line.lower()
@@ -238,7 +238,7 @@ class ArtifactWatcher:
             await asyncio.sleep(_ACCESSLOG_DEBOUNCE_SECONDS)
             await self._rescan_all()
         except asyncio.CancelledError:
-            return
+            raise
         except Exception as e:
             log.debug(f"[artifact-watcher] rescan failed: {e}")
 

@@ -27,6 +27,11 @@ export const useLoading = () => {
     const aborted = await streamController.abort();
     if (aborted) {
       setLoadingState(false);
+      // A signal abort never triggers fetch-event-source's onclose/onerror, so
+      // none of the stream-close handlers run. Clear the initial-response lock
+      // here too, otherwise the composer stays locked and the Stop button never
+      // reverts to Send (it keys off isMainResponseStreaming).
+      useLoadingStore.getState().setMainResponseStreaming(false);
     }
   }, [setLoadingState]);
 

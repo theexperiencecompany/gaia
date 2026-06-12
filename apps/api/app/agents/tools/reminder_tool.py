@@ -49,9 +49,18 @@ async def create_reminder_tool(
         AgentType, "The agent type creating the reminder (static only)"
     ] = AgentType.STATIC,
     repeat: Annotated[str | None, "Cron expression for recurring reminders"] = None,
+    delay_seconds: Annotated[
+        int | None,
+        "Relative delay from NOW in seconds for 'in N minutes/hours/seconds' "
+        "requests (e.g. 'remind me in 1 minute' -> 60). PREFER this for relative "
+        "reminders; the server computes the exact time so you never do timezone "
+        "math. When set, scheduled_at and timezone_offset are ignored.",
+    ] = None,
     scheduled_at: Annotated[
         str | None,
-        "Date/time for when the reminder should run (YYYY-MM-DD HH:MM:SS format)",
+        "Absolute date/time the reminder should run (YYYY-MM-DD HH:MM:SS). Use ONLY "
+        "for explicit clock times/dates; for 'in N minutes' use delay_seconds. Base "
+        "any absolute time strictly on the provided current time, never on UTC.",
     ] = None,
     timezone_offset: Annotated[
         str | None,
@@ -86,6 +95,7 @@ async def create_reminder_tool(
             agent=agent,
             payload=payload,
             repeat=repeat,
+            delay_seconds=delay_seconds,
             scheduled_at=scheduled_at,
             timezone_offset=timezone_offset,
             max_occurrences=max_occurrences,

@@ -55,21 +55,18 @@ def _event_type_name(ev: Any) -> str:
 
 async def _wait_for(queue: asyncio.Queue[Any], suffix: str, timeout: float) -> dict[str, Any]:
     """Drain events until one whose name ends with `suffix`, or time out."""
-    deadline = time.monotonic() + timeout
     seen: list[str] = []
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return {"passed": False, "seen": seen, "matched": None}
-        try:
-            ev = await asyncio.wait_for(queue.get(), timeout=remaining)
-        except TimeoutError:
-            return {"passed": False, "seen": seen, "matched": None}
-        name = getattr(ev, "name", "")
-        etype = _event_type_name(ev)
-        seen.append(f"{etype}:{name}")
-        if name.endswith(suffix) and etype in WRITE_EVENT_TYPES:
-            return {"passed": True, "seen": seen, "matched": f"{etype}:{name}"}
+    try:
+        async with asyncio.timeout(timeout):
+            while True:
+                ev = await queue.get()
+                name = getattr(ev, "name", "")
+                etype = _event_type_name(ev)
+                seen.append(f"{etype}:{name}")
+                if name.endswith(suffix) and etype in WRITE_EVENT_TYPES:
+                    return {"passed": True, "seen": seen, "matched": f"{etype}:{name}"}
+    except TimeoutError:
+        return {"passed": False, "seen": seen, "matched": None}
 
 
 async def _run_matrix(user_a: str, user_b: str | None) -> dict[str, Any]:
@@ -116,7 +113,10 @@ async def _run_matrix(user_a: str, user_b: str | None) -> dict[str, Any]:
                 # Hold a second user's sandbox to mirror realistic concurrent
                 # state while the host writes cross-mount.
                 async with acquire_sandbox(user_b):
-                    pass
+                    # Intentionally empty: acquiring (and immediately releasing)
+                    # user_b's sandbox just mirrors realistic concurrent mount
+                    # state; no work is needed inside the context.
+                    ...
             try:
                 await write_session_file(
                     user_id=user_a,

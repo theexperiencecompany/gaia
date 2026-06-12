@@ -26,11 +26,10 @@ Also covers:
   - WorkflowScheduler (schedule, cancel, reschedule, get_task, get_pending_task,
     update_task_status, get_workflow_status)
   - WorkflowQueueService (queue_workflow_generation, queue_workflow_execution,
-    queue_scheduled_workflow_execution, queue_workflow_regeneration,
-    queue_todo_workflow_generation, is_workflow_generating,
-    clear_workflow_generating_flag)
-  - TriggerService (get_all_workflow_triggers, get_trigger_by_slug,
-    register_triggers, unregister_triggers, reference counting)
+    queue_todo_workflow_generation,
+    is_workflow_generating, clear_workflow_generating_flag)
+  - TriggerService (get_all_workflow_triggers,
+    register_triggers, unregister_triggers)
   - WorkflowValidator (validate_for_execution: pass, deactivated, no steps,
     no trigger config, multiple errors)
   - generation_service helpers (enrich_steps, _parse_workflow_response,
@@ -2260,59 +2259,6 @@ class TestWorkflowQueueService:
         assert result is False
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
-    async def test_queue_scheduled_execution_success(self, mock_redis):
-        mock_pool = AsyncMock()
-        mock_job = MagicMock()
-        mock_job.job_id = "job_sched"
-        mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
-        mock_redis.get_pool = AsyncMock(return_value=mock_pool)
-
-        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            WORKFLOW_ID, scheduled_at
-        )
-        assert result is True
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {}, _defer_until=scheduled_at
-        )
-
-    @patch("app.services.workflow.queue_service.RedisPoolManager")
-    async def test_queue_scheduled_execution_failure(self, mock_redis):
-        mock_pool = AsyncMock()
-        mock_pool.enqueue_job = AsyncMock(return_value=None)
-        mock_redis.get_pool = AsyncMock(return_value=mock_pool)
-
-        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            WORKFLOW_ID, scheduled_at
-        )
-        assert result is False
-
-    @patch("app.services.workflow.queue_service.RedisPoolManager")
-    async def test_queue_regeneration_success(self, mock_redis):
-        mock_pool = AsyncMock()
-        mock_job = MagicMock()
-        mock_job.job_id = "job_regen"
-        mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
-        mock_redis.get_pool = AsyncMock(return_value=mock_pool)
-
-        result = await WorkflowQueueService.queue_workflow_regeneration(
-            WORKFLOW_ID, USER_ID, "User requested changes", True
-        )
-        assert result is True
-
-    @patch("app.services.workflow.queue_service.RedisPoolManager")
-    async def test_queue_regeneration_failure(self, mock_redis):
-        mock_pool = AsyncMock()
-        mock_pool.enqueue_job = AsyncMock(return_value=None)
-        mock_redis.get_pool = AsyncMock(return_value=mock_pool)
-
-        result = await WorkflowQueueService.queue_workflow_regeneration(
-            WORKFLOW_ID, USER_ID, "reason"
-        )
-        assert result is False
-
-    @patch("app.services.workflow.queue_service.RedisPoolManager")
     async def test_queue_todo_workflow_generation_success(self, mock_redis):
         mock_pool = AsyncMock()
         mock_job = MagicMock()
@@ -2393,25 +2339,6 @@ class TestTriggerService:
     async def test_get_all_workflow_triggers_empty(self):
         result = await TriggerService.get_all_workflow_triggers()
         assert result == []
-
-    @patch("app.services.workflow.trigger_service.OAUTH_INTEGRATIONS", [])
-    def test_get_trigger_by_slug_not_found(self):
-        result = TriggerService.get_trigger_by_slug("nonexistent")
-        assert result is None
-
-    @patch("app.services.workflow.trigger_service.workflows_collection")
-    async def test_get_trigger_reference_count(self, mock_collection):
-        mock_collection.count_documents = AsyncMock(return_value=3)
-
-        count = await TriggerService.get_trigger_reference_count("trigger_123")
-        assert count == 3
-
-    @patch("app.services.workflow.trigger_service.workflows_collection")
-    async def test_get_trigger_reference_count_error_returns_zero(self, mock_collection):
-        mock_collection.count_documents = AsyncMock(side_effect=Exception("DB error"))
-
-        count = await TriggerService.get_trigger_reference_count("trigger_123")
-        assert count == 0
 
     @patch("app.services.workflow.trigger_service.workflows_collection")
     async def test_get_triggers_safe_to_delete_all_safe(self, mock_collection):

@@ -15,7 +15,6 @@ from app.utils.agent_utils import (
     format_tool_call_entry,
     parse_subagent_id,
     process_custom_event_for_tools,
-    store_agent_progress,
 )
 
 # ---------------------------------------------------------------------------
@@ -353,93 +352,3 @@ class TestProcessCustomEventForTools:
         ):
             result = process_custom_event_for_tools({"x": 1})
         assert result == {}
-
-
-# ---------------------------------------------------------------------------
-# store_agent_progress
-# ---------------------------------------------------------------------------
-
-
-class TestStoreAgentProgress:
-    @pytest.mark.asyncio
-    async def test_no_content_skips_storage(self) -> None:
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "", {})
-            mock_update.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_whitespace_only_skips(self) -> None:
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "   ", {})
-            mock_update.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_with_message_content(self) -> None:
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "Hello!", {})
-            mock_update.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_with_unified_tool_data(self) -> None:
-        tool_data = {
-            "tool_data": [{"tool_name": "search", "data": {"q": "test"}, "timestamp": "now"}]
-        }
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "", tool_data)
-            mock_update.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_with_legacy_tool_data(self) -> None:
-        tool_data: dict[str, Any] = {"calendar_options": {"events": []}}
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "", tool_data)
-            mock_update.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_with_follow_up_actions(self) -> None:
-        tool_data = {
-            "tool_data": [{"tool_name": "t", "data": "d", "timestamp": "ts"}],
-            "follow_up_actions": ["action1"],
-        }
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "msg", tool_data)
-            mock_update.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_storage_error_swallowed(self) -> None:
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("db fail"),
-        ):
-            # Should not raise
-            await store_agent_progress("conv1", "u1", "content", {})
-
-    @pytest.mark.asyncio
-    async def test_empty_tool_data_dict_no_values(self) -> None:
-        """tool_data dict with all None values treated as no content."""
-        tool_data = {"tool_data": None}
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "", tool_data)
-            mock_update.assert_not_awaited()

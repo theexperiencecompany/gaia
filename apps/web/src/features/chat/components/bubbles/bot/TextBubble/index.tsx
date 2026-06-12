@@ -7,7 +7,6 @@ import {
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
-import type { ToolName } from "@/config/registries/toolRegistry";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
@@ -19,7 +18,6 @@ import {
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
-import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
@@ -38,9 +36,9 @@ const REPLY_QUOTE_MAX_LENGTH = 40;
 /** Inline reply quote shown at the top of a bot bubble, scrolls to the original message on click. */
 function ReplyQuote({
   replyToMessage,
-}: {
+}: Readonly<{
   replyToMessage: { id: string; content: string; role: "user" | "assistant" };
-}) {
+}>) {
   const truncated =
     replyToMessage.content.length > REPLY_QUOTE_MAX_LENGTH
       ? `${replyToMessage.content.slice(0, REPLY_QUOTE_MAX_LENGTH).trim()}...`
@@ -84,7 +82,7 @@ export default function TextBubble({
   systemPurpose,
   loading,
   replyToMessage,
-}: ChatBubbleBotProps) {
+}: Readonly<ChatBubbleBotProps>) {
   const baseId = useId();
 
   // Parse thinking content from text
@@ -110,17 +108,14 @@ export default function TextBubble({
       )}
 
       {processedTools.map((entry, index) => {
-        const toolName = entry.tool_name as ToolName;
+        const toolName = entry.tool_name;
         const keyId = entry.timestamp || index;
 
         if (toolName === "todo_progress") {
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");
           return data ? (
             <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
-              <TodoProgressSection
-                todo_progress={data as TodoProgressData}
-                isStreaming={loading}
-              />
+              <TodoProgressSection todo_progress={data} isStreaming={loading} />
             </React.Fragment>
           ) : null;
         }
