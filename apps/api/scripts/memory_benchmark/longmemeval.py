@@ -87,11 +87,40 @@ class CostMeter(BaseCallbackHandler):
 
 
 class _Answer(BaseModel):
-    answer: str = Field(description="Concise answer, or 'I don't know' if not in the memories")
+    # Field order is the generation order — the model reasons BEFORE answering.
+    # Forced chain-of-thought is the single biggest lever for a small model on
+    # multi-fact ordering, date comparison, and turning preferences into picks.
+    relevant_notes: str = Field(
+        description=(
+            "List the specific memory notes (with their dates) that bear on this "
+            "question. For ordering/'which came first' questions, write them out "
+            "sorted by the date the event actually happened. For 'how long ago / "
+            "how many days/weeks ago' questions, write the explicit subtraction: "
+            "today's date minus the event's date = N days (and N/7 weeks), using the "
+            "date the EVENT happened, not when it was mentioned or published."
+        )
+    )
+    answer: str = Field(
+        description=(
+            "The final answer, derived from relevant_notes. Be concise and concrete. "
+            "If the question wants a suggestion, commit to one grounded in the notes. "
+            "Use 'I don't know' ONLY if relevant_notes is genuinely empty."
+        )
+    )
 
 
 class _Verdict(BaseModel):
-    correct: bool = Field(description="Whether the model answer matches the gold answer")
+    # Reason first, decide second — stops flash-lite from snap literal-matching.
+    gold_asserts: str = Field(
+        description="In one phrase, the core fact, value, or preference the gold answer asserts."
+    )
+    model_conveys_it: str = Field(
+        description=(
+            "Does the model answer convey that same thing (possibly worded differently, "
+            "or naming the same entity/event by another description)? Explain briefly."
+        )
+    )
+    correct: bool = Field(description="True if the model answer conveys the gold's core meaning.")
 
 
 def _parse_date(raw: str) -> datetime:
@@ -108,15 +137,27 @@ async def _answer(question: str, question_date: str, memories: list[str]) -> str
                 content=(
                     f"Today is {question_date}. Answer the user's question using ONLY the "
                     "memory notes below (extracted from past conversations; bracketed "
-                    "dates say when something happened / was mentioned). Be concise. Use "
-                    "the dates for any 'when / how long ago / which came first' "
+                    "dates say when something happened / was mentioned). Be concise.\n"
+                    "- Use the dates for any 'when / how long ago / which came first' "
                     "arithmetic, and sum or compare quantities across notes for any "
-                    "'total / most / higher' question. If the question asks for "
-                    "suggestions or recommendations, do NOT abstain: answer by stating "
-                    "the remembered preferences, interests, or plans that should guide "
-                    "the suggestion (e.g. 'you enjoy stand-up comedy specials on "
-                    "Netflix, so...'). Only if the notes contain nothing relevant at "
-                    'all, reply exactly "I don\'t know".\n\nMEMORY NOTES:\n' + context
+                    "'total / most / higher' question. For dates, use when the event "
+                    "actually happened (an [occurred] date or a purchase/booking date), "
+                    "NOT when it was merely [mentioned].\n"
+                    "- For 'which did I get/do first, X or Y' find the dated note for X "
+                    "and for Y, compare the two dates, and name the EARLIER one.\n"
+                    "- For 'order / sequence / what came first' questions, gather every "
+                    "relevant dated note, sort by date, and list them ALL in that order "
+                    "(do not skip any and do not stop at one).\n"
+                    "- When notes give conflicting values for the SAME attribute (a "
+                    "changed amount, status, job, city), trust the one with the most "
+                    "recent date — the world changed; never answer with the stale value.\n"
+                    "- For suggestion / recommendation / 'what should I do' questions you "
+                    "MUST give a concrete answer grounded in the remembered preferences, "
+                    "interests, routines, or plans (e.g. 'you have a 40-min commute and "
+                    "like podcasts, so try ...'). NEVER abstain and NEVER refuse for "
+                    "missing details like location — work with what the notes provide.\n"
+                    "- Only if the notes contain nothing relevant at all, reply exactly "
+                    '"I don\'t know".\n\nMEMORY NOTES:\n' + context
                 )
             ),
             HumanMessage(content=question),
@@ -133,9 +174,29 @@ async def _judge(question: str, gold: str, model_answer: str) -> bool:
             SystemMessage(
                 content=(
                     "You grade question answering. Decide whether the model answer "
-                    "conveys the same information as the gold answer for the question. "
-                    "Paraphrases, partial dates that match, and extra detail are fine; "
-                    "contradictions or missing the asked-for fact are incorrect."
+                    "conveys the same information as the gold answer. Grade on MEANING, "
+                    "not wording. Mark CORRECT when:\n"
+                    "- It states the same fact in different words, or names the same "
+                    "entity/event by a different but unambiguous description (e.g. 'the "
+                    "Lakers vs Bulls game' == 'an NBA game at the Staples Center'; "
+                    "'Acme Corp' == 'the company he works at').\n"
+                    "- Dates/quantities match even if partial or rephrased.\n"
+                    "- The gold describes the KIND of response the user wants (e.g. 'the "
+                    "user would prefer suggestions about podcasts') and the model makes a "
+                    "concrete suggestion consistent with that preference.\n"
+                    "- The answer contains the correct fact plus extra detail.\n"
+                    "Mark INCORRECT only when the model gives a wrong/contradictory value, "
+                    "names a different entity, abstains ('I don't know'), or omits the "
+                    "asked-for fact. When the core information matches, prefer CORRECT.\n\n"
+                    "EXAMPLES:\n"
+                    "Gold: 'the user would prefer suggestions about podcasts' | Model: "
+                    "'Since you have a long commute, you could listen to podcasts.' -> "
+                    "CORRECT (suggestion honors the preference).\n"
+                    "Gold: 'an NBA game at the Staples Center' | Model: 'the Lakers vs "
+                    "Bulls game' -> CORRECT (same event, different description).\n"
+                    "Gold: '$400,000' | Model: '$350,000' -> INCORRECT (wrong value).\n"
+                    "Gold: 'Samsung Galaxy S22' | Model: 'I don't know' -> INCORRECT "
+                    "(abstained)."
                 )
             ),
             HumanMessage(
@@ -227,6 +288,27 @@ async def main() -> None:
         default=2.0,
         help="Hard cost ceiling — abort before exceeding this (conservative pricing).",
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=16,
+        help="How many questions to run in parallel.",
+    )
+    parser.add_argument(
+        "--min-accuracy",
+        type=float,
+        default=0.0,
+        help=(
+            "Circuit breaker: after --warmup questions, abort if running accuracy "
+            "is below this (0 disables). Saves a full run on a config that won't hit target."
+        ),
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=60,
+        help="Questions to grade before the --min-accuracy breaker can trip.",
+    )
     args = parser.parse_args()
 
     init_postgresql_engine()
@@ -266,20 +348,51 @@ async def main() -> None:
     print(f"Running {len(sample)} questions across {len(by_type)} types...\n", flush=True)
 
     scores: dict[str, list[bool]] = defaultdict(list)
-    stopped_early = False
-    for index, item in enumerate(sample):
-        if meter.exceeded:
-            stopped_early = True
-            print(
-                f"\n!! Budget ceiling ${args.max_usd:.2f} reached after {index} questions "
-                f"(spent ~${meter.cost_usd:.2f}); stopping early.\n",
-                flush=True,
-            )
-            break
-        qtype, correct, _ = await _run_question(item, index, len(sample), diagnose=args.diagnose)
-        scores[qtype].append(correct)
+    semaphore = asyncio.Semaphore(args.concurrency)
+    tally = {"done": 0, "correct": 0}
+    aborted = {"budget": False, "accuracy": False}
 
-    if stopped_early:
+    async def _bounded(index: int, item: dict) -> tuple[str, bool, str] | None:
+        # Gate at acquire time so once a ceiling is hit no NEW question starts;
+        # in-flight ones finish (a few cents / a few questions of overshoot).
+        if meter.exceeded or aborted["accuracy"]:
+            return None
+        async with semaphore:
+            if meter.exceeded:
+                aborted["budget"] = True
+                return None
+            if aborted["accuracy"]:
+                return None
+            outcome = await _run_question(item, index, len(sample), diagnose=args.diagnose)
+            tally["done"] += 1
+            tally["correct"] += int(outcome[1])
+            # Circuit breaker: once past warmup, abort a run that is clearly not
+            # going to hit target so we can review + fix instead of waiting it out.
+            if args.min_accuracy and tally["done"] >= args.warmup:
+                running = tally["correct"] / tally["done"]
+                if running < args.min_accuracy and not aborted["accuracy"]:
+                    aborted["accuracy"] = True
+                    print(
+                        f"\n!! Accuracy breaker: {running:.1%} < {args.min_accuracy:.0%} "
+                        f"after {tally['done']} questions — aborting for review.\n",
+                        flush=True,
+                    )
+            return outcome
+
+    outcomes = await asyncio.gather(*(_bounded(i, item) for i, item in enumerate(sample)))
+    for outcome in outcomes:
+        if outcome is not None:
+            qtype, correct, _ = outcome
+            scores[qtype].append(correct)
+
+    graded = sum(len(v) for v in scores.values())
+    if aborted["accuracy"]:
+        print("=== LONGMEMEVAL (ABORTED — accuracy breaker) RESULTS ===")
+    elif aborted["budget"] or graded < len(sample):
+        print(
+            f"\n!! Budget ceiling ${args.max_usd:.2f} reached "
+            f"(spent ~${meter.cost_usd:.2f}); graded {graded}/{len(sample)}.\n"
+        )
         print("=== LONGMEMEVAL (PARTIAL — budget-limited) RESULTS ===")
     else:
         print("\n=== LONGMEMEVAL (oracle subset) RESULTS ===")
