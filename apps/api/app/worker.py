@@ -20,7 +20,6 @@ from app.workers.tasks import (
     process_workflow_generation_task,
     prune_inactive_sessions,
     regenerate_workflow_steps,
-    store_memories_batch,
     sweep_idle_sandboxes,
 )
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
@@ -42,7 +41,6 @@ _regenerate_workflow_steps = instrument_task(regenerate_workflow_steps)
 _generate_workflow_steps = instrument_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory)
 _process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
-_store_memories_batch = instrument_task(store_memories_batch)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
 _sweep_idle_sandboxes = instrument_task(sweep_idle_sandboxes)
 _prune_inactive_sessions = instrument_task(prune_inactive_sessions)
@@ -61,7 +59,6 @@ WorkerSettings.functions = [
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
     _process_onboarding_intelligence_task,
-    _store_memories_batch,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
     _prune_inactive_sessions,

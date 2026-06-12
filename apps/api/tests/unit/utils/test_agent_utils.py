@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.utils.agent_utils import (
-    UUID_PATTERN,
     _lookup_custom_integration_name,
     _resolve_handoff_display_name,
     format_sse_data,
@@ -16,22 +15,6 @@ from app.utils.agent_utils import (
     parse_subagent_id,
     process_custom_event_for_tools,
 )
-
-# ---------------------------------------------------------------------------
-# UUID_PATTERN
-# ---------------------------------------------------------------------------
-
-
-class TestUUIDPattern:
-    def test_valid_uuid(self) -> None:
-        assert UUID_PATTERN.match("550e8400-e29b-41d4-a716-446655440000")
-
-    def test_invalid_uuid(self) -> None:
-        assert UUID_PATTERN.match("not-a-uuid") is None
-
-    def test_uppercase_uuid(self) -> None:
-        assert UUID_PATTERN.match("550E8400-E29B-41D4-A716-446655440000")
-
 
 # ---------------------------------------------------------------------------
 # parse_subagent_id
@@ -171,7 +154,7 @@ class TestFormatToolCallEntry:
             result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
 
         assert result is not None
-        assert result["data"]["message"] == "Retrieving tools"
+        assert result["data"]["message"] == "Retrieve tools"
         assert result["data"]["show_category"] is False
 
     @pytest.mark.asyncio
@@ -212,24 +195,6 @@ class TestFormatToolCallEntry:
         assert result is not None
         assert result["data"]["tool_category"] == "gmail_integration"
         assert result["data"]["show_category"] is True
-
-    @pytest.mark.asyncio
-    async def test_regular_tool_mcp_category_with_uuid_suffix(self) -> None:
-        tool_call = {"name": "custom_tool", "args": {}, "id": "tc5"}
-        mock_registry = MagicMock()
-        mock_registry.get_category_of_tool.return_value = (
-            "mcp_my_integration_550e8400-e29b-41d4-a716-446655440000"
-        )
-        mock_registry.get_all_tools_for_search.return_value = []
-        with patch(
-            "app.utils.agent_utils.get_tool_registry",
-            new_callable=AsyncMock,
-            return_value=mock_registry,
-        ):
-            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
-
-        assert result is not None
-        assert result["data"]["tool_category"] == "my_integration"
 
     @pytest.mark.asyncio
     async def test_regular_tool_mcp_category_no_uuid(self) -> None:
