@@ -65,7 +65,9 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     # VOICE (Very Expensive - LiveKit + STT + TTS per session)
     "voice_mode": TieredRateLimits(
         free=RateLimitConfig(day=0, month=0),  # Paid-only: no free usage
-        pro=RateLimitConfig(day=50, month=1000),
+        # Counted per /token mint (session start), so heavy daily use plus
+        # reconnects must fit comfortably.
+        pro=RateLimitConfig(day=200, month=3000),
         info=FeatureInfo(
             title="Voice Mode",
             description="Real-time voice conversations with GAIA",
