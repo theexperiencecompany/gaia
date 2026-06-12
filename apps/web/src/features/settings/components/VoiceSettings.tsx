@@ -294,6 +294,7 @@ export default function VoiceSettings() {
       <Table
         aria-label="Available voices"
         selectionMode="single"
+        classNames={{ tr: "cursor-pointer" }}
         disallowEmptySelection
         selectedKeys={selectedKeys}
         onSelectionChange={handleSelectionChange}

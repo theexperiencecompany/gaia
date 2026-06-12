@@ -7,10 +7,11 @@ import {
   Link03Icon,
   MessageMultiple02Icon,
   NotificationIcon,
-  Stamp01Icon,
   UserCircleIcon,
   WhatsappIcon,
 } from "@icons";
+
+import { PostageStampIcon } from "@/components/shared/icons";
 
 export interface SettingsMenuItem {
   key: string;
@@ -34,7 +35,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "profile",
     label: "Profile Card",
-    icon: Stamp01Icon,
+    icon: PostageStampIcon,
     href: "/settings?section=profile",
   },
   {
