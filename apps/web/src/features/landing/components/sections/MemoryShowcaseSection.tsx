@@ -17,7 +17,7 @@ const BENTO_CARDS: BentoCard[] = [
   {
     title: "Mention it once, it's filed forever",
     description:
-      "Your people, your places, your preferences — every detail you drop in conversation gets organized into folders you can browse anytime.",
+      "Your people, your places, your preferences. Every detail you drop in conversation gets organized into folders you can browse anytime.",
     Visual: MemoryFoldersCard,
   },
   {
@@ -29,7 +29,7 @@ const BENTO_CARDS: BentoCard[] = [
   {
     title: "A journal that holds you to it",
     description:
-      "GAIA keeps a dated journal of your days — including what you promised — and follows up before deadlines slip.",
+      "GAIA keeps a dated journal of your days, including what you promised, and follows up before deadlines slip.",
     Visual: MemoryJournalCard,
   },
 ];
