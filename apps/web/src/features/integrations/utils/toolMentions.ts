@@ -12,7 +12,7 @@ export const escapeRegExp = (value: string): string =>
  * first so e.g. "@Send Email" wins over "@Send"; trailing boundary so a
  * prefix doesn't match inside a longer token ("@Send" vs "@Sender").
  */
-export const buildMentionRegex = (toolNames: string[]): RegExp | null => {
+const buildMentionRegex = (toolNames: string[]): RegExp | null => {
   if (toolNames.length === 0) return null;
   const alternation = toolNames
     .slice()

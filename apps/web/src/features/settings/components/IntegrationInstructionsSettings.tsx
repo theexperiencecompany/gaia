@@ -94,24 +94,22 @@ export function IntegrationInstructionsSettings() {
 
   return (
     <SettingsPage>
-      <SettingsSection>
-        <SettingsRow
-          label="Custom Instructions"
-          description="Included in every conversation."
-          stacked
-        >
-          <Textarea
-            placeholder="Add any specific instructions for how GAIA should assist you..."
-            value={globalInstructions.value}
-            onChange={(e) => globalInstructions.onChange(e.target.value)}
-            minRows={3}
-            classNames={{
-              input: "bg-zinc-800/50 text-sm",
-              inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
-            }}
-          />
-        </SettingsRow>
-      </SettingsSection>
+      <div>
+        <p className="text-sm text-white">Custom Instructions</p>
+        <p className="mt-0.5 mb-3 text-xs text-zinc-500">
+          Included in every conversation.
+        </p>
+        <Textarea
+          placeholder="Add any specific instructions for how GAIA should assist you..."
+          value={globalInstructions.value}
+          onChange={(e) => globalInstructions.onChange(e.target.value)}
+          minRows={3}
+          classNames={{
+            input: "bg-zinc-800/50 text-sm",
+            inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
+          }}
+        />
+      </div>
 
       <SettingsSection
         title="Apps"
