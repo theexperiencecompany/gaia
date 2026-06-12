@@ -20,13 +20,31 @@ from app.constants.voices import (
     VOICE_IDS,
 )
 from app.db.mongodb.collections import users_collection
+from app.db.redis import redis_cache
 from app.decorators.caching import Cacheable
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 ELEVENLABS_VOICES_URL = "https://api.elevenlabs.io/v1/voices"
+ELEVENLABS_SHARED_VOICES_URL = "https://api.elevenlabs.io/v1/shared-voices"
+ELEVENLABS_ADD_VOICE_URL = "https://api.elevenlabs.io/v1/voices/add/{owner_id}/{voice_id}"
 ELEVENLABS_REQUEST_TIMEOUT_S = 10.0
+# One page of featured library voices is plenty for the picker without
+# ballooning the table; previews come straight off the library response.
+SHARED_VOICES_PAGE_SIZE = 100
+
+
+def _normalize_accent(raw: str) -> str:
+    """Human label for an ElevenLabs accent string.
+
+    ElevenLabs tags accent-neutral voices as "standard" — render those as
+    International rather than a meaningless "Standard" country.
+    """
+    accent = raw.strip().lower()
+    if not accent or accent == "standard":
+        return "International"
+    return accent.title()
 
 
 @Cacheable(ttl=ONE_DAY_TTL, key_pattern="voice:elevenlabs_voices")
@@ -71,29 +89,93 @@ async def get_elevenlabs_voices() -> list[dict[str, Any]]:
         return []
 
 
-def _map_account_voice(voice: dict[str, Any]) -> VoiceOption:
-    """Shape a non-catalog account voice into a catalog-compatible option.
+@Cacheable(ttl=ONE_DAY_TTL, key_pattern="voice:elevenlabs_shared_voices")
+async def _fetch_shared_voices() -> list[dict[str, Any]]:
+    """Fetch featured shared-library voices (trimmed) from ElevenLabs.
 
-    ElevenLabs names premades as "Name - Short description"; split that into
-    the name/description columns. Accent and language come from the labels.
+    Raises on any upstream failure so a transient error is never cached as an
+    empty list for the full TTL — only successful responses are stored.
     """
-    raw_name = voice["name"]
+    async with httpx.AsyncClient(timeout=ELEVENLABS_REQUEST_TIMEOUT_S) as client:
+        resp = await client.get(
+            ELEVENLABS_SHARED_VOICES_URL,
+            params={"page_size": SHARED_VOICES_PAGE_SIZE},
+            headers={"xi-api-key": settings.ELEVENLABS_API_KEY or ""},
+        )
+        resp.raise_for_status()
+        payload: dict[str, Any] = resp.json()
+
+    return [
+        {
+            "voice_id": voice["voice_id"],
+            "name": voice.get("name") or "",
+            "preview_url": voice.get("preview_url"),
+            "public_owner_id": voice.get("public_owner_id"),
+            "gender": voice.get("gender") or "",
+            "accent": voice.get("accent") or "",
+            "language": voice.get("language") or "",
+            "descriptive": voice.get("descriptive") or "",
+            "use_case": voice.get("use_case") or "",
+        }
+        for voice in payload.get("voices", [])
+        if isinstance(voice.get("voice_id"), str) and voice.get("public_owner_id")
+    ]
+
+
+async def get_shared_voices() -> list[dict[str, Any]]:
+    """Resolve shared-library voices, degrading to an empty list when unavailable."""
+    if not settings.ELEVENLABS_API_KEY:
+        return []
+    try:
+        return await _fetch_shared_voices()
+    except (httpx.HTTPError, ValueError, KeyError) as e:
+        log.warning("Failed to fetch ElevenLabs shared voices", error=str(e))
+        return []
+
+
+def _split_display_name(raw_name: str) -> tuple[str, str]:
+    """Split ElevenLabs' "Name - Short description" naming into columns."""
     name, _, blurb = raw_name.partition(" - ")
+    return name.strip() or raw_name, blurb.strip()
+
+
+def _map_account_voice(voice: dict[str, Any]) -> VoiceOption:
+    """Shape a non-catalog account voice into a catalog-compatible option."""
+    name, blurb = _split_display_name(voice["name"])
     labels: dict[str, Any] = voice["labels"]
-    accent = str(labels.get("accent") or "").strip()
+    accent = _normalize_accent(str(labels.get("accent") or ""))
     descriptive = str(labels.get("descriptive") or "").replace("_", " ")
     use_case = str(labels.get("use_case") or "").replace("_", " ")
     language_code = str(labels.get("language") or "")
-    gender = str(labels.get("gender") or "").strip().title() or "Neutral"
     return VoiceOption(
         voice_id=voice["voice_id"],
-        name=name.strip() or raw_name,
+        name=name,
         language=LANGUAGE_NAMES.get(language_code, language_code.upper() or "English"),
-        accent=accent.title() or "Unknown",
+        accent=accent,
         country_code=ACCENT_TO_COUNTRY.get(accent.lower(), ""),
-        gender=gender,
-        description=blurb.strip() or descriptive.title() or use_case.title() or "Account voice",
+        gender=str(labels.get("gender") or "").strip().title() or "Neutral",
+        description=blurb or descriptive.title() or use_case.title() or "Account voice",
         preview_url=voice.get("preview_url"),
+        source="account",
+    )
+
+
+def _map_shared_voice(voice: dict[str, Any]) -> VoiceOption:
+    """Shape a shared-library voice into a catalog-compatible option."""
+    name, blurb = _split_display_name(voice["name"])
+    accent = _normalize_accent(voice["accent"])
+    descriptive = voice["descriptive"].replace("_", " ")
+    use_case = voice["use_case"].replace("_", " ")
+    return VoiceOption(
+        voice_id=voice["voice_id"],
+        name=name,
+        language=LANGUAGE_NAMES.get(voice["language"], voice["language"].upper() or "English"),
+        accent=accent,
+        country_code=ACCENT_TO_COUNTRY.get(accent.lower(), ""),
+        gender=voice["gender"].strip().title() or "Neutral",
+        description=blurb or descriptive.title() or use_case.title() or "Community voice",
+        preview_url=voice.get("preview_url"),
+        source="library",
     )
 
 
@@ -130,6 +212,7 @@ async def list_voices(user_id: str) -> VoiceListResponse:
     would have no preview and, worse, fail TTS if selected.
     """
     account = await get_elevenlabs_voices()
+    shared = await get_shared_voices()
     by_id = {v["voice_id"]: v for v in account}
     selected = await get_user_voice(user_id)
     voices = [
@@ -140,18 +223,70 @@ async def list_voices(user_id: str) -> VoiceListResponse:
     voices.extend(
         _map_account_voice(voice) for voice in account if voice["voice_id"] not in VOICE_IDS
     )
+    listed = {v.voice_id for v in voices}
+    voices.extend(_map_shared_voice(voice) for voice in shared if voice["voice_id"] not in listed)
     return VoiceListResponse(voices=voices, selected_voice_id=selected)
 
 
-async def set_user_voice(user_id: str, voice_id: str) -> str:
-    """Persist the user's voice selection after validating it is selectable."""
-    if voice_id not in await _known_voice_ids():
+async def _add_library_voice_to_account(voice: dict[str, Any]) -> str:
+    """Add a shared-library voice to the ElevenLabs account so TTS can use it.
+
+    Returns the (account) voice id. Raises AppError with ElevenLabs' reason
+    when the add fails — most commonly the account's voice slots are full.
+    """
+    url = ELEVENLABS_ADD_VOICE_URL.format(
+        owner_id=voice["public_owner_id"], voice_id=voice["voice_id"]
+    )
+    try:
+        async with httpx.AsyncClient(timeout=ELEVENLABS_REQUEST_TIMEOUT_S) as client:
+            resp = await client.post(
+                url,
+                headers={"xi-api-key": settings.ELEVENLABS_API_KEY or ""},
+                json={"new_name": voice["name"]},
+            )
+            resp.raise_for_status()
+            added_id = resp.json().get("voice_id") or voice["voice_id"]
+    except httpx.HTTPStatusError as e:
+        detail = e.response.text[:200]
+        log.warning("Failed to add library voice", voice_id=voice["voice_id"], detail=detail)
         raise AppError(
-            message="Unknown voice",
-            why=f"Voice id {voice_id!r} is neither in the catalog nor on the account",
-            fix="Pick a voice from GET /voice/voices",
-            status_code=404,
-        )
+            message="Could not add this voice to the account",
+            why=f"ElevenLabs rejected the add: {detail}",
+            fix="Free a voice slot on the ElevenLabs account or pick another voice",
+            status_code=422,
+        ) from e
+    except httpx.HTTPError as e:
+        raise AppError(
+            message="Could not reach ElevenLabs to add this voice",
+            why=str(e),
+            fix="Try again in a moment",
+            status_code=502,
+        ) from e
+
+    # The account voice list changed — refetch on next read so the new voice
+    # lists (and validates) immediately.
+    await redis_cache.delete("voice:elevenlabs_voices")
+    return str(added_id)
+
+
+async def set_user_voice(user_id: str, voice_id: str) -> str:
+    """Persist the user's voice selection, adding library voices to the account.
+
+    Account (and curated-fallback) voices persist directly. A shared-library
+    voice is first added to the ElevenLabs account — TTS can only synthesize
+    account voices — and the resulting account voice id is stored.
+    """
+    if voice_id not in await _known_voice_ids():
+        shared = {v["voice_id"]: v for v in await get_shared_voices()}
+        if voice_id not in shared:
+            raise AppError(
+                message="Unknown voice",
+                why=f"Voice id {voice_id!r} is not on the account or in the voice library",
+                fix="Pick a voice from GET /voice/voices",
+                status_code=404,
+            )
+        voice_id = await _add_library_voice_to_account(shared[voice_id])
+
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},
         {"$set": {SELECTED_VOICE_FIELD: voice_id}},

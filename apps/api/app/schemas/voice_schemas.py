@@ -17,6 +17,10 @@ class VoiceOption(BaseModel):
         default=None,
         description="Public MP3 sample for the play button; null when unavailable",
     )
+    source: str = Field(
+        default="account",
+        description="'account' for voices already usable, 'library' for shared-library voices added to the account on selection",
+    )
 
 
 class VoiceListResponse(BaseModel):
