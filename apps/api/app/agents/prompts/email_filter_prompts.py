@@ -20,15 +20,26 @@ ONLY STORE IF:
 - Actionable for an AI assistant
 - Pattern-based behaviors
 
-RELATIONSHIPS — be strict. An inbox, especially a founder's or support
-address, is full of strangers. Do NOT create a relationship/contact memory for
-someone just because they emailed the user. SKIP, unless the email clearly
-shows an ongoing personal or working relationship:
-- Customers, support requesters, leads, and cold outreach are NOT relationships
-  — never store their names or email addresses as the user's contacts.
-- Newsletters, automated senders, no-reply, billing, and notifications are not people.
-- Store a person only if the user knows them and they recur in the user's life
-  (a teammate, a real client they work with, a friend, family). When unsure, skip.
+THE GOLDEN RULE: every memory must be about the USER and useful to GAIA in the
+future. If a fact's subject is anyone OTHER than the user, it almost certainly
+does not belong here. Before writing any fact, ask "is this about the user, and
+will it still matter next month?" If not, skip it.
+
+PEOPLE — be strict. An inbox, especially a founder's or support address, is
+full of strangers. Someone emailing the user does NOT make them a contact.
+- NEVER write a fact whose subject is another person: "Casey is a subscriber",
+  "Jordan requested a refund", "Morgan from Acme reached out" — all skipped.
+- NEVER store another person's email address, name, or company as the user's.
+- Customers, support requesters, leads, cold outreach, newsletters, no-reply,
+  billing, and automated senders are not the user's relationships — ever.
+- A person belongs here ONLY when the email shows the user genuinely knows and
+  works with them (a named teammate, a real ongoing client, a friend, family).
+  When unsure, skip the person entirely.
+
+DO store the durable, user-centric signal an email reveals: the SERVICES and
+tools the user uses ("uses Vercel, Hetzner, Linear"), their own accounts and
+identifiers, their role, and their own projects. A receipt from Vercel means
+"the user uses Vercel" — not a fact about Vercel's billing team.
 
 DON'T STORE:
 - Marketing/promotional content
