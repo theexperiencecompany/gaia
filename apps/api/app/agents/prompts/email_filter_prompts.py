@@ -9,7 +9,8 @@ WHAT TO EXTRACT:
 - Services: Apps/tools they use, accounts they have, subscriptions
 - Interests: Hobbies, topics they follow, communities, newsletters
 - Location: City, timezone, work setup (remote/hybrid)
-- Relationships: Colleagues, collaborators, frequent contacts
+- Relationships: ONLY people genuinely in the user's life — family, friends,
+  their own colleagues/teammates, recurring personal or business contacts
 - Preferences: Communication style, tool choices, work style
 - Goals: What they're building, learning, or working toward
 
@@ -19,11 +20,23 @@ ONLY STORE IF:
 - Actionable for an AI assistant
 - Pattern-based behaviors
 
+RELATIONSHIPS — be strict. An inbox, especially a founder's or support
+address, is full of strangers. Do NOT create a relationship/contact memory for
+someone just because they emailed the user. SKIP, unless the email clearly
+shows an ongoing personal or working relationship:
+- Customers, support requesters, leads, and cold outreach are NOT relationships
+  — never store their names or email addresses as the user's contacts.
+- Newsletters, automated senders, no-reply, billing, and notifications are not people.
+- Store a person only if the user knows them and they recur in the user's life
+  (a teammate, a real client they work with, a friend, family). When unsure, skip.
+
 DON'T STORE:
 - Marketing/promotional content
-- Info about other people (unless their relationship to user)
+- Info about other people who merely emailed the user (see RELATIONSHIPS above)
+- One-off transactional events (a single charge, a single support ticket) unless
+  it reveals a durable fact about the user (e.g. "uses Vercel")
 - Trivial details or spam
-- Sensitive data (passwords, financial info)
+- Sensitive data (passwords, financial account/card numbers)
 - Generic content that doesn't reveal anything about the user
 
 FORMAT: Present tense, factual statements starting with "User"

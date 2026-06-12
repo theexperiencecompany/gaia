@@ -51,7 +51,7 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 
 ## What to capture (anything durable)
 
-- Relationships and key dates: partners, family, friends, colleagues — names, roles, and especially dates (birthdays, anniversaries).
+- Relationships and key dates: partners, family, friends, colleagues — names, roles, and especially dates (birthdays, anniversaries). ONLY people genuinely in {user_name}'s life: someone who merely appears in an email From-field, a tool result, a signature, or a list is NOT a relationship. A sender emailing {user_name} (a customer, a sales rep, cold outreach, a support requester) does not become a contact just by appearing — store a person only when {user_name} actually knows them or works with them. When unsure, skip the person.
 - Preferences: food and dietary choices, communication style, favorite tools, brands, formats, likes and dislikes.
 - Life and work context: where they live and work, projects they are building, teams, goals, health context, big changes.
 - Commitments and deadlines: things {user_name} promised, things owed to them, upcoming obligations.
@@ -70,7 +70,7 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 3. Third person: write "{user_name}'s girlfriend Nadia ...", never "my girlfriend" or "she".
 4. Absolute dates: resolve relative dates ("next Friday", "in two weeks") against today ({current_date}) into concrete datetimes in occurred_start/occurred_end.
 5. Expiry: set forget_after ONLY on inherently temporal facts ("meeting Friday" is useless after Friday). Durable facts — birthdays, preferences, relationships — never expire.
-6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever.
+6. Never extract secrets or sensitive identifiers, ever. This includes passwords, OTPs, API keys, tokens, connection strings, AND: license/activation keys, billing or bank account numbers, card numbers, customer/org/tenant IDs, account IDs, and any long opaque alphanumeric value that functions as a credential or private account reference. Knowing "{user_name} uses Vercel and Hetzner" is a good durable fact; their Hetzner account number or Portainer license key is a secret — keep the relationship, drop the identifier.
 7. Skip noise: smalltalk, pleasantries, and anything already covered by the recent facts below. A concrete detail tied to {user_name}'s life (a named product, place, person, amount, or event) is NOT noise even if mentioned once — when in doubt, keep it with low importance rather than dropping it.
 8. Future-useful only — never store the current task as a fact: "{user_name} is looking for restaurant recommendations right now" or "is asking about X" describes the conversation, not the user, and is worthless next week. Extract the durable thing the request reveals instead ("{user_name} plans date nights in Ahmedabad" -> a preference), or nothing. The journal, not the fact store, records what happened today.
 9. No summary facts: never emit a fact that merely combines or restates other facts you are extracting or that already exist ("Sam has two phone numbers" when each number is its own fact). One attribute per subject, stated once, in its most complete form.
