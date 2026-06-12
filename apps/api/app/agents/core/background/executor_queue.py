@@ -15,6 +15,7 @@ keeps the import graph acyclic.
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 import json
 from typing import Any
 from uuid import uuid4
@@ -82,6 +83,14 @@ class PreparedQueuedTask:
 # ── Busy lock ────────────────────────────────────────────────────────
 
 
+class LockState(StrEnum):
+    """Who currently holds the per-conversation executor busy lock."""
+
+    OURS = "ours"
+    FREE = "free"
+    FOREIGN = "foreign"
+
+
 def build_lock_value(stream_id: str | None, task_id: str) -> str:
     """Build 'stream_id:task_id' lock value for the executor busy key."""
     return f"{stream_id or ''}:{task_id}"
@@ -111,6 +120,71 @@ async def try_acquire_lock(lock_key: str, lock_value: str) -> bool:
             nx=True,
         ),
     )
+
+
+async def get_lock_state(conversation_id: str, stream_id: str, task_id: str | None) -> LockState:
+    """Classify the busy lock relative to this run.
+
+    OURS    — the lock still carries this run's value; we may pop/release.
+    FREE    — no lock (TTL expiry, or cancel_executor released it); a stranded
+              queue may need reclaiming, but only via NX so we never trample a
+              concurrent acquirer.
+    FOREIGN — a newer run owns it; a stale finalize must not touch the lock or
+              the queue (the owner's own finalize drains it).
+
+    Redis-unavailable degrades to OURS — the pre-ownership-check behavior.
+    """
+    if not redis_cache.client:
+        return LockState.OURS
+    raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+    if raw is None:
+        return LockState.FREE
+    if decode_raw_item(raw) == build_lock_value(stream_id, task_id or ""):
+        return LockState.OURS
+    return LockState.FOREIGN
+
+
+async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: str | None) -> None:
+    """Delete the busy lock only while this run still owns it.
+
+    Unconditional deletion let a stale (e.g. cancelled-then-replaced) run's
+    finalize free a lock a NEWER run had acquired, enabling concurrent
+    executors in one conversation. The get→compare→delete here is not atomic,
+    but it closes the deterministic case; the residual window is the
+    microseconds between compare and delete.
+    """
+    if await get_lock_state(conversation_id, stream_id, task_id) is LockState.OURS:
+        await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+
+
+async def reclaim_stranded_task(conversation_id: str) -> PreparedQueuedTask | None:
+    """Claim a free lock and pop a task that would otherwise strand.
+
+    Two ways a queued task ends up with no lock holder to drain it:
+      - a call_executor enqueued in the race window between finalize's empty
+        pop and its lock release;
+      - cancel_executor freed the lock while tasks remained queued.
+    Without a reclaim pass the task sits in Redis until the next executor run
+    for that conversation — or silently expires with the queue TTL.
+
+    NX-claims the lock with a sentinel first, so a concurrent call_executor
+    acquirer always wins cleanly (their finalize will drain the queue instead).
+    The sentinel parses as a harmless no-op for cancel_executor. A task
+    enqueued after this pass's empty pop re-enters the same (vanishingly
+    rare) race; the next executor run drains it.
+    """
+    if not redis_cache.client:
+        return None
+    if await redis_cache.client.llen(f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}") == 0:
+        return None
+    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+    if not await try_acquire_lock(lock_key, build_lock_value("reclaim", str(uuid4()))):
+        return None
+    prepared = await pop_next_queued_run(conversation_id)
+    if prepared is None:
+        # We hold only the sentinel — free it so call_executor isn't blocked.
+        await redis_cache.delete(lock_key)
+    return prepared
 
 
 # ── Enqueue ──────────────────────────────────────────────────────────

@@ -12,10 +12,14 @@ import pytest
 
 from app.agents.core.background import executor_queue as eq, session as sess
 from app.agents.core.background.executor_queue import (
+    LockState,
     build_lock_value,
     enqueue_task,
+    get_lock_state,
     parse_lock_value,
     pop_next_queued_run,
+    reclaim_stranded_task,
+    release_lock_if_owned,
 )
 from app.agents.core.background.session import RunKind, get_session
 from app.constants.cache import EXECUTOR_BUSY_TTL, EXECUTOR_QUEUE_TTL
@@ -151,6 +155,84 @@ class TestPopNextQueuedRun:
         assert prepared.run.workflow_id == "wf-1"
         assert prepared.run.workflow_notify_on_completion is False
         assert prepared.run.executor_owns_tool_data is True
+
+
+@pytest.mark.unit
+class TestLockOwnership:
+    """The ownership contract behind safe finalize handoffs (BUG C fix)."""
+
+    async def test_matching_value_is_ours(self) -> None:
+        with patch.object(eq, "redis_cache") as redis:
+            redis.client.get = AsyncMock(return_value=build_lock_value("s1", "t1"))
+            assert await get_lock_state("conv-1", "s1", "t1") is LockState.OURS
+
+    async def test_missing_lock_is_free(self) -> None:
+        with patch.object(eq, "redis_cache") as redis:
+            redis.client.get = AsyncMock(return_value=None)
+            assert await get_lock_state("conv-1", "s1", "t1") is LockState.FREE
+
+    async def test_other_value_is_foreign(self) -> None:
+        with patch.object(eq, "redis_cache") as redis:
+            redis.client.get = AsyncMock(return_value=build_lock_value("other", "t9"))
+            assert await get_lock_state("conv-1", "s1", "t1") is LockState.FOREIGN
+
+    async def test_release_deletes_only_when_owned(self) -> None:
+        with patch.object(eq, "redis_cache") as redis:
+            redis.client.get = AsyncMock(return_value=build_lock_value("s1", "t1"))
+            redis.delete = AsyncMock()
+            await release_lock_if_owned("conv-1", "s1", "t1")
+            redis.delete.assert_awaited_once()
+
+    async def test_release_never_deletes_a_foreign_lock(self) -> None:
+        with patch.object(eq, "redis_cache") as redis:
+            redis.client.get = AsyncMock(return_value=build_lock_value("other", "t9"))
+            redis.delete = AsyncMock()
+            await release_lock_if_owned("conv-1", "s1", "t1")
+            redis.delete.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestReclaimStrandedTask:
+    """The post-release recheck that closes the strand window (BUG A fix)."""
+
+    async def test_empty_queue_reclaims_nothing(self) -> None:
+        with patch.object(eq, "redis_cache") as redis:
+            redis.client.llen = AsyncMock(return_value=0)
+            redis.client.set = AsyncMock()
+            assert await reclaim_stranded_task("conv-1") is None
+            redis.client.set.assert_not_awaited()  # never touches the lock
+
+    async def test_lost_nx_claim_backs_off(self) -> None:
+        """A concurrent call_executor acquired the lock first — its finalize
+        will drain the queue, so reclaim must yield rather than trample."""
+        with patch.object(eq, "redis_cache") as redis:
+            redis.client.llen = AsyncMock(return_value=1)
+            redis.client.set = AsyncMock(return_value=None)  # NX lost
+            assert await reclaim_stranded_task("conv-1") is None
+
+    async def test_won_claim_pops_and_returns_the_stranded_task(self) -> None:
+        sentinel = object()
+        with (
+            patch.object(eq, "redis_cache") as redis,
+            patch.object(
+                eq, "pop_next_queued_run", new_callable=AsyncMock, return_value=sentinel
+            ) as pop,
+        ):
+            redis.client.llen = AsyncMock(return_value=1)
+            redis.client.set = AsyncMock(return_value=True)  # NX won
+            assert await reclaim_stranded_task("conv-1") is sentinel
+            pop.assert_awaited_once_with("conv-1")
+
+    async def test_won_claim_with_raced_empty_queue_frees_the_sentinel(self) -> None:
+        with (
+            patch.object(eq, "redis_cache") as redis,
+            patch.object(eq, "pop_next_queued_run", new_callable=AsyncMock, return_value=None),
+        ):
+            redis.client.llen = AsyncMock(return_value=1)
+            redis.client.set = AsyncMock(return_value=True)
+            redis.delete = AsyncMock()
+            assert await reclaim_stranded_task("conv-1") is None
+            redis.delete.assert_awaited_once()  # don't block call_executor
 
 
 @pytest.mark.unit

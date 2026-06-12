@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.core.background import executor_runner as er, session as sess
-from app.agents.core.background.executor_queue import PreparedQueuedTask
+from app.agents.core.background.executor_queue import LockState, PreparedQueuedTask
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
@@ -54,8 +54,15 @@ class _Boundaries:
         self.stream_manager.is_cancelled = AsyncMock(return_value=False)
         self.stream_manager.publish_chunk = AsyncMock()
         self.stream_manager.complete_stream = AsyncMock()
-        self.redis = stack.enter_context(patch.object(er, "redis_cache"))
-        self.redis.delete = AsyncMock()
+        self.lock_state = stack.enter_context(
+            patch.object(er, "get_lock_state", new_callable=AsyncMock, return_value=LockState.OURS)
+        )
+        self.release = stack.enter_context(
+            patch.object(er, "release_lock_if_owned", new_callable=AsyncMock)
+        )
+        self.reclaim = stack.enter_context(
+            patch.object(er, "reclaim_stranded_task", new_callable=AsyncMock, return_value=None)
+        )
         self.pop = stack.enter_context(
             patch.object(er, "pop_next_queued_run", new_callable=AsyncMock, return_value=None)
         )
@@ -90,9 +97,11 @@ class TestCancelledRouting:
         # Queued stream is closed silently: no [DONE], no complete_stream.
         boundaries.stream_manager.publish_chunk.assert_not_awaited()
         boundaries.stream_manager.complete_stream.assert_not_awaited()
-        # No queue handoff after a cancel; the lock is released.
-        boundaries.pop.assert_not_awaited()
-        boundaries.redis.delete.assert_awaited_once()
+        # A cancel targets the RUNNING task only — the queue is still handed
+        # off (cancel-all clears the queue itself before this runs), and with
+        # nothing queued the lock is released.
+        boundaries.pop.assert_awaited_once()
+        boundaries.release.assert_awaited_once()
         # Queued sessions are torn down by finalize.
         assert get_session("s1") is None
 
@@ -197,14 +206,83 @@ class TestDoneSignalAndOrdering:
 
 
 @pytest.mark.unit
+class TestQueueLockBugs:
+    """Adversarial tests for the lock/queue lifecycle.
+
+    Written red-first: each pins a real defect in the handoff protocol.
+    """
+
+    async def test_stop_does_not_strand_queued_tasks(self, boundaries) -> None:
+        """BUG B: user queues a second task while one runs, then presses Stop.
+        The cancelled run's finalize must still hand the queue off — otherwise
+        the acknowledged ('queued, I'll handle it right after') task silently
+        never runs and expires in Redis."""
+        boundaries.stream_manager.is_cancelled.return_value = True
+        create_session("s1", RunKind.QUEUED)
+        next_run = _run(RunKind.QUEUED, stream_id="queued_next")
+        boundaries.pop.return_value = PreparedQueuedTask(
+            run=next_run,
+            task="the queued ask",
+            configurable={"stream_id": "queued_next"},
+            user_time=datetime(2026, 1, 1),
+        )
+
+        with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
+            await er._finalize_executor_run(_run(RunKind.QUEUED), "partial", "final")
+            await asyncio.sleep(0)
+
+        boundaries.pop.assert_awaited_once_with("conv-1")
+        spawn.assert_awaited_once()
+
+    async def test_stale_finalize_never_releases_a_lock_it_does_not_own(self, boundaries) -> None:
+        """BUG C: cancel_executor frees the lock and a NEW run acquires it; when
+        the OLD cancelled run's finalize fires later it must not delete the new
+        holder's lock (that would allow concurrent executors)."""
+        boundaries.stream_manager.is_cancelled.return_value = True
+        create_session("s1", RunKind.QUEUED)
+        # The busy lock now belongs to someone else entirely.
+        boundaries.lock_state.return_value = LockState.FOREIGN
+
+        await er._finalize_executor_run(_run(RunKind.QUEUED), "partial", "final")
+
+        boundaries.release.assert_not_awaited()
+        boundaries.pop.assert_not_awaited()  # not ours to hand off
+        boundaries.reclaim.assert_not_awaited()  # the owner's finalize drains it
+
+    async def test_free_lock_with_stranded_queue_is_reclaimed(self, boundaries) -> None:
+        """BUG A: a task enqueued in the pop→release race window (or left
+        behind a cancel-freed lock) must be reclaimed and spawned, not left to
+        expire silently with the queue TTL."""
+        create_session("s1", RunKind.QUEUED)
+        boundaries.lock_state.return_value = LockState.FREE
+        next_run = _run(RunKind.QUEUED, stream_id="queued_next")
+        boundaries.reclaim.return_value = PreparedQueuedTask(
+            run=next_run,
+            task="stranded ask",
+            configurable={"stream_id": "queued_next"},
+            user_time=datetime(2026, 1, 1),
+        )
+
+        with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
+            await er._finalize_executor_run(_run(RunKind.QUEUED), "result", "final")
+            await asyncio.sleep(0)
+
+        boundaries.pop.assert_not_awaited()  # not owner — never overwrite the lock
+        boundaries.reclaim.assert_awaited_once_with("conv-1")
+        spawn.assert_awaited_once()
+
+
+@pytest.mark.unit
 class TestQueueLockHandoff:
-    async def test_no_next_task_releases_the_busy_lock(self, boundaries) -> None:
+    async def test_no_next_task_releases_the_busy_lock_then_rechecks(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)
 
         await er._finalize_executor_run(_run(RunKind.QUEUED), "result", "final")
 
         boundaries.pop.assert_awaited_once_with("conv-1")
-        boundaries.redis.delete.assert_awaited_once()
+        boundaries.release.assert_awaited_once()
+        # The post-release recheck that closes the enqueue↔release race.
+        boundaries.reclaim.assert_awaited_once_with("conv-1")
 
     async def test_prepared_next_task_is_spawned_and_lock_kept(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)
@@ -226,5 +304,6 @@ class TestQueueLockHandoff:
             configurable={"stream_id": "queued_next"},
             user_time=datetime(2026, 1, 1),
         )
-        # Lock handed off to the next run — must NOT be deleted.
-        boundaries.redis.delete.assert_not_awaited()
+        # Lock handed off to the next run — must NOT be released or reclaimed.
+        boundaries.release.assert_not_awaited()
+        boundaries.reclaim.assert_not_awaited()

@@ -25,7 +25,13 @@ from app.agents.core.background.executor_capture import (
     build_returned_to_frontend_note,
     teardown_executor_capture,
 )
-from app.agents.core.background.executor_queue import pop_next_queued_run
+from app.agents.core.background.executor_queue import (
+    LockState,
+    get_lock_state,
+    pop_next_queued_run,
+    reclaim_stranded_task,
+    release_lock_if_owned,
+)
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.result_delivery import deliver_result, persist_cancelled_run
 from app.agents.core.background.session import ExecutorRun, signal_executor_done
@@ -33,9 +39,7 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.core.stream_manager import StreamManager
-from app.db.redis import redis_cache
 from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
@@ -142,12 +146,34 @@ async def _finalize_executor_run(
             await StreamManager.publish_chunk(run.stream_id, "data: [DONE]\n\n")
             await StreamManager.complete_stream(run.stream_id)
 
-    # Atomic lock handoff: pop_next_queued_run overwrites the lock before
-    # returning, so a concurrent call_executor cannot grab it via SET NX in a
-    # delete→re-set gap. Only release the lock when nothing was handed off.
-    prepared = await pop_next_queued_run(run.conversation_id) if not was_cancelled else None
+    # ── Queue / lock handoff ──────────────────────────────────────────
+    # Runs on EVERY terminal path, cancelled included: a Stop targets the
+    # running task only — queued tasks were acknowledged ("I'll handle it right
+    # after") and must still run. (cancel_executor with cancel-all clears the
+    # queue itself, so this pops nothing in that case.)
+    #
+    # The handoff is ownership-checked: pop/release only while this run still
+    # holds the busy lock — a stale finalize (cancelled and already replaced by
+    # a newer run) must never delete or overwrite the new holder's lock. A FREE
+    # lock (TTL expiry / cancel released it) goes through the NX reclaim so a
+    # concurrent call_executor acquirer always wins cleanly.
+    lock_state = await get_lock_state(run.conversation_id, run.stream_id, run.task_id)
+    if lock_state is LockState.FOREIGN:
+        return
+
+    prepared = None
+    if lock_state is LockState.OURS:
+        # pop overwrites the lock before returning, so a concurrent
+        # call_executor cannot grab it via SET NX in a delete→re-set gap.
+        prepared = await pop_next_queued_run(run.conversation_id)
+        if prepared is None:
+            await release_lock_if_owned(run.conversation_id, run.stream_id, run.task_id)
     if prepared is None:
-        await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{run.conversation_id}")
+        # Closes the strand window: a task enqueued between the empty pop and
+        # the release above (or left behind a freed lock) is claimed via NX
+        # and spawned instead of sitting in Redis until the queue TTL.
+        prepared = await reclaim_stranded_task(run.conversation_id)
+    if prepared is None:
         return
 
     bg_task = asyncio.create_task(

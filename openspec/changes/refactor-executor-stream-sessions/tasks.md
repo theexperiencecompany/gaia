@@ -19,3 +19,10 @@
 - [x] 3.1 Re-target `tests/unit/agents/test_executor_runner_delivery.py` to `result_delivery` with assertions unchanged; test passes.
 - [x] 3.2 `nx type-check api` and `nx lint api` clean; grep shows no stale `inbox`/prefix-parsing references.
 - [ ] 3.3 Manual smoke (live turn with executor cards; queued task; cancel mid-run) — flows behave as before.
+
+## 4. Queue-lock lifecycle hardening (bugs found by adversarial tests)
+
+- [x] 4.1 BUG B (deterministic): Stop/cancel stranded all queued tasks — cancelled finalize never popped the queue and deleted the lock. Fixed: the handoff now runs on every terminal path; a Stop targets only the running task (cancel-all still clears the queue itself).
+- [x] 4.2 BUG C (deterministic): finalize deleted the busy lock unconditionally — a stale cancelled run's finalize could delete a NEWER run's lock, enabling concurrent executors. Fixed: `get_lock_state` (OURS/FREE/FOREIGN) + `release_lock_if_owned`; FOREIGN locks are never touched.
+- [x] 4.3 BUG A (race): a task enqueued between finalize's empty pop and its lock release stranded until the next executor call (or queue-TTL expiry). Fixed: `reclaim_stranded_task` — post-release NX-claim recheck; a concurrent acquirer always wins cleanly.
+- [x] 4.4 Red-first verification: the strand and foreign-lock tests failed against the pre-fix code; 89 tests green after; mypy + ruff clean.
