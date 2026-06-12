@@ -43,6 +43,8 @@ async def _bootstrap() -> None:
         await conn.run_sync(postgresql_module.Base.metadata.create_all)
 
     async def _get_engine():  # type: ignore[return]
+        # Must be async: replaces get_postgresql_engine which is awaited by callers.
+        await asyncio.sleep(0)
         return engine
 
     postgresql_module.get_postgresql_engine = _get_engine  # type: ignore[assignment]
@@ -56,6 +58,8 @@ async def _bootstrap() -> None:
         await chroma_client.get_or_create_collection(name=name, metadata={"hnsw:space": "cosine"})
 
     async def _get_client(*_args: object, **_kwargs: object):  # type: ignore[return]
+        # Must be async: replaces ChromaClient.get_client which is awaited by callers.
+        await asyncio.sleep(0)
         return chroma_client
 
     ChromaClient.get_client = _get_client  # type: ignore[assignment]

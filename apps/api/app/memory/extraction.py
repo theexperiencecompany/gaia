@@ -10,6 +10,7 @@ import asyncio
 from datetime import datetime
 from typing import TypeVar
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
@@ -107,6 +108,51 @@ def format_transcript(messages: list[dict[str, str]]) -> str:
     return f"{head}{_TRANSCRIPT_TRUNCATION_MARKER}{tail}"
 
 
+async def _try_one_provider(
+    llm: BaseChatModel,
+    output_model: type[_StructuredT],
+    messages: list[BaseMessage],
+    operation: str,
+    *,
+    is_last: bool,
+) -> _StructuredT | None:
+    """Attempt structured output from a single LLM provider with retry-backoff.
+
+    Retries transient errors (rate limits, overload) up to ``_MAX_STRUCTURED_RETRIES``
+    times with exponential backoff, then returns None so the caller can fall
+    through to the next provider. Returns None immediately on non-transient
+    failures.
+    """
+    provider_name = type(llm).__name__
+    structured_llm = llm.with_structured_output(output_model)
+    for attempt in range(_MAX_STRUCTURED_RETRIES):
+        try:
+            result = await structured_llm.ainvoke(messages, config=_SILENT_CONFIG)
+            if isinstance(result, output_model):
+                return result
+            return output_model.model_validate(result)
+        except Exception as e:
+            # Rate limits / transient errors must NOT silently drop a memory:
+            # ingestion is a background task, so retry the same provider with
+            # backoff before falling through to the next one.
+            if _is_transient_error(e) and attempt < _MAX_STRUCTURED_RETRIES - 1:
+                delay = _RETRY_BASE_DELAY_SECONDS * (2**attempt)
+                log.warning(
+                    f"[memory] {operation}: {provider_name} transient error, "
+                    f"retrying in {delay:.0f}s ({attempt + 1}/{_MAX_STRUCTURED_RETRIES}): {e}"
+                )
+                await asyncio.sleep(delay)
+                continue
+            if not is_last:
+                log.warning(
+                    f"[memory] {operation}: {provider_name} failed, trying next provider: {e}"
+                )
+            else:
+                log.error(f"[memory] {operation}: all LLM providers failed. Last error: {e}")
+            break
+    return None
+
+
 async def _invoke_structured(
     output_model: type[_StructuredT],
     messages: list[BaseMessage],
@@ -126,33 +172,15 @@ async def _invoke_structured(
         return None
 
     for index, llm in enumerate(llm_chain):
-        provider_name = type(llm).__name__
-        structured_llm = llm.with_structured_output(output_model)
-        for attempt in range(_MAX_STRUCTURED_RETRIES):
-            try:
-                result = await structured_llm.ainvoke(messages, config=_SILENT_CONFIG)
-                if isinstance(result, output_model):
-                    return result
-                return output_model.model_validate(result)
-            except Exception as e:
-                # Rate limits / transient errors must NOT silently drop a memory:
-                # ingestion is a background task, so retry the same provider with
-                # backoff before falling through to the next one.
-                if _is_transient_error(e) and attempt < _MAX_STRUCTURED_RETRIES - 1:
-                    delay = _RETRY_BASE_DELAY_SECONDS * (2**attempt)
-                    log.warning(
-                        f"[memory] {operation}: {provider_name} transient error, "
-                        f"retrying in {delay:.0f}s ({attempt + 1}/{_MAX_STRUCTURED_RETRIES}): {e}"
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-                if index < len(llm_chain) - 1:
-                    log.warning(
-                        f"[memory] {operation}: {provider_name} failed, trying next provider: {e}"
-                    )
-                else:
-                    log.error(f"[memory] {operation}: all LLM providers failed. Last error: {e}")
-                break
+        result = await _try_one_provider(
+            llm,
+            output_model,
+            messages,
+            operation,
+            is_last=(index == len(llm_chain) - 1),
+        )
+        if result is not None:
+            return result
     return None
 
 

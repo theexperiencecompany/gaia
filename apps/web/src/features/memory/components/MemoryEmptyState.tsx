@@ -1,9 +1,9 @@
 import type { ComponentType } from "react";
 
 interface MemoryEmptyStateProps {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-  description?: string;
+  readonly icon: ComponentType<{ className?: string }>;
+  readonly title: string;
+  readonly description?: string;
 }
 
 /**

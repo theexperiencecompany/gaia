@@ -17,6 +17,8 @@ Design philosophy: find what breaks, not what passes.
 
 from __future__ import annotations
 
+_ACK = "Got it."
+
 SCENARIOS: list[dict] = [
     # ─────────────────────────────────────────────────────────────────────────
     # CATEGORY 1: SINGLE_HOP — basic factual recall
@@ -672,7 +674,7 @@ SCENARIOS: list[dict] = [
             },
             {
                 "role": "assistant",
-                "content": "Got it.",
+                "content": _ACK,
                 "day_offset": 0,
             },
             {
@@ -884,7 +886,7 @@ SCENARIOS: list[dict] = [
             },
             {
                 "role": "assistant",
-                "content": "Got it.",
+                "content": _ACK,
                 "day_offset": 0,
             },
         ],
@@ -1167,7 +1169,7 @@ SCENARIOS: list[dict] = [
             },
             {
                 "role": "assistant",
-                "content": "Got it.",
+                "content": _ACK,
                 "day_offset": 0,
             },
         ],

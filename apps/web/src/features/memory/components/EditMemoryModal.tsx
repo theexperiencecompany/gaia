@@ -16,9 +16,9 @@ import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
 
 interface EditMemoryModalProps {
-  memory: MemoryEntry | null;
-  onClose: () => void;
-  onSaved: () => void;
+  readonly memory: MemoryEntry | null;
+  readonly onClose: () => void;
+  readonly onSaved: () => void;
 }
 
 export function EditMemoryModal({

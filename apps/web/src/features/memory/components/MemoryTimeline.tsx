@@ -10,7 +10,7 @@ import {
   Calendar01Icon,
 } from "@icons";
 import { addDays, format, isToday, parseISO, subDays } from "date-fns";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import type { MemoryEpisode } from "@/features/memory/api/types";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
@@ -56,6 +56,81 @@ export function MemoryTimeline() {
 
   const defaultExpandedKeys = episodes.length > 0 ? [episodes[0].date] : [];
 
+  let timelineContent: ReactNode;
+  if (loading) {
+    timelineContent = (
+      <div className="space-y-3">
+        <Skeleton className="h-28 w-full rounded-2xl" />
+        <Skeleton className="h-28 w-full rounded-2xl" />
+      </div>
+    );
+  } else if (episodes.length === 0) {
+    timelineContent = (
+      <MemoryEmptyState
+        icon={BookOpen01Icon}
+        title="No journal entries in this range"
+        description="GAIA writes a short journal line for each conversation. Days fill in as you talk."
+      />
+    );
+  } else {
+    timelineContent = (
+      <Accordion
+        defaultExpandedKeys={defaultExpandedKeys}
+        selectionMode="multiple"
+        variant="splitted"
+        itemClasses={{
+          title: "text-sm font-medium text-white",
+          content: "pb-4 pt-0",
+          indicator: "text-zinc-500",
+        }}
+      >
+        {episodes.map((episode) => {
+          const date = parseISO(episode.date);
+          const hasContent = episode.summary || episode.entries.length > 0;
+
+          return (
+            <AccordionItem
+              key={episode.date}
+              aria-label={format(date, "EEEE, MMM d")}
+              isDisabled={!hasContent}
+              title={
+                <div className="flex items-center gap-2">
+                  <Calendar01Icon className="size-4 shrink-0 text-zinc-500" />
+                  <span className="text-sm font-medium text-white">
+                    {format(date, "EEEE, MMM d")}
+                  </span>
+                  {isToday(date) && (
+                    <span className="text-xs text-primary">Today</span>
+                  )}
+                </div>
+              }
+            >
+              {episode.summary && (
+                <p className="text-sm text-zinc-400">{episode.summary}</p>
+              )}
+
+              {episode.entries.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  {episode.entries.map((entry) => (
+                    <div
+                      key={`${entry.time}-${entry.text}`}
+                      className="flex items-baseline gap-3"
+                    >
+                      <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                        {entry.time}
+                      </span>
+                      <p className="text-sm text-zinc-300">{entry.text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </AccordionItem>
+          );
+        })}
+      </Accordion>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -90,73 +165,7 @@ export function MemoryTimeline() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="space-y-3">
-          <Skeleton className="h-28 w-full rounded-2xl" />
-          <Skeleton className="h-28 w-full rounded-2xl" />
-        </div>
-      ) : episodes.length === 0 ? (
-        <MemoryEmptyState
-          icon={BookOpen01Icon}
-          title="No journal entries in this range"
-          description="GAIA writes a short journal line for each conversation. Days fill in as you talk."
-        />
-      ) : (
-        <Accordion
-          defaultExpandedKeys={defaultExpandedKeys}
-          selectionMode="multiple"
-          variant="splitted"
-          itemClasses={{
-            title: "text-sm font-medium text-white",
-            content: "pb-4 pt-0",
-            indicator: "text-zinc-500",
-          }}
-        >
-          {episodes.map((episode) => {
-            const date = parseISO(episode.date);
-            const hasContent = episode.summary || episode.entries.length > 0;
-
-            return (
-              <AccordionItem
-                key={episode.date}
-                aria-label={format(date, "EEEE, MMM d")}
-                isDisabled={!hasContent}
-                title={
-                  <div className="flex items-center gap-2">
-                    <Calendar01Icon className="size-4 shrink-0 text-zinc-500" />
-                    <span className="text-sm font-medium text-white">
-                      {format(date, "EEEE, MMM d")}
-                    </span>
-                    {isToday(date) && (
-                      <span className="text-xs text-primary">Today</span>
-                    )}
-                  </div>
-                }
-              >
-                {episode.summary && (
-                  <p className="text-sm text-zinc-400">{episode.summary}</p>
-                )}
-
-                {episode.entries.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    {episode.entries.map((entry) => (
-                      <div
-                        key={`${entry.time}-${entry.text}`}
-                        className="flex items-baseline gap-3"
-                      >
-                        <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                          {entry.time}
-                        </span>
-                        <p className="text-sm text-zinc-300">{entry.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </AccordionItem>
-            );
-          })}
-        </Accordion>
-      )}
+      {timelineContent}
     </div>
   );
 }

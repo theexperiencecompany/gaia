@@ -13,8 +13,10 @@ import UsageSettings from "@/features/settings/components/UsageSettings";
 import type { SettingsSection } from "./sectionKeys";
 
 interface SectionComponentProps {
-  section: SettingsSection;
-  setModalAction: React.Dispatch<React.SetStateAction<ModalAction | null>>;
+  readonly section: SettingsSection;
+  readonly setModalAction: React.Dispatch<
+    React.SetStateAction<ModalAction | null>
+  >;
 }
 
 export function SectionComponent({

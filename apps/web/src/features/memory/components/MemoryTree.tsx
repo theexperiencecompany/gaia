@@ -14,7 +14,7 @@ import { useMemoryActions } from "@/features/memory/hooks/useMemoryActions";
 import { cn } from "@/lib/utils";
 
 interface MemoryTreeProps {
-  onChanged: () => void;
+  readonly onChanged: () => void;
 }
 
 export function MemoryTree({ onChanged }: MemoryTreeProps) {
@@ -81,15 +81,26 @@ export function MemoryTree({ onChanged }: MemoryTreeProps) {
 }
 
 interface TreeFolderProps {
-  node: MemoryTreeNode;
-  depth: number;
-  actions: ReturnType<typeof useMemoryActions>;
+  readonly node: MemoryTreeNode;
+  readonly depth: number;
+  readonly actions: ReturnType<typeof useMemoryActions>;
 }
 
 function TreeFolder({ node, depth, actions }: TreeFolderProps) {
   const [expanded, setExpanded] = useState(false);
   const [memories, setMemories] = useState<MemoryEntry[] | null>(node.memories);
   const [loadingMemories, setLoadingMemories] = useState(false);
+
+  const handleForget = useCallback(
+    async (target: MemoryEntry) => {
+      if (await actions.forgetMemory(target)) {
+        setMemories(
+          (previous) => previous?.filter((m) => m.id !== target.id) ?? null,
+        );
+      }
+    },
+    [actions],
+  );
 
   const handleToggle = async () => {
     const next = !expanded;
@@ -157,22 +168,12 @@ function TreeFolder({ node, depth, actions }: TreeFolderProps) {
                   memory={memory}
                   isDeleting={actions.deletingId === memory.id}
                   onEdit={actions.setEditingMemory}
-                  onForget={async (target) => {
-                    // Pop the row immediately on success — the folder's local
-                    // cache otherwise keeps showing the forgotten memory.
-                    if (await actions.forgetMemory(target)) {
-                      setMemories(
-                        (previous) =>
-                          previous?.filter((m) => m.id !== target.id) ?? null,
-                      );
-                    }
-                  }}
+                  onForget={handleForget}
                 />
               ))}
             </div>
           )}
-          {memories &&
-            memories.length === 0 &&
+          {memories?.length === 0 &&
             node.children.length === 0 &&
             !loadingMemories && (
               <p

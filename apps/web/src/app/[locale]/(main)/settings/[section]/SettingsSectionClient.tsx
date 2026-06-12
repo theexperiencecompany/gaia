@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { ConfirmAction } from "@/components/shared/ConfirmActionDialog";
 import { ConfirmActionDialog } from "@/components/shared/ConfirmActionDialog";
 import type { ModalAction } from "@/features/settings/components/SettingsMenu";
 import { SectionComponent } from "@/features/settings/config/sectionComponents";
 import type { SettingsSection } from "@/features/settings/config/sectionKeys";
 
 interface SettingsSectionClientProps {
-  section: SettingsSection;
+  readonly section: SettingsSection;
 }
 
 export default function SettingsSectionClient({
@@ -32,7 +31,7 @@ export default function SettingsSectionClient({
       </div>
 
       <ConfirmActionDialog
-        action={modalAction as ConfirmAction}
+        action={modalAction}
         onOpenChange={(action) => setModalAction(action as ModalAction)}
       />
     </>

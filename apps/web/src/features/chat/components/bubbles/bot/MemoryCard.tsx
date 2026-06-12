@@ -20,7 +20,7 @@ import type { MemoryEntry } from "@/features/memory/api/types";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
 
 interface MemoryCardProps {
-  items: MemoryData[];
+  readonly items: MemoryData[];
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ function outcomeLabel(outcome: "new" | "updated" | "extended" | "duplicate") {
 function folderLabel(path: string): string {
   // Show only the last segment for compactness, e.g. "people/family" -> "family"
   const parts = path.split("/").filter(Boolean);
-  return parts[parts.length - 1] ?? path;
+  return parts.at(-1) ?? path;
 }
 
 function docTypeName(docType: string): string {
@@ -57,7 +57,7 @@ function relativeDate(iso: string | null | undefined): string | null {
 
 // ─── sub-components ─────────────────────────────────────────────────────────
 
-function MemoryRow({ memory }: { memory: MemoryEntry }) {
+function MemoryRow({ memory }: Readonly<{ memory: MemoryEntry }>) {
   const ts = memory.updated_at ?? memory.created_at ?? memory.mentioned_at;
   const rel = relativeDate(ts);
   return (
@@ -85,9 +85,9 @@ function MemoryRow({ memory }: { memory: MemoryEntry }) {
 
 function AddSection({
   item,
-}: {
+}: Readonly<{
   item: Extract<MemoryData, { action: "add" }>;
-}) {
+}>) {
   const { label, color } = outcomeLabel(item.outcome);
   return (
     <div className="flex flex-col gap-2">
@@ -126,9 +126,9 @@ function AddSection({
 
 function SearchSection({
   item,
-}: {
+}: Readonly<{
   item: Extract<MemoryData, { action: "search" }>;
-}) {
+}>) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -150,7 +150,7 @@ function SearchSection({
             content: "text-xs text-zinc-400",
           }}
         >
-          {item.memories.length} result{item.memories.length !== 1 ? "s" : ""}
+          {item.memories.length} result{item.memories.length === 1 ? "" : "s"}
         </Chip>
       </div>
       {item.memories.length > 0 ? (
@@ -170,9 +170,9 @@ function SearchSection({
 
 function UpdateSection({
   item,
-}: {
+}: Readonly<{
   item: Extract<MemoryData, { action: "update" }>;
-}) {
+}>) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -192,9 +192,9 @@ function UpdateSection({
 
 function ForgetSection({
   item,
-}: {
+}: Readonly<{
   item: Extract<MemoryData, { action: "forget" }>;
-}) {
+}>) {
   return (
     <div className="flex items-center gap-2">
       <Delete02Icon className="size-4 text-zinc-500" />
@@ -205,9 +205,9 @@ function ForgetSection({
 
 function JournalSection({
   item,
-}: {
+}: Readonly<{
   item: Extract<MemoryData, { action: "journal" }>;
-}) {
+}>) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -254,9 +254,9 @@ function JournalSection({
 
 function DocumentSection({
   item,
-}: {
+}: Readonly<{
   item: Extract<MemoryData, { action: "document" }>;
-}) {
+}>) {
   const [expanded, setExpanded] = useState(false);
   const { document: doc, updated } = item;
   const displayName = docTypeName(doc.doc_type);

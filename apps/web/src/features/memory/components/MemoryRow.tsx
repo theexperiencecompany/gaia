@@ -12,11 +12,11 @@ import type { MemoryEntry } from "@/features/memory/api/types";
 import { cn } from "@/lib/utils";
 
 interface MemoryRowProps {
-  memory: MemoryEntry;
-  showCategory?: boolean;
-  isDeleting?: boolean;
-  onEdit: (memory: MemoryEntry) => void;
-  onForget: (memory: MemoryEntry) => void;
+  readonly memory: MemoryEntry;
+  readonly showCategory?: boolean;
+  readonly isDeleting?: boolean;
+  readonly onEdit: (memory: MemoryEntry) => void;
+  readonly onForget: (memory: MemoryEntry) => void;
 }
 
 function importanceColor(importance: number): string {

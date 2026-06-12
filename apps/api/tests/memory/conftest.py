@@ -67,6 +67,8 @@ async def pg_engine(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncEngi
         _schema_ready = True
 
     async def _get_engine() -> AsyncEngine:
+        # Must be async: replaces get_postgresql_engine which is awaited by callers.
+        await asyncio.sleep(0)
         return engine
 
     monkeypatch.setattr(postgresql_module, "get_postgresql_engine", _get_engine)
@@ -89,6 +91,8 @@ async def chroma(
         _chroma_collections_ready = True
 
     async def _get_client(*_args: object, **_kwargs: object) -> AsyncClientAPI:
+        # Must be async: replaces ChromaClient.get_client which is awaited by callers.
+        await asyncio.sleep(0)
         return client
 
     monkeypatch.setattr(ChromaClient, "get_client", _get_client)

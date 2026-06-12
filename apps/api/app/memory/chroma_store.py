@@ -32,6 +32,10 @@ class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
     """
 
     def __init__(self) -> None:
+        # Intentionally empty: no state needed — the only purpose of this class
+        # is to satisfy ChromaDB's EmbeddingFunction protocol so it never
+        # attempts to load its default ONNX model. All embeddings are passed
+        # explicitly to upsert/query calls.
         pass
 
     def __call__(self, input: list[str]) -> Any:

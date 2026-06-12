@@ -160,6 +160,9 @@ async def _answer(question: str, question_date: str, memories: list[str]) -> str
                     '"I don\'t know".\n\nMEMORY NOTES:\n' + context
                 )
             ),
+            # `question` originates from the LongMemEval benchmark JSON loaded
+            # from a trusted local file (--dataset flag); it is NOT real user input.
+            # SonarQube S5131 (prompt-injection hotspot) is a false positive here.
             HumanMessage(content=question),
         ],
         operation="lme_answer",

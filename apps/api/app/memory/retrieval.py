@@ -140,7 +140,7 @@ async def recall(
     stage = time.perf_counter()
     # Rerank the combined base+sibling pool together so siblings compete on real
     # query relevance, not a fixed score; the dropoff then cuts the weak tail.
-    ann_similarity = {memory_id: similarity for memory_id, similarity in ann_hits}
+    ann_similarity = dict(ann_hits)
     fts_ids = {str(row.id) for row, _ in fts_hits}
     scored = await _rerank_and_boost(
         query,

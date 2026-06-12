@@ -7,8 +7,8 @@ import { Skeleton } from "@heroui/skeleton";
 import { Tab, Tabs } from "@heroui/tabs";
 import { FileEmpty02Icon, PencilEdit02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
-import { useEffect, useState, useTransition } from "react";
-import ReactMarkdown from "react-markdown";
+import { type ReactNode, useEffect, useState, useTransition } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import type {
@@ -18,6 +18,40 @@ import type {
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
+
+const MARKDOWN_COMPONENTS: Components = {
+  h1: ({ children }) => (
+    <h1 className="mt-4 mb-2 text-base font-semibold text-white first:mt-0">
+      {children}
+    </h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="mt-4 mb-2 text-sm font-semibold text-white first:mt-0">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="mt-3 mb-1 text-sm font-medium text-white first:mt-0">
+      {children}
+    </h3>
+  ),
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  ul: ({ children }) => (
+    <ul className="mb-2 list-disc space-y-1 pl-5">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="mb-2 list-decimal space-y-1 pl-5">{children}</ol>
+  ),
+  li: ({ children }) => <li>{children}</li>,
+  strong: ({ children }) => (
+    <strong className="font-semibold text-zinc-100">{children}</strong>
+  ),
+  code: ({ children }) => (
+    <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-xs">
+      {children}
+    </code>
+  ),
+};
 
 export function CoreDocuments() {
   const [documents, setDocuments] = useState<MemoryDocument[]>([]);
@@ -81,6 +115,50 @@ export function CoreDocuments() {
     );
   }
 
+  let documentContent: ReactNode;
+  if (draft !== null) {
+    documentContent = (
+      <div className="space-y-3">
+        <Textarea
+          value={draft}
+          onValueChange={setDraft}
+          minRows={12}
+          maxRows={24}
+          autoFocus
+        />
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="light"
+            className="rounded-xl"
+            onPress={() => setDraft(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            color="primary"
+            className="rounded-xl"
+            onPress={handleSave}
+            isLoading={isSaving}
+          >
+            Save
+          </Button>
+        </div>
+      </div>
+    );
+  } else if (document) {
+    documentContent = <DocumentMarkdown content={document.content} />;
+  } else {
+    documentContent = (
+      <MemoryEmptyState
+        icon={FileEmpty02Icon}
+        title="GAIA hasn't written this document yet"
+        description="It fills in automatically as GAIA learns about you"
+      />
+    );
+  }
+
   return (
     <div className="space-y-3">
       {/* Inner doc tabs — same variant/size as the main memory tabs */}
@@ -138,44 +216,7 @@ export function CoreDocuments() {
         {!document && draft === null && <div className="mt-3" />}
 
         <div className={document || draft !== null ? "mt-4" : "mt-2"}>
-          {draft !== null ? (
-            <div className="space-y-3">
-              <Textarea
-                value={draft}
-                onValueChange={setDraft}
-                minRows={12}
-                maxRows={24}
-                autoFocus
-              />
-              <div className="flex justify-end gap-2">
-                <Button
-                  size="sm"
-                  variant="light"
-                  className="rounded-xl"
-                  onPress={() => setDraft(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  color="primary"
-                  className="rounded-xl"
-                  onPress={handleSave}
-                  isLoading={isSaving}
-                >
-                  Save
-                </Button>
-              </div>
-            </div>
-          ) : document ? (
-            <DocumentMarkdown content={document.content} />
-          ) : (
-            <MemoryEmptyState
-              icon={FileEmpty02Icon}
-              title="GAIA hasn't written this document yet"
-              description="It fills in automatically as GAIA learns about you"
-            />
-          )}
+          {documentContent}
         </div>
       </div>
     </div>
@@ -187,39 +228,7 @@ function DocumentMarkdown({ content }: { content: string }) {
     <div className="text-sm leading-relaxed text-zinc-300">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        components={{
-          h1: ({ children }) => (
-            <h1 className="mt-4 mb-2 text-base font-semibold text-white first:mt-0">
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="mt-4 mb-2 text-sm font-semibold text-white first:mt-0">
-              {children}
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="mt-3 mb-1 text-sm font-medium text-white first:mt-0">
-              {children}
-            </h3>
-          ),
-          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-          ul: ({ children }) => (
-            <ul className="mb-2 list-disc space-y-1 pl-5">{children}</ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="mb-2 list-decimal space-y-1 pl-5">{children}</ol>
-          ),
-          li: ({ children }) => <li>{children}</li>,
-          strong: ({ children }) => (
-            <strong className="font-semibold text-zinc-100">{children}</strong>
-          ),
-          code: ({ children }) => (
-            <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-xs">
-              {children}
-            </code>
-          ),
-        }}
+        components={MARKDOWN_COMPONENTS}
       >
         {content}
       </ReactMarkdown>
