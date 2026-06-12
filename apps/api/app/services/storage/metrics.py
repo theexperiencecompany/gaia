@@ -2,10 +2,10 @@
 
 Why this exists
 ---------------
-Every chat turn fans out into a handful of FS-shaped operations: the host
-JuiceFS mount sees `bootstrap_user_session`, every coding tool call resolves
-into a sandbox `commands.run` round-trip, the artifact watcher does a
-`list_artifacts`, and so on. Each one is cheap on its own; together they
+Every chat turn fans out into a handful of FS-shaped operations: a new
+conversation creates session dirs (`ensure_session_dirs`), every coding tool
+call resolves into a sandbox `commands.run` round-trip, the artifact watcher
+does a `list_artifacts`, and so on. Each one is cheap on its own; together they
 quietly dominate end-to-end latency once the cache misses or the meta DB
 takes a coffee break.
 
@@ -280,8 +280,7 @@ class FsOps:
     JUICEFS_FORMAT: Final[str] = "juicefs_format"
     JUICEFS_STATUS: Final[str] = "juicefs_status"
 
-    # Per-session host writes (the chat-stream entry path).
-    BOOTSTRAP_USER_SESSION: Final[str] = "bootstrap_user_session"
+    # Per-session host writes.
     ENSURE_SESSION_DIRS: Final[str] = "ensure_session_dirs"
     MATERIALIZE_INTEGRATIONS: Final[str] = "materialize_integrations"
     SYNC_GAIA_TASKS_VFS: Final[str] = "sync_gaia_tasks_vfs"

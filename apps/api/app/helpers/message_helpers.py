@@ -38,7 +38,7 @@ from app.models.message_models import (
 )
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
-from app.services.integrations.user_integrations import get_user_connected_integrations
+from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
 from app.utils.user_preferences_utils import (
@@ -270,7 +270,7 @@ async def _get_connected_integrations_manifest(user_id: str) -> str:
     in-memory OAuth config (no extra DB calls); unknown ids fall back to the id.
     """
     try:
-        docs = await get_user_connected_integrations(user_id)
+        docs = await get_user_integration_records(user_id)
     except Exception as e:
         log.warning(f"Error building connected-integrations manifest: {e}")
         return ""
