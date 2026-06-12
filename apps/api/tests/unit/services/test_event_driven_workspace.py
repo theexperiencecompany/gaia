@@ -24,6 +24,29 @@ IFS = "app.services.integrations_fs"
 UINT = "app.services.integrations.user_integrations"
 USTATUS = "app.services.integrations.user_integration_status"
 OAUTH = "app.services.oauth.oauth_service"
+JFS = "app.services.storage.juicefs"
+
+
+# ---------------------------------------------------------------------------
+# _is_mounted — must require a REAL mountpoint, not just an existing dir.
+# Guards the gap where a never-converged mount over a pre-created /mnt/jfs dir
+# would silently route writes to the container's local disk.
+# ---------------------------------------------------------------------------
+
+
+def test_is_mounted_rejects_plain_existing_dir(tmp_path):
+    from app.services.storage import juicefs
+
+    # tmp_path exists and is a directory, but is NOT a mountpoint.
+    with patch.object(juicefs, "_mount_root", return_value=tmp_path):
+        assert juicefs._is_mounted() is False
+
+
+def test_is_mounted_false_for_missing_path():
+    from app.services.storage import juicefs
+
+    with patch.object(juicefs, "_mount_root", return_value=Path("/no/such/mount/xyz123")):
+        assert juicefs._is_mounted() is False
 
 
 # ---------------------------------------------------------------------------
