@@ -27,7 +27,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
-import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import {
   useSelectVoice,
   useVoices,
@@ -155,7 +154,9 @@ export default function VoiceSettings() {
   );
 
   return (
-    <SettingsPage>
+    // Wider than SettingsPage's max-w-2xl: five columns need the room —
+    // constrained, the trailing Preview column clips out of view.
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <div>
         <h1 className="text-lg font-medium text-white">Voice</h1>
         <p className="mt-1 text-sm text-zinc-500">
@@ -309,6 +310,6 @@ export default function VoiceSettings() {
           }}
         </TableBody>
       </Table>
-    </SettingsPage>
+    </div>
   );
 }
