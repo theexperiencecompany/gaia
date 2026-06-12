@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useToolMention } from "@/features/integrations/hooks/useToolMention";
 import { getCaretCoordinates } from "@/features/integrations/utils/caretCoordinates";
+import { buildMentionRegex } from "@/features/integrations/utils/toolMentions";
 
 interface MentionTextareaProps {
   value: string;
@@ -20,18 +21,10 @@ interface Segment {
 }
 
 // Split the text on `@<toolName>` occurrences so they can be highlighted in the
-// backdrop. Longest names first so e.g. "@Send Email" wins over "@Send".
+// backdrop.
 const buildSegments = (value: string, toolNames: string[]): Segment[] => {
-  if (toolNames.length === 0)
-    return [{ text: value, mention: false, offset: 0 }];
-  const alternation = toolNames
-    .slice()
-    .sort((a, b) => b.length - a.length)
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`))
-    .join("|");
-  // Trailing boundary so a prefix doesn't highlight inside a longer token
-  // (e.g. "@Send" must not light up inside "@Sender").
-  const re = new RegExp(String.raw`@(?:${alternation})(?!\w)`, "g");
+  const re = buildMentionRegex(toolNames);
+  if (!re) return [{ text: value, mention: false, offset: 0 }];
   const segments: Segment[] = [];
   let last = 0;
   for (const match of value.matchAll(re)) {

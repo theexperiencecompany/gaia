@@ -1,55 +1,67 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/react";
-import { Add01Icon, PencilEdit02Icon } from "@icons";
+import { Skeleton } from "@heroui/skeleton";
+import { NoteEditIcon } from "@icons";
+import { ChevronRight } from "@/components/shared/icons";
 import { useIntegrationInstructions } from "@/features/integrations/hooks/useIntegrationInstructions";
+import type { Integration } from "@/features/integrations/types";
+import { instructionsPreview } from "@/features/integrations/utils/instructionsPreview";
 
 import { IntegrationInstructionsModal } from "./IntegrationInstructionsModal";
 
 interface IntegrationInstructionsEditorProps {
-  integrationId: string;
-  integrationName: string;
+  integration: Integration;
   toolNames: string[];
 }
 
 export const IntegrationInstructionsEditor = ({
-  integrationId,
-  integrationName,
+  integration,
   toolNames,
 }: IntegrationInstructionsEditorProps) => {
   const { instructions, isLoading, isSaving, save } =
-    useIntegrationInstructions(integrationId);
+    useIntegrationInstructions(integration.id);
   const { isOpen, onOpen, onClose } = useDisclosure();
 
-  const hasContent = (instructions?.content ?? "").trim().length > 0;
+  const preview = instructionsPreview(instructions?.content ?? "");
+
+  if (isLoading) {
+    return (
+      <div className="flex w-full items-center gap-3 rounded-2xl bg-zinc-800/40 p-3">
+        <Skeleton className="size-9 rounded-xl" />
+        <div className="flex-1 space-y-1.5">
+          <Skeleton className="h-3.5 w-32 rounded-lg" />
+          <Skeleton className="h-3 w-44 rounded-lg" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
-      <Button
-        size="sm"
-        variant="flat"
-        radius="full"
-        isLoading={isLoading}
-        isDisabled={isLoading}
-        onPress={onOpen}
-        startContent={
-          !isLoading &&
-          (hasContent ? (
-            <PencilEdit02Icon width={15} height={15} />
-          ) : (
-            <Add01Icon width={15} height={15} />
-          ))
-        }
-        className="text-zinc-300"
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group flex w-full items-center gap-3 rounded-2xl bg-zinc-800/40 p-3 text-left transition-colors hover:bg-zinc-800/60"
       >
-        {hasContent ? "Edit custom instructions" : "Add custom instructions"}
-      </Button>
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15">
+          <NoteEditIcon className="size-5 text-primary" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-zinc-100">
+            Custom instructions
+          </p>
+          <p className="truncate text-xs text-zinc-500">
+            {preview || `Teach GAIA how you use ${integration.name}`}
+          </p>
+        </div>
+        <ChevronRight className="size-4 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5" />
+      </button>
 
       <IntegrationInstructionsModal
         isOpen={isOpen}
         onClose={onClose}
-        integrationName={integrationName}
+        integration={integration}
         savedContent={instructions?.content ?? ""}
         isSaving={isSaving}
         toolNames={toolNames}
