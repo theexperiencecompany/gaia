@@ -52,7 +52,7 @@ def _is_todo_context(msg: AnyMessage) -> bool:
 
 
 def _is_background_executor(msg: AnyMessage) -> bool:
-    """Background-executor result injected by ``_invoke_comms_graph``.
+    """Background-executor result injected by ``narrate_executor_result``.
 
     Identified by name (not a marker) because the message is built by the
     background runner without graph-state context. Per-turn content — kept

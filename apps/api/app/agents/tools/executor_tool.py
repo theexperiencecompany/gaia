@@ -15,14 +15,22 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.core.background.executor_runner import (
-    run_executor_background,
+from app.agents.core.background.executor_queue import (
+    build_lock_value,
+    decode_raw_item,
+    enqueue_task,
+    parse_lock_value,
+    try_acquire_lock,
 )
-from app.agents.core.background.inbox import mark_executor_spawned
+from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.session import (
+    ExecutorRun,
+    RunKind,
+    mark_executor_spawned,
+)
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
-    EXECUTOR_BUSY_TTL,
     EXECUTOR_QUEUE_PREFIX,
     EXECUTOR_QUEUE_TTL,
 )
@@ -34,109 +42,6 @@ from shared.py.wide_events import log
 
 # Prevent GC of background tasks
 _executor_tasks: set[asyncio.Task[None]] = set()
-
-# Keys from configurable that are safe to serialize into queue items.
-# Filters out non-serializable LangGraph internals (e.g. Runtime objects).
-_CONFIGURABLE_SCALAR_KEYS = frozenset(
-    {
-        "thread_id",
-        "conversation_id",
-        "user_id",
-        "email",
-        "user_timezone",
-        "user_name",
-        "user_time",
-        "stream_id",
-        "provider",
-        "model_name",
-        "max_tokens",
-        "selected_tool",
-        "tool_category",
-        "subagent_id",
-        "vfs_session_id",
-        "user_message_id",
-        "active_todo_id",
-        "execution_mode",
-        "conversation_source",
-        "source_category",
-        # Workflow context must survive queueing: without it a queued workflow
-        # run loses its id and the delivery path silently downgrades the result
-        # from the completion notification to a plain conversation message.
-        "workflow_id",
-        "workflow_title",
-        "workflow_notify_on_completion",
-    }
-)
-
-
-def _build_lock_value(stream_id: str | None, task_id: str) -> str:
-    """Build 'stream_id:task_id' lock value for the executor busy key."""
-    return f"{stream_id or ''}:{task_id}"
-
-
-def _parse_lock_value(lock_value: str) -> tuple[str, str]:
-    """Parse 'stream_id:task_id' from the executor busy lock value."""
-    if ":" in lock_value:
-        stream_id, task_id = lock_value.split(":", 1)
-        return stream_id, task_id
-    return lock_value, ""
-
-
-async def _try_acquire_lock(
-    lock_key: str,
-    lock_value: str,
-) -> bool:
-    """Atomically acquire the executor lock via SET NX.
-
-    Returns True if the lock was acquired, False if already held.
-    Falls back to True (allow execution) if Redis is unavailable.
-    """
-    if not redis_cache.client:
-        return True
-    return bool(
-        await redis_cache.client.set(
-            lock_key,
-            lock_value,
-            ex=EXECUTOR_BUSY_TTL,
-            nx=True,
-        ),
-    )
-
-
-async def _enqueue_task(
-    queue_key: str,
-    task: str,
-    task_id: str,
-    configurable: dict,
-    conversation_id: str,
-    user_message_id: str | None,
-) -> None:
-    """Push a task to the executor queue for deferred execution."""
-    safe_configurable = {
-        k: v
-        for k, v in configurable.items()
-        if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, str | int | float | bool | None)
-    }
-    queue_item = json.dumps(
-        {
-            "task": task,
-            "task_id": task_id,
-            "configurable": safe_configurable,
-            "user_time_str": configurable.get("user_time", ""),
-            "conversation_id": conversation_id,
-            "user_message_id": user_message_id,
-        }
-    )
-    if redis_cache.client:
-        await redis_cache.client.rpush(queue_key, queue_item)
-        await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
-
-
-def _decode_raw_item(raw: bytes | memoryview | str) -> str:
-    """Decode a raw Redis list item to a string."""
-    if isinstance(raw, str):
-        return raw
-    return bytes(raw).decode()
 
 
 @tool
@@ -232,12 +137,12 @@ async def _dispatch_executor(
     user_message_id = configurable.get("user_message_id")
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    lock_value = _build_lock_value(stream_id, task_id)
+    lock_value = build_lock_value(stream_id, task_id)
 
-    if not await _try_acquire_lock(lock_key, lock_value):
+    if not await try_acquire_lock(lock_key, lock_value):
         # Executor is busy — queue for later execution
         queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
-        await _enqueue_task(
+        await enqueue_task(
             queue_key=queue_key,
             task=task,
             task_id=task_id,
@@ -266,15 +171,20 @@ async def _dispatch_executor(
     if stream_id:
         mark_executor_spawned(stream_id)
 
+    run = ExecutorRun.from_configurable(
+        configurable,
+        stream_id=stream_id or "",
+        conversation_id=conversation_id,
+        kind=RunKind.LIVE,
+        task_id=task_id,
+        user_message_id=user_message_id,
+    )
     bg_task = asyncio.create_task(
         run_executor_background(
+            run=run,
             task=task,
             configurable=configurable,
             user_time=user_time,
-            stream_id=stream_id or "",
-            conversation_id=conversation_id,
-            task_id=task_id,
-            user_message_id=user_message_id,
         ),
     )
     _executor_tasks.add(bg_task)
@@ -376,7 +286,7 @@ async def _cancel_running_task(
     if not lock_value:
         return []
 
-    active_stream_id, active_task_id = _parse_lock_value(lock_value)
+    active_stream_id, active_task_id = parse_lock_value(lock_value)
     should_cancel = cancel_all or active_task_id in task_ids
 
     if not should_cancel:
@@ -446,9 +356,9 @@ async def _remove_queued_by_ids(
             if item.get("task_id") in target_ids:
                 cancelled.append(item.get("task_id", "queued"))
             else:
-                keep.append(_decode_raw_item(raw_item))
+                keep.append(decode_raw_item(raw_item))
         except ValueError:
-            keep.append(_decode_raw_item(raw_item))
+            keep.append(decode_raw_item(raw_item))
 
     if cancelled:
         await redis_cache.client.delete(queue_key)
