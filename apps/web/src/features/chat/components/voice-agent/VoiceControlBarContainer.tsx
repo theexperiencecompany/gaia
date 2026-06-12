@@ -174,13 +174,16 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
   );
   const isConnecting =
     agentState === "connecting" || room?.state !== "connected";
-  const spectrumSource = isConnecting
-    ? "loading"
-    : agentState === "speaking" && remoteTrack
-      ? "agent-track"
-      : agentState === "listening"
-        ? "mic"
-        : "idle";
+  // "thinking" rides the loading shimmer too — a dead-flat wave while the
+  // backend works reads as a hang; the gentle vibration signals activity.
+  const spectrumSource =
+    isConnecting || agentState === "thinking"
+      ? "loading"
+      : agentState === "speaking" && remoteTrack
+        ? "agent-track"
+        : agentState === "listening"
+          ? "mic"
+          : "idle";
   // The REAL mic state — LiveKit's track toggle in the control bar — drives
   // the spectrum's mute, not a hook-local flag. Muted mic ⇒ wave settles
   // flat and sampling pauses; the agent's own speech still animates.
@@ -193,12 +196,12 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
   });
 
   // Freeze the gradient's GL draw loop once the muted wave has settled flat.
-  // Exempt agent-track frames (agent audibly speaking) and the connecting
-  // phase (loading shimmer should keep running while the room negotiates).
+  // Only mic/idle frames freeze — agent speech (agent-track) and activity
+  // shimmer (loading: connecting or thinking) keep animating while muted.
   const [animationPaused, setAnimationPaused] = useState(false);
   useEffect(() => {
     const shouldFreeze =
-      micMuted && spectrumSource !== "agent-track" && !isConnecting;
+      micMuted && (spectrumSource === "mic" || spectrumSource === "idle");
     if (!shouldFreeze) {
       setAnimationPaused(false);
       return;
@@ -208,20 +211,19 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
       MUTE_ANIMATION_FREEZE_MS,
     );
     return () => clearTimeout(timer);
-  }, [micMuted, spectrumSource, isConnecting]);
+  }, [micMuted, spectrumSource]);
 
-  // When the connecting state ends, fade the procedural loading jitter to
-  // zero over ~300ms before the spectrum source switches to mic/agent-track.
-  // The hook keeps emitting the "loading" source until source prop changes
-  // (next render after isConnecting flips), and uses the decayed amplitude
-  // for that final frame burst so the wave settles smoothly.
-  const wasConnectingRef = useRef(isConnecting);
+  // When a loading-shimmer phase (connecting OR thinking) ends, fade the
+  // procedural jitter to zero over ~300ms before the spectrum source switches
+  // to mic/agent-track, so the wave settles smoothly instead of snapping.
+  const wasLoadingRef = useRef(spectrumSource === "loading");
   useEffect(() => {
-    if (wasConnectingRef.current && !isConnecting) {
+    const isLoading = spectrumSource === "loading";
+    if (wasLoadingRef.current && !isLoading) {
       voice.decayLoading();
     }
-    wasConnectingRef.current = isConnecting;
-  }, [isConnecting, voice.decayLoading]);
+    wasLoadingRef.current = isLoading;
+  }, [spectrumSource, voice.decayLoading]);
 
   const startedRef = useRef(false);
   useEffect(() => {

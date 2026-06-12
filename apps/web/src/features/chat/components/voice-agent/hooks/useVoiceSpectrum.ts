@@ -54,8 +54,8 @@ interface UseVoiceSpectrumOptions {
    * `isMicrophoneEnabled`), not a hook-local toggle. While muted the hook's
    * own analysis stream is disabled, mic bins are zeroed so the wave glides
    * flat, and after a short settle window the sampling loop pauses entirely.
-   * Agent-track frames are exempt so the agent's audible speech keeps
-   * animating.
+   * Agent speech (agent-track) and the loading shimmer are exempt so audible
+   * or in-progress activity keeps animating.
    */
   muted?: boolean;
 }
@@ -622,9 +622,10 @@ export function useVoiceSpectrum({
         pause();
         return;
       }
-      if (muted && source !== "agent-track") {
+      if (muted && (source === "mic" || source === "idle")) {
         // Keep ticking briefly: mutedRef zeroes the bins and the temporal
-        // lerp glides the wave down to flat, THEN the loop stops.
+        // lerp glides the wave down to flat, THEN the loop stops. Agent
+        // speech and the loading shimmer keep animating while muted.
         settleTimer = setTimeout(pause, MUTE_SETTLE_PAUSE_MS);
         resume();
         return;

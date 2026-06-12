@@ -697,12 +697,6 @@ function initGL(
   let pausedAt = 0;
 
   const draw = (now: number) => {
-    if (pausedRef.current) {
-      // Park the loop on the already-rendered frame. resumeRef restarts it.
-      rafActive = false;
-      pausedAt = now;
-      return;
-    }
     const t = now - start;
     const target = modeRef.current === "gaia" ? 1 : 0;
     fadeRef.current += (target - fadeRef.current) * 0.06;
@@ -745,6 +739,13 @@ function initGL(
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
+    if (pausedRef.current) {
+      // Park AFTER painting so the settled frame (not a blank canvas) stays
+      // on screen. resumeRef restarts the loop.
+      rafActive = false;
+      pausedAt = now;
+      return;
+    }
     raf = requestAnimationFrame(draw);
   };
   raf = requestAnimationFrame(draw);
