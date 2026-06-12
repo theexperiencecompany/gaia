@@ -226,6 +226,10 @@ VOICE_CATALOG: list[VoiceCatalogEntry] = [
 
 VOICE_IDS: frozenset[str] = frozenset(v["voice_id"] for v in VOICE_CATALOG)
 
+# Product default — Jessica. Used when a user has never picked a voice:
+# embedded in the session token and shown as selected in settings.
+DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9"
+
 # Users collection field holding the user's chosen ElevenLabs voice id.
 SELECTED_VOICE_FIELD = "selected_voice_id"
 

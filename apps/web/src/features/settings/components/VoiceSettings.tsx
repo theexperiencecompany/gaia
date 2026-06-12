@@ -24,7 +24,14 @@ import {
   PlayIcon,
   Search01Icon,
 } from "@icons";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import {
@@ -55,6 +62,9 @@ export default function VoiceSettings() {
   const selectVoice = useSelectVoice();
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Typing stays instant; the (cheap but table-rebuilding) filter pass runs
+  // at deferred priority so fast keystrokes never jank the input.
+  const deferredSearch = useDeferredValue(search);
   const [genderFilter, setGenderFilter] = useState(ALL_FILTER);
   const [countryFilter, setCountryFilter] = useState(ALL_FILTER);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -101,16 +111,22 @@ export default function VoiceSettings() {
     () => [...new Set((data?.voices ?? []).map((v) => v.gender))].sort(),
     [data?.voices],
   );
-  const countryOptions = useMemo(
-    () => [...new Set((data?.voices ?? []).map((v) => v.accent))].sort(),
-    [data?.voices],
-  );
+  // accent -> country_code so the dropdown can show the same flag as the rows.
+  const countryOptions = useMemo(() => {
+    const byAccent = new Map<string, string>();
+    for (const v of data?.voices ?? []) {
+      if (!byAccent.has(v.accent)) byAccent.set(v.accent, v.country_code);
+    }
+    return [...byAccent.entries()]
+      .map(([accent, countryCode]) => ({ accent, countryCode }))
+      .sort((a, b) => a.accent.localeCompare(b.accent));
+  }, [data?.voices]);
 
   // Selection and playback are baked into the items so the table's cached
   // row nodes rebuild the instant either changes (optimistic select included)
   // — reading them from closure state would lag until the next refetch.
   const rows = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = deferredSearch.trim().toLowerCase();
     return (data?.voices ?? [])
       .filter((voice) => {
         if (genderFilter !== ALL_FILTER && voice.gender !== genderFilter) {
@@ -137,7 +153,7 @@ export default function VoiceSettings() {
     data?.voices,
     data?.selected_voice_id,
     playingVoiceId,
-    search,
+    deferredSearch,
     genderFilter,
     countryFilter,
   ]);
@@ -199,8 +215,32 @@ export default function VoiceSettings() {
           className="sm:max-w-44"
         >
           {[
-            <SelectItem key={ALL_FILTER}>All countries</SelectItem>,
-            ...countryOptions.map((c) => <SelectItem key={c}>{c}</SelectItem>),
+            <SelectItem
+              key={ALL_FILTER}
+              startContent={
+                <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
+              }
+            >
+              All countries
+            </SelectItem>,
+            ...countryOptions.map(({ accent, countryCode }) => (
+              <SelectItem
+                key={accent}
+                startContent={
+                  countryCode ? (
+                    <Avatar
+                      src={flagUrl(countryCode)}
+                      alt={`${accent} flag`}
+                      className="h-4 w-4 shrink-0"
+                    />
+                  ) : (
+                    <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
+                  )
+                }
+              >
+                {accent}
+              </SelectItem>
+            )),
           ]}
         </Select>
       </div>

@@ -15,6 +15,7 @@ from app.config.settings import settings
 from app.constants.cache import ONE_DAY_TTL
 from app.constants.voices import (
     ACCENT_TO_COUNTRY,
+    DEFAULT_VOICE_ID,
     LANGUAGE_NAMES,
     SELECTED_VOICE_FIELD,
     VOICE_CATALOG,
@@ -194,7 +195,7 @@ async def _known_voice_ids() -> set[str]:
 
 
 async def get_user_voice(user_id: str) -> str | None:
-    """Return the user's selected voice id, or None for the default.
+    """Return the user's selected voice id, falling back to the product default.
 
     Plain Mongo read — deliberately NO availability validation here. This runs
     in the /token critical path (every session start), and validation would
@@ -203,7 +204,9 @@ async def get_user_voice(user_id: str) -> str | None:
     """
     doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {SELECTED_VOICE_FIELD: 1})
     voice_id = (doc or {}).get(SELECTED_VOICE_FIELD)
-    return voice_id if isinstance(voice_id, str) and voice_id else None
+    if isinstance(voice_id, str) and voice_id:
+        return voice_id
+    return DEFAULT_VOICE_ID
 
 
 async def list_voices(user_id: str) -> VoiceListResponse:
