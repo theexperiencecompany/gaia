@@ -4,9 +4,6 @@ import {
   Avatar,
   Button,
   Chip,
-  Input,
-  Select,
-  SelectItem,
   type Selection,
   Spinner,
   Table,
@@ -19,24 +16,20 @@ import {
 } from "@heroui/react";
 import {
   CheckmarkCircle02Icon,
-  FemaleSymbolIcon,
   Globe02Icon,
-  MaleSymbolIcon,
   PauseIcon,
   PlayIcon,
-  Search01Icon,
   StarIcon,
 } from "@icons";
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 
-import type { VoiceOption } from "@/features/settings/api/voiceApi";
+import {
+  ALL_FILTER,
+  flagUrl,
+  GenderIcon,
+  VoiceFilters,
+} from "@/features/settings/components/VoiceFilters";
+import { useVoicePreview } from "@/features/settings/hooks/useVoicePreview";
 import {
   useSelectVoice,
   useStarVoice,
@@ -44,64 +37,17 @@ import {
 } from "@/features/settings/hooks/useVoiceSettings";
 import { cn } from "@/lib/utils";
 
-const FLAG_CDN_BASE = "https://flagcdn.com/w80";
-
-const flagUrl = (countryCode: string) =>
-  `${FLAG_CDN_BASE}/${countryCode.toLowerCase()}.png`;
-
-const ALL_FILTER = "all";
-
-function GenderIcon({ gender }: { gender: string }) {
-  if (gender === "Female") {
-    return <FemaleSymbolIcon className="h-3.5 w-3.5 shrink-0 text-pink-400" />;
-  }
-  if (gender === "Male") {
-    return <MaleSymbolIcon className="h-3.5 w-3.5 shrink-0 text-blue-400" />;
-  }
-  return null;
-}
-
 export default function VoiceSettings() {
   const { data, isLoading } = useVoices();
   const selectVoice = useSelectVoice();
   const starVoice = useStarVoice();
-  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const { playingVoiceId, playPreview, togglePreview } = useVoicePreview();
   const [search, setSearch] = useState("");
   // Typing stays instant; the (cheap but table-rebuilding) filter pass runs
   // at deferred priority so fast keystrokes never jank the input.
   const deferredSearch = useDeferredValue(search);
   const [genderFilter, setGenderFilter] = useState(ALL_FILTER);
   const [countryFilter, setCountryFilter] = useState(ALL_FILTER);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  // One shared audio element; switching voices swaps its source.
-  useEffect(() => {
-    const audio = new Audio();
-    audio.addEventListener("ended", () => setPlayingVoiceId(null));
-    audioRef.current = audio;
-    return () => {
-      audio.pause();
-      audioRef.current = null;
-    };
-  }, []);
-
-  const togglePreview = useCallback(
-    (voice: VoiceOption) => {
-      const audio = audioRef.current;
-      if (!audio || !voice.preview_url) return;
-      if (playingVoiceId === voice.voice_id) {
-        audio.pause();
-        setPlayingVoiceId(null);
-        return;
-      }
-      audio.src = voice.preview_url;
-      audio
-        .play()
-        .then(() => setPlayingVoiceId(voice.voice_id))
-        .catch(() => setPlayingVoiceId(null));
-    },
-    [playingVoiceId],
-  );
 
   const selectedKeys = useMemo(
     () =>
@@ -110,22 +56,6 @@ export default function VoiceSettings() {
         : new Set<string>(),
     [data?.selected_voice_id],
   );
-
-  // Distinct filter options derived from the loaded voices.
-  const genderOptions = useMemo(
-    () => [...new Set((data?.voices ?? []).map((v) => v.gender))].sort(),
-    [data?.voices],
-  );
-  // accent -> country_code so the dropdown can show the same flag as the rows.
-  const countryOptions = useMemo(() => {
-    const byAccent = new Map<string, string>();
-    for (const v of data?.voices ?? []) {
-      if (!byAccent.has(v.accent)) byAccent.set(v.accent, v.country_code);
-    }
-    return [...byAccent.entries()]
-      .map(([accent, countryCode]) => ({ accent, countryCode }))
-      .sort((a, b) => a.accent.localeCompare(b.accent));
-  }, [data?.voices]);
 
   // Selection and playback are baked into the items so the table's cached
   // row nodes rebuild the instant either changes (optimistic select included)
@@ -176,17 +106,10 @@ export default function VoiceSettings() {
         selectVoice.mutate(voiceId);
         // Hearing the choice confirms it — selecting also plays the sample.
         const voice = data?.voices.find((v) => v.voice_id === voiceId);
-        const audio = audioRef.current;
-        if (voice?.preview_url && audio) {
-          audio.src = voice.preview_url;
-          audio
-            .play()
-            .then(() => setPlayingVoiceId(voiceId))
-            .catch(() => setPlayingVoiceId(null));
-        }
+        if (voice) playPreview(voice);
       }
     },
-    [data?.selected_voice_id, data?.voices, selectVoice],
+    [data?.selected_voice_id, data?.voices, selectVoice, playPreview],
   );
 
   return (
@@ -201,95 +124,15 @@ export default function VoiceSettings() {
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Input
-          aria-label="Search voices"
-          placeholder="Search voices"
-          value={search}
-          onValueChange={setSearch}
-          isClearable
-          startContent={<Search01Icon className="h-4 w-4 text-zinc-500" />}
-          className="sm:max-w-xs"
-        />
-        <Select
-          aria-label="Filter by gender"
-          placeholder="Gender"
-          selectedKeys={[genderFilter]}
-          onSelectionChange={(keys) =>
-            setGenderFilter(String(Array.from(keys)[0] ?? ALL_FILTER))
-          }
-          startContent={
-            genderFilter !== ALL_FILTER ? (
-              <GenderIcon gender={genderFilter} />
-            ) : undefined
-          }
-          className="sm:max-w-40"
-        >
-          {[
-            <SelectItem key={ALL_FILTER}>All genders</SelectItem>,
-            ...genderOptions.map((g) => (
-              <SelectItem key={g} startContent={<GenderIcon gender={g} />}>
-                {g}
-              </SelectItem>
-            )),
-          ]}
-        </Select>
-        <Select
-          aria-label="Filter by country"
-          placeholder="Country"
-          selectedKeys={[countryFilter]}
-          onSelectionChange={(keys) =>
-            setCountryFilter(String(Array.from(keys)[0] ?? ALL_FILTER))
-          }
-          startContent={(() => {
-            // Show the chosen country's flag inline in the trigger, not
-            // just inside the open list.
-            if (countryFilter === ALL_FILTER) return undefined;
-            const code = countryOptions.find(
-              (c) => c.accent === countryFilter,
-            )?.countryCode;
-            return code ? (
-              <Avatar
-                src={flagUrl(code)}
-                alt={`${countryFilter} flag`}
-                className="h-4 w-4 shrink-0"
-              />
-            ) : (
-              <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-            );
-          })()}
-          className="sm:max-w-44"
-        >
-          {[
-            <SelectItem
-              key={ALL_FILTER}
-              startContent={
-                <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-              }
-            >
-              All countries
-            </SelectItem>,
-            ...countryOptions.map(({ accent, countryCode }) => (
-              <SelectItem
-                key={accent}
-                startContent={
-                  countryCode ? (
-                    <Avatar
-                      src={flagUrl(countryCode)}
-                      alt={`${accent} flag`}
-                      className="h-4 w-4 shrink-0"
-                    />
-                  ) : (
-                    <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-                  )
-                }
-              >
-                {accent}
-              </SelectItem>
-            )),
-          ]}
-        </Select>
-      </div>
+      <VoiceFilters
+        voices={data?.voices ?? []}
+        search={search}
+        onSearchChange={setSearch}
+        genderFilter={genderFilter}
+        onGenderFilterChange={setGenderFilter}
+        countryFilter={countryFilter}
+        onCountryFilterChange={setCountryFilter}
+      />
 
       <Table
         aria-label="Available voices"
@@ -322,7 +165,7 @@ export default function VoiceSettings() {
                     {/* Star toggle — propagation stopped so starring never
                         doubles as selecting the row. */}
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: propagation guard, not an interactive control */}
-                    <div
+                    <div // NOSONAR S6848: propagation guard around the interactive Button below, not a control itself
                       onClick={(e) => e.stopPropagation()}
                       onPointerDown={(e) => e.stopPropagation()}
                       onPointerUp={(e) => e.stopPropagation()}
@@ -420,7 +263,7 @@ export default function VoiceSettings() {
                   {/* Stop pointer events here so playing a sample never
                       doubles as selecting the row. */}
                   {/* biome-ignore lint/a11y/noStaticElementInteractions: propagation guard, not an interactive control */}
-                  <div
+                  <div // NOSONAR S6848: propagation guard around the interactive Button below, not a control itself
                     className="flex justify-end"
                     onClick={(e) => e.stopPropagation()}
                     onPointerDown={(e) => e.stopPropagation()}

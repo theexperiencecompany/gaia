@@ -26,7 +26,6 @@ cd apps/voice-agent && uv run python -m src download-files
 ```
 src/
   __main__.py   — CLI entrypoint; dispatches `start` or `download-files`
-  worker.py     — Thin re-export shim (backward compat for __main__.py)
   agent.py      — prewarm(), entrypoint(), start_worker(), download_files()
   llm.py        — CustomLLM class (SSE streaming + TTS chunking)
   config.py     — VoiceAgentSettings + bootstrap_settings() for Infisical

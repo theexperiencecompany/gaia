@@ -3,7 +3,7 @@
 The catalog is owned by GAIA (not fetched from ElevenLabs at request time) so
 the voice picker is stable, fast, and works without an upstream call. Preview
 URLs are the only upstream-sourced field — resolved lazily from the ElevenLabs
-voices API and cached (see ``voice_service.get_preview_urls``).
+voices API and cached (see ``voice_service.get_elevenlabs_voices``).
 
 All IDs are stable ElevenLabs premade voices available to every API key.
 """

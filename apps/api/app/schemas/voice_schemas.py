@@ -28,6 +28,23 @@ class VoiceOption(BaseModel):
     starred: bool = Field(default=False, description="Starred by this user")
 
 
+class VoiceTokenResponse(BaseModel):
+    """LiveKit session credentials minted by GET /token.
+
+    Field names are camelCase to match what the LiveKit web client consumes.
+    """
+
+    serverUrl: str | None = Field(default=None, description="LiveKit server WebSocket URL")
+    roomName: str = Field(description="Freshly minted per-session room name")
+    participantToken: str = Field(description="JWT granting the user access to the room")
+    participantIdentity: str = Field(description="LiveKit participant identity")
+    participantName: str = Field(description="Participant display name (user email)")
+    conversation_id: str | None = Field(
+        default=None,
+        description="Conversation the session was started from; null for a new chat",
+    )
+
+
 class VoiceListResponse(BaseModel):
     """Catalog of selectable voices plus the user's current selection."""
 

@@ -12,7 +12,11 @@ from bson import ObjectId
 import httpx
 
 from app.config.settings import settings
-from app.constants.cache import ONE_DAY_TTL
+from app.constants.cache import (
+    ELEVENLABS_SHARED_VOICES_CACHE_KEY,
+    ELEVENLABS_VOICES_CACHE_KEY,
+    ONE_DAY_TTL,
+)
 from app.constants.voices import (
     ACCENT_TO_COUNTRY,
     DEFAULT_STARRED_VOICE_IDS,
@@ -77,7 +81,7 @@ def _normalize_accent(raw: str) -> str:
     return accent.title()
 
 
-@Cacheable(ttl=ONE_DAY_TTL, key_pattern="voice:elevenlabs_voices")
+@Cacheable(ttl=ONE_DAY_TTL, key_pattern=ELEVENLABS_VOICES_CACHE_KEY)
 async def _fetch_elevenlabs_voices() -> list[dict[str, Any]]:
     """Fetch the account's voices (trimmed) from the ElevenLabs voices API.
 
@@ -120,7 +124,7 @@ async def get_elevenlabs_voices() -> list[dict[str, Any]]:
         return []
 
 
-@Cacheable(ttl=ONE_DAY_TTL, key_pattern="voice:elevenlabs_shared_voices")
+@Cacheable(ttl=ONE_DAY_TTL, key_pattern=ELEVENLABS_SHARED_VOICES_CACHE_KEY)
 async def _fetch_shared_voices() -> list[dict[str, Any]]:
     """Fetch featured shared-library voices (trimmed) from ElevenLabs.
 
@@ -171,47 +175,63 @@ def _split_display_name(raw_name: str) -> tuple[str, str]:
     return name.strip() or raw_name, blurb.strip()
 
 
-def _map_account_voice(voice: dict[str, Any]) -> VoiceOption:
-    """Shape a non-catalog account voice into a catalog-compatible option."""
+def _build_voice_option(
+    voice: dict[str, Any],
+    *,
+    accent: str,
+    gender: str,
+    descriptive: str,
+    use_case: str,
+    language_code: str,
+    source: str,
+    fallback_description: str,
+) -> VoiceOption:
+    """Shape a non-catalog ElevenLabs voice into a catalog-compatible option."""
     name, blurb = _split_display_name(voice["name"])
-    labels: dict[str, Any] = voice["labels"]
-    accent = _normalize_accent(str(labels.get("accent") or ""))
-    descriptive = str(labels.get("descriptive") or "").replace("_", " ")
-    use_case = str(labels.get("use_case") or "").replace("_", " ")
-    language_code = str(labels.get("language") or "")
+    accent_label = _normalize_accent(accent)
     primary = LANGUAGE_NAMES.get(language_code, language_code.upper() or "English")
+    descriptive = descriptive.replace("_", " ")
+    use_case = use_case.replace("_", " ")
     return VoiceOption(
         voice_id=voice["voice_id"],
         name=name,
         language=primary,
-        accent=accent,
-        country_code=ACCENT_TO_COUNTRY.get(accent.lower(), ""),
-        gender=str(labels.get("gender") or "").strip().title() or "Neutral",
-        description=blurb or descriptive.title() or use_case.title() or "Account voice",
+        accent=accent_label,
+        country_code=ACCENT_TO_COUNTRY.get(accent_label.lower(), ""),
+        gender=gender.strip().title() or "Neutral",
+        description=blurb or descriptive.title() or use_case.title() or fallback_description,
         preview_url=voice.get("preview_url"),
-        source="account",
+        source=source,
         languages=_language_names(voice.get("language_codes") or [], primary),
     )
 
 
+def _map_account_voice(voice: dict[str, Any]) -> VoiceOption:
+    """Shape a non-catalog account voice (metadata in ``labels``) into an option."""
+    labels: dict[str, Any] = voice["labels"]
+    return _build_voice_option(
+        voice,
+        accent=str(labels.get("accent") or ""),
+        gender=str(labels.get("gender") or ""),
+        descriptive=str(labels.get("descriptive") or ""),
+        use_case=str(labels.get("use_case") or ""),
+        language_code=str(labels.get("language") or ""),
+        source="account",
+        fallback_description="Account voice",
+    )
+
+
 def _map_shared_voice(voice: dict[str, Any]) -> VoiceOption:
-    """Shape a shared-library voice into a catalog-compatible option."""
-    name, blurb = _split_display_name(voice["name"])
-    accent = _normalize_accent(voice["accent"])
-    descriptive = voice["descriptive"].replace("_", " ")
-    use_case = voice["use_case"].replace("_", " ")
-    primary = LANGUAGE_NAMES.get(voice["language"], voice["language"].upper() or "English")
-    return VoiceOption(
-        voice_id=voice["voice_id"],
-        name=name,
-        language=primary,
-        accent=accent,
-        country_code=ACCENT_TO_COUNTRY.get(accent.lower(), ""),
-        gender=voice["gender"].strip().title() or "Neutral",
-        description=blurb or descriptive.title() or use_case.title() or "Community voice",
-        preview_url=voice.get("preview_url"),
+    """Shape a shared-library voice (metadata at the top level) into an option."""
+    return _build_voice_option(
+        voice,
+        accent=voice["accent"],
+        gender=voice["gender"],
+        descriptive=voice["descriptive"],
+        use_case=voice["use_case"],
+        language_code=voice["language"],
         source="library",
-        languages=_language_names(voice.get("language_codes") or [], primary),
+        fallback_description="Community voice",
     )
 
 
@@ -347,7 +367,7 @@ async def _add_library_voice_to_account(voice: dict[str, Any]) -> str:
 
     # The account voice list changed — refetch on next read so the new voice
     # lists (and validates) immediately.
-    await redis_cache.delete("voice:elevenlabs_voices")
+    await redis_cache.delete(ELEVENLABS_VOICES_CACHE_KEY)
     return str(added_id)
 
 

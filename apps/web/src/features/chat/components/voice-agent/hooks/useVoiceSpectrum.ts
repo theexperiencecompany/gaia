@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /** Number of control points across the X axis of the gradient. */
 export const SPECTRUM_BINS = 24;
@@ -10,39 +10,16 @@ export const SPECTRUM_BINS = 24;
  * - "mic": live microphone input via Web Audio AnalyserNode
  * - "agent-track": Web Audio AnalyserNode over a remote MediaStreamTrack
  *   (e.g. the LiveKit agent's TTS audio track) passed in via `remoteTrack`
- * - "synthetic": generated speech-like spectrum (demo only)
- * - "hybrid": synthetic spectrum additively blended with the live mic (demo only)
  * - "loading": procedural low-pass-filtered random walk — used during the
  *   voice-mode connecting phase so the gradient visibly vibrates while the
  *   room negotiates. Caller invokes `decayLoading()` when transitioning out
  *   to fade the amplitude to zero before switching sources.
  * - "idle": flat baseline — wave settles to zero
  */
-export type SpectrumSource =
-  | "mic"
-  | "agent-track"
-  | "synthetic"
-  | "hybrid"
-  | "loading"
-  | "idle";
-
-export interface VoiceSpectrumState {
-  /** Float32Array of length SPECTRUM_BINS, values in [0, 1]. Mutated in place across frames. */
-  spectrum: Float32Array;
-  /** Smoothed RMS amplitude in [0, 1]. */
-  scalar: number;
-  /** True once microphone permission is granted and audio is flowing. */
-  isActive: boolean;
-  devices: MediaDeviceInfo[];
-  deviceId: string | null;
-  error: string | null;
-}
+export type SpectrumSource = "mic" | "agent-track" | "loading" | "idle";
 
 interface UseVoiceSpectrumOptions {
-  /**
-   * Which source to read from. When set to "synthetic" the spectrum is
-   * generated locally so callers don't need a microphone.
-   */
+  /** Which source to read from. */
   source: SpectrumSource;
   /**
    * Remote MediaStreamTrack to analyse when `source === "agent-track"`. The
@@ -90,91 +67,15 @@ const applySpatialSmoothing = (
   }
 };
 
-/**
- * Build a synthetic spectrum that visually reads as natural speech — three
- * drifting formant clusters spanning low/mid/high bands, a syllable
- * envelope on the foreground formant, and a persistent broadband floor so
- * inter-syllable moments still show shape (not flat).
- *
- * Writes into `out` in place; values in [0, 1].
- */
-interface SynthState {
-  /** Time the current phase started. */
-  phaseStart: number;
-  /** Duration of the current phase. */
-  phaseDuration: number;
-  /** Are we currently in a "speaking" phase or a silent pause? */
-  isSpeaking: boolean;
-  /** Random pitch for the current syllable's formant 1 center. */
-  syllablePitch: number;
-}
-
-const buildSyntheticSpectrum = (
-  t: number,
-  out: Float32Array,
-  state: SynthState,
-) => {
-  const now = t / 1000;
-  // Alternate "speaking" and silent "pause" phases. During pause, output is
-  // exactly zero — the gradient settles flat with no idle motion.
-  if (now - state.phaseStart > state.phaseDuration) {
-    state.phaseStart = now;
-    state.isSpeaking = !state.isSpeaking;
-    if (state.isSpeaking) {
-      state.phaseDuration = 1.4 + Math.random() * 1.4;
-      state.syllablePitch = Math.random();
-    } else {
-      state.phaseDuration = 1.2 + Math.random() * 1.6;
-    }
-  }
-
-  if (!state.isSpeaking) {
-    // Silent: bins go to exactly 0. Smoothed in the consumer loop so the
-    // wave glides down to flat instead of snapping.
-    for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = 0;
-    return;
-  }
-
-  const syllableProgress = Math.min(
-    1,
-    (now - state.phaseStart) / state.phaseDuration,
-  );
-  // Long soft attack, brief plateau, long release — like a sighing breath
-  const envelopeRaw =
-    syllableProgress < 0.4
-      ? (syllableProgress / 0.4) ** 1.5
-      : syllableProgress < 0.55
-        ? 1.0
-        : (1 - (syllableProgress - 0.55) / 0.45) ** 1.5;
-  // No baseline lift — between syllables we want to be able to go to zero.
-  const envelope = envelopeRaw;
-
-  // Three formants drifting at calmer rates
-  const f1 = 3.2 + state.syllablePitch * 2.5 + Math.sin(now * 0.6) * 1.8;
-  const f2 = 9.5 + Math.sin(now * 0.42 + 1.3) * 2.4;
-  const f3 = 16.5 + Math.cos(now * 0.28 + 0.4) * 2.8;
-  const a1 = 0.85 + Math.sin(now * 0.2) * 0.15;
-  const a2 = 0.7 + Math.sin(now * 0.29 + 1.1) * 0.2;
-  const a3 = 0.5 + Math.sin(now * 0.38 + 2.3) * 0.18;
-
-  for (let i = 0; i < SPECTRUM_BINS; i++) {
-    // Tighter formants → sharper peaks (smaller divisors)
-    const d1 = (i - f1) / 1.8;
-    const d2 = (i - f2) / 2.2;
-    const d3 = (i - f3) / 2.8;
-    const bump =
-      Math.exp(-d1 * d1) * a1 +
-      Math.exp(-d2 * d2) * a2 +
-      Math.exp(-d3 * d3) * a3;
-    const sibilance = i > 14 ? (Math.random() - 0.5) * 0.1 * envelopeRaw : 0;
-    out[i] = Math.max(0, Math.min(1, bump * envelope + sibilance));
-  }
-};
-
 /** Idle: pure zero — wave settles to a flat baseline with no motion. */
 const buildIdleSpectrum = (_t: number, out: Float32Array) => {
   for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = 0;
 };
+
+const getAudioContextCtor = (): typeof AudioContext =>
+  globalThis.AudioContext ||
+  (globalThis as unknown as { webkitAudioContext: typeof AudioContext })
+    .webkitAudioContext;
 
 interface LoadingState {
   /** Per-bin current values (smoothed). */
@@ -232,12 +133,6 @@ export function useVoiceSpectrum({
   remoteTrack = null,
   muted = false,
 }: UseVoiceSpectrumOptions) {
-  const [isActive, setIsActive] = useState(false);
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [scalar, setScalar] = useState(0);
-
   // Persistent buffer — mutated in place each frame. Consumers read it via
   // a ref so they don't trigger re-renders on every audio frame.
   const spectrumRef = useRef<Float32Array>(new Float32Array(SPECTRUM_BINS));
@@ -262,12 +157,6 @@ export function useVoiceSpectrum({
   const tickRef = useRef<((now: number) => void) | null>(null);
   const sourceRef = useRef<SpectrumSource>(source);
   const mutedRef = useRef(false);
-  const syntheticStateRef = useRef<SynthState>({
-    phaseStart: 0,
-    phaseDuration: 1.0,
-    isSpeaking: true,
-    syllablePitch: 0.4,
-  });
   const loadingStateRef = useRef<LoadingState>({
     current: new Float32Array(SPECTRUM_BINS),
     target: new Float32Array(SPECTRUM_BINS),
@@ -316,10 +205,7 @@ export function useVoiceSpectrum({
       return;
     }
 
-    const AC =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext;
+    const AC = getAudioContextCtor();
     const ctx = new AC();
     const stream = new MediaStream([remoteTrack]);
     const node = ctx.createMediaStreamSource(stream);
@@ -349,12 +235,10 @@ export function useVoiceSpectrum({
       audioCtxRef.current.close().catch(() => {});
     }
     audioCtxRef.current = null;
-    setIsActive(false);
   }, []);
 
-  const start = useCallback(async (preferredDeviceId?: string) => {
+  const start = useCallback(async () => {
     try {
-      setError(null);
       // Tear down any previous stream first.
       sourceNodeRef.current?.disconnect();
       analyserRef.current?.disconnect();
@@ -364,16 +248,12 @@ export function useVoiceSpectrum({
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: preferredDeviceId
-          ? { deviceId: { exact: preferredDeviceId } }
-          : true,
+        audio: true,
         video: false,
       });
       streamRef.current = stream;
       const track = stream.getAudioTracks()[0];
       if (track) track.enabled = !mutedRef.current;
-      const settings = track?.getSettings();
-      if (settings?.deviceId) setDeviceId(settings.deviceId);
 
       const AC =
         window.AudioContext ||
@@ -391,24 +271,12 @@ export function useVoiceSpectrum({
       rawFftRef.current = new Uint8Array(
         new ArrayBuffer(analyser.frequencyBinCount),
       );
-      setIsActive(true);
-
-      const list = await navigator.mediaDevices.enumerateDevices();
-      setDevices(list.filter((d) => d.kind === "audioinput"));
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Mic error";
-      setError(msg);
-      setIsActive(false);
+      // No mic → the wave just stays flat; LiveKit surfaces its own
+      // permission errors to the user when the session itself starts.
+      console.warn("[useVoiceSpectrum] mic analysis unavailable", e);
     }
   }, []);
-
-  const selectDevice = useCallback(
-    async (id: string) => {
-      setDeviceId(id);
-      await start(id);
-    },
-    [start],
-  );
 
   const decayLoading = useCallback(() => {
     loadingDecayingRef.current = true;
@@ -429,29 +297,20 @@ export function useVoiceSpectrum({
   const pausedRef = useRef(false);
 
   // Single requestAnimationFrame loop that updates the spectrum buffer in
-  // place every frame regardless of source. Scalar amplitude is published
-  // to React state at a throttled rate so consumers can re-render lightly.
+  // place every frame regardless of source.
   useEffect(() => {
-    let lastScalarPush = 0;
     const target = targetSpectrumRef.current;
     const smoothed = spectrumRef.current;
 
-    const micBuf = new Float32Array(SPECTRUM_BINS);
-
-    // Writes the current mic spectrum into `out`. Returns true if real data
-    // was written; false if the analyser isn't ready yet (caller decides
-    // what to do — fall back to idle, or just skip the mic contribution in
-    // hybrid mode).
-    const sampleMic = (out: Float32Array): boolean => {
-      const analyser = analyserRef.current;
-      const raw = rawFftRef.current;
+    // Bins an analyser's FFT into SPECTRUM_BINS perceptually-curved bands,
+    // writing into `out`. Returns false when the analyser isn't ready yet
+    // (caller falls back to idle).
+    const sampleAnalyser = (
+      analyser: AnalyserNode | null,
+      raw: Uint8Array<ArrayBuffer> | null,
+      out: Float32Array,
+    ): boolean => {
       if (!analyser || !raw) {
-        for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = 0;
-        return false;
-      }
-      if (mutedRef.current) {
-        // Muted: zero the spectrum so the wave glides down to flat during the
-        // settle window; the pause effect below then cancels the raf loop.
         for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = 0;
         return false;
       }
@@ -480,37 +339,19 @@ export function useVoiceSpectrum({
       return true;
     };
 
-    // Reads from the remote-agent analyser built in the remoteTrack effect.
-    // Returns false when no analyser is attached yet.
-    const sampleAgentTrack = (out: Float32Array): boolean => {
-      const analyser = remoteAnalyserRef.current;
-      const raw = remoteFftRef.current;
-      if (!analyser || !raw) {
+    const sampleMic = (out: Float32Array): boolean => {
+      if (mutedRef.current) {
+        // Muted: zero the spectrum so the wave glides down to flat during the
+        // settle window; the pause effect below then cancels the raf loop.
         for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = 0;
         return false;
       }
-      analyser.getByteFrequencyData(raw);
-      const usableBins = Math.min(raw.length, 256);
-      for (let i = 0; i < SPECTRUM_BINS; i++) {
-        const norm = i / (SPECTRUM_BINS - 1);
-        const curved = norm ** 1.6;
-        const fromIdx = Math.floor(curved * (usableBins - 4)) + 2;
-        const toIdx = Math.min(
-          usableBins - 1,
-          Math.floor(((i + 1) / SPECTRUM_BINS) ** 1.6 * (usableBins - 4)) + 2,
-        );
-        let sum = 0;
-        let count = 0;
-        for (let j = fromIdx; j <= toIdx; j++) {
-          sum += raw[j];
-          count++;
-        }
-        const avg = count > 0 ? sum / count / 255 : 0;
-        const lifted = Math.min(1, (avg * 2.4) ** 1.1);
-        out[i] = gateBin(lifted);
-      }
-      return true;
+      return sampleAnalyser(analyserRef.current, rawFftRef.current, out);
     };
+
+    // Reads from the remote-agent analyser built in the remoteTrack effect.
+    const sampleAgentTrack = (out: Float32Array): boolean =>
+      sampleAnalyser(remoteAnalyserRef.current, remoteFftRef.current, out);
 
     const LOADING_DECAY_MS = 300;
 
@@ -532,9 +373,6 @@ export function useVoiceSpectrum({
         case "agent-track":
           if (!sampleAgentTrack(target)) buildIdleSpectrum(now, target);
           break;
-        case "synthetic":
-          buildSyntheticSpectrum(now, target, syntheticStateRef.current);
-          break;
         case "loading":
           buildLoadingSpectrum(
             now,
@@ -543,21 +381,6 @@ export function useVoiceSpectrum({
             loadingAmplitudeRef.current,
           );
           break;
-        case "hybrid": {
-          // Synthetic baseline + live mic added on top.
-          // Mic contribution scales itself down when no audio is coming in.
-          buildSyntheticSpectrum(now, target, syntheticStateRef.current);
-          const micHas = sampleMic(micBuf);
-          if (micHas) {
-            for (let i = 0; i < SPECTRUM_BINS; i++) {
-              // Additive blend with soft compression so loud voice doesn't
-              // saturate the wave into a flat plateau.
-              const combined = target[i] * 0.65 + micBuf[i] * 0.85;
-              target[i] = 1 - Math.exp(-combined * 1.4);
-            }
-          }
-          break;
-        }
         default:
           buildIdleSpectrum(now, target);
       }
@@ -567,15 +390,6 @@ export function useVoiceSpectrum({
       applySpatialSmoothing(target, target, scratchRef.current);
       for (let i = 0; i < SPECTRUM_BINS; i++) {
         smoothed[i] = lerp(smoothed[i], target[i], TEMPORAL_SMOOTHING);
-      }
-
-      // Throttled scalar push every ~120ms so the UI's "talking" caption
-      // can react without re-rendering the whole tree every frame.
-      if (now - lastScalarPush > 120) {
-        let sum = 0;
-        for (let i = 0; i < SPECTRUM_BINS; i++) sum += smoothed[i];
-        setScalar(sum / SPECTRUM_BINS);
-        lastScalarPush = now;
       }
 
       if (pausedRef.current) {
@@ -647,13 +461,10 @@ export function useVoiceSpectrum({
 
   useEffect(() => () => stop(), [stop]);
 
-  const state: VoiceSpectrumState = {
+  return {
+    /** Length SPECTRUM_BINS, values in [0, 1]. Mutated in place across frames. */
     spectrum: spectrumRef.current,
-    scalar,
-    isActive,
-    devices,
-    deviceId,
-    error,
+    start,
+    decayLoading,
   };
-  return { ...state, start, stop, selectDevice, decayLoading };
 }

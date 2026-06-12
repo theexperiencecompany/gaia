@@ -17,7 +17,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AgentControlBar } from "@/features/chat/components/voice-agent/agent-control-bar";
 import useConnectionDetails from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
 import { useVoiceMessages } from "@/features/chat/components/voice-agent/hooks/useVoiceMessages";
-import { useVoiceSpectrum } from "@/features/chat/components/voice-agent/hooks/useVoiceSpectrum";
+import {
+  type SpectrumSource,
+  useVoiceSpectrum,
+} from "@/features/chat/components/voice-agent/hooks/useVoiceSpectrum";
 import { VoiceConnectionStatus } from "@/features/chat/components/voice-agent/VoiceConnectionStatus";
 import {
   useVoiceSession,
@@ -113,7 +116,25 @@ function useRoomConversationStreams({
  * UI for the bar is rendered by `<VoiceControlBarSlot/>` consumers below
  * the provider so it can slot into the chat layout's bottom bar.
  */
-function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
+/**
+ * Spectrum feeding the gradient for the current agent/room state.
+ * "thinking" rides the loading shimmer too — a dead-flat wave while the
+ * backend works reads as a hang; the gentle vibration signals activity.
+ */
+function resolveSpectrumSource(
+  isConnecting: boolean,
+  agentState: string,
+  hasRemoteTrack: boolean,
+): SpectrumSource {
+  if (isConnecting || agentState === "thinking") return "loading";
+  if (agentState === "speaking" && hasRemoteTrack) return "agent-track";
+  if (agentState === "listening") return "mic";
+  return "idle";
+}
+
+function VoiceSessionInner({
+  children,
+}: Readonly<{ children?: React.ReactNode }>) {
   const { id: convoIdParam } = useParams<{ id: string }>();
   const { state: agentState, audioTrack: agentAudioTrack } =
     useVoiceAssistant();
@@ -152,12 +173,13 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
   // `/c` OR `/c/<id>` to recover the locale prefix, so the id is mounted once.
   const lastAppliedConvoIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!discoveredConversationId || typeof window === "undefined") return;
+    if (!discoveredConversationId || typeof globalThis.window === "undefined")
+      return;
     if (lastAppliedConvoIdRef.current === discoveredConversationId) return;
 
-    const path = window.location.pathname;
+    const path = globalThis.location.pathname;
     const segments = path.split("/").filter(Boolean);
-    const lastSegment = segments[segments.length - 1];
+    const lastSegment = segments.at(-1);
     if (lastSegment === discoveredConversationId) {
       lastAppliedConvoIdRef.current = discoveredConversationId;
       return;
@@ -165,7 +187,7 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
 
     const localePrefix = path.replace(/\/c(\/[^/]+)?$/, "");
     const newUrl = `${localePrefix}/c/${discoveredConversationId}`;
-    window.history.replaceState(window.history.state, "", newUrl);
+    globalThis.history.replaceState(globalThis.history.state, "", newUrl);
     lastAppliedConvoIdRef.current = discoveredConversationId;
   }, [discoveredConversationId]);
 
@@ -175,16 +197,11 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
   );
   const isConnecting =
     agentState === "connecting" || room?.state !== "connected";
-  // "thinking" rides the loading shimmer too — a dead-flat wave while the
-  // backend works reads as a hang; the gentle vibration signals activity.
-  const spectrumSource =
-    isConnecting || agentState === "thinking"
-      ? "loading"
-      : agentState === "speaking" && remoteTrack
-        ? "agent-track"
-        : agentState === "listening"
-          ? "mic"
-          : "idle";
+  const spectrumSource = resolveSpectrumSource(
+    isConnecting,
+    agentState,
+    remoteTrack !== null,
+  );
   // The REAL mic state — LiveKit's track toggle in the control bar — drives
   // the spectrum's mute, not a hook-local flag. Muted mic ⇒ wave settles
   // flat and sampling pauses; the agent's own speech still animates.
@@ -344,7 +361,7 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
  */
 export function VoiceControlBarContainer({
   children,
-}: VoiceControlBarContainerProps) {
+}: Readonly<VoiceControlBarContainerProps>) {
   const { id: convoIdParam } = useParams<{ id: string }>();
   const room = useMemo(() => new Room(), []);
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -437,7 +454,9 @@ export function VoiceControlBarContainer({
  * buttons. Must live inside `<VoiceControlBarContainer/>`. Use this as the
  * `bottomBar` prop to `ChatWithMessages` when voice mode is active.
  */
-export function VoiceControlBarSlot({ onEndCall }: { onEndCall: () => void }) {
+export function VoiceControlBarSlot({
+  onEndCall,
+}: Readonly<{ onEndCall: () => void }>) {
   // Pull session just to enforce the "must live inside container" contract
   // — the bar's pieces use the room/context themselves.
   const session = useVoiceSession();

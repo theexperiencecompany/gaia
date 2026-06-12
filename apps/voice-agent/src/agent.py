@@ -1,9 +1,11 @@
 """Voice agent entrypoint — prewarm, room session lifecycle, and worker startup."""
 
 import asyncio
+from collections.abc import Coroutine
+from functools import partial
 from pathlib import Path
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents import (
@@ -36,6 +38,9 @@ from src.constants import (
 )
 from src.llm import CustomLLM
 from src.utils import extract_meta_data, ms_since, now_ts, user_id_from_room
+
+if TYPE_CHECKING:
+    from loguru import Logger
 
 # Use an absolute path so logs land in the right place regardless of CWD
 configure_file_logging(Path(__file__).parent.parent / "logs")
@@ -73,51 +78,8 @@ def prewarm(proc: JobProcess) -> None:
     )
 
 
-async def entrypoint(ctx: JobContext) -> None:
-    """Initialize and run the voice agent session for a single room."""
-    settings = ctx.proc.userdata["settings"]
-    ctx.log_context_fields = {"room": ctx.room.name}
-
-    # Session-scoped logger: every event in this room carries the same
-    # high-cardinality identity fields, so one LogQL filter (room=... or
-    # user_id=...) reconstructs the full session timeline in Loki.
-    user_id = user_id_from_room(ctx.room.name)
-    slog = logger.bind(
-        room=ctx.room.name,
-        user_id=user_id,
-        job_id=getattr(ctx.job, "id", None),
-    )
-
-    room_start = time.monotonic()
-    slog.info(
-        f"[{now_ts()}] 🚀 ROOM START | room={ctx.room.name}",
-        phase="room_start",
-    )
-
-    custom_llm = CustomLLM(
-        base_url=settings.GAIA_BACKEND_URL,
-        room=ctx.room,
-        request_timeout_s=BACKEND_REQUEST_TIMEOUT_S,
-    )
-    custom_llm.user_id = user_id
-
-    tts = elevenlabs.TTS(
-        api_key=settings.ELEVENLABS_API_KEY,
-        voice_id=settings.ELEVENLABS_VOICE_ID,
-        model=settings.ELEVENLABS_TTS_MODEL,
-    )
-
-    session: AgentSession = AgentSession(
-        llm=custom_llm,
-        stt=deepgram.STT(model="nova-3", language="multi"),
-        tts=tts,
-        turn_detection=MultilingualModel(),
-        vad=ctx.proc.userdata["vad"],
-        min_endpointing_delay=MIN_ENDPOINTING_DELAY_S,
-        preemptive_generation=True,
-        use_tts_aligned_transcript=True,
-    )
-
+def _register_session_logging(ctx: JobContext, session: AgentSession, slog: "Logger") -> None:
+    """Wire per-session lifecycle logging: user/agent state, STT, metrics, usage."""
     _speaking_start: dict[str, float] = {}
 
     @session.on("user_state_changed")
@@ -188,7 +150,9 @@ async def entrypoint(ctx: JobContext) -> None:
         metrics.log_metrics(ev.metrics)
         usage_collector.collect(ev.metrics)
 
-    async def log_usage() -> None:
+    # NOSONAR python:S7503 — add_shutdown_callback requires a coroutine function
+    # (LiveKit awaits it); the body itself has no awaitable work.
+    async def log_usage() -> None:  # NOSONAR python:S7503
         """Emit the session's aggregated STT/TTS/LLM usage at shutdown."""
         summary = usage_collector.get_summary()
         slog.info(
@@ -199,57 +163,128 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.add_shutdown_callback(log_usage)
 
+
+async def _apply_participant_credentials(
+    md: str | None,
+    origin: str,
+    who: str,
+    *,
+    custom_llm: CustomLLM,
+    tts: elevenlabs.TTS,
+    applied_voice: dict[str, str],
+    slog: "Logger",
+) -> None:
+    """Apply agent token, TTS voice, and conversation id from participant metadata."""
+    token, conv_id, voice_id = extract_meta_data(md)
+    if token:
+        custom_llm.set_agent_token(token)
+        slog.debug(
+            f"[{now_ts()}] 🔑 TOKEN SET | participant={who} origin={origin}",
+            phase="token_set",
+            participant=who,
+            origin=origin,
+        )
+    if voice_id and voice_id != applied_voice.get("id"):
+        # User-selected ElevenLabs voice (set in Settings → Voice), carried
+        # in the participant metadata minted by /token. Applies to all
+        # synthesis from the next utterance on.
+        applied_voice["id"] = voice_id
+        tts.update_options(voice_id=voice_id)
+        slog.info(
+            f"[{now_ts()}] 🗣 VOICE SET | voice_id={voice_id} participant={who}",
+            phase="voice_set",
+            voice_id=voice_id,
+            participant=who,
+        )
+    if conv_id:
+        await custom_llm.set_conversation_id(conv_id)
+        slog.debug(
+            f"[{now_ts()}] 💬 CONV ID SET | {conv_id} participant={who}",
+            phase="conv_id_set",
+            conversation_id=conv_id,
+            participant=who,
+        )
+
+
+def _spawn_credential_task(
+    coro: Coroutine[Any, Any, None],
+    tasks: set[asyncio.Task[None]],
+    slog: "Logger",
+) -> None:
+    """Run a credential coroutine in the background, kept alive in `tasks`."""
+    task: asyncio.Task[None] = asyncio.create_task(coro)
+    tasks.add(task)
+
+    def _done(t: asyncio.Task[None]) -> None:
+        tasks.discard(t)
+        if not t.cancelled() and t.exception():
+            slog.error(
+                "Background credential task failed",
+                exc_info=t.exception(),
+            )
+
+    task.add_done_callback(_done)
+
+
+async def entrypoint(ctx: JobContext) -> None:
+    """Initialize and run the voice agent session for a single room."""
+    settings = ctx.proc.userdata["settings"]
+    ctx.log_context_fields = {"room": ctx.room.name}
+
+    # Session-scoped logger: every event in this room carries the same
+    # high-cardinality identity fields, so one LogQL filter (room=... or
+    # user_id=...) reconstructs the full session timeline in Loki.
+    user_id = user_id_from_room(ctx.room.name)
+    slog = logger.bind(
+        room=ctx.room.name,
+        user_id=user_id,
+        job_id=getattr(ctx.job, "id", None),
+    )
+
+    room_start = time.monotonic()
+    slog.info(
+        f"[{now_ts()}] 🚀 ROOM START | room={ctx.room.name}",
+        phase="room_start",
+    )
+
+    custom_llm = CustomLLM(
+        base_url=settings.GAIA_BACKEND_URL,
+        room=ctx.room,
+        request_timeout_s=BACKEND_REQUEST_TIMEOUT_S,
+    )
+    custom_llm.user_id = user_id
+
+    tts = elevenlabs.TTS(
+        api_key=settings.ELEVENLABS_API_KEY,
+        voice_id=settings.ELEVENLABS_VOICE_ID,
+        model=settings.ELEVENLABS_TTS_MODEL,
+    )
+
+    session: AgentSession = AgentSession(
+        llm=custom_llm,
+        stt=deepgram.STT(model="nova-3", language="multi"),
+        tts=tts,
+        turn_detection=MultilingualModel(),
+        vad=ctx.proc.userdata["vad"],
+        min_endpointing_delay=MIN_ENDPOINTING_DELAY_S,
+        preemptive_generation=True,
+        use_tts_aligned_transcript=True,
+    )
+
+    _register_session_logging(ctx, session, slog)
+
     # Tracks the currently-applied TTS voice so repeated metadata events
     # (join + metadata_changed) don't re-apply the same voice.
     applied_voice: dict[str, str] = {}
-
-    async def _apply_participant_credentials(md: str | None, origin: str, who: str) -> None:
-        token, conv_id, voice_id = extract_meta_data(md)
-        if token:
-            custom_llm.set_agent_token(token)
-            slog.debug(
-                f"[{now_ts()}] 🔑 TOKEN SET | participant={who} origin={origin}",
-                phase="token_set",
-                participant=who,
-                origin=origin,
-            )
-        if voice_id and voice_id != applied_voice.get("id"):
-            # User-selected ElevenLabs voice (set in Settings → Voice), carried
-            # in the participant metadata minted by /token. Applies to all
-            # synthesis from the next utterance on.
-            applied_voice["id"] = voice_id
-            tts.update_options(voice_id=voice_id)
-            slog.info(
-                f"[{now_ts()}] 🗣 VOICE SET | voice_id={voice_id} participant={who}",
-                phase="voice_set",
-                voice_id=voice_id,
-                participant=who,
-            )
-        if conv_id:
-            await custom_llm.set_conversation_id(conv_id)
-            slog.debug(
-                f"[{now_ts()}] 💬 CONV ID SET | {conv_id} participant={who}",
-                phase="conv_id_set",
-                conversation_id=conv_id,
-                participant=who,
-            )
+    apply_credentials = partial(
+        _apply_participant_credentials,
+        custom_llm=custom_llm,
+        tts=tts,
+        applied_voice=applied_voice,
+        slog=slog,
+    )
 
     background_tasks: set[asyncio.Task[None]] = set()
-
-    def _make_background_task(coro: Any) -> asyncio.Task[None]:
-        task: asyncio.Task[None] = asyncio.create_task(coro)
-        background_tasks.add(task)
-
-        def _done(t: asyncio.Task[None]) -> None:
-            background_tasks.discard(t)
-            if not t.cancelled() and t.exception():
-                slog.error(
-                    "Background credential task failed",
-                    exc_info=t.exception(),
-                )
-
-        task.add_done_callback(_done)
-        return task
 
     @ctx.room.on("participant_connected")
     def _on_participant_connected(p: rtc.RemoteParticipant) -> None:
@@ -259,16 +294,18 @@ async def entrypoint(ctx: JobContext) -> None:
             phase="participant_joined",
             participant=p.identity,
         )
-        _make_background_task(
-            _apply_participant_credentials(
-                getattr(p, "metadata", None), "participant_connected", p.identity
-            )
+        _spawn_credential_task(
+            apply_credentials(getattr(p, "metadata", None), "participant_connected", p.identity),
+            background_tasks,
+            slog,
         )
 
     @ctx.room.on("participant_metadata_changed")
     def _on_participant_metadata_changed(p: rtc.Participant, _old_md: str, new_md: str) -> None:
-        _make_background_task(
-            _apply_participant_credentials(new_md, "participant_metadata_changed", p.identity)
+        _spawn_credential_task(
+            apply_credentials(new_md, "participant_metadata_changed", p.identity),
+            background_tasks,
+            slog,
         )
 
     # session.start() runs ctx.connect() CONCURRENTLY with its own setup
@@ -296,10 +333,10 @@ async def entrypoint(ctx: JobContext) -> None:
             phase="existing_participant",
             participant=p.identity,
         )
-        _make_background_task(
-            _apply_participant_credentials(
-                getattr(p, "metadata", None), "existing_participant", p.identity
-            )
+        _spawn_credential_task(
+            apply_credentials(getattr(p, "metadata", None), "existing_participant", p.identity),
+            background_tasks,
+            slog,
         )
 
     slog.info(

@@ -6,7 +6,6 @@ SSE_DATA_PREFIX = "data:"
 DONE_SENTINEL = "[DONE]"
 FRONTEND_STREAM_TOPIC = "backend-stream-event"
 RESPONSE_KEY = "response"
-RESPONSE_UI_KEY = "response_ui"
 MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
 # Backend sends this (voice-mode streams only) carrying a delegated executor's
 # narrated answer for the agent to SPEAK. The frontend renders the same answer
@@ -28,7 +27,8 @@ OPEN_TAG_DEFER_CAP = 4
 # natively on one host. The multiproc dir lets prometheus_client aggregate
 # metrics from LiveKit's forked job processes into the main worker's /metrics.
 PROMETHEUS_METRICS_PORT = 9102
-PROMETHEUS_MULTIPROC_DIR = "/tmp/voice-agent-prometheus"  # nosec B108 - metric shards, not sensitive
+# World-readable metric shards only — nothing sensitive lands in this directory.
+PROMETHEUS_MULTIPROC_DIR = "/tmp/voice-agent-prometheus"  # nosec B108  # NOSONAR python:S5443
 
 # Minimum silence (s) after the user stops speaking before their turn is declared
 # complete. Raised above LiveKit's 0.5s default so a brief mid-thought pause does
@@ -50,8 +50,10 @@ TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^>]*)?/?>")
 SENTINEL_RE = re.compile(r"NEW_MESSAGE_BREAK")
 MARKDOWN_RE = re.compile(r"[*_#`]")
 WHITESPACE_RE = re.compile(r"\s+")
-# Fenced OpenUI blocks: ":::openui ... :::" or unterminated tail at end of stream
-OPENUI_FENCE_RE = re.compile(r":::openui[\s\S]*?(?::::|\Z)")
+# Fenced OpenUI blocks: ":::openui ... :::" or unterminated tail at end of stream.
+# The lazy quantifier DOES expand (verified): "\Z" only matches at end-of-input,
+# so the alternation is position-anchored, not an always-empty match.
+OPENUI_FENCE_RE = re.compile(r":::openui[\s\S]*?(?::::|\Z)")  # NOSONAR python:S6019
 # Lingering ":::directive" prefixes after fence stripping (defence in depth)
 DIRECTIVE_PREFIX_RE = re.compile(r":::[a-zA-Z]+\b")
 # Open OpenUI fence at the tail of a buffer (used to defer TTS flush)
@@ -70,7 +72,6 @@ __all__ = [
     "DONE_SENTINEL",
     "FRONTEND_STREAM_TOPIC",
     "RESPONSE_KEY",
-    "RESPONSE_UI_KEY",
     "MAIN_RESPONSE_COMPLETE_KEY",
     "VOICE_TTS_KEY",
     "TTS_MIN_SENTENCE_CHARS",

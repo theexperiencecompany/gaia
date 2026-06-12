@@ -82,6 +82,9 @@ EXECUTOR_QUEUE_TTL = ONE_HOUR_TTL  # Tasks expire if not picked up within 1 hour
 # whatever tool events were collected. Matches the busy lock TTL — the executor
 # cannot outlive its lock, so waiting longer would be pointless.
 EXECUTOR_WAIT_TIMEOUT = THIRTY_MINUTES_TTL
+# ElevenLabs voice lists (account + shared library) cached for the voice picker.
+ELEVENLABS_VOICES_CACHE_KEY = "voice:elevenlabs_voices"
+ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
 # Upper bound a voice-mode stream waits for a delegated executor's narrated
 # answer before sending [DONE] anyway. Real action turns resolve in a few
 # seconds; on timeout the answer still reaches the user via the WebSocket push.

@@ -1,9 +1,10 @@
 """Voice mode endpoints — LiveKit session tokens and voice selection."""
 
 import json
+from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.exceptions import HTTPException
 from livekit import api
 
@@ -19,6 +20,7 @@ from app.schemas.voice_schemas import (
     UpdateVoiceRequest,
     VoiceListResponse,
     VoiceSelectionResponse,
+    VoiceTokenResponse,
 )
 from app.services.voice_service import (
     get_user_voice,
@@ -30,13 +32,21 @@ from shared.py.wide_events import log
 
 router = APIRouter()
 
+CurrentUser = Annotated[dict, Depends(get_current_user)]
 
-@router.get("/token")
+
+@router.get(
+    "/token",
+    responses={
+        401: {"description": "Invalid or missing user id"},
+        500: {"description": "Token generation failed"},
+    },
+)
 @tiered_rate_limit("voice_mode")
 async def get_token(
-    user: dict = Depends(get_current_user),
-    conversationId: str | None = None,
-):
+    user: CurrentUser,
+    conversation_id: Annotated[str | None, Query(alias="conversationId")] = None,
+) -> VoiceTokenResponse:
     """Mint a LiveKit room token (and agent credentials) for a voice session."""
     user_id = user.get("user_id")
     user_email: str = user.get("email", "")
@@ -45,7 +55,7 @@ async def get_token(
     log.set(
         user={"id": user_id},
         operation="get_voice_token",
-        has_conversation_id=bool(conversationId),
+        has_conversation_id=bool(conversation_id),
     )
 
     room_name = f"voice_session_{user_id}_{uuid.uuid4().hex}"
@@ -59,8 +69,8 @@ async def get_token(
         "agentToken": agent_jwt,
         "roomName": room_name,
     }
-    if conversationId:
-        metadata["conversationId"] = conversationId
+    if conversation_id:
+        metadata["conversationId"] = conversation_id
     # The agent reads the user's chosen voice from participant metadata —
     # no extra backend round trip from the worker.
     selected_voice = await get_user_voice(user_id)
@@ -87,18 +97,18 @@ async def get_token(
         raise HTTPException(status_code=500, detail=f"Failed to generate voice token: {e!s}")
 
     log.set(outcome="success")
-    return {
-        "serverUrl": settings.LIVEKIT_URL,
-        "roomName": room_name,
-        "participantToken": at.to_jwt(),
-        "participantIdentity": identity,
-        "participantName": display_name,
-        "conversation_id": conversationId,
-    }
+    return VoiceTokenResponse(
+        serverUrl=settings.LIVEKIT_URL,
+        roomName=room_name,
+        participantToken=at.to_jwt(),
+        participantIdentity=identity,
+        participantName=display_name,
+        conversation_id=conversation_id,
+    )
 
 
-@router.get("/voice/voices", response_model=VoiceListResponse)
-async def get_voices(user: dict = Depends(get_current_user)) -> VoiceListResponse:
+@router.get("/voice/voices")
+async def get_voices(user: CurrentUser) -> VoiceListResponse:
     """List the curated voice catalog with the user's current selection."""
     log.set(user={"id": user["user_id"]}, operation="list_voices")
     result = await list_voices(user["user_id"])
@@ -106,22 +116,24 @@ async def get_voices(user: dict = Depends(get_current_user)) -> VoiceListRespons
     return result
 
 
-@router.put("/voice/voices/selected", response_model=VoiceSelectionResponse)
+@router.put("/voice/voices/selected")
 async def select_voice(
     payload: UpdateVoiceRequest,
-    user: dict = Depends(get_current_user),
+    user: CurrentUser,
 ) -> VoiceSelectionResponse:
     """Set the user's voice for future voice-mode sessions."""
     log.set(user={"id": user["user_id"]}, operation="select_voice", voice_id=payload.voice_id)
     selected = await set_user_voice(user["user_id"], payload.voice_id)
+    # May differ from the requested id when a library voice was added to the account.
+    log.set(selected_voice_id=selected)
     return VoiceSelectionResponse(selected_voice_id=selected)
 
 
-@router.put("/voice/voices/{voice_id}/star", response_model=StarredVoicesResponse)
+@router.put("/voice/voices/{voice_id}/star")
 async def star_voice(
     voice_id: str,
     payload: StarVoiceRequest,
-    user: dict = Depends(get_current_user),
+    user: CurrentUser,
 ) -> StarredVoicesResponse:
     """Star or unstar a voice; starred voices sort to the top of the picker."""
     log.set(

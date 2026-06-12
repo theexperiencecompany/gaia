@@ -34,13 +34,14 @@ const ONE_MINUTE_IN_MILLISECONDS = 60 * 1000;
  */
 const CONNECTION_DETAILS_STALE_TIME_MS = 2 * 60 * 1000;
 
+/** Response of GET /token — mirrors the backend's VoiceTokenResponse schema. */
 export type ConnectionDetails = {
   serverUrl: string;
   roomName: string;
   participantToken: string;
   participantIdentity: string;
   participantName: string;
-  agentToken: string;
+  conversation_id: string | null;
 };
 
 const fetchDetails = async (

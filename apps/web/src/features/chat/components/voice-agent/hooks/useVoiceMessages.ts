@@ -419,7 +419,7 @@ export function useVoiceMessages(
 
       await room.localParticipant.sendText(trimmed, { topic: LK_CHAT_TOPIC });
     },
-    [room, addOrUpdateMessage, nextCreatedAt, closeUserGroup],
+    [room, addOrUpdateMessage, nextCreatedAt, closeUserGroup, closeBotTurn],
   );
 
   // Thinking-indicator lifecycle. Armed once per turn: show it when the user's

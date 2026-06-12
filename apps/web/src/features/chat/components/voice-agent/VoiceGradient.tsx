@@ -77,9 +77,6 @@ float vnoise(vec2 p) {
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 float fbm(vec2 p) {
-  /* 3 octaves is enough for the visual texture we need — 4 octaves was
-     ~33% more fragment work for sub-pixel detail nobody sees through
-     the heavy gaussian/blur passes. */
   float v = 0.0;
   float a = 0.5;
   for (int i = 0; i < 4; i++) {
@@ -258,9 +255,7 @@ void main() {
     color += col * mask * 0.6 * smoothstep(0.04, 0.30, h);
   }
 
-  /* Foreground — sharper, brightest body. ampMul (declared above) scales
-     user-mode wave height down ~15% so the brighter white palette doesn't
-     read as visually taller than GAIA's blue. */
+  /* Foreground — sharper, brightest body. */
   /* Cached centre-x wave height — reused by body fill, radial glow,
      chromatic tip and bloom passes to avoid 3+ redundant fragment ops
      per pixel. */
@@ -494,7 +489,7 @@ export function VoiceGradient({
   mode,
   spectrum,
   paused = false,
-}: VoiceGradientProps) {
+}: Readonly<VoiceGradientProps>) {
   const modeRef = useRef<VoiceMode>(mode);
   const fadeRef = useRef(mode === "gaia" ? 1 : 0);
   // Spectrum is mutated in place by useVoiceSpectrum, so its identity is
@@ -588,10 +583,9 @@ function initGL(
   // log permanent failure clearly so dev users see what went wrong rather
   // than staring at a blank canvas.
   let waveProgram = buildProgram(gl, FRAG, "wave program");
-  if (!waveProgram) waveProgram = buildProgram(gl, FRAG, "wave program retry");
+  waveProgram ??= buildProgram(gl, FRAG, "wave program retry");
   let blitProgram = buildProgram(gl, BLIT_FRAG, "blit program");
-  if (!blitProgram)
-    blitProgram = buildProgram(gl, BLIT_FRAG, "blit program retry");
+  blitProgram ??= buildProgram(gl, BLIT_FRAG, "blit program retry");
   if (!waveProgram || !blitProgram) {
     console.error(
       "[VoiceGradient] permanent shader/program failure — gradient will not render",

@@ -21,7 +21,7 @@ export default function RightSide({
   handleFormSubmit,
   searchbarText,
   selectedTool,
-  setvoiceModeActive: _setvoiceModeActive,
+  setvoiceModeActive,
   onVoiceModeHover,
 }: RightSideProps) {
   const { stopStream } = useLoading();
@@ -110,7 +110,7 @@ export default function RightSide({
           radius="full"
           type="button"
           onMouseEnter={onVoiceModeHover}
-          onPress={() => _setvoiceModeActive()}
+          onPress={() => setvoiceModeActive()}
         >
           <AudioWave01Icon className="text-zinc-400" />
         </Button>

@@ -18,11 +18,11 @@ def main() -> None:
     command = sys.argv[1]
 
     if command == "start":
-        from src.worker import start_worker
+        from src.agent import start_worker
 
         start_worker()
     elif command == "download-files":
-        from src.worker import download_files
+        from src.agent import download_files
 
         download_files()
     else:

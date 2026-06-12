@@ -52,7 +52,11 @@ def register_executor_capture(stream_id: str, voice_mode: bool = False) -> async
     return done_event
 
 
-async def await_executor_done(stream_id: str, timeout: float = EXECUTOR_WAIT_TIMEOUT) -> None:
+# NOSONAR python:S7483 — the timeout cannot move to callers: this function owns the
+# graceful catch-and-drain semantics (log + return so collected events still flush).
+async def await_executor_done(
+    stream_id: str, timeout: float = EXECUTOR_WAIT_TIMEOUT
+) -> None:  # NOSONAR python:S7483
     """Block until the background executor for this stream signals completion.
 
     No-op when no executor was spawned for the stream. On timeout, logs and
