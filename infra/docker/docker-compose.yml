@@ -297,6 +297,10 @@ services:
         "8200",
       ]
     restart: always
+    # Footprint is ~1.85GB (mxbai + jina) and flat under load; 2.5g is a runaway
+    # ceiling with headroom. Capping below ~2G would OOM-kill it (the model can't
+    # load in less). In prod swarm this is deploy.resources.limits instead.
+    mem_limit: 2560m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8200/health'); sys.exit(0)"]
       interval: 30s

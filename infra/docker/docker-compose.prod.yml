@@ -55,6 +55,8 @@ services:
       LOG_COLORIZE: "false"
       ENV: production
       INFISICAL_ENV: prod
+      # Use the shared embedding sidecar instead of loading models in-process.
+      MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -130,6 +132,9 @@ services:
       ARQ_METRICS_PORT: "9100"
       ENV: production
       INFISICAL_ENV: prod
+      # Use the shared embedding sidecar — the worker's 2G limit can't hold the
+      # ~1.85GB models in-process, so it must offload embed/rerank to the sidecar.
+      MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -163,6 +168,63 @@ services:
         max_attempts: 3
       resources:
         limits:
+          memory: 2G
+
+  # ---------------------------------------------------------------------------
+  # Embedding + reranking sidecar
+  # ---------------------------------------------------------------------------
+  # Loads the fastembed models (mxbai embedder + jina reranker, ~1.85GB) ONCE
+  # so gaia-backend and arq_worker share a single copy over HTTP instead of each
+  # loading their own. Without this, the worker alone (2G limit) would OOM just
+  # loading the models. Memory limit is 2.5G: the footprint is ~1.85GB and stays
+  # flat under batched load (measured +24MB for a 25-text batch), so 2.5G is a
+  # runaway ceiling with real headroom — capping below 2G would OOM-kill it
+  # since the model can't even load in under ~1.85GB.
+  embedding-sidecar:
+    image: ghcr.io/theexperiencecompany/gaia:latest
+    working_dir: /app/apps/api
+    command: python -m uvicorn app.services.embedding_sidecar.server:app --host 0.0.0.0 --port 8200 --workers 1
+    environment:
+      WORKER_TYPE: embedding_sidecar
+      PYTHONPATH: /app/apps/api
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+      INFISICAL_ENV: prod
+      # MEMORY_EMBEDDING_SIDECAR_URL MUST stay unset here so the sidecar serves
+      # from its own local models rather than calling itself.
+    secrets:
+      - gaia_infisical_token
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - embedding-sidecar
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8200/health'); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      # Generous: first boot downloads + loads ~1.85GB of model weights.
+      start_period: 240s
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+        monitor: 45s
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 2560M
+        reservations:
           memory: 2G
 
   # ---------------------------------------------------------------------------
