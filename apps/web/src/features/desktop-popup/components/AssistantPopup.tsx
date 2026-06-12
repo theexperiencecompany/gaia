@@ -6,8 +6,8 @@ import { useEffect, useState } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useElectron } from "@/hooks/useElectron";
 import { useChatStore, useChatStoreSync } from "@/stores/chatStore";
-import { useLoadingStore } from "@/stores/loadingStore";
 import { POPUP_EASE, POPUP_TRANSITION_SECONDS } from "../constants";
+import { usePopupEscapeDismiss } from "../hooks/usePopupEscapeDismiss";
 import { usePopupVoice } from "../hooks/usePopupVoice";
 import { usePopupChatPublisher } from "../sync";
 import PopupComposer from "./PopupComposer";
@@ -20,7 +20,7 @@ import PopupComposer from "./PopupComposer";
  * mounted so the close is one seamless fade.
  */
 export default function AssistantPopup() {
-  const { dismissPopup, onPopupActivate, onPopupDeactivate } = useElectron();
+  const { onPopupActivate, onPopupDeactivate } = useElectron();
   const { agentState, activate, deactivate } = usePopupVoice();
   // 0 = never activated; each activation bumps the key to replay the
   // entrance animation on an already-mounted panel.
@@ -31,6 +31,7 @@ export default function AssistantPopup() {
 
   useChatStoreSync();
   usePopupChatPublisher();
+  usePopupEscapeDismiss();
 
   // Outside Electron (browser dev), show the panel immediately.
   useEffect(() => {
@@ -62,19 +63,6 @@ export default function AssistantPopup() {
       offDeactivate();
     };
   }, [onPopupActivate, onPopupDeactivate, activate, deactivate, queryClient]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // Never dismiss mid-turn — a streaming response would be lost
-      // off-screen and the conversation state would look broken.
-      const { isLoading, isMainResponseStreaming } = useLoadingStore.getState();
-      if (isLoading || isMainResponseStreaming) return;
-      dismissPopup();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dismissPopup]);
 
   if (activationCount === 0) return null;
 

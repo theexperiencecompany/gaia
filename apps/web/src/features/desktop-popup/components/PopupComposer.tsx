@@ -8,6 +8,7 @@ import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useElectron } from "@/hooks/useElectron";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { useIsMainResponseStreaming } from "@/stores/loadingStore";
+import { usePopupDismissGuard } from "../hooks/usePopupEscapeDismiss";
 import type { PopupAgentState } from "../hooks/usePopupVoice";
 import PopupOrb from "./PopupOrb";
 
@@ -35,6 +36,7 @@ export default function PopupComposer({
   const sendMessage = useSendMessage();
   const isStreaming = useIsMainResponseStreaming();
   const { dismissPopup } = useElectron();
+  const dismissIfIdle = usePopupDismissGuard();
   const { convoMessages } = useConversation();
   const messageCount = convoMessages?.length ?? 0;
   const hasContent = text.trim().length > 0 && !disabled;
@@ -62,9 +64,9 @@ export default function PopupComposer({
       handleSend();
     }
     // The field swallows Escape (react-aria clear behavior) before the
-    // window-level handler sees it — dismiss from here too.
-    if (event.key === "Escape" && !isStreaming) {
-      dismissPopup();
+    // window-level handler sees it — apply the same idle-guarded dismiss here.
+    if (event.key === "Escape") {
+      dismissIfIdle();
     }
   };
 

@@ -14,6 +14,7 @@ import type {
   DesktopToolRequest,
 } from "@gaia/shared/desktop-tools";
 import { app, ipcMain, shell } from "electron";
+import { IPC } from "../ipc-channels";
 import { listAppIcons, setAppIcon } from "./app-icon";
 import { updatePopupShortcut } from "./popup-shortcut";
 import { getDesktopSettings } from "./settings";
@@ -47,10 +48,10 @@ import { getMainWindow } from "./windows/main";
  * @param onWindowReady - Callback invoked when the renderer sends `window-ready`.
  */
 export function registerIpcHandlers(onWindowReady: () => void): void {
-  ipcMain.handle("get-platform", () => process.platform);
-  ipcMain.handle("get-version", () => app.getVersion());
+  ipcMain.handle(IPC.getPlatform, () => process.platform);
+  ipcMain.handle(IPC.getVersion, () => app.getVersion());
 
-  ipcMain.on("window-ready", (event) => {
+  ipcMain.on(IPC.windowReady, (event) => {
     // Secondary windows (assistant popup, wake listener) load app routes
     // too — only the main window's renderer may drive the splash swap.
     const main = getMainWindow();
@@ -60,42 +61,42 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
     onWindowReady();
   });
 
-  ipcMain.on("open-external", (_event, url: string) => {
+  ipcMain.on(IPC.openExternal, (_event, url: string) => {
     console.log("[Main] Opening external URL:", url);
     if (url.startsWith("https://") || url.startsWith("http://")) {
       shell.openExternal(url);
     }
   });
 
-  ipcMain.on("wake-word-detected", () => {
+  ipcMain.on(IPC.wakeWordDetected, () => {
     console.log("[Main] Wake word detected");
     showAssistantPopup("wake-word");
   });
 
-  ipcMain.on("popup-dismiss", () => {
+  ipcMain.on(IPC.popupDismiss, () => {
     dismissAssistantPopup();
   });
 
-  ipcMain.on("popup-resize", (_event, height: number) => {
+  ipcMain.on(IPC.popupResize, (_event, height: number) => {
     if (typeof height === "number" && Number.isFinite(height)) {
       resizeAssistantPopup(height);
     }
   });
 
   ipcMain.handle(
-    "desktop-tool:execute",
+    IPC.desktopToolExecute,
     (_event, request: DesktopToolRequest) => dispatchDesktopTool(request),
   );
 
-  ipcMain.handle("desktop-tool:permissions", () => getPermissionStatus());
+  ipcMain.handle(IPC.desktopToolPermissions, () => getPermissionStatus());
 
   ipcMain.handle(
-    "desktop-tool:request-permission",
+    IPC.desktopToolRequestPermission,
     (_event, pane: DesktopPermissionPane) => requestPermission(pane),
   );
 
   ipcMain.on(
-    "desktop-tool:open-permission-settings",
+    IPC.desktopToolOpenPermissionSettings,
     (_event, pane: DesktopPermissionPane) => {
       openPermissionSettings(pane);
     },
@@ -103,13 +104,13 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
 
   // Screen Recording grants only apply after relaunch — TCC keeps the
   // running process's old verdict, so the settings page offers a restart.
-  ipcMain.on("desktop-app:relaunch", () => {
+  ipcMain.on(IPC.desktopAppRelaunch, () => {
     app.relaunch();
     app.exit(0);
   });
 
   ipcMain.handle(
-    "desktop-settings:get",
+    IPC.desktopSettingsGet,
     (): DesktopSettingsSnapshot => ({
       settings: getDesktopSettings(),
       icons: listAppIcons(),
@@ -117,11 +118,11 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
   );
 
   ipcMain.handle(
-    "desktop-settings:set-shortcut",
+    IPC.desktopSettingsSetShortcut,
     (_event, accelerator: string) => updatePopupShortcut(String(accelerator)),
   );
 
-  ipcMain.handle("desktop-settings:set-icon", (_event, id: string) =>
+  ipcMain.handle(IPC.desktopSettingsSetIcon, (_event, id: string) =>
     setAppIcon(String(id)),
   );
 }

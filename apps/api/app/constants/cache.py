@@ -79,7 +79,12 @@ PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
 # rejects late POSTs whose key is gone.
 DESKTOP_REQUEST_PREFIX = "desktop:request:"
 DESKTOP_RESULT_CHANNEL_PREFIX = "desktop:result:"
-DESKTOP_REQUEST_TTL = 2 * 60
+# The ownership key's TTL is derived per-call from the awaiting tool's timeout
+# plus this grace, so the key always outlives the wait (a fixed TTL could be
+# outrun by a longer custom timeout, expiring mid-wait and dropping a valid
+# late result). The tool deletes the key as soon as it resolves, so this TTL
+# only bounds the orphaned-on-crash case.
+DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 EXECUTOR_QUEUE_PREFIX = "executor:queue:"

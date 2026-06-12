@@ -21,5 +21,3 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
-native/liquid-glass/build/
-build/

@@ -1,10 +1,11 @@
 /**
  * Screen capture for the desktop tool bridge.
  *
- * Captures the primary display at native resolution, then produces two
- * encodings: a PNG sized for model vision (long edge capped so providers
- * don't re-downscale unpredictably) and a small JPEG thumbnail for the
- * chat UI card.
+ * Captures the display the user is currently on (the one under the
+ * cursor — not always the primary) at native resolution, then produces
+ * two encodings: a PNG sized for model vision (long edge capped so
+ * providers don't re-downscale unpredictably) and a small JPEG thumbnail
+ * for the chat UI card.
  *
  * @module tools/screenshot
  */
@@ -29,10 +30,12 @@ export async function captureScreenshot(): Promise<DesktopScreenshotData> {
     throw new Error(SCREEN_PERMISSION_ERROR);
   }
 
-  const primary = screen.getPrimaryDisplay();
+  // The display under the cursor is where the user is actually working —
+  // on a multi-monitor setup the primary display is often the wrong screen.
+  const target = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const physicalSize = {
-    width: Math.round(primary.size.width * primary.scaleFactor),
-    height: Math.round(primary.size.height * primary.scaleFactor),
+    width: Math.round(target.size.width * target.scaleFactor),
+    height: Math.round(target.size.height * target.scaleFactor),
   };
 
   const sources = await desktopCapturer.getSources({
@@ -40,7 +43,7 @@ export async function captureScreenshot(): Promise<DesktopScreenshotData> {
     thumbnailSize: physicalSize,
   });
   const source =
-    sources.find((s) => s.display_id === String(primary.id)) ?? sources[0];
+    sources.find((s) => s.display_id === String(target.id)) ?? sources[0];
   if (!source || source.thumbnail.isEmpty()) {
     throw new Error("Screen capture returned no image");
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { type AuthCallbackData, hasElectronAPI } from "@/lib/electron/api";
+import { hasElectronAPI } from "@/lib/electron/api";
 
 /**
  * Hook to check if the app is running inside Electron
@@ -66,20 +66,6 @@ export function useElectron() {
       window.api.openExternal(url);
     }
   }, []);
-
-  /**
-   * Register a callback for auth deep link events
-   * Returns a cleanup function to remove the listener
-   */
-  const onAuthCallback = useCallback(
-    (callback: (data: AuthCallbackData) => void): (() => void) => {
-      if (typeof window !== "undefined" && hasElectronAPI(window)) {
-        return window.api.onAuthCallback(callback);
-      }
-      return () => {}; // No-op cleanup if not in Electron
-    },
-    [],
-  );
 
   /**
    * Register a callback for auth-redirecting events
@@ -161,7 +147,6 @@ export function useElectron() {
     getPlatform,
     getVersion,
     openExternal,
-    onAuthCallback,
     onAuthRedirecting,
     notifyWakeWord,
     dismissPopup,

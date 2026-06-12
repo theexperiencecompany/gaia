@@ -13,11 +13,6 @@ import type {
   DesktopToolResult,
 } from "@shared/desktop-tools";
 
-/** Auth callback data from the gaia:// deep link. */
-export interface AuthCallbackData {
-  token: string;
-}
-
 /** The API surface exposed by the desktop app's preload script. */
 export interface ElectronAPI {
   getPlatform: () => Promise<NodeJS.Platform>;
@@ -25,7 +20,6 @@ export interface ElectronAPI {
   isElectron: boolean;
   signalReady: () => void;
   openExternal: (url: string) => void;
-  onAuthCallback: (callback: (data: AuthCallbackData) => void) => () => void;
   onAuthRedirecting: (callback: () => void) => () => void;
   notifyWakeWord: () => void;
   dismissPopup: () => void;

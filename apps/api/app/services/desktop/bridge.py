@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from app.constants.cache import (
     DESKTOP_REQUEST_PREFIX,
-    DESKTOP_REQUEST_TTL,
+    DESKTOP_REQUEST_TTL_GRACE_SECONDS,
     DESKTOP_RESULT_CHANNEL_PREFIX,
 )
 from app.core.stream_manager import stream_manager
@@ -32,6 +32,14 @@ ERROR_TIMEOUT = (
     "Ask the user to make sure the GAIA desktop app is open."
 )
 ERROR_REDIS_UNAVAILABLE = "Desktop bridge unavailable (no Redis connection)."
+
+
+class DesktopRequestNotFound(Exception):
+    """The pending request key is gone — expired or already resolved."""
+
+
+class DesktopRequestForbidden(Exception):
+    """A result was POSTed by a user who does not own the pending request."""
 
 
 @dataclass
@@ -75,7 +83,9 @@ async def request_desktop_action(
     await redis_cache.set(
         request_key,
         {"user_id": user_id, "stream_id": stream_id, "tool": tool},
-        ttl=DESKTOP_REQUEST_TTL,
+        # Derive the TTL from this call's timeout so the key always outlives
+        # the wait (see DESKTOP_REQUEST_TTL_GRACE_SECONDS).
+        ttl=int(timeout) + DESKTOP_REQUEST_TTL_GRACE_SECONDS,
     )
 
     pubsub = redis_cache.redis.pubsub()
@@ -152,3 +162,29 @@ async def publish_desktop_result(
         f"{DESKTOP_RESULT_CHANNEL_PREFIX}{request_id}",
         json.dumps({"ok": ok, "data": data, "error": error}),
     )
+
+
+async def relay_desktop_result(
+    *,
+    request_id: str,
+    user_id: str,
+    ok: bool,
+    data: dict[str, Any] | None,
+    error: str | None,
+) -> None:
+    """Validate ownership of a pending desktop request and relay its result.
+
+    Deletes the request key (so late/duplicate deliveries cannot double-resolve)
+    before publishing. Raises :class:`DesktopRequestNotFound` if the request
+    expired or was already resolved, or :class:`DesktopRequestForbidden` if the
+    POSTing user does not own it.
+    """
+    request_key = f"{DESKTOP_REQUEST_PREFIX}{request_id}"
+    pending = await redis_cache.get(request_key)
+    if not pending:
+        raise DesktopRequestNotFound()
+    if pending.get("user_id") != user_id:
+        raise DesktopRequestForbidden()
+
+    await redis_cache.delete(request_key)
+    await publish_desktop_result(request_id, ok=ok, data=data, error=error)

@@ -74,6 +74,10 @@ let serverStarted = false;
 /** Whether the hidden background surfaces have been created. */
 let backgroundSurfacesCreated = false;
 
+/** Grace period before the splash is force-swapped if the renderer never
+ * signals ready (covers server start + page load + hydration). */
+const FALLBACK_SHOW_TIMEOUT_MS = 10_000;
+
 /**
  * Create the hidden background surfaces (assistant popup + wake-word
  * listener). Deferred until the main window is on screen: each is a
@@ -83,10 +87,17 @@ let backgroundSurfacesCreated = false;
  */
 function createBackgroundSurfaces(): void {
   if (backgroundSurfacesCreated) return;
-  backgroundSurfacesCreated = true;
 
-  createAssistantPopup(() => serverStarted);
-  createWakeListenerWindow(() => serverStarted).catch(console.error);
+  try {
+    createAssistantPopup(() => serverStarted);
+    createWakeListenerWindow(() => serverStarted).catch(console.error);
+    // Mark created only after construction succeeds — otherwise a synchronous
+    // failure would latch the flag and leave the popup permanently absent,
+    // turning the global shortcut into a silent no-op for the whole session.
+    backgroundSurfacesCreated = true;
+  } catch (err) {
+    console.error("[Main] Failed to create background surfaces:", err);
+  }
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -182,7 +193,7 @@ if (!gotTheLock) {
         if (pendingUrl) handleDeepLink(pendingUrl, getMainWindow());
       }
       createBackgroundSurfaces();
-    }, 10000);
+    }, FALLBACK_SHOW_TIMEOUT_MS);
 
     // macOS: Dock icon clicked. The hidden background surfaces (popup,
     // wake listener) always exist, so "no windows left" never happens —

@@ -112,8 +112,15 @@ export function usePopupChatConsumer(): void {
         );
       }
       chat.setOptimisticMessage(data.optimisticMessage);
-      loading.setIsLoading(data.isLoading);
-      loading.setMainResponseStreaming(data.isMainResponseStreaming);
+      // Only on change: setIsLoading(true) re-randomizes loadingText and
+      // bumps the animation key, so calling it on every throttled snapshot
+      // (~20×/sec while streaming) would remount and flicker the indicator.
+      if (data.isLoading !== loading.isLoading) {
+        loading.setIsLoading(data.isLoading);
+      }
+      if (data.isMainResponseStreaming !== loading.isMainResponseStreaming) {
+        loading.setMainResponseStreaming(data.isMainResponseStreaming);
+      }
       // Mirror the loading text + tool icon context so the feed shows the
       // same tool-specific indicator as the web app. Only on change —
       // setLoadingText bumps the animation key on every call.

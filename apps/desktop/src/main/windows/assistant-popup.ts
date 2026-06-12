@@ -15,6 +15,7 @@
 
 import { join } from "node:path";
 import { app, BrowserWindow, screen } from "electron";
+import { IPC } from "../../ipc-channels";
 import { applyLiquidGlass, supportsLiquidGlass } from "./glass";
 import { loadAppRoute } from "./load-url";
 
@@ -47,6 +48,10 @@ const FADE_TICK_MS = 16;
 
 /** Feed content below this height is treated as "empty" and hidden. */
 const FEED_MIN_CONTENT_PX = 40;
+
+/** Feed window's placeholder height at construction — immediately replaced
+ * by {@link layoutFeed} once the renderer reports its real content height. */
+const FEED_INITIAL_HEIGHT = 200;
 
 /** The composer pill window. */
 let composerWindow: BrowserWindow | null = null;
@@ -227,7 +232,9 @@ export function createAssistantPopup(serverReady: () => boolean): void {
   composerWindow = new BrowserWindow(
     islandOptions(COMPOSER_HEIGHT, useLiquidGlass, true),
   );
-  feedWindow = new BrowserWindow(islandOptions(200, useLiquidGlass, true));
+  feedWindow = new BrowserWindow(
+    islandOptions(FEED_INITIAL_HEIGHT, useLiquidGlass, true),
+  );
 
   // No blur-dismiss: the popup stays until Esc, the X button, the
   // shortcut toggle, or a renderer-initiated dismissal.
@@ -394,7 +401,7 @@ export function showAssistantPopup(trigger: PopupTrigger = "shortcut"): void {
   app.focus({ steal: true });
   composerWindow.focus();
   fadeTo(composerWindow, 1);
-  composerWindow.webContents.send("popup-activate", { trigger });
+  composerWindow.webContents.send(IPC.popupActivate, { trigger });
 
   layoutFeed(false);
   console.log("[Main] Assistant popup shown");
@@ -411,7 +418,7 @@ export function dismissAssistantPopup(): void {
   dismissing = true;
   popupShown = false;
 
-  composerWindow.webContents.send("popup-deactivate");
+  composerWindow.webContents.send(IPC.popupDeactivate);
 
   if (feedWindow && !feedWindow.isDestroyed() && feedWindow.isVisible()) {
     fadeTo(feedWindow, 0, () => {

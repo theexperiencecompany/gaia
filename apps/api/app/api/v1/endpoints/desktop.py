@@ -10,10 +10,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.constants.cache import DESKTOP_REQUEST_PREFIX
-from app.db.redis import redis_cache
 from app.schemas.desktop_schemas import DesktopToolResultRequest, DesktopToolResultResponse
-from app.services.desktop.bridge import publish_desktop_result
+from app.services.desktop.bridge import (
+    DesktopRequestForbidden,
+    DesktopRequestNotFound,
+    relay_desktop_result,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -34,26 +36,25 @@ async def desktop_tool_result(
         desktop_tool={"request_id": payload.request_id, "ok": payload.ok},
     )
 
-    request_key = f"{DESKTOP_REQUEST_PREFIX}{payload.request_id}"
-    pending = await redis_cache.get(request_key)
-    if not pending:
+    try:
+        await relay_desktop_result(
+            request_id=payload.request_id,
+            user_id=user_id,
+            ok=payload.ok,
+            data=payload.data,
+            error=payload.error,
+        )
+    except DesktopRequestNotFound as exc:
         # Expired or already answered — reject so late/duplicate deliveries
         # can't double-resolve a request.
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail="Desktop tool request expired or already resolved",
-        )
-    if pending.get("user_id") != user_id:
+        ) from exc
+    except DesktopRequestForbidden as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Desktop tool request belongs to another user",
-        )
+        ) from exc
 
-    await redis_cache.delete(request_key)
-    await publish_desktop_result(
-        payload.request_id,
-        ok=payload.ok,
-        data=payload.data,
-        error=payload.error,
-    )
     return DesktopToolResultResponse(success=True)

@@ -1,9 +1,9 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import type { KbdKey } from "@heroui/kbd";
 import { Kbd } from "@heroui/kbd";
 import { useCallback, useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
 
 interface ShortcutRecorderProps {
   /** Electron accelerator string, e.g. "CommandOrControl+Shift+G". */
@@ -170,16 +170,13 @@ export function ShortcutRecorder({ value, onRecord }: ShortcutRecorderProps) {
   }, [recording, onRecord, stopRecording]);
 
   return (
-    <button
-      type="button"
-      onClick={() => (recording ? stopRecording() : setRecording(true))}
+    <Button
+      variant="flat"
+      color={recording ? "primary" : "default"}
+      radius="lg"
+      onPress={() => (recording ? stopRecording() : setRecording(true))}
       onBlur={stopRecording}
-      className={cn(
-        "flex h-9 min-w-36 items-center justify-center rounded-xl px-3 transition-colors",
-        recording
-          ? "bg-primary/15 text-primary"
-          : "bg-zinc-800 hover:bg-zinc-700/80",
-      )}
+      className="h-9 min-w-36 px-3"
     >
       {recording ? (
         heldPreview ? (
@@ -192,6 +189,6 @@ export function ShortcutRecorder({ value, onRecord }: ShortcutRecorderProps) {
       ) : (
         <ShortcutKbd accelerator={value} />
       )}
-    </button>
+    </Button>
   );
 }

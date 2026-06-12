@@ -12,8 +12,13 @@
  */
 
 import { type BrowserWindow, session } from "electron";
+import { IPC } from "../ipc-channels";
 import { getApiOrigin, isApiOriginSecure } from "./api-origin";
 import { getServerUrl } from "./server";
+
+/** Pause after storing the session cookie so the renderer's redirect
+ * spinner paints before the main window navigates away. */
+const AUTH_SPINNER_DELAY_MS = 1200;
 
 /**
  * Handle an incoming `gaia://` deep-link URL.
@@ -71,10 +76,12 @@ export async function handleDeepLink(
         });
 
         // Notify the renderer so it can show a redirecting spinner
-        mainWindow.webContents.send("auth-redirecting");
+        mainWindow.webContents.send(IPC.authRedirecting);
 
         // Brief pause to let the spinner render before navigating away
-        await new Promise((resolve) => setTimeout(resolve, 1200));
+        await new Promise((resolve) =>
+          setTimeout(resolve, AUTH_SPINNER_DELAY_MS),
+        );
 
         const serverUrl = getServerUrl();
         if (!mainWindow.isDestroyed()) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import type { DesktopAppIconOption } from "@shared/desktop-tools";
 import { cn } from "@/lib/utils";
 
@@ -20,16 +21,19 @@ export function AppIconPicker({
       {icons.map((icon) => {
         const isSelected = icon.id === selectedId;
         return (
-          <button
+          <Button
             key={icon.id}
-            type="button"
+            isIconOnly
+            variant="light"
+            disableRipple
             aria-label={`${icon.label} app icon`}
             aria-pressed={isSelected}
-            onClick={() => onSelect(icon.id)}
+            onPress={() => onSelect(icon.id)}
             className={cn(
               // 22% radius ≈ the macOS app-icon squircle, so flat square
-              // sources match the default (pre-rounded) GAIA icon.
-              "aspect-square overflow-hidden rounded-[24%] p-1 transition-all",
+              // sources match the default (pre-rounded) GAIA icon. Override
+              // HeroUI's fixed icon-button size to fill the grid cell.
+              "h-auto w-full min-w-0 aspect-square overflow-hidden rounded-[24%] p-1 transition-all",
               isSelected
                 ? "ring-2 ring-primary"
                 : "ring-2 ring-transparent hover:scale-105",
@@ -42,7 +46,7 @@ export function AppIconPicker({
               alt={`${icon.label} app icon`}
               className="aspect-square h-full w-full rounded-[22%] object-cover"
             />
-          </button>
+          </Button>
         );
       })}
     </div>

@@ -84,28 +84,38 @@ def _emit_tool_data(tool_name: str, data: dict[str, Any]) -> None:
     )
 
 
-async def _describe_screenshot(image_b64: str, query: str) -> str:
+async def _describe_screenshot(image_b64: str, query: str) -> str | None:
     """Run a one-off vision call so any provider can 'see' the screen.
 
     Image blocks inside tool results are not portable across providers
     (OpenAI rejects them), so the screenshot is described here in a regular
     user-role message and the description is returned to the agent.
+
+    All default providers (Gemini, GPT-4o-mini, Grok) are multimodal, so the
+    plain ``init_llm()`` selection is vision-capable. Should the resolved model
+    still reject the image (text-only deployment, transient provider error),
+    return ``None`` so the caller can degrade gracefully instead of failing the
+    whole tool.
     """
     llm = init_llm()
-    response = await llm.ainvoke(
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": _SCREENSHOT_VISION_PROMPT.format(query=query)},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{image_b64}"},
-                    },
-                ],
-            }
-        ],
-    )
+    try:
+        response = await llm.ainvoke(
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": _SCREENSHOT_VISION_PROMPT.format(query=query)},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                        },
+                    ],
+                }
+            ],
+        )
+    except Exception as exc:  # noqa: BLE001 - any provider failure degrades gracefully
+        log.warning(f"Screenshot vision call failed: {exc}")
+        return None
     content = getattr(response, "content", response)
     return content if isinstance(content, str) else str(content)
 
@@ -141,6 +151,12 @@ async def take_screenshot(
         )
 
     description = await _describe_screenshot(image_b64, query)
+    if description is None:
+        return (
+            "Captured the user's screen (already shown to them), but it could not "
+            "be analyzed because no vision-capable model was available. Ask the "
+            "user to describe what they see, or try again."
+        )
     return (
         f"Screenshot of the user's screen (described for: {query}):\n\n{description}\n\n"
         "The screenshot itself is already shown to the user — do not describe it "

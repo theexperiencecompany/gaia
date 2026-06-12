@@ -10,7 +10,7 @@
  * @module api-origin
  */
 
-import { app } from "electron";
+import { isProductionServer } from "./server-config";
 
 /** Local FastAPI dev server origin. */
 const DEV_API_ORIGIN = "http://localhost:8000";
@@ -28,8 +28,7 @@ export function getApiOrigin(): string {
   const fromEnv = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (fromEnv) return fromEnv.replace(/\/api\/v1\/?$/, "");
 
-  const isProduction = process.env.NODE_ENV === "production" || app.isPackaged;
-  return isProduction ? PROD_API_ORIGIN : DEV_API_ORIGIN;
+  return isProductionServer() ? PROD_API_ORIGIN : DEV_API_ORIGIN;
 }
 
 /** Whether the resolved API origin is served over HTTPS. */

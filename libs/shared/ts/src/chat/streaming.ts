@@ -208,7 +208,10 @@ export interface StreamToolOutput {
   subagent_id?: string;
 }
 
-import type { DesktopToolRequest } from "../desktop-tools";
+import {
+  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
+  type DesktopToolRequest,
+} from "../desktop-tools";
 import type { TodoProgressSnapshot } from "./types";
 export type { TodoProgressSnapshot };
 
@@ -432,7 +435,10 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
           request_id: r.request_id,
           tool: r.tool,
           params: isObject(r.params) ? r.params : {},
-          timeout_ms: typeof r.timeout_ms === "number" ? r.timeout_ms : 30_000,
+          timeout_ms:
+            typeof r.timeout_ms === "number"
+              ? r.timeout_ms
+              : DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
         },
       });
     }

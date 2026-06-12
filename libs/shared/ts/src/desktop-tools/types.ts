@@ -22,6 +22,13 @@ export function isDesktopToolName(value: string): value is DesktopToolName {
   return (DESKTOP_TOOL_NAMES as readonly string[]).includes(value);
 }
 
+/**
+ * Fallback bridge timeout used when a `desktop_tool_request` frame omits
+ * `timeout_ms`. Mirrors the API's `DESKTOP_TOOL_TIMEOUT_SECONDS` (30s) — the
+ * backend always sends an explicit value, so this only guards malformed frames.
+ */
+export const DESKTOP_TOOL_DEFAULT_TIMEOUT_MS = 30_000;
+
 export interface DesktopToolRequest {
   request_id: string;
   /** Untrusted over the wire — the executor validates via isDesktopToolName. */

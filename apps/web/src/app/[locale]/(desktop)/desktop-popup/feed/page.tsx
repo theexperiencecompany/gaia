@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import PopupFeed from "@/features/desktop-popup/components/PopupFeed";
+import { usePopupEscapeDismiss } from "@/features/desktop-popup/hooks/usePopupEscapeDismiss";
 import { useTransparentPopupChrome } from "@/features/desktop-popup/hooks/useTransparentPopupChrome";
 import { usePopupChatConsumer } from "@/features/desktop-popup/sync";
 import { useElectron } from "@/hooks/useElectron";
@@ -15,10 +16,11 @@ import { useLoadingStore } from "@/stores/loadingStore";
  * height so the main process sizes (and shows/hides) the window.
  */
 export default function DesktopPopupFeedPage() {
-  const { dismissPopup, resizePopup } = useElectron();
+  const { resizePopup } = useElectron();
 
   usePopupChatConsumer();
   useTransparentPopupChrome();
+  usePopupEscapeDismiss();
 
   // Report content height so the window grows with the conversation
   // (main clamps to the screen budget and hides it when empty). An
@@ -39,17 +41,6 @@ export default function DesktopPopupFeedPage() {
     report();
     return () => observer.disconnect();
   }, [resizePopup, hasContent]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      const { isLoading, isMainResponseStreaming } = useLoadingStore.getState();
-      if (isLoading || isMainResponseStreaming) return;
-      dismissPopup();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dismissPopup]);
 
   return (
     <div className="h-screen overflow-hidden text-zinc-100">

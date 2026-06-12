@@ -8,10 +8,6 @@ import type {
   DesktopToolResult,
 } from "@gaia/shared/desktop-tools";
 
-interface AuthCallbackData {
-  token: string;
-}
-
 declare global {
   interface Window {
     electron: ElectronAPI;
@@ -21,9 +17,6 @@ declare global {
       isElectron: boolean;
       signalReady: () => void;
       openExternal: (url: string) => void;
-      onAuthCallback: (
-        callback: (data: AuthCallbackData) => void,
-      ) => () => void;
       onAuthRedirecting: (callback: () => void) => () => void;
       executeDesktopTool: (
         request: DesktopToolRequest,

@@ -10,14 +10,14 @@
  */
 
 import { createConnection } from "node:net";
-import { app, type BrowserWindow } from "electron";
+import type { BrowserWindow } from "electron";
 import { getServerUrl } from "../server";
-
-/** Development web server origin (Next.js dev server). */
-const DEV_SERVER_URL = "http://localhost:3000";
-
-/** Development web server port used for TCP readiness polling. */
-const DEV_SERVER_PORT = 3000;
+import {
+  DEV_SERVER_ORIGIN,
+  DEV_SERVER_PORT,
+  isProductionServer,
+  setWindowRoute,
+} from "../server-config";
 
 /** Delay between readiness polls, in milliseconds. */
 const POLL_INTERVAL_MS = 100;
@@ -27,11 +27,6 @@ const PROD_MAX_ATTEMPTS = 50;
 
 /** Maximum development readiness polls (100 × 100 ms = 10 s). */
 const DEV_MAX_ATTEMPTS = 100;
-
-/** Whether the app is running against the embedded production server. */
-export function isProductionServer(): boolean {
-  return process.env.NODE_ENV === "production" || app.isPackaged;
-}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -88,6 +83,10 @@ export async function loadAppRoute(
   path: string,
   serverReady: () => boolean,
 ): Promise<void> {
+  // Record the route so the server crash-recovery path can re-navigate
+  // this window to ITS own page rather than a blanket login redirect.
+  setWindowRoute(win, path);
+
   if (isProductionServer()) {
     for (let i = 0; i < PROD_MAX_ATTEMPTS; i++) {
       if (serverReady()) {
@@ -107,17 +106,17 @@ export async function loadAppRoute(
     return;
   }
 
-  console.log("[Main] Waiting for dev server at", DEV_SERVER_URL);
+  console.log("[Main] Waiting for dev server at", DEV_SERVER_ORIGIN);
 
   for (let i = 0; i < DEV_MAX_ATTEMPTS; i++) {
     if (await probeDevServer()) {
       console.log("[Main] Dev server ready, loading...");
-      await loadRoute(win, DEV_SERVER_URL, path);
+      await loadRoute(win, DEV_SERVER_ORIGIN, path);
       return;
     }
     await delay(POLL_INTERVAL_MS);
   }
 
   console.log("[Main] Dev server wait timeout, attempting to load anyway");
-  await loadRoute(win, DEV_SERVER_URL, path);
+  await loadRoute(win, DEV_SERVER_ORIGIN, path);
 }

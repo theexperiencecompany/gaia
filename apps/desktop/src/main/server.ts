@@ -19,6 +19,17 @@ import {
   type UtilityProcess,
   utilityProcess,
 } from "electron";
+import {
+  DEV_SERVER_ORIGIN,
+  getWindowRoute,
+  isProductionServer,
+} from "./server-config";
+
+/** Milliseconds to wait for the server to report ready before proceeding. */
+const SERVER_STARTUP_TIMEOUT_MS = 15_000;
+
+/** Grace period after SIGTERM before the server is force-killed (SIGKILL). */
+const SERVER_KILL_TIMEOUT_MS = 3_000;
 
 /** Handle to the running Next.js child process. */
 let serverProcess: UtilityProcess | null = null;
@@ -85,9 +96,7 @@ async function findAvailablePort(): Promise<number> {
  * @returns URL string like `http://localhost:5174` (prod) or `http://localhost:3000` (dev).
  */
 export function getServerUrl(): string {
-  if (!app.isPackaged && process.env.NODE_ENV !== "production") {
-    return "http://localhost:3000";
-  }
+  if (!isProductionServer()) return DEV_SERVER_ORIGIN;
   return `http://localhost:${serverPort}`;
 }
 
@@ -214,10 +223,14 @@ export async function startNextServer(): Promise<void> {
         .then(() => {
           restartAttempts = 0;
           const newUrl = getServerUrl();
+          // Re-navigate each window to ITS OWN route. A blanket reload to
+          // /desktop-login would send the wake-word listener and the popup
+          // islands to the wrong page, silently breaking them until restart.
           for (const win of BrowserWindow.getAllWindows()) {
-            if (!win.isDestroyed()) {
-              win.loadURL(`${newUrl}/desktop-login`).catch(console.error);
-            }
+            if (win.isDestroyed()) continue;
+            const route = getWindowRoute(win);
+            if (!route) continue; // splash / untracked windows keep their page
+            win.loadURL(`${newUrl}${route}`).catch(console.error);
           }
         })
         .catch((err) => {
@@ -241,7 +254,7 @@ export async function startNextServer(): Promise<void> {
           reject(new Error("Server startup timed out without binding a port"));
         }
       }
-    }, 15000);
+    }, SERVER_STARTUP_TIMEOUT_MS);
   });
 }
 
@@ -267,7 +280,7 @@ export async function stopNextServer(): Promise<void> {
       } catch {
         // Process already exited
       }
-    }, 3000);
+    }, SERVER_KILL_TIMEOUT_MS);
 
     proc.once("exit", () => {
       clearTimeout(killTimeout);
