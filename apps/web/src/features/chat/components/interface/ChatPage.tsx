@@ -10,6 +10,7 @@ import { useChatLayout } from "@/features/chat/components/interface/hooks/useCha
 import { useScrollBehavior } from "@/features/chat/components/interface/hooks/useScrollBehavior";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
+import { usePrefetchConnectionDetails } from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
 import {
   VoiceControlBarContainer,
   VoiceControlBarSlot,
@@ -170,6 +171,10 @@ const ChatPage = React.memo(function MainChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const prefetchConnectionDetails = usePrefetchConnectionDetails(
+    convoIdParam || undefined,
+  );
+
   const composerProps = {
     inputRef,
     scrollToBottom,
@@ -179,6 +184,11 @@ const ChatPage = React.memo(function MainChat() {
     onDroppedFilesProcessed: () => setDroppedFiles([]),
     hasMessages,
     conversationId: convoIdParam,
+    // Warm the session token on hover so clicking starts ~instantly. Gated
+    // on subscription — /token is plan-limited and free users get the modal.
+    onVoiceModeHover: () => {
+      if (subscriptionStatus?.is_subscribed) prefetchConnectionDetails();
+    },
     voiceModeActive: () => {
       // Voice mode is paid-only (the /token endpoint enforces it server-side
       // too). Free users get the upgrade modal instead of a session.

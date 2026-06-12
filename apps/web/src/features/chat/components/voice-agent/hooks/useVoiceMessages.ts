@@ -5,7 +5,6 @@ import type { TextStreamReader } from "livekit-client";
 import { useCallback, useEffect, useRef } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import {
-  EXECUTOR_SPEAKING_KEY,
   LK_CHAT_TOPIC,
   VOICE_STREAM_TOPIC,
 } from "@/features/chat/components/voice-agent/constants";
@@ -107,14 +106,8 @@ export function useVoiceMessages(
   const currentUserGroupRef = useRef<VoiceUserGroup | null>(null);
   /** Transcription stream ids already flushed as part of a closed user group. */
   const consumedUserTranscriptionIdsRef = useRef<Set<string>>(new Set());
-  /** Agent transcription ids belonging to closed turns or executor narration. */
+  /** Agent transcription ids belonging to already-closed bot turns. */
   const consumedBotTranscriptionIdsRef = useRef<Set<string>>(new Set());
-  /**
-   * True once the agent starts speaking a delegated executor's answer — new
-   * transcript segments from then on are the narration the WebSocket push
-   * renders as its own message, so the live bubble skips them.
-   */
-  const executorSpeakingRef = useRef(false);
   const botTurnIndexRef = useRef(0);
   const userGroupIndexRef = useRef(0);
   /** Last issued message timestamp (ms) — kept strictly increasing. */
@@ -140,7 +133,6 @@ export function useVoiceMessages(
     currentUserGroupRef.current = null;
     consumedUserTranscriptionIdsRef.current = new Set();
     consumedBotTranscriptionIdsRef.current = new Set();
-    executorSpeakingRef.current = false;
     botTurnIndexRef.current = 0;
     userGroupIndexRef.current = 0;
     seqClockRef.current = 0;
@@ -203,14 +195,6 @@ export function useVoiceMessages(
 
   const processBotEvent = useCallback(
     (event: Record<string, unknown>, cid: string) => {
-      // From here on the agent is speaking a delegated executor's answer —
-      // its transcript segments must not attach to the live bubble (the
-      // WebSocket push renders that answer as its own message).
-      if (event[EXECUTOR_SPEAKING_KEY] === true) {
-        executorSpeakingRef.current = true;
-        return;
-      }
-
       // Ignore plumbing that doesn't render in the bubble. tool_output is
       // backend-internal; conversation_id/description are handled by the
       // dedicated text-stream handlers in VoiceControlBarContainer; user_message
@@ -324,7 +308,6 @@ export function useVoiceMessages(
     // into the next turn.
     if (currentUserGroupRef.current === null) {
       closeBotTurn();
-      executorSpeakingRef.current = false;
       // New user turn — re-arm the thinking indicator for the upcoming reply.
       botTokenSeenThisTurnRef.current = false;
       userGroupIndexRef.current += 1;
@@ -353,9 +336,7 @@ export function useVoiceMessages(
   // Agent's TTS-aligned transcript → live bot bubble. With
   // `use_tts_aligned_transcript` on the agent, these segments stream in sync
   // with the audio actually playing — unlike the backend response chunks,
-  // which accumulate as fast as the LLM generates. Segments that start while
-  // the executor narration is speaking are consumed unrendered (the WebSocket
-  // push delivers that answer as its own message).
+  // which accumulate as fast as the LLM generates.
   useEffect(() => {
     const cid = conversationIdRef.current;
     if (!cid || !room) return;
@@ -371,11 +352,6 @@ export function useVoiceMessages(
     for (const t of agentTrans) {
       const id = t.streamInfo.id;
       if (consumedBotTranscriptionIdsRef.current.has(id)) continue;
-      const isContinuation = turn?.transcriptTexts.has(id) ?? false;
-      if (!isContinuation && executorSpeakingRef.current) {
-        consumedBotTranscriptionIdsRef.current.add(id);
-        continue;
-      }
       // A segment with no open turn (e.g. the session greeting) opens one.
       turn = turn ?? openBotTurn();
       turn.transcriptTexts.set(id, t.text);
@@ -400,7 +376,6 @@ export function useVoiceMessages(
 
       closeUserGroup();
       closeBotTurn();
-      executorSpeakingRef.current = false;
       botTokenSeenThisTurnRef.current = false;
       userGroupIndexRef.current += 1;
       const sid = room.name || "voice";

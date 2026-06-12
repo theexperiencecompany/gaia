@@ -13,6 +13,8 @@ interface RightSideProps {
   searchbarText: string | null | undefined;
   selectedTool?: string | null;
   setvoiceModeActive: () => void;
+  /** Hover intent on the voice button — prefetches the session token. */
+  onVoiceModeHover?: () => void;
 }
 
 export default function RightSide({
@@ -20,6 +22,7 @@ export default function RightSide({
   searchbarText,
   selectedTool,
   setvoiceModeActive: _setvoiceModeActive,
+  onVoiceModeHover,
 }: RightSideProps) {
   const { stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
@@ -106,6 +109,7 @@ export default function RightSide({
           color="default"
           radius="full"
           type="button"
+          onMouseEnter={onVoiceModeHover}
           onPress={() => _setvoiceModeActive()}
         >
           <AudioWave01Icon className="text-zinc-400" />

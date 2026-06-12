@@ -25,6 +25,15 @@ function isTokenExpired(token: string, offsetMs = 60000) {
 
 const ONE_MINUTE_IN_MILLISECONDS = 60 * 1000;
 
+/**
+ * How long a fetched token is reused without a refetch. Tokens live much
+ * longer than this; the JWT-expiry guard below still forces a refresh for a
+ * genuinely stale token. Non-zero so an intent prefetch (e.g. hovering the
+ * voice button) is actually consumed by the session instead of double-minting
+ * — every /token call burns a voice_mode rate-limit credit.
+ */
+const CONNECTION_DETAILS_STALE_TIME_MS = 2 * 60 * 1000;
+
 export type ConnectionDetails = {
   serverUrl: string;
   roomName: string;
@@ -45,6 +54,25 @@ const fetchDetails = async (
   );
 };
 
+/**
+ * Prefetch the session token on intent (voice-button hover) so the actual
+ * session start consumes the cached result instead of paying the /token
+ * round trip. Callers must gate on subscription — the endpoint is
+ * rate-limited per plan.
+ */
+export function usePrefetchConnectionDetails(conversationId?: string) {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    queryClient
+      .prefetchQuery({
+        queryKey: ["connectionDetails", conversationId ?? "default"],
+        queryFn: () => fetchDetails(conversationId),
+        staleTime: CONNECTION_DETAILS_STALE_TIME_MS,
+      })
+      .catch(() => {});
+  }, [queryClient, conversationId]);
+}
+
 export default function useConnectionDetails(
   conversationId?: string | undefined,
 ) {
@@ -54,7 +82,7 @@ export default function useConnectionDetails(
   const { data: connectionDetails = null } = useQuery({
     queryKey,
     queryFn: () => fetchDetails(conversationId),
-    staleTime: 0, // Always considered stale so refresh logic works
+    staleTime: CONNECTION_DETAILS_STALE_TIME_MS,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnMount: true,

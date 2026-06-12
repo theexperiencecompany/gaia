@@ -21,6 +21,7 @@ import {
   type UseAgentControlBarProps,
   useAgentControlBar,
 } from "@/features/chat/components/voice-agent/hooks/use-agent-control-bar";
+import { useVoiceSession } from "@/features/chat/components/voice-agent/VoiceSessionContext";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -64,8 +65,15 @@ export function AgentControlBar({
       },
     });
 
-  const micEnabled = microphoneToggle.enabled;
-  const MicStateIcon = micEnabled ? Mic02Icon : MicOff02Icon;
+  const session = useVoiceSession();
+  // During room connect the mic is ALREADY capturing into the pre-connect
+  // buffer (and that audio reaches the agent), but no track publication
+  // exists yet so `enabled` reads false. Show the truth: mic live, control
+  // not actionable yet (toggling mid-connect would queue an unmute anyway).
+  const preConnectCapture =
+    !microphoneToggle.enabled && (session?.isConnecting ?? false);
+  const micLive = microphoneToggle.enabled || preConnectCapture;
+  const MicStateIcon = micLive ? Mic02Icon : MicOff02Icon;
 
   const handleMicPress = React.useCallback(() => {
     // Every mic-toggle click is a user gesture — reuse it to (re)unlock
@@ -131,8 +139,9 @@ export function AgentControlBar({
         <ButtonGroup variant="flat" radius="full">
           <Button
             isIconOnly
-            aria-label={micEnabled ? "Mute microphone" : "Unmute microphone"}
+            aria-label={micLive ? "Mute microphone" : "Unmute microphone"}
             isLoading={microphoneToggle.pending}
+            isDisabled={preConnectCapture}
             onPress={handleMicPress}
             className="h-12 w-14 bg-zinc-800 text-white transition-colors hover:bg-zinc-700 active:bg-zinc-700"
           >

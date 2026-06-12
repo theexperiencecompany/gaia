@@ -351,7 +351,13 @@ export function VoiceControlBarContainer({
   // token request always carries the right conversation ID from the very first
   // fetch — even for new conversations where convoIdParam is undefined.
   const storeConversationId = useDiscoveredConversationId();
-  const voiceConversationId = storeConversationId ?? convoIdParam ?? undefined;
+  // Frozen at mount: the token is only consumed at session start. When the
+  // worker streams a NEW conversation id back mid-session, a changing query
+  // key would refetch a token nobody uses — burning a voice_mode rate-limit
+  // credit per new-conversation session.
+  const [voiceConversationId] = useState(
+    () => storeConversationId ?? convoIdParam ?? undefined,
+  );
   const { existingOrRefreshConnectionDetails } =
     useConnectionDetails(voiceConversationId);
 

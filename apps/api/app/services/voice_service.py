@@ -5,6 +5,7 @@ to resolve preview sample URLs (cached for a day); listing and selection work
 even when the upstream call fails.
 """
 
+import asyncio
 from typing import Any
 
 from bson import ObjectId
@@ -193,13 +194,16 @@ async def _known_voice_ids() -> set[str]:
 
 
 async def get_user_voice(user_id: str) -> str | None:
-    """Return the user's selected voice id, or None for the default."""
+    """Return the user's selected voice id, or None for the default.
+
+    Plain Mongo read — deliberately NO availability validation here. This runs
+    in the /token critical path (every session start), and validation would
+    drag a (cached, but worst-case live) ElevenLabs lookup into it. Selections
+    are validated once at ``set_user_voice`` time instead.
+    """
     doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {SELECTED_VOICE_FIELD: 1})
     voice_id = (doc or {}).get(SELECTED_VOICE_FIELD)
-    # A stale selection (voice no longer available) falls back to default.
-    if isinstance(voice_id, str) and voice_id in await _known_voice_ids():
-        return voice_id
-    return None
+    return voice_id if isinstance(voice_id, str) and voice_id else None
 
 
 async def list_voices(user_id: str) -> VoiceListResponse:
@@ -211,10 +215,10 @@ async def list_voices(user_id: str) -> VoiceListResponse:
     labels. Catalog entries the account no longer carries are dropped: they
     would have no preview and, worse, fail TTS if selected.
     """
-    account = await get_elevenlabs_voices()
-    shared = await get_shared_voices()
+    account, shared, selected = await asyncio.gather(
+        get_elevenlabs_voices(), get_shared_voices(), get_user_voice(user_id)
+    )
     by_id = {v["voice_id"]: v for v in account}
-    selected = await get_user_voice(user_id)
     voices = [
         VoiceOption(**entry, preview_url=(by_id.get(entry["voice_id"]) or {}).get("preview_url"))
         for entry in VOICE_CATALOG

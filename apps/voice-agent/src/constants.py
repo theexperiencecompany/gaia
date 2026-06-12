@@ -13,11 +13,6 @@ MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
 # from its WebSocket push, so this is never forwarded to the UI — TTS only.
 # Must match VOICE_TTS_KEY in apps/api/app/agents/core/background/executor_runner.py.
 VOICE_TTS_KEY = "voice_tts"
-# Emitted to the frontend right before the executor's narrated answer is
-# spoken, so the live bubble stops attaching aligned-transcript segments (the
-# WebSocket push renders that answer as its own message). Must match
-# EXECUTOR_SPEAKING_KEY in apps/web .../voice-agent/constants.ts.
-EXECUTOR_SPEAKING_KEY = "executor_speaking"
 
 # TTS flush thresholds (chars)
 TTS_MIN_SENTENCE_CHARS = 40
@@ -78,7 +73,6 @@ __all__ = [
     "RESPONSE_UI_KEY",
     "MAIN_RESPONSE_COMPLETE_KEY",
     "VOICE_TTS_KEY",
-    "EXECUTOR_SPEAKING_KEY",
     "TTS_MIN_SENTENCE_CHARS",
     "TTS_HARD_FLUSH_CHARS",
     "TTS_MIN_EMIT_CHARS",

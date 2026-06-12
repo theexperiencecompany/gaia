@@ -271,28 +271,11 @@ async def entrypoint(ctx: JobContext) -> None:
             _apply_participant_credentials(new_md, "participant_metadata_changed", p.identity)
         )
 
-    # Connect before processing existing participants to avoid missing events
-    # between connect() and the existing-participants loop (benign race: credentials
-    # for a participant processed twice are idempotent).
-    await ctx.connect()
-
-    for p in ctx.room.remote_participants.values():
-        slog.info(
-            f"[{now_ts()}] 👤 EXISTING PARTICIPANT | identity={p.identity}",
-            phase="existing_participant",
-            participant=p.identity,
-        )
-        await _apply_participant_credentials(
-            getattr(p, "metadata", None), "existing_participant", p.identity
-        )
-
-    slog.info(
-        f"[{now_ts()}] ✅ SESSION START | room={ctx.room.name} setup={ms_since(room_start):.0f}ms",
-        phase="session_start",
-        room=ctx.room.name,
-        setup_ms=ms_since(room_start),
-    )
-
+    # session.start() runs ctx.connect() CONCURRENTLY with its own setup
+    # (RoomIO, STT, noise cancellation, agent track) — the previous serial
+    # `await ctx.connect()` before start added ~1-2s to every session. All
+    # room event handlers are registered above, before any connection exists,
+    # so no participant events are missed.
     await session.start(
         agent=Agent(instructions=VOICE_SYSTEM_PROMPT),
         room=ctx.room,
@@ -300,6 +283,30 @@ async def entrypoint(ctx: JobContext) -> None:
             noise_cancellation=noise_cancellation.BVC(),
             delete_room_on_close=True,
         ),
+    )
+
+    # Participants who joined before the agent (the common case — the user
+    # connects first) never emit participant_connected here; apply their
+    # credentials now. Backgrounded: the broadcast inside does a network
+    # round trip, and the first user turn is still endpointing-delay +
+    # STT away, so the token lands long before it is needed.
+    for p in ctx.room.remote_participants.values():
+        slog.info(
+            f"[{now_ts()}] 👤 EXISTING PARTICIPANT | identity={p.identity}",
+            phase="existing_participant",
+            participant=p.identity,
+        )
+        _make_background_task(
+            _apply_participant_credentials(
+                getattr(p, "metadata", None), "existing_participant", p.identity
+            )
+        )
+
+    slog.info(
+        f"[{now_ts()}] ✅ SESSION START | room={ctx.room.name} setup={ms_since(room_start):.0f}ms",
+        phase="session_start",
+        room=ctx.room.name,
+        setup_ms=ms_since(room_start),
     )
 
 

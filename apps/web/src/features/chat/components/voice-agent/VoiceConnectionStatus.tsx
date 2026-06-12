@@ -1,5 +1,6 @@
 "use client";
 
+import { useRoomContext } from "@livekit/components-react";
 import Image from "next/image";
 
 import { useVoiceSession } from "@/features/chat/components/voice-agent/VoiceSessionContext";
@@ -9,11 +10,15 @@ import { useVoiceSession } from "@/features/chat/components/voice-agent/VoiceSes
  * still negotiating or the agent has not yet joined. Hidden once the agent
  * transitions to `listening | thinking | speaking`.
  *
+ * The microphone capture starts immediately (pre-connect buffer), so the
+ * connect copy says so — speech during this window IS delivered to the agent.
+ *
  * Distinct from the chat `LoadingIndicator` (driven by `loadingStore`) which
  * only fires for genuine "agent is thinking" turns.
  */
 export function VoiceConnectionStatus() {
   const session = useVoiceSession();
+  const room = useRoomContext();
   if (!session) return null;
 
   const { agentState, isConnecting } = session;
@@ -22,6 +27,12 @@ export function VoiceConnectionStatus() {
     agentState === "thinking" ||
     agentState === "speaking";
   if (!isConnecting && agentReady) return null;
+
+  // A mid-session network blip is a reconnect, not a fresh session.
+  const label =
+    room?.state === "reconnecting"
+      ? "Reconnecting…"
+      : "Connecting — mic is live, go ahead and talk";
 
   return (
     <div className="flex justify-center pb-2">
@@ -33,7 +44,7 @@ export function VoiceConnectionStatus() {
           height={16}
           className="animate-pulse"
         />
-        Preparing voice mode…
+        {label}
       </div>
     </div>
   );
