@@ -158,17 +158,25 @@ export function ToolCallRow({
 export function SubagentRow({
   group,
   isLast,
+  isStreaming,
   getIconUrl,
   getIntegrationName,
 }: Readonly<{
   group: EnrichedSubagentGroup;
   isLast: boolean;
+  /** Whether the message's stream is still open. A subagent only counts as
+   *  running while its stream is live — once the SSE closes, a missing
+   *  `subagent_end` (dropped/crashed) must not spin the card forever. */
+  isStreaming: boolean;
   getIconUrl: (c: ToolCallEntry) => string | undefined;
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
 }>) {
+  // Running only while the stream is open: completed_at is null both for a
+  // genuinely-running subagent AND for one whose end event never arrived, so
+  // gate on the live stream to tell them apart.
+  const isRunning = group.completed_at === null && isStreaming;
   // Start expanded while running so live tool calls are visible by default
-  const [expanded, setExpanded] = useState(() => group.completed_at === null);
-  const isRunning = group.completed_at === null;
+  const [expanded, setExpanded] = useState(() => isRunning);
 
   // Filter out spawn_subagent tool calls — they're represented by nested SubagentRows
   const visibleToolCalls = group.tool_calls.filter(
@@ -312,6 +320,7 @@ export function SubagentRow({
                         key={`nested-${nested.subagent_id}`}
                         group={nested}
                         isLast
+                        isStreaming={isStreaming}
                         getIconUrl={getIconUrl}
                         getIntegrationName={getIntegrationName}
                       />
