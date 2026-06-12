@@ -13,6 +13,7 @@ from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 from shared.py.logging import get_contextual_logger
 from src.constants import (
     DONE_SENTINEL,
+    EXECUTOR_SPEAKING_KEY,
     FRONTEND_STREAM_TOPIC,
     MAIN_RESPONSE_COMPLETE_KEY,
     OPEN_TAG_DEFER_CAP,
@@ -345,6 +346,12 @@ class CustomLLM(LLM):
                             spoken = sanitize_for_tts(voice_tts)
                             if spoken:
                                 executor_tts_chars += len(spoken)
+                                # Tell the live bubble to stop attaching
+                                # aligned-transcript segments — this narration
+                                # arrives separately via the WebSocket push.
+                                await self._forward_stream_event_to_frontend(
+                                    json.dumps({EXECUTOR_SPEAKING_KEY: True})
+                                )
                                 tlog.debug(
                                     f"[{now_ts()}] 🔊 TTS EXECUTOR ANSWER ({len(spoken)} chars)",
                                     phase="tts_executor_answer",
