@@ -220,8 +220,7 @@ function pinToAllSpaces(win: BrowserWindow): void {
 export function createAssistantPopup(serverReady: () => boolean): void {
   // Liquid glass is the default: only its native view honors the custom
   // capsule cornerRadius (vibrancy windows are stuck with the standard
-  // macOS radius). Known tradeoff: the material can still dim for
-  // non-key windows (upstream: Meridius-Labs/electron-liquid-glass#64).
+  // macOS radius). Non-key dimming is held off via keepActive below.
   const useLiquidGlass = supportsLiquidGlass();
 
   // Shadows give both islands their edge definition on glass.
@@ -250,13 +249,17 @@ export function createAssistantPopup(serverReady: () => boolean): void {
   });
 
   if (useLiquidGlass) {
+    // keepActive: pin the active material so neither island ever renders
+    // the washed-out non-key state (only one island can be key at a time).
     applyLiquidGlass(composerWindow, {
       cornerRadius: COMPOSER_CORNER_RADIUS,
       tintColor: "#00000022",
+      keepActive: true,
     });
     applyLiquidGlass(feedWindow, {
       cornerRadius: FEED_CORNER_RADIUS,
       tintColor: "#00000022",
+      keepActive: true,
     });
   }
 
