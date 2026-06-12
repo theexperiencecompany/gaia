@@ -1,7 +1,6 @@
 appId: io.heygaia.desktop
 productName: GAIA
 copyright: Copyright © 2024 The Experience Company
-electronVersion: 33.2.1
 # In pnpm hoisted monorepos, electron-builder's dependency reinstall step can
 # mutate workspace node_modules during packaging and break artifact generation.
 npmRebuild: false

@@ -7,12 +7,15 @@
  * 1. Register the `gaia://` protocol (must happen before `app.ready`)
  * 2. Acquire single-instance lock
  * 3. On `app.ready`:
- *    a. Show splash screen **immediately**
+ *    a. Show splash screen **immediately** (with the persisted Dock icon)
  *    b. Register IPC handlers, session fixes, auto-updater
  *    c. Start the Next.js server **and** create the main window
  *       **in parallel** (neither blocks the other)
  * 4. When the renderer signals `window-ready`, swap splash → main
- * 5. Fallback timeout ensures the main window appears even if the
+ * 5. Only then create the hidden background surfaces (assistant popup,
+ *    wake-word listener) — two extra renderers competing with the main
+ *    window during boot would keep the splash up longer
+ * 6. Fallback timeout ensures the main window appears even if the
  *    renderer never signals
  *
  * @module index
@@ -22,7 +25,7 @@
 import "v8-compile-cache";
 
 import { electronApp, optimizer } from "@electron-toolkit/utils";
-import { app, BrowserWindow, globalShortcut } from "electron";
+import { app, globalShortcut } from "electron";
 import { applyPersistedAppIcon } from "./app-icon";
 import { checkForUpdatesAfterDelay, setupAutoUpdater } from "./auto-updater";
 import { handleDeepLink } from "./deep-link";
@@ -38,6 +41,7 @@ import {
 import {
   createMainWindow,
   getMainWindow,
+  isMainWindowShown,
   setPendingDeepLink,
   showMainWindow,
 } from "./windows/main";
@@ -66,6 +70,24 @@ registerLinuxDevProtocol();
 
 /** Whether the embedded Next.js server has finished starting. */
 let serverStarted = false;
+
+/** Whether the hidden background surfaces have been created. */
+let backgroundSurfacesCreated = false;
+
+/**
+ * Create the hidden background surfaces (assistant popup + wake-word
+ * listener). Deferred until the main window is on screen: each is a
+ * full renderer process loading its own app route, and spinning them
+ * up during boot competes with the main window for CPU and server
+ * time — directly extending how long the splash stays visible.
+ */
+function createBackgroundSurfaces(): void {
+  if (backgroundSurfacesCreated) return;
+  backgroundSurfacesCreated = true;
+
+  createAssistantPopup(() => serverStarted);
+  createWakeListenerWindow(() => serverStarted).catch(console.error);
+}
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -109,8 +131,11 @@ if (!gotTheLock) {
 
     electronApp.setAppUserModelId("io.heygaia.desktop");
 
-    // STEP 1 — Splash screen (first thing the user sees)
+    // STEP 1 — Splash screen (first thing the user sees), with the
+    // persisted custom Dock icon applied before anything else renders
+    // so the Dock is correct from the very first frame.
     createSplashWindow();
+    applyPersistedAppIcon();
 
     // STEP 2 — Non-blocking setup
     if (isProduction) {
@@ -125,6 +150,7 @@ if (!gotTheLock) {
     registerIpcHandlers(() => {
       const pendingUrl = showMainWindow();
       if (pendingUrl) handleDeepLink(pendingUrl, getMainWindow());
+      createBackgroundSurfaces();
     });
 
     fixSessionCookies();
@@ -144,12 +170,9 @@ if (!gotTheLock) {
 
     createMainWindow(() => serverStarted).catch(console.error);
 
-    // Assistant popup + wake-word listener (hidden; non-blocking)
-    createAssistantPopup(() => serverStarted);
-    createWakeListenerWindow(() => serverStarted).catch(console.error);
-
+    // The shortcut is safe to register before the popup windows exist —
+    // toggling is a guarded no-op until createBackgroundSurfaces() runs.
     registerPopupShortcut();
-    applyPersistedAppIcon();
 
     // STEP 4 — Fallback timeout (10 s covers server + load + hydration)
     setTimeout(() => {
@@ -158,13 +181,24 @@ if (!gotTheLock) {
         const pendingUrl = showMainWindow();
         if (pendingUrl) handleDeepLink(pendingUrl, getMainWindow());
       }
+      createBackgroundSurfaces();
     }, 10000);
 
-    // macOS: re-create window when dock icon is clicked
+    // macOS: Dock icon clicked. The hidden background surfaces (popup,
+    // wake listener) always exist, so "no windows left" never happens —
+    // act on the main window itself: refocus it when shown, re-create it
+    // when closed, and leave it alone while it is still booting behind
+    // the splash.
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createMainWindow(() => serverStarted).catch(console.error);
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        if (!isMainWindowShown()) return;
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        return;
       }
+      createMainWindow(() => serverStarted).catch(console.error);
     });
 
     // Check for deep link in launch args (Windows/Linux cold start)

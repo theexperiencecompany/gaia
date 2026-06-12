@@ -37,6 +37,16 @@ export function getMainWindow(): BrowserWindow | null {
 }
 
 /**
+ * Whether the main window has been shown (splash already swapped).
+ *
+ * @returns `true` once {@link showMainWindow} has run for the
+ *   currently alive window.
+ */
+export function isMainWindowShown(): boolean {
+  return windowShown;
+}
+
+/**
  * Store a deep-link URL to be processed once the window is shown.
  *
  * @param url - The `gaia://…` URL to queue.
@@ -90,6 +100,14 @@ export async function createMainWindow(
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  // Closing the main window must reset the shown flag so a window
+  // re-created from the Dock (macOS `activate`) can be shown again —
+  // showMainWindow is one-shot per window.
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    windowShown = false;
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
