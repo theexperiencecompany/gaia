@@ -98,6 +98,23 @@ def build_messages_from_ctx(chat_ctx: ChatContext) -> list[dict[str, str]]:
     return messages
 
 
+def user_id_from_room(room_name: str) -> str | None:
+    """Recover the user id from a voice room name.
+
+    Rooms are named ``voice_session_{user_id}_{uuid_hex}`` by the /token
+    endpoint. The user id itself may contain underscores, so strip the fixed
+    prefix and split off the trailing uuid segment.
+    """
+    prefix = "voice_session_"
+    if not room_name.startswith(prefix):
+        return None
+    rest = room_name[len(prefix) :]
+    user_id, _, suffix = rest.rpartition("_")
+    if not user_id or not suffix:
+        return None
+    return user_id
+
+
 def now_ts() -> str:
     """Current wall-clock time as HH:MM:SS.mmm for human-readable debug logs."""
     now = datetime.now()
@@ -118,4 +135,5 @@ __all__ = [
     "build_messages_from_ctx",
     "now_ts",
     "ms_since",
+    "user_id_from_room",
 ]

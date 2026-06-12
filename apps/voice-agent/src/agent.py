@@ -30,10 +30,12 @@ from src.config import bootstrap_settings
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
     MIN_ENDPOINTING_DELAY_S,
+    PROMETHEUS_METRICS_PORT,
+    PROMETHEUS_MULTIPROC_DIR,
     VOICE_SYSTEM_PROMPT,
 )
 from src.llm import CustomLLM
-from src.utils import extract_meta_data, ms_since, now_ts
+from src.utils import extract_meta_data, ms_since, now_ts, user_id_from_room
 
 # Use an absolute path so logs land in the right place regardless of CWD
 configure_file_logging(Path(__file__).parent.parent / "logs")
@@ -76,11 +78,20 @@ async def entrypoint(ctx: JobContext) -> None:
     settings = ctx.proc.userdata["settings"]
     ctx.log_context_fields = {"room": ctx.room.name}
 
+    # Session-scoped logger: every event in this room carries the same
+    # high-cardinality identity fields, so one LogQL filter (room=... or
+    # user_id=...) reconstructs the full session timeline in Loki.
+    user_id = user_id_from_room(ctx.room.name)
+    slog = logger.bind(
+        room=ctx.room.name,
+        user_id=user_id,
+        job_id=getattr(ctx.job, "id", None),
+    )
+
     room_start = time.monotonic()
-    logger.info(
+    slog.info(
         f"[{now_ts()}] 🚀 ROOM START | room={ctx.room.name}",
         phase="room_start",
-        room=ctx.room.name,
     )
 
     custom_llm = CustomLLM(
@@ -88,6 +99,7 @@ async def entrypoint(ctx: JobContext) -> None:
         room=ctx.room,
         request_timeout_s=BACKEND_REQUEST_TIMEOUT_S,
     )
+    custom_llm.user_id = user_id
 
     session: AgentSession = AgentSession(
         llm=custom_llm,
@@ -110,13 +122,13 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_user_state_changed(ev: UserStateChangedEvent) -> None:
         if ev.new_state == "speaking":
             _speaking_start["t"] = time.monotonic()
-            logger.debug(
+            slog.debug(
                 f"[{now_ts()}] 🎤 USER SPEAKING START",
                 phase="user_speaking_start",
             )
         elif ev.old_state == "speaking":
             duration_ms = ms_since(_speaking_start.get("t", time.monotonic()))
-            logger.debug(
+            slog.debug(
                 f"[{now_ts()}] 🎤 USER SPEAKING END | duration={duration_ms:.0f}ms",
                 phase="user_speaking_end",
                 duration_ms=duration_ms,
@@ -126,7 +138,7 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_user_input_transcribed(ev: UserInputTranscribedEvent) -> None:
         stt_latency_ms = ms_since(_speaking_start.get("t", time.monotonic()))
         if ev.is_final:
-            logger.info(
+            slog.info(
                 f"[{now_ts()}] 📝 STT FINAL | lang={ev.language} | stt_latency={stt_latency_ms:.0f}ms",
                 phase="stt_final",
                 transcript=ev.transcript,
@@ -134,7 +146,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 stt_latency_ms=stt_latency_ms,
             )
         else:
-            logger.debug(
+            slog.debug(
                 f"[{now_ts()}] 📝 STT INTERIM ({len(ev.transcript)} chars)",
                 phase="stt_interim",
                 transcript=ev.transcript,
@@ -143,17 +155,17 @@ async def entrypoint(ctx: JobContext) -> None:
     @session.on("agent_state_changed")
     def _on_agent_state_changed(ev: AgentStateChangedEvent) -> None:
         if ev.new_state == "thinking":
-            logger.debug(
+            slog.debug(
                 f"[{now_ts()}] 🤔 AGENT THINKING — sending to backend",
                 phase="agent_thinking",
             )
         elif ev.new_state == "speaking":
-            logger.debug(
+            slog.debug(
                 f"[{now_ts()}] 🔊 AGENT SPEAKING START",
                 phase="agent_speaking_start",
             )
         elif ev.old_state == "speaking":
-            logger.debug(
+            slog.debug(
                 f"[{now_ts()}] 🔊 AGENT SPEAKING END",
                 phase="agent_speaking_end",
             )
@@ -161,7 +173,7 @@ async def entrypoint(ctx: JobContext) -> None:
     @session.on("agent_false_interruption")
     def _on_agent_false_interruption(ev: AgentFalseInterruptionEvent) -> None:
         # Framework handles automatic resume when ev.resumed is True
-        logger.info(
+        slog.info(
             f"[{now_ts()}] ↩ FALSE INTERRUPTION | resumed={ev.resumed}",
             phase="false_interruption",
             resumed=ev.resumed,
@@ -176,7 +188,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     async def log_usage() -> None:
         summary = usage_collector.get_summary()
-        logger.info(
+        slog.info(
             f"[{now_ts()}] 📊 SESSION USAGE",
             phase="session_usage",
             summary=str(summary),
@@ -188,7 +200,7 @@ async def entrypoint(ctx: JobContext) -> None:
         token, conv_id = extract_meta_data(md)
         if token:
             custom_llm.set_agent_token(token)
-            logger.debug(
+            slog.debug(
                 f"[{now_ts()}] 🔑 TOKEN SET | participant={who} origin={origin}",
                 phase="token_set",
                 participant=who,
@@ -196,7 +208,7 @@ async def entrypoint(ctx: JobContext) -> None:
             )
         if conv_id:
             await custom_llm.set_conversation_id(conv_id)
-            logger.debug(
+            slog.debug(
                 f"[{now_ts()}] 💬 CONV ID SET | {conv_id} participant={who}",
                 phase="conv_id_set",
                 conversation_id=conv_id,
@@ -212,7 +224,7 @@ async def entrypoint(ctx: JobContext) -> None:
         def _done(t: asyncio.Task[None]) -> None:
             background_tasks.discard(t)
             if not t.cancelled() and t.exception():
-                logger.error(
+                slog.error(
                     "Background credential task failed",
                     exc_info=t.exception(),
                 )
@@ -223,7 +235,7 @@ async def entrypoint(ctx: JobContext) -> None:
     @ctx.room.on("participant_connected")
     def _on_participant_connected(p: rtc.RemoteParticipant) -> None:
         join_ts = now_ts()
-        logger.info(
+        slog.info(
             f"[{join_ts}] 👤 PARTICIPANT JOINED | identity={p.identity}",
             phase="participant_joined",
             participant=p.identity,
@@ -246,7 +258,7 @@ async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
 
     for p in ctx.room.remote_participants.values():
-        logger.info(
+        slog.info(
             f"[{now_ts()}] 👤 EXISTING PARTICIPANT | identity={p.identity}",
             phase="existing_participant",
             participant=p.identity,
@@ -255,7 +267,7 @@ async def entrypoint(ctx: JobContext) -> None:
             getattr(p, "metadata", None), "existing_participant", p.identity
         )
 
-    logger.info(
+    slog.info(
         f"[{now_ts()}] ✅ SESSION START | room={ctx.room.name} setup={ms_since(room_start):.0f}ms",
         phase="session_start",
         room=ctx.room.name,
@@ -274,7 +286,17 @@ async def entrypoint(ctx: JobContext) -> None:
 
 def _run_worker_cli() -> None:
     """Hand control to LiveKit's CLI, which owns the start/dev/download-files commands."""
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm,
+            # Worker metrics (lk_agents_active_job_count, lk_agents_worker_load,
+            # ...) at :{port}/metrics for the Prometheus scrape job. The
+            # multiproc dir aggregates metrics from forked job processes.
+            prometheus_port=PROMETHEUS_METRICS_PORT,
+            prometheus_multiproc_dir=PROMETHEUS_MULTIPROC_DIR,
+        )
+    )
 
 
 def start_worker() -> None:

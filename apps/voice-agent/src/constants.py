@@ -23,6 +23,13 @@ TTS_FINAL_MIN_CHARS = 1
 # Cap on how many times a flush is deferred while a tag straddles chunk boundaries
 OPEN_TAG_DEFER_CAP = 4
 
+# Prometheus metrics server (lk_agents_* worker metrics, scraped by the
+# observability stack). 9102 avoids the ARQ worker's 9100 when both run
+# natively on one host. The multiproc dir lets prometheus_client aggregate
+# metrics from LiveKit's forked job processes into the main worker's /metrics.
+PROMETHEUS_METRICS_PORT = 9102
+PROMETHEUS_MULTIPROC_DIR = "/tmp/voice-agent-prometheus"  # nosec B108 - metric shards, not sensitive
+
 # Minimum silence (s) after the user stops speaking before their turn is declared
 # complete. Raised above LiveKit's 0.5s default so a brief mid-thought pause does
 # not cut the user off; the MultilingualModel still extends up to its max delay
@@ -71,6 +78,8 @@ __all__ = [
     "TTS_MIN_EMIT_CHARS",
     "TTS_FINAL_MIN_CHARS",
     "OPEN_TAG_DEFER_CAP",
+    "PROMETHEUS_METRICS_PORT",
+    "PROMETHEUS_MULTIPROC_DIR",
     "MIN_ENDPOINTING_DELAY_S",
     "BACKEND_REQUEST_TIMEOUT_S",
     "TAG_RE",

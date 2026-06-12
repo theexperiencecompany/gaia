@@ -762,23 +762,59 @@ services:
     working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: "1"
-      FORCE_COLOR: "1"
+      FORCE_COLOR: "0"
       WORKER_TYPE: voice_agent_worker
       PYTHONDONTWRITEBYTECODE: "1"
       HF_HUB_OFFLINE: "1"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+      INFISICAL_ENV: prod
+      # In-cluster route to the API over the overlay network (the chat-stream
+      # SSE endpoint the agent's CustomLLM talks to).
+      GAIA_BACKEND_URL: http://gaia-backend:80
+    secrets:
+      - gaia_infisical_token
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
     volumes:
       - voice_agent_models:/home/appuser/.cache/huggingface
     networks:
-      - gaia-prod-shared
+      gaia-prod-shared:
+        aliases:
+          - voice-agent-worker
+    healthcheck:
+      # livekit-agents serves its health endpoint on 8081 in prod mode.
+      test: ["CMD", "curl", "-f", "http://localhost:8081/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     deploy:
       # replicas: 0 — not started by default; scale up manually when needed:
       #   docker --context gaia-prod service scale gaia-prod_voice-agent-worker=1
       replicas: 0
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+        monitor: 45s
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
       restart_policy:
         condition: any
         delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          # VAD + turn-detector models live in each forked job process.
+          memory: 2G
       placement:
         constraints:
           - node.role == manager

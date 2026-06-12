@@ -78,9 +78,15 @@ ENV PYTHONUNBUFFERED=1 \
 # Copy app source (root-owned, readable by appuser)
 COPY apps/voice-agent/src/ ./apps/voice-agent/src/
 
+# Entrypoint: reads Docker Swarm secrets into env vars before exec-ing the
+# process (same script as the API image; its JuiceFS section self-skips here
+# because the juicefs binary and R2 env vars are absent).
+COPY --chmod=0755 scripts/docker-entrypoint.sh /entrypoint.sh
+
 WORKDIR /app/apps/voice-agent
 
 # Download model files (into /home/appuser/.cache/huggingface)
 RUN uv run --frozen python -m src download-files
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uv", "run", "--frozen", "python", "-m", "src", "start"]

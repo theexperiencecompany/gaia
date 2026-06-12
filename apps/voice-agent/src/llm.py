@@ -67,6 +67,10 @@ class CustomLLM(LLM):
         self.conversation_description: str | None = None
         self.request_timeout_s = request_timeout_s
         self.room: rtc.Room | None = room
+        # Set by the session entrypoint (derived from the room name) so every
+        # turn log carries the user identity for Loki queries.
+        self.user_id: str | None = None
+        self._turn_index = 0
         # Reused across turns to avoid TCP reconnect overhead per turn
         self._http_session: aiohttp.ClientSession | None = None
 
@@ -153,15 +157,25 @@ class CustomLLM(LLM):
             turn_start = time.monotonic()
             ts = now_ts()
 
+            # Per-turn logger: every line in this turn carries the same
+            # identity + turn fields, so Loki can slice by any of them.
+            self._turn_index += 1
+            tlog = logger.bind(
+                room=self.room.name if self.room else None,
+                user_id=self.user_id,
+                conversation_id=self.conversation_id,
+                turn_index=self._turn_index,
+            )
+
             user_message = extract_latest_user_text(chat_ctx)
             if not user_message:
-                logger.warning(
+                tlog.warning(
                     f"[{ts}] ⚠ EMPTY USER MESSAGE — skipping LLM turn",
                     phase="turn_skip",
                 )
                 return
 
-            logger.debug(
+            tlog.debug(
                 f"[{ts}] ▶ TURN START ({len(user_message)} chars)",
                 phase="turn_start",
                 user_msg=user_message,
@@ -171,6 +185,11 @@ class CustomLLM(LLM):
             tts_enabled = True
             first_token_received = False
             total_tokens = 0
+            ttfb_ms: float | None = None
+            first_tts_flush_ms: float | None = None
+            tts_flush_count = 0
+            tts_chars_total = 0
+            executor_tts_chars = 0
 
             timeout = aiohttp.ClientTimeout(sock_read=self.request_timeout_s)
             headers = {"x-timezone": "UTC"}
@@ -192,7 +211,7 @@ class CustomLLM(LLM):
             if self.conversation_id:
                 payload["conversation_id"] = self.conversation_id
 
-            logger.debug(
+            tlog.debug(
                 f"[{now_ts()}] ⬆ BACKEND REQUEST | {self.base_url}/api/v1/chat-stream",
                 phase="backend_request",
                 elapsed_ms=ms_since(turn_start),
@@ -211,7 +230,7 @@ class CustomLLM(LLM):
                 ) as resp:
                     if resp.status >= 400:
                         body = await resp.text()
-                        logger.error(
+                        tlog.error(
                             "Backend returned error response",
                             status=resp.status,
                             body=body[:500],
@@ -233,7 +252,7 @@ class CustomLLM(LLM):
                         data = line[len(SSE_DATA_PREFIX) :].strip()
 
                         if data == DONE_SENTINEL:
-                            logger.debug(
+                            tlog.debug(
                                 f"[{now_ts()}] ■ STREAM DONE | tokens={total_tokens} elapsed={ms_since(turn_start):.0f}ms",
                                 phase="stream_done",
                                 total_tokens=total_tokens,
@@ -260,11 +279,11 @@ class CustomLLM(LLM):
 
                         if not first_token_received:
                             first_token_received = True
-                            ttfb = ms_since(turn_start)
-                            logger.debug(
-                                f"[{now_ts()}] ◎ FIRST TOKEN | TTFB={ttfb:.1f}ms",
+                            ttfb_ms = ms_since(turn_start)
+                            tlog.debug(
+                                f"[{now_ts()}] ◎ FIRST TOKEN | TTFB={ttfb_ms:.1f}ms",
                                 phase="first_token",
-                                ttfb_ms=ttfb,
+                                ttfb_ms=ttfb_ms,
                             )
 
                         event_keys = set(event_payload.keys())
@@ -278,7 +297,7 @@ class CustomLLM(LLM):
                         if is_plumbing:
                             await self._forward_stream_event_to_frontend(data)
 
-                        logger.debug(
+                        tlog.debug(
                             f"[{now_ts()}] ~ BACKEND EVENT | keys={list(event_keys)} plumbing={is_plumbing}",
                             phase="backend_event",
                             event_keys=list(event_keys),
@@ -299,7 +318,7 @@ class CustomLLM(LLM):
                                         delta=ChoiceDelta(content=final),
                                     )
                             tts_enabled = False
-                            logger.debug(
+                            tlog.debug(
                                 f"[{now_ts()}] ✓ MAIN RESPONSE COMPLETE — TTS disabled for remaining events",
                                 phase="main_response_complete",
                                 elapsed_ms=ms_since(turn_start),
@@ -324,7 +343,8 @@ class CustomLLM(LLM):
                         if isinstance(voice_tts, str) and voice_tts:
                             spoken = sanitize_for_tts(voice_tts)
                             if spoken:
-                                logger.debug(
+                                executor_tts_chars += len(spoken)
+                                tlog.debug(
                                     f"[{now_ts()}] 🔊 TTS EXECUTOR ANSWER ({len(spoken)} chars)",
                                     phase="tts_executor_answer",
                                     char_count=len(spoken),
@@ -359,7 +379,7 @@ class CustomLLM(LLM):
                         # so a JSON-ish token like {"label": ...} (e.g. an OpenUI
                         # fragment) would raise KeyError and kill the turn.
                         preview = piece[:60].replace("{", "{{").replace("}", "}}")
-                        logger.debug(
+                        tlog.debug(
                             f"[{now_ts()}] ≈ TOKEN #{total_tokens} | raw='{preview}'",
                             phase="token",
                             token_index=total_tokens,
@@ -398,7 +418,11 @@ class CustomLLM(LLM):
                             text_buffer.clear()
                             deferred_flushes = 0
                             if len(out) >= TTS_MIN_EMIT_CHARS:
-                                logger.debug(
+                                tts_flush_count += 1
+                                tts_chars_total += len(out)
+                                if first_tts_flush_ms is None:
+                                    first_tts_flush_ms = ms_since(turn_start)
+                                tlog.debug(
                                     f"[{now_ts()}] 🔊 TTS FLUSH ({len(out)} chars) elapsed={ms_since(turn_start):.0f}ms",
                                     phase="tts_flush",
                                     text_before_sanitize=joined,
@@ -414,7 +438,11 @@ class CustomLLM(LLM):
                         await self._forward_response_text_to_frontend(raw_tail)
                         tail = sanitize_for_tts(raw_tail)
                         if len(tail) >= TTS_FINAL_MIN_CHARS:
-                            logger.debug(
+                            tts_flush_count += 1
+                            tts_chars_total += len(tail)
+                            if first_tts_flush_ms is None:
+                                first_tts_flush_ms = ms_since(turn_start)
+                            tlog.debug(
                                 f"[{now_ts()}] 🔊 TTS FINAL ({len(tail)} chars) elapsed={ms_since(turn_start):.0f}ms",
                                 phase="tts_final",
                                 text_before_sanitize=raw_tail,
@@ -424,20 +452,44 @@ class CustomLLM(LLM):
                             )
                             yield ChatChunk(id="custom", delta=ChoiceDelta(content=tail))
 
-                    logger.info(
+                    # Canonical per-turn wide event — one INFO line carrying the
+                    # whole turn so Loki can answer latency/volume/behaviour
+                    # questions without stitching DEBUG lines together.
+                    tlog.info(
                         f"[{now_ts()}] ✓ TURN COMPLETE | tokens={total_tokens} total={ms_since(turn_start):.0f}ms",
                         phase="turn_complete",
+                        status="ok",
+                        conversation_id=self.conversation_id,
+                        user_msg_len=len(user_message),
+                        history_turns=len(messages),
                         total_tokens=total_tokens,
+                        ttfb_ms=ttfb_ms,
+                        first_tts_flush_ms=first_tts_flush_ms,
+                        tts_flush_count=tts_flush_count,
+                        tts_chars_total=tts_chars_total,
+                        executor_tts_chars=executor_tts_chars,
                         total_ms=ms_since(turn_start),
                     )
 
-            except aiohttp.ClientResponseError:
-                raise
             except Exception as e:
-                logger.error(
-                    "Backend HTTP request failed",
+                # Same wide event on the failure path (status=error) so error
+                # turns are queryable with the identical field set.
+                tlog.error(
+                    f"[{now_ts()}] ✗ TURN FAILED | {type(e).__name__} after {ms_since(turn_start):.0f}ms",
+                    phase="turn_complete",
+                    status="error",
                     error=str(e),
-                    elapsed_ms=ms_since(turn_start),
+                    error_type=type(e).__name__,
+                    conversation_id=self.conversation_id,
+                    user_msg_len=len(user_message),
+                    history_turns=len(messages),
+                    total_tokens=total_tokens,
+                    ttfb_ms=ttfb_ms,
+                    first_tts_flush_ms=first_tts_flush_ms,
+                    tts_flush_count=tts_flush_count,
+                    tts_chars_total=tts_chars_total,
+                    executor_tts_chars=executor_tts_chars,
+                    total_ms=ms_since(turn_start),
                 )
                 raise
 
