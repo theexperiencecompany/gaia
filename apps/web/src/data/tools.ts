@@ -89,13 +89,6 @@ export const tools: Tool[] = [
     category: "AI & Machine Learning",
   },
   {
-    name: "Mem0",
-    url: "https://mem0.ai",
-    description:
-      "Memory layer for AI applications enabling personalized, context-aware interactions.",
-    category: "AI & Machine Learning",
-  },
-  {
     name: "Opik",
     url: "https://comet.com/opik",
     description:
