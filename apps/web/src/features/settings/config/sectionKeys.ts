@@ -7,6 +7,7 @@ export const VALID_SECTIONS = [
   "subscription",
   "usage",
   "preferences",
+  "instructions",
   "memory",
   "notifications",
 ] as const;

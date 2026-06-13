@@ -382,7 +382,11 @@ def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
             "duration_ms": end.get("duration_ms"),
             "token_count": end.get("token_count"),
             "started_at": start.get("started_at", now),
-            "completed_at": now if subagent_id in subagent_ends else None,
+            # Always set — this runs only at turn finalization, so a subagent
+            # without an end event was cut short (cancelled / errored / timed
+            # out), not still running. Leaving it null persists a "forever
+            # spinning" card (the frontend keys its spinner on completed_at).
+            "completed_at": now,
             "icon_url": start.get("icon_url"),
             "tool_category": start.get("tool_category"),
             "nested_subagents": [],
