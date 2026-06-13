@@ -27,6 +27,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.agents.core.background.executor_queue import (
     LockState,
+    PreparedQueuedTask,
     get_lock_state,
     pop_next_queued_run,
     reclaim_stranded_task,
@@ -112,7 +113,7 @@ async def _finalize_executor_run(
     result_text: str,
     result_type: str,
 ) -> None:
-    """The full post-run cleanup: signal done, deliver, tear down, hand off lock."""
+    """Post-run cleanup, in order: signal done → deliver → close stream → hand off lock."""
     was_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(run.stream_id)
 
     # Snapshot which native cards were returned to the frontend BEFORE signalling
@@ -124,11 +125,29 @@ async def _finalize_executor_run(
     # into the comms ack and publish [DONE]. Comms re-narration runs in parallel.
     signal_executor_done(run.stream_id)
 
+    await _deliver_terminal_outcome(run, result_text, result_type, was_cancelled, returned_note)
+    await _close_queued_stream(run, was_cancelled)
+
+    prepared = await _hand_off_queue(run)
+    if prepared is not None:
+        _spawn_queued_run(run, prepared)
+
+
+async def _deliver_terminal_outcome(
+    run: ExecutorRun,
+    result_text: str,
+    result_type: str,
+    was_cancelled: bool,
+    returned_note: str,
+) -> None:
+    """Route the run's terminal outcome to exactly one delivery entry point.
+
+    A cancelled run's already-streamed cards must not vanish: self-owning runs
+    (queued / background workflow) persist them here, while live runs defer to
+    the comms path's attach step (persisting here too would duplicate cards). A
+    completed run with text narrates and delivers.
+    """
     if was_cancelled:
-        # The run was stopped, but cards already produced must not vanish.
-        # Self-owning runs (queued/workflow) persist them here BEFORE teardown
-        # below; live streams are owned by the comms path's attach step, so we
-        # skip here to avoid duplicate cards.
         if run.executor_owns_tool_data:
             await persist_cancelled_run(run)
         else:
@@ -140,42 +159,59 @@ async def _finalize_executor_run(
     elif result_text:
         await deliver_result(run, result_text, result_type, returned_note)
 
-    if run.is_queued:
-        teardown_executor_capture(run.stream_id)
-        if not was_cancelled:
-            await StreamManager.publish_chunk(run.stream_id, "data: [DONE]\n\n")
-            await StreamManager.complete_stream(run.stream_id)
 
-    # ── Queue / lock handoff ──────────────────────────────────────────
-    # Runs on EVERY terminal path, cancelled included: a Stop targets the
-    # running task only — queued tasks were acknowledged ("I'll handle it right
-    # after") and must still run. (cancel_executor with cancel-all clears the
-    # queue itself, so this pops nothing in that case.)
-    #
-    # The handoff is ownership-checked: pop/release only while this run still
-    # holds the busy lock — a stale finalize (cancelled and already replaced by
-    # a newer run) must never delete or overwrite the new holder's lock. A FREE
-    # lock (TTL expiry / cancel released it) goes through the NX reclaim so a
-    # concurrent call_executor acquirer always wins cleanly.
+async def _close_queued_stream(run: ExecutorRun, was_cancelled: bool) -> None:
+    """Tear down a queued run's session and close the SSE stream it owns.
+
+    Only queued runs own a stream the frontend subscribed to via
+    ``executor.stream_started``; live sessions are torn down by the chat path. A
+    cancelled queued stream closes silently — the cancel already told the client
+    — so no [DONE] / complete_stream.
+    """
+    if not run.is_queued:
+        return
+    teardown_executor_capture(run.stream_id)
+    if not was_cancelled:
+        await StreamManager.publish_chunk(run.stream_id, "data: [DONE]\n\n")
+        await StreamManager.complete_stream(run.stream_id)
+
+
+async def _hand_off_queue(run: ExecutorRun) -> PreparedQueuedTask | None:
+    """Pop and prepare the next queued task for this conversation, or None.
+
+    Runs on EVERY terminal path, cancelled included: a Stop targets the running
+    task only — queued tasks were acknowledged ("I'll handle it right after") and
+    must still run. (cancel_executor with cancel-all clears the queue itself, so
+    this pops nothing in that case.)
+
+    Ownership-checked against the busy lock:
+      - FOREIGN — a newer run already owns the lock; a stale finalize must not
+        touch it or the queue (the owner's finalize drains it).
+      - OURS    — pop the next task (pop overwrites the lock before returning, so
+        a concurrent call_executor can't grab it via SET NX in a delete→re-set
+        gap); release the lock if the queue was empty.
+      - FREE    — fall through to the NX reclaim below.
+
+    The reclaim closes the strand window: a task enqueued between the empty pop
+    and the release (or left behind a cancel-freed lock) is NX-claimed and
+    returned instead of sitting in Redis until the queue TTL.
+    """
     lock_state = await get_lock_state(run.conversation_id, run.stream_id, run.task_id)
     if lock_state is LockState.FOREIGN:
-        return
+        return None
 
     prepared = None
     if lock_state is LockState.OURS:
-        # pop overwrites the lock before returning, so a concurrent
-        # call_executor cannot grab it via SET NX in a delete→re-set gap.
         prepared = await pop_next_queued_run(run.conversation_id)
         if prepared is None:
             await release_lock_if_owned(run.conversation_id, run.stream_id, run.task_id)
     if prepared is None:
-        # Closes the strand window: a task enqueued between the empty pop and
-        # the release above (or left behind a freed lock) is claimed via NX
-        # and spawned instead of sitting in Redis until the queue TTL.
         prepared = await reclaim_stranded_task(run.conversation_id)
-    if prepared is None:
-        return
+    return prepared
 
+
+def _spawn_queued_run(run: ExecutorRun, prepared: PreparedQueuedTask) -> None:
+    """Spawn the next queued run as a GC-tracked background task."""
     bg_task = asyncio.create_task(
         run_executor_background(
             run=prepared.run,

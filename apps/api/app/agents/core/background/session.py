@@ -102,10 +102,19 @@ class ExecutorRun:
     def executor_owns_tool_data(self) -> bool:
         """Whether this run persists its own tool_data.
 
-        Live delegated runs: the comms path attaches executor tool_data to
-        the comms message — the executor must NOT also persist it (single
-        ownership prevents duplicate cards). Queued and workflow runs have
-        no comms consumer attaching cards, so the executor self-persists.
+        The real axis is live-streamed vs background-detached, NOT "is it a
+        workflow":
+          - live-streamed (chat): a comms stream attaches the executor's
+            tool_data to the comms message, so the executor must NOT also persist
+            it (single ownership prevents duplicate cards);
+          - background-detached (queued, scheduled workflow): no comms consumer
+            attaches cards, so the executor self-persists.
+
+        ``workflow_id is not None`` stands in for "background-detached" only
+        because every workflow run today is silent/scheduled. When a live
+        *interactive* workflow lands (streamed from the workflow page like chat),
+        it must be dispatched as ``RunKind.LIVE`` and this ``workflow_id`` clause
+        dropped — otherwise it would self-persist instead of streaming.
         """
         return self.kind is RunKind.QUEUED or self.workflow_id is not None
 
