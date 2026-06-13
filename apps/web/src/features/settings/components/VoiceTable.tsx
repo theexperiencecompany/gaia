@@ -197,7 +197,7 @@ export function VoiceTable({
                 "flex min-w-0 items-center gap-2",
                 // Keep the voice column narrow in the compact picker so the
                 // description wraps early and country gets room.
-                wrapText && "max-w-[13rem]",
+                wrapText && "max-w-[16rem]",
               )}
             >
               {/* Star toggle — propagation stopped so starring never doubles
