@@ -5,9 +5,11 @@ name: Desktop PR Build
 # didn't build locally (script divergence, asar/dependency breakage, native-dep
 # install, the wake-word prune, code-signing seal).
 #
-# Efficient by design: the expensive Next.js build runs ONCE on cheap Linux and
-# is shared as an artifact; each OS then only installs + packages (electron-builder
-# --dir, no installer). macOS additionally verifies the code-signing seal.
+# Efficient by design: the platform-agnostic work (Next.js build, electron-vite
+# build, the prepare/prune script + its wake-word canary) runs ONCE on cheap
+# Linux and is shared as an artifact; each OS then only installs deps and
+# packages (electron-builder --dir, no installer). macOS additionally ad-hoc
+# signs and verifies the bundle seal.
 on:
   pull_request:
     paths:
@@ -28,10 +30,12 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Build the Next.js standalone once (platform-agnostic) on cheap Linux.
+  # All platform-agnostic build work, done once on cheap Linux:
+  # web standalone -> electron-vite out/ -> prepare/prune (+ wake-word canary).
+  # The prepared, ready-to-package payload is shared with every OS.
   # ---------------------------------------------------------------------------
-  web:
-    name: Build web standalone
+  prepare:
+    name: Build + prepare payload
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,25 +50,30 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build web (standalone)
         run: pnpm nx build web --skip-nx-cache
-      # Pack into a single tarball: deterministic paths (no upload-artifact
-      # path inference), captures the hidden .next dir, and preserves the
-      # traced node_modules verbatim.
-      - name: Archive standalone server
-        run: tar -czf web-standalone.tar.gz apps/web/.next/standalone apps/web/.next/static apps/web/public
-      - name: Upload standalone server
+      - name: Build Electron main/preload
+        run: pnpm nx build desktop
+      - name: Prepare standalone (prune + wake-word canary)
+        working-directory: apps/desktop
+        run: node ./scripts/prepare-next-server.mjs
+      # Pack the ready-to-package payload (electron-vite output + pruned server)
+      # into one tarball: deterministic paths, captures hidden dirs, preserves
+      # symlinks, and small enough to round-trip reliably.
+      - name: Archive packaging payload
+        run: tar -czf desktop-payload.tar.gz apps/desktop/out apps/desktop/.next-server-prepared
+      - name: Upload packaging payload
         uses: actions/upload-artifact@v4
         with:
-          name: web-standalone
+          name: desktop-payload
           if-no-files-found: error
           retention-days: 3
-          path: web-standalone.tar.gz
+          path: desktop-payload.tar.gz
 
   # ---------------------------------------------------------------------------
-  # Package the desktop app on each OS (no installer) to prove it builds.
+  # Package the app on each OS (no installer) to prove it builds + links.
   # ---------------------------------------------------------------------------
   package:
     name: Package desktop (${{ matrix.target }})
-    needs: web
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -85,24 +94,17 @@ jobs:
         with:
           node-version: 22
           cache: "pnpm"
+      # Installs electron-builder + the per-OS app-builder binaries + the
+      # desktop runtime deps that get packaged into the app.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # Restore the prebuilt Next.js output instead of rebuilding it per-OS.
-      - name: Restore web standalone
+      - name: Download packaging payload
         uses: actions/download-artifact@v4
         with:
-          name: web-standalone
-      - name: Unpack standalone (restores apps/web/.next/{standalone,static} + public)
+          name: desktop-payload
+      - name: Unpack payload (restores apps/desktop/out + .next-server-prepared)
         shell: bash
-        run: tar -xzf web-standalone.tar.gz
-
-      - name: Build Electron main/preload
-        run: pnpm nx build desktop
-
-      - name: Prepare standalone for packaging (prune + wake-word canary)
-        working-directory: apps/desktop
-        run: node ./scripts/prepare-next-server.mjs
+        run: tar -xzf desktop-payload.tar.gz
 
       # --dir = unpacked app, no installer: fast, and enough to catch asar /
       # dependency / prune regressions. macOS ad-hoc-signs via the afterSign hook
@@ -113,8 +115,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      # Layer 4: the signing regression only shows at runtime — assert the seal
-      # is valid in CI instead.
+      # The signing regression only shows at runtime — assert the seal in CI.
       - name: Verify macOS code-signing seal
         if: matrix.target == 'mac'
         run: |
