@@ -1,13 +1,12 @@
 """Pure utility functions for the voice agent — sanitization, metadata extraction, timing."""
 
-from datetime import datetime
 import json
 import time
 from typing import NamedTuple
 
 from livekit.agents.llm import ChatContext
 
-from shared.py.logging import get_contextual_logger
+from shared.py.wide_events import log
 from src.constants import (
     DIRECTIVE_PREFIX_RE,
     MARKDOWN_RE,
@@ -17,8 +16,6 @@ from src.constants import (
     TAG_RE,
     WHITESPACE_RE,
 )
-
-logger = get_contextual_logger("voice")
 
 
 def sanitize_for_tts(piece: str) -> str:
@@ -76,7 +73,7 @@ def extract_meta_data(md: str | None) -> ParticipantMeta:
             backend_url=_clean_str(obj.get("backendUrl")),
         )
     except (json.JSONDecodeError, AttributeError, TypeError) as e:
-        logger.debug("Unparseable participant metadata", error=str(e), metadata=md[:200])
+        log.debug("Unparseable participant metadata", error=str(e), metadata=md[:200])
         return ParticipantMeta()
 
 
@@ -136,12 +133,6 @@ def user_id_from_room(room_name: str) -> str | None:
     return user_id
 
 
-def now_ts() -> str:
-    """Current wall-clock time as HH:MM:SS.mmm for human-readable debug logs."""
-    now = datetime.now()
-    return now.strftime("%H:%M:%S.") + f"{now.microsecond // 1000:03d}"
-
-
 def ms_since(t0: float) -> float:
     """Return milliseconds elapsed since t0 (from time.monotonic())."""
     return (time.monotonic() - t0) * 1000
@@ -155,7 +146,6 @@ __all__ = [
     "ParticipantMeta",
     "extract_latest_user_text",
     "build_messages_from_ctx",
-    "now_ts",
     "ms_since",
     "user_id_from_room",
 ]

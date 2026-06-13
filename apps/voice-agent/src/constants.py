@@ -17,6 +17,22 @@ MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
 # Must match VOICE_TTS_KEY in apps/api/app/agents/core/background/executor_runner.py.
 VOICE_TTS_KEY = "voice_tts"
 
+# Plumbing event keys that must never reach TTS.
+# Any backend SSE event carrying one of these keys is forwarded to the frontend
+# but never appended to the TTS text buffer.
+PLUMBING_EVENT_KEYS = frozenset(
+    {
+        "tool_data",
+        "tool_output",
+        "follow_up_actions",
+        MAIN_RESPONSE_COMPLETE_KEY,
+        "conversation_id",
+        "conversation_description",
+    }
+)
+
+SENTENCE_ENDINGS = (".", "!", "?")
+
 # TTS flush thresholds (chars)
 TTS_MIN_SENTENCE_CHARS = 40
 TTS_HARD_FLUSH_CHARS = 120
@@ -80,6 +96,8 @@ __all__ = [
     "RESPONSE_KEY",
     "MAIN_RESPONSE_COMPLETE_KEY",
     "VOICE_TTS_KEY",
+    "PLUMBING_EVENT_KEYS",
+    "SENTENCE_ENDINGS",
     "TTS_MIN_SENTENCE_CHARS",
     "TTS_HARD_FLUSH_CHARS",
     "TTS_MIN_EMIT_CHARS",

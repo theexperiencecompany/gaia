@@ -11,14 +11,16 @@ import aiohttp
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 
-from shared.py.logging import get_contextual_logger
+from shared.py.wide_events import log, wide_task
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
     DONE_SENTINEL,
     FRONTEND_STREAM_TOPIC,
     MAIN_RESPONSE_COMPLETE_KEY,
     OPEN_TAG_DEFER_CAP,
+    PLUMBING_EVENT_KEYS,
     RESPONSE_KEY,
+    SENTENCE_ENDINGS,
     SSE_DATA_PREFIX,
     TTS_FINAL_MIN_CHARS,
     TTS_HARD_FLUSH_CHARS,
@@ -32,31 +34,11 @@ from src.utils import (
     has_open_openui_fence_at_tail,
     has_open_tag_at_tail,
     ms_since,
-    now_ts,
     sanitize_for_tts,
 )
 
 if TYPE_CHECKING:
     from livekit.agents import AgentSession
-    from loguru import Logger
-
-# Plumbing event keys that must never reach TTS.
-# Any backend SSE event carrying one of these keys is forwarded to the frontend
-# but never appended to the TTS text buffer.
-PLUMBING_EVENT_KEYS = frozenset(
-    {
-        "tool_data",
-        "tool_output",
-        "follow_up_actions",
-        MAIN_RESPONSE_COMPLETE_KEY,
-        "conversation_id",
-        "conversation_description",
-    }
-)
-
-SENTENCE_ENDINGS = (".", "!", "?")
-
-logger = get_contextual_logger("voice")
 
 
 class CustomLLM(LLM):
@@ -117,7 +99,7 @@ class CustomLLM(LLM):
                     conversation_id, topic="conversation-id"
                 )
             except Exception as e:
-                logger.error("Failed to send conversation ID", error=str(e))
+                log.error("Failed to send conversation ID", error=str(e))
 
     async def set_conversation_description(self, description: str) -> None:
         """Store and broadcast conversation description to room participants."""
@@ -130,7 +112,7 @@ class CustomLLM(LLM):
                     description, topic="conversation-description"
                 )
             except Exception as e:
-                logger.error("Failed to send conversation description", error=str(e))
+                log.error("Failed to send conversation description", error=str(e))
 
     async def forward_stream_event_to_frontend(self, raw_event: str) -> None:
         """Forward a raw backend SSE payload to the frontend via LiveKit data channel."""
@@ -141,14 +123,14 @@ class CustomLLM(LLM):
                 raw_event,
                 topic=FRONTEND_STREAM_TOPIC,
             )
-            logger.debug(
-                f"[{now_ts()}] → FRONTEND | topic={FRONTEND_STREAM_TOPIC} len={len(raw_event)}",
+            log.debug(
+                "forward to frontend",
                 phase="forward_frontend",
                 payload_len=len(raw_event),
                 payload_preview=raw_event[:300],
             )
         except Exception as e:
-            logger.warning(
+            log.warning(
                 "Failed to forward backend stream event to frontend",
                 topic=FRONTEND_STREAM_TOPIC,
                 error=str(e),
@@ -207,7 +189,7 @@ class CustomLLM(LLM):
                 if event.keys() & PLUMBING_EVENT_KEYS:
                     await self.forward_stream_event_to_frontend(data)
         except Exception as e:
-            logger.warning("Voice stream drain failed", error=str(e))
+            log.warning("Voice stream drain failed", error=str(e))
         finally:
             await resp.release()
 
@@ -235,7 +217,7 @@ class CustomLLM(LLM):
             if self._http_session and not self._http_session.closed:
                 await self._http_session.close()
         except Exception as e:
-            logger.warning("Failed to close backend HTTP session", error=str(e))
+            log.warning("Failed to close backend HTTP session", error=str(e))
         finally:
             await super().aclose()
 
@@ -264,15 +246,8 @@ class _VoiceTurn:
 
     def __init__(self, llm: CustomLLM, chat_ctx: ChatContext, turn_index: int) -> None:
         self.llm = llm
+        self.turn_index = turn_index
         self.turn_start = time.monotonic()
-        # Per-turn logger: every line in this turn carries the same
-        # identity + turn fields, so Loki can slice by any of them.
-        self.tlog: Logger = logger.bind(
-            room=llm.room.name if llm.room else None,
-            user_id=llm.user_id,
-            conversation_id=llm.conversation_id,
-            turn_index=turn_index,
-        )
         self.user_message = extract_latest_user_text(chat_ctx)
         # Build full message history from the LiveKit context so the backend
         # LLM has the complete conversation rather than just the latest turn.
@@ -298,24 +273,33 @@ class _VoiceTurn:
 
     async def run(self) -> AsyncGenerator[ChatChunk, None]:
         """Drive the whole turn; yields sanitized TTS chunks as they flush."""
-        ts = now_ts()
+        # Per-turn wide-event scope: every line in this turn carries the same
+        # identity + turn fields, so Loki can slice by any of them.
+        async with wide_task(
+            "voice_turn",
+            room=self.llm.room.name if self.llm.room else None,
+            user_id=self.llm.user_id,
+            conversation_id=self.llm.conversation_id,
+            turn_index=self.turn_index,
+        ):
+            async for chunk in self._run():
+                yield chunk
+
+    async def _run(self) -> AsyncGenerator[ChatChunk, None]:
         if not self.user_message:
-            self.tlog.warning(
-                f"[{ts}] ⚠ EMPTY USER MESSAGE — skipping LLM turn",
-                phase="turn_skip",
-            )
+            log.warning("empty user message, skipping LLM turn", phase="turn_skip")
             return
 
-        self.tlog.info(
-            f"[{ts}] 🟢 CHAT() GENERATOR START | user={self.user_message[:50]!r}",
+        log.info(
+            "chat turn start",
             phase="chat_turn_start",
             user_msg=self.user_message,
             user_msg_len=len(self.user_message),
         )
 
         payload = self._build_payload()
-        self.tlog.debug(
-            f"[{now_ts()}] ⬆ BACKEND REQUEST | {self.llm.base_url}/api/v1/chat-stream",
+        log.debug(
+            "backend request",
             phase="backend_request",
             elapsed_ms=ms_since(self.turn_start),
             conversation_id=self.llm.conversation_id,
@@ -334,7 +318,7 @@ class _VoiceTurn:
         try:
             if resp.status >= 400:
                 body = await resp.text()
-                self.tlog.error(
+                log.error(
                     "Backend returned error response",
                     status=resp.status,
                     body=body[:500],
@@ -354,16 +338,16 @@ class _VoiceTurn:
                 self.llm.spawn_drain(resp)
                 handed_off = True
 
-            self.tlog.info(
-                f"[{now_ts()}] 🔴 CHAT() GENERATOR END | elapsed={ms_since(self.turn_start):.0f}ms",
+            log.info(
+                "chat turn end",
                 phase="chat_turn_end",
                 elapsed_ms=ms_since(self.turn_start),
             )
             # Canonical per-turn wide event — one INFO line carrying the comms
             # turn so Loki can answer latency/volume/behaviour questions without
             # stitching DEBUG lines together.
-            self.tlog.info(
-                f"[{now_ts()}] ✓ TURN COMPLETE | tokens={self.total_tokens} total={ms_since(self.turn_start):.0f}ms",
+            log.info(
+                "turn complete",
                 phase="turn_complete",
                 status="ok",
                 **self._turn_fields(),
@@ -372,8 +356,8 @@ class _VoiceTurn:
         except Exception as e:
             # Same wide event on the failure path (status=error) so error
             # turns are queryable with the identical field set.
-            self.tlog.error(
-                f"[{now_ts()}] ✗ TURN FAILED | {type(e).__name__} after {ms_since(self.turn_start):.0f}ms",
+            log.error(
+                "turn failed",
                 phase="turn_complete",
                 status="error",
                 error=str(e),
@@ -388,9 +372,8 @@ class _VoiceTurn:
 
     def _emit(self, text: str, source: str) -> ChatChunk:
         """Log + wrap a TTS chunk so we can see exactly WHEN text is handed to TTS."""
-        self.tlog.info(
-            f"[{now_ts()}] 📤 YIELD→TTS [{source}] ({len(text)} chars) "
-            f"elapsed={ms_since(self.turn_start):.0f}ms | {text[:60]!r}",
+        log.info(
+            "yield to TTS",
             phase="yield_tts",
             source=source,
             char_count=len(text),
@@ -407,8 +390,8 @@ class _VoiceTurn:
 
             if data == DONE_SENTINEL:
                 self.stream_done = True
-                self.tlog.info(
-                    f"[{now_ts()}] 🏁 [DONE] received | elapsed={ms_since(self.turn_start):.0f}ms",
+                log.info(
+                    "[DONE] received",
                     phase="done_received",
                     elapsed_ms=ms_since(self.turn_start),
                 )
@@ -473,8 +456,8 @@ class _VoiceTurn:
 
     async def _on_stream_done(self) -> str | None:
         """Log stream end and flush whatever text is still buffered."""
-        self.tlog.debug(
-            f"[{now_ts()}] ■ STREAM DONE | tokens={self.total_tokens} elapsed={ms_since(self.turn_start):.0f}ms",
+        log.debug(
+            "stream done",
             phase="stream_done",
             total_tokens=self.total_tokens,
             elapsed_ms=ms_since(self.turn_start),
@@ -500,9 +483,8 @@ class _VoiceTurn:
         if is_plumbing:
             await self.llm.forward_stream_event_to_frontend(data)
 
-        self.tlog.info(
-            f"[{now_ts()}] ~ BACKEND EVENT | keys={list(event_keys)} "
-            f"plumbing={is_plumbing} elapsed={ms_since(self.turn_start):.0f}ms",
+        log.info(
+            "backend event",
             phase="backend_event",
             event_keys=list(event_keys),
             event_data=data[:300],
@@ -546,8 +528,8 @@ class _VoiceTurn:
             return
         self.first_token_received = True
         self.ttfb_ms = ms_since(self.turn_start)
-        self.tlog.debug(
-            f"[{now_ts()}] ◎ FIRST TOKEN | TTFB={self.ttfb_ms:.1f}ms",
+        log.debug(
+            "first token",
             phase="first_token",
             ttfb_ms=self.ttfb_ms,
         )
@@ -559,11 +541,11 @@ class _VoiceTurn:
             tail = await self._flush_buffer(min_chars=1, count_stats=False, label=None)
         self.tts_enabled = False
         self.comms_complete = True
-        self.tlog.info(
-            f"[{now_ts()}] ✅ MAIN RESPONSE COMPLETE — ending audio turn | "
-            f"elapsed={ms_since(self.turn_start):.0f}ms (ack flushed: {bool(tail)})",
+        log.info(
+            "main response complete, ending audio turn",
             phase="main_response_complete",
             elapsed_ms=ms_since(self.turn_start),
+            ack_flushed=bool(tail),
         )
         return tail
 
@@ -572,9 +554,8 @@ class _VoiceTurn:
         if not spoken:
             return None
         self.executor_tts_chars += len(spoken)
-        self.tlog.info(
-            f"[{now_ts()}] 🗣 EXECUTOR ANSWER ARRIVED ({len(spoken)} chars) "
-            f"elapsed={ms_since(self.turn_start):.0f}ms | {spoken[:60]!r}",
+        log.info(
+            "executor answer arrived",
             phase="tts_executor_answer",
             char_count=len(spoken),
             elapsed_ms=ms_since(self.turn_start),
@@ -596,13 +577,8 @@ class _VoiceTurn:
 
         self.text_buffer.append(piece)
         self.total_tokens += 1
-        # Escape braces in the preview: loguru re-parses the message as a
-        # brace-format template (kwargs are present), so a JSON-ish token like
-        # {"label": ...} (e.g. an OpenUI fragment) would raise KeyError and
-        # kill the turn.
-        preview = piece[:60].replace("{", "{{").replace("}", "}}")
-        self.tlog.debug(
-            f"[{now_ts()}] ≈ TOKEN #{self.total_tokens} | raw='{preview}'",
+        log.debug(
+            "token",
             phase="token",
             token_index=self.total_tokens,
             token=piece,
@@ -668,8 +644,8 @@ class _VoiceTurn:
             if self.first_tts_flush_ms is None:
                 self.first_tts_flush_ms = ms_since(self.turn_start)
         if label:
-            self.tlog.debug(
-                f"[{now_ts()}] 🔊 {label} ({len(out)} chars) elapsed={ms_since(self.turn_start):.0f}ms",
+            log.debug(
+                label,
                 phase="tts_flush" if label == "TTS FLUSH" else "tts_final",
                 text_before_sanitize=raw,
                 text_after_sanitize=out,

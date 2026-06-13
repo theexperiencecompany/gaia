@@ -4,12 +4,9 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic_settings import SettingsConfigDict
 
-from shared.py.logging import get_contextual_logger
 from shared.py.settings import BaseAppSettings
-
-logger = get_contextual_logger("config")
+from shared.py.wide_events import log
 
 # Load API's .env for shared Infisical bootstrap vars
 _api_env_path = Path(__file__).parent.parent.parent / "api" / ".env"
@@ -27,11 +24,6 @@ class VoiceAgentSettings(BaseAppSettings):
 
     # Consumed by livekit-plugins-deepgram via env var — not passed explicitly in code
     DEEPGRAM_API_KEY: str | None = None
-
-    model_config = SettingsConfigDict(
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
 
 
 @lru_cache(maxsize=1)
@@ -56,7 +48,7 @@ def bootstrap_settings() -> VoiceAgentSettings:
     its config from the inherited env without re-fetching from Infisical.
     """
     settings = get_settings()
-    logger.info("Voice agent settings initialized")
+    log.info("Voice agent settings initialized")
     return settings
 
 

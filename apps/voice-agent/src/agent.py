@@ -5,7 +5,7 @@ from collections.abc import Coroutine
 from functools import partial
 from pathlib import Path
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents import (
@@ -26,8 +26,9 @@ from livekit.agents import (
 from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from shared.py.logging import configure_file_logging, get_contextual_logger
+from shared.py.logging import configure_file_logging
 from shared.py.secrets import inject_infisical_secrets
+from shared.py.wide_events import log
 from src.config import bootstrap_settings
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
@@ -37,15 +38,10 @@ from src.constants import (
     VOICE_SYSTEM_PROMPT,
 )
 from src.llm import CustomLLM
-from src.utils import extract_meta_data, ms_since, now_ts, user_id_from_room
-
-if TYPE_CHECKING:
-    from loguru import Logger
+from src.utils import extract_meta_data, ms_since, user_id_from_room
 
 # Use an absolute path so logs land in the right place regardless of CWD
 configure_file_logging(Path(__file__).parent.parent / "logs")
-
-logger = get_contextual_logger("voice")
 
 
 def prewarm(proc: JobProcess) -> None:
@@ -58,89 +54,84 @@ def prewarm(proc: JobProcess) -> None:
     not affected by model I/O. MultilingualModel is created per-room in entrypoint()
     because its constructor requires a job context.
     """
-    logger.info(f"[{now_ts()}] ⚙ PREWARM START")
+    log.info("prewarm start")
     t0 = time.monotonic()
 
     settings = bootstrap_settings()
     proc.userdata["settings"] = settings
-    logger.info(f"[{now_ts()}] ⚙ settings loaded | {ms_since(t0):.0f}ms")
+    log.info("settings loaded", elapsed_ms=ms_since(t0))
 
     t_vad = time.monotonic()
     proc.userdata["vad"] = silero.VAD.load()
-    logger.info(f"[{now_ts()}] ⚙ VAD loaded | {ms_since(t_vad):.0f}ms")
+    log.info("VAD loaded", elapsed_ms=ms_since(t_vad))
 
     # MultilingualModel cannot be instantiated here — its __init__ calls
     # get_job_context().inference_executor which only exists inside entrypoint().
-    logger.info(
-        f"[{now_ts()}] ⚙ PREWARM DONE | total={ms_since(t0):.0f}ms",
-        phase="prewarm_done",
-        total_ms=ms_since(t0),
-    )
+    log.info("prewarm done", phase="prewarm_done", total_ms=ms_since(t0))
 
 
-def _register_session_logging(ctx: JobContext, session: AgentSession, slog: "Logger") -> None:
-    """Wire per-session lifecycle logging: user/agent state, STT, metrics, usage."""
+def _register_session_logging(
+    ctx: JobContext, session: AgentSession, identity: dict[str, Any]
+) -> None:
+    """Wire per-session lifecycle logging: user/agent state, STT, metrics, usage.
+
+    ``identity`` carries the room/user/job fields onto every event so one Loki
+    filter reconstructs the session timeline; these callbacks fire outside the
+    entrypoint's context, so the fields are passed explicitly rather than bound.
+    """
     _speaking_start: dict[str, float] = {}
 
     @session.on("user_state_changed")
     def _on_user_state_changed(ev: UserStateChangedEvent) -> None:
         if ev.new_state == "speaking":
             _speaking_start["t"] = time.monotonic()
-            slog.debug(
-                f"[{now_ts()}] 🎤 USER SPEAKING START",
-                phase="user_speaking_start",
-            )
+            log.debug("user speaking start", phase="user_speaking_start", **identity)
         elif ev.old_state == "speaking":
             duration_ms = ms_since(_speaking_start.get("t", time.monotonic()))
-            slog.debug(
-                f"[{now_ts()}] 🎤 USER SPEAKING END | duration={duration_ms:.0f}ms",
+            log.debug(
+                "user speaking end",
                 phase="user_speaking_end",
                 duration_ms=duration_ms,
+                **identity,
             )
 
     @session.on("user_input_transcribed")
     def _on_user_input_transcribed(ev: UserInputTranscribedEvent) -> None:
         stt_latency_ms = ms_since(_speaking_start.get("t", time.monotonic()))
         if ev.is_final:
-            slog.info(
-                f"[{now_ts()}] 📝 STT FINAL | lang={ev.language} | stt_latency={stt_latency_ms:.0f}ms",
+            log.info(
+                "STT final",
                 phase="stt_final",
                 transcript=ev.transcript,
                 language=ev.language,
                 stt_latency_ms=stt_latency_ms,
+                **identity,
             )
         else:
-            slog.debug(
-                f"[{now_ts()}] 📝 STT INTERIM ({len(ev.transcript)} chars)",
+            log.debug(
+                "STT interim",
                 phase="stt_interim",
                 transcript=ev.transcript,
+                **identity,
             )
 
     @session.on("agent_state_changed")
     def _on_agent_state_changed(ev: AgentStateChangedEvent) -> None:
         if ev.new_state == "thinking":
-            slog.debug(
-                f"[{now_ts()}] 🤔 AGENT THINKING — sending to backend",
-                phase="agent_thinking",
-            )
+            log.debug("agent thinking", phase="agent_thinking", **identity)
         elif ev.new_state == "speaking":
-            slog.debug(
-                f"[{now_ts()}] 🔊 AGENT SPEAKING START",
-                phase="agent_speaking_start",
-            )
+            log.debug("agent speaking start", phase="agent_speaking_start", **identity)
         elif ev.old_state == "speaking":
-            slog.debug(
-                f"[{now_ts()}] 🔊 AGENT SPEAKING END",
-                phase="agent_speaking_end",
-            )
+            log.debug("agent speaking end", phase="agent_speaking_end", **identity)
 
     @session.on("agent_false_interruption")
     def _on_agent_false_interruption(ev: AgentFalseInterruptionEvent) -> None:
         # Framework handles automatic resume when ev.resumed is True
-        slog.info(
-            f"[{now_ts()}] ↩ FALSE INTERRUPTION | resumed={ev.resumed}",
+        log.info(
+            "false interruption",
             phase="false_interruption",
             resumed=ev.resumed,
+            **identity,
         )
 
     usage_collector = metrics.UsageCollector()
@@ -155,11 +146,7 @@ def _register_session_logging(ctx: JobContext, session: AgentSession, slog: "Log
     async def log_usage() -> None:  # NOSONAR python:S7503
         """Emit the session's aggregated STT/TTS/LLM usage at shutdown."""
         summary = usage_collector.get_summary()
-        slog.info(
-            f"[{now_ts()}] 📊 SESSION USAGE",
-            phase="session_usage",
-            summary=str(summary),
-        )
+        log.info("session usage", phase="session_usage", summary=str(summary), **identity)
 
     ctx.add_shutdown_callback(log_usage)
 
@@ -172,28 +159,30 @@ async def _apply_participant_credentials(
     custom_llm: CustomLLM,
     tts: elevenlabs.TTS,
     applied_voice: dict[str, str],
-    slog: "Logger",
+    identity: dict[str, Any],
 ) -> None:
     """Apply agent token, TTS voice, and conversation id from participant metadata."""
     meta = extract_meta_data(md)
     token, conv_id, voice_id = meta.agent_token, meta.conversation_id, meta.voice_id
     if token:
         custom_llm.set_agent_token(token)
-        slog.debug(
-            f"[{now_ts()}] 🔑 TOKEN SET | participant={who} origin={origin}",
+        log.debug(
+            "token set",
             phase="token_set",
             participant=who,
             origin=origin,
+            **identity,
         )
     if meta.backend_url and meta.backend_url != custom_llm.base_url:
         # Multi-backend deployments (staging previews) run ONE shared agent;
         # each session's metadata names the API that minted it.
         custom_llm.set_backend_url(meta.backend_url)
-        slog.info(
-            f"[{now_ts()}] 🌐 BACKEND URL SET | {meta.backend_url} participant={who}",
+        log.info(
+            "backend url set",
             phase="backend_url_set",
             backend_url=meta.backend_url,
             participant=who,
+            **identity,
         )
     if voice_id and voice_id != applied_voice.get("id"):
         # User-selected ElevenLabs voice (set in Settings → Voice), carried
@@ -201,26 +190,28 @@ async def _apply_participant_credentials(
         # synthesis from the next utterance on.
         applied_voice["id"] = voice_id
         tts.update_options(voice_id=voice_id)
-        slog.info(
-            f"[{now_ts()}] 🗣 VOICE SET | voice_id={voice_id} participant={who}",
+        log.info(
+            "voice set",
             phase="voice_set",
             voice_id=voice_id,
             participant=who,
+            **identity,
         )
     if conv_id:
         await custom_llm.set_conversation_id(conv_id)
-        slog.debug(
-            f"[{now_ts()}] 💬 CONV ID SET | {conv_id} participant={who}",
+        log.debug(
+            "conversation id set",
             phase="conv_id_set",
             conversation_id=conv_id,
             participant=who,
+            **identity,
         )
 
 
 def _spawn_credential_task(
     coro: Coroutine[Any, Any, None],
     tasks: set[asyncio.Task[None]],
-    slog: "Logger",
+    identity: dict[str, Any],
 ) -> None:
     """Run a credential coroutine in the background, kept alive in `tasks`."""
     task: asyncio.Task[None] = asyncio.create_task(coro)
@@ -229,9 +220,10 @@ def _spawn_credential_task(
     def _done(t: asyncio.Task[None]) -> None:
         tasks.discard(t)
         if not t.cancelled() and t.exception():
-            slog.error(
+            log.error(
                 "Background credential task failed",
                 exc_info=t.exception(),
+                **identity,
             )
 
     task.add_done_callback(_done)
@@ -242,21 +234,21 @@ async def entrypoint(ctx: JobContext) -> None:
     settings = ctx.proc.userdata["settings"]
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    # Session-scoped logger: every event in this room carries the same
-    # high-cardinality identity fields, so one LogQL filter (room=... or
-    # user_id=...) reconstructs the full session timeline in Loki.
+    # Session identity: every event in this room carries the same
+    # high-cardinality fields, so one LogQL filter (room=... or user_id=...)
+    # reconstructs the full session timeline in Loki. The session event
+    # callbacks fire outside this task's context, so identity is passed
+    # explicitly into each log call rather than bound.
     user_id = user_id_from_room(ctx.room.name)
-    slog = logger.bind(
-        room=ctx.room.name,
-        user_id=user_id,
-        job_id=getattr(ctx.job, "id", None),
-    )
+    identity: dict[str, Any] = {
+        "room": ctx.room.name,
+        "user_id": user_id,
+        "job_id": getattr(ctx.job, "id", None),
+    }
+    log.set(**identity)
 
     room_start = time.monotonic()
-    slog.info(
-        f"[{now_ts()}] 🚀 ROOM START | room={ctx.room.name}",
-        phase="room_start",
-    )
+    log.info("room start", phase="room_start", **identity)
 
     custom_llm = CustomLLM(
         base_url=settings.GAIA_BACKEND_URL,
@@ -286,7 +278,7 @@ async def entrypoint(ctx: JobContext) -> None:
     # the comms turn has ended.
     custom_llm.session = session
 
-    _register_session_logging(ctx, session, slog)
+    _register_session_logging(ctx, session, identity)
 
     # Tracks the currently-applied TTS voice so repeated metadata events
     # (join + metadata_changed) don't re-apply the same voice.
@@ -296,23 +288,23 @@ async def entrypoint(ctx: JobContext) -> None:
         custom_llm=custom_llm,
         tts=tts,
         applied_voice=applied_voice,
-        slog=slog,
+        identity=identity,
     )
 
     background_tasks: set[asyncio.Task[None]] = set()
 
     @ctx.room.on("participant_connected")
     def _on_participant_connected(p: rtc.RemoteParticipant) -> None:
-        join_ts = now_ts()
-        slog.info(
-            f"[{join_ts}] 👤 PARTICIPANT JOINED | identity={p.identity}",
+        log.info(
+            "participant joined",
             phase="participant_joined",
             participant=p.identity,
+            **identity,
         )
         _spawn_credential_task(
             apply_credentials(getattr(p, "metadata", None), "participant_connected", p.identity),
             background_tasks,
-            slog,
+            identity,
         )
 
     @ctx.room.on("participant_metadata_changed")
@@ -320,7 +312,7 @@ async def entrypoint(ctx: JobContext) -> None:
         _spawn_credential_task(
             apply_credentials(new_md, "participant_metadata_changed", p.identity),
             background_tasks,
-            slog,
+            identity,
         )
 
     # session.start() runs ctx.connect() CONCURRENTLY with its own setup
@@ -343,22 +335,23 @@ async def entrypoint(ctx: JobContext) -> None:
     # round trip, and the first user turn is still endpointing-delay +
     # STT away, so the token lands long before it is needed.
     for p in ctx.room.remote_participants.values():
-        slog.info(
-            f"[{now_ts()}] 👤 EXISTING PARTICIPANT | identity={p.identity}",
+        log.info(
+            "existing participant",
             phase="existing_participant",
             participant=p.identity,
+            **identity,
         )
         _spawn_credential_task(
             apply_credentials(getattr(p, "metadata", None), "existing_participant", p.identity),
             background_tasks,
-            slog,
+            identity,
         )
 
-    slog.info(
-        f"[{now_ts()}] ✅ SESSION START | room={ctx.room.name} setup={ms_since(room_start):.0f}ms",
+    log.info(
+        "session start",
         phase="session_start",
-        room=ctx.room.name,
         setup_ms=ms_since(room_start),
+        **identity,
     )
 
 
