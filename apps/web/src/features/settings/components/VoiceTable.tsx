@@ -53,8 +53,14 @@ interface VoiceTableProps {
    * beside the voice name instead — for the compact in-session picker.
    */
   inlineGender?: boolean;
-  /** Play the sample when a row is selected. Off in live voice sessions. */
+  /** Wrap the description instead of truncating — keeps narrow layouts from
+   * overflowing horizontally. */
+  wrapText?: boolean;
+  /** Play the sample when a row is selected. */
   previewOnSelect?: boolean;
+  /** Fired (after persisting) when the selection changes — lets the live
+   * session re-point the agent's voice. */
+  onSelect?: (voiceId: string) => void;
   classNames?: TableProps["classNames"];
   "aria-label"?: string;
 }
@@ -79,7 +85,9 @@ export function VoiceTable({
   showLanguage = true,
   showPreview = true,
   inlineGender = false,
+  wrapText = false,
   previewOnSelect = true,
+  onSelect,
   classNames,
   "aria-label": ariaLabel = "Available voices",
 }: Readonly<VoiceTableProps>) {
@@ -160,8 +168,9 @@ export function VoiceTable({
       const voiceId = Array.from(keys)[0];
       if (typeof voiceId === "string" && voiceId !== data?.selected_voice_id) {
         selectVoice.mutate(voiceId);
-        // Hearing the choice confirms it — selecting also plays the sample,
-        // except in a live session where it would clash with the agent.
+        // Re-point the live agent (no-op outside a session).
+        onSelect?.(voiceId);
+        // Hearing the choice confirms it — selecting also plays the sample.
         if (previewOnSelect) {
           const voice = data?.voices.find((v) => v.voice_id === voiceId);
           if (voice) playPreview(voice);
@@ -174,6 +183,7 @@ export function VoiceTable({
       selectVoice,
       playPreview,
       previewOnSelect,
+      onSelect,
     ],
   );
 
@@ -223,7 +233,12 @@ export function VoiceTable({
                     <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-primary" />
                   )}
                 </div>
-                <p className="mt-0.5 truncate text-xs text-zinc-500">
+                <p
+                  className={cn(
+                    "mt-0.5 text-xs text-zinc-500",
+                    wrapText ? "whitespace-normal break-words" : "truncate",
+                  )}
+                >
                   {voice.description}
                 </p>
               </div>
@@ -309,7 +324,7 @@ export function VoiceTable({
           return null;
       }
     },
-    [starVoice, togglePreview, inlineGender],
+    [starVoice, togglePreview, inlineGender, wrapText],
   );
 
   return (
