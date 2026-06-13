@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Autocomplete,
+  AutocompleteItem,
   Avatar,
   Input,
   Select,
@@ -132,28 +134,31 @@ export function VoiceFilters({
           )),
         ]}
       </Select>
-      <Select
+      <Autocomplete
         aria-label="Filter by country"
         placeholder="Country"
-        selectedKeys={[countryFilter]}
-        onSelectionChange={(keys) =>
-          onCountryFilterChange(selectedFilterKey(keys))
+        // Autocomplete is single-key: null on clear maps back to the all-filter.
+        selectedKey={countryFilter}
+        onSelectionChange={(key) =>
+          onCountryFilterChange(typeof key === "string" ? key : ALL_FILTER)
         }
         startContent={countryStartContent}
         className="sm:max-w-44"
       >
         {[
-          <SelectItem
+          <AutocompleteItem
             key={ALL_FILTER}
+            textValue="All countries"
             startContent={
               <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
             }
           >
             All countries
-          </SelectItem>,
+          </AutocompleteItem>,
           ...countryOptions.map(({ accent, countryCode }) => (
-            <SelectItem
+            <AutocompleteItem
               key={accent}
+              textValue={accent}
               startContent={
                 countryCode ? (
                   <Avatar
@@ -167,10 +172,10 @@ export function VoiceFilters({
               }
             >
               {accent}
-            </SelectItem>
+            </AutocompleteItem>
           )),
         ]}
-      </Select>
+      </Autocomplete>
     </div>
   );
 }

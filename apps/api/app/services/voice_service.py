@@ -256,10 +256,20 @@ async def _add_library_voice_to_account(voice: dict[str, Any]) -> str:
     except httpx.HTTPStatusError as e:
         detail = e.response.text[:200]
         log.warning("Failed to add library voice", voice_id=voice["voice_id"], detail=detail)
+        # ElevenLabs returns missing_permissions when the API key lacks the
+        # add_voice_from_voice_library scope — a different remedy from a
+        # full-slots rejection, so don't always blame voice slots.
+        if "missing_permission" in detail or "add_voice_from_voice_library" in detail:
+            fix = (
+                "Grant the ElevenLabs API key the 'add_voice_from_voice_library' "
+                "permission in the ElevenLabs dashboard (or use a key with full permissions)"
+            )
+        else:
+            fix = "Free a voice slot on the ElevenLabs account or pick another voice"
         raise AppError(
             message="Could not add this voice to the account",
             why=f"ElevenLabs rejected the add: {detail}",
-            fix="Free a voice slot on the ElevenLabs account or pick another voice",
+            fix=fix,
             status_code=422,
         ) from e
     except httpx.HTTPError as e:
