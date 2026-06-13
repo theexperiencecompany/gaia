@@ -514,16 +514,25 @@ class _VoiceTurn:
         elif len(joined) >= TTS_HARD_FLUSH_CHARS:
             should_flush = True
 
-        # Defer flush while an HTML tag or an OpenUI fence straddles the chunk
-        # boundary so sanitisation can see the whole construct.
-        if (
-            should_flush
-            and (has_open_tag_at_tail(joined) or has_open_openui_fence_at_tail(joined))
-            and self.deferred_flushes < OPEN_TAG_DEFER_CAP
-        ):
+        if not should_flush:
+            return False
+
+        # An OpenUI fence must NEVER be split: a partial fence leaks its raw
+        # component markup into TTS (the tail chunk no longer starts with
+        # ':::openui', so the sanitiser can't recognise it) and reaches the
+        # frontend as a broken block. Defer unconditionally until it closes —
+        # _on_main_response_complete / _on_stream_done flush the rest, so a
+        # complete (or genuinely truncated) fence is always sanitised as a unit.
+        if has_open_openui_fence_at_tail(joined):
+            return False
+
+        # HTML tags are small; defer a bounded number of times so a
+        # never-closing tag can't stall the stream indefinitely.
+        if has_open_tag_at_tail(joined) and self.deferred_flushes < OPEN_TAG_DEFER_CAP:
             self.deferred_flushes += 1
-            should_flush = False
-        return should_flush
+            return False
+
+        return True
 
     async def _flush_buffer(
         self, *, min_chars: int, count_stats: bool, label: str | None

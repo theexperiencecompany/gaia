@@ -12,6 +12,14 @@ import type { IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import { useLoadingStore } from "@/stores/loadingStore";
 
+/**
+ * OpenUI fences (and the markdown around them) are stripped from the spoken
+ * transcript by the agent's TTS sanitiser, so any turn carrying one must
+ * render the raw backend response instead. Same marker the bubble renderer
+ * keys on (TextBubble / ChatBubbleBot).
+ */
+const OPENUI_MARKER = ":::openui";
+
 interface VoiceBotTurn {
   localId: string;
   /** Backend response text — fallback when no aligned transcript arrives. */
@@ -44,14 +52,19 @@ interface VoiceUserGroup {
 
 function turnToIMessage(turn: VoiceBotTurn, conversationId: string): IMessage {
   // Render the audio-aligned transcript so the bubble fills as the agent is
-  // heard. The backend response text is only the fallback for turns whose
-  // audio never produced a transcript (e.g. a TTS failure).
+  // heard. The backend response text is the fallback for turns whose audio
+  // never produced a transcript (e.g. a TTS failure).
   const transcript = Array.from(turn.transcriptTexts.values())
     .map((t) => t.trim())
     .filter(Boolean)
     .join(" ");
-  const content =
-    transcript || (turn.showResponseFallback ? turn.response : "");
+  // OpenUI components never reach the spoken transcript (TTS strips the fence),
+  // so render the raw response for those turns — otherwise the bubble shows
+  // only the prose and the component vanishes. Plain prose keeps the
+  // audio-aligned transcript so it stays in sync with the speech.
+  const content = turn.response.includes(OPENUI_MARKER)
+    ? turn.response
+    : transcript || (turn.showResponseFallback ? turn.response : "");
   return {
     id: turn.localId,
     conversationId,
@@ -256,7 +269,10 @@ export function useVoiceMessages(
         turn.transcriptTexts.size > 0 ||
         turn.tool_data.length > 0 ||
         turn.follow_up_actions.length > 0 ||
-        turn.showResponseFallback;
+        turn.showResponseFallback ||
+        // A pure-OpenUI turn has no spoken prose, so its transcript stays
+        // empty — show the bubble as soon as the fence arrives in the response.
+        turn.response.includes(OPENUI_MARKER);
       if (!hasVisibleContent) return;
       addOrUpdateMessage(turnToIMessage(turn, cid));
     },
