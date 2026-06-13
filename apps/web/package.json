@@ -199,6 +199,7 @@
     "sanitize-html": "^2.17.3",
     "sharp": "^0.33.5",
     "sileo": "^0.1.4",
+    "streamdown": "^2.5.0",
     "styled-components": "^6.1.19",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",

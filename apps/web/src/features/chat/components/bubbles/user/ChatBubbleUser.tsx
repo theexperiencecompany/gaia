@@ -6,6 +6,7 @@ import SelectedCalendarEventIndicator from "@/features/chat/components/composer/
 import SelectedReplyIndicator from "@/features/chat/components/composer/SelectedReplyIndicator";
 import SelectedToolIndicator from "@/features/chat/components/composer/SelectedToolIndicator";
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
+import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
 import type { FileData } from "@/types/shared/fileTypes";
@@ -29,6 +30,7 @@ export default function ChatBubbleUser({
   disableActions = false,
   onRetry,
   isRetrying,
+  loading,
 }: ChatBubbleUserProps & { disableActions?: boolean }) {
   const hasContent =
     !!text ||
@@ -115,7 +117,17 @@ export default function ChatBubbleUser({
 
             {text?.trim() && (
               <div className={bubbleClassName}>
-                {!!text && <div className={textClassName}>{text}</div>}
+                {isEmojiOnly ? (
+                  <div className={textClassName}>{text}</div>
+                ) : (
+                  <div className="max-w-[30vw] select-text text-[15px]">
+                    <MarkdownRenderer
+                      content={text}
+                      isStreaming={loading}
+                      lightBackground
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>

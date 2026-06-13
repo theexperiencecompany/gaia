@@ -49,6 +49,9 @@ function turnToIMessage(turn: VoiceBotTurn, conversationId: string): IMessage {
 function userGroupToIMessage(
   group: VoiceUserGroup,
   conversationId: string,
+  // While the user is still speaking the transcript grows — mark it "sending" so
+  // the bubble animates the incoming words; "sent" once the group is finalized.
+  streaming: boolean,
 ): IMessage {
   // Consecutive utterances within one turn (e.g. a pause then more speech) are
   // shown as paragraph breaks in the same bubble.
@@ -61,7 +64,7 @@ function userGroupToIMessage(
     conversationId,
     content,
     role: "user",
-    status: "sent",
+    status: streaming ? "sending" : "sent",
     createdAt: group.createdAt,
     updatedAt: new Date(),
     optimistic: true,
@@ -138,11 +141,17 @@ export function useVoiceMessages(
   const closeUserGroup = useCallback(() => {
     const group = currentUserGroupRef.current;
     if (!group) return;
+    // Finalize the bubble: re-emit the group as "sent" so it stops animating
+    // (it was last written as "sending" while the user was still speaking).
+    const cid = conversationIdRef.current;
+    if (cid && group.transcriptionTexts.size > 0) {
+      addOrUpdateMessage(userGroupToIMessage(group, cid, false));
+    }
     for (const id of group.transcriptionTexts.keys()) {
       consumedUserTranscriptionIdsRef.current.add(id);
     }
     currentUserGroupRef.current = null;
-  }, []);
+  }, [addOrUpdateMessage]);
 
   // Open a new bot turn. Closes the open user group and clears the thinking
   // indicator (this turn's first token has arrived).
@@ -323,7 +332,7 @@ export function useVoiceMessages(
       group.transcriptionTexts.set(t.streamInfo.id, t.text);
     }
     if (cid) {
-      addOrUpdateMessage(userGroupToIMessage(group, cid));
+      addOrUpdateMessage(userGroupToIMessage(group, cid, true));
     } else {
       // First turn of a new chat: no backend conversation id yet. Show the
       // utterance via the same optimistic slot text mode uses (rendered by
@@ -379,7 +388,8 @@ export function useVoiceMessages(
         ]),
         createdAt: nextCreatedAt(),
       };
-      addOrUpdateMessage(userGroupToIMessage(group, cid));
+      // Injected text is complete, not a live transcript — render it settled.
+      addOrUpdateMessage(userGroupToIMessage(group, cid, false));
 
       await room.localParticipant.sendText(trimmed, { topic: LK_CHAT_TOPIC });
     },
