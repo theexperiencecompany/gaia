@@ -219,17 +219,32 @@ export function SubagentRow({
               height={14}
             />
           </button>
-          {expanded && visibleToolCalls.length > 0 && (
-            <div className="mt-1 space-y-0">
-              {visibleToolCalls.map((tc, tIdx) => (
-                <ToolCallRow
-                  key={`${group.subagent_id}-live-${tc.tool_call_id || tIdx}`}
-                  call={tc}
-                  isLast={tIdx === visibleToolCalls.length - 1}
-                  getIconUrl={getIconUrl}
-                  getIntegrationName={getIntegrationName}
-                />
-              ))}
+          {expanded && (
+            <div className="mt-1">
+              {/* The task is known the moment the subagent is spawned (it's the
+                  handoff call's input), so show it live — don't make the user
+                  wait until completion to see what this subagent is doing. */}
+              {group.handoff_input && (
+                <div className="mb-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 w-fit">
+                  <span className="text-zinc-500 font-medium mb-0.5 block">
+                    Task
+                  </span>
+                  <CompactMarkdown content={group.handoff_input} />
+                </div>
+              )}
+              {visibleToolCalls.length > 0 && (
+                <div className="space-y-0">
+                  {visibleToolCalls.map((tc, tIdx) => (
+                    <ToolCallRow
+                      key={`${group.subagent_id}-live-${tc.tool_call_id || tIdx}`}
+                      call={tc}
+                      isLast={tIdx === visibleToolCalls.length - 1}
+                      getIconUrl={getIconUrl}
+                      getIntegrationName={getIntegrationName}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
