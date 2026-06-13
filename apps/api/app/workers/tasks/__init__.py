@@ -3,6 +3,7 @@ Task modules for ARQ worker.
 """
 
 from .cleanup_tasks import cleanup_stuck_personalization
+from .memory_backfill_tasks import backfill_active_users, backfill_user_memories
 from .memory_email_tasks import process_gmail_emails_to_memory
 from .onboarding_tasks import process_onboarding_intelligence_task
 from .reminder_tasks import cleanup_expired_reminders, process_reminder
@@ -31,4 +32,6 @@ __all__ = [
     "cleanup_stuck_personalization",
     "sweep_idle_sandboxes",
     "prune_inactive_sessions",
+    "backfill_active_users",
+    "backfill_user_memories",
 ]

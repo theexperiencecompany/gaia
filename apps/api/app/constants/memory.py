@@ -1,5 +1,6 @@
 """Constants for the GAIA memory engine."""
 
+from datetime import UTC, datetime
 from enum import StrEnum
 import os
 
@@ -268,3 +269,20 @@ class MemorySourceType(StrEnum):
     EMAIL = "email"
     MANUAL = "manual"
     MIGRATION = "migration"
+
+
+# --- One-time memory backfill (daily cron `backfill_active_users`) ----------
+# Users created before the live memory pipeline shipped have conversation
+# history that never went through memory_node, so a daily cron seeds it once.
+#
+# SET THIS TO THE PRODUCTION DEPLOY DATE of the memory system: users created on
+# or after it already get memory live during chats, so they're skipped (no
+# wasted extraction, no confusing "we organized your memories" notification).
+MEMORY_BACKFILL_ELIGIBLE_BEFORE = datetime(2026, 6, 14, tzinfo=UTC)
+# Only backfill users seen within this window — skip long-dormant accounts.
+MEMORY_BACKFILL_ACTIVE_DAYS = 30
+# Per-run cap so the backlog drains over several days instead of spiking the
+# extraction LLM (the marker makes each run resume where the last left off).
+MEMORY_BACKFILL_MAX_USERS_PER_RUN = 50
+# Most-recent conversations replayed per user.
+MEMORY_BACKFILL_MAX_CONVERSATIONS = 100
