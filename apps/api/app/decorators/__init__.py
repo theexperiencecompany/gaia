@@ -8,6 +8,7 @@ from .integration import require_integration
 from .rate_limiting import (
     LangChainRateLimitException,
     clear_user_context,
+    enforce_rate_limit,
     get_current_rate_limit_info,
     set_user_context,
     tiered_rate_limit,
@@ -20,6 +21,7 @@ __all__ = [
     # Rate limiting
     "with_rate_limiting",
     "tiered_rate_limit",
+    "enforce_rate_limit",
     "LangChainRateLimitException",
     "set_user_context",
     "clear_user_context",

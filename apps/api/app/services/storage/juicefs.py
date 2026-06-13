@@ -31,8 +31,20 @@ def _mount_root() -> Path:
 
 
 def _is_mounted() -> bool:
-    root = _mount_root()
-    return root.exists() and root.is_dir()
+    """Whether the JuiceFS sidecar is actually mounted at the configured root.
+
+    Checks for a real mountpoint, not merely an existing directory. The
+    Dockerfile pre-creates an empty ``/mnt/jfs``; if the mount never converges
+    (e.g. the metadata engine is unreachable), an ``is_dir()`` check would
+    wrongly pass and every storage helper would silently write to the
+    container's local disk — invisible to the sandbox, which mounts the real
+    JuiceFS namespace. ``is_mount()`` is stat-based (no subprocess), so it stays
+    cheap enough for the hot path, and returns ``False`` for a missing path.
+    """
+    try:
+        return _mount_root().is_mount()
+    except OSError:
+        return False
 
 
 def _require_mount() -> Path:

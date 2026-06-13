@@ -26,7 +26,6 @@ from app.services.storage.metrics import (
 )
 from app.services.storage.sessions import (
     ArtifactInfo,
-    bootstrap_user_session,
     chmod_path,
     delete_session_dir,
     ensure_session_dirs,
@@ -36,6 +35,7 @@ from app.services.storage.sessions import (
     list_user_uploaded,
     materialize_user_integrations,
     pin_session_artifact,
+    provision_user_workspace,
     resolve_session_path,
     stat_artifact,
     touch_session_last_active,
@@ -47,7 +47,6 @@ __all__ = [
     "JuiceFSUnavailable",
     "SAFE_PATH_ID_PATTERN",
     "add_fs_bytes",
-    "bootstrap_user_session",
     "chmod_path",
     "delete_session_dir",
     "delete_user_skill",
@@ -65,6 +64,7 @@ __all__ = [
     "list_user_uploaded",
     "materialize_user_integrations",
     "pin_session_artifact",
+    "provision_user_workspace",
     "read_user_file",
     "record_fs_op",
     "resolve_session_path",

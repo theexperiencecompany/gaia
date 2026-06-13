@@ -16,6 +16,11 @@ PROJECT_NAME = "{{ config_root | basename }}"
 description = "Run development server with hot reload"
 run = "uv run --group backend uvicorn app.main:app --port 8000 --reload --reload-dir app --log-level info"
 
+[tasks."dev:vm"]
+description = "Run the API dockered (port 8000) with the JuiceFS FUSE mount — for workspace v2, sandbox file ops, and artifact streaming, which a native host process can't provide. Brings up the `backend` compose profile only (does not touch web). NOTE: a real JuiceFS mount needs R2 creds in .env (R2_ACCOUNT_ID / R2_BUCKET / R2_ACCESS_KEY / R2_SECRET_KEY + JUICEFS_META_URL_TEMPLATE); without them the entrypoint skips the mount and the storage helpers no-op, same as native `mise dev`. Stop the native `mise dev` API first (port 8000 conflict)."
+env = { COMPOSE_PROFILES = "backend" }
+run = "nx run docker:docker:up && nx run docker:docker:logs"
+
 [tasks.start]
 description = "Run production server"
 run = "uv run --group backend fastapi run"

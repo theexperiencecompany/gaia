@@ -25,6 +25,7 @@ from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
 from app.services.payments.payment_service import payment_service
+from app.services.storage import JuiceFSUnavailable, ensure_session_dirs
 from app.utils.chat_utils import create_conversation
 from shared.py.wide_events import log
 
@@ -58,6 +59,18 @@ async def initialize_new_conversation(
         generate_description=False,
         conversation_id=conversation_id,
     )
+
+    # Conversation creation owns the per-conversation session dirs (scratch/,
+    # user-uploaded/, artifacts/) — this is the only event that creates a
+    # conversation, so dir creation no longer runs on every chat turn. Soft-fail
+    # when JuiceFS is unmounted (native dev); file/artifact tools surface the
+    # missing mount clearly if used.
+    user_id = user.get("user_id")
+    if user_id:
+        try:
+            await ensure_session_dirs(user_id, conversation_id)
+        except JuiceFSUnavailable:
+            pass
 
     init_data = {
         "conversation_id": conversation_id,
