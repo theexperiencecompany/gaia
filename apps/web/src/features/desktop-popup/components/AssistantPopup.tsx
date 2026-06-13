@@ -35,7 +35,7 @@ export default function AssistantPopup() {
 
   // Outside Electron (browser dev), show the panel immediately.
   useEffect(() => {
-    if (typeof globalThis.window !== "undefined" && !("api" in globalThis)) {
+    if (!("api" in globalThis)) {
       setActivationCount(1);
     }
   }, []);

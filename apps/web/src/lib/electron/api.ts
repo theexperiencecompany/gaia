@@ -45,8 +45,11 @@ export interface ElectronAPI {
 }
 
 /** Type guard: `win.api` exists and is the Electron preload API. */
-function hasElectronAPI(win: Window): win is Window & { api: ElectronAPI } {
+function hasElectronAPI(
+  win: Window | undefined,
+): win is Window & { api: ElectronAPI } {
   return (
+    win !== undefined &&
     "api" in win &&
     typeof win.api === "object" &&
     win.api !== null &&
@@ -57,13 +60,8 @@ function hasElectronAPI(win: Window): win is Window & { api: ElectronAPI } {
 
 /** The preload API, or null outside the desktop app (including SSR). */
 export function getElectronAPI(): ElectronAPI | null {
-  if (
-    typeof globalThis.window === "undefined" ||
-    !hasElectronAPI(globalThis.window)
-  ) {
-    return null;
-  }
-  return globalThis.window.api;
+  // In SSR globalThis.window is undefined, which the guard handles directly.
+  return hasElectronAPI(globalThis.window) ? globalThis.window.api : null;
 }
 
 /** Header the backend reads to surface desktop-only tools. */
