@@ -579,6 +579,10 @@ async def handoff(
             task=sanitized_task,
             user_id=user_id,
             subagent_id=agent_name,
+            # Without this the custom-instructions/provider-metadata lookup falls
+            # back to agent_name ("gmail_agent"), which never matches the stored
+            # integration id ("gmail"), so the user's instructions are dropped.
+            integration_id=int_id,
         )
 
         # Create execution context with stream_id for cancellation
