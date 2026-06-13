@@ -18,6 +18,7 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 
 import asyncio
 from datetime import datetime
+from typing import Any
 
 from langsmith import traceable
 
@@ -51,7 +52,7 @@ _queued_executor_tasks: set[asyncio.Task] = set()
 async def run_executor_background(
     run: ExecutorRun,
     task: str,
-    configurable: dict,
+    configurable: dict[str, Any],
     user_time: datetime,
 ) -> None:
     """Run the executor agent in background and hand its result to delivery.
@@ -80,7 +81,7 @@ async def run_executor_background(
 
 async def _execute_executor(
     task: str,
-    configurable: dict,
+    configurable: dict[str, Any],
     user_time: datetime,
     stream_id: str,
 ) -> tuple[str, str]:
@@ -125,8 +126,19 @@ async def _finalize_executor_run(
     # into the comms ack and publish [DONE]. Comms re-narration runs in parallel.
     signal_executor_done(run.stream_id)
 
-    await _deliver_terminal_outcome(run, result_text, result_type, was_cancelled, returned_note)
-    await _close_queued_stream(run, was_cancelled)
+    # Delivery and stream-close are best-effort: a failure here must NOT skip the
+    # queue handoff below, or queued tasks strand and the busy lock leaks until
+    # its TTL. The lock lifecycle is the load-bearing step — always run it.
+    try:
+        await _deliver_terminal_outcome(run, result_text, result_type, was_cancelled, returned_note)
+        await _close_queued_stream(run, was_cancelled)
+    except Exception as e:  # noqa: BLE001 — never let delivery failure strand the queue
+        log.error(
+            "Executor finalize delivery/close failed",
+            stream_id=run.stream_id,
+            task_id=run.task_id,
+            error=str(e),
+        )
 
     prepared = await _hand_off_queue(run)
     if prepared is not None:

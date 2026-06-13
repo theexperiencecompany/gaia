@@ -267,7 +267,15 @@ async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None
     queued_user_message_id = item.get("user_message_id")
     configurable: dict = item.get("configurable", {})
     user_time_str: str = item.get("user_time_str", "")
-    user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now(UTC)
+    try:
+        user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now(UTC)
+    except ValueError:
+        log.warning(
+            "Invalid user_time_str in queued task — falling back to now",
+            conversation_id=conversation_id,
+            user_time_str=user_time_str,
+        )
+        user_time = datetime.now(UTC)
 
     queued_stream_id = f"{QUEUED_STREAM_ID_PREFIX}{uuid4()}"
     user_id: str = configurable.get("user_id", "")
