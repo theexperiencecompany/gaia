@@ -278,7 +278,7 @@ class MemorySourceType(StrEnum):
 # SET THIS TO THE PRODUCTION DEPLOY DATE of the memory system: users created on
 # or after it already get memory live during chats, so they're skipped (no
 # wasted extraction, no confusing "we organized your memories" notification).
-MEMORY_BACKFILL_ELIGIBLE_BEFORE = datetime(2026, 6, 14, tzinfo=UTC)
+MEMORY_BACKFILL_ELIGIBLE_BEFORE = datetime(2026, 6, 15, tzinfo=UTC)
 # Only backfill users seen within this window — skip long-dormant accounts.
 MEMORY_BACKFILL_ACTIVE_DAYS = 30
 # Per-run cap so the backlog drains over several days instead of spiking the

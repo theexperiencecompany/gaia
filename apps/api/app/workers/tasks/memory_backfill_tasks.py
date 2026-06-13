@@ -26,6 +26,7 @@ from app.constants.memory import (
     MemorySourceType,
 )
 from app.db.mongodb.collections import conversations_collection, users_collection
+from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -133,6 +134,16 @@ async def backfill_user_memories(ctx: dict, user_id: str) -> str:
             )
             facts += result.facts_extracted
             processed += 1
+
+        if processed:
+            # Each retain only *scheduled* a debounced (120s) core-document
+            # consolidation. Cancel it and run one pass inline so the memory is
+            # genuinely ready when we notify — and so the result survives a
+            # worker restart that would otherwise drop the debounced pass.
+            await cancel_consolidation(user_id)
+            last_day = max(_conversation_date(doc).date() for doc in docs)
+            await memory_engine.summarize_episode(user_id, last_day)
+            await memory_engine.consolidate(user_id)
 
         await users_collection.update_one(
             {"_id": oid}, {"$set": {"memory_backfilled": datetime.now(UTC)}}
