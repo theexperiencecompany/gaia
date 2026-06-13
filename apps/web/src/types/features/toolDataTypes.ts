@@ -7,15 +7,6 @@ export type ImageData = {
   improved_prompt?: string | null;
 };
 
-// Define document data structure for document processing
-export type DocumentData = {
-  filename: string;
-  url: string;
-  is_plain_text: boolean;
-  title: string;
-  metadata: Record<string, unknown>;
-};
-
 // Define memory data structure for memory operations
 export type MemoryData = {
   operation?: string;
@@ -172,8 +163,19 @@ export type WorkflowCreatedData = {
 };
 
 export interface ArtifactData {
+  /** Conversation id the artifact belongs to (used to build fetch URLs). */
+  session_id: string;
+  /** "upsert"/"upload" add or refresh a card; "remove" drops it. */
+  event?: "upsert" | "remove" | "upload";
+  /** Path relative to the session's artifacts/ (or the upload name). */
   path: string;
-  filename: string;
-  content_type: string;
   size_bytes: number;
+  mtime?: number;
+  content_type?: string | null;
+  /**
+   * UTF-8 file contents inlined when small + textual. When present, the
+   * preview renders instantly without a follow-up fetch and survives reload
+   * via the persisted conversation. Absent for large or binary files.
+   */
+  body?: string;
 }

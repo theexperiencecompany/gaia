@@ -7,7 +7,6 @@ Covers the comms -> executor -> subagent delegation path:
 - Different thread IDs produce independent checkpointed state
 - build_initial_messages constructs the correct 3-message list
 - get_subagent_by_id / all_subagents return real data
-- prepare_subagent_execution fails gracefully when subagent not found
 - register_subagent_providers registers integrations from the subagent registry
 - execute_subagent_stream processes streamed events correctly
 
@@ -39,9 +38,7 @@ from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     build_initial_messages,
     execute_subagent_stream,
-    prepare_subagent_execution,
 )
-from tests.factories import make_user
 from tests.helpers import create_fake_llm
 from tests.integration.conftest import SimpleState
 
@@ -392,81 +389,6 @@ class TestSubagentThreadIsolation:
         assert human_a[0].content == "Task A"
         assert human_b[0].content == "Task B"
 
-    async def test_subagent_thread_id_format(self):
-        """Thread IDs produced by prepare_subagent_execution follow the
-        '{integration_id}_{parent_thread_id}' convention.
-
-        Calls the real production function with a mocked provider graph and
-        checks that the thread_id embedded in the returned config matches the
-        expected pattern for two different integration IDs sharing the same
-        parent conversation_id.
-        """
-        integrations = all_subagents()
-        # Need at least two non-auth-required integrations to compare
-        eligible = [
-            i
-            for i in integrations
-            if not (i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth)
-        ]
-        if len(eligible) < 2:
-            pytest.skip("Need at least two non-auth-required subagent integrations")
-
-        integ_a = eligible[0]
-        integ_b = eligible[1]
-        parent_thread = str(uuid4())
-        user = make_user()
-
-        mock_graph = _make_minimal_subagent_graph()
-
-        with (
-            patch("app.agents.core.subagents.subagent_runner.providers") as mock_providers,
-            patch("app.helpers.agent_helpers.providers") as mock_helpers_providers,
-            patch(
-                "app.agents.core.subagents.subagent_runner.create_subagent_system_message",
-                new=AsyncMock(return_value=SystemMessage(content="sys")),
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-                new=AsyncMock(return_value=SystemMessage(content="ctx")),
-            ),
-        ):
-            mock_providers.aget = AsyncMock(return_value=mock_graph)
-            mock_helpers_providers.get = MagicMock(return_value=None)
-
-            ctx_a, err_a = await prepare_subagent_execution(
-                subagent_id=integ_a.id,
-                task="test task",
-                user=user,
-                user_time=datetime.now(UTC),
-                conversation_id=parent_thread,
-            )
-            ctx_b, err_b = await prepare_subagent_execution(
-                subagent_id=integ_b.id,
-                task="test task",
-                user=user,
-                user_time=datetime.now(UTC),
-                conversation_id=parent_thread,
-            )
-
-        assert err_a is None, f"prepare_subagent_execution failed for {integ_a.id}: {err_a}"
-        assert err_b is None, f"prepare_subagent_execution failed for {integ_b.id}: {err_b}"
-
-        thread_a = ctx_a.config["configurable"]["thread_id"]
-        thread_b = ctx_b.config["configurable"]["thread_id"]
-
-        # Each thread ID must embed the integration ID and parent thread
-        assert thread_a == f"{integ_a.id}_{parent_thread}", (
-            f"Expected '{integ_a.id}_{parent_thread}', got '{thread_a}'"
-        )
-        assert thread_b == f"{integ_b.id}_{parent_thread}", (
-            f"Expected '{integ_b.id}_{parent_thread}', got '{thread_b}'"
-        )
-        # Two different integrations sharing the same parent must have distinct thread IDs
-        assert thread_a != thread_b
-        # Both thread IDs must end with the same parent conversation ID
-        assert thread_a.endswith(parent_thread)
-        assert thread_b.endswith(parent_thread)
-
     async def test_same_graph_different_threads_are_isolated(self):
         """The same compiled graph object with different thread configs
         must maintain independent state per thread."""
@@ -496,72 +418,6 @@ class TestSubagentThreadIsolation:
 @pytest.mark.integration
 class TestSubagentRun:
     """Run a subagent through its graph with all external calls mocked."""
-
-    async def test_subagent_run_returns_result(self):
-        """prepare_subagent_execution must return a valid SubagentExecutionContext
-        whose graph can be invoked to produce an AIMessage result.
-
-        Uses the real production prepare_subagent_execution with all external
-        I/O mocked at the boundary (LLM graph, system message, context message).
-        Asserts on the real context structure and real graph invocation result.
-        """
-        integrations = all_subagents()
-        eligible = [
-            i
-            for i in integrations
-            if not (i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth)
-        ]
-        if not eligible:
-            pytest.skip("No non-auth-required subagent integrations available")
-
-        first = eligible[0]
-        user = make_user()
-        conversation_id = str(uuid4())
-        real_graph = _make_minimal_subagent_graph()
-
-        with (
-            patch("app.agents.core.subagents.subagent_runner.providers") as mock_providers,
-            patch("app.helpers.agent_helpers.providers") as mock_helpers_providers,
-            patch(
-                "app.agents.core.subagents.subagent_runner.create_subagent_system_message",
-                new=AsyncMock(return_value=SystemMessage(content="You are a test agent.")),
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-                new=AsyncMock(return_value=SystemMessage(content="Context: test.")),
-            ),
-        ):
-            mock_providers.aget = AsyncMock(return_value=real_graph)
-            mock_helpers_providers.get = MagicMock(return_value=None)
-
-            ctx, error = await prepare_subagent_execution(
-                subagent_id=first.id,
-                task="Do some work",
-                user=user,
-                user_time=datetime.now(UTC),
-                conversation_id=conversation_id,
-            )
-
-        assert error is None, f"prepare_subagent_execution failed: {error}"
-        assert ctx is not None
-        assert isinstance(ctx, SubagentExecutionContext)
-        assert ctx.agent_name == first.config.agent_name
-        assert ctx.integration_id == first.id
-        assert ctx.subagent_graph is real_graph
-        assert "messages" in ctx.initial_state
-        assert len(ctx.initial_state["messages"]) == 3
-
-        # Invoke the real graph through the context to confirm it runs end-to-end
-        result = await ctx.subagent_graph.ainvoke(
-            ctx.initial_state,
-            config=ctx.config,
-        )
-
-        assert result is not None
-        assert "messages" in result
-        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
-        assert len(ai_messages) >= 1
-        assert ai_messages[-1].content == "subagent completed task"
 
     async def test_execute_subagent_stream_returns_content(self):
         """execute_subagent_stream must accumulate AI content from messages
@@ -914,62 +770,6 @@ class TestBuildInitialMessages:
         assert captured_queries[0] == retrieval_query, (
             "retrieval_query must be passed to context creation, not enhanced_task"
         )
-
-
-# ---------------------------------------------------------------------------
-# Test: prepare_subagent_execution error handling
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestPrepareSubagentExecutionErrors:
-    """Verify prepare_subagent_execution returns clear error messages when
-    resolution fails."""
-
-    async def test_returns_error_for_unknown_subagent(self):
-        """prepare_subagent_execution must return (None, error_str) when the
-        subagent ID cannot be resolved."""
-        user = make_user()
-        ctx, error = await prepare_subagent_execution(
-            subagent_id="definitely_nonexistent_agent_xyz",
-            task="do something",
-            user=user,
-            user_time=datetime.now(UTC),
-            conversation_id=str(uuid4()),
-        )
-
-        assert ctx is None
-        assert error is not None
-        assert len(error) > 0
-
-    async def test_returns_error_when_graph_unavailable(self):
-        """prepare_subagent_execution must return an error when providers.aget
-        returns None for the agent graph."""
-        integrations = all_subagents()
-        if not integrations:
-            pytest.skip("No subagent integrations available")
-
-        first = integrations[0]
-        user = make_user()
-
-        with patch("app.agents.core.subagents.subagent_runner.providers") as mock_providers:
-            mock_providers.aget = AsyncMock(return_value=None)
-
-            with patch(
-                "app.agents.core.subagents.subagent_runner.create_subagent_system_message",
-                new=AsyncMock(return_value=SystemMessage(content="sys")),
-            ):
-                ctx, error = await prepare_subagent_execution(
-                    subagent_id=first.id,
-                    task="test task",
-                    user=user,
-                    user_time=datetime.now(UTC),
-                    conversation_id=str(uuid4()),
-                )
-
-        assert ctx is None
-        assert error is not None
-        assert "not available" in error.lower() or first.config.agent_name in error
 
 
 # ---------------------------------------------------------------------------

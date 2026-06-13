@@ -8,7 +8,6 @@ export type {
   CodeData,
   ContactData,
   DeepResearchResults,
-  DocumentData,
   EmailComposeData,
   EmailFetchData,
   EmailSentData,

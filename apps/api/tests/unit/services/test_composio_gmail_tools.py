@@ -16,8 +16,6 @@ from app.services.composio.custom_tools.gmail_tools import (
     GetUnreadCountInput,
     MarkAsReadInput,
     MarkAsUnreadInput,
-    ScheduleSendInput,
-    SnoozeEmailInput,
     StarEmailInput,
     register_gmail_custom_tools,
 )
@@ -79,19 +77,6 @@ class TestInputModels:
     def test_get_contact_list_default_max_results(self):
         m = GetContactListInput(query="foo")
         assert m.max_results == 30
-
-    def test_schedule_send_required_fields(self):
-        m = ScheduleSendInput(
-            recipient_email="a@b.c",
-            subject="s",
-            body="b",
-            send_at="2025-01-01T10:00:00Z",
-        )
-        assert m.cc is None
-
-    def test_snooze_email(self):
-        m = SnoozeEmailInput(message_ids=["x"], snooze_until="2025-01-01T10:00:00Z")
-        assert m.message_ids == ["x"]
 
 
 # ---------------------------------------------------------------------------

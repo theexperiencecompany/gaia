@@ -865,12 +865,14 @@ class TestQueueService:
             )
 
         assert result is True
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", FAKE_WORKFLOW_ID, {"source": "api"}
-        )
+        args, kwargs = mock_pool.enqueue_job.call_args
+        assert args == ("execute_workflow_by_id", FAKE_WORKFLOW_ID, {"source": "api"})
+        # A deterministic _job_id dedupes accidental duplicate enqueues.
+        assert kwargs["_job_id"].startswith("execute_workflow_by_id:")
 
-    async def test_queue_workflow_execution_returns_false_on_failure(self):
-        """queue_workflow_execution returns False when enqueue returns None."""
+    async def test_queue_workflow_execution_deduped_enqueue_returns_true(self):
+        """A None from enqueue_job means the same _job_id is already queued — the
+        duplicate was deduped, which is success, not failure."""
         mock_pool = AsyncMock()
         mock_pool.enqueue_job = AsyncMock(return_value=None)
 
@@ -883,7 +885,7 @@ class TestQueueService:
                 FAKE_WORKFLOW_ID, FAKE_USER_ID
             )
 
-        assert result is False
+        assert result is True
 
     async def test_queue_workflow_execution_returns_false_on_redis_error(self):
         """queue_workflow_execution returns False when Redis throws."""
@@ -897,59 +899,6 @@ class TestQueueService:
             )
 
         assert result is False
-
-    async def test_queue_scheduled_workflow_execution(self):
-        """queue_scheduled_workflow_execution passes defer_until."""
-        mock_pool = AsyncMock()
-        mock_job = MagicMock()
-        mock_job.job_id = "job_sched_789"
-        mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
-        scheduled_at = datetime(2026, 6, 1, 9, 0, 0, tzinfo=UTC)
-
-        with patch(
-            "app.services.workflow.queue_service.RedisPoolManager.get_pool",
-            new_callable=AsyncMock,
-            return_value=mock_pool,
-        ):
-            result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-                FAKE_WORKFLOW_ID, scheduled_at
-            )
-
-        assert result is True
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id",
-            FAKE_WORKFLOW_ID,
-            {},
-            _defer_until=scheduled_at,
-        )
-
-    async def test_queue_regeneration(self):
-        """queue_workflow_regeneration enqueues with reason and force flag."""
-        mock_pool = AsyncMock()
-        mock_job = MagicMock()
-        mock_job.job_id = "job_regen_101"
-        mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
-
-        with patch(
-            "app.services.workflow.queue_service.RedisPoolManager.get_pool",
-            new_callable=AsyncMock,
-            return_value=mock_pool,
-        ):
-            result = await WorkflowQueueService.queue_workflow_regeneration(
-                FAKE_WORKFLOW_ID,
-                FAKE_USER_ID,
-                regeneration_reason="User requested different approach",
-                force_different_tools=True,
-            )
-
-        assert result is True
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "regenerate_workflow_steps",
-            FAKE_WORKFLOW_ID,
-            FAKE_USER_ID,
-            "User requested different approach",
-            True,
-        )
 
 
 # ---------------------------------------------------------------------------

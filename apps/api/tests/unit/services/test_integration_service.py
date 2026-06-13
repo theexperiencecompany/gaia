@@ -3,12 +3,11 @@
 Covers:
 - integration_service.py (get_user_available_tool_namespaces, build_creator_lookup_stages,
   format_community_integrations)
-- integration_resolver.py (IntegrationResolver.resolve, get_mcp_config, get_server_url,
-  is_mcp_integration, requires_authentication)
+- integration_resolver.py (IntegrationResolver.resolve, get_mcp_config, get_server_url)
 - integration_connection_service.py (build_integrations_config, connect_mcp_integration,
   connect_composio_integration, connect_self_integration, disconnect_integration,
   _invalidate_caches)
-- user_integrations.py (get_user_integrations, get_user_connected_integrations,
+- user_integrations.py (get_user_integrations, get_user_integration_records,
   add_user_integration, remove_user_integration, check_user_has_integration,
   get_user_integration_capabilities)
 - user_integration_status.py (update_user_integration_status)
@@ -64,8 +63,8 @@ from app.services.integrations.user_integration_status import (
 from app.services.integrations.user_integrations import (
     add_user_integration,
     check_user_has_integration,
-    get_user_connected_integrations,
     get_user_integration_capabilities,
+    get_user_integration_records,
     get_user_integrations,
     remove_user_integration,
 )
@@ -344,70 +343,6 @@ class TestIntegrationResolverHelpers:
 
         result = await IntegrationResolver.get_server_url("x")
         assert result is None
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_is_mcp_integration_true(self, mock_resolve):
-        mock_resolve.return_value = ResolvedIntegration(
-            integration_id="x",
-            name="X",
-            description="",
-            category="c",
-            managed_by="mcp",
-            source="custom",
-            requires_auth=False,
-            auth_type=None,
-            mcp_config=None,
-            platform_integration=None,
-            custom_doc=None,
-        )
-
-        assert await IntegrationResolver.is_mcp_integration("x") is True
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_is_mcp_integration_false_composio(self, mock_resolve):
-        mock_resolve.return_value = ResolvedIntegration(
-            integration_id="x",
-            name="X",
-            description="",
-            category="c",
-            managed_by="composio",
-            source="platform",
-            requires_auth=True,
-            auth_type="oauth",
-            mcp_config=None,
-            platform_integration=None,
-            custom_doc=None,
-        )
-
-        assert await IntegrationResolver.is_mcp_integration("x") is False
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_is_mcp_integration_not_found(self, mock_resolve):
-        mock_resolve.return_value = None
-        assert await IntegrationResolver.is_mcp_integration("x") is False
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_requires_authentication_true(self, mock_resolve):
-        mock_resolve.return_value = ResolvedIntegration(
-            integration_id="x",
-            name="X",
-            description="",
-            category="c",
-            managed_by="mcp",
-            source="custom",
-            requires_auth=True,
-            auth_type="oauth",
-            mcp_config=None,
-            platform_integration=None,
-            custom_doc=None,
-        )
-
-        assert await IntegrationResolver.requires_authentication("x") is True
-
-    @patch.object(IntegrationResolver, "resolve", new_callable=AsyncMock)
-    async def test_requires_authentication_not_found(self, mock_resolve):
-        mock_resolve.return_value = None
-        assert await IntegrationResolver.requires_authentication("x") is False
 
 
 # ---------------------------------------------------------------------------
@@ -954,7 +889,7 @@ class TestGetUserConnectedIntegrations:
         mock_cursor.__aiter__ = aiter_docs
         mock_collection.find = MagicMock(return_value=mock_cursor)
 
-        result = await get_user_connected_integrations.__wrapped__(USER_ID)
+        result = await get_user_integration_records.__wrapped__(USER_ID)
 
         assert len(result) == 1
         assert result[0]["integration_id"] == "github"
@@ -970,7 +905,7 @@ class TestGetUserConnectedIntegrations:
         mock_cursor.__aiter__ = aiter_empty
         mock_collection.find = MagicMock(return_value=mock_cursor)
 
-        result = await get_user_connected_integrations.__wrapped__(USER_ID)
+        result = await get_user_integration_records.__wrapped__(USER_ID)
         assert result == []
 
 
@@ -1133,7 +1068,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_connected_integrations",
+        "app.services.integrations.user_integrations.get_connected_integration_ids",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1152,9 +1087,7 @@ class TestGetUserIntegrationCapabilities:
         registry.get_core_categories.return_value = [core_category]
         mock_registry.return_value = registry
 
-        mock_connected.return_value = [
-            {"integration_id": "github", "status": "connected"},
-        ]
+        mock_connected.return_value = {"github"}
 
         int_tool = IntegrationTool(name="create_issue", description="Create an issue")
         mock_details.return_value = IntegrationResponse(
@@ -1181,7 +1114,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_connected_integrations",
+        "app.services.integrations.user_integrations.get_connected_integration_ids",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1195,9 +1128,7 @@ class TestGetUserIntegrationCapabilities:
         registry.get_core_categories.return_value = []
         mock_registry.return_value = registry
 
-        mock_connected.return_value = [
-            {"integration_id": "deleted"},
-        ]
+        mock_connected.return_value = {"deleted"}
         mock_details.return_value = None
 
         result = await get_user_integration_capabilities.__wrapped__(USER_ID)
@@ -1210,33 +1141,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_connected_integrations",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.integrations.user_integrations.get_tool_registry",
-        new_callable=AsyncMock,
-    )
-    async def test_skips_entries_without_integration_id(
-        self, mock_registry, mock_connected, mock_details
-    ):
-        registry = MagicMock()
-        registry.get_core_categories.return_value = []
-        mock_registry.return_value = registry
-
-        mock_connected.return_value = [
-            {"status": "connected"},  # Missing integration_id
-        ]
-
-        result = await get_user_integration_capabilities.__wrapped__(USER_ID)
-        assert result["integration_names"] == []
-
-    @patch(
-        "app.services.integrations.user_integrations.get_integration_details",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.integrations.user_integrations.get_user_connected_integrations",
+        "app.services.integrations.user_integrations.get_connected_integration_ids",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1247,7 +1152,7 @@ class TestGetUserIntegrationCapabilities:
         registry = MagicMock()
         registry.get_core_categories.return_value = []
         mock_registry.return_value = registry
-        mock_connected.return_value = []
+        mock_connected.return_value = set()
 
         result = await get_user_integration_capabilities.__wrapped__(USER_ID)
 

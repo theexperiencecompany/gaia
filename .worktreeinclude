@@ -1,0 +1,5 @@
+# Copy gitignored .env files (with secrets) into every new Conductor workspace.
+# Uses .gitignore syntax. See https://conductor.build/docs/reference/files-to-copy
+apps/api/.env
+apps/web/.env
+apps/mobile/.env

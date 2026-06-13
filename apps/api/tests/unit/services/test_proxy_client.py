@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.services.composio import proxy_client
 from app.services.composio.proxy_client import (
     _build_parameters,
@@ -114,7 +115,8 @@ class TestResolveConnectedAccountId:
         with _patch_auth_config(), _patch_composio(composio):
             with pytest.raises(AppError) as exc:
                 _resolve_connected_account_id("u1", "GMAIL")
-        assert exc.value.status_code == 401
+        assert exc.value.status_code == 403
+        assert exc.value.meta["error_code"] == INTEGRATION_NOT_CONNECTED
 
     def test_returns_active_account_id(self) -> None:
         composio = _make_composio(account_id="acc_xyz")

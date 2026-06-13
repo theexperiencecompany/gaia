@@ -1,11 +1,10 @@
 """Unit tests for the todo service layer.
 
 Covers:
-- TodoService: CRUD, bulk ops, search, stats, caching, reindexing
+- TodoService: CRUD, bulk ops, search, stats, caching
 - ProjectService: CRUD, cache, default inbox protection
 - Compatibility wrappers (module-level functions)
 - todo_bulk_service: bulk_complete, bulk_move, bulk_delete
-- todo_count_service: update_project_todo_count, sync_all_project_counts
 - sync_service: sync_goal_node_completion, sync_subtask_to_goal_completion,
                 create_goal_project_and_todo, _get_or_create_goals_project,
                 cache invalidation helpers
@@ -52,17 +51,12 @@ from app.services.todos.todo_bulk_service import (
     bulk_delete_todos as bulk_service_delete_todos,
     bulk_move_todos as bulk_service_move_todos,
 )
-from app.services.todos.todo_count_service import (
-    sync_all_project_counts,
-    update_project_todo_count,
-)
 
 # Also test the compatibility wrappers at module level
 from app.services.todos.todo_service import (
     ProjectService,
     TodoService,
     _get_workflow_categories_for_todos,
-    bulk_index_existing_todos,
     create_project,
     create_todo,
     delete_project,
@@ -240,10 +234,6 @@ def mock_vector_utils():
             new_callable=AsyncMock,
         ) as m_delete,
         patch(
-            "app.services.todos.todo_service.bulk_index_todos",
-            new_callable=AsyncMock,
-        ) as m_bulk,
-        patch(
             "app.services.todos.todo_service.vector_search",
             new_callable=AsyncMock,
         ) as m_vsearch,
@@ -256,7 +246,6 @@ def mock_vector_utils():
             "store": m_store,
             "update": m_update,
             "delete": m_delete,
-            "bulk": m_bulk,
             "vector_search": m_vsearch,
             "hybrid_search": m_hybrid,
         }
@@ -1193,6 +1182,9 @@ class TestDeleteTodo:
     async def test_success(self, mock_todos_collection, mock_cache, mock_vector_utils):
         mock_result = MagicMock()
         mock_result.deleted_count = 1
+        mock_todos_collection.find_one = AsyncMock(
+            return_value={"_id": FAKE_TODO_ID, "user_id": FAKE_USER_ID}
+        )
         mock_todos_collection.delete_one = AsyncMock(return_value=mock_result)
 
         await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
@@ -1213,6 +1205,9 @@ class TestDeleteTodo:
     async def test_vector_delete_failure_does_not_raise(self, mock_todos_collection, mock_cache):
         mock_result = MagicMock()
         mock_result.deleted_count = 1
+        mock_todos_collection.find_one = AsyncMock(
+            return_value={"_id": FAKE_TODO_ID, "user_id": FAKE_USER_ID}
+        )
         mock_todos_collection.delete_one = AsyncMock(return_value=mock_result)
 
         with patch(
@@ -1566,23 +1561,6 @@ class TestSearchTodos:
         params = TodoSearchParams(q="hybrid test", mode=SearchMode.HYBRID, include_stats=True)
         result = await TodoService._search_todos(FAKE_USER_ID, params)
         assert result.stats is not None
-
-
-# ===========================================================================
-# TodoService.reindex_todos
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestReindexTodos:
-    async def test_delegates_to_bulk_index(self, mock_vector_utils):
-        mock_vector_utils["bulk"].return_value = 42
-
-        result = await TodoService.reindex_todos(FAKE_USER_ID, batch_size=50)
-
-        assert result["indexed"] == 42
-        assert result["status"] == "completed"
-        mock_vector_utils["bulk"].assert_awaited_once_with(FAKE_USER_ID, 50)
 
 
 # ===========================================================================
@@ -1979,12 +1957,6 @@ class TestCompatibilityWrappers:
             await delete_project(FAKE_PROJECT_ID, FAKE_USER_ID)
             mock_del.assert_awaited_once()
 
-    async def test_bulk_index_existing_todos_wrapper(self):
-        with patch.object(TodoService, "reindex_todos", new_callable=AsyncMock) as mock_reindex:
-            mock_reindex.return_value = {"indexed": 10}
-            result = await bulk_index_existing_todos(FAKE_USER_ID, 50)
-            assert result == {"indexed": 10}
-
 
 # ===========================================================================
 # todo_bulk_service (standalone functions)
@@ -2152,75 +2124,6 @@ class TestBulkServiceDeleteTodos:
         with pytest.raises(HTTPException) as exc_info:
             await bulk_service_delete_todos([str(ObjectId())], FAKE_USER_ID)
         assert exc_info.value.status_code == 500
-
-
-# ===========================================================================
-# todo_count_service
-# ===========================================================================
-
-
-@pytest.fixture
-def mock_count_todos_collection():
-    with patch("app.services.todos.todo_count_service.todos_collection") as mock_col:
-        mock_col.count_documents = AsyncMock(return_value=0)
-        yield mock_col
-
-
-@pytest.fixture
-def mock_count_projects_collection():
-    with patch("app.services.todos.todo_count_service.projects_collection") as mock_col:
-        mock_col.update_one = AsyncMock()
-        mock_col.find = MagicMock()
-        yield mock_col
-
-
-@pytest.mark.unit
-class TestUpdateProjectTodoCount:
-    async def test_updates_count(self, mock_count_todos_collection, mock_count_projects_collection):
-        mock_count_todos_collection.count_documents = AsyncMock(return_value=7)
-
-        await update_project_todo_count(FAKE_PROJECT_ID, FAKE_USER_ID)
-
-        mock_count_projects_collection.update_one.assert_awaited_once()
-        call_args = mock_count_projects_collection.update_one.call_args
-        assert call_args[0][1] == {"$set": {"todo_count": 7}}
-
-    async def test_exception_is_caught(
-        self, mock_count_todos_collection, mock_count_projects_collection
-    ):
-        mock_count_todos_collection.count_documents = AsyncMock(side_effect=Exception("DB down"))
-        # Should not raise
-        await update_project_todo_count(FAKE_PROJECT_ID, FAKE_USER_ID)
-
-
-@pytest.mark.unit
-class TestSyncAllProjectCounts:
-    async def test_syncs_all_projects(
-        self, mock_count_todos_collection, mock_count_projects_collection
-    ):
-        projects = [
-            {"_id": ObjectId(), "is_default": False},
-            {"_id": ObjectId(), "is_default": True},
-        ]
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(return_value=projects)
-        mock_count_projects_collection.find = MagicMock(return_value=mock_cursor)
-
-        mock_count_todos_collection.count_documents = AsyncMock(return_value=3)
-
-        await sync_all_project_counts(FAKE_USER_ID)
-
-        assert mock_count_projects_collection.update_one.await_count == 2
-
-    async def test_exception_is_caught(
-        self, mock_count_todos_collection, mock_count_projects_collection
-    ):
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(side_effect=Exception("DB down"))
-        mock_count_projects_collection.find = MagicMock(return_value=mock_cursor)
-
-        # Should not raise
-        await sync_all_project_counts(FAKE_USER_ID)
 
 
 # ===========================================================================

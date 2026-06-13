@@ -163,12 +163,12 @@ jobs:
           dagger --silent call test-python 2>&1 | tee /tmp/dagger-test.log
           CODE=$?
           if [ "$CODE" -ne 0 ]; then
-            # Dagger's session cleanup sometimes times out after tests succeed.
-            # Only ignore the failure if the sole error is the shutdown timeout
-            # and pytest reported no failures.
-            if grep -q "cleanup failed" /tmp/dagger-test.log \
-               && ! grep -qE "([[:space:]][0-9]+ (failed|errors?)|INTERNALERROR|Interrupted:|Required test coverage of .* not reached)" /tmp/dagger-test.log; then
-              echo "Tests passed. Ignoring Dagger session cleanup timeout."
+            # pytest emits its real exit code as `GAIA_PYTEST_EXIT=0` (final line)
+            # only when it actually passed. A non-zero CLI exit is safe to ignore
+            # ONLY then — that's a Dagger session-cleanup timeout after success.
+            # Test failures, worker crashes, and interrupted runs lack the marker.
+            if grep -q "GAIA_PYTEST_EXIT=0" /tmp/dagger-test.log; then
+              echo "pytest passed (exit 0); ignoring Dagger session-cleanup non-zero exit."
               exit 0
             fi
             exit "$CODE"
@@ -296,9 +296,11 @@ jobs:
           dagger --silent call test-python-coverage 2>&1 | tee /tmp/dagger-coverage.log
           CODE=$?
           if [ "$CODE" -ne 0 ]; then
-            if grep -q "cleanup failed" /tmp/dagger-coverage.log \
-               && ! grep -qE "([[:space:]][0-9]+ (failed|errors?)|INTERNALERROR|Interrupted:|Required test coverage of .* not reached)" /tmp/dagger-coverage.log; then
-              echo "Coverage passed. Ignoring Dagger session cleanup timeout."
+            # Same contract as test-python: ignore a non-zero CLI exit only when
+            # pytest itself passed (GAIA_PYTEST_EXIT=0). A coverage shortfall makes
+            # pytest exit non-zero, so the marker is absent and the job fails.
+            if grep -q "GAIA_PYTEST_EXIT=0" /tmp/dagger-coverage.log; then
+              echo "pytest passed (exit 0); ignoring Dagger session-cleanup non-zero exit."
               exit 0
             fi
             exit "$CODE"

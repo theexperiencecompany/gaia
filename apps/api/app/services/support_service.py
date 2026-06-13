@@ -18,7 +18,6 @@ from app.models.support_models import (
     SupportRequestResponse,
     SupportRequestStatus,
     SupportRequestSubmissionResponse,
-    SupportRequestType,
 )
 from app.services.upload_service import upload_file_to_cloudinary
 from app.utils.email_utils import (
@@ -35,12 +34,7 @@ SUPPORT_EMAILS = [
 
 
 async def _delete_uploaded_files(attachment_urls: list[str], ticket_id: str) -> None:
-    """Delete uploaded files from Cloudinary.
-
-    Args:
-        attachment_urls: List of file URLs to delete
-        ticket_id: Ticket ID used to construct public_ids
-    """
+    """Delete uploaded files from Cloudinary."""
     for url in attachment_urls:
         try:
             # Extract filename from URL to construct public_id
@@ -70,22 +64,7 @@ async def _upload_single_attachment(
     allowed_types: list[str],
     max_file_size: int,
 ) -> tuple[str, dict]:
-    """
-    Upload a single attachment file and return its URL and metadata.
-
-    Args:
-        attachment: The file to upload
-        ticket_id: Ticket ID for public_id construction
-        current_time: Current timestamp
-        allowed_types: List of allowed content types
-        max_file_size: Maximum file size in bytes
-
-    Returns:
-        Tuple of (file_url, attachment_metadata_dict)
-
-    Raises:
-        HTTPException: If validation or upload fails
-    """
+    """Upload a single attachment and return (file_url, attachment_metadata_dict)."""
     # Validate file type
     if attachment.content_type not in allowed_types:
         raise HTTPException(
@@ -140,18 +119,9 @@ async def create_support_request(
     user_email: str,
     user_name: str | None = None,
 ) -> SupportRequestSubmissionResponse:
-    """
-    Create a new support request and send email notifications.
-    Implements atomic transaction: if email sending fails, the support request is deleted.
+    """Create a new support request and send email notifications.
 
-    Args:
-        request_data: Support request data
-        user_id: ID of the user creating the request
-        user_email: Email of the user
-        user_name: Name of the user (optional)
-
-    Returns:
-        SupportRequestSubmissionResponse with success status and ticket ID
+    Atomic: if email sending fails, the support request is deleted.
     """
     log.set(service="support_service", user_id=user_id, user_email=user_email)
     request_id = None
@@ -279,19 +249,9 @@ async def create_support_request_with_attachments(
     user_email: str,
     user_name: str | None = None,
 ) -> SupportRequestSubmissionResponse:
-    """
-    Create a new support request with file attachments and send email notifications.
-    Implements atomic transaction: if email sending fails, the support request and uploaded files are deleted.
+    """Create a new support request with file attachments and send email notifications.
 
-    Args:
-        request_data: Support request data
-        attachments: List of uploaded files
-        user_id: ID of the user creating the request
-        user_email: Email of the user
-        user_name: Name of the user (optional)
-
-    Returns:
-        SupportRequestSubmissionResponse with success status and ticket ID
+    Atomic: if email sending fails, the support request and uploaded files are deleted.
     """
     log.set(
         service="support_service",
@@ -515,15 +475,9 @@ async def create_support_request_with_attachments(
 async def _send_support_email_notifications(
     notification_data: SupportEmailNotification,
 ) -> None:
-    """
-    Send email notifications to support team and support to user.
-    Raises exception if email sending fails to allow for transaction rollback.
+    """Send email notifications to the support team and the user.
 
-    Args:
-        notification_data: Email notification data
-
-    Raises:
-        Exception: If email sending fails
+    Raises on failure so the caller can roll back the transaction.
     """
     try:
         # Send to support team
@@ -544,18 +498,7 @@ async def get_user_support_requests(
     per_page: int = 10,
     status_filter: SupportRequestStatus | None = None,
 ) -> dict:
-    """
-    Get support requests for a specific user.
-
-    Args:
-        user_id: ID of the user
-        page: Page number for pagination
-        per_page: Number of items per page
-        status_filter: Optional status filter
-
-    Returns:
-        Dictionary with support requests and pagination info
-    """
+    """Get paginated support requests for a user."""
     try:
         query = {"user_id": user_id}
         if status_filter:
@@ -590,61 +533,4 @@ async def get_user_support_requests(
 
     except Exception as e:
         log.error(f"Error fetching user support requests: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to fetch support requests")
-
-
-async def get_all_support_requests(
-    page: int = 1,
-    per_page: int = 20,
-    status_filter: SupportRequestStatus | None = None,
-    type_filter: SupportRequestType | None = None,
-) -> dict:
-    """
-    Get all support requests (for admin use).
-
-    Args:
-        page: Page number for pagination
-        per_page: Number of items per page
-        status_filter: Optional status filter
-        type_filter: Optional type filter
-
-    Returns:
-        Dictionary with support requests and pagination info
-    """
-    try:
-        query = {}
-        if status_filter:
-            query["status"] = status_filter.value
-        if type_filter:
-            query["type"] = type_filter.value
-
-        # Count total documents
-        total = await support_collection.count_documents(query)
-
-        # Calculate pagination
-        skip = (page - 1) * per_page
-
-        # Fetch documents
-        cursor = support_collection.find(query).sort("created_at", -1).skip(skip).limit(per_page)
-        requests = await cursor.to_list(length=per_page)
-
-        # Convert to response models
-        support_requests = []
-        for req in requests:
-            req["id"] = str(req["_id"])
-            del req["_id"]
-            support_requests.append(SupportRequestResponse(**req))
-
-        return {
-            "requests": support_requests,
-            "pagination": {
-                "page": page,
-                "per_page": per_page,
-                "total": total,
-                "pages": (total + per_page - 1) // per_page,
-            },
-        }
-
-    except Exception as e:
-        log.error(f"Error fetching all support requests: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to fetch support requests")

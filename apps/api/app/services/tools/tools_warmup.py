@@ -26,10 +26,15 @@ async def warmup_tools_cache() -> None:
     log.info("Warming up tools cache...")
 
     try:
-        # 1. Load provider tools into registry (Composio integrations)
+        # 1. Index provider-tool METADATA (name + description) for retrieval and
+        #    the /tools catalog. Crucially this does NOT wrap the ~1.6k catalog
+        #    tools into StructuredTools (Pydantic model + closure per tool) — that
+        #    eager materialization was the dominant source of resident memory.
+        #    Executable tools are built lazily per provider when a subagent is
+        #    first created (register_provider_tools).
         tool_registry = await get_tool_registry()
-        await tool_registry.load_all_provider_tools()
-        log.info("Provider tools loaded into registry")
+        await tool_registry.populate_provider_catalog()
+        log.info("Provider catalog metadata indexed (tools materialized lazily on use)")
 
         # 2. Build and cache global tools response
         # Pass None for user_id to get only global tools (no user-specific overlays)

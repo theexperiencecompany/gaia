@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import type { Workflow } from "@/types/features/workflowTypes";
 import { getBrowserTimezone } from "../utils/browserTimezone";
+import { describeCron } from "../utils/cronUtils";
 
 // =============================================================================
 // TRIGGER CONFIG SCHEMAS
@@ -22,7 +23,13 @@ import { getBrowserTimezone } from "../utils/browserTimezone";
 const scheduleTriggerConfigSchema = z.object({
   type: z.literal("schedule"),
   enabled: z.boolean(),
-  cron_expression: z.string().min(1, "Cron expression is required"),
+  cron_expression: z
+    .string()
+    .trim()
+    .min(1, "Cron expression is required")
+    .refine((value) => describeCron(value).isValid, {
+      message: "Invalid cron expression",
+    }),
   timezone: z.string().min(1),
   next_run: z.string().optional(),
 });
@@ -64,6 +71,7 @@ export const workflowFormSchema = z.object({
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
+  notify_on_completion: z.boolean(),
 });
 
 // Export the inferred type
@@ -88,6 +96,7 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
     cron_expression: "0 9 * * *", // Daily at 9 AM
     timezone: getBrowserTimezone(),
   },
+  notify_on_completion: true,
 });
 
 /**
@@ -131,5 +140,6 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
     activeTab,
     selectedTrigger,
     trigger_config: workflow.trigger_config,
+    notify_on_completion: workflow.notify_on_completion ?? true,
   };
 };

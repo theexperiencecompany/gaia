@@ -5,6 +5,7 @@ GAIA is a proactive personal AI assistant — full-stack Nx monorepo with a Next
 ## Engineering Discipline
 
 - Use best practices and write clean, idiomatic code every time. No shortcuts, no half-measures.
+- **Never ship workarounds, patches, or band-aid fixes. Always choose the cleanest, most correct approach — every single time.** When you find a bug, fix it at the root, not at the symptom. If two code paths diverge and one is broken, unify them rather than patching the broken one in place. Surgical-but-duplicative is not "safer" — it is how the bug got there. Surface the tradeoff, then take the clean path.
 - Do not override or work around the architecture. Never disable lint rules, add blanket `# noqa` / `// biome-ignore` / `# type: ignore`, or bypass CI to force something through. Linting, type-checking, and CI are guardrails that exist for a reason. Fix the cause, not the symptom.
 - Match the conventions of the surrounding code. Prefer the existing pattern over inventing a new one.
 
@@ -28,7 +29,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution 
 **3. Surgical Changes.** Touch only what you must. Clean up only your own mess.
 - Don't "improve" adjacent code, comments, or formatting. Don't refactor things that aren't broken.
 - Match existing style, even if you'd do it differently.
-- Remove imports/variables/functions that YOUR changes made unused. Don't delete pre-existing dead code unless asked, flag it instead.
+- Remove imports/variables/functions that YOUR changes made unused. Delete pre-existing dead code when you spot it.
 - The test: every changed line should trace directly to the user's request.
 
 **4. Goal-Driven Execution.** Define success criteria. Loop until verified.

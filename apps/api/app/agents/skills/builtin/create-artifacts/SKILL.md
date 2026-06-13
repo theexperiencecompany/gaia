@@ -1,6 +1,6 @@
 ---
 name: create-artifacts
-description: Create rich file artifacts (documents, code, reports, HTML pages) that appear as interactive cards in chat when placed in .user-visible/.
+description: Create rich file artifacts (documents, code, reports, HTML pages) that appear as interactive cards in chat when placed in artifacts/.
 target: executor
 ---
 
@@ -23,10 +23,10 @@ Activate when the user asks for standalone files that are better as viewable/dow
 
 ## Core Rule
 
-Files are shown to the user only when they are in `.user-visible/` for the current session.
+Files are shown to the user only when they are in `artifacts/` for the current session.
 
 Use:
-vfs_write(".user-visible/file-name.ext", content)
+vfs_write("artifacts/file-name.ext", content)
 
 This auto-resolves to the session-scoped location.
 
@@ -41,20 +41,20 @@ If `vfs_write` is not already available, bind it before proceeding:
 For substantial work, use a two-step flow:
 
 1. Write privately in `files/` or `notes/`
-2. Move the polished result into `.user-visible/`
+2. Move the polished result into `artifacts/`
 
 Example:
 
     vfs_write("files/draft-plan.md", draft_content)
     # iterate, refine, validate
-    vfs_cmd("mv files/draft-plan.md .user-visible/final-plan.md")
+    vfs_cmd("mv files/draft-plan.md artifacts/final-plan.md")
 
 This ensures users only see final artifacts, not intermediate drafts.
 
 ## Important Safety Rules
 
-1. Never put temporary/scratch/debug files in `.user-visible/`
-2. Never put partial or broken output in `.user-visible/`
+1. Never put temporary/scratch/debug files in `artifacts/`
+2. Never put partial or broken output in `artifacts/`
 3. Use descriptive filenames with clear extensions
 4. Always provide a short summary in the assistant response describing what was created
 

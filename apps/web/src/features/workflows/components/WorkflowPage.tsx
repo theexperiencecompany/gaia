@@ -214,7 +214,7 @@ export default function WorkflowPage() {
     }
 
     return (
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 @md:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4">
         {items.map((item) => renderItem(item))}
       </div>
     );
@@ -245,7 +245,10 @@ export default function WorkflowPage() {
   );
 
   return (
-    <div className="space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8" ref={pageRef}>
+    <div
+      className="@container space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8"
+      ref={pageRef}
+    >
       <div className="mb-6">
         <CommunityBanner onCreateWorkflow={onCreateOpen} />
       </div>

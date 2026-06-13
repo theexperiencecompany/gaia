@@ -56,6 +56,8 @@ export interface Workflow {
   execution_config: ExecutionConfig;
   metadata: WorkflowMetadata;
   activated: boolean;
+  /** Whether GAIA sends the automatic completion notification after each run */
+  notify_on_completion: boolean;
   user_id: string;
   created_at: string;
   updated_at: string;

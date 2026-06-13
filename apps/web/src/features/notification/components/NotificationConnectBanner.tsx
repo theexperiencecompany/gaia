@@ -7,15 +7,10 @@ import { useEffect, useState } from "react";
 import { apiService } from "@/lib/api/service";
 import type { PlatformLink } from "@/types/platform";
 import {
+  NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
   NOTIFICATION_PLATFORMS,
 } from "../constants";
-
-const PLATFORM_ICONS: Record<string, string> = {
-  telegram: "/images/icons/macos/telegram.webp",
-  discord: "/images/icons/macos/discord.webp",
-  whatsapp: "/images/icons/macos/whatsapp.webp",
-};
 
 interface NotificationConnectBannerProps {
   variant?: "compact" | "full";
@@ -64,7 +59,7 @@ export function NotificationConnectBanner({
               {unconnectedPlatforms.map((p, index) => (
                 <Image
                   key={p}
-                  src={PLATFORM_ICONS[p]}
+                  src={NOTIFICATION_PLATFORM_ICONS[p]}
                   alt={NOTIFICATION_PLATFORM_LABELS[p]}
                   width={30}
                   height={30}

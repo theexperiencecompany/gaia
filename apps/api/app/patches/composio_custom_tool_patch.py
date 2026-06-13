@@ -1,88 +1,54 @@
-# Monkey patch for Composio CustomTool to inject ``user_id`` into ``auth_credentials`` via ``__call__``.
+# Monkey patch for Composio CustomTool to inject ``user_id`` into ``auth_credentials``.
 
-"""Patch module that overrides ``CustomTool.__call__`` to ensure the ``user_id``
-provided to a custom tool is added to the ``auth_credentials`` dictionary.
+"""Patch that re-injects ``user_id`` into the ``auth_credentials`` dict that
+Composio passes to custom tool functions.
 
-Composio no longer returns OAuth ``access_token`` values inside
-``auth_credentials``. Custom tools must route provider API requests through
-``app.services.composio.proxy_client.proxy_request_sync`` (which uses
-``composio.tools.proxy``) rather than reading a token from this dict.
-The injected ``user_id`` is the only value tools should rely on here.
+Composio 1.0.0 reworked custom-tool dispatch. Tools are now invoked through
+``CustomTools.execute(slug, request, user_id)`` -> ``CustomTool.invoke_trusted``,
+and Composio deliberately keeps ``user_id`` OUT of ``auth_credentials`` (it is
+treated as a structurally separate, trusted parameter so an LLM-controlled
+``user_id`` cannot smuggle its way into credential lookup).
+
+GAIA's custom tools read ``user_id`` from ``auth_credentials`` to route provider
+requests through ``app.services.composio.proxy_client``. To restore that contract
+without reintroducing the smuggling risk, we wrap the single private method that
+both dispatch paths funnel through -- ``CustomTool.__get_auth_credentials(user_id)``
+-- and re-add ``user_id`` from the trusted SDK parameter (never from request input).
+
+This couples to a name-mangled private method. If a future Composio bump renames
+or removes it, the assert below fails loudly at import time rather than letting
+every custom tool silently 500 with "Missing user_id in auth_credentials".
 """
 
-from typing import Any, Union
-
 from composio.core.models.custom_tools import CustomTool
-from pydantic import BaseModel
 
-from app.utils.errors import AppError
+# Name-mangled private method: ``CustomTool.__get_auth_credentials``. Both
+# ``__call__`` (default user) and ``invoke_trusted`` (real user via execute)
+# funnel through it, so wrapping it covers every dispatch path.
+_PRIVATE_AUTH_METHOD = "_CustomTool__get_auth_credentials"
 
-# Preserve the original ``__call__`` method under a distinct name to avoid shadowing warnings.
-_original_custom_tool_call = CustomTool.__call__
-
-
-def _to_dict_recursive(obj: Any) -> Any:
-    """Convert Pydantic objects to dicts recursively to handle class mismatches.
-
-    Dynamically-generated models (from ``json_schema_to_model``) are not
-    instances of the original Pydantic class, so we normalize everything
-    to plain dicts/lists/scalars before passing to the request model.
-    """
-    if isinstance(obj, BaseModel):
-        return obj.model_dump()
-    if isinstance(obj, dict):
-        return {k: _to_dict_recursive(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_to_dict_recursive(item) for item in obj]
-    return obj
-
-
-def _patched_call(self: Any, **kwargs: Any) -> Any:
-    """Call the custom tool while ensuring ``user_id`` is present in ``auth_credentials``.
-
-    Raises ``AppError`` if ``user_id`` is missing — the prior fallback to a
-    ``"default"`` sentinel could route a request to whichever account
-    Composio considers the project default, which is wrong for multi-tenant
-    SaaS. Failing fast surfaces the bug at the call site instead.
-    """
-    user_id = kwargs.get("user_id")
-    if not user_id:
-        raise AppError(
-            message="Missing user_id when invoking Composio custom tool",
-            why="The CustomTool was invoked without a user_id kwarg",
-            fix="Caller must pass user_id; do not rely on a default account",
-            status_code=500,
-            meta={"tool": getattr(self, "name", None)},
-        )
-    del kwargs["user_id"]
-
-    # Normalize Pydantic objects in kwargs to plain dicts to avoid class
-    # mismatch between dynamically-generated models and the original classes.
-    normalized: Union[dict[str, Any], list[Any], Any] = _to_dict_recursive(kwargs)
-
-    # Validate the request model.
-    request = self.request_model.model_validate(normalized)
-
-    # If the tool is not bound to a toolkit, call the original function directly.
-    if self.toolkit is None:
-        return self.f(request=request)
-
-    # Retrieve auth credentials and inject ``user_id``.
-    # NOTE: We must use name-mangled private method access here because
-    # Composio's CustomTool does not expose a public API for retrieving
-    # auth credentials. This is a known coupling point — if Composio
-    # changes their internal implementation, this patch may need updating.
-    auth_credentials = self._CustomTool__get_auth_credentials(user_id)
-    auth_credentials = dict(auth_credentials)  # shallow copy to avoid mutation
-    auth_credentials["user_id"] = user_id
-
-    # Invoke the original tool function with the patched credentials.
-    return self.f(
-        request=request,
-        execute_request=self.client.tools.proxy,
-        auth_credentials=auth_credentials,
+if not hasattr(CustomTool, _PRIVATE_AUTH_METHOD):
+    raise RuntimeError(
+        "composio_custom_tool_patch: CustomTool no longer exposes "
+        f"{_PRIVATE_AUTH_METHOD!r}. Composio's custom-tool internals changed -- "
+        "the user_id injection patch must be updated to match the new dispatch "
+        "path before custom tools will work."
     )
+
+_original_get_auth_credentials = getattr(CustomTool, _PRIVATE_AUTH_METHOD)
+
+
+def _patched_get_auth_credentials(self: CustomTool, user_id: str) -> dict:
+    """Return Composio's auth credentials with the trusted ``user_id`` added.
+
+    ``user_id`` comes from the SDK's structurally-separate parameter, not from
+    LLM-controlled request input, so re-adding it here does not reopen the
+    credential-smuggling hole Composio closed.
+    """
+    auth_credentials = dict(_original_get_auth_credentials(self, user_id))
+    auth_credentials["user_id"] = user_id
+    return auth_credentials
 
 
 # Apply the monkey-patch.
-CustomTool.__call__ = _patched_call  # type: ignore[assignment]
+setattr(CustomTool, _PRIVATE_AUTH_METHOD, _patched_get_auth_credentials)

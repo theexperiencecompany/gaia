@@ -93,20 +93,7 @@ class WorkflowSubagentRunner:
         user_time: datetime | None = None,
         stream_writer=None,
     ) -> str:
-        """
-        Execute the workflow subagent with streaming.
-
-        Args:
-            task: The task description for workflow creation
-            user_id: User ID
-            thread_id: Thread/conversation ID
-            user_name: Optional user name for context
-            user_time: Optional user time for context
-            stream_writer: Callback for streaming events
-
-        Returns:
-            Complete response text from the subagent
-        """
+        """Execute the workflow subagent with streaming, returning the complete response text."""
         subagent_graph = await get_workflow_subagent()
 
         # Build config
@@ -199,7 +186,7 @@ class WorkflowSubagentRunner:
                             {
                                 "tool_output": {
                                     "tool_call_id": chunk.tool_call_id,
-                                    "output": chunk.text()[:3000],
+                                    "output": chunk.text(),
                                 }
                             }
                         )

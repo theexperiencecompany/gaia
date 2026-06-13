@@ -46,14 +46,23 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libdrm2 libxcomposite1 libxdamage1 libxrandr2 \
     libgbm1 libasound2 libdbus-1-3 \
     tesseract-ocr \
-    pandoc \
-    texlive-xetex \
-    texlive-fonts-recommended \
-    texlive-latex-recommended \
-    texlive-latex-extra \
-    lmodern \
-    texlive-plain-generic \
+    fuse3 \
+    postgresql-client \
     curl
+
+# JuiceFS client — needed by the host-side sidecar mount that the API writes
+# skills + migration data through. Sandboxes have their own copy baked into
+# the E2B template.
+# Arch-aware: TARGETARCH is auto-populated by BuildKit (amd64/arm64). Using a
+# native binary matters — the amd64 build crashes (Go runtime abort in the PG
+# meta client) under Rosetta/QEMU emulation on arm64 hosts (Apple Silicon
+# dev, Graviton prod).
+ARG JUICEFS_VERSION=1.3.0
+ARG TARGETARCH
+RUN curl -fsSL "https://github.com/juicedata/juicefs/releases/download/v${JUICEFS_VERSION}/juicefs-${JUICEFS_VERSION}-linux-${TARGETARCH:-amd64}.tar.gz" \
+    | tar -xz -C /tmp \
+    && install -m 0755 /tmp/juicefs /usr/local/bin/juicefs \
+    && rm -rf /tmp/juicefs /tmp/LICENSE /tmp/README.md
 
 # Copy uv binary (pinned version)
 COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
@@ -80,13 +89,19 @@ COPY libs ./libs
 COPY apps/api/pyproject.toml ./apps/api/
 
 # Setup non-root user and permissions
-# chown libs so setuptools can create gaia_shared.egg-info during editable install
+# - libs needs to be writable so setuptools can create gaia_shared.egg-info during editable install
+# - /app/uv.lock and /app/pyproject.toml need to be writable because `uv run` may touch the
+#   lockfile even when nothing changed (e.g. metadata refresh). Failing back to read-only
+#   produces "Permission denied" on every invocation in the running container.
 RUN adduser --disabled-password --gecos '' appuser \
     && mkdir -p /home/appuser/.cache \
     && chown -R appuser:appuser /home/appuser \
     && mkdir -p /app/apps/api/logs \
     && chown appuser:appuser /app/apps/api/logs \
-    && chown -R appuser:appuser /app/libs
+    && chown -R appuser:appuser /app/libs \
+    && chown appuser:appuser /app/uv.lock /app/pyproject.toml \
+    && mkdir -p /etc/gaia /var/cache/juicefs /mnt/jfs \
+    && chown -R appuser:appuser /etc/gaia /var/cache/juicefs /mnt/jfs
 
 # Copy API application code (root-owned, readable by appuser)
 COPY apps/api/app ./apps/api/app

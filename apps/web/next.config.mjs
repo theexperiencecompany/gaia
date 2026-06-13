@@ -30,6 +30,13 @@ const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
 });
 
+// The Cloudflare Image Resizing loader (/cdn-cgi/image/) is only valid when the
+// app is served through the Cloudflare edge. Only the Cloudflare build sets this
+// flag (see the cf:build/deploy/preview scripts in package.json). Every other
+// build — Docker staging, Electron standalone — leaves it unset and falls back
+// to Next's built-in image optimizer, otherwise every image 404s off-edge.
+const useCloudflareImageLoader = process.env.IMAGE_LOADER === "cloudflare";
+
 const nextConfig = {
   productionBrowserSourceMaps: true,
   compiler: {
@@ -162,6 +169,13 @@ const nextConfig = {
     return config;
   },
   images: {
+    // Offload optimization to Cloudflare Image Resizing (/cdn-cgi/image/) via a
+    // custom loader — edge-cached, off the worker. Requires Transformations
+    // enabled on the zone. Gated on the Cloudflare build (see image-loader.ts);
+    // off-edge builds fall through to Next's built-in optimizer.
+    ...(useCloudflareImageLoader
+      ? { loader: "custom", loaderFile: "./image-loader.ts" }
+      : {}),
     dangerouslyAllowSVG: true,
     minimumCacheTTL: 2_592_000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
     remotePatterns: [
@@ -193,15 +207,13 @@ const nextConfig = {
   ],
   async headers() {
     return [
-      {
-        source: "/_next/static/(.*)",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
-        ],
-      },
+      // /_next/static/* — intentionally NOT setting a custom Cache-Control
+      // here. Next.js content-hashes chunk filenames in production builds, so
+      // its default immutable cache headers are already correct; in dev
+      // Turbopack reuses the same chunk filenames across rebuilds, and any
+      // custom long-cache header would pin a stale bundle in the browser and
+      // break hot reloads (Next itself warns "Setting a custom Cache-Control
+      // header can break Next.js development behavior").
       {
         source: "/images/(.*)",
         headers: [

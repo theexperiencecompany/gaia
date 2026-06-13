@@ -30,6 +30,7 @@ class CreateCustomIntegrationRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_auth_type(self):
+        """Require an explicit ``auth_type`` whenever ``requires_auth`` is set."""
         if self.requires_auth and not self.auth_type:
             raise ValueError("auth_type must be specified when requires_auth is True")
         return self
@@ -54,3 +55,13 @@ class ConnectIntegrationRequest(BaseModel):
         description="Frontend path to redirect after OAuth completes",
     )
     bearer_token: str | None = Field(None)
+
+
+class UpdateIntegrationInstructionsRequest(BaseModel):
+    """Request to set a user's custom instructions for one integration."""
+
+    content: str = Field(
+        default="",
+        max_length=8000,
+        description="Markdown instructions the agent should honor for this integration",
+    )

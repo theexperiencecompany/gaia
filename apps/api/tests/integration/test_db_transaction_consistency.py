@@ -26,7 +26,6 @@ import pytest
 from app.models.chat_models import (
     ConversationModel,
     MessageModel,
-    SystemPurpose,
     UpdateMessagesRequest,
 )
 from app.models.todo_models import (
@@ -40,7 +39,6 @@ from app.services.conversation_service import (
     create_conversation_service,
     delete_all_conversations,
     delete_conversation,
-    get_or_create_system_conversation,
     update_messages,
 )
 from app.services.todos.sync_service import sync_goal_node_completion
@@ -785,52 +783,3 @@ class TestBulkOperations:
 # ---------------------------------------------------------------------------
 # System conversation get-or-create
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestSystemConversationGetOrCreate:
-    """Verify idempotent system conversation creation."""
-
-    async def test_returns_existing_when_present(self) -> None:
-        """If a system conversation already exists, it must be returned without creating a new one."""
-
-        existing = {
-            "_id": _oid(),
-            "user_id": USER_ID,
-            "conversation_id": str(uuid4()),
-            "is_system_generated": True,
-            "system_purpose": "email_processing",
-        }
-
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=deepcopy(existing))
-
-        with patch(
-            "app.services.conversation_service.conversations_collection",
-            mock_collection,
-        ):
-            result = await get_or_create_system_conversation(
-                USER_ID, SystemPurpose.EMAIL_PROCESSING
-            )
-
-        assert result["is_system_generated"] is True
-        mock_collection.insert_one.assert_not_called()
-
-    async def test_creates_new_when_absent(self) -> None:
-        """If no system conversation exists, one must be created."""
-
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_collection.insert_one = AsyncMock(return_value=_make_insert_result())
-
-        with patch(
-            "app.services.conversation_service.conversations_collection",
-            mock_collection,
-        ):
-            result = await get_or_create_system_conversation(
-                USER_ID, SystemPurpose.REMINDER_PROCESSING
-            )
-
-        assert result["is_system_generated"] is True
-        assert result["system_purpose"] == SystemPurpose.REMINDER_PROCESSING
-        mock_collection.insert_one.assert_called_once()

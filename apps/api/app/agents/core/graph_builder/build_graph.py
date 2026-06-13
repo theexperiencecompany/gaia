@@ -26,8 +26,9 @@ from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
 )
-from app.agents.tools.executor_tool import call_executor
+from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
+from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
@@ -53,11 +54,12 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({t.name: t for t in todo_tools})
+    tool_dict.update({"wait_for_subagents": wait_for_subagents_tool})
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
-    # Build excluded tool names for spawn_subagent: handoff and all subagent:-prefixed
-    excluded_subagent_tools = {"handoff"}
+    # Spawned subagents must not see executor-only orchestration tools.
+    excluded_subagent_tools = {"handoff", "wait_for_subagents"}
 
     middleware = create_executor_middleware(
         subagent_excluded_tools=excluded_subagent_tools,
@@ -93,9 +95,17 @@ async def build_executor_graph(
             "handoff",
             "plan_tasks",
             "update_tasks",
-            "vfs_read",
-            "vfs_cmd",
+            "read",
+            "bash",
             "deep_research",
+            "wait_for_subagents",
+            "read_manual",
+            "create_tracked_todo",
+            "update_tracked_todo",
+            "update_tracked_todo_canvas",
+            "complete_tracked_todo",
+            "search_todo_context",
+            "list_tracked_todos",
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
@@ -156,6 +166,7 @@ async def build_comms_graph(
 
     tool_registry = {
         "call_executor": call_executor,
+        "cancel_executor": cancel_executor,
         "add_memory": memory_tools.add_memory,
         "search_memory": memory_tools.search_memory,
     }
@@ -173,7 +184,7 @@ async def build_comms_graph(
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
-        initial_tool_ids=["call_executor", "add_memory", "search_memory"],
+        initial_tool_ids=["call_executor", "cancel_executor", "add_memory", "search_memory"],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
         end_graph_hooks=[

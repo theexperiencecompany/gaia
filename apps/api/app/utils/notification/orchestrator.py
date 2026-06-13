@@ -31,6 +31,7 @@ from app.utils.notification.channels import (
     ChannelAdapter,
     DiscordChannelAdapter,
     InAppChannelAdapter,
+    SlackChannelAdapter,
     TelegramChannelAdapter,
     WhatsAppChannelAdapter,
 )
@@ -41,16 +42,8 @@ from shared.py.wide_events import log
 
 
 class NotificationOrchestrator:
-    """
-    Core notification orchestration engine.
-
-    This class manages the complete lifecycle of notifications including:
-    - Creation and validation
-    - Delivery through multiple channels
-    - Action execution
-    - Bulk operations
-    - Status management
-    """
+    """Core notification engine: creation, multi-channel delivery, actions,
+    bulk operations, and status management."""
 
     def __init__(self, storage=None) -> None:
         self.storage = storage or MongoDBNotificationStorage()
@@ -68,6 +61,7 @@ class NotificationOrchestrator:
         self.register_channel_adapter(TelegramChannelAdapter())
         self.register_channel_adapter(DiscordChannelAdapter())
         self.register_channel_adapter(WhatsAppChannelAdapter())
+        self.register_channel_adapter(SlackChannelAdapter())
 
         # Action handlers
         self.register_action_handler(ApiCallActionHandler())
@@ -86,15 +80,7 @@ class NotificationOrchestrator:
 
     # NOTIFICATION CREATION & MANAGEMENT
     async def create_notification(self, request: NotificationRequest) -> NotificationRecord | None:
-        """
-        Create and process a new notification.
-
-        Args:
-            request: The notification request containing all notification data
-
-        Returns:
-            NotificationRecord if created successfully, None if duplicate
-        """
+        """Create, store, and deliver a new notification."""
         channels_requested = [ch.channel_type for ch in request.channels]
         log.set(
             notification={
@@ -129,12 +115,7 @@ class NotificationOrchestrator:
 
     # NOTIFICATION DELIVERY SYSTEM
     async def _deliver_notification(self, notification: NotificationRecord) -> None:
-        """
-        Deliver notification through all configured channels.
-
-        Args:
-            notification: The notification record to deliver
-        """
+        """Deliver a notification through all configured channels."""
         log.info(f"Delivering notification {notification.id}")
 
         delivery_tasks = []
@@ -220,28 +201,27 @@ class NotificationOrchestrator:
             )
 
     async def _get_channel_prefs(self, user_id: str) -> dict:
-        """Fetch user's notification channel preferences from DB."""
+        """Fetch user's notification channel preferences from DB.
+
+        On a transient read failure, fall back to the SAME defaults a user with
+        no stored preference gets (``DEFAULT_CHANNEL_PREFERENCES`` — all enabled),
+        not "all disabled". An opt-out lives in a stored document; an unreadable
+        document means the preference is *unknown*, and treating unknown as
+        opted-out silently drops notifications the user asked for and makes
+        delivery non-deterministic across transient DB blips. Erring toward
+        delivery (one stray message during a rare outage) beats chronically
+        dropping reminders.
+        """
         try:
             return await fetch_channel_preferences(user_id)
         except Exception as e:
-            # Default to all DISABLED on error — better to skip delivery than
-            # to spam users who have opted out when the DB is unavailable.
-            log.warning(f"Failed to fetch channel prefs for {user_id}: {e}")
-            return dict.fromkeys(DEFAULT_CHANNEL_PREFERENCES, False)
+            log.warning(f"Failed to fetch channel prefs for {user_id}, using defaults: {e}")
+            return dict(DEFAULT_CHANNEL_PREFERENCES)
 
     async def _deliver_via_channel(
         self, notification: NotificationRecord, adapter: ChannelAdapter
     ) -> ChannelDeliveryStatus:
-        """
-        Deliver notification via a specific channel.
-
-        Args:
-            notification: The notification to deliver
-            adapter: The channel adapter to use for delivery
-
-        Returns:
-            ChannelDeliveryStatus indicating success or failure
-        """
+        """Deliver a notification via a specific channel adapter."""
         try:
             content = await adapter.transform(notification.original_request)
             return await adapter.deliver(content, notification.user_id)
@@ -261,18 +241,7 @@ class NotificationOrchestrator:
         user_id: str,
         request: Request | None,
     ) -> ActionResult:
-        """
-        Execute a notification action.
-
-        Args:
-            notification_id: ID of the notification containing the action
-            action_id: ID of the specific action to execute
-            user_id: ID of the user executing the action
-            request: Optional FastAPI request object for context
-
-        Returns:
-            ActionResult containing execution status and results
-        """
+        """Execute a notification action."""
         log.set(
             action_id=action_id,
             notification_id=notification_id,
@@ -348,16 +317,7 @@ class NotificationOrchestrator:
 
     # NOTIFICATION STATUS MANAGEMENT
     async def mark_as_read(self, notification_id: str, user_id: str) -> NotificationRecord | None:
-        """
-        Mark notification as read.
-
-        Args:
-            notification_id: ID of the notification to mark as read
-            user_id: ID of the user marking the notification
-
-        Returns:
-            Updated notification record if successful, None otherwise
-        """
+        """Mark a notification as read."""
         notification = await self.storage.get_notification(notification_id, user_id)
         if not notification:
             return None
@@ -383,16 +343,7 @@ class NotificationOrchestrator:
         return updated_notification
 
     async def archive_notification(self, notification_id: str, user_id: str) -> bool:
-        """
-        Archive a notification.
-
-        Args:
-            notification_id: ID of the notification to archive
-            user_id: ID of the user archiving the notification
-
-        Returns:
-            True if successfully archived, False otherwise
-        """
+        """Archive a notification."""
         notification = await self.storage.get_notification(notification_id, user_id)
         if not notification:
             return False
@@ -420,37 +371,14 @@ class NotificationOrchestrator:
         notification_type: NotificationType | None = None,
         source: NotificationSourceEnum | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Get notifications for a user with optional filtering.
-
-        Args:
-            user_id: ID of the user whose notifications to retrieve
-            status: Optional status filter
-            limit: Maximum number of notifications to return
-            offset: Number of notifications to skip (for pagination)
-            channel_type: Optional channel type filter
-            notification_type: Optional notification type filter
-            source: Optional source filter
-
-        Returns:
-            List of serialized notifications
-        """
+        """Get a user's notifications with optional filtering and pagination."""
         notifications = await self.storage.get_user_notifications(
             user_id, status, limit, offset, channel_type, notification_type, source
         )
         return [await self._serialize_notification(n) for n in notifications]
 
     async def get_notification(self, notification_id: str, user_id: str) -> dict[str, Any] | None:
-        """
-        Get a specific notification by ID for a user.
-
-        Args:
-            notification_id: ID of the notification to retrieve
-            user_id: ID of the user requesting the notification
-
-        Returns:
-            Serialized notification if found, None otherwise
-        """
+        """Get a specific notification by ID for a user."""
         notification = await self.storage.get_notification(notification_id, user_id)
         if not notification:
             return None
@@ -460,17 +388,7 @@ class NotificationOrchestrator:
     async def bulk_actions(
         self, notification_ids: list[str], user_id: str, action: BulkActions
     ) -> dict[str, bool]:
-        """
-        Perform bulk actions on multiple notifications.
-
-        Args:
-            notification_ids: List of notification IDs to operate on
-            user_id: ID of the user performing the bulk action
-            action: The type of bulk action to perform
-
-        Returns:
-            Dictionary mapping notification IDs to success/failure status
-        """
+        """Perform a bulk action across notifications, returning per-ID success."""
         results = {}
 
         for notification_id in notification_ids:
@@ -492,15 +410,7 @@ class NotificationOrchestrator:
 
     # UTILITY & SERIALIZATION METHODS
     async def _serialize_notification(self, notification: NotificationRecord) -> dict[str, Any]:
-        """
-        Serialize notification for API response.
-
-        Args:
-            notification: The notification record to serialize
-
-        Returns:
-            Dictionary representation suitable for API responses
-        """
+        """Serialize a notification record for API responses."""
         return {
             "id": notification.id,
             "user_id": notification.user_id,

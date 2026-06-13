@@ -2,11 +2,19 @@ import asyncio
 import time
 
 from composio import Composio, after_execute, before_execute, schema_modifier
+from composio.types import Tool
 
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.trigger_config import TriggerConfig
+
+# Defensive: guarantee the Composio CustomTool monkey-patches are applied in any
+# process that builds a Composio client (API, ARQ worker, future entrypoints),
+# not only where an entrypoint remembers to `import app.patches`. Without the
+# user_id-injection patch, custom tools 500 with "Missing user_id in
+# auth_credentials".
+import app.patches  # noqa: F401
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.services.composio.proxy_client import invalidate_connected_account_cache
@@ -196,6 +204,31 @@ class ComposioService:
             }
         )
         return result
+
+    async def get_raw_tools_metadata(
+        self,
+        tool_kit: str | None = None,
+        specific_tools: list[str] | None = None,
+    ) -> list[Tool]:
+        """Fetch raw Composio tool definitions WITHOUT wrapping them.
+
+        ``get_tools``/``get_tools_by_name`` run the LangchainProvider, which
+        builds a Pydantic args-model + closure per tool (~100KB each). Wrapping
+        the whole ~1.6k-tool catalog this way is the dominant source of resident
+        memory. For warmup we only need metadata (name + description) to index
+        the catalog into ChromaDB (retrieval) and Mongo (the /tools listing).
+        The raw endpoint returns ``composio.types.Tool`` objects (slug,
+        description, input_parameters) with no wrapping. Executable
+        StructuredTools are materialized lazily, per provider, when a subagent is
+        first created (see ``ToolRegistry.register_provider_tools``).
+        """
+
+        def _fetch():
+            if specific_tools:
+                return self.composio.tools.get_raw_composio_tools(tools=specific_tools)
+            return self.composio.tools.get_raw_composio_tools(toolkits=[tool_kit], limit=1000)
+
+        return await asyncio.to_thread(_fetch)
 
     def get_tool(
         self,

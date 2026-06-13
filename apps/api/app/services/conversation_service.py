@@ -7,15 +7,18 @@ from fastapi import HTTPException, status
 
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
+    BOT_CONVERSATION_SOURCES,
     BatchSyncRequest,
     ConversationModel,
     SystemPurpose,
     UpdateMessagesRequest,
 )
+from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.utils.tool_data_utils import (
     convert_conversation_messages,
     convert_legacy_tool_data,
 )
+from shared.py.wide_events import log
 
 
 async def create_conversation_service(conversation: ConversationModel, user: dict) -> dict:
@@ -86,8 +89,7 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
     }
 
     # Exclude conversations originating from bots (they are accessible via direct URL)
-    _BOT_SOURCES = ["telegram", "discord", "slack", "whatsapp"]
-    _source_filter = {"source": {"$nin": _BOT_SOURCES}}
+    _source_filter = {"source": {"$nin": [s.value for s in BOT_CONVERSATION_SOURCES]}}
 
     starred_filter = {"user_id": user_id, "starred": True, **_source_filter}
     non_starred_filter = {
@@ -203,6 +205,16 @@ async def delete_conversation(conversation_id: str, user: dict) -> dict:
             detail="Conversation not found or does not belong to the user",
         )
 
+    # Best-effort cleanup of the on-disk session dir. Mongo delete already
+    # succeeded; the ARQ prune task is the backstop if this fails.
+    if user_id:
+        try:
+            await delete_session_dir(user_id, conversation_id)
+        except JuiceFSUnavailable as e:
+            log.warning("[conversation] juicefs cleanup skipped", error=str(e))
+        except Exception as e:
+            log.warning("[conversation] session dir cleanup failed", error=str(e))
+
     return {
         "message": "Conversation deleted successfully",
         "conversation_id": conversation_id,
@@ -316,17 +328,7 @@ async def get_starred_messages(user: dict) -> dict:
 async def create_system_conversation(
     user_id: str, description: str, system_purpose: SystemPurpose
 ) -> dict:
-    """
-    Create a system-generated conversation with proper flags.
-
-    Args:
-        user_id: The user ID
-        description: Description of the conversation
-        system_purpose: Purpose identifier (e.g., "email_processing", "reminder_processing")
-
-    Returns:
-        dict: Created conversation data
-    """
+    """Create a system-generated conversation with proper flags."""
     conversation_id = str(uuid4())
     created_at = datetime.now(UTC).isoformat()
 
@@ -364,49 +366,6 @@ async def create_system_conversation(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create system conversation: {e!s}",
         )
-
-
-async def get_or_create_system_conversation(
-    user_id: str, system_purpose: SystemPurpose, description: str | None = None
-) -> dict:
-    """
-    Get existing system conversation for a purpose or create a new one.
-
-    Args:
-        user_id: The user ID
-        system_purpose: Purpose identifier (e.g., "email_processing", "reminder_processing")
-        description: Optional description, defaults to purpose-based description
-
-    Returns:
-        dict: Existing or newly created system conversation
-    """
-    # Try to find existing system conversation for this purpose
-    existing_conversation = await conversations_collection.find_one(
-        {
-            "user_id": user_id,
-            "is_system_generated": True,
-            "system_purpose": system_purpose,
-        }
-    )
-
-    if existing_conversation:
-        existing_conversation["_id"] = str(existing_conversation["_id"])
-        return existing_conversation
-
-    # Create new system conversation if none exists
-    if not description:
-        description_map = {
-            "email_processing": "Email Actions & Notifications",
-            "reminder_processing": "Reminder Management",
-            "task_automation": "Automated Tasks",
-            "system_notifications": "System Notifications",
-        }
-        description = description_map.get(
-            system_purpose,
-            f"System: {system_purpose.replace('_', ' ').title()}",
-        )
-
-    return await create_system_conversation(user_id, description, system_purpose)
 
 
 async def update_conversation_description(

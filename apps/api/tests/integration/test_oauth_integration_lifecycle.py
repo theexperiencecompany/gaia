@@ -1080,18 +1080,6 @@ class TestIntegrationResolver:
         config = await IntegrationResolver.get_mcp_config("gmail")
         assert config is None
 
-    async def test_is_mcp_integration(self) -> None:
-        """is_mcp_integration correctly identifies MCP-based integrations."""
-        assert await IntegrationResolver.is_mcp_integration("deepwiki") is True
-        assert await IntegrationResolver.is_mcp_integration("gmail") is False
-
-    async def test_requires_authentication(self) -> None:
-        """requires_authentication returns correct value per integration type."""
-        # Composio integrations require auth
-        assert await IntegrationResolver.requires_authentication("gmail") is True
-        # Unauthenticated MCP integrations do not
-        assert await IntegrationResolver.requires_authentication("deepwiki") is False
-
 
 # ---------------------------------------------------------------------------
 # Tests — OAuth Config Helpers

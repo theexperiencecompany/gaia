@@ -25,9 +25,13 @@ export interface Todo {
   completed: boolean;
   subtasks: SubTask[];
   workflow_id?: string;
+  vfs_path?: string;
+  scheduled_at?: string | null; // ISO datetime string
+  recurrence?: string | null; // 'daily' | 'weekly' | 'every_4h' | cron expression
+  expires_at?: string | null; // ISO datetime — when this task becomes irrelevant
+  references?: string[]; // IDs of related past tracked todos
   workflow_categories?: string[];
   starred?: boolean;
-  recurrence?: string;
   created_at: string;
   updated_at: string;
 }
@@ -43,7 +47,9 @@ export interface TodoUpdate {
   completed?: boolean;
   subtasks?: SubTask[];
   workflow_id?: string;
-  recurrence?: string;
+  scheduled_at?: string | null;
+  recurrence?: string | null;
+  expires_at?: string | null;
 }
 
 export interface TodoFilters {
@@ -113,7 +119,8 @@ export interface TodoCreate {
   priority?: Priority;
   project_id?: string;
   subtasks?: SubTask[];
-  recurrence?: string;
+  scheduled_at?: string | null;
+  recurrence?: string | null;
 }
 
 export interface ProjectCreate {

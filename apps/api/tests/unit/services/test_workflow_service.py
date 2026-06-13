@@ -499,9 +499,40 @@ class TestWorkflowQueueServiceExecution:
         )
 
         assert result is True
-        mock_redis_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {}
-        )
+        args, kwargs = mock_redis_pool.enqueue_job.call_args
+        assert args == ("execute_workflow_by_id", WORKFLOW_ID, {})
+        # Enqueued with a deterministic _job_id so a duplicate enqueue dedupes.
+        assert kwargs["_job_id"].startswith("execute_workflow_by_id:")
+
+    async def test_queue_execution_dedup_key_is_deterministic_and_context_scoped(
+        self, mock_redis_pool
+    ):
+        mock_redis_pool.enqueue_job = AsyncMock(return_value=MagicMock(job_id="j"))
+
+        async def job_id_for(context):
+            mock_redis_pool.enqueue_job.reset_mock()
+            await WorkflowQueueService.queue_workflow_execution(
+                WORKFLOW_ID, USER_ID, context=context
+            )
+            return mock_redis_pool.enqueue_job.call_args.kwargs["_job_id"]
+
+        same_a = await job_id_for({})
+        same_b = await job_id_for({})
+        evt1 = await job_id_for({"trigger_data": {"email_id": "E1"}})
+        evt2 = await job_id_for({"trigger_data": {"email_id": "E2"}})
+
+        # Identical requests dedupe; distinct trigger events must NOT.
+        assert same_a == same_b
+        assert evt1 != evt2 != same_a
+
+    async def test_queue_execution_deduped_enqueue_is_not_an_error(self, mock_redis_pool):
+        # ARQ returns None when a job with the same _job_id is already queued —
+        # that's a successful dedupe, not a failure.
+        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
+
+        result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
+
+        assert result is True
 
     async def test_queue_execution_passes_context(self, mock_redis_pool):
         mock_job = MagicMock()
@@ -528,75 +559,6 @@ class TestWorkflowQueueServiceExecution:
         mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("redis timeout"))
 
         result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
-
-        assert result is False
-
-
-@pytest.mark.unit
-class TestWorkflowQueueServiceScheduled:
-    async def test_queue_scheduled_execution_passes_defer_until(self, mock_redis_pool):
-        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
-        mock_job = MagicMock()
-        mock_job.job_id = "job_sched"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
-
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            workflow_id=WORKFLOW_ID, scheduled_at=scheduled_at
-        )
-
-        assert result is True
-        kwargs = mock_redis_pool.enqueue_job.call_args[1]
-        assert kwargs["_defer_until"] == scheduled_at
-
-    async def test_queue_scheduled_returns_false_when_job_none(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
-        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            WORKFLOW_ID, scheduled_at
-        )
-
-        assert result is False
-
-    async def test_queue_scheduled_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("unavailable"))
-        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            WORKFLOW_ID, scheduled_at
-        )
-
-        assert result is False
-
-
-@pytest.mark.unit
-class TestWorkflowQueueServiceRegeneration:
-    async def test_queue_regeneration_passes_all_params(self, mock_redis_pool):
-        mock_job = MagicMock()
-        mock_job.job_id = "job_regen"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
-
-        result = await WorkflowQueueService.queue_workflow_regeneration(
-            workflow_id=WORKFLOW_ID,
-            user_id=USER_ID,
-            regeneration_reason="User requested changes",
-            force_different_tools=True,
-        )
-
-        assert result is True
-        args = mock_redis_pool.enqueue_job.call_args[0]
-        assert args[0] == "regenerate_workflow_steps"
-        assert args[1] == WORKFLOW_ID
-        assert args[2] == USER_ID
-        assert args[3] == "User requested changes"
-        assert args[4] is True
-
-    async def test_queue_regeneration_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("pool exhausted"))
-
-        result = await WorkflowQueueService.queue_workflow_regeneration(
-            WORKFLOW_ID, USER_ID, "reason"
-        )
 
         assert result is False
 

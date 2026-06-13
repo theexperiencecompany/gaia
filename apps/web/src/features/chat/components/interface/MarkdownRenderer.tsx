@@ -1,6 +1,7 @@
 import "katex/dist/katex.min.css";
 
 import Image from "next/image";
+import { useParams } from "next/navigation";
 import type React from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -11,6 +12,7 @@ import remarkMath from "remark-math";
 import remarkSmartypants from "remark-smartypants";
 import remarkSupersub from "remark-supersub";
 
+import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import { cn } from "@/lib/utils";
@@ -35,6 +37,53 @@ const sanitizeSchema = {
   },
 };
 
+interface MarkdownImageProps {
+  src?: string;
+  alt?: string;
+  conversationId: string | undefined;
+  onOpen: (src: string) => void;
+}
+
+const MarkdownImage: React.FC<MarkdownImageProps> = ({
+  src,
+  alt,
+  conversationId,
+  onOpen,
+}) => {
+  const resolved = resolveArtifactSrc(src, conversationId) ?? src;
+  if (!resolved) return null;
+  return (
+    <Image
+      width={500}
+      height={500}
+      alt={alt || "image"}
+      className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
+      src={resolved}
+      onClick={() => onOpen(resolved)}
+      unoptimized
+    />
+  );
+};
+
+const MarkdownImageNode: React.FC<{ src?: string | Blob; alt?: string }> = ({
+  src,
+  alt,
+}) => {
+  const { openDialog } = useImageDialog();
+  const params = useParams<{ id?: string }>();
+  // Markdown image sources are always URL strings; ignore the Blob case the
+  // react-markdown prop type technically allows.
+  const imageSrc = typeof src === "string" ? src : undefined;
+  return (
+    <MarkdownImage
+      src={imageSrc}
+      alt={alt}
+      conversationId={params?.id}
+      onOpen={openDialog}
+    />
+  );
+};
+
 export interface MarkdownRendererProps {
   content: string;
   className?: string;
@@ -48,8 +97,6 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   isStreaming,
   hideCodeToolbar,
 }) => {
-  const { openDialog } = useImageDialog();
-
   return (
     <div
       className={cn(
@@ -99,16 +146,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           ),
           p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
           li: ({ ...props }) => <li className="mb-2" {...props} />,
-          img: ({ ...props }) => (
-            <Image
-              width={500}
-              height={500}
-              alt="image"
-              className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
-              src={props.src as string}
-              onClick={() => openDialog(props.src as string)}
-            />
-          ),
+          img: MarkdownImageNode,
           pre: ({ ...props }) => (
             <pre className="font-serif! text-wrap" {...props} />
           ),

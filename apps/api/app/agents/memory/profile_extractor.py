@@ -24,7 +24,6 @@ from app.agents.llm.client import init_llm
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
-    MAX_EMAILS_PER_PLATFORM,
     PROFILE_EXTRACTION_LLM_MODEL,
     PROFILE_EXTRACTION_LLM_PROVIDER,
 )
@@ -237,45 +236,8 @@ Here are recent emails RECEIVED by the user from {platform}:
 Extract the RECIPIENT's username/handle ONLY if explicitly written (not inferred):"""
 
 
-def filter_emails_by_platform(emails: list[dict], platform: str) -> list[dict]:
-    """
-    Filter emails sent from a specific platform.
-
-    Args:
-        emails: List of all emails
-        platform: Platform name (e.g., 'twitter', 'github')
-
-    Returns:
-        List of emails from that platform (max MAX_EMAILS_PER_PLATFORM most recent)
-    """
-    if platform not in PLATFORM_CONFIG:
-        return []
-
-    platform_domains = PLATFORM_CONFIG[platform]["sender_domains"]
-    filtered = []
-
-    for email in emails:
-        sender = (email.get("sender", "") or email.get("from", "")).lower()
-
-        if "@" in sender:
-            domain = sender.split("@")[-1].rstrip(">").strip()
-            if any(domain.endswith(pd) for pd in platform_domains):
-                filtered.append(email)
-
-    return filtered[:MAX_EMAILS_PER_PLATFORM]
-
-
 def validate_username(username: str, platform: str) -> bool:
-    """
-    Validate extracted username against platform regex pattern.
-
-    Args:
-        username: Extracted username
-        platform: Platform name
-
-    Returns:
-        True if username matches the expected pattern
-    """
+    """Validate an extracted username against the platform's regex pattern."""
     if not username or username == "NOT_FOUND":
         return False
 
@@ -287,16 +249,7 @@ def validate_username(username: str, platform: str) -> bool:
 
 
 def build_profile_url(username: str, platform: str) -> str:
-    """
-    Build full profile URL from username and platform.
-
-    Args:
-        username: Validated username
-        platform: Platform name
-
-    Returns:
-        Full profile URL
-    """
+    """Build the full profile URL from a username and platform."""
     if platform not in PLATFORM_CONFIG:
         return ""
 
@@ -305,20 +258,8 @@ def build_profile_url(username: str, platform: str) -> str:
 
 
 def _filter_garbage_content(text: str) -> str:
-    """
-    Remove garbage content from email text using proper libraries.
-
-    Uses:
-    - BeautifulSoup for HTML cleaning
-    - ftfy for fixing text encoding
-    - Regex for specific patterns (file paths, base64, etc.)
-
-    Args:
-        text: Raw email text
-
-    Returns:
-        Cleaned text with garbage removed
-    """
+    """Clean email text: fix encoding (ftfy), strip HTML (BeautifulSoup), and
+    remove noise patterns (repeated chars, code markers, long URLs)."""
     # Fix text encoding issues (mojibake, unicode errors, etc.)
     text = ftfy.fix_text(text)
 
@@ -340,18 +281,8 @@ def _filter_garbage_content(text: str) -> str:
 
 
 def _deduplicate_emails(emails: list[dict]) -> list[dict]:
-    """
-    Remove duplicate/similar emails based on full content similarity.
-
-    Uses Levenshtein-like similarity ratio on entire normalized email bodies
-    to filter out redundant emails before sending to LLM.
-
-    Args:
-        emails: List of email dictionaries
-
-    Returns:
-        List of unique emails (no arbitrary limit, just removes duplicates)
-    """
+    """Remove near-duplicate emails by comparing normalized body similarity,
+    before sending to the LLM. No count limit, just dedup."""
     if not emails:
         return []
 
@@ -417,17 +348,8 @@ def _deduplicate_emails(emails: list[dict]) -> list[dict]:
 async def extract_username_with_llm(
     platform: str, emails: list[dict], user_name: str | None = None
 ) -> str:
-    """
-    Use LLM with structured output to extract username from platform emails.
-
-    Args:
-        platform: Platform name (e.g., 'twitter', 'github')
-        emails: List of emails from that platform (max 10)
-        user_name: User's full name to help identify their username
-
-    Returns:
-        Extracted username or "NOT_FOUND"
-    """
+    """Use an LLM with structured output to extract the user's username from
+    platform emails. Returns the username or "NOT_FOUND"."""
     start_time = time.time()
 
     if not emails or platform not in PLATFORM_CONFIG:

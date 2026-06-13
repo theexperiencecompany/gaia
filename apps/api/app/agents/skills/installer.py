@@ -2,9 +2,10 @@
 Skill Installer - Install skills from GitHub repos or create them inline.
 
 Handles fetching skill content from external sources, parsing SKILL.md,
-writing files to VFS, and registering in the MongoDB skill registry.
+writing files to the persistent JuiceFS workspace, and registering in the
+MongoDB skill registry.
 
-VFS stores body-only content (no frontmatter). Metadata lives in MongoDB
+JuiceFS stores body-only content (no frontmatter). Metadata lives in MongoDB
 as flat fields on the Skill document.
 """
 
@@ -20,8 +21,18 @@ from app.agents.skills.parser import (
 )
 from app.agents.skills.registry import get_skill, install_skill, uninstall_skill
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
-from app.services.vfs.path_resolver import get_custom_skill_path
+from app.services.storage import (
+    JuiceFSUnavailable,
+    delete_user_skill,
+    ensure_user_skills_dir,
+    write_skill_file,
+)
 from shared.py.wide_events import log
+
+
+def _skill_storage_path(user_id: str, name: str) -> str:
+    """Logical path stored on the Skill record. Identifies the skill in JuiceFS."""
+    return f"/skills/{user_id}/{name}"
 
 
 def _parse_github_url(url: str) -> tuple[str, str, str | None]:
@@ -104,13 +115,6 @@ async def _fetch_file_content(download_url: str, client: httpx.AsyncClient) -> s
     return resp.text
 
 
-async def _get_vfs():
-    """Get VFS instance lazily."""
-    from app.services.vfs import get_vfs
-
-    return await get_vfs()
-
-
 async def install_from_github(
     user_id: str,
     repo_url: str,
@@ -190,33 +194,25 @@ async def install_from_github(
         # Apply target override
         target = target_override if target_override else metadata.target
 
-        # Determine VFS path
-        vfs_dir = get_custom_skill_path(user_id, target, metadata.name)
+        # Determine logical storage path (used by the Skill record)
+        storage_path = _skill_storage_path(user_id, metadata.name)
 
-        # Download all files in the skill directory
-        vfs = await _get_vfs()
+        await ensure_user_skills_dir(user_id)
         file_list: list[str] = []
 
-        # Write body-only SKILL.md to VFS (metadata lives in MongoDB)
-        await vfs.write(
-            f"{vfs_dir}/SKILL.md",
-            body,
-            user_id,
-            metadata={"source": "github", "source_url": source_url},
-        )
+        # Write body-only SKILL.md to JuiceFS (metadata lives in MongoDB)
+        await write_skill_file(user_id, metadata.name, "SKILL.md", body)
         file_list.append("SKILL.md")
 
         # Download subdirectories and files recursively
         await _download_github_dir(
-            vfs=vfs,
             user_id=user_id,
-            vfs_base=vfs_dir,
+            skill_name=metadata.name,
             owner=owner,
             repo=repo,
             remote_path=base_path,
             contents=contents,
             file_list=file_list,
-            source_url=source_url,
             client=client,
         )
 
@@ -226,7 +222,7 @@ async def install_from_github(
         name=metadata.name,
         description=metadata.description,
         target=target,
-        vfs_path=vfs_dir,
+        vfs_path=storage_path,
         source=SkillSource.GITHUB,
         source_url=source_url,
         body_content=body,
@@ -245,18 +241,16 @@ async def install_from_github(
 
 
 async def _download_github_dir(
-    vfs,
     user_id: str,
-    vfs_base: str,
+    skill_name: str,
     owner: str,
     repo: str,
     remote_path: str,
     contents: list[dict],
     file_list: list[str],
-    source_url: str,
     client: httpx.AsyncClient,
 ) -> None:
-    """Recursively download GitHub directory contents to VFS."""
+    """Recursively download GitHub directory contents into the user's skill dir."""
     for entry in contents:
         name = entry["name"]
         entry_type = entry["type"]
@@ -265,31 +259,21 @@ async def _download_github_dir(
             continue  # Already handled
 
         if entry_type == "file":
-            # Download file
             content = await _fetch_file_content(entry["download_url"], client=client)
             relative_path = entry["path"].removeprefix(f"{remote_path}/")
-            vfs_path = f"{vfs_base}/{relative_path}"
-            await vfs.write(
-                vfs_path,
-                content,
-                user_id,
-                metadata={"source": "github", "source_url": source_url},
-            )
+            await write_skill_file(user_id, skill_name, relative_path, content)
             file_list.append(relative_path)
 
         elif entry_type == "dir":
-            # Recurse into subdirectory
             sub_contents = await _fetch_github_contents(owner, repo, entry["path"], client=client)
             await _download_github_dir(
-                vfs=vfs,
                 user_id=user_id,
-                vfs_base=vfs_base,
+                skill_name=skill_name,
                 owner=owner,
                 repo=repo,
                 remote_path=remote_path,
                 contents=sub_contents,
                 file_list=file_list,
-                source_url=source_url,
                 client=client,
             )
 
@@ -341,15 +325,10 @@ async def install_from_inline(
     # Parse back to get validated metadata + body
     metadata, body = parse_skill_md(skill_md_content)
 
-    # Write body-only to VFS (metadata lives in MongoDB)
-    vfs_dir = get_custom_skill_path(user_id, metadata.target, metadata.name)
-    vfs = await _get_vfs()
-    await vfs.write(
-        f"{vfs_dir}/SKILL.md",
-        body,
-        user_id,
-        metadata={"source": "inline"},
-    )
+    # Write body-only to JuiceFS (metadata lives in MongoDB)
+    storage_path = _skill_storage_path(user_id, metadata.name)
+    await ensure_user_skills_dir(user_id)
+    await write_skill_file(user_id, metadata.name, "SKILL.md", body)
 
     # Register flat metadata in MongoDB
     installed = await install_skill(
@@ -357,7 +336,7 @@ async def install_from_inline(
         name=metadata.name,
         description=metadata.description,
         target=metadata.target,
-        vfs_path=vfs_dir,
+        vfs_path=storage_path,
         source=SkillSource.INLINE,
         body_content=body,
         files=["SKILL.md"],
@@ -389,16 +368,17 @@ async def uninstall_skill_full(user_id: str, skill_id: str) -> bool:
         user_id=user_id,
         skill_id=skill_id,
         skill_name=skill.name,
-        skill_vfs_path=skill.vfs_path,
+        skill_storage_path=skill.vfs_path,
         skill_op="uninstall_skill_full",
     )
 
-    # Delete VFS directory
+    # Delete the skill directory from JuiceFS
     try:
-        vfs = await _get_vfs()
-        await vfs.delete(skill.vfs_path, user_id=user_id, recursive=True)
+        await delete_user_skill(user_id, skill.name)
+    except JuiceFSUnavailable as e:
+        log.warning(f"[skills] storage cleanup skipped (mount unavailable): {e}")
     except Exception as e:
-        log.warning(f"[skills] VFS cleanup failed for {skill_id}: {e}")
+        log.warning(f"[skills] storage cleanup failed for {skill_id}: {e}")
 
     # Remove from registry
     return await uninstall_skill(user_id, skill_id)

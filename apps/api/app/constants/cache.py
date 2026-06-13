@@ -28,6 +28,7 @@ MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
 GLOBAL_TOOLS_CACHE_TTL = SIX_HOUR_TTL
 USER_SKILLS_CACHE_TTL = TWELVE_HOUR_TTL
 SKILLS_TEXT_CACHE_TTL = TWELVE_HOUR_TTL
+INTEGRATION_INSTRUCTIONS_CACHE_TTL = ONE_DAY_TTL
 COMMUNITY_CACHE_TTL = FIVE_MINUTES_TTL
 FAVICON_CACHE_TTL = SIX_MONTH_TTL
 SEARCH_CACHE_TTL = ONE_DAY_TTL
@@ -45,6 +46,12 @@ WEB_SEARCH_CACHE_TTL = TEN_MINUTES_TTL
 WEBPAGE_FETCH_CACHE_TTL = THIRTY_MINUTES_TTL
 WORKFLOW_GENERATION_CACHE_TTL = ONE_DAY_TTL
 
+# Bounded in-process LRU+TTL cache for per-(integration, user) compiled
+# subagent graphs. Caps RSS growth that scales with MAU × MCP integrations.
+SUBAGENT_GRAPH_CACHE_MAX_SIZE = 100
+SUBAGENT_GRAPH_CACHE_TTL_SECONDS = TEN_MINUTES_TTL
+SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
+
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
@@ -56,10 +63,22 @@ OAUTH_STATUS_KEY = "OAUTH_STATUS"
 MCP_TOOLS_CACHE_KEY = "mcp:tools:all"
 GLOBAL_TOOLS_CACHE_KEY = "tools:global"
 USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
-SKILLS_TEXT_CACHE_KEY = "skills:text:{user_id}:{agent_name}"
+# v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
+SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
+INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
 STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
 STATE_KEY_PREFIX = "oauth_state"
+# Single-use marker for login-free integration-connect links (keyed by jti).
+CONNECT_LINK_USED_PREFIX = "connect_link_used"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
+EXECUTOR_BUSY_PREFIX = "executor:busy:"
+EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
+EXECUTOR_QUEUE_PREFIX = "executor:queue:"
+EXECUTOR_QUEUE_TTL = ONE_HOUR_TTL  # Tasks expire if not picked up within 1 hour
+# Max time a caller waits for a detached executor to finish before draining
+# whatever tool events were collected. Matches the busy lock TTL — the executor
+# cannot outlive its lock, so waiting longer would be pointless.
+EXECUTOR_WAIT_TIMEOUT = THIRTY_MINUTES_TTL

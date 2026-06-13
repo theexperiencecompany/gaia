@@ -18,7 +18,12 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
 from app.config.oauth_config import get_integration_by_id
-from app.helpers.message_helpers import DYNAMIC_CONTEXT_MARKER
+from app.helpers.message_helpers import (
+    BACKGROUND_EXECUTION_BANNER,
+    DYNAMIC_CONTEXT_MARKER,
+    _build_active_todo_banner,
+)
+from app.services.integration_instructions_service import get_instructions
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from shared.py.wide_events import log
@@ -95,6 +100,31 @@ async def _fetch_provider_metadata_block(integration_id: str | None, user_id: st
     return f"\n\nUSER CONTEXT FOR {integration.name.upper()}:\n" + "\n".join(lines) + "\n"
 
 
+async def _fetch_instructions_block(integration_id: str | None, user_id: str | None) -> str:
+    """Return the user's custom-instructions block for this integration, or ''.
+
+    Injected directly (full text, always-on) rather than as a read-on-demand
+    pointer: the whole point is the subagent acts on "focus on #eng" without an
+    extra file read. Sourced from MongoDB so a UI or agent edit is reflected on
+    the next turn.
+    """
+    if not (integration_id and user_id):
+        return ""
+    try:
+        content = await get_instructions(user_id, integration_id)
+    except Exception as e:
+        log.warning(f"Failed to fetch custom instructions for {integration_id}: {e}")
+        return ""
+    if not content:
+        return ""
+    integration = get_integration_by_id(integration_id)
+    label = integration.name if integration else integration_id
+    return (
+        f"\n\nCUSTOM INSTRUCTIONS FOR {label.upper()} (set by the user — honor these):\n"
+        f"{content.strip()}\n"
+    )
+
+
 async def create_agent_context_message(
     configurable: dict,
     user_id: str | None = None,
@@ -127,6 +157,19 @@ async def create_agent_context_message(
     user_id = user_id or configurable.get("user_id")
     user_name = configurable.get("user_name")
     user_time_str = configurable.get("user_time", "")
+    execution_mode = configurable.get("execution_mode") or "interactive"
+    active_todo_id = configurable.get("active_todo_id")
+
+    # Background-execution banner — must lead so executor never asks
+    # clarifying questions when no human is on the other end.
+    if execution_mode == "background":
+        parts.append(BACKGROUND_EXECUTION_BANNER)
+
+    # Active-todo banner — pins canvas as default write target for this run.
+    if active_todo_id and user_id:
+        banner = await _build_active_todo_banner(user_id, active_todo_id)
+        if banner:
+            parts.append(banner)
 
     if user_name:
         parts.append(f"User Name: {user_name}")
@@ -163,25 +206,40 @@ async def create_agent_context_message(
         return ""
 
     async def _fetch_skills() -> str:
-        if skills_text is not None:
-            return f"\n\n{skills_text}" if skills_text else ""
-        if not user_id:
-            return ""
-        try:
-            agent_for_skills = subagent_id or "executor"
-            text = await get_available_skills_text(user_id=user_id, agent_name=agent_for_skills)
-            if text:
-                log.info(f"Injected installable skills for {agent_for_skills}")
-                return f"\n\n{text}"
-        except Exception as e:
-            log.warning(f"Error injecting installable skills: {e}")
-        return ""
+        from app.agents.workspace.system_docs import integration_skills_block
 
-    memories_section, skills_section, metadata_section = await asyncio.gather(
+        block = ""
+        if skills_text is not None:
+            block = skills_text or ""
+        elif user_id:
+            try:
+                agent_for_skills = subagent_id or "executor"
+                text = await get_available_skills_text(user_id=user_id, agent_name=agent_for_skills)
+                if text:
+                    log.info(f"Injected installable skills for {agent_for_skills}")
+                    block = text
+            except Exception as e:
+                log.warning(f"Error injecting installable skills: {e}")
+
+        if subagent_id:
+            integration_block = integration_skills_block(subagent_id)
+            if integration_block:
+                block = f"{block}\n\n{integration_block}" if block else integration_block
+
+        return f"\n\n{block}" if block else ""
+
+    memories_section, skills_section, metadata_section, instructions_section = await asyncio.gather(
         _fetch_memories(),
         _fetch_skills(),
         _fetch_provider_metadata_block(integration_id, user_id),
+        _fetch_instructions_block(integration_id or subagent_id, user_id),
     )
 
-    content = "\n".join(parts) + memories_section + skills_section + metadata_section
+    content = (
+        "\n".join(parts)
+        + memories_section
+        + skills_section
+        + metadata_section
+        + instructions_section
+    )
     return _mark_dynamic(SystemMessage(content=content))

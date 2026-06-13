@@ -175,7 +175,7 @@ async def init_chromadb_client():
     # Create default collections if they don't exist
     existing_collections = await client.list_collections()
     existing_collection_names = [col.name for col in existing_collections]  # type: ignore
-    collection_names = ["notes", "documents"]
+    collection_names = ["notes", "documents", "gaia_canvas"]
 
     # Create collections if they don't exist
     for collection_name in collection_names:

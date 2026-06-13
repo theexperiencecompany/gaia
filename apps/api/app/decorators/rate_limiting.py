@@ -1,8 +1,4 @@
-"""
-Rate limiting decorators for API endpoints and LangChain tools.
-
-This module provides decorators for rate limiting based on user subscription plans.
-"""
+"""Rate limiting decorators for API endpoints and LangChain tools, keyed on user plan."""
 
 from collections.abc import Callable
 from contextvars import ContextVar
@@ -21,6 +17,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
+from app.models.usage_models import UsageInfo
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -36,21 +33,14 @@ def with_rate_limiting(
     count_tokens: bool = False,
     bypass_for_system: bool = False,
 ):
-    """
-    Rate limiting decorator that can be stacked with LangChain's @tool decorator.
+    """Rate limiting decorator stackable with LangChain's @tool.
 
     Args:
-        feature_key: Feature key for rate limiting. If None, auto-derives from tool name
-        count_tokens: Whether to validate token usage after execution
-        bypass_for_system: Skip rate limiting for system/background operations
+        feature_key: Rate-limit key. If None, auto-derives from the tool name.
+        count_tokens: Whether to validate token usage after execution.
+        bypass_for_system: Skip rate limiting for system/background operations.
 
-    Usage:
-        @tool
-        @with_rate_limiting()  # Auto-derives feature key
-        async def tool_function(prompt: str) -> str:
-            ...
-    Raises:
-        LangChainRateLimitException: When rate limits are exceeded (agent-friendly)
+    Raises LangChainRateLimitException (agent-friendly) when limits are exceeded.
     """
 
     def rate_limit_decorator(func):
@@ -296,9 +286,22 @@ class LangChainRateLimitException(Exception):
 
         super().__init__(message)
 
-    def to_agent_message(self) -> str:
-        """Convert to user-friendly message for agent responses."""
-        return f"I've reached the usage limit for {self.feature.replace('_', ' ')}. Please try again later or upgrade your plan for higher limits."
+
+async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageInfo]:
+    """Check-and-increment a feature's tiered rate limit from service-layer code.
+
+    For call sites that are neither FastAPI endpoints nor LangChain tools
+    (e.g. sandbox lifecycle), where the decorator forms don't apply.
+
+    Raises RateLimitExceededException when the limit is exceeded.
+    """
+    subscription = await _get_cached_subscription(user_id)
+    user_plan = subscription.plan_type or PlanType.FREE
+    return await tiered_limiter.check_and_increment(
+        user_id=user_id,
+        feature_key=feature_key,
+        user_plan=user_plan,
+    )
 
 
 async def _get_cached_subscription(user_id: str):

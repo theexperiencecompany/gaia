@@ -93,6 +93,13 @@ def deserialize_any(json_str: str, model: type | None = None) -> Any:
 
 
 class RedisCache:
+    """Async Redis wrapper with type-safe (de)serialization and graceful degradation.
+
+    The client is created lazily (``redis.from_url`` does not connect on
+    construction); call ``verify_connection`` at startup to assert reachability.
+    When Redis is unavailable, read/write helpers no-op instead of raising.
+    """
+
     def __init__(self, redis_url="redis://localhost:6379", default_ttl=3600):
         self.redis_url = settings.REDIS_URL or redis_url
         self.default_ttl = default_ttl
@@ -100,14 +107,44 @@ class RedisCache:
 
         if self.redis_url:
             try:
+                # NB: from_url is lazy — it does NOT connect here. Real
+                # connectivity is asserted by verify_connection() at startup.
                 self.redis = redis.from_url(self.redis_url, decode_responses=True)
-                log.set(db={"connection_status": "connected", "backend": "redis"})
-                log.info("Redis connection initialized.")
+                log.set(db={"connection_status": "configured", "backend": "redis"})
+                log.info("Redis client configured (connection verified at startup).")
             except Exception as e:
                 log.set(db={"connection_status": "error", "backend": "redis"})
-                log.error(f"Failed to connect to Redis: {e}")
+                log.error(f"Failed to create Redis client: {e}")
         else:
             log.warning("REDIS_URL is not set. Caching will be disabled.")
+
+    async def verify_connection(self) -> None:
+        """Assert Redis is actually reachable, and scream if it is not.
+
+        Redis backs caching, SSE streaming, rate limiting and stream
+        cancellation, so an unavailable Redis is a real outage — surface it
+        loudly instead of silently degrading (the prior behavior optimistically
+        reported "connected" because ``from_url`` connects lazily). Fails fast
+        in production; logs loudly elsewhere so local dev still runs.
+        """
+        if self.redis is None:
+            message = "Redis is UNAVAILABLE: REDIS_URL is not configured."
+            log.set(db={"connection_status": "unavailable", "backend": "redis"})
+            log.error(message)
+            if settings.ENV == "production":
+                raise ConnectionError(message)
+            return
+
+        try:
+            await self.redis.ping()
+            log.set(db={"connection_status": "verified", "backend": "redis"})
+            log.info("Redis connection verified.")
+        except Exception as e:
+            message = f"Redis is UNAVAILABLE: ping failed ({type(e).__name__}: {e})"
+            log.set(db={"connection_status": "error", "backend": "redis"})
+            log.error(message)
+            if settings.ENV == "production":
+                raise ConnectionError(message) from e
 
     async def get(self, key: str, model: type | None = None):
         """
@@ -221,7 +258,7 @@ redis_cache = RedisCache()
 
 
 # Wrappers for RedisCache instance methods
-async def get_cache(key: str, model: type | None = None):
+async def get_cache(key: str, model: type | None = None) -> Any:
     """
     Convenience wrapper for retrieving cached values.
 

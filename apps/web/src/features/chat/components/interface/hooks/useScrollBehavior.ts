@@ -1,81 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-
-import { useIsLoading } from "@/stores/loadingStore";
+import { useCallback } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 
 interface UseScrollBehaviorReturn {
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  scrollContainerRef: (node: HTMLElement | null) => void;
+  contentRef: (node: HTMLElement | null) => void;
   scrollToBottom: () => void;
-  handleScroll: (event: React.UIEvent) => void;
   shouldShowScrollButton: boolean;
 }
 
-export const useScrollBehavior = (
-  hasMessages: boolean,
-  messageCount?: number,
-): UseScrollBehaviorReturn => {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
-  const [shouldShowScrollButton, setShouldShowScrollButton] = useState(false);
-  const BOTTOM_THRESHOLD = 50;
-  const isLoading = useIsLoading();
+/**
+ * Wraps `use-stick-to-bottom` to keep the chat viewport pinned to the latest
+ * content. Unlike the previous message-count-driven approach, this follows
+ * *content height* growth via a ResizeObserver — so streaming tokens, tool
+ * cards rendering in, images loading, and follow-up chips appearing all keep
+ * the view at the bottom. It also tracks user-initiated scroll-up internally
+ * (`escapedFromLock`), so the user is never yanked back down while reading.
+ *
+ * `scrollContainerRef` → the scroll container (overflow-y-auto).
+ * `contentRef` → the wrapper around the growing message content (observed).
+ */
+export const useScrollBehavior = (): UseScrollBehaviorReturn => {
+  const { scrollRef, contentRef, scrollToBottom, isAtBottom } =
+    useStickToBottom({ initial: "instant", resize: "smooth" });
 
-  const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({
-        top: scrollContainerRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-      setShouldAutoScroll(true);
-      setShouldShowScrollButton(false);
-    }
-  }, []);
-
-  const handleScroll = useCallback(
-    (event: React.UIEvent) => {
-      if (!hasMessages) return;
-
-      const target = event.target as HTMLDivElement;
-      const { scrollTop, scrollHeight, clientHeight } = target;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      const isNearBottom = distanceFromBottom <= BOTTOM_THRESHOLD;
-
-      setShouldAutoScroll(isNearBottom);
-      setShouldShowScrollButton(!isNearBottom && scrollHeight > clientHeight);
-    },
-    [hasMessages, BOTTOM_THRESHOLD],
-  );
-
-  // Auto-scroll when new messages arrive (only if user is at bottom)
-  useEffect(() => {
-    if (!hasMessages || !messageCount || !shouldAutoScroll) return;
-
-    scrollContainerRef.current?.scrollTo({
-      top: scrollContainerRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [messageCount, shouldAutoScroll, hasMessages]);
-
-  // Auto-scroll when AI response finishes streaming
-  useEffect(() => {
-    if (!hasMessages || isLoading) return;
-
-    // Small delay to ensure DOM is updated with final content
-    const timeoutId = setTimeout(() => {
-      if (shouldAutoScroll && scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTo({
-          top: scrollContainerRef.current.scrollHeight,
-          behavior: "smooth",
-        });
-      }
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [isLoading, shouldAutoScroll, hasMessages]);
+  const handleScrollToBottom = useCallback(() => {
+    scrollToBottom();
+  }, [scrollToBottom]);
 
   return {
-    scrollContainerRef,
-    scrollToBottom,
-    handleScroll,
-    shouldShowScrollButton,
+    scrollContainerRef: scrollRef,
+    contentRef,
+    scrollToBottom: handleScrollToBottom,
+    shouldShowScrollButton: !isAtBottom,
   };
 };

@@ -27,6 +27,7 @@ import {
   createBotLogger,
   extractSubcommandArgs,
   handleStreamingChat,
+  type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -221,6 +222,77 @@ export class SlackAdapter extends BaseBotAdapter {
   /** Stops the Slack Bolt app. */
   protected async stop(): Promise<void> {
     await this.app.stop();
+  }
+
+  /**
+   * Cache of resolved DM channel ids, keyed by Slack user id. conversations.open
+   * is idempotent but rate-limited, so resolve each user's DM once instead of on
+   * every outbound send (which could 429 under a burst and livelock requeues).
+   */
+  private readonly dmChannelCache = new Map<string, string>();
+
+  /**
+   * Resolves a Slack user id to its DM channel id (cached). chat.postMessage
+   * and files.uploadV2 both need a channel id, and conversations.open is
+   * idempotent but rate-limited, so resolve each user's DM once.
+   */
+  private async resolveDmChannel(destinationId: string): Promise<string> {
+    const cached = this.dmChannelCache.get(destinationId);
+    if (cached) return cached;
+    const dm = await this.app.client.conversations.open({
+      users: destinationId,
+    });
+    const channel = dm.channel?.id;
+    if (!channel) {
+      throw new Error("Slack conversations.open returned no channel id");
+    }
+    this.dmChannelCache.set(destinationId, channel);
+    return channel;
+  }
+
+  protected async deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void> {
+    // platform_links stores the Slack user id; resolve it to a DM channel id.
+    const channel = await this.resolveDmChannel(destinationId);
+    try {
+      await this.app.client.chat.postMessage({ channel, text });
+    } catch (err) {
+      // A cached DM channel id can go stale (conversation archived, user
+      // deactivated). Drop it so the next delivery re-resolves instead of
+      // failing forever against a dead channel.
+      this.dmChannelCache.delete(destinationId);
+      throw err;
+    }
+  }
+
+  /**
+   * Delivers an agent-generated file artifact to a Slack user. Fetches the
+   * bytes from GAIA (bot-authenticated) and uploads them to the user's DM
+   * channel via files.uploadV2, with the caption as the message comment.
+   */
+  protected override async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
+    );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
+    const channel = await this.resolveDmChannel(destinationId);
+    try {
+      await this.app.client.files.uploadV2({
+        channel_id: channel,
+        file: artifact.data,
+        filename: attachment.filename,
+        initial_comment: attachment.caption ?? undefined,
+      });
+    } catch (err) {
+      this.dmChannelCache.delete(destinationId);
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------------

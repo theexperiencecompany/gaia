@@ -45,6 +45,30 @@ class TodoBase(BaseModel):
         default_factory=list, max_length=50, description="List of subtasks"
     )
     workflow_id: str | None = Field(default=None, description="ID of the associated workflow")
+    vfs_path: str | None = Field(
+        default=None,
+        description="VFS directory for tracked todos (canvas.md + log.md)",
+    )
+    scheduled_at: datetime | None = Field(
+        default=None,
+        description="When GAIA should execute this tracked todo",
+    )
+    recurrence: str | None = Field(
+        default=None,
+        description="Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).",
+    )
+    gaia_retry_count: int = Field(
+        default=0,
+        description="Number of failed execution attempts (managed by system)",
+    )
+    expires_at: datetime | None = Field(
+        default=None,
+        description="When this todo becomes irrelevant regardless of completion (LLM-set relevance window)",
+    )
+    references: list[str] = Field(
+        default_factory=list,
+        description="IDs of related past tracked todos (institutional memory references)",
+    )
 
 
 # For creating new todos
@@ -71,6 +95,10 @@ class TodoUpdateRequest(BaseModel):
     completed: bool | None = None
     subtasks: list[SubTask] | None = None
     workflow_id: str | None = None
+    vfs_path: str | None = None
+    scheduled_at: datetime | None = None
+    recurrence: str | None = None
+    expires_at: datetime | None = None
 
 
 # For responses with ID and user_id
@@ -111,13 +139,6 @@ class ProjectCreate(ProjectBase):
     """Model for creating projects"""
 
     pass
-
-
-class ProjectModel(ProjectBase):
-    """Model with timestamps"""
-
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class UpdateProjectRequest(BaseModel):

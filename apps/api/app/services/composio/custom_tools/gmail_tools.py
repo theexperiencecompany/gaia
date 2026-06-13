@@ -104,50 +104,6 @@ class GetUnreadCountInput(BaseModel):
     )
 
 
-class ScheduleSendInput(BaseModel):
-    """Input for scheduling an email to send later."""
-
-    recipient_email: str = Field(
-        ...,
-        description="Email address of the recipient",
-    )
-    subject: str = Field(
-        ...,
-        description="Subject line of the email",
-    )
-    body: str = Field(
-        ...,
-        description="Body content of the email",
-    )
-    send_at: str = Field(
-        ...,
-        description="ISO 8601 timestamp for when to send (e.g., '2024-01-15T10:00:00Z')",
-    )
-    cc: str | None = Field(
-        default=None,
-        description="CC email addresses (comma-separated)",
-    )
-    bcc: str | None = Field(
-        default=None,
-        description="BCC email addresses (comma-separated)",
-    )
-
-
-class SnoozeEmailInput(BaseModel):
-    """Input for snoozing emails until a specified time."""
-
-    message_ids: list[str] = Field(
-        ...,
-        description="List of Gmail message IDs to snooze",
-    )
-    snooze_until: str = Field(
-        ...,
-        description="ISO 8601 timestamp for when to unsnooze (e.g., '2024-01-15T09:00:00Z'). "
-        "Common values: 'tomorrow morning' (9am next day), 'next week' (Monday 9am), "
-        "'this afternoon' (today 3pm), 'this evening' (today 6pm)",
-    )
-
-
 class GetContactListInput(BaseModel):
     """Input for getting contact list from email history."""
 
@@ -162,14 +118,7 @@ class GetContactListInput(BaseModel):
 
 
 def register_gmail_custom_tools(composio: Composio):
-    """Register custom Gmail tools with the Composio client.
-
-    These tools provide user-friendly wrappers around Gmail's label-based
-    operations for common email actions.
-
-    Returns:
-        List of registered tool names
-    """
+    """Register custom Gmail tools with the Composio client. Returns the registered tool names."""
 
     @composio.tools.custom_tool(toolkit="gmail")
     def MARK_AS_READ(
@@ -177,17 +126,7 @@ def register_gmail_custom_tools(composio: Composio):
         execute_request: Any,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
-        """Mark Gmail messages as read.
-
-        Removes the UNREAD label from specified messages, marking them as read
-        in the user's inbox.
-
-        Args:
-            request.message_ids: List of Gmail message IDs to mark as read
-
-        Returns:
-            Dict with success status and API response data
-        """
+        """Mark Gmail messages as read (removes the UNREAD label)."""
         _gmail_proxy(
             _user_id(auth_credentials),
             endpoint=f"{GMAIL_API_BASE}/users/me/messages/batchModify",
@@ -202,17 +141,7 @@ def register_gmail_custom_tools(composio: Composio):
         execute_request: Any,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
-        """Mark Gmail messages as unread.
-
-        Adds the UNREAD label to specified messages, making them appear
-        unread in the user's inbox.
-
-        Args:
-            request.message_ids: List of Gmail message IDs to mark as unread
-
-        Returns:
-            Dict with success status and API response data
-        """
+        """Mark Gmail messages as unread (adds the UNREAD label)."""
         _gmail_proxy(
             _user_id(auth_credentials),
             endpoint=f"{GMAIL_API_BASE}/users/me/messages/batchModify",
@@ -227,17 +156,7 @@ def register_gmail_custom_tools(composio: Composio):
         execute_request: Any,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
-        """Archive Gmail messages.
-
-        Removes the INBOX label from specified messages, moving them
-        to the archive (All Mail).
-
-        Args:
-            request.message_ids: List of Gmail message IDs to archive
-
-        Returns:
-            Dict with success status and API response data
-        """
+        """Archive Gmail messages (removes the INBOX label, moving to All Mail)."""
         _gmail_proxy(
             _user_id(auth_credentials),
             endpoint=f"{GMAIL_API_BASE}/users/me/messages/batchModify",
@@ -252,17 +171,7 @@ def register_gmail_custom_tools(composio: Composio):
         execute_request: Any,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
-        """Star or unstar Gmail messages.
-
-        Adds or removes the STARRED label from specified messages.
-
-        Args:
-            request.message_ids: List of Gmail message IDs to star/unstar
-            request.unstar: If True, remove star; if False (default), add star
-
-        Returns:
-            Dict with action taken and API response data
-        """
+        """Star or unstar Gmail messages (adds/removes the STARRED label)."""
         if request.unstar:
             payload = {"ids": request.message_ids, "removeLabelIds": ["STARRED"]}
             action = "unstarred"
@@ -389,17 +298,7 @@ def register_gmail_custom_tools(composio: Composio):
         execute_request: Any,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
-        """Get contacts from email history.
-
-        Extracts unique contacts from the user's email history using a Gmail
-        search query. Sends a list+get sequence through the Composio proxy.
-
-        Args:
-            request.query: Search query to filter contacts
-            request.max_results: Maximum number of messages to analyze (default: 30)
-
-        Returns: Array of contacts with name and email.
-        """
+        """Extract unique contacts from email history matching a Gmail search query."""
         user_id = _user_id(auth_credentials)
 
         list_response = _gmail_proxy(

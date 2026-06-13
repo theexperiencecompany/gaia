@@ -14,6 +14,9 @@ import {
   BodyPartMuscleIcon,
   Brain02Icon,
   CheckListIcon,
+  CheckmarkCircle02Icon,
+  ClipboardIcon,
+  Clock04Icon,
   ComputerTerminal01Icon,
   ConnectIcon,
   FileEmpty02Icon,
@@ -72,6 +75,9 @@ const isRenderableIconSrc = (src: string): boolean => {
 /** Map icon component names to actual React components */
 const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   CheckListIcon,
+  Clock04Icon,
+  CheckmarkCircle02Icon,
+  ClipboardIcon,
   AlarmClockIcon,
   PuzzleIcon,
   FileEmpty02Icon,
@@ -136,7 +142,9 @@ const AutoInvertIcon: React.FC<{
   // const { shouldInvert } = useIconColorDetection(src);
   const imgWidth = width || size || 20;
   const imgHeight = height || size || 20;
-  const imgClassName = `${className} aspect-square object-contain`;
+  // rounded-md matches the wrapper's rounded-lg so the integration logo's
+  // own background can't spill past the rounded tile corners.
+  const imgClassName = `${className} aspect-square rounded-md object-contain`;
 
   // Use regular img tag for SVG URLs to avoid Next.js Image optimization issues
   const isSvg = src.toLowerCase().endsWith(".svg");

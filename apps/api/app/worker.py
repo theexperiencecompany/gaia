@@ -1,5 +1,10 @@
 from arq import cron
 
+# The worker runs the executor agent + Composio custom tools, so it needs the
+# same monkey-patches as the API process (main.py). Without this, custom tools
+# 500 with "Missing user_id in auth_credentials" because the CustomTool
+# user_id-injection patch never loads in this process.
+import app.patches  # noqa: F401
 from app.workers.config.worker_settings import WorkerSettings
 from app.workers.lifecycle import shutdown, startup
 from app.workers.metrics import instrument_task
@@ -13,8 +18,16 @@ from app.workers.tasks import (
     process_onboarding_intelligence_task,
     process_reminder,
     process_workflow_generation_task,
+    prune_inactive_sessions,
     regenerate_workflow_steps,
     store_memories_batch,
+    sweep_idle_sandboxes,
+)
+from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
+from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
+from app.workers.tasks.tracked_todo_tasks import (
+    execute_tracked_todo,
+    safety_net_check_orphaned_todos,
 )
 
 # Wrap every task with the Prometheus histogram instrumentation so arq-worker.json
@@ -31,6 +44,12 @@ _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory
 _process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
 _store_memories_batch = instrument_task(store_memories_batch)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
+_sweep_idle_sandboxes = instrument_task(sweep_idle_sandboxes)
+_prune_inactive_sessions = instrument_task(prune_inactive_sessions)
+_execute_tracked_todo = instrument_task(execute_tracked_todo)
+_safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
+_maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
+_rescan_pending_scheduled_tasks = instrument_task(rescan_pending_scheduled_tasks)
 
 WorkerSettings.functions = [
     _process_reminder,
@@ -44,6 +63,9 @@ WorkerSettings.functions = [
     _process_onboarding_intelligence_task,
     _store_memories_batch,
     _cleanup_stuck_personalization,
+    _sweep_idle_sandboxes,
+    _prune_inactive_sessions,
+    _execute_tracked_todo,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -64,6 +86,27 @@ WorkerSettings.cron_jobs = [
         minute={0, 30},  # Every 30 minutes
         second=0,
     ),
+    cron(
+        _sweep_idle_sandboxes,
+        minute=0,  # Hourly
+        second=0,
+    ),
+    cron(
+        _prune_inactive_sessions,
+        hour=3,  # Daily at 03:00 UTC
+        minute=0,
+        second=0,
+    ),
+    cron(_safety_net_check_orphaned_todos, minute={0, 30}, second=0),
+    cron(
+        _maintenance_sweep_tracked_todos,
+        hour={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22},
+        minute=15,
+        second=0,
+    ),
+    # Recovery safety net: re-enqueue due scheduled tasks whose ARQ job was lost
+    # (Redis eviction/flush). Idempotent via the deterministic _job_id.
+    cron(_rescan_pending_scheduled_tasks, minute={0, 30}, second=0),
 ]
 
 WorkerSettings.on_startup = startup

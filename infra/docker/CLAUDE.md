@@ -35,7 +35,12 @@ Docker Compose configuration for all GAIA environments.
 ## Key Commands
 
 ```bash
-# Via Nx (preferred — auto-loads .env if present)
+# Mise (top-level dev workflows)
+mise dev          # API + web natively, infra in docker. Port 8000 free for hot reload.
+mise dev:vm      # API in docker (with JuiceFS FUSE mount) + web natively.
+                  # Use when working on workspace v2, file uploads, artifacts, sandbox file ops.
+
+# Via Nx (preferred for ad-hoc docker control — auto-loads .env if present)
 nx docker:up docker
 nx docker:down docker
 nx docker:restart docker
@@ -43,8 +48,8 @@ nx docker:logs docker
 nx docker:ps docker
 
 # Direct Docker Compose (from infra/docker/)
-docker compose up -d
-docker compose --profile backend up -d   # backend + infra
+docker compose up -d                     # infra only (gaia-backend is profile-gated)
+docker compose --profile backend up -d   # gaia-backend + voice-agent-worker + infra
 docker compose --profile worker up -d    # arq_worker + infra
 docker compose --profile voice up -d     # voice-agent + infra
 docker compose --profile bots up -d      # discord/slack/telegram/whatsapp bots
@@ -82,6 +87,7 @@ promtail     → loki (healthy)
 
 ## Gotchas
 
+- **`gaia-backend` is profile-gated by design.** `docker compose up -d` (what `mise dev` and `nx docker:up` run) starts only infra services. The API is expected to run **natively** on the host via `nx dev api` for hot reload. To run the dockered API, opt in with `mise dev:vm` or `docker compose --profile backend up -d`. The dockered path is required for JuiceFS-backed features (workspace v2, file uploads, artifact streaming, sandbox file ops) because the FUSE mount needs `CAP_SYS_ADMIN` + `/dev/fuse` + `apparmor:unconfined`, which a native Mac process cannot provide. See `apps/api/CLAUDE.md` → "Native vs Dockered API" for what works in each mode.
 - **API listens on port 80 inside the container** in dev/prod compose files. The host-side port is 8000. The selfhost compose file uses 8000:8000 instead — check which file you're editing.
 - **`LOG_FORMAT=json` and `LOG_COLORIZE=false`** are hardcoded in all compose files for Docker-hosted app services. Promtail expects NDJSON from stdout — do not change these.
 - **Promtail mounts `apps/api/logs`** to ship logs from services running outside Docker (e.g., `nx dev api`). This directory is created automatically when file logging is enabled.

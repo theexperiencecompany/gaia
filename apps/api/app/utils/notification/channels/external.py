@@ -1,208 +1,100 @@
-"""
-Abstract base for external messaging platform adapters (e.g. Telegram, Discord).
+"""External messaging-platform notification adapter.
 
-Sits between ChannelAdapter and concrete platform adapters. Handles shared concerns:
-resolving the user's linked account, formatting notification content, splitting long
-messages to respect platform limits, and orchestrating delivery via aiohttp.
+Backend-originated messages for WhatsApp/Slack/Telegram/Discord are no longer
+sent from Python. This adapter renders notification content to platform-agnostic
+CommonMark text and publishes it to the per-platform RabbitMQ queue the bot
+processes consume; the bots own all platform formatting and the actual send.
 
-Subclasses must implement: platform_name, bold_marker, _get_bot_token,
-_session_kwargs, and _setup_sender.
+Subclasses set only ``channel_type`` and ``platform``.
 """
+
+from __future__ import annotations
 
 from abc import abstractmethod
 from typing import Any
 
-import aiohttp
-
 from app.config.settings import settings
+from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ActionType,
     ChannelDeliveryStatus,
     NotificationRequest,
 )
-from app.services.platform_link_service import PlatformLinkService
-from app.utils.notification.channels.base import ChannelAdapter, SendFn
+from app.services.outbound_delivery import OutboundResult, publish_outbound_message
+from app.utils.notification.channels.base import ChannelAdapter
+
+
+def _join_nonempty(*segments: str, sep: str = "\n") -> str:
+    """Join only the non-empty segments with ``sep`` (no leading/trailing seps)."""
+    return sep.join(s for s in segments if s)
 
 
 class ExternalPlatformAdapter(ChannelAdapter):
-    """Base class for external messaging platform adapters."""
-
-    MAX_MESSAGE_LENGTH: int = 2000
+    """Publishes notification content to a platform's outbound queue."""
 
     @property
     @abstractmethod
-    def platform_name(self) -> str:
-        """Platform key used for platform-link lookups (e.g. 'telegram')."""
-        pass
+    def platform(self) -> ConversationSource:
+        """Conversation source whose outbound queue this adapter publishes to."""
+        ...
 
     @property
-    @abstractmethod
-    def bold_marker(self) -> str:
-        """Markdown bold delimiter: '*' for Telegram, '**' for Discord."""
-        pass
-
-    @abstractmethod
-    def _get_bot_token(self) -> str | None:
-        """Return the bot token, or None if not configured."""
-        pass
-
-    @abstractmethod
-    def _session_kwargs(self, ctx: dict[str, Any]) -> dict[str, Any]:
-        """Return extra kwargs for ``aiohttp.ClientSession`` (e.g. headers)."""
-        pass
-
-    @abstractmethod
-    async def _setup_sender(
-        self, session: aiohttp.ClientSession, ctx: dict[str, Any]
-    ) -> tuple[SendFn | None, ChannelDeliveryStatus | None]:
-        """
-        Prepare a send function for this platform.
-
-        Returns ``(send_fn, None)`` on success or ``(None, error_status)``
-        on failure.  ``send_fn(text) -> error_string | None``.
-        """
-        pass
-
-    # -- Shared implementations ---------------------------------------------
+    def channel_type(self) -> str:
+        # CHANNEL_TYPE_X and ConversationSource.X.value are the same string, so
+        # derive the channel type from the platform instead of restating it.
+        return self.platform.value
 
     def can_handle(self, notification: NotificationRequest) -> bool:
-        # External adapters are auto-injected by the orchestrator regardless of the
-        # explicit channel list, so they always report they can handle a notification.
-        # The orchestrator's preference-check and platform-link lookup are the real guards.
+        # External adapters are auto-injected by the orchestrator regardless of
+        # the explicit channel list. The orchestrator's preference check and the
+        # platform-link lookup in ``publish_outbound_message`` are the real guards.
         return True
 
-    def _split_text(self, text: str, limit: int) -> list[str]:
-        """Split text at paragraph/newline boundaries to respect char limits.
-
-        Note: this uses Python ``len`` (Unicode code points), not UTF-16 code
-        units. Platforms like Telegram enforce UTF-16 limits, so adapters for
-        those platforms should use a UTF-16-aware splitter instead.
-        """
-        if len(text) <= limit:
-            return [text]
-        parts: list[str] = []
-        while len(text) > limit:
-            split_at = text.rfind("\n", 0, limit)
-            if split_at == -1:
-                split_at = limit
-            parts.append(text[:split_at].rstrip())
-            text = text[split_at:].lstrip()
-        if text:
-            parts.append(text)
-        return parts
-
     async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
+        """Render notification content to platform-agnostic CommonMark parts.
+
+        The bot consumer converts each part to the platform's native formatting
+        before sending — no platform-specific markdown is produced here.
+        """
         content = notification.content
         rich = content.rich_content or {}
-        b = self.bold_marker
-
-        if rich.get("type") == "workflow_execution":
-            title = content.title or ""
-            body = content.body or ""
-            header = f"\u2705 {b}{title}{b}\n\u23f0 {body}" if title else body
-            messages = rich.get("messages", [])
-            conversation_id = rich.get("conversation_id", "")
-            app_url = settings.FRONTEND_URL
-            footer = (
-                f"\U0001f517 [View full results]({app_url}/c/{conversation_id})"
-                if conversation_id
-                else ""
-            )
-            return {
-                "type": "workflow_messages",
-                "header": header,
-                "messages": messages,
-                "footer": footer,
-            }
-
-        # Standard single-message format
+        app_url = settings.FRONTEND_URL.rstrip("/")
         title = content.title or ""
         body = content.body or ""
-        text = f"{b}{title}{b}\n{body}" if title else body
+        header = _join_nonempty(f"**{title}**" if title else "", body)
 
-        # Append redirect action links as inline text (external platforms have no buttons)
+        # Build clean parts here: drop blank/whitespace-only entries and guard
+        # the untyped ``rich.messages`` against non-strings, so a workflow with
+        # empty result messages never emits an empty bubble. ``publish_outbound_message``
+        # also strips defensively for callers (e.g. deliver_message_to_platform)
+        # that bypass ``transform``.
+        if rich.get("type") == "workflow_execution":
+            conversation_id = rich.get("conversation_id", "")
+            footer = (
+                f"[View full results]({app_url}/c/{conversation_id})" if conversation_id else ""
+            )
+            parts = [header, *rich.get("messages", []), footer]
+            return {"parts": [p for p in parts if isinstance(p, str) and p.strip()]}
+
+        text = header
         if content.actions:
-            app_url = settings.FRONTEND_URL.rstrip("/")
             links = [
                 f"[{action.label}]({app_url}{action.config.redirect.url})"
                 for action in content.actions
                 if action.type == ActionType.REDIRECT and action.config.redirect
             ]
             if links:
-                text += "\n\n" + " · ".join(links)
+                text = _join_nonempty(text, " · ".join(links), sep="\n\n")
 
-        return {"text": text}
-
-    async def _get_platform_context(
-        self, user_id: str
-    ) -> tuple[dict[str, Any] | None, ChannelDeliveryStatus | None]:
-        """Validate platform link and bot token.
-
-        Returns ``(context_dict, None)`` on success or
-        ``(None, error_status)`` on failure.
-        """
-        linked = await PlatformLinkService.get_linked_platforms(user_id)
-        platform_info = linked.get(self.platform_name)
-
-        if not platform_info:
-            return None, self._skipped(f"{self.platform_name} not linked")
-
-        platform_user_id = platform_info.get("platformUserId")
-        if not platform_user_id:
-            return None, self._skipped(f"{self.platform_name} user id missing")
-
-        token = self._get_bot_token()
-        if not token:
-            return None, self._skipped(f"{self.platform_name} bot token not configured")
-
-        return {"platform_user_id": platform_user_id, "token": token}, None
-
-    async def _deliver_content(
-        self, send_fn: SendFn, content: dict[str, Any]
-    ) -> ChannelDeliveryStatus:
-        """Route content through *send_fn*, handling workflow & standard msgs."""
-        name = self.platform_name.capitalize()
-
-        if content.get("type") == "workflow_messages":
-            if content.get("header"):
-                err = await send_fn(content["header"])
-                if err:
-                    return self._error(f"{name} header error: {err}")
-
-            for msg in content.get("messages", []):
-                for chunk in self._split_text(msg, self.MAX_MESSAGE_LENGTH):
-                    err = await send_fn(chunk)
-                    if err:
-                        return self._error(f"{name} message error: {err}")
-
-            if content.get("footer"):
-                err = await send_fn(content["footer"])
-                if err:
-                    return self._error(f"{name} footer error: {err}")
-
-            return self._success()
-
-        # Standard single message
-        text = content.get("text")
-        if not isinstance(text, str) or not text.strip():
-            return self._error(f"{name} message error: empty text")
-        err = await send_fn(text)
-        if err:
-            return self._error(f"{name} message error: {err}")
-        return self._success()
+        return {"parts": [text]}
 
     async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
-        ctx, err = await self._get_platform_context(user_id)
-        if err:
-            return err
-        if ctx is None:  # guaranteed by _get_platform_context invariant; guard for type narrowing
-            raise RuntimeError("ctx is None despite no error — this should never happen")
-
-        try:
-            async with aiohttp.ClientSession(**self._session_kwargs(ctx)) as session:
-                send_fn, setup_err = await self._setup_sender(session, ctx)
-                if setup_err:
-                    return setup_err
-                return await self._deliver_content(send_fn, content)  # type: ignore[arg-type]
-        except Exception as exc:
-            return self._error(str(exc))
+        parts = content.get("parts", [])
+        result = await publish_outbound_message(self.platform, user_id, parts)
+        if result is OutboundResult.PUBLISHED:
+            return self._success()
+        if result is OutboundResult.FAILED:
+            # Broker unavailable or a publish error — a real failure, not a skip,
+            # so retries/alerting that key off FAILED still fire during an outage.
+            return self._error(f"{self.channel_type}: outbound publish failed")
+        return self._skipped(f"{self.channel_type}: not linked or nothing to publish")

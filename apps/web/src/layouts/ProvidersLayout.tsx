@@ -6,6 +6,8 @@ import { type ReactNode, Suspense } from "react";
 import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
+import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSocket";
+import { useExecutorStream } from "@/features/chat/hooks/useExecutorStream";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -34,6 +36,13 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   // Subscribe to notification events — updates the shared store directly
   useNotificationWebSocket();
+
+  // Subscribe to background executor completion messages — inserts new
+  // bot messages delivered via WebSocket (executor notifications, queued task results)
+  useBgMessageWebSocket();
+
+  // Subscribe to queued executor SSE streams for live tool progress
+  useExecutorStream();
 
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();

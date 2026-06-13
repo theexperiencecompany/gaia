@@ -13,6 +13,7 @@ from pymongo.errors import DuplicateKeyError
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import workflows_collection
 from app.decorators.caching import Cacheable
+from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     PublicWorkflowsResponse,
@@ -47,6 +48,7 @@ from .validators import WorkflowValidator
 
 _SLUG_SUFFIX_LEN = 6
 _SLUG_MAX_RETRIES = 5
+TRIGGER_CONFIG_ENABLED_FIELD = "trigger_config.enabled"
 
 
 def _slug_suffix() -> str:
@@ -216,7 +218,10 @@ class WorkflowService:
             # Use provided steps or initialize empty list for generation
             workflow_steps = request.steps if request.steps else []
 
-            # Step 1: Create workflow in PENDING state (activated=False)
+            # Step 1: Create workflow in PENDING state (activated=False). Keep
+            # trigger_config.enabled in lockstep with activated (the single liveness
+            # field) — a pending workflow is not live.
+            trigger_config.enabled = False
             workflow = Workflow(
                 title=request.title,
                 description=request.description or "",
@@ -224,6 +229,7 @@ class WorkflowService:
                 steps=workflow_steps,
                 trigger_config=trigger_config,
                 activated=False,  # Start in pending state
+                notify_on_completion=request.notify_on_completion,
                 user_id=user_id,
                 is_todo_workflow=is_todo_workflow,
                 source_todo_id=source_todo_id,
@@ -233,8 +239,9 @@ class WorkflowService:
                 selected_integrations=request.selected_integrations,
             )
 
-            # creator is hydration-only on response; never persist it.
-            workflow_dict = workflow.model_dump(mode="json", exclude={"creator"})
+            # Python mode keeps datetimes native (BSON dates) so the scheduler's
+            # `scheduled_at: {"$lte": now}` scan can match. creator is response-only.
+            workflow_dict = workflow.model_dump(exclude={"creator"})
             workflow_dict["_id"] = workflow_dict["id"]
 
             if workflow_dict.get("is_public") and not workflow_dict.get("slug"):
@@ -314,8 +321,12 @@ class WorkflowService:
                     f"trigger '{trigger_config.trigger_name}' not connected"
                 )
             else:
-                # Step 3: Activate workflow and store trigger IDs
-                update_data: dict[str, Any] = {"activated": True}
+                # Step 3: Activate workflow and store trigger IDs. enabled mirrors
+                # activated.
+                update_data: dict[str, Any] = {
+                    "activated": True,
+                    TRIGGER_CONFIG_ENABLED_FIELD: True,
+                }
                 if trigger_ids:
                     update_data["trigger_config.composio_trigger_ids"] = trigger_ids
 
@@ -326,6 +337,7 @@ class WorkflowService:
 
                 # Update local workflow object
                 workflow.activated = True
+                workflow.trigger_config.enabled = True
                 if trigger_ids:
                     workflow.trigger_config.composio_trigger_ids = trigger_ids
 
@@ -340,12 +352,8 @@ class WorkflowService:
                 )
                 log.info(f"Activated workflow {workflow.id} with {len(trigger_ids)} triggers")
 
-                # Schedule the workflow if it's a scheduled type and enabled
-                if (
-                    trigger_config.type == "schedule"
-                    and trigger_config.enabled
-                    and trigger_config.next_run
-                ):
+                # Schedule the workflow if it's a scheduled type (activated here).
+                if trigger_config.type == "schedule" and trigger_config.next_run:
                     await workflow_scheduler.schedule_workflow_execution(
                         workflow.id,
                         user_id,
@@ -426,12 +434,7 @@ class WorkflowService:
 
     @staticmethod
     async def list_workflows(user_id: str, exclude_todo_workflows: bool = True) -> list[Workflow]:
-        """List all workflows for a user.
-
-        Args:
-            user_id: User ID to filter by
-            exclude_todo_workflows: If True, filter out auto-generated todo workflows
-        """
+        """List all workflows for a user, excluding auto-generated todo workflows by default."""
         try:
             # Build query - filter out todo workflows by default
             query: dict[str, Any] = {"user_id": user_id}
@@ -487,9 +490,15 @@ class WorkflowService:
             update_data = {"updated_at": datetime.now(UTC)}
             update_fields = request.model_dump(exclude_unset=True)
 
+            # enabled mirrors activated (the single liveness field). Resolve the
+            # effective activated value for this update and never trust a client-sent
+            # `enabled` that disagrees with it.
+            effective_activated = update_fields.get("activated", current_workflow.activated)
+
             # Handle trigger config changes
             if "trigger_config" in update_fields:
                 new_trigger_config = ensure_trigger_config_object(update_fields["trigger_config"])
+                new_trigger_config.enabled = effective_activated
 
                 # Use provided timezone or fallback to UTC
                 timezone_to_use = user_timezone or "UTC"
@@ -512,23 +521,21 @@ class WorkflowService:
                     or old_config.enabled != new_trigger_config.enabled
                 )
 
-                if schedule_changed:
-                    # Use reschedule logic instead of cancel + schedule for efficiency
-                    if (
-                        new_trigger_config.type == "schedule"
-                        and new_trigger_config.enabled
-                        and new_trigger_config.next_run
-                        and current_workflow.activated
-                    ):
-                        # Reschedule to new time with new cron expression
-                        await workflow_scheduler.reschedule_workflow(
-                            workflow_id,
-                            new_trigger_config.next_run,
-                            repeat=new_trigger_config.cron_expression,
-                        )
-                    else:
-                        # Cancel if workflow is being disabled or conditions not met
-                        await workflow_scheduler.cancel_scheduled_workflow_execution(workflow_id)
+                if schedule_changed and (
+                    new_trigger_config.type == "schedule"
+                    and new_trigger_config.enabled
+                    and new_trigger_config.next_run
+                    and effective_activated
+                ):
+                    # Reschedule to the new time/cron. When the workflow is instead
+                    # being disabled or made non-scheduled, no teardown is needed:
+                    # liveness is governed by `activated`, so a stale deferred fire
+                    # is rejected by the claim gate.
+                    await workflow_scheduler.reschedule_workflow(
+                        workflow_id,
+                        new_trigger_config.next_run,
+                        repeat=new_trigger_config.cron_expression,
+                    )
 
                 # Handle trigger re-registration for integration triggers
                 # Always delete and recreate triggers since Composio triggers can't be updated
@@ -556,14 +563,22 @@ class WorkflowService:
                             user_id, old_trigger_name, old_trigger_ids, workflow_id
                         )
 
-                # Convert TriggerConfig back to dict for MongoDB storage
-                update_fields["trigger_config"] = new_trigger_config.model_dump(mode="json")
+                # Python mode keeps trigger_config.next_run a native datetime (BSON
+                # date), consistent with the create and re-arm paths — json mode here
+                # would flip it back to a string.
+                update_fields["trigger_config"] = new_trigger_config.model_dump()
 
                 # Add new trigger IDs if triggers were registered
                 if registered_trigger_ids is not None:
                     update_fields["trigger_config"]["composio_trigger_ids"] = registered_trigger_ids
 
             update_data.update(update_fields)
+
+            # activated changed without a trigger_config rewrite: sync the nested
+            # enabled flag via a dotted key (the sub-document sync above only runs
+            # when trigger_config is part of the update).
+            if "trigger_config" not in update_fields and "activated" in update_fields:
+                update_data[TRIGGER_CONFIG_ENABLED_FIELD] = effective_activated
 
             try:
                 result = await workflows_collection.update_one(
@@ -601,14 +616,8 @@ class WorkflowService:
             # Get workflow first to access trigger config
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
 
-            # Cancel any scheduled executions before deleting
-            await workflow_scheduler.cancel_scheduled_workflow_execution(workflow_id)
-
-            # Additional cleanup
-            try:
-                await workflow_scheduler.cancel_task(workflow_id, user_id)
-            except Exception as e:
-                log.warning(f"Additional cleanup failed for workflow {workflow_id}: {e}")
+            # No schedule teardown needed: once the document is deleted, a deferred
+            # ARQ fire finds no row to claim and is rejected by the claim gate.
 
             # Unregister Composio triggers if any (pass workflow_id for reference counting)
             if workflow:
@@ -739,6 +748,11 @@ class WorkflowService:
             trigger_config = workflow.trigger_config
             trigger_type = trigger_config.type
 
+            # Recompute next_run from the cron so a stale/frozen schedule time (e.g.
+            # left over from a prior deactivation) cannot carry over on reactivation.
+            if trigger_type == TriggerType.SCHEDULE and trigger_config.cron_expression:
+                trigger_config.update_next_run(user_timezone=user_timezone)
+
             # Refuse activation up front: registration would otherwise silently
             # no-op for a disconnected integration, confusing the user.
             if trigger_type == TriggerType.INTEGRATION and trigger_config.trigger_name:
@@ -767,11 +781,15 @@ class WorkflowService:
             # Get trigger_name for potential rollback
             trigger_name = trigger_config.trigger_name
 
-            # 2. Update status and store triggers
+            # 2. Activate: set liveness (activated) and re-arm run-state to idle
+            # (status=scheduled) with the freshly recomputed next_run.
             update_data: dict[str, Any] = {
                 "activated": True,
-                "trigger_config.enabled": True,
+                TRIGGER_CONFIG_ENABLED_FIELD: True,
                 "trigger_config.composio_trigger_ids": trigger_ids,
+                "status": ScheduledTaskStatus.SCHEDULED.value,
+                "scheduled_at": trigger_config.next_run,
+                "trigger_config.next_run": trigger_config.next_run,
                 "updated_at": datetime.now(UTC),
             }
 
@@ -792,10 +810,10 @@ class WorkflowService:
             if not updated_workflow:
                 return None
 
-            # 4. Schedule if needed
+            # 4. Schedule if needed — liveness is governed by `activated`.
             if (
                 trigger_type == "schedule"
-                and updated_workflow.trigger_config.enabled
+                and updated_workflow.activated
                 and updated_workflow.trigger_config.next_run
             ):
                 await workflow_scheduler.schedule_workflow_execution(
@@ -830,8 +848,9 @@ class WorkflowService:
             if not workflow:
                 return None
 
-            # Cancel any scheduled executions
-            await workflow_scheduler.cancel_scheduled_workflow_execution(workflow_id)
+            # Liveness is governed by `activated` (set False below). A deferred ARQ
+            # fire already in Redis is harmless — the claim gate rejects it because
+            # the row is no longer `activated`. No status write is needed here.
 
             # Unregister Composio triggers if any (pass workflow_id for reference counting)
             trigger_config = workflow.trigger_config
@@ -853,7 +872,7 @@ class WorkflowService:
             # Update trigger to disabled and clear trigger IDs
             update_data: dict[str, Any] = {
                 "activated": False,
-                "trigger_config.enabled": False,
+                TRIGGER_CONFIG_ENABLED_FIELD: False,
                 "trigger_config.composio_trigger_ids": [],
                 "updated_at": datetime.now(UTC),
             }
@@ -927,16 +946,7 @@ class WorkflowService:
     async def increment_execution_count(
         workflow_id: str, user_id: str, is_successful: bool = False
     ) -> bool:
-        """Increment workflow execution statistics.
-
-        Args:
-            workflow_id: ID of the workflow
-            user_id: ID of the user who owns the workflow
-            is_successful: Whether the execution was successful
-
-        Returns:
-            True if update succeeded, False otherwise
-        """
+        """Increment workflow execution statistics."""
         try:
             inc_data = {"total_executions": 1}
             if is_successful:

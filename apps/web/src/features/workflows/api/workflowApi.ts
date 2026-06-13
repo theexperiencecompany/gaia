@@ -63,6 +63,7 @@ export const workflowApi = {
       prompt?: string;
       trigger_config?: CreateWorkflowRequest["trigger_config"];
       activated?: boolean;
+      notify_on_completion?: boolean;
       selected_integrations?: string[];
     },
   ): Promise<WorkflowResponse> => {

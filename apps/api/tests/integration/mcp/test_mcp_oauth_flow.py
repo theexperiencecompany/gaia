@@ -8,7 +8,7 @@ Mocks only HTTP calls (httpx) and database I/O boundaries. All MCP client
 logic, OAuth discovery, token management, and PKCE generation run for real.
 """
 
-from datetime import UTC, datetime, timedelta
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
@@ -429,7 +429,12 @@ class TestTokenExchange:
     """Test handle_oauth_callback: code-for-token exchange with PKCE."""
 
     async def test_successful_token_exchange_stores_tokens(self):
-        """After successful code exchange, tokens are stored and connect is called."""
+        """After successful code exchange, tokens are stored and connect is dispatched.
+
+        handle_oauth_callback now backgrounds the MCP connect to keep the
+        OAuth redirect under ~1.5s. It returns [] immediately; the connect
+        completes on a fire-and-forget task that the test doesn't await.
+        """
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
 
@@ -454,12 +459,12 @@ class TestTokenExchange:
             "expires_in": 3600,
         }
 
-        mock_tools = [MagicMock(name="tool1")]
-
         mock_http_response = httpx.Response(
             status_code=200,
             json=token_response,
         )
+
+        connect_mock = AsyncMock(return_value=[MagicMock(name="tool1")])
 
         with (
             patch(
@@ -471,12 +476,12 @@ class TestTokenExchange:
                 "_discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
-            patch.object(
-                client,
-                "connect",
-                new=AsyncMock(return_value=mock_tools),
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new=AsyncMock(),
             ),
+            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
+            patch.object(client, "connect", new=connect_mock),
         ):
             mock_http_instance = AsyncMock()
             mock_http_instance.post = AsyncMock(return_value=mock_http_response)
@@ -490,8 +495,13 @@ class TestTokenExchange:
                 state="valid-state",
                 redirect_uri="https://app.example.com/callback",
             )
+            # Yield so the dispatched background connect task runs.
+            await asyncio.sleep(0)
 
-        assert tools is mock_tools
+        # New contract: returns immediately with an empty list while the
+        # actual MCP connect runs in the background.
+        assert tools == []
+        connect_mock.assert_awaited_once_with("exchange-int")
         # Verify tokens were stored with correct values
         client.token_store.store_oauth_tokens.assert_awaited_once()
         call_kwargs = client.token_store.store_oauth_tokens.call_args[1]
@@ -782,11 +792,11 @@ class TestTokenRevocation:
 
 @pytest.mark.integration
 class TestConnectionPooling:
-    """Test MCPClientPool: reuse, LRU eviction, TTL cleanup."""
+    """Test MCPClientPool: reuse, LRU eviction at capacity."""
 
     async def test_pool_reuses_client_for_same_user(self):
         """Getting the same user_id twice returns the same MCPClient instance."""
-        pool = MCPClientPool(max_clients=10, ttl_seconds=300)
+        pool = MCPClientPool(max_clients=10)
 
         with patch("app.services.mcp.mcp_client.MCPClient") as mock_cls:
             mock_client = MagicMock()
@@ -800,7 +810,7 @@ class TestConnectionPooling:
 
     async def test_pool_creates_different_clients_for_different_users(self):
         """Different user_ids get separate MCPClient instances."""
-        pool = MCPClientPool(max_clients=10, ttl_seconds=300)
+        pool = MCPClientPool(max_clients=10)
 
         with patch("app.services.mcp.mcp_client.MCPClient") as mock_cls:
             mock_cls.side_effect = lambda user_id: MagicMock(user_id=user_id)
@@ -813,7 +823,7 @@ class TestConnectionPooling:
 
     async def test_pool_evicts_lru_at_capacity(self):
         """When pool is full, the least recently used client is evicted."""
-        pool = MCPClientPool(max_clients=2, ttl_seconds=300)
+        pool = MCPClientPool(max_clients=2)
 
         with patch("app.services.mcp.mcp_client.MCPClient") as mock_cls:
             evicted_client = MagicMock()
@@ -838,27 +848,9 @@ class TestConnectionPooling:
         # The oldest client should have been closed
         evicted_client.close_all_client_sessions.assert_awaited_once()
 
-    async def test_pool_cleanup_stale_removes_expired(self):
-        """cleanup_stale removes clients that haven't been used within TTL."""
-        pool = MCPClientPool(max_clients=10, ttl_seconds=1)
-
-        stale_client = MagicMock()
-        stale_client.close_all_client_sessions = AsyncMock()
-
-        # Inject a stale entry directly
-        pool._clients["stale-user"] = PooledClient(
-            client=stale_client,
-            last_used=datetime.now(UTC) - timedelta(seconds=10),
-        )
-
-        await pool.cleanup_stale()
-
-        assert pool.size == 0
-        stale_client.close_all_client_sessions.assert_awaited_once()
-
     async def test_pool_shutdown_closes_all(self):
         """shutdown() closes all pooled clients."""
-        pool = MCPClientPool(max_clients=10, ttl_seconds=300)
+        pool = MCPClientPool(max_clients=10)
 
         mock_clients = []
         for uid in ["u1", "u2", "u3"]:

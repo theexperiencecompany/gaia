@@ -37,10 +37,6 @@ from app.config.model_pricing import (
     calculate_token_cost,
     get_model_pricing,
 )
-from app.constants.llm import (
-    DEFAULT_GEMINI_FREE_MODEL_NAME,
-    OPENROUTER_BASE_URL,
-)
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
 
 
@@ -219,69 +215,29 @@ class TestProviderInitialization:
 
 @pytest.mark.integration
 class TestFreeLLMMode:
-    """Verify init_llm(use_free=True) and get_free_llm_chain()."""
+    """Verify get_free_llm_chain()."""
 
-    def test_init_llm_use_free_returns_openrouter_model(self) -> None:
-        """use_free=True returns a ChatOpenAI pointed at OpenRouter with the free model."""
+    def test_get_free_llm_chain_returns_gemini(self) -> None:
+        """get_free_llm_chain returns a single Gemini LLM when GOOGLE_API_KEY exists."""
         with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = "test-key"
-            mock_settings.FRONTEND_URL = "https://test.example.com"
-
-            with patch("app.agents.llm.client.ChatOpenAI") as mock_chat:
-                mock_chat.return_value = _make_mock_llm("free_llm")
-                init_llm(use_free=True)
-
-                mock_chat.assert_called_once()
-                call_kwargs = mock_chat.call_args[1]
-                assert call_kwargs["model"] == DEFAULT_GEMINI_FREE_MODEL_NAME
-                assert call_kwargs["base_url"] == OPENROUTER_BASE_URL
-                assert call_kwargs["streaming"] is False
-
-    def test_init_llm_use_free_no_key_raises(self) -> None:
-        """use_free=True without OPENROUTER_API_KEY raises RuntimeError."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = None
-
-            with pytest.raises(RuntimeError, match="OpenRouter API key not configured"):
-                init_llm(use_free=True)
-
-    def test_get_free_llm_chain_with_both_keys(self) -> None:
-        """get_free_llm_chain returns two LLMs when both OpenRouter and Google keys exist."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = "or-key"
             mock_settings.GOOGLE_API_KEY = "google-key"
-            mock_settings.FRONTEND_URL = "https://test.example.com"
 
-            with (
-                patch("app.agents.llm.client.ChatOpenAI") as mock_openai,
-                patch("app.agents.llm.client.ChatGoogleGenerativeAI") as mock_gemini,
-            ):
-                mock_openai.return_value = _make_mock_llm("openrouter")
+            with patch("app.agents.llm.client.ChatGoogleGenerativeAI") as mock_gemini:
                 mock_gemini.return_value = _make_mock_llm("gemini")
 
                 chain = get_free_llm_chain()
 
-                assert len(chain) == 2
-
-    def test_get_free_llm_chain_openrouter_only(self) -> None:
-        """get_free_llm_chain returns one LLM when only OpenRouter key exists."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = "or-key"
-            mock_settings.GOOGLE_API_KEY = None
-            mock_settings.FRONTEND_URL = "https://test.example.com"
-
-            with patch("app.agents.llm.client.ChatOpenAI") as mock_openai:
-                mock_openai.return_value = _make_mock_llm("openrouter")
-                chain = get_free_llm_chain()
                 assert len(chain) == 1
+                mock_gemini.assert_called_once()
 
-    def test_get_free_llm_chain_no_keys_raises(self) -> None:
-        """get_free_llm_chain with no API keys raises RuntimeError."""
+    def test_get_free_llm_chain_no_google_key_raises(self) -> None:
+        """get_free_llm_chain raises RuntimeError when GOOGLE_API_KEY is missing."""
         with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = None
             mock_settings.GOOGLE_API_KEY = None
 
-            with pytest.raises(RuntimeError, match="No free LLM providers configured"):
+            with pytest.raises(
+                RuntimeError, match="No LLM provider configured for auxiliary tasks"
+            ):
                 get_free_llm_chain()
 
 

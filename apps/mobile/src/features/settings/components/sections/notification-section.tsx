@@ -6,6 +6,7 @@ import {
   AppIcon,
   DiscordIcon,
   Notification01Icon,
+  SlackIcon,
   TelegramIcon,
   WhatsappIcon,
 } from "@/components/icons";
@@ -20,6 +21,7 @@ export function NotificationSection() {
     telegram: false,
     discord: false,
     whatsapp: false,
+    slack: false,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [updatingChannel, setUpdatingChannel] =
@@ -125,6 +127,18 @@ export function NotificationSection() {
             handleToggle("whatsapp", val);
           }}
           disabled={updatingChannel === "whatsapp"}
+        />
+        <SettingsSwitchRow
+          icon={SlackIcon}
+          iconColor="#E01E5A"
+          iconBg="rgba(224,30,90,0.15)"
+          title="Slack"
+          subtitle="Receive alerts via your connected Slack workspace"
+          value={channels.slack}
+          onValueChange={(val) => {
+            void handleToggle("slack", val);
+          }}
+          disabled={updatingChannel === "slack"}
           isLast
         />
       </SettingsGroup>

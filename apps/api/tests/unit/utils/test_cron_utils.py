@@ -7,12 +7,9 @@ import pytest
 import pytz
 
 from app.utils.cron_utils import (
-    COMMON_CRON_EXPRESSIONS,
     CronError,
     calculate_next_occurrences,
     get_next_run_time,
-    get_previous_run_time,
-    is_time_in_future,
     parse_timezone,
     validate_cron_expression,
 )
@@ -311,55 +308,6 @@ class TestGetNextRunTime:
 
 
 # ---------------------------------------------------------------------------
-# get_previous_run_time
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestGetPreviousRunTime:
-    def test_valid_cron_with_base_time(self) -> None:
-        base = datetime(2025, 1, 1, 9, 0, 0, tzinfo=UTC)
-        result = get_previous_run_time("0 8 * * *", base_time=base)
-        expected = datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC)
-        assert result == expected
-
-    def test_invalid_cron_raises_cron_error(self) -> None:
-        with pytest.raises(CronError, match="Invalid cron expression"):
-            get_previous_run_time("invalid")
-
-    def test_none_base_time_uses_now(self) -> None:
-        with _patch_now():
-            result = get_previous_run_time("0 * * * *")
-        # Previous occurrence of "every hour at :00" when now is 10:00 is 09:00
-        expected = datetime(2025, 6, 15, 9, 0, 0, tzinfo=UTC)
-        assert result == expected
-
-    def test_naive_datetime_assumed_utc(self) -> None:
-        base = datetime(2025, 3, 10, 9, 30, 0)  # naive
-        result = get_previous_run_time("0 8 * * *", base_time=base)
-        expected = datetime(2025, 3, 10, 8, 0, 0, tzinfo=UTC)
-        assert result == expected
-
-    def test_result_is_utc_aware(self) -> None:
-        base = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
-        result = get_previous_run_time("0 8 * * *", base_time=base)
-        assert result.tzinfo is not None
-        assert result.utcoffset() == timedelta(0)
-
-    def test_previous_run_crosses_day_boundary(self) -> None:
-        base = datetime(2025, 1, 2, 1, 0, 0, tzinfo=UTC)
-        result = get_previous_run_time("0 22 * * *", base_time=base)
-        expected = datetime(2025, 1, 1, 22, 0, 0, tzinfo=UTC)
-        assert result == expected
-
-    def test_every_minute_cron(self) -> None:
-        base = datetime(2025, 1, 1, 12, 30, 45, tzinfo=UTC)
-        result = get_previous_run_time("* * * * *", base_time=base)
-        expected = datetime(2025, 1, 1, 12, 30, 0, tzinfo=UTC)
-        assert result == expected
-
-
-# ---------------------------------------------------------------------------
 # calculate_next_occurrences
 # ---------------------------------------------------------------------------
 
@@ -426,111 +374,3 @@ class TestCalculateNextOccurrences:
         # First Monday after Jan 1 is Jan 6
         assert result[0] == datetime(2025, 1, 6, 9, 0, 0, tzinfo=UTC)
         assert result[1] == datetime(2025, 1, 13, 9, 0, 0, tzinfo=UTC)
-
-
-# ---------------------------------------------------------------------------
-# is_time_in_future
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestIsTimeInFuture:
-    def test_future_time_returns_true(self) -> None:
-        reference = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
-        target = datetime(2025, 1, 1, 13, 0, 0, tzinfo=UTC)
-        assert is_time_in_future(target, reference) is True
-
-    def test_past_time_returns_false(self) -> None:
-        reference = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
-        target = datetime(2025, 1, 1, 11, 0, 0, tzinfo=UTC)
-        assert is_time_in_future(target, reference) is False
-
-    def test_equal_time_returns_false(self) -> None:
-        reference = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
-        target = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
-        assert is_time_in_future(target, reference) is False
-
-    def test_none_reference_future_target(self) -> None:
-        with _patch_now():
-            future = FROZEN_NOW + timedelta(hours=1)
-            result = is_time_in_future(future)
-        assert result is True
-
-    def test_none_reference_past_target(self) -> None:
-        with _patch_now():
-            past = FROZEN_NOW - timedelta(hours=1)
-            result = is_time_in_future(past)
-        assert result is False
-
-    def test_naive_target_assumed_utc(self) -> None:
-        reference = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
-        target = datetime(2025, 1, 1, 13, 0, 0)  # naive
-        assert is_time_in_future(target, reference) is True
-
-    def test_naive_reference_assumed_utc(self) -> None:
-        target = datetime(2025, 1, 1, 13, 0, 0, tzinfo=UTC)
-        reference = datetime(2025, 1, 1, 12, 0, 0)  # naive
-        assert is_time_in_future(target, reference) is True
-
-    def test_both_naive_datetimes(self) -> None:
-        target = datetime(2025, 1, 1, 13, 0, 0)  # naive
-        reference = datetime(2025, 1, 1, 12, 0, 0)  # naive
-        assert is_time_in_future(target, reference) is True
-
-    def test_both_naive_datetimes_past(self) -> None:
-        target = datetime(2025, 1, 1, 11, 0, 0)  # naive
-        reference = datetime(2025, 1, 1, 12, 0, 0)  # naive
-        assert is_time_in_future(target, reference) is False
-
-    def test_microsecond_difference_future(self) -> None:
-        reference = datetime(2025, 1, 1, 12, 0, 0, 0, tzinfo=UTC)
-        target = datetime(2025, 1, 1, 12, 0, 0, 1, tzinfo=UTC)
-        assert is_time_in_future(target, reference) is True
-
-    def test_microsecond_difference_past(self) -> None:
-        reference = datetime(2025, 1, 1, 12, 0, 0, 1, tzinfo=UTC)
-        target = datetime(2025, 1, 1, 12, 0, 0, 0, tzinfo=UTC)
-        assert is_time_in_future(target, reference) is False
-
-    def test_different_timezones_compared_correctly(self) -> None:
-        # 1 PM UTC = 6:30 PM IST, which is after 5 PM IST (11:30 AM UTC)
-        ist = timezone(timedelta(hours=5, minutes=30))
-        target = datetime(2025, 1, 1, 13, 0, 0, tzinfo=UTC)
-        reference = datetime(2025, 1, 1, 17, 0, 0, tzinfo=ist)  # 11:30 AM UTC
-        assert is_time_in_future(target, reference) is True
-
-
-# ---------------------------------------------------------------------------
-# COMMON_CRON_EXPRESSIONS
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestCommonCronExpressions:
-    def test_all_expressions_are_valid(self) -> None:
-        for name, expr in COMMON_CRON_EXPRESSIONS.items():
-            assert validate_cron_expression(expr) is True, (
-                f"Expression '{name}': '{expr}' should be valid"
-            )
-
-    def test_expected_keys_exist(self) -> None:
-        expected_keys = {
-            "every_minute",
-            "every_5_minutes",
-            "every_15_minutes",
-            "every_30_minutes",
-            "hourly",
-            "daily_8am",
-            "daily_noon",
-            "daily_6pm",
-            "weekly_monday_9am",
-            "monthly_first_day",
-            "yearly_jan_1st",
-        }
-        assert set(COMMON_CRON_EXPRESSIONS.keys()) == expected_keys
-
-    def test_every_minute_value(self) -> None:
-        assert COMMON_CRON_EXPRESSIONS["every_minute"] == "* * * * *"
-
-    def test_daily_8am_value(self) -> None:
-        assert COMMON_CRON_EXPRESSIONS["daily_8am"] == "0 8 * * *"

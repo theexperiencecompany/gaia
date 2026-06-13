@@ -9,24 +9,6 @@ from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
 
-
-@pytest.fixture(autouse=True)
-def _clear_user_subagent_cache():
-    """Reset the in-memory per-user subagent graph cache between tests.
-
-    ``create_subagent_for_user`` memoises compiled graphs in a module-level
-    dict keyed by ``(integration_id, user_id)`` so repeat handoffs skip the
-    expensive rebuild. Tests deliberately simulate failure/success modes for
-    the same key, so the cache must be wiped between tests or the second
-    test would read the first test's cached MagicMock.
-    """
-    from app.agents.core.subagents import provider_subagents as _ps
-
-    _ps._USER_SUBAGENT_CACHE.clear()
-    yield
-    _ps._USER_SUBAGENT_CACHE.clear()
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -371,7 +353,6 @@ class TestCreateSubagentForUser:
 
         mock_mcp_client = AsyncMock()
         mock_mcp_client._tools = {"test_int": mock_tools}
-        mock_mcp_client.get_all_connected_tools = AsyncMock()
 
         with (
             patch(
@@ -481,45 +462,6 @@ class TestCreateSubagentForUser:
 
         assert result is None
 
-    async def test_category_already_registered_skips_connect(self):
-        from app.agents.core.subagents.provider_subagents import (
-            create_subagent_for_user,
-        )
-
-        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        subagent = _make_subagent(
-            managed_by="mcp",
-            mcp_config=mcp_config,
-        )
-        mock_graph = MagicMock()
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {"mcp_test_int_user_123": MagicMock()}
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
-                return_value=subagent,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.init_llm",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ),
-        ):
-            result = await create_subagent_for_user("test_int", "user_123")
-
-        assert result is mock_graph
-
 
 # ---------------------------------------------------------------------------
 # _create_custom_mcp_subagent
@@ -561,7 +503,6 @@ class TestCreateCustomMcpSubagent:
         mock_mcp_client = AsyncMock()
         mock_mcp_client._tools = {}
         mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
-        mock_mcp_client.get_all_connected_tools = AsyncMock()
 
         with (
             patch(
@@ -617,7 +558,6 @@ class TestCreateCustomMcpSubagent:
         mock_mcp_client = AsyncMock()
         mock_mcp_client._tools = {}
         mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
-        mock_mcp_client.get_all_connected_tools = AsyncMock()
 
         with (
             patch(
@@ -675,7 +615,6 @@ class TestCreateCustomMcpSubagent:
         mock_mcp_client = AsyncMock()
         mock_mcp_client._tools = {}
         mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
-        mock_mcp_client.get_all_connected_tools = AsyncMock()
 
         with (
             patch(
@@ -794,52 +733,6 @@ class TestCreateCustomMcpSubagent:
             result = await _create_custom_mcp_subagent("custom_abc", "user_123")
 
         assert result is None
-
-    async def test_category_already_cached(self):
-        from app.agents.core.subagents.provider_subagents import (
-            _create_custom_mcp_subagent,
-        )
-
-        custom_doc = {
-            "integration_id": "custom_abc",
-            "mcp_config": {"server_url": "https://custom.example.com"},
-        }
-        mock_graph = MagicMock()
-        cached_cat = MagicMock()
-        cached_cat.tools = [MagicMock()]
-        cached_cat.space = "cached_space"
-
-        mock_registry = AsyncMock()
-        mock_registry._categories = {"mcp_custom_abc_user_123": MagicMock()}
-        mock_registry.get_category = MagicMock(return_value=cached_cat)
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.integrations_collection"
-            ) as mock_col,
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.init_llm",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.derive_integration_namespace",
-                return_value="custom.example.com",
-            ),
-        ):
-            mock_col.find_one = AsyncMock(return_value=custom_doc)
-            result = await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-        assert result is mock_graph
 
 
 # ---------------------------------------------------------------------------

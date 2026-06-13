@@ -10,6 +10,7 @@ from app.models.chat_models import (
     ConversationSyncItem,
     ImageData,
     MessageModel,
+    SourceCategory,
     SystemPurpose,
     UpdateMessagesRequest,
 )
@@ -26,9 +27,6 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import (
-    BioStatus,
-    OnboardingData,
-    OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
     UserUpdateResponse,
@@ -333,21 +331,6 @@ class TestOnboardingPreferences:
 
 
 @pytest.mark.unit
-class TestOnboardingData:
-    def test_defaults(self):
-        d = OnboardingData()
-        assert d.completed is False
-        assert d.phase == OnboardingPhase.INITIAL
-        assert d.bio_status == BioStatus.PENDING
-        assert d.house is None
-
-    def test_all_phases(self):
-        for phase in OnboardingPhase:
-            d = OnboardingData(phase=phase)
-            assert d.phase == phase
-
-
-@pytest.mark.unit
 class TestUserUpdateResponse:
     def test_valid(self):
         r = UserUpdateResponse(
@@ -409,3 +392,48 @@ class TestMemoryModels:
     def test_create_memory_request_missing_content(self):
         with pytest.raises(ValidationError):
             CreateMemoryRequest()
+
+
+@pytest.mark.unit
+class TestConversationSourceCoerce:
+    """ConversationSource.coerce parses raw values into the enum (or None)."""
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("whatsapp", ConversationSource.WHATSAPP),
+            ("web", ConversationSource.WEB),
+            ("background", ConversationSource.BACKGROUND),
+            (ConversationSource.SLACK, ConversationSource.SLACK),
+        ],
+    )
+    def test_valid_values_coerce_to_enum(self, raw, expected):
+        assert ConversationSource.coerce(raw) is expected
+
+    @pytest.mark.parametrize("raw", [None, "", "nonsense", "gmail"])
+    def test_invalid_values_return_none(self, raw):
+        assert ConversationSource.coerce(raw) is None
+
+
+@pytest.mark.unit
+class TestSourceCategoryFromSource:
+    """SourceCategory.from_source maps a specific channel to its category."""
+
+    @pytest.mark.parametrize(
+        "source,category",
+        [
+            ("web", SourceCategory.UI),
+            ("mobile", SourceCategory.UI),
+            ("whatsapp", SourceCategory.BOT),
+            ("telegram", SourceCategory.BOT),
+            ("discord", SourceCategory.BOT),
+            ("slack", SourceCategory.BOT),
+            (ConversationSource.WHATSAPP, SourceCategory.BOT),
+            ("workflow_system", SourceCategory.BG),
+            ("background", SourceCategory.BG),
+            (None, SourceCategory.BG),
+            ("nonsense", SourceCategory.BG),
+        ],
+    )
+    def test_category_mapping(self, source, category):
+        assert SourceCategory.from_source(source) is category

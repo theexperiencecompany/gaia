@@ -22,19 +22,6 @@ class BlogPostBase(BaseModel):
     image: str | None = None
 
 
-class BlogPostCreate(BlogPostBase):
-    slug: str
-
-
-class BlogPostUpdate(BaseModel):
-    title: str | None = None
-    date: str | None = None
-    authors: list[str] | None = None
-    category: str | None = None
-    content: str | None = None
-    image: str | None = None
-
-
 class BlogPost(BlogPostBase):
     """Blog post response model with proper ID handling."""
 
@@ -48,10 +35,3 @@ class BlogPost(BlogPostBase):
     slug: str
     id: str = Field(description="Unique identifier for the blog post")
     author_details: list[AuthorDetails] | None = None
-
-    @classmethod
-    def from_mongo(cls, data: dict) -> "BlogPost":
-        """Create BlogPost instance from MongoDB document."""
-        if "_id" in data:
-            data["id"] = str(data["_id"])
-        return cls(**data)

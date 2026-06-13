@@ -15,6 +15,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
+from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
@@ -104,6 +105,22 @@ class LangchainProvider(
                 runnable_config.get("metadata", {}) if isinstance(runnable_config, dict) else {}
             )
             user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+            if not user_id:
+                # Composio defaults a missing user_id to its "default" account,
+                # which would silently route this call to the wrong (or no)
+                # connected account. Fail loudly instead of hitting "default".
+                log.warning(
+                    f"composio tool {tool} (toolkit={toolkit}) invoked without a "
+                    "user_id in runnable metadata; refusing to fall back to the "
+                    "Composio 'default' account."
+                )
+                raise AppError(
+                    message=f"Missing user_id in runnable metadata for composio tool {tool}",
+                    why="Composio tool invoked without a user_id in runnable metadata.",
+                    fix="Ensure the runnable config includes metadata.user_id before invoking the tool.",
+                    status_code=400,
+                    meta={"tool": tool, "toolkit": toolkit},
+                )
 
             kwargs = _reinstate_reserved_python_keywords(
                 request=kwargs,

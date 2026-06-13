@@ -6,6 +6,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
+from app.models.integration_instructions_models import InstructionsEditor
 from app.models.oauth_models import IntegrationContent
 from app.schemas.common import SuccessResponse
 
@@ -65,6 +66,15 @@ class IntegrationSuccessResponse(SuccessResponse, CamelModel):
 class AddUserIntegrationResponse(SuccessResponse, CamelModel):
     integration_id: str
     connection_status: Literal["created", "connected"]
+
+
+class IntegrationInstructionsResponse(CamelModel):
+    """A user's custom instructions for one integration."""
+
+    integration_id: str
+    content: str
+    updated_by: InstructionsEditor
+    updated_at: datetime | None = None
 
 
 class CustomIntegrationConnectionResult(CamelModel):

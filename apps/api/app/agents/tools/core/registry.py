@@ -1,12 +1,13 @@
 import asyncio
-from collections import defaultdict
-from collections.abc import Iterator, KeysView, Mapping
+from collections.abc import ItemsView, Iterator, KeysView, Mapping
 
 from langchain_core.tools import BaseTool
 
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.helpers.namespace_utils import derive_integration_namespace
-from app.services.integrations.integration_resolver import IntegrationResolver
+from app.models.oauth_models import OAuthIntegration
+from app.services.composio.composio_service import get_composio_service
+from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from shared.py.wide_events import log
 
 
@@ -62,14 +63,33 @@ class DynamicToolDict(Mapping[str, BaseTool]):
         return all_tools.values()
 
     def keys(self) -> KeysView[str]:
+        """Return all tool names (registry + extras) as a KeysView."""
         all_tools = dict(self._registry._get_tool_dict_internal())
         all_tools.update(self._extra_tools)
         return all_tools.keys()
 
-    def items(self):
+    def items(self) -> ItemsView[str, BaseTool]:
+        """Return all (name, tool) pairs from the registry plus extras."""
         all_tools = dict(self._registry._get_tool_dict_internal())
         all_tools.update(self._extra_tools)
         return all_tools.items()
+
+
+class _CatalogToolMeta:
+    """Lightweight provider-tool metadata (name + description) used to index the
+    Composio catalog at warmup *without* materializing a StructuredTool.
+
+    Duck-types the ``.name``/``.description`` access that ``index_tools_to_store``
+    needs, so it flows through the existing ChromaDB indexing path. The executable
+    StructuredTool is built lazily, per provider, in ``register_provider_tools``
+    when that provider's subagent is first created.
+    """
+
+    __slots__ = ("description", "name")
+
+    def __init__(self, name: str, description: str) -> None:
+        self.name = name
+        self.description = description
 
 
 class Tool:
@@ -138,7 +158,6 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._categories: dict[str, ToolCategory] = {}
-        self._user_mcp_categories: dict[str, set[str]] = defaultdict(set)
 
     async def setup(self):
         self._initialize_categories()
@@ -191,15 +210,15 @@ class ToolRegistry:
 
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
-            code_exec_tool,
             context_tool,
-            document_tool,
             file_tools,
             finish_task_tool,
             flowchart_tool,
             goal_tool,
             image_tool,
+            integration_instructions_tools,
             integration_tool,
+            manual_tool,
             memory_tools,
             notification_tool,
             reminder_tool,
@@ -207,7 +226,7 @@ class ToolRegistry:
             skill_tools,
             support_tool,
             todo_tool,
-            vfs_tools,
+            tracked_todo_tools,
             weather_tool,
             webpage_tool,
             workflow_tool,
@@ -224,10 +243,15 @@ class ToolRegistry:
 
         self._add_category(
             "documents",
-            tools=[file_tools.query_file, document_tool.generate_document],
+            tools=[file_tools.query_file],
         )
 
         self._add_category("notifications", tools=[*notification_tool.tools])
+        self._add_category(
+            "tracked_todos",
+            tools=[*tracked_todo_tools.tools],
+            space="tasks",
+        )
         self._add_category(
             "todos",
             tools=[*todo_tool.tools],
@@ -261,12 +285,18 @@ class ToolRegistry:
         self._add_category("workflows", tools=workflow_tool.tools)
         self._add_category("control", tools=[finish_task_tool.finish_task])
         self._add_category("support", tools=[support_tool.create_support_ticket])
+        self._add_category("manual", tools=[*manual_tool.tools])
         self._add_category("memory", tools=memory_tools.tools)
-        self._add_category("filesystem", tools=vfs_tools.tools)
         self._add_category("integrations", tools=integration_tool.tools)
         self._add_category(
+            "integration_instructions",
+            tools=[*integration_instructions_tools.tools],
+        )
+        from app.agents.tools import coding
+
+        self._add_category(
             "development",
-            tools=[code_exec_tool.execute_code, flowchart_tool.create_flowchart],
+            tools=[*coding.tools, flowchart_tool.create_flowchart],
         )
         self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])
@@ -284,8 +314,6 @@ class ToolRegistry:
         """
         if toolkit_name in self._categories:
             return self._categories[toolkit_name]
-
-        from app.services.composio.composio_service import get_composio_service
 
         log.info(f"Registering provider tools for {toolkit_name} (space: {space_name})")
 
@@ -310,35 +338,32 @@ class ToolRegistry:
         log.info(f"Registered {len(tools)} tools for {toolkit_name}")
         return self._categories[toolkit_name]
 
-    async def load_all_provider_tools(self):
+    async def populate_provider_catalog(self) -> int:
+        """Index provider-tool METADATA for retrieval and the /tools catalog
+        *without* materializing executable StructuredTools.
+
+        Replaces an eager warmup that wrapped every one of the ~1.6k catalog
+        tools into a StructuredTool (a Pydantic args-model + closure per tool,
+        ~100KB each) and kept them resident for the whole process lifetime —
+        the single largest contributor to backend RSS. Here we only:
+
+          1. fetch raw tool metadata (name + description) per toolkit,
+          2. index name+description into ChromaDB so retrieval works, and
+          3. store name+description in Mongo so the /tools listing is complete.
+
+        Executable tools are built lazily, per provider, when that provider's
+        subagent is first created (``register_provider_tools``), so a process
+        only ever holds the working set of tools it actually uses.
         """
-        Load all provider tools from OAuth integrations.
-        This method loads tools for all integrations managed by composio
-        that have subagent configurations and syncs them to the store.
-        Tools are loaded in parallel for better performance.
-        """
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
+        # index_tools_to_store lives in chroma_tools_store, which imports
+        # get_tool_registry from this module — keep this one local to break the
+        # import cycle (see _index_category_tools below).
+        from app.db.chroma.chroma_tools_store import index_tools_to_store
 
-        async def load_provider(integration):
-            toolkit_name = integration.composio_config.toolkit
-            space_name = integration.subagent_config.tool_space
-            specific_tools = integration.subagent_config.specific_tools
+        composio_service = get_composio_service()
+        mcp_store = get_mcp_tools_store()
 
-            # Skip if already loaded
-            if toolkit_name in self._categories:
-                return
-
-            try:
-                await self.register_provider_tools(
-                    toolkit_name=toolkit_name,
-                    space_name=space_name,
-                    specific_tools=specific_tools,
-                )
-            except Exception as e:
-                log.error(f"Failed to load provider tools for {toolkit_name}: {e}")
-
-        # Collect all integrations that need loading
-        integrations_to_load = [
+        integrations = [
             integration
             for integration in OAUTH_INTEGRATIONS
             if (
@@ -349,8 +374,69 @@ class ToolRegistry:
             )
         ]
 
-        # Load all providers in parallel
-        await asyncio.gather(*[load_provider(i) for i in integrations_to_load])
+        mongo_batch: list[tuple[str, list[dict]]] = []
+        total = 0
+
+        async def load_metadata(integration: OAuthIntegration) -> None:
+            nonlocal total
+            toolkit = integration.composio_config.toolkit
+            space = integration.subagent_config.tool_space
+            specific = integration.subagent_config.specific_tools
+            try:
+                raw_tools = await composio_service.get_raw_tools_metadata(
+                    tool_kit=toolkit, specific_tools=specific
+                )
+            except Exception as e:
+                log.error(f"Failed to load catalog metadata for {toolkit}: {e}")
+                return
+
+            metas = [
+                _CatalogToolMeta(name=t.slug, description=getattr(t, "description", "") or "")
+                for t in raw_tools
+            ]
+            if not metas:
+                return
+
+            # Reuse the existing indexing path; it only reads .name/.description
+            # and is idempotent via the ChromaDB diff + Redis hash cache, so the
+            # later per-provider register_provider_tools re-index is a no-op.
+            try:
+                await index_tools_to_store([(m, space) for m in metas])
+            except Exception as e:
+                log.error(f"Failed to index catalog metadata for {toolkit}: {e}")
+                return
+
+            mongo_batch.append(
+                (
+                    toolkit.lower(),
+                    [{"name": m.name, "description": m.description} for m in metas],
+                )
+            )
+            total += len(metas)
+
+        # return_exceptions so one toolkit's failure can't abort the whole
+        # population run and leave the catalog half-indexed.
+        results = await asyncio.gather(
+            *[load_metadata(i) for i in integrations], return_exceptions=True
+        )
+        for integration, result in zip(integrations, results):
+            if isinstance(result, Exception):
+                log.error(
+                    "Catalog metadata population failed for "
+                    f"{integration.composio_config.toolkit}: {result}"
+                )
+
+        if mongo_batch:
+            try:
+                await mcp_store.store_tools_batch(mongo_batch)
+            except Exception as e:
+                log.warning(f"Failed to store provider catalog metadata to Mongo: {e}")
+
+        log.info(
+            f"Provider catalog metadata indexed: {total} tools "
+            f"across {len(integrations)} toolkits (no StructuredTools materialized)"
+        )
+        return total
 
     async def _index_category_tools(self, category_name: str):
         """Index tools from a category into ChromaDB store.
@@ -421,88 +507,6 @@ class ToolRegistry:
             for name, category in self._categories.items()
             if name not in ignore_categories
         }
-
-    async def load_user_mcp_tools(self, user_id: str) -> dict[str, list[BaseTool]]:
-        """
-        Load all connected MCP tools for a specific user.
-
-        Connects to each MCP server the user has authenticated with,
-        retrieves tools, and adds them to the registry.
-
-        Category naming: mcp_{integration_id} (without user_id)
-        User association is tracked via _user_mcp_categories.
-
-        Returns dict mapping integration_id -> list of tools loaded.
-        """
-        from app.config.oauth_config import get_integration_by_id
-        from app.services.mcp.mcp_client import get_mcp_client
-
-        mcp_client = await get_mcp_client(user_id=user_id)
-        all_tools = await mcp_client.get_all_connected_tools()
-
-        log.set(
-            load_user_mcp_tools={
-                "user_id": user_id,
-                "integration_count": len(all_tools),
-                "integrations": list(all_tools.keys()),
-                "tool_counts": {iid: len(t) for iid, t in all_tools.items()},
-            }
-        )
-        log.info(
-            f"load_user_mcp_tools: user={user_id} got {len(all_tools)} integrations "
-            f"with counts={ {iid: len(t) for iid, t in all_tools.items()} }"
-        )
-
-        loaded: dict[str, list[BaseTool]] = {}
-
-        for integration_id, tools in all_tools.items():
-            if not tools:
-                log.warning(
-                    f"load_user_mcp_tools: integration_id={integration_id} has empty "
-                    f"tools list, skipping"
-                )
-                continue
-
-            # Category name: mcp_{integration_id} (no user_id suffix)
-            category_name = f"mcp_{integration_id}"
-
-            # Track this category for the user
-            self._user_mcp_categories[user_id].add(category_name)
-
-            # Skip if already loaded (category already exists)
-            if category_name in self._categories:
-                existing_count = len(self._categories[category_name].tools)
-                log.info(
-                    f"load_user_mcp_tools: '{category_name}' already in registry "
-                    f"(category.tools={existing_count} from earlier load), "
-                    f"skipping re-add for user {user_id}"
-                )
-                loaded[integration_id] = tools
-                continue
-
-            # Get space from integration config
-            integration = get_integration_by_id(integration_id)
-            space = integration_id  # Default: unique namespace per integration
-            has_subagent = False
-            if integration and integration.subagent_config:
-                space = integration.subagent_config.tool_space
-                has_subagent = integration.subagent_config.has_subagent
-            else:
-                server_url = await IntegrationResolver.get_server_url(integration_id)
-                space = derive_integration_namespace(integration_id, server_url, is_custom=True)
-
-            self._add_category(
-                name=category_name,
-                tools=tools,
-                space=space,
-                integration_name=integration_id,
-                is_delegated=has_subagent,
-            )
-            await self._index_category_tools(category_name)
-            loaded[integration_id] = tools
-            log.info(f"Loaded {len(tools)} MCP tools from {integration_id} for user {user_id}")
-
-        return loaded
 
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""

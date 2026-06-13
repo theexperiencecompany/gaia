@@ -6,11 +6,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
-from app.services.user_service import (
-    get_user_by_email,
-    get_user_by_id,
-    update_user_profile,
-)
+from app.services.user_service import get_user_by_id, update_user_profile
 
 
 @pytest.fixture
@@ -54,31 +50,6 @@ class TestGetUserById:
 
         with pytest.raises(HTTPException) as exc_info:
             await get_user_by_id("invalid_id")
-
-        assert exc_info.value.status_code == 404
-
-
-@pytest.mark.unit
-class TestGetUserByEmail:
-    async def test_returns_user_with_string_id(self, mock_users_collection, sample_user_doc):
-        mock_users_collection.find_one = AsyncMock(return_value=sample_user_doc)
-
-        result = await get_user_by_email("alice@example.com")
-
-        assert result is not None
-        assert isinstance(result["_id"], str)
-
-    async def test_returns_none_when_not_found(self, mock_users_collection):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-
-        result = await get_user_by_email("nobody@example.com")
-        assert result is None
-
-    async def test_raises_404_on_exception(self, mock_users_collection):
-        mock_users_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
-
-        with pytest.raises(HTTPException) as exc_info:
-            await get_user_by_email("bad@example.com")
 
         assert exc_info.value.status_code == 404
 

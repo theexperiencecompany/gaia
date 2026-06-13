@@ -140,17 +140,15 @@ export const useSendMessage = () => {
             .getState()
             .setLoadingWithContext(true, trimmedContent);
 
-          await fetchChatStream(
-            trimmedContent,
-            [userMessage],
-            normalizedFiles,
+          await fetchChatStream(trimmedContent, [userMessage], {
+            fileData: normalizedFiles,
             selectedTool,
-            selectedToolCategory,
+            toolCategory: selectedToolCategory,
             selectedWorkflow,
             selectedCalendarEvent,
-            optimisticId,
+            optimisticUserId: optimisticId,
             replyToMessage,
-          );
+          });
           return;
         }
 
@@ -189,17 +187,15 @@ export const useSendMessage = () => {
             loading: false,
           };
 
-          await fetchChatStream(
-            trimmedContent,
-            [streamingUserMessage],
-            normalizedFiles,
+          await fetchChatStream(trimmedContent, [streamingUserMessage], {
+            fileData: normalizedFiles,
             selectedTool,
-            selectedToolCategory,
+            toolCategory: selectedToolCategory,
             selectedWorkflow,
             selectedCalendarEvent,
-            optimisticId,
+            optimisticUserId: optimisticId,
             replyToMessage,
-          );
+          });
         } catch (error) {
           console.error("[useSendMessage] Stream failed:", error);
         }

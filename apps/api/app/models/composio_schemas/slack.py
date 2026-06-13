@@ -6,7 +6,7 @@ Reference: node_modules/@composio/core/generated/slack.ts
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class SlackReceiveMessagePayload(BaseModel):
@@ -31,25 +31,3 @@ class SlackChannelCreatedPayload(BaseModel):
     creator: str | None = Field(None, description="User ID who created the channel")
     id: str | None = Field(None, description="Channel ID")
     name: str | None = Field(None, description="Channel name")
-
-
-class SlackChannel(BaseModel):
-    """Slack channel info."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    id: str | None = None
-    name: str | None = None
-
-
-class SlackSearchMessagesData(BaseModel):
-    """Output data for SLACK_SEARCH_MESSAGES tool."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    ok: bool = True
-    messages: dict[str, Any] = Field(default_factory=dict)
-
-    def get_matches(self) -> list[dict[str, Any]]:
-        """Get message matches from nested structure."""
-        return self.messages.get("matches", [])

@@ -1687,7 +1687,7 @@ SKILLS_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
 ## SKILLS-SPECIFIC EXTRACTION:
 
 1. INSTALLED SKILL MAPPINGS:
-   - Skill name <-> VFS path <-> Target scope
+   - Skill name <-> workspace path <-> Target scope
    - "pr-review skill is installed at custom/subagents/github/pr-review/"
 
 2. GITHUB SOURCES:

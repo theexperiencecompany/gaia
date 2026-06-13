@@ -1,6 +1,4 @@
-import { Button } from "@heroui/button";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { GoogleCalendarIcon } from "@/components/shared/icons";
@@ -9,6 +7,7 @@ import { groupFetchDataByDate } from "@/utils/calendar/eventGrouping";
 import {
   formatDateWithRelative,
   formatTimeRange,
+  isDateOnly,
 } from "@/utils/date/calendarDateUtils";
 
 interface CalendarListProps {
@@ -20,8 +19,6 @@ export default function CalendarListCard({
   events,
   isCollapsible = true,
 }: CalendarListProps) {
-  const router = useRouter();
-
   const eventsByDay = useMemo(() => {
     if (!events) return {};
     return groupFetchDataByDate(events);
@@ -44,6 +41,18 @@ export default function CalendarListCard({
               <div className="space-y-2">
                 {dayEvents.map((event) => {
                   const eventColor = event.background_color || "#00bbff";
+                  let timeLabel = "";
+                  if (isDateOnly(event.start_time)) {
+                    timeLabel = "All day";
+                  } else if (
+                    event.start_time?.includes("T") &&
+                    event.end_time
+                  ) {
+                    timeLabel = formatTimeRange(
+                      event.start_time,
+                      event.end_time,
+                    );
+                  }
 
                   return (
                     <div
@@ -72,17 +81,12 @@ export default function CalendarListCard({
 
                         {/* Time and Calendar Name */}
                         <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
-                          <span>
-                            {event.start_time.includes("T") && event.end_time
-                              ? formatTimeRange(
-                                  event.start_time,
-                                  event.end_time,
-                                )
-                              : "All day"}
-                          </span>
+                          {timeLabel && <span>{timeLabel}</span>}
                           {event.calendar_name && (
                             <>
-                              <span className="text-zinc-500">•</span>
+                              {timeLabel && (
+                                <span className="text-zinc-500">•</span>
+                              )}
                               <span className="text-zinc-400">
                                 {event.calendar_name}
                               </span>
@@ -97,16 +101,6 @@ export default function CalendarListCard({
             </div>
           ))}
         </ScrollShadow>
-
-        <Button
-          onPress={() => router.push("/calendar")}
-          color="primary"
-          className="mt-3 text-primary"
-          fullWidth
-          variant="flat"
-        >
-          Open Calendar
-        </Button>
       </div>
     );
 

@@ -49,32 +49,6 @@ class TestGetUserById:
             assert exc.value.status_code == 404
 
 
-class TestGetUserByEmail:
-    async def test_returns_user(self):
-        from app.services.user_service import get_user_by_email
-
-        fake_doc = {
-            "_id": FAKE_OID,
-            "name": "Test User",
-            "email": "test@example.com",
-        }
-        with patch(COLLECTION) as mock_col:
-            mock_col.find_one = AsyncMock(return_value=fake_doc)
-            result = await get_user_by_email("test@example.com")
-
-        assert result["email"] == "test@example.com"
-        assert isinstance(result["_id"], str)
-
-    async def test_returns_none_when_not_found(self):
-        from app.services.user_service import get_user_by_email
-
-        with patch(COLLECTION) as mock_col:
-            mock_col.find_one = AsyncMock(return_value=None)
-            result = await get_user_by_email("missing@example.com")
-
-        assert result is None
-
-
 class TestUpdateUserProfile:
     async def test_update_name_only(self):
         from app.services.user_service import update_user_profile

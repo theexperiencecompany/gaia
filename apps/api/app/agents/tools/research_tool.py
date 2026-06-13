@@ -26,7 +26,7 @@ from app.utils.research_utils import (
     decompose_research_queries,
     rank_and_deduplicate_urls,
 )
-from app.utils.search_utils import fetch_with_httpx, search_with_duckduckgo
+from app.utils.search_utils import fetch_with_httpx, search_for_research
 from shared.py.wide_events import log
 
 
@@ -94,7 +94,7 @@ async def deep_research(
         writer({"progress": f"Running {len(sub_queries)} parallel searches..."})
 
         async def _resilient_search(q: str) -> dict:
-            return await search_with_duckduckgo(q, count=5)
+            return await search_for_research(q, count=5)
 
         search_results = await asyncio.gather(
             *[_resilient_search(q) for q in sub_queries],

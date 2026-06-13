@@ -452,6 +452,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#a78bfa",
     isImage: false,
   },
+  wait_for_subagents: {
+    icon: "Clock04Icon",
+    bgColor: "bg-yellow-500/20 backdrop-blur",
+    iconColor: "text-yellow-400",
+    bgColorRaw: "rgba(234, 179, 8, 0.2)",
+    iconColorRaw: "#facc15",
+    isImage: false,
+  },
   retrieve_tools: {
     icon: "PackageOpenIcon",
     bgColor: "bg-indigo-500/20 backdrop-blur",
@@ -468,12 +476,28 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#2dd4bf",
     isImage: false,
   },
-  fileSystem: {
+  filesystem: {
     icon: "FolderFileStorageIcon",
     bgColor: "bg-fuchsia-500/20 backdrop-blur",
     iconColor: "text-fuchsia-400",
     bgColorRaw: "rgba(217, 70, 239, 0.2)",
     iconColorRaw: "#e879f9",
+    isImage: false,
+  },
+  tracked_todos: {
+    icon: "ClipboardIcon",
+    bgColor: "bg-amber-500/20 backdrop-blur",
+    iconColor: "text-amber-400",
+    bgColorRaw: "rgba(245, 158, 11, 0.2)",
+    iconColorRaw: "#fbbf24",
+    isImage: false,
+  },
+  finish_task: {
+    icon: "CheckmarkCircle02Icon",
+    bgColor: "bg-emerald-500/20 backdrop-blur",
+    iconColor: "text-emerald-400",
+    bgColorRaw: "rgba(16, 185, 129, 0.2)",
+    iconColorRaw: "#34d399",
     isImage: false,
   },
   skills: {

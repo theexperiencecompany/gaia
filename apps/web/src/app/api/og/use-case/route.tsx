@@ -54,13 +54,17 @@ export async function GET(request: NextRequest) {
       ]);
 
       if (exploreResponse.ok) {
-        const data = await exploreResponse.json();
-        workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
+        const data = (await exploreResponse.json()) as {
+          workflows?: OgWorkflow[];
+        };
+        workflow = data.workflows?.find((w) => w.id === slug) ?? null;
       }
 
       if (!workflow && communityResponse.ok) {
-        const data = await communityResponse.json();
-        workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
+        const data = (await communityResponse.json()) as {
+          workflows?: OgWorkflow[];
+        };
+        workflow = data.workflows?.find((w) => w.id === slug) ?? null;
       }
 
       if (!workflow) {
@@ -69,8 +73,10 @@ export async function GET(request: NextRequest) {
           { cache: "no-store" },
         );
         if (publicResponse.ok) {
-          const data = await publicResponse.json();
-          workflow = data.workflow;
+          const data = (await publicResponse.json()) as {
+            workflow?: OgWorkflow;
+          };
+          workflow = data.workflow ?? null;
         }
       }
     } catch (e) {

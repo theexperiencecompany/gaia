@@ -1,14 +1,14 @@
 """
 Service tests: call real construct_langchain_messages().
 
-Mock only: get_memory_message (needs Mem0), get_platform_context_message (needs integrations).
+Mock only: build_dynamic_context_message (needs Mem0/Redis/Mongo).
 Real: create_system_message, format_files_list, format_reply_context,
 format_tool_selection_message, message list construction.
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
@@ -24,12 +24,8 @@ class TestConstructMessagesReal:
         """A simple message must produce at least a SystemMessage and HumanMessage."""
         with (
             patch(
-                "app.agents.core.messages.get_memory_message",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "app.agents.core.messages.get_platform_context_message",
-                new=MagicMock(return_value=None),
+                "app.agents.core.messages.build_dynamic_context_message",
+                new=AsyncMock(return_value=SystemMessage(content="")),
             ),
         ):
             messages = await construct_langchain_messages(
@@ -48,12 +44,8 @@ class TestConstructMessagesReal:
         """selected_tool must add a tool selection instruction."""
         with (
             patch(
-                "app.agents.core.messages.get_memory_message",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "app.agents.core.messages.get_platform_context_message",
-                new=MagicMock(return_value=None),
+                "app.agents.core.messages.build_dynamic_context_message",
+                new=AsyncMock(return_value=SystemMessage(content="")),
             ),
         ):
             messages = await construct_langchain_messages(
@@ -71,12 +63,8 @@ class TestConstructMessagesReal:
         """First message must always be a SystemMessage."""
         with (
             patch(
-                "app.agents.core.messages.get_memory_message",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "app.agents.core.messages.get_platform_context_message",
-                new=MagicMock(return_value=None),
+                "app.agents.core.messages.build_dynamic_context_message",
+                new=AsyncMock(return_value=SystemMessage(content="")),
             ),
         ):
             messages = await construct_langchain_messages(

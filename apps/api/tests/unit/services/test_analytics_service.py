@@ -7,7 +7,6 @@ import pytest
 from app.services.analytics_service import (
     AnalyticsEvents,
     capture_event,
-    flush_events,
     identify_user,
     track_payment_event,
     track_signup,
@@ -312,21 +311,3 @@ class TestTrackPaymentEvent:
 # ---------------------------------------------------------------------------
 # flush_events
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestFlushEvents:
-    def test_flushes_client(self, mock_posthog):
-        flush_events()
-
-        mock_posthog.flush.assert_called_once()
-
-    def test_skips_when_no_client(self, mock_posthog_none):
-        # Should not raise
-        flush_events()
-
-    def test_handles_flush_exception(self, mock_posthog):
-        mock_posthog.flush.side_effect = Exception("Flush failed")
-
-        # Should not raise
-        flush_events()

@@ -31,8 +31,17 @@ class MongoDB:
             sys.exit(1)
 
         try:
+            # Cap the connection pool. Motor defaults to maxPoolSize=100 per
+            # process; with async I/O the app rarely needs more than a handful
+            # of concurrent Mongo ops, and each pooled socket carries buffers.
+            # 20 is ample headroom and bounds memory under load.
             self.client = AsyncIOMotorClient(
-                uri, server_api=ServerApi("1"), tz_aware=True, tzinfo=UTC
+                uri,
+                server_api=ServerApi("1"),
+                tz_aware=True,
+                tzinfo=UTC,
+                maxPoolSize=20,
+                minPoolSize=0,
             )
             self.database = self.client.get_database(db_name)
             log.set(db={"connection_status": "connected", "backend": "mongodb"})

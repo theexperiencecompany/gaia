@@ -76,21 +76,3 @@ class OAuthIntegration(BaseModel):
                 f"Integration {self.id!r} has managed_by='composio' but no composio_config."
             )
         return self
-
-
-class IntegrationConfigResponse(BaseModel):
-    """Response model for integration configuration."""
-
-    id: str
-    name: str
-    description: str
-    category: str
-    provider: str
-    available: bool
-    isSpecial: bool
-    displayPriority: int
-    includedIntegrations: list[str]
-    isFeatured: bool
-    managedBy: Literal["self", "composio", "mcp", "internal"]
-    authType: Literal["none", "oauth", "bearer"] | None = None
-    source: Literal["platform"] = "platform"

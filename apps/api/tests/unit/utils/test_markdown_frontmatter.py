@@ -2,10 +2,7 @@
 
 import pytest
 
-from app.utils.markdown_utils import (
-    convert_markdown_to_plain_text,
-    split_yaml_frontmatter,
-)
+from app.utils.markdown_utils import split_yaml_frontmatter
 
 
 @pytest.mark.unit
@@ -76,50 +73,3 @@ class TestSplitYamlFrontmatter:
         # splitlines(keepends=True) preserves line endings; rstrip("\r\n") strips the trailing one
         assert frontmatter == "title: Hello"
         assert body == "Body text"
-
-
-@pytest.mark.unit
-class TestConvertMarkdownToPlainText:
-    def test_strips_headers(self):
-        result = convert_markdown_to_plain_text("## My Header")
-        assert result == "My Header"
-
-    def test_strips_bold(self):
-        result = convert_markdown_to_plain_text("This is **bold** text")
-        assert result == "This is bold text"
-
-    def test_strips_italic(self):
-        result = convert_markdown_to_plain_text("This is *italic* text")
-        assert result == "This is italic text"
-
-    def test_converts_links(self):
-        result = convert_markdown_to_plain_text("[Click here](http://example.com)")  # NOSONAR
-        assert result == "Click here"
-
-    def test_strips_code_blocks(self):
-        result = convert_markdown_to_plain_text("```\ncode here\n```\nAfter")
-        assert "code here" not in result
-        assert "After" in result
-
-    def test_strips_inline_code(self):
-        result = convert_markdown_to_plain_text("Use `code` here")
-        assert result == "Use code here"
-
-    def test_strips_blockquotes(self):
-        result = convert_markdown_to_plain_text("> Quoted text")
-        assert result == "Quoted text"
-
-    def test_strips_list_markers(self):
-        result = convert_markdown_to_plain_text("- item one\n- item two")
-        assert "item one" in result
-        assert "item two" in result
-        assert "- " not in result
-
-    def test_strips_ordered_list_markers(self):
-        result = convert_markdown_to_plain_text("1. first\n2. second")
-        assert "first" in result
-        assert "second" in result
-
-    def test_preserves_plain_text(self):
-        text = "Hello world, this is a test."
-        assert convert_markdown_to_plain_text(text) == text

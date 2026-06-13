@@ -29,19 +29,9 @@ class TriggerSearchService:
         user_id: str,
         limit: int = 15,
     ) -> list[dict[str, Any]]:
-        """
-        Search for triggers matching the query.
+        """Search for triggers matching the query via ChromaDB semantic search.
 
-        Uses semantic search via ChromaDB embeddings.
-        Returns triggers with connection status and config_fields embedded.
-
-        Args:
-            query: Natural language search query
-            user_id: User ID for checking connection status
-            limit: Maximum number of results (default 15)
-
-        Returns:
-            List of trigger dicts with connection status and config_fields
+        Returns trigger dicts enriched with connection status and config_fields.
         """
         from app.services.oauth.oauth_service import check_integration_status
 
@@ -95,14 +85,7 @@ class TriggerSearchService:
 
     @classmethod
     async def get_schema(cls, trigger_slug: str) -> dict[str, Any] | None:
-        """Get configuration schema for a specific trigger.
-
-        Args:
-            trigger_slug: The trigger slug to look up
-
-        Returns:
-            Schema dict with trigger info and config fields, or None if not found
-        """
+        """Get the configuration schema for a trigger, or None if not found."""
         for integration in OAUTH_INTEGRATIONS:
             if not integration.associated_triggers:
                 continue
@@ -140,44 +123,3 @@ class TriggerSearchService:
                     return schema
 
         return None
-
-    @classmethod
-    async def get_all_triggers(cls, user_id: str) -> list[dict[str, Any]]:
-        """Get all available triggers with connection status.
-
-        Args:
-            user_id: User ID for checking connection status
-
-        Returns:
-            List of all triggers with connection status
-        """
-        from app.services.oauth.oauth_service import check_integration_status
-
-        results = []
-        checked_integrations: dict[str, bool] = {}
-
-        for integration in OAUTH_INTEGRATIONS:
-            if not integration.associated_triggers:
-                continue
-
-            # Check connection once per integration
-            if integration.id not in checked_integrations:
-                try:
-                    is_connected = await check_integration_status(integration.id, user_id)
-                    checked_integrations[integration.id] = is_connected
-                except Exception:
-                    checked_integrations[integration.id] = False
-
-            for trigger in integration.associated_triggers:
-                results.append(
-                    {
-                        "trigger_slug": trigger.slug,
-                        "trigger_name": trigger.name,
-                        "description": trigger.description,
-                        "integration_id": integration.id,
-                        "integration_name": integration.name,
-                        "is_connected": checked_integrations.get(integration.id, False),
-                    }
-                )
-
-        return results

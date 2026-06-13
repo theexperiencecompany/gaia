@@ -464,18 +464,6 @@ class TestProviderRegistry:
         reg.register(name, loader, strategy=MissingKeyStrategy.SILENT)
         assert await reg.aget(name) == 88
 
-    def test_get_loader(self):
-        reg = ProviderRegistry()
-        name = _uid("gl")
-        reg.register(name, lambda: 1, strategy=MissingKeyStrategy.SILENT)
-        loader = reg.get_loader(name)
-        assert isinstance(loader, LazyLoader)
-
-    def test_get_loader_unknown(self):
-        reg = ProviderRegistry()
-        with pytest.raises(KeyError):
-            reg.get_loader("nope")
-
     def test_is_available(self):
         reg = ProviderRegistry()
         name = _uid("avail")
@@ -491,17 +479,6 @@ class TestProviderRegistry:
         reg.get(name)
         assert reg.is_initialized(name) is True
         assert reg.is_initialized("nonexistent") is False
-
-    def test_list_providers(self):
-        reg = ProviderRegistry()
-        name = _uid("list")
-        reg.register(name, lambda: 1, strategy=MissingKeyStrategy.SILENT)
-        listing = reg.list_providers()
-        assert name in listing
-        assert "available" in listing[name]
-        assert "initialized" in listing[name]
-        assert "is_async" in listing[name]
-        assert "is_global_context" in listing[name]
 
     def test_re_register_overwrites(self):
         reg = ProviderRegistry()

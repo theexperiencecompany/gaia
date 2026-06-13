@@ -1,10 +1,4 @@
-"""Core agent helper functions for LangGraph execution and configuration.
-
-Provides essential building blocks for agent execution including configuration
-building, state initialization, and graph execution in both streaming and silent modes.
-
-These functions are tightly coupled to agent-specific logic and LangGraph execution.
-"""
+"""Core agent helpers: config building, state init, and graph execution (streaming and silent)."""
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -17,10 +11,8 @@ from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.tools.core.registry import get_tool_registry
-from app.config.settings import settings
+from app.config.langfuse import build_langfuse_callback
 from app.constants.cache import (
-    CUSTOM_INT_METADATA_CACHE_PREFIX,
     CUSTOM_INT_METADATA_TTL,
     HANDOFF_METADATA_CACHE_PREFIX,
 )
@@ -34,6 +26,7 @@ from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
+from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.models_models import ModelConfig
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
@@ -46,96 +39,11 @@ from app.utils.agent_utils import (
 from shared.py.wide_events import log
 
 
-async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
-    """Look up icon_url, integration_id, integration_name for custom MCP tools.
-
-    Uses Redis cache to avoid repeated MongoDB queries during a conversation.
-    Cache is keyed by integration_id (not tool_name) since multiple tools share
-    the same integration metadata.
-
-    Args:
-        tool_name: Name of the tool being called
-        user_id: User ID for MCP category resolution
-
-    Returns:
-        Dict with icon_url, integration_id, integration_name if found,
-        empty dict otherwise
-    """
-
-    tool_registry = await get_tool_registry()
-    tool_category = tool_registry.get_category_of_tool(tool_name)
-
-    if not tool_category:
-        return {}
-
-    # Extract integration_id from MCP category
-    # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
-    #
-    # Format assumptions for distinguishing integration_id from user_id suffix:
-    # - User IDs are UUIDs with dashes (e.g., 550e8400-e29b-41d4-a716-446655440000)
-    # - Custom integration IDs have hex suffixes WITHOUT dashes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
-    #
-    # This logic is fragile if:
-    # - UUID formats change to not include dashes
-    # - Custom IDs start using dashes
-    # A more robust approach would use a consistent delimiter or explicit marker.
-    if not tool_category.startswith("mcp_"):
-        return {}
-
-    without_prefix = tool_category[4:]
-    parts = without_prefix.rsplit("_", 1)
-    # Only strip suffix if it looks like a UUID (contains dashes and is ~36 chars)
-    # This is more specific than just checking for dashes
-    if len(parts) == 2 and "-" in parts[-1] and len(parts[-1]) >= 32:
-        # Last part is likely a user ID (UUID with dashes)
-        integration_id = parts[0]
-    else:
-        integration_id = without_prefix
-
-    # Check Redis cache first
-    cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
-    cached = await get_cache(cache_key)
-    if cached:
-        return cached
-
-    # Cache miss - query MongoDB
-    try:
-        integration = await integrations_collection.find_one(
-            {"integration_id": integration_id}, {"name": 1, "icon_url": 1}
-        )
-
-        if not integration:
-            # Cache negative result too (empty dict)
-            await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
-            return {}
-
-        metadata = {
-            "icon_url": integration.get("icon_url"),
-            "integration_id": integration_id,
-            "integration_name": integration.get("name"),
-        }
-
-        # Cache for 1 hour
-        await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
-        return metadata
-
-    except Exception as e:
-        log.warning(f"Failed to lookup custom integration metadata: {e}")
-        return {}
-
-
 async def get_handoff_metadata(subagent_id: str) -> dict:
     """Look up icon_url, integration_id, integration_name for handoff subagents.
 
-    Checks both platform integrations (in-memory) and custom MCPs (MongoDB/Redis).
-    Uses Redis cache for custom MCPs to avoid repeated DB queries.
-
-    Args:
-        subagent_id: The subagent ID from handoff tool args
-
-    Returns:
-        Dict with icon_url, integration_id, integration_name if found,
-        empty dict otherwise
+    Checks platform integrations (in-memory) and custom MCPs (MongoDB, Redis-cached).
+    Returns an empty dict if not found.
     """
 
     clean_id, _ = parse_subagent_id(subagent_id)
@@ -195,18 +103,7 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
 
 
 def _extract_timezone_offset(user_time: datetime) -> str:
-    """
-    Extract timezone offset string from a datetime object.
-
-    Returns the offset as a string like "+05:30" or "-08:00".
-    Falls back to "+00:00" (UTC) if the datetime has no timezone info.
-
-    Args:
-        user_time: Datetime object (preferably timezone-aware)
-
-    Returns:
-        Timezone offset string (e.g., "+05:30", "-08:00", "+00:00")
-    """
+    """Extract timezone offset string (e.g. "+05:30") from a datetime; "+00:00" if naive."""
     if user_time.tzinfo is None:
         return "+00:00"
 
@@ -225,70 +122,16 @@ def _extract_timezone_offset(user_time: datetime) -> str:
     return f"{sign}{hours:02d}:{minutes:02d}"
 
 
-def build_agent_config(
+def _build_agent_callbacks(
     conversation_id: str,
     user: dict,
-    user_time: datetime,
     agent_name: str,
-    user_model_config: ModelConfig | None = None,
-    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
-    thread_id: str | None = None,
-    base_configurable: dict | None = None,
-    selected_tool: str | None = None,
-    tool_category: str | None = None,
-    subagent_id: str | None = None,
-    vfs_session_id: str | None = None,
-    source: str | None = None,
-) -> dict:
-    """Build configuration for graph execution with optional authentication tokens.
-
-    Creates a comprehensive configuration object for LangGraph execution that includes
-    user context, model settings, authentication tokens, and execution parameters.
-
-    Args:
-        conversation_id: Unique identifier for the conversation thread
-        user: User information dictionary containing user_id and email
-        user_time: Current datetime for the user's timezone
-        user_model_config: Optional model configuration with provider and token limits
-        thread_id: Optional override for thread_id (defaults to conversation_id)
-        base_configurable: Optional base configurable to inherit from (for child agents)
-        selected_tool: Optional tool name selected via slash command
-        tool_category: Optional category of the selected tool
-        subagent_id: Optional subagent ID for skill learning (e.g., "twitter", "github")
-        vfs_session_id: Shared VFS session ID that stays constant across the executor
-            and all handoff subagents it spawns. All agents in the chain resolve VFS
-            paths relative to the executor workspace using this ID. When provided via
-            base_configurable it is inherited automatically.
-
-    Returns:
-        Configuration dictionary formatted for LangGraph execution with configurable
-        parameters, metadata, and recursion limits
-    """
-
+    usage_metadata_callback: UsageMetadataCallbackHandler | None,
+) -> list[BaseCallbackHandler]:
+    """Assemble the LangChain callback list for an agent run (PostHog, usage)."""
     callbacks: list[BaseCallbackHandler] = []
 
-    # Add OpikTracer in production, or in development only if configured.
-    # Import is deferred to avoid paying the cost when Opik is unused and to
-    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
-    # which conflicts with the real litellm at module load time).
-    is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
-    if settings.ENV == "production" or is_opik_configured:
-        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
-
-        callbacks.append(
-            OpikTracer(
-                tags=["langchain", settings.ENV],
-                thread_id=conversation_id,
-                metadata={
-                    "user_id": user.get("user_id"),
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                },
-                project_name="GAIA",
-            )
-        )
     posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
-
     if posthog_client is not None:
         callbacks.append(
             PostHogCallbackHandler(
@@ -302,38 +145,141 @@ def build_agent_config(
             ),
         )
 
+    langfuse_callback = build_langfuse_callback()
+    if langfuse_callback is not None:
+        callbacks.append(langfuse_callback)
+
     if usage_metadata_callback:
         callbacks.append(usage_metadata_callback)
 
-    if user_model_config:
-        model_name = user_model_config.provider_model_name
-        provider_name = user_model_config.inference_provider.value
-        max_tokens = user_model_config.max_tokens
-        log.set(model_config_source="user_selected")
-    else:
-        model_name = DEFAULT_MODEL_NAME
-        provider_name = DEFAULT_LLM_PROVIDER
-        max_tokens = DEFAULT_MAX_TOKENS
-        log.set(model_config_source="default")
+    return callbacks
 
-    # Cherry-pick specific keys from base_configurable if provided
-    # Only inherit model config and user context, not LangChain internal state
-    pinned_memories = None
-    pinned_skills = None
-    if base_configurable:
-        # Inherit model config from parent if not overridden
-        provider_name = base_configurable.get("provider", provider_name)
-        max_tokens = base_configurable.get("max_tokens", max_tokens)
-        model_name = base_configurable.get("model_name", model_name)
-        selected_tool = selected_tool or base_configurable.get("selected_tool")
-        tool_category = tool_category or base_configurable.get("tool_category")
-        subagent_id = subagent_id or base_configurable.get("subagent_id")
-        vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
-        source = source or base_configurable.get("conversation_source")
-        # Pass pre-fetched memory/skills sections through to avoid repeat
-        # ChromaDB lookups on the subagent side.
-        pinned_memories = base_configurable.get("__pinned_memories__")
-        pinned_skills = base_configurable.get("__pinned_skills__")
+
+def _resolve_model_config(
+    user_model_config: ModelConfig | None,
+) -> tuple[str, str, int]:
+    """Pick the model triple (name, provider, max_tokens) from user choice or defaults."""
+    if user_model_config:
+        log.set(model_config_source="user_selected")
+        return (
+            user_model_config.provider_model_name,
+            user_model_config.inference_provider.value,
+            user_model_config.max_tokens,
+        )
+    log.set(model_config_source="default")
+    return DEFAULT_MODEL_NAME, DEFAULT_LLM_PROVIDER, DEFAULT_MAX_TOKENS
+
+
+# Fields that fall back to the parent only when the current call left them blank.
+_PARENT_FALLBACK_FIELDS: tuple[tuple[str, str], ...] = (
+    ("selected_tool", "selected_tool"),
+    ("tool_category", "tool_category"),
+    ("subagent_id", "subagent_id"),
+    ("vfs_session_id", "vfs_session_id"),
+    ("active_todo_id", "active_todo_id"),
+    ("execution_mode", "execution_mode"),
+    ("source", "conversation_source"),
+)
+
+
+def _inherit_from_parent_configurable(
+    base_configurable: dict | None,
+    current: dict,
+) -> dict:
+    """Merge `current` with optional inheritance from a parent agent's configurable.
+
+    - Model fields (provider/max_tokens/model_name): parent overrides child.
+    - Fallback fields (tool / subagent / vfs / todo / mode / source): child wins; parent
+      only fills in blanks.
+    - Pass-through (stream_id, pinned memories/skills): always come from parent.
+    """
+    merged = dict(current)
+    merged["stream_id"] = None
+    merged["pinned_memories"] = None
+    merged["pinned_skills"] = None
+
+    if not base_configurable:
+        return merged
+
+    merged["provider_name"] = base_configurable.get("provider", merged["provider_name"])
+    merged["max_tokens"] = base_configurable.get("max_tokens", merged["max_tokens"])
+    merged["model_name"] = base_configurable.get("model_name", merged["model_name"])
+
+    for local_key, parent_key in _PARENT_FALLBACK_FIELDS:
+        if not merged.get(local_key):
+            merged[local_key] = base_configurable.get(parent_key)
+
+    # Pre-fetched memory/skills sections avoid repeat ChromaDB lookups on the subagent.
+    merged["stream_id"] = base_configurable.get("stream_id")
+    merged["pinned_memories"] = base_configurable.get("__pinned_memories__")
+    merged["pinned_skills"] = base_configurable.get("__pinned_skills__")
+    return merged
+
+
+# NOSONAR python:S107 — these parameters form one cohesive LangGraph execution
+# config surface (user context, model, auth, tracing, execution params). Grouping
+# them into a dataclass would not reduce the surface, only move it, and every
+# caller already passes them as explicit keyword args.
+def build_agent_config(  # NOSONAR python:S107
+    conversation_id: str,
+    user: dict,
+    user_time: datetime,
+    agent_name: str,
+    user_model_config: ModelConfig | None = None,
+    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
+    thread_id: str | None = None,
+    base_configurable: dict | None = None,
+    selected_tool: str | None = None,
+    tool_category: str | None = None,
+    subagent_id: str | None = None,
+    vfs_session_id: str | None = None,
+    active_todo_id: str | None = None,
+    execution_mode: str | None = None,
+    source: str | None = None,
+    langfuse_trace_id: str | None = None,
+    langfuse_tags: list[str] | None = None,
+) -> dict:
+    """Build the LangGraph execution config (user context, model, auth, execution params).
+
+    Notable args:
+        vfs_session_id: Shared VFS session ID held constant across the executor and the
+            handoff subagents it spawns, so all resolve VFS paths against the executor
+            workspace. Inherited automatically via base_configurable.
+        langfuse_trace_id / langfuse_tags: Bind spans to a Langfuse trace; inherit from
+            base_configurable when omitted so the executor lands on the comms trace.
+    """
+    callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
+    model_name, provider_name, max_tokens = _resolve_model_config(user_model_config)
+
+    resolved = _inherit_from_parent_configurable(
+        base_configurable,
+        {
+            "provider_name": provider_name,
+            "max_tokens": max_tokens,
+            "model_name": model_name,
+            "selected_tool": selected_tool,
+            "tool_category": tool_category,
+            "subagent_id": subagent_id,
+            "vfs_session_id": vfs_session_id,
+            "active_todo_id": active_todo_id,
+            "execution_mode": execution_mode,
+            "source": source,
+        },
+    )
+
+    # Explicit kwargs win over what was inherited from the parent's configurable.
+    # `is not None` (not `or`) so callers can pass [] to intentionally clear tags.
+    inherited = base_configurable or {}
+    effective_trace_id = (
+        langfuse_trace_id if langfuse_trace_id is not None else inherited.get("langfuse_trace_id")
+    )
+    effective_tags = langfuse_tags if langfuse_tags is not None else inherited.get("langfuse_tags")
+
+    # Specific channel (web/mobile/whatsapp/...) and its generalized category
+    # (UI/Bot/BG). The channel falls back to "background" when unset because the
+    # only callers that omit a source are the silent background paths.
+    source_channel = resolved["source"] or ConversationSource.BACKGROUND.value
+    source_category = SourceCategory.from_source(resolved["source"]).value
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -342,28 +288,50 @@ def build_agent_config(
         "user_name": user.get("name", ""),
         "user_time": user_time.isoformat(),
         "user_timezone": _extract_timezone_offset(user_time),
-        "provider": provider_name,
-        "max_tokens": max_tokens,
-        "model_name": model_name,
-        "model": model_name,
-        "selected_tool": selected_tool,
-        "tool_category": tool_category,
-        "subagent_id": subagent_id,
-        "vfs_session_id": vfs_session_id,
-        "conversation_source": source,
-        "__pinned_memories__": pinned_memories,
-        "__pinned_skills__": pinned_skills,
+        "provider": resolved["provider_name"],
+        "max_tokens": resolved["max_tokens"],
+        "model_name": resolved["model_name"],
+        "model": resolved["model_name"],
+        "selected_tool": resolved["selected_tool"],
+        "tool_category": resolved["tool_category"],
+        "subagent_id": resolved["subagent_id"],
+        "vfs_session_id": resolved["vfs_session_id"],
+        "stream_id": resolved["stream_id"],
+        "active_todo_id": resolved["active_todo_id"],
+        "execution_mode": resolved["execution_mode"] or "interactive",
+        "conversation_source": resolved["source"],
+        "source_category": source_category,
+        "__pinned_memories__": resolved["pinned_memories"],
+        "__pinned_skills__": resolved["pinned_skills"],
     }
 
-    config = {
+    # Stash in configurable so child agents (spawned via asyncio.create_task)
+    # re-emit the same trace_id from their own build_agent_config call.
+    if effective_trace_id:
+        configurable["langfuse_trace_id"] = effective_trace_id
+    if effective_tags:
+        configurable["langfuse_tags"] = effective_tags
+
+    metadata: dict = {
+        "user_id": user.get("user_id"),
+        "source_category": source_category,
+        "source_channel": source_channel,
+    }
+    if effective_trace_id:
+        metadata["langfuse_trace_id"] = effective_trace_id
+        metadata["langfuse_session_id"] = conversation_id
+        if user.get("user_id"):
+            metadata["langfuse_user_id"] = user["user_id"]
+        if effective_tags:
+            metadata["langfuse_tags"] = effective_tags
+
+    return {
         "configurable": configurable,
         "recursion_limit": AGENT_RECURSION_LIMIT,
-        "metadata": {"user_id": user.get("user_id")},
+        "metadata": metadata,
         "callbacks": callbacks,
         "agent_name": agent_name,
     }
-
-    return config
 
 
 def build_initial_state(
@@ -373,23 +341,7 @@ def build_initial_state(
     history,
     trigger_context: dict | None = None,
 ) -> dict:
-    """Construct initial state dictionary for LangGraph execution.
-
-    Builds the starting state containing all necessary context for the agent
-    including user query, conversation history, tool selections, and optional
-    workflow trigger context.
-
-    Args:
-        request: Message request object containing user message and selections
-        user_id: Unique identifier for the user
-        conversation_id: Unique identifier for the conversation thread
-        history: List of previous messages in LangChain format
-        trigger_context: Optional context data from workflow triggers
-
-    Returns:
-        State dictionary with query, messages, datetime, user context, and
-        selected tools/workflows for graph processing
-    """
+    """Construct the initial LangGraph state (query, history, tool selections, trigger context)."""
     state = {
         "query": request.message,
         "intent": request.message,
@@ -405,6 +357,15 @@ def build_initial_state(
 
     if trigger_context:
         state["trigger_context"] = trigger_context
+        # Bind active todo + execution mode so banners and tools default
+        # to the firing todo. Scheduled runs always set these; comms-driven
+        # turns may set them when delegating todo-bound work.
+        if active_todo_id := trigger_context.get("active_todo_id") or trigger_context.get(
+            "todo_id"
+        ):
+            state["active_todo_id"] = active_todo_id
+        if execution_mode := trigger_context.get("execution_mode"):
+            state["execution_mode"] = execution_mode
 
     return state
 
@@ -415,24 +376,11 @@ async def execute_graph_silent(
     initial_state: dict,
     config: dict,
 ) -> tuple[str, dict]:
-    """Execute LangGraph in silent mode with real-time progress storage.
+    """Execute LangGraph in silent mode, accumulating the full message and tool data.
 
-    Runs the agent graph asynchronously and accumulates all results including
-    the complete message content and extracted tool data. Used for background
-    processing and workflow triggers where real-time streaming is not needed.
-
-    Stores intermediate messages and tool outputs as they happen during execution,
-    using the same storage patterns as normal chat.
-
-    Args:
-        graph: LangGraph instance to execute
-        initial_state: Starting state dictionary with query and context
-        config: Configuration dictionary with user context and settings
-
-    Returns:
-        Tuple containing:
-        - complete_message: Full response text accumulated from all chunks
-        - tool_data: Dictionary of extracted tool execution data and results
+    Used for background processing and workflow triggers that don't need streaming.
+    Stores intermediate messages and tool outputs as they happen, like normal chat.
+    Returns (complete_message, tool_data).
     """
     complete_message = ""
     tool_data: dict = {"tool_data": []}
@@ -455,6 +403,10 @@ async def execute_graph_silent(
         # Process "updates" events - same logic as execute_graph_streaming
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only collect tool_data from the LLM node — pre-model hooks
+                # produce updates containing historical messages with old tool_calls.
+                if node_name != "agent":
+                    continue
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
                         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
@@ -466,29 +418,28 @@ async def execute_graph_silent(
 
                             # Look up metadata based on tool type
                             tool_name = tc.get("name")
-                            tool_metadata = {}
+                            tool_metadata: dict = {}
 
                             # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_data noise.
                             # Safe: doesn't affect agent state; only avoids redundant UI events.
                             if tool_name in {"plan_tasks", "update_tasks"}:
                                 continue
 
+                            # Handoff metadata stays pre-resolved here (it's a special
+                            # subagent-display path). MCP tool metadata is now resolved
+                            # inside format_tool_call_entry when user_id is passed.
                             if tool_name == "handoff":
                                 args = tc.get("args", {})
                                 subagent_id = args.get("subagent_id", "")
                                 if subagent_id:
                                     tool_metadata = await get_handoff_metadata(subagent_id)
-                            elif tool_name and user_id:
-                                tool_metadata = await get_custom_integration_metadata(
-                                    tool_name, user_id
-                                )
 
-                            # Format tool_data entry (same as streaming)
                             tool_entry = await format_tool_call_entry(
                                 tc,
                                 icon_url=tool_metadata.get("icon_url"),
                                 integration_id=tool_metadata.get("integration_id"),
                                 integration_name=tool_metadata.get("integration_name"),
+                                user_id=user_id,
                             )
                             if tool_entry:
                                 tool_data["tool_data"].append(tool_entry)
@@ -503,7 +454,7 @@ async def execute_graph_silent(
 
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
                 content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     complete_message += content
 
         elif stream_mode == "custom":
@@ -543,41 +494,15 @@ async def execute_graph_streaming(
     initial_state: dict,
     config: dict,
 ) -> AsyncGenerator[str, None]:
-    """Execute LangGraph in streaming mode with real-time output.
+    """Execute LangGraph in streaming mode, yielding SSE-formatted updates.
 
-    Runs the agent graph and yields Server-Sent Events (SSE) formatted updates
-    as they occur. Handles both message content streaming and tool execution.
+    Cancellable via stream_id in config (through stream_manager).
 
-    Supports cancellation via stream_id in config - when cancelled via
-    stream_manager, streaming stops gracefully.
-
-    Args:
-        graph: LangGraph instance to execute
-        initial_state: Starting state dictionary with query and context
-        config: Configuration dictionary with user context and settings
-
-    Yields:
-        SSE-formatted strings containing:
-        - Real-time message content as it's generated
-        - Tool data entries (tool_data) with complete inputs
-        - Tool outputs (tool_output) when tools complete
-        - Custom events from tool executions
-        - Final completion marker and accumulated message
-
-    Stream Event Flow:
-        LangGraph emits events in 3 stream modes:
-
-        1. "updates" - State changes after each node execution
-           Contains AIMessage.tool_calls with complete args.
-           We emit tool_data entries here (frontend shows loading state).
-
-        2. "messages" - Individual message chunks
-           AIMessageChunk: streaming text content
-           ToolMessage: tool execution results -> emit tool_output
-
-        3. "custom" - Application-specific events from tools
-           Progress messages, errors, custom data.
-           Forwarded to frontend as-is.
+    LangGraph emits three stream modes:
+        - "updates": state changes after each node; AIMessage.tool_calls carry full
+          args, emitted as tool_data entries (frontend shows loading state).
+        - "messages": AIMessageChunk text content; ToolMessage results -> tool_output.
+        - "custom": application-specific tool events, forwarded as-is.
     """
     complete_message = ""
     stream_id = config.get("configurable", {}).get("stream_id")
@@ -612,6 +537,14 @@ async def execute_graph_streaming(
 
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only emit tool_data from the LLM ("agent") node.
+                # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
+                # etc.) also produce "updates" events that include historical
+                # AIMessages with tool_calls from previous turns — emitting those
+                # would replay stale tool cards into the current SSE stream.
+                if node_name != "agent":
+                    continue
+
                 # Process tool entries with metadata lookup
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
@@ -624,17 +557,16 @@ async def execute_graph_streaming(
 
                             # Look up metadata based on tool type
                             tool_name = tc.get("name")
-                            tool_metadata = {}
+                            tool_metadata: dict = {}
 
+                            # Handoff metadata stays pre-resolved here (it's a special
+                            # subagent-display path). MCP tool metadata is now resolved
+                            # inside format_tool_call_entry when user_id is passed.
                             if tool_name == "handoff":
                                 args = tc.get("args", {})
                                 subagent_id = args.get("subagent_id", "")
                                 if subagent_id:
                                     tool_metadata = await get_handoff_metadata(subagent_id)
-                            elif tool_name and user_id:
-                                tool_metadata = await get_custom_integration_metadata(
-                                    tool_name, user_id
-                                )
 
                             # Format and emit tool_data entry
                             tool_entry = await format_tool_call_entry(
@@ -642,6 +574,7 @@ async def execute_graph_streaming(
                                 icon_url=tool_metadata.get("icon_url"),
                                 integration_id=tool_metadata.get("integration_id"),
                                 integration_name=tool_metadata.get("integration_name"),
+                                user_id=user_id,
                             )
                             if tool_entry:
                                 yield format_sse_data({"tool_data": tool_entry})
@@ -675,7 +608,7 @@ async def execute_graph_streaming(
             # Stream AI response content (only from comms_agent to avoid duplication)
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
                 content = chunk.text
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     yield format_sse_response(content)
                     complete_message += content
 
@@ -692,17 +625,14 @@ async def execute_graph_streaming(
                 try:
                     json.dumps(tool_result_payload)
                 except TypeError:
-                    if hasattr(tool_result_payload, "model_dump"):
-                        tool_result_payload = tool_result_payload.model_dump()
+                    model_dump = getattr(tool_result_payload, "model_dump", None)
+                    if callable(model_dump):
+                        tool_result_payload = model_dump()
                     elif hasattr(tool_result_payload, "__dict__"):
                         tool_result_payload = dict(tool_result_payload.__dict__)
                     else:
                         tool_result_payload = str(tool_result_payload)
-                output = (
-                    chunk.content[:3000]
-                    if isinstance(chunk.content, str)
-                    else str(chunk.content)[:3000]
-                )
+                output = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
                 yield format_sse_data(
                     {
                         "tool_output": {

@@ -983,7 +983,6 @@ async def create_draft_route(
         # Create draft using the new async function
         draft = await create_draft(
             user_id=str(user_id),
-            sender=current_user.get("email", ""),  # Use user's email from current_user
             to_list=request.to,
             subject=request.subject,
             body=request.body,
@@ -1098,7 +1097,6 @@ async def update_draft_route(
         updated_draft = await update_draft(
             user_id=str(user_id),
             draft_id=draft_id,
-            sender=current_user.get("email", ""),  # Use user's email from current_user
             to_list=request.to,
             subject=request.subject,
             body=request.body,

@@ -49,7 +49,7 @@ from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
 from app.services.integrations.user_integrations import (
-    get_user_connected_integrations,
+    get_user_integration_records,
 )
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -154,6 +154,40 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
     return False
 
 
+# Strong references for fire-and-forget background tasks.
+# asyncio.create_task only holds a weak reference internally — if the
+# returned Task object is unreferenced, the GC can collect it mid-execution
+# and the work silently disappears. Tasks remove themselves from this set
+# via add_done_callback so the set stays bounded.
+_BG_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro: Any, label: str) -> asyncio.Task | None:
+    """Spawn a fire-and-forget task that survives until completion.
+
+    Returns None if there is no running event loop (e.g., test contexts where
+    the caller will await inline instead).
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+
+    task = loop.create_task(coro, name=f"mcp:{label}")
+    _BG_TASKS.add(task)
+
+    def _on_done(t: asyncio.Task) -> None:
+        _BG_TASKS.discard(t)
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            log.warning(f"background mcp task '{label}' raised: {type(exc).__name__}: {exc}")
+
+    task.add_done_callback(_on_done)
+    return task
+
+
 class MCPClient:
     """
     MCP client wrapper implementing MCP OAuth 2.1 spec.
@@ -198,16 +232,10 @@ class MCPClient:
         requires_auth: bool,
         auth_type: str,
     ) -> None:
-        """
-        Update integration auth status in MongoDB after probe discovery.
+        """Update integration auth status in MongoDB after probe discovery.
 
-        This ensures the stored mcp_config reflects the actual auth requirements
-        discovered from the MCP server, fixing stale requires_auth flags.
-
-        Args:
-            integration_id: The integration ID to update
-            requires_auth: Whether auth is required
-            auth_type: The auth type ("oauth", "none", etc.)
+        Keeps the stored mcp_config in sync with the auth requirements actually
+        discovered from the server, fixing stale requires_auth flags.
         """
         try:
             result = await integrations_collection.update_one(
@@ -355,6 +383,126 @@ class MCPClient:
             if event:
                 event.set()
 
+    async def reconnect_and_call(self, integration_id: str, tool_name: str, kwargs: dict) -> Any:
+        """Force a fresh connect for `integration_id` then call `tool_name` once.
+
+        Invoked by the tool wrapper when a call hits a dead connector — the
+        user sees latency, never the underlying error. Telemetry tracks how
+        often this fires (spikes flag something else killing sessions).
+
+        Concurrency: if another connect or reconnect is already in flight for
+        this integration, we wait for it and reuse its result rather than
+        racing. Without that guard, popping `_clients`/`_tools` while another
+        coroutine holds `_connecting[iid]` would make that coroutine raise
+        "Concurrent connect failed" when it checks `_tools` post-wait.
+        """
+        start = time.monotonic()
+        log.warning(f"[{integration_id}] transparent reconnect requested for tool '{tool_name}'")
+
+        # If another caller (warmup, sibling reconnect) is already connecting,
+        # wait on their event and reuse the result they produce.
+        in_flight_event = self._connecting.get(integration_id)
+        if in_flight_event is not None:
+            log.info(f"[{integration_id}] transparent reconnect waiting on in-flight connect")
+            try:
+                await in_flight_event.wait()
+            except Exception as wait_err:
+                log.warning(f"[{integration_id}] in-flight connect wait raised: {wait_err}")
+
+        # Take the connecting lock ourselves before clearing caches so any
+        # concurrent caller after this point waits on us instead of racing.
+        if integration_id not in self._connecting:
+            our_event = asyncio.Event()
+            self._connecting[integration_id] = our_event
+            try:
+                # Drop stale references and force a fresh _do_connect.
+                self._clients.pop(integration_id, None)
+                self._tools.pop(integration_id, None)
+                try:
+                    await self._do_connect(integration_id)
+                except Exception as e:
+                    latency_ms = int((time.monotonic() - start) * 1000)
+                    log.set(
+                        mcp_reconnect={
+                            "integration_id": integration_id,
+                            "user_id": self.user_id,
+                            "tool_name": tool_name,
+                            "latency_ms": latency_ms,
+                            "outcome": "reconnect_failed",
+                            "error_type": type(e).__name__,
+                        }
+                    )
+                    raise
+            finally:
+                our_event.set()
+                self._connecting.pop(integration_id, None)
+
+        fresh_tools = self._tools.get(integration_id, [])
+        if not fresh_tools:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            log.set(
+                mcp_reconnect={
+                    "integration_id": integration_id,
+                    "user_id": self.user_id,
+                    "tool_name": tool_name,
+                    "latency_ms": latency_ms,
+                    "outcome": "no_tools_after_reconnect",
+                }
+            )
+            raise RuntimeError(f"No tools available for {integration_id} after reconnect")
+
+        fresh_tool = next((t for t in fresh_tools if t.name == tool_name), None)
+        if fresh_tool is None:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            log.set(
+                mcp_reconnect={
+                    "integration_id": integration_id,
+                    "user_id": self.user_id,
+                    "tool_name": tool_name,
+                    "latency_ms": latency_ms,
+                    "outcome": "tool_not_found_after_reconnect",
+                }
+            )
+            raise RuntimeError(f"Tool '{tool_name}' not found in {integration_id} after reconnect")
+
+        # Bypass our wrapper to avoid recursion if this call also fails — the
+        # wrapper already retried once by invoking this method.
+        underlying = getattr(fresh_tool, "_original_arun", None)
+        if underlying is None:
+            underlying = fresh_tool._arun
+
+        try:
+            result = await underlying(**kwargs)
+        except Exception as e:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            log.set(
+                mcp_reconnect={
+                    "integration_id": integration_id,
+                    "user_id": self.user_id,
+                    "tool_name": tool_name,
+                    "latency_ms": latency_ms,
+                    "outcome": "retry_call_failed",
+                    "error_type": type(e).__name__,
+                }
+            )
+            raise
+
+        latency_ms = int((time.monotonic() - start) * 1000)
+        log.info(
+            f"[{integration_id}] transparent reconnect succeeded for tool "
+            f"'{tool_name}' (latency_ms={latency_ms})"
+        )
+        log.set(
+            mcp_reconnect={
+                "integration_id": integration_id,
+                "user_id": self.user_id,
+                "tool_name": tool_name,
+                "latency_ms": latency_ms,
+                "outcome": "success",
+            }
+        )
+        return result
+
     async def _reset_to_disconnected(self, integration_id: str) -> None:
         """Tear down a dead integration: Mongo status, PG creds, DCR client, Redis cache.
 
@@ -446,14 +594,19 @@ class MCPClient:
                     stale_client = self._clients.pop(iid, None)
                     self._tools.pop(iid, None)
                     if stale_client:
-                        try:
-                            loop = asyncio.get_running_loop()
-                            loop.create_task(self._safe_close_client(stale_client))
-                        except RuntimeError:
-                            pass  # No running loop — skip async cleanup
+                        _spawn_background(
+                            self._safe_close_client(stale_client),
+                            f"evict_close_{iid}",
+                        )
                     log.info(f"[{iid}] Evicted stale session after connection error")
 
                 return _evict
+
+            def _make_reconnect_callback(iid: str):
+                async def _reconnect_and_retry(tool_name: str, kwargs: dict) -> Any:
+                    return await self.reconnect_and_call(iid, tool_name, kwargs)
+
+                return _reconnect_and_retry
 
             # Attach server_url to any tools that have mcp_ui metadata
             server_url = mcp_config.server_url
@@ -461,8 +614,19 @@ class MCPClient:
                 if raw_tool.metadata and raw_tool.metadata.get("mcp_ui"):
                     raw_tool.metadata["mcp_server_url"] = server_url
 
+            # Stamp integration_id onto every tool so consumers can resolve
+            # tool → integration without the global ToolRegistry. The registry
+            # no longer holds MCP tools; this metadata is the single source of
+            # truth for the tool's provenance.
+            for raw_tool in raw_tools:
+                if raw_tool.metadata is None:
+                    raw_tool.metadata = {}
+                raw_tool.metadata["integration_id"] = integration_id
+
             tools = wrap_tools_with_null_filter(
-                raw_tools, on_connection_error=_make_evict_callback(integration_id)
+                raw_tools,
+                on_connection_error=_make_evict_callback(integration_id),
+                reconnect_and_retry=_make_reconnect_callback(integration_id),
             )
 
             self._clients[integration_id] = client
@@ -498,7 +662,10 @@ class MCPClient:
             global_store = get_mcp_tools_store()
             post_tasks.append(global_store.store_tools(integration_id, tool_metadata))
 
-            # 3. Index custom integration tools in ChromaDB
+            # 3. Index integration tools in ChromaDB. Custom MCPs use a
+            # URL-derived namespace and also register a subagent doc; platform
+            # MCPs use the integration's tool_space (or fall back to id).
+            # Redis cache in index_tools_to_store dedupes across users.
             if is_custom:
                 custom_name = resolved.custom_doc.get("name") if resolved.custom_doc else None
                 custom_desc = (
@@ -513,6 +680,8 @@ class MCPClient:
                         description=custom_desc,
                     )
                 )
+            else:
+                post_tasks.append(self._index_platform_mcp_tools(integration_id, tools))
 
             # 4. Update user integration status
             post_tasks.append(
@@ -523,7 +692,7 @@ class MCPClient:
             post_task_labels = (
                 (["store_unauthenticated"] if not mcp_config.requires_auth else [])
                 + ["store_tools_mongo"]
-                + (["index_custom_chroma"] if is_custom else [])
+                + (["index_custom_chroma"] if is_custom else ["index_platform_chroma"])
                 + ["update_status_connected"]
             )
             results = await asyncio.gather(*post_tasks, return_exceptions=True)
@@ -616,6 +785,45 @@ class MCPClient:
                     f"Error: {type(e).__name__}: {e}"
                 )
             raise
+
+    async def _index_platform_mcp_tools(self, integration_id: str, tools: list[BaseTool]) -> None:
+        """Index platform MCP tools (e.g. posthog, deepwiki) to ChromaDB.
+
+        Uses the integration's declared `subagent_config.tool_space` as the
+        namespace. If the platform integration lacks a subagent_config we skip
+        indexing rather than fall back to integration_id — a bare integration_id
+        can collide with custom-MCP namespaces (which are URL-derived but could
+        happen to match), and indexing under the wrong namespace silently
+        corrupts retrieve_tools for the other integration via the
+        chroma:indexed:{namespace} cache.
+        """
+        from app.config.oauth_config import get_integration_by_id
+
+        integration = get_integration_by_id(integration_id)
+        namespace = (
+            integration.subagent_config.tool_space
+            if integration and integration.subagent_config
+            else None
+        )
+        if not namespace:
+            log.warning(
+                f"[{integration_id}] platform integration has no subagent_config.tool_space; "
+                f"skipping Chroma indexing to avoid namespace collisions"
+            )
+            return
+
+        try:
+            tools_with_space = [(tool, namespace) for tool in tools]
+            await index_tools_to_store(tools_with_space)
+            log.info(
+                f"[{integration_id}] indexed {len(tools)} platform MCP tools to "
+                f"Chroma namespace='{namespace}'"
+            )
+        except Exception as e:
+            log.error(
+                f"[{integration_id}] _index_platform_mcp_tools failed for "
+                f"namespace='{namespace}': {type(e).__name__}: {e}"
+            )
 
     async def _handle_custom_integration_connect(
         self,
@@ -724,13 +932,8 @@ class MCPClient:
         5. Returns authorization URL for browser redirect
 
         Supports platform integrations (from code) and custom integrations.
-
-        Args:
-            integration_id: The integration to authenticate
-            redirect_uri: OAuth callback URL
-            redirect_path: Frontend path to redirect after OAuth
-            challenge_data: Optional pre-fetched WWW-Authenticate challenge from probe
-                           to avoid duplicate discovery HTTP calls.
+        ``challenge_data`` is an optional pre-fetched WWW-Authenticate challenge
+        from probe, passed to avoid duplicate discovery HTTP calls.
         """
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
@@ -1095,7 +1298,7 @@ class MCPClient:
             f"expires_at={expires_at}"
         )
 
-        # Store tokens
+        # Store tokens (~20ms) — required before redirect so reconnect can use them.
         log.info(f"[{integration_id}] Storing OAuth tokens to PostgreSQL")
         await self.token_store.store_oauth_tokens(
             integration_id=integration_id,
@@ -1103,58 +1306,83 @@ class MCPClient:
             refresh_token=new_refresh_token,
             expires_at=expires_at,
         )
-        log.info(f"[{integration_id}] Tokens stored successfully with status=connected")
 
-        # Connect using the newly obtained tokens
-        # If connection fails, clean up stored tokens to prevent stuck state
-        log.info(f"[{integration_id}] Attempting connection with stored tokens")
+        # Optimistically flip status to connected so the redirect can fire
+        # immediately and the frontend integration card reflects the new state.
+        # The background connect below will reconcile (reset to disconnected)
+        # if credentials prove dead.
         try:
-            tools = await self.connect(integration_id)
-            log.info(
-                f"[{integration_id}] Connection succeeded after OAuth callback, got {len(tools)} tools"
+            await update_user_integration_status(self.user_id, integration_id, "connected")
+        except Exception as status_err:
+            log.warning(
+                f"[{integration_id}] optimistic status flip failed (will retry in "
+                f"background connect): {status_err}"
             )
-            return tools
-        except Exception as e:
-            is_auth_error = "401" in str(e) or "authentication" in str(e).lower()
-            terminal = _is_terminal_auth_failure(e, refresh_attempted=False) or is_auth_error
-            log.error(
-                f"[{integration_id}] Connection failed after token storage:\n"
-                f"  Error type: {type(e).__name__}\n"
-                f"  Error message: {e!s}\n"
-                f"  Error repr: {e!r}\n"
-                f"  Is auth error: {is_auth_error}\n"
-                f"  Treat as terminal: {terminal}\n"
-                f"  Traceback:\n{traceback.format_exc()}"
-            )
-            # Only roll back on confirmed-dead credentials (401, invalid_grant,
-            # DCR client_id revoked). Transient failures keep tokens so the
-            # user can retry without re-OAuth.
-            if terminal:
-                await self._reset_to_disconnected(integration_id)
-            else:
-                log.warning(
-                    f"[{integration_id}] Preserving stored tokens after non-auth "
-                    "connection failure; user can retry without re-OAuth."
+
+        # Dispatch the actual MCP connect in the background. Session handshake,
+        # tools/list, schema conversion, Mongo tool store, and Chroma indexing
+        # easily take 5-15s for servers like posthog (339 tools). The user has
+        # already authenticated; they should not have to stare at a blank tab
+        # while we warm caches.
+        async def _bg_connect_after_oauth() -> None:
+            try:
+                await self.connect(integration_id)
+                log.info(f"[{integration_id}] background connect after OAuth succeeded")
+            except Exception as e:
+                is_auth_error = "401" in str(e) or "authentication" in str(e).lower()
+                terminal = _is_terminal_auth_failure(e, refresh_attempted=False) or is_auth_error
+                log.error(
+                    f"[{integration_id}] background connect after OAuth failed: "
+                    f"{type(e).__name__}: {e} (terminal={terminal})"
                 )
-            raise
+                if terminal:
+                    await self._reset_to_disconnected(integration_id)
+
+        bg_task = _spawn_background(_bg_connect_after_oauth(), f"oauth_bg_connect_{integration_id}")
+        if bg_task is None:
+            # No running loop (test contexts) — fall back to awaiting inline so
+            # we don't silently lose the connect.
+            await _bg_connect_after_oauth()
+
+        return []
 
     async def disconnect(self, integration_id: str) -> None:
         """
         Disconnect from an MCP server.
 
         Performs:
-        1. Token revocation at authorization server (RFC 7009)
-        2. In-memory client cleanup
+        1. Token revocation at authorization server (RFC 7009) — backgrounded;
+           local state is already invalidated before the revoke HTTP POSTs
+           complete (which can take up to 20s on a slow OAuth provider).
+        2. In-memory client cleanup (timeout-bounded so a slow upstream can't
+           hold the DELETE request hostage for 6+ seconds — see Loki trace
+           2026-05-26 12:04:53).
         3. OAuth discovery cache cleanup
         4. Credential deletion from PostgreSQL
         """
-        # First, revoke tokens at authorization server (RFC 7009)
-        await self._revoke_tokens(integration_id)
+        # Fire-and-forget the upstream OAuth revoke — the user has already
+        # been disconnected locally; provider-side revocation is best-effort.
+        if (
+            _spawn_background(self._revoke_tokens(integration_id), f"revoke_{integration_id}")
+            is None
+        ):
+            # Tests or non-asyncio contexts — fall back to awaiting.
+            await self._revoke_tokens(integration_id)
 
-        # Clean up in-memory state
+        # Clean up in-memory state with a tight timeout — mcp_use's
+        # session.__aexit__ can block on the upstream MCP server's TCP close,
+        # producing a "silent" multi-second gap. Local state still gets cleared.
         if integration_id in self._clients:
             try:
-                await self._clients[integration_id].close_all_sessions()
+                await asyncio.wait_for(
+                    self._clients[integration_id].close_all_sessions(),
+                    timeout=2.0,
+                )
+            except TimeoutError:
+                log.warning(
+                    f"[{integration_id}] close_all_sessions timed out; proceeding with "
+                    f"local cleanup. Upstream session may linger until server-side timeout."
+                )
             except Exception as e:
                 log.warning(f"Error closing MCP session: {e}")
             del self._clients[integration_id]
@@ -1210,40 +1438,19 @@ class MCPClient:
         """Get tools for a connected integration."""
         return self._tools.get(integration_id, [])
 
-    async def health_check(self, integration_id: str) -> dict:
+    def find_integration(self, tool_name: str) -> str | None:
+        """Find which connected integration owns a given tool name.
+
+        Returns the integration_id, or None if no connected MCP exposes the tool.
+        Scans the in-memory `_tools` map; with ~N integrations × ~M tools per
+        user this is sub-millisecond and avoids needing a separate reverse
+        index (which would have to stay in sync with connect/disconnect).
         """
-        Check MCP connection health.
-
-        Performs a lightweight operation (list_tools) to verify the connection
-        is still active and responsive.
-
-        Args:
-            integration_id: The integration to health check
-
-        Returns:
-            {
-                "status": "healthy" | "unhealthy" | "disconnected",
-                "latency_ms": int,  # Round-trip time in milliseconds
-                "error": str,  # Only present if unhealthy
-            }
-        """
-        if integration_id not in self._clients:
-            return {"status": "disconnected", "latency_ms": 0}
-
-        client = self._clients[integration_id]
-
-        try:
-            start = time.monotonic()
-            # Use list_tools as lightweight health check - it's fast and doesn't mutate state
-            session = client.get_session(integration_id)
-            await session.list_tools()
-            latency_ms = int((time.monotonic() - start) * 1000)
-
-            return {"status": "healthy", "latency_ms": latency_ms}
-
-        except Exception as e:
-            log.warning(f"Health check failed for {integration_id}: {e}")
-            return {"status": "unhealthy", "latency_ms": 0, "error": str(e)}
+        for integration_id, tools in self._tools.items():
+            for tool in tools:
+                if tool.name == tool_name:
+                    return integration_id
+        return None
 
     def is_connected(self, integration_id: str) -> bool:
         """Check if an integration is connected (in memory)."""
@@ -1259,97 +1466,6 @@ class MCPClient:
             }
         )
         return doc is not None
-
-    async def _safe_connect(self, integration_id: str) -> list[BaseTool] | None:
-        """Connect with error handling for parallel execution.
-
-        _do_connect already classifies failures and resets status only when the
-        credentials are demonstrably dead. Do not double-reset here on every
-        exception — that's how a transient batch-connect blip used to wipe an
-        integration the user still has valid credentials for.
-        """
-        try:
-            return await self.connect(integration_id)
-        except Exception as e:
-            log.warning(
-                f"_safe_connect: integration={integration_id} user={self.user_id} "
-                f"failed silently for batch-connect: {type(e).__name__}: {e}"
-            )
-            return None
-
-    async def get_all_connected_tools(self) -> dict[str, list[BaseTool]]:
-        """
-        Get tools from all connected MCP integrations for this user.
-
-        Connects to all uncached integrations in parallel using asyncio.gather().
-        Cached tools are returned from memory if already connected.
-
-        Data Source:
-        - MongoDB user_integrations (single source of truth for connection status)
-
-        Returns dict mapping integration_id -> list of tools.
-        """
-        # Get all connected integrations from MongoDB (single source of truth)
-        connected_ids: list[str] = []
-        try:
-            user_integrations = await get_user_connected_integrations(self.user_id)
-            connected_ids = [
-                str(ui.get("integration_id"))
-                for ui in user_integrations
-                if ui.get("integration_id") is not None
-            ]
-        except Exception as e:
-            log.warning(f"Failed to get connected MCPs from user_integrations: {e}")
-
-        all_tools: dict[str, list[BaseTool]] = {}
-
-        # Separate cached vs needs-connection
-        to_resolve: list[str] = []
-        for integration_id in connected_ids:
-            if integration_id in self._tools:
-                all_tools[integration_id] = self._tools[integration_id]
-            else:
-                to_resolve.append(integration_id)
-
-        if not to_resolve:
-            return all_tools
-
-        # Resolve all integrations in parallel to filter non-MCP ones
-        resolved_list = await asyncio.gather(
-            *[IntegrationResolver.resolve(iid) for iid in to_resolve]
-        )
-
-        mcp_ids = [
-            iid
-            for iid, resolved in zip(to_resolve, resolved_list)
-            if resolved and resolved.mcp_config
-        ]
-
-        if not mcp_ids:
-            return all_tools
-
-        # Connect all MCP integrations in parallel
-        log.info(f"Connecting {len(mcp_ids)} MCP integrations in parallel")
-        results = await asyncio.gather(*[self._safe_connect(iid) for iid in mcp_ids])
-
-        for integration_id, tools in zip(mcp_ids, results):
-            if tools:
-                all_tools[integration_id] = tools
-
-        log.set(
-            mcp=dict(
-                user_id=self.user_id,
-                servers_connected=len(all_tools),
-                tools_loaded=sum(len(t) for t in all_tools.values()),
-                per_integration={iid: len(t) for iid, t in all_tools.items()},
-            )
-        )
-        log.info(
-            f"get_all_connected_tools: user={self.user_id} returning "
-            f"{len(all_tools)} integrations with tools: "
-            f"{ {iid: len(t) for iid, t in all_tools.items()} }"
-        )
-        return all_tools
 
     async def ensure_connected(self, integration_id: str) -> list[BaseTool]:
         """
@@ -1368,75 +1484,6 @@ class MCPClient:
 
         # Not connected at all
         raise ValueError(f"MCP {integration_id} not connected. User needs to complete OAuth flow.")
-
-    async def ensure_token_valid(self, integration_id: str) -> None:
-        """Proactively refresh token if expiring soon.
-
-        Called before tool invocation to prevent 401 errors.
-        This is a no-op for unauthenticated integrations.
-        """
-        # Check if we have credentials for this integration
-        if not await self.token_store.has_credentials(integration_id):
-            return  # No auth required or no stored credentials
-
-        # Check if token is expiring soon
-        if await self.token_store.is_token_expiring_soon(integration_id):
-            log.set(
-                token_refresh={
-                    "integration_id": integration_id,
-                    "user_id": self.user_id,
-                    "trigger": "ensure_token_valid_proactive",
-                }
-            )
-            log.info(
-                f"ensure_token_valid: token expiring soon for {integration_id} "
-                f"user={self.user_id}, refreshing proactively"
-            )
-            resolved = await IntegrationResolver.resolve(integration_id)
-            if resolved and resolved.mcp_config:
-                refreshed = await self._try_refresh_token(integration_id, resolved.mcp_config)
-                if not refreshed:
-                    log.warning(
-                        f"ensure_token_valid: proactive refresh FAILED for "
-                        f"{integration_id} user={self.user_id} — next tool call "
-                        f"will likely 401"
-                    )
-                else:
-                    log.info(
-                        f"ensure_token_valid: proactive refresh succeeded for "
-                        f"{integration_id} user={self.user_id}"
-                    )
-            else:
-                log.warning(
-                    f"ensure_token_valid: cannot refresh — IntegrationResolver "
-                    f"returned no mcp_config for {integration_id}"
-                )
-
-    async def try_token_refresh(self, integration_id: str) -> bool:
-        """Attempt to refresh OAuth token.
-
-        Public wrapper for token refresh - used by stub executor on 401 errors.
-        After a successful refresh, the stale in-memory session is evicted so the
-        next connect() creates a fresh session with the new token.
-
-        Returns True if refresh succeeded, False otherwise.
-        """
-        resolved = await IntegrationResolver.resolve(integration_id)
-        if resolved and resolved.mcp_config and resolved.mcp_config.requires_auth:
-            refreshed = await self._try_refresh_token(integration_id, resolved.mcp_config)
-            if refreshed:
-                # Evict stale client/tools so next connect() uses the new token
-                if integration_id in self._clients:
-                    try:
-                        await self._clients[integration_id].close_all_sessions()
-                    except Exception as e:
-                        log.warning(
-                            f"[{integration_id}] Error closing stale session after refresh: {e}"
-                        )
-                    self._clients.pop(integration_id, None)
-                self._tools.pop(integration_id, None)
-            return refreshed
-        return False
 
     async def _safe_close_client(self, client: BaseMCPClient) -> None:
         """Close a BaseMCPClient session, swallowing errors."""
@@ -1488,7 +1535,7 @@ class MCPClient:
 
         # Slow path: check user's persisted connected integrations.
         try:
-            user_integrations = await get_user_connected_integrations(self.user_id)
+            user_integrations = await get_user_integration_records(self.user_id)
         except Exception as e:
             log.warning(
                 f"Failed to load user integrations while matching server_url {server_url}: {e}",
@@ -1660,13 +1707,6 @@ class MCPClient:
             return result.model_dump()
         return dict(result)
 
-    def get_active_integration_ids(self) -> list[str]:
-        """Get list of active integration IDs.
-
-        Public method for introspection - used by MCPClientPool.
-        """
-        return list(self._clients.keys())
-
     async def read_ui_resource_details(
         self, server_url: str, resource_uri: str
     ) -> dict[str, Any] | None:
@@ -1726,17 +1766,6 @@ class MCPClient:
         except Exception as e:
             log.warning(f"Failed to read UI resource {resource_uri} from {server_url}: {e}")
             return None
-
-    async def read_ui_resource(self, server_url: str, resource_uri: str) -> str | None:
-        """Read a UI resource and return only the HTML content.
-
-        This helper is kept for existing callers that only need HTML.
-        """
-        details = await self.read_ui_resource_details(server_url, resource_uri)
-        if not details:
-            return None
-        html = details.get("html")
-        return str(html) if isinstance(html, str) else None
 
 
 async def get_mcp_client(user_id: str) -> MCPClient:

@@ -1,54 +1,38 @@
 ---
-title: "Overview"
-description: "Everything you need to contribute to or customize GAIA"
+title: "Introduction"
+description: "Self-host GAIA, contribute to the codebase, or build on top of it"
 icon: "code"
 ---
 
-## Developer Resources
+This tab is for everyone who works with GAIA's code: self-hosters running their own instance, contributors improving the project, and developers building bots or custom integrations.
 
-Welcome to the GAIA development documentation. Whether you want to contribute to the project or customize GAIA for your specific needs, this section has everything you need to get started.
+GAIA is a full-stack Nx monorepo. One repository contains:
 
-## Getting Started
+- **Web**: Next.js app (React, TypeScript)
+- **API**: FastAPI backend with LangGraph agents (Python)
+- **Desktop**: Electron app wrapping the web build
+- **Mobile**: React Native app (Expo)
+- **Bots**: four TypeScript bots (Discord, Slack, Telegram, WhatsApp) sharing common logic
+- **Voice agent**: Python voice processing worker
+- **Docs**: this documentation site (Mintlify)
 
-<CardGroup cols={2}>
-  <Card
-    title="Development Setup"
-    icon="laptop-code"
-    href="/developers/development-setup"
-  >
-    Set up your local development environment with our automated or manual setup
-    guides
+## Pick your path
+
+<CardGroup cols={1}>
+  <Card title="Self-host GAIA" icon="server" href="/self-hosting/overview">
+    Run your own instance with the CLI or Docker, for full control of your data
   </Card>
-  <Card
-    title="Contributing Guidelines"
-    icon="git-alt"
-    href="/developers/contributing"
-  >
-    Learn how to contribute to GAIA with our comprehensive guidelines and best
-    practices
+  <Card title="Contribute" icon="git-alt" href="/developers/development-setup">
+    Set up a local dev environment, learn the monorepo, and submit your first PR
+  </Card>
+  <Card title="Build and run the bots" icon="robot" href="/bots/overview">
+    Self-host the Discord, Slack, Telegram, and WhatsApp bots
   </Card>
 </CardGroup>
 
-## Key Technologies
+Once you're set up, [Monorepo Commands](/developers/commands) is the day-to-day reference for running, linting, and building projects with Nx.
 
-GAIA is built with modern technologies that make development efficient and scalable:
+## Community and support
 
-- **Backend**: FastAPI (Python) for high-performance API development
-- **Web**: Next.js (React/TypeScript) for modern web application development
-- **Database**: PostgreSQL with MongoDB for different data types
-- **Vector Storage**: ChromaDB for AI embeddings and semantic search
-- **Caching**: Redis for fast data access and session management
-- **Message Queue**: RabbitMQ for asynchronous task processing
-- **Containerization**: Docker for consistent development and deployment
-
-## Community & Support
-
-- **GitHub**: [github.com/theexperiencecompany/gaia](https://github.com/theexperiencecompany/gaia) - main repository
-- **Issues**: Report bugs or request features
-- **Discussions**: Ask questions and share ideas
-- **Discord**: Join our developer community
-
-<Tip>
-  New to the codebase? Start with the [development setup
-  guide](/developers/development-setup)
-</Tip>
+- **GitHub**: [github.com/theexperiencecompany/gaia](https://github.com/theexperiencecompany/gaia), for bugs, feature requests, and discussions
+- **Discord**: [join the community](https://discord.heygaia.io) for real-time help

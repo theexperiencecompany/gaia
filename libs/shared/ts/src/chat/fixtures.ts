@@ -12,7 +12,6 @@ import type {
   CodeData,
   ContactData,
   DeepResearchResults,
-  DocumentData,
   EmailComposeData,
   EmailFetchData,
   EmailSentData,
@@ -613,17 +612,6 @@ const goalFixture: GoalDataMessageType = {
 // Documents / Code / Artifacts
 // ---------------------------------------------------------------------------
 
-const documentFixture: DocumentData = {
-  filename: "Q1-review.pdf",
-  url: "https://example.com/files/Q1-review.pdf",
-  title: "Q1 2026 Product Review",
-  is_plain_text: false,
-  metadata: {
-    page_count: 24,
-    created_at: "2026-04-01T00:00:00Z",
-  },
-};
-
 const googleDocsFixture: GoogleDocsData = {
   action: "create",
   message: "Created a new Google Doc: Mobile Chat Parity Plan",
@@ -895,6 +883,16 @@ const notificationFixture: Record<string, unknown> = {
   ],
 };
 
+const sendNotificationFixture: Record<string, unknown> = {
+  success: true,
+  notification_id: "notif-7f3a",
+  title: "GAIA",
+  message: "Your weekly review is ready — 3 items need your attention.",
+  notification_type: "success",
+  status: "delivered",
+  delivered_channels: ["inapp", "whatsapp", "telegram"],
+};
+
 const rateLimitFixture: RateLimitData = {
   feature: "Deep research",
   plan_required: "Pro",
@@ -1088,12 +1086,6 @@ export const TOOL_FIXTURES: readonly ToolFixture[] = [
     data: goalFixture,
   },
   {
-    toolName: "document_data",
-    label: "Document",
-    description: "File attachment preview with metadata.",
-    data: documentFixture,
-  },
-  {
     toolName: "google_docs_data",
     label: "Google Docs",
     description: "Newly created or referenced Google Doc.",
@@ -1170,6 +1162,12 @@ export const TOOL_FIXTURES: readonly ToolFixture[] = [
     label: "Notifications",
     description: "List of recent user notifications.",
     data: notificationFixture,
+  },
+  {
+    toolName: "send_notification_data",
+    label: "Notification sent",
+    description: "Confirmation that a proactive notification was delivered.",
+    data: sendNotificationFixture,
   },
   {
     toolName: "rate_limit_data",

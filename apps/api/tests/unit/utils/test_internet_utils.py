@@ -7,86 +7,8 @@ import pytest
 
 from app.utils.internet_utils import (
     fetch_url_metadata,
-    is_valid_url,
     scrape_url_metadata,
 )
-
-# ---------------------------------------------------------------------------
-# is_valid_url
-# ---------------------------------------------------------------------------
-
-
-class TestIsValidUrl:
-    """Tests for is_valid_url helper."""
-
-    @pytest.mark.parametrize(
-        "url",
-        [
-            "https://example.com",
-            "https://example.com",
-            "https://example.com:8080/path/to/page",
-            "https://sub.domain.example.com/page?q=1#frag",
-            "https://example.com/path/to/resource.html",
-        ],
-        ids=[
-            "http_scheme",
-            "https_scheme",
-            "url_with_port_and_path",
-            "subdomain_with_query_and_fragment",
-            "url_with_file_extension",
-        ],
-    )
-    def test_valid_urls(self, url: str) -> None:
-        """Valid HTTP/HTTPS URLs with proper netloc return True."""
-        assert is_valid_url(url) is True
-
-    @pytest.mark.parametrize(
-        "url,reason",
-        [
-            ("ftp://example.com", "ftp_scheme"),
-            ("https://", "no_netloc"),
-            ("https://192.168.1.1", "ip_address"),
-            ("", "empty_string"),
-            ("not-a-url", "plain_string_no_scheme"),
-            ("://missing-scheme.com", "missing_scheme"),
-            ("https://10.0.0.1", "private_ip"),
-            ("https://255.255.255.255", "broadcast_ip"),
-        ],
-        ids=[
-            "ftp_scheme",
-            "no_netloc",
-            "ip_address",
-            "empty_string",
-            "plain_string_no_scheme",
-            "missing_scheme",
-            "private_ip",
-            "broadcast_ip",
-        ],
-    )
-    def test_invalid_urls(self, url: str, reason: str) -> None:
-        """URLs with wrong scheme, missing netloc, or IP addresses return False."""
-        assert is_valid_url(url) is False
-
-    def test_none_input(self) -> None:
-        """None input returns False (caught by the except branch)."""
-        # urlparse(None) raises TypeError in some Python versions
-        assert is_valid_url(None) is False  # type: ignore[arg-type]
-
-    def test_malformed_url(self) -> None:
-        """Malformed input that lacks scheme returns False."""
-        assert is_valid_url("ht!tp://bad url with spaces") is False
-
-    def test_ip_with_port_rejected(self) -> None:
-        """IP address with a port — the netloc includes the port so the regex
-        won't match the bare IP pattern.  This is an edge case in the current
-        implementation (IP:port is NOT rejected).  Documenting actual behavior."""
-        # netloc = "192.168.1.1:8080" — the regex r"^\d+\.\d+\.\d+\.\d+$"
-        # does not match because of the :8080, so this passes.
-        result = is_valid_url("https://192.168.1.1:8080")
-        # The current implementation allows this because the regex only matches
-        # bare IP addresses.  We test the actual behavior, not the ideal.
-        assert result is True
-
 
 # ---------------------------------------------------------------------------
 # scrape_url_metadata

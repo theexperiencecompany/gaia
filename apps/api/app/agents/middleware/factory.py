@@ -1,14 +1,6 @@
-"""
-Middleware Factory - Centralized creation of agent middleware.
-
-Provides factory functions for creating the standard middleware stack
-used across agents (executor, comms, subagents).
-
-This module consolidates middleware creation to:
-- Avoid code duplication across build_graph.py and base_subagent.py
-- Centralize configuration (thresholds, models, etc.)
-- Make it easy to modify middleware behavior globally
-"""
+"""Factory functions for the standard agent middleware stack (executor, comms,
+subagents). Centralized here so build_graph.py and base_subagent.py share one
+configuration."""
 
 from collections.abc import Mapping
 from typing import Any
@@ -18,9 +10,11 @@ from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
+from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
-from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
-from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
+from app.agents.middleware.summarization import (
+    WorkspaceArchivingSummarizationMiddleware,
+)
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.settings import settings
 from app.constants.summarization import (
@@ -32,21 +26,18 @@ from app.constants.summarization import (
 )
 from shared.py.wide_events import log
 
-VFS_TOOL_NAMES = {"vfs_read", "vfs_write", "vfs_cmd"}
+# Coding tools operate on the persistent E2B workspace; their outputs are
+# already capped by the bash output limiter and the read tool's pagination,
+# so the compaction middleware should leave them alone.
+CODING_TOOL_NAMES = {"bash", "read", "write", "edit"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 
 _summarization_llm: BaseChatModel | None = None
 
 
 def get_summarization_llm() -> BaseChatModel | None:
-    """
-    Get the LLM instance for summarization.
-
-    Uses Gemini Flash 2 for fast, cost-effective context summarization.
-    Returns None if Google API key is not configured.
-
-    The LLM is cached for reuse across middleware instances.
-    """
+    """Get the cached summarization LLM (Gemini Flash 2), or None if the Google
+    API key is not configured."""
     global _summarization_llm
 
     if _summarization_llm is not None:
@@ -80,7 +71,7 @@ def create_middleware_stack(
     summarization_keep: tuple = ("tokens", SUMMARIZATION_KEEP_TOKENS),
     compaction_threshold: float = COMPACTION_THRESHOLD,
     max_output_chars: int = MAX_OUTPUT_CHARS,
-    vfs_enabled: bool = True,
+    enable_archive: bool = True,
     compaction_excluded_tools: set[str] | None = None,
     summarization_excluded_tools: set[str] | None = None,
 ) -> list[Any]:
@@ -89,8 +80,10 @@ def create_middleware_stack(
 
     Uses LangChain's AgentMiddleware system:
     - SubagentMiddleware: Spawn subagents for parallel/focused work
-    - VFSArchivingSummarizationMiddleware: Archives to VFS and summarizes at threshold
-    - VFSCompactionMiddleware: Compacts large tool outputs to VFS
+    - WorkspaceArchivingSummarizationMiddleware: Archives history to the user's
+      persistent workspace and summarizes at threshold
+    - WorkspaceCompactionMiddleware: Persists large tool outputs to the
+      persistent workspace and replaces them with a /workspace/... reference
 
     Args:
         enable_summarization: Whether to include summarization middleware
@@ -105,7 +98,8 @@ def create_middleware_stack(
         summarization_keep: How much to keep after summarization (tokens recommended)
         compaction_threshold: Context usage ratio to trigger compaction
         max_output_chars: Max chars for single tool output before compaction
-        vfs_enabled: Whether to archive to VFS before summarization
+        enable_archive: Whether to archive history to the workspace before
+            summarization fires
         compaction_excluded_tools: Tools that should never be compacted
         summarization_excluded_tools: Tools that should never trigger summarization
 
@@ -146,11 +140,11 @@ def create_middleware_stack(
     if enable_summarization:
         summary_llm = get_summarization_llm()
         if summary_llm:
-            summarization = VFSArchivingSummarizationMiddleware(
+            summarization = WorkspaceArchivingSummarizationMiddleware(
                 model=summary_llm,
                 trigger=summarization_trigger,
                 keep=summarization_keep,
-                vfs_enabled=vfs_enabled,
+                enable_archive=enable_archive,
                 excluded_tools=summarization_excluded_tools,
             )
             middleware.append(summarization)
@@ -160,7 +154,7 @@ def create_middleware_stack(
 
     # Compaction middleware (always available, but respects enable flag)
     if enable_compaction:
-        compaction = VFSCompactionMiddleware(
+        compaction = WorkspaceCompactionMiddleware(
             compaction_threshold=compaction_threshold,
             max_output_chars=max_output_chars,
             excluded_tools=compaction_excluded_tools,
@@ -207,30 +201,25 @@ def create_executor_middleware(
         subagent_registry=subagent_registry,
         subagent_excluded_tools=subagent_excluded_tools,
         subagent_tool_runtime_config=subagent_tool_runtime_config,
-        compaction_excluded_tools=VFS_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
+        compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
     )
 
 
 def create_comms_middleware() -> list[Any]:
-    """
-    Create middleware stack for the comms agent.
+    """Create the middleware stack for the comms agent.
 
-    The comms agent handles user communication and delegates complex work
-    to the executor. Only includes summarization and compaction middleware.
-
-    Returns:
-        List of middleware for comms agent
+    Comms delegates complex work to the executor, so it only gets summarization
+    and compaction middleware.
     """
     return create_middleware_stack(
         agent_name="comms_agent",
         enable_subagent=False,
-        compaction_excluded_tools=VFS_TOOL_NAMES,
+        compaction_excluded_tools=CODING_TOOL_NAMES,
     )
 
 
 def create_subagent_middleware(
     *,
-    todo_source: str = "subagent",
     subagent_llm: LanguageModelLike | None = None,
     subagent_tools: list[BaseTool] | None = None,
     subagent_registry: Mapping[str, BaseTool] | None = None,
@@ -243,14 +232,13 @@ def create_subagent_middleware(
 
     Provider subagents handle focused integration work and should have:
     - SubagentMiddleware: For spawning focused sub-subagents
-    - VFSCompactionMiddleware: Persist oversized tool outputs to VFS
+    - WorkspaceCompactionMiddleware: Persist oversized tool outputs to /workspace
     - NO summarization
 
     Spawned sub-subagents will NOT have SubagentMiddleware (enforced by
     SubagentMiddleware itself which excludes spawn_subagent from child tools).
 
     Args:
-        todo_source: Kept for API compatibility (unused — todo source set in todo_tools)
         subagent_llm: LLM for spawned sub-subagent execution
         subagent_tools: Tools available to spawned sub-subagents
         subagent_registry: Alternative tool registry for spawned sub-subagents
@@ -271,5 +259,5 @@ def create_subagent_middleware(
         subagent_excluded_tools=subagent_excluded_tools,
         subagent_tool_space=subagent_tool_space,
         subagent_tool_runtime_config=subagent_tool_runtime_config,
-        compaction_excluded_tools=VFS_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
+        compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
     )

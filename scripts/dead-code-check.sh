@@ -106,33 +106,24 @@ print_health_bar() {
 run_vulture() {
   print_section "Python (vulture)"
 
-  local py_dirs=()
-  for dir in apps/api apps/voice-agent libs/shared/py; do
-    [[ -d "$dir" ]] && py_dirs+=("$dir")
-  done
-
-  if [[ ${#py_dirs[@]} -eq 0 ]]; then
-    echo -e "  ${DIM}No Python directories found, skipping.${RESET}"
+  if ! command -v vulture &>/dev/null; then
+    echo -e "  ${DIM}vulture not installed, skipping Python dead code check.${RESET}"
+    echo -e "  Install: ${CYAN}uv tool install vulture${RESET}"
     echo ""
     return
   fi
 
-  local whitelist_args=()
-  [[ -f "apps/api/scripts/vulture-whitelist.py" ]] && whitelist_args=("apps/api/scripts/vulture-whitelist.py")
-
-  # Test files are excluded: pytest fixtures, mock attributes, and
-  # parametrize/conftest-injected names read as "unused" to vulture but are
-  # consumed by pytest at runtime. Scanning them produces only false positives.
-  local exclude_globs="*/tests/*,*/test_*.py,*_test.py,*/conftest.py"
-
+  # vulture config lives in [tool.vulture] in the repo-root pyproject.toml, which
+  # vulture reads from the CWD — so a bare `vulture` reproduces the CI gate. Tests
+  # are excluded there, so a symbol used only by tests is reported as dead.
+  #
+  # Enforce only functions/methods/classes/properties/unreachable — vulture's
+  # high-signal tier. "unused variable"/"unused attribute" are skipped: at conf
+  # 60 they're mostly Pydantic fields and external attribute-sets vulture can't
+  # see are used, and ruff (F841/F401) already covers unused locals/imports.
+  local enforced_re="unused (function|method|class|property)|unreachable code"
   local raw_output
-  # min-confidence 70 is vulture's reliable tier. The 60% tier is dominated by
-  # Pydantic model fields, BaseSettings config, @field_validator methods, and
-  # Composio/dispatch-table functions that vulture cannot see are used (dynamic
-  # access). Enforcing at 60% would require whitelisting hundreds of names; 70%
-  # keeps the high-signal findings (genuinely unused vars/funcs) while dropping
-  # that systematic false-positive class.
-  raw_output=$(vulture "${py_dirs[@]}" "${whitelist_args[@]}" --exclude "$exclude_globs" --min-confidence 70 2>&1) || true
+  raw_output=$(vulture 2>&1 | grep -E "$enforced_re" || true)
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"
@@ -207,7 +198,7 @@ run_knip() {
   fi
 
   local raw_output
-  raw_output=$(npx knip --no-progress --no-config-hints 2>&1) || true
+  raw_output=$(npx knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"
@@ -260,14 +251,7 @@ run_knip() {
 
 print_header
 
-if command -v vulture &>/dev/null; then
-  run_vulture
-else
-  echo -e "${DIM}vulture not installed, skipping Python dead code check.${RESET}"
-  echo -e "  Install: ${CYAN}uv tool install vulture${RESET}"
-  echo ""
-fi
-
+run_vulture
 run_knip
 
 # Show health score if issues were found

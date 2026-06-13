@@ -11,66 +11,8 @@ from app.agents.memory.profile_extractor import (
     _filter_garbage_content,
     build_profile_url,
     extract_username_with_llm,
-    filter_emails_by_platform,
     validate_username,
 )
-
-# ---------------------------------------------------------------------------
-# filter_emails_by_platform
-# ---------------------------------------------------------------------------
-
-
-class TestFilterEmailsByPlatform:
-    def test_filters_github_emails(self) -> None:
-        emails = [
-            {"sender": "noreply@github.com", "subject": "PR merged"},
-            {"sender": "noreply@notifications.github.com", "subject": "New issue"},
-            {"sender": "noreply@twitter.com", "subject": "New follower"},
-        ]
-        result = filter_emails_by_platform(emails, "github")
-        assert len(result) == 2
-
-    def test_filters_twitter_emails(self) -> None:
-        emails = [
-            {"sender": "notify@twitter.com", "subject": "New DM"},
-            {"sender": "info@x.com", "subject": "Trending"},
-        ]
-        result = filter_emails_by_platform(emails, "twitter")
-        assert len(result) == 2
-
-    def test_unknown_platform_returns_empty(self) -> None:
-        emails = [{"sender": "test@example.com"}]
-        assert filter_emails_by_platform(emails, "unknown_platform") == []
-
-    def test_no_matching_emails(self) -> None:
-        emails = [{"sender": "noreply@example.com"}]
-        assert filter_emails_by_platform(emails, "github") == []
-
-    def test_uses_from_field_as_fallback(self) -> None:
-        emails = [{"from": "noreply@github.com", "subject": "Test"}]
-        result = filter_emails_by_platform(emails, "github")
-        assert len(result) == 1
-
-    def test_handles_missing_sender(self) -> None:
-        emails = [{"subject": "No sender"}]
-        result = filter_emails_by_platform(emails, "github")
-        assert result == []
-
-    def test_respects_max_limit(self) -> None:
-        emails = [{"sender": "noreply@github.com", "subject": f"Email {i}"} for i in range(30)]
-        result = filter_emails_by_platform(emails, "github")
-        assert len(result) == 20  # MAX_EMAILS_PER_PLATFORM
-
-    def test_handles_angle_bracket_sender(self) -> None:
-        emails = [{"sender": "GitHub <noreply@github.com>"}]
-        result = filter_emails_by_platform(emails, "github")
-        assert len(result) == 1
-
-    def test_case_insensitive_matching(self) -> None:
-        emails = [{"sender": "NoReply@GitHub.com"}]
-        result = filter_emails_by_platform(emails, "github")
-        assert len(result) == 1
-
 
 # ---------------------------------------------------------------------------
 # validate_username

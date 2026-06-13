@@ -29,7 +29,10 @@ COLLECTION_NAME = "skills"
 # Invalidation patterns for write operations — clears all agent variants for the user
 _SKILLS_INVALIDATION_PATTERNS = [
     "skills:user:{user_id}:agent:*",
-    "skills:text:{user_id}:*",
+    # Must track the version prefix in SKILLS_TEXT_CACHE_KEY; without the
+    # ``v2:`` segment this glob never matches the cached key, so the skills
+    # listing would stay stale for the full TTL after an install/uninstall.
+    "skills:text:v2:{user_id}:*",
 ]
 
 

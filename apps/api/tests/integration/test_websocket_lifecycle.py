@@ -17,7 +17,6 @@ import pytest
 
 from app.core.websocket_consumer import WebSocketEventConsumer
 from app.core.websocket_manager import WebSocketManager
-from app.services.notification_service import NotificationService
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -397,7 +396,6 @@ class TestWebSocketConsumerMessageHandling:
     async def test_consumer_ignores_unknown_message_type(
         self, _mock_main: MagicMock, manager: WebSocketManager
     ) -> None:
-
         ws = _make_ws()
         manager.add_connection(USER_A, ws)
 
@@ -422,7 +420,6 @@ class TestWebSocketConsumerMessageHandling:
     async def test_consumer_handles_malformed_json(
         self, _mock_main: MagicMock, manager: WebSocketManager
     ) -> None:
-
         fake_message = AsyncMock()
         fake_message.body = b"not valid json{{"
         fake_message.process = MagicMock()
@@ -477,29 +474,3 @@ class TestWebSocketConsumerMessageHandling:
             await consumer._handle_websocket_message(fake_message)
 
         assert broken_ws not in manager.connections.get(USER_A, set())
-
-
-@pytest.mark.integration
-class TestNotificationServiceWebSocketBridge:
-    """NotificationService thin wrappers delegate to WebSocketManager."""
-
-    def test_add_websocket_connection_delegates(self, manager: WebSocketManager) -> None:
-
-        svc = NotificationService()
-        ws = _make_ws()
-
-        with patch("app.services.notification_service.websocket_manager", manager):
-            svc.add_websocket_connection(USER_A, ws)
-
-        assert ws in manager.connections[USER_A]
-
-    def test_remove_websocket_connection_delegates(self, manager: WebSocketManager) -> None:
-
-        svc = NotificationService()
-        ws = _make_ws()
-
-        with patch("app.services.notification_service.websocket_manager", manager):
-            svc.add_websocket_connection(USER_A, ws)
-            svc.remove_websocket_connection(USER_A, ws)
-
-        assert USER_A not in manager.connections

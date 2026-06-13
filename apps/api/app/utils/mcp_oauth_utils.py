@@ -15,30 +15,18 @@ import ipaddress
 import json
 import re
 import time
-from typing import Any, Protocol
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 
 from shared.py.wide_events import log
 
-# MCP Protocol Version header value per MCP spec.
-#
-# Per MCP Authorization Specification, OAuth discovery requests SHOULD include
-# the MCP-Protocol-Version header for protocol version negotiation.
-#
-# This value is sent in:
-# - Protected Resource Metadata requests (RFC 9728)
-# - Authorization Server Metadata requests (RFC 8414)
-# - Dynamic Client Registration requests (RFC 7591)
-# - Token requests and revocations
-#
-# Version: 2025-11-25 is the current stable MCP specification.
-# See: https://modelcontextprotocol.io/specification/versioning
+# Sent in the MCP-Protocol-Version header on OAuth discovery/token requests for
+# protocol version negotiation. See https://modelcontextprotocol.io/specification/versioning
 MCP_PROTOCOL_VERSION = "2025-11-25"
 
-# Timeout constants for OAuth operations
-# TLS handshakes can take 2-5 seconds on slow connections, so we use generous timeouts
+# Generous timeouts since TLS handshakes can take 2-5s on slow connections.
 OAUTH_PROBE_TIMEOUT = 10  # seconds - for initial server probe
 OAUTH_DISCOVERY_TIMEOUT = 15  # seconds - for metadata discovery
 OAUTH_TOKEN_TIMEOUT = 30  # seconds - for token operations
@@ -56,25 +44,11 @@ class OAuthDiscoveryError(Exception):
     pass
 
 
-class TokenOperationError(Exception):
-    """Raised when token operations (revocation, introspection) fail."""
-
-    pass
-
-
 def validate_https_url(url: str, allow_localhost: bool = True) -> None:
-    """
-    Validate that a URL uses HTTPS for security.
+    """Require HTTPS for an OAuth endpoint.
 
-    Per OAuth 2.1 and MCP spec, all OAuth endpoints MUST use HTTPS
-    except for localhost during development.
-
-    Args:
-        url: The URL to validate
-        allow_localhost: Whether to allow HTTP for localhost (development)
-
-    Raises:
-        OAuthSecurityError: If URL is not HTTPS and not allowed localhost
+    Per OAuth 2.1 and the MCP spec, OAuth endpoints MUST use HTTPS, except
+    localhost during development. Raises OAuthSecurityError otherwise.
     """
     parsed = urlparse(url)
 
@@ -97,21 +71,7 @@ def validate_https_url(url: str, allow_localhost: bool = True) -> None:
 
 
 def is_localhost_url(url: str) -> bool:
-    """
-    Check if URL points to localhost or loopback address.
-
-    Handles:
-    - localhost (case-insensitive)
-    - 127.0.0.0/8 (all IPv4 loopback addresses)
-    - ::1 (IPv6 loopback)
-    - 0.0.0.0 (all interfaces)
-
-    Args:
-        url: The URL to check
-
-    Returns:
-        True if URL points to localhost/loopback, False otherwise
-    """
+    """Return True if the URL points to localhost or a loopback/unspecified address."""
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
@@ -136,16 +96,7 @@ def is_localhost_url(url: str) -> bool:
 
 
 def validate_oauth_endpoints(oauth_config: dict, allow_localhost: bool = True) -> None:
-    """
-    Validate all OAuth endpoints use HTTPS.
-
-    Args:
-        oauth_config: OAuth configuration dict with endpoint URLs
-        allow_localhost: Whether to allow HTTP for localhost
-
-    Raises:
-        OAuthSecurityError: If any endpoint is not HTTPS
-    """
+    """Validate that every OAuth endpoint in ``oauth_config`` uses HTTPS."""
     endpoint_keys = [
         "authorization_endpoint",
         "token_endpoint",
@@ -385,25 +336,10 @@ async def revoke_token(
     client_secret: str | None = None,
     timeout: int = 10,
 ) -> bool:
-    """
-    Revoke an OAuth token per RFC 7009.
+    """Revoke an OAuth token per RFC 7009.
 
-    Args:
-        revocation_endpoint: The revocation endpoint URL
-        token: The token to revoke
-        token_type_hint: Either "access_token" or "refresh_token"
-        client_id: Optional client ID for authentication
-        client_secret: Optional client secret for authentication
-        timeout: Request timeout in seconds
-
-    Returns:
-        True if revocation succeeded or token was already invalid,
-        False if revocation failed due to server error.
-
-    Note:
-        Per RFC 7009, a successful response (200) indicates the token
-        has been revoked or was already invalid. The server SHOULD
-        respond with 200 even if the token was already revoked.
+    Returns True if revocation succeeded or the token was already invalid
+    (per RFC 7009 the server returns 200 in both cases), False on server error.
     """
     log.set(
         operation="revoke_token",
@@ -471,30 +407,10 @@ async def introspect_token(
     client_secret: str | None = None,
     timeout: int = 10,
 ) -> dict | None:
-    """
-    Introspect an OAuth token per RFC 7662.
+    """Introspect an OAuth token per RFC 7662.
 
-    Args:
-        introspection_endpoint: The introspection endpoint URL
-        token: The token to introspect
-        token_type_hint: Either "access_token" or "refresh_token"
-        client_id: Client ID for authentication (usually required)
-        client_secret: Client secret for authentication
-        timeout: Request timeout in seconds
-
-    Returns:
-        Token introspection response dict with 'active' field,
-        or None if introspection failed.
-
-    Example response:
-        {
-            "active": true,
-            "scope": "read write",
-            "client_id": "...",
-            "exp": 1234567890,
-            "iat": 1234567800,
-            "sub": "user123"
-        }
+    Returns the introspection response dict (with an ``active`` field), or None
+    if introspection failed.
     """
     log.set(
         operation="introspect_token",
@@ -549,31 +465,8 @@ async def introspect_token(
         return None
 
 
-class HTTPResponseProtocol(Protocol):
-    """Protocol for HTTP response objects (supports httpx.Response and mocks)."""
-
-    @property
-    def status_code(self) -> int: ...
-
-    @property
-    def headers(self) -> Any: ...
-
-    @property
-    def text(self) -> str: ...
-
-    def json(self) -> dict[str, Any]: ...
-
-
 def parse_oauth_error_response(response: Any) -> dict:
-    """
-    Parse OAuth error response per RFC 6749 Section 5.2.
-
-    Args:
-        response: The HTTP response object
-
-    Returns:
-        Dict with 'error', 'error_description', and 'error_uri' fields
-    """
+    """Parse an OAuth error response per RFC 6749 Section 5.2."""
     result = {
         "error": "unknown_error",
         "error_description": None,
@@ -607,32 +500,16 @@ def parse_oauth_error_response(response: Any) -> dict:
 
 
 def get_client_metadata_document_url(base_url: str) -> str:
-    """
-    Get the client metadata document URL.
+    """Build the client metadata document URL from ``base_url``.
 
-    Per draft-ietf-oauth-client-id-metadata-document, the client_id
-    can be a URL pointing to the client metadata document.
-
-    Args:
-        base_url: The API base URL (e.g., https://api.heygaia.com)
-
-    Returns:
-        The full URL to the client metadata document
+    Per draft-ietf-oauth-client-id-metadata-document, the client_id can be a
+    URL pointing to this document.
     """
     return f"{base_url.rstrip('/')}/api/v1/oauth/client-metadata.json"
 
 
 def validate_token_response(tokens: dict, integration_id: str) -> None:
-    """
-    Validate OAuth token response per OAuth 2.1 spec.
-
-    Args:
-        tokens: The token response dict
-        integration_id: Integration ID for logging
-
-    Raises:
-        ValueError: If response is invalid
-    """
+    """Validate an OAuth token response per OAuth 2.1 (access_token + Bearer token_type)."""
     # access_token is REQUIRED
     if not tokens.get("access_token"):
         raise ValueError(f"Token response missing required 'access_token' for {integration_id}")
@@ -650,20 +527,11 @@ def validate_token_response(tokens: dict, integration_id: str) -> None:
 
 
 def validate_pkce_support(oauth_config: dict, integration_id: str) -> None:
-    """
-    Validate PKCE support per MCP spec.
+    """Validate S256 PKCE support per MCP spec.
 
-    Per MCP Authorization Spec:
-    "MCP clients MUST verify PKCE support before proceeding. If
-    code_challenge_methods_supported is absent, the authorization server
-    does not support PKCE and MCP clients MUST refuse to proceed."
-
-    Args:
-        oauth_config: OAuth configuration with code_challenge_methods_supported
-        integration_id: Integration ID for error messages
-
-    Raises:
-        ValueError: If PKCE requirements are not met
+    The MCP Authorization spec requires clients to refuse to proceed if the
+    server doesn't advertise S256 PKCE. Raises ValueError if requirements
+    aren't met.
     """
     pkce_methods = oauth_config.get("code_challenge_methods_supported", [])
 
@@ -691,17 +559,9 @@ def validate_jwt_issuer(
     expected_issuer: str,
     integration_id: str,
 ) -> bool:
-    """
-    Validate JWT issuer claim matches expected authorization server.
+    """Validate a JWT's issuer claim against the expected authorization server.
 
-    Args:
-        access_token: The JWT access token
-        expected_issuer: Expected issuer from OAuth discovery
-        integration_id: Integration ID for logging
-
-    Returns:
-        True if issuer matches or token is not a JWT,
-        False if issuer mismatch detected
+    Returns True if the issuer matches or the token isn't a JWT, False on mismatch.
     """
     # Check if it looks like a JWT (3 dot-separated parts)
     parts = access_token.split(".")
@@ -748,18 +608,10 @@ async def select_authorization_server(
     servers: list[str],
     preferred_server: str | None = None,
 ) -> str:
-    """
-    Select an authorization server from available options.
+    """Select an authorization server, preferring ``preferred_server`` if present.
 
-    Per MCP spec, when Protected Resource Metadata returns multiple
-    authorization_servers, the client MAY select one.
-
-    Args:
-        servers: List of authorization server URLs
-        preferred_server: Optional preferred server URL
-
-    Returns:
-        Selected authorization server URL
+    Per MCP spec, Protected Resource Metadata may list multiple
+    authorization_servers; defaults to the first.
     """
     if not servers:
         raise OAuthDiscoveryError("No authorization servers available")

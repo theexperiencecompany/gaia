@@ -4,7 +4,11 @@ description: "Complete guide to configuring environment variables for GAIA"
 icon: "key"
 ---
 
-## Overview
+## Why you need this
+
+GAIA is several apps (API, web, bots) talking to several services (PostgreSQL, MongoDB, Redis, LLM providers, OAuth integrations). Environment variables are how each app finds those services and authenticates with them. If you're self-hosting or developing locally, this page is the reference for what goes in each `.env` file and what happens when something is missing.
+
+You rarely need all of them: a minimal local setup needs only the database URLs and auth keys shown in Manual Setup below. Everything else enables a specific feature, skip a key and that feature is disabled, but the app still runs.
 
 GAIA uses Pydantic settings to load environment variables with validation. Settings are defined in `apps/api/app/config/settings.py` with two modes:
 
@@ -12,7 +16,7 @@ GAIA uses Pydantic settings to load environment variables with validation. Setti
 - **Production**: All integration keys required for full functionality
 
 <Note>
-  Variables are lazily loaded—the app starts even with missing keys.
+  Variables are lazily loaded: the app starts even with missing keys.
 </Note>
 
 <Tip>
@@ -110,7 +114,7 @@ These are required in **both** development and production:
 </Note>
 
 <Note>
-  `DISCORD_OAUTH_CLIENT_ID` and `SLACK_OAUTH_CLIENT_ID` are optional — without them, users must link their accounts using the `/auth` bot command instead of the web UI. See [Discord Bot](/bots/discord) and [Slack Bot](/bots/slack) for setup instructions.
+  `DISCORD_OAUTH_CLIENT_ID` and `SLACK_OAUTH_CLIENT_ID` are optional, without them, users must link their accounts using the `/auth` bot command instead of the web UI. See [Discord Bot](/bots/discord) and [Slack Bot](/bots/slack) for setup instructions.
 </Note>
 
 ---

@@ -11,7 +11,7 @@ from app.constants.general import FINISH_TASK_NAME
 class ToolRuntimeConfig:
     """Tool runtime behavior shared by parent and spawned child execution.
 
-    - `initial_tool_names`: regular tools bound immediately (e.g. vfs_read)
+    - `initial_tool_names`: regular tools bound immediately (e.g. read, bash)
     - `enable_retrieve_tools`: whether retrieve_tools should be available
     - `include_subagents_in_retrieve`: retrieve_tools discovery scope toggle
     """
@@ -65,14 +65,14 @@ def build_provider_parent_tool_runtime_config(
             *extra_auto_bind,
             *todo_tool_names,
             *finish,
-            "vfs_read",
-            "vfs_cmd",
+            "read",
+            "bash",
         ]
     else:
         initial = [
             "search_memory",
-            "vfs_read",
-            "vfs_cmd",
+            "read",
+            "bash",
             *finish,
             *todo_tool_names,
             *extra_auto_bind,
@@ -99,7 +99,7 @@ def build_child_tool_runtime_config(
             include_subagents_in_retrieve=False,
         )
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read", "vfs_cmd", FINISH_TASK_NAME],
+        initial_tool_names=["read", "bash", FINISH_TASK_NAME],
         enable_retrieve_tools=not disable_retrieve_tools,
         include_subagents_in_retrieve=False,
     )
@@ -108,7 +108,7 @@ def build_child_tool_runtime_config(
 def build_executor_child_tool_runtime_config() -> ToolRuntimeConfig:
     """Build child tool runtime config for executor-spawned subagents."""
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read", "vfs_cmd", FINISH_TASK_NAME],
+        initial_tool_names=["read", "bash", FINISH_TASK_NAME],
         enable_retrieve_tools=True,
         include_subagents_in_retrieve=False,
     )

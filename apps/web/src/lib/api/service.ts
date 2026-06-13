@@ -52,13 +52,15 @@ async function request<T = unknown>(
     const handledByInterceptor =
       (error as { handled?: boolean }).handled === true;
 
-    // Track API errors in PostHog
-    trackEvent(ANALYTICS_EVENTS.API_ERROR, {
-      method,
-      url,
-      status: err.response?.status,
-      error_message: err.message,
-    });
+    // Track API errors in PostHog (client-only; analytics.ts is "use client")
+    if (globalThis.window !== undefined) {
+      trackEvent(ANALYTICS_EVENTS.API_ERROR, {
+        method,
+        url,
+        status: err.response?.status,
+        error_message: err.message,
+      });
+    }
 
     if (!options.silent && !handledByInterceptor) {
       let errorMessage = options.errorMessage;

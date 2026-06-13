@@ -481,39 +481,6 @@ class TestMCPConnectionFlow:
         assert server_cfg["headers"]["Authorization"] == f"Bearer {oauth_token}"
 
     # ------------------------------------------------------------------
-    # 8. get_all_connected_tools returns cached tools without re-connecting
-    # ------------------------------------------------------------------
-
-    async def test_get_all_connected_tools_returns_cached(self):
-        """get_all_connected_tools() must return tools already in _tools
-        without calling connect() again.
-
-        This test verifies that the method checks _tools first and avoids
-        redundant reconnection for already-cached integrations.
-        """
-        client = _build_client_with_no_auth("user-all-tools")
-        tools_a = [_make_fake_tool("a")]
-        tools_b = [_make_fake_tool("b")]
-        client._tools = {"int-a": tools_a, "int-b": tools_b}
-
-        with patch(
-            "app.services.mcp.mcp_client.get_user_connected_integrations",
-            new=AsyncMock(
-                return_value=[
-                    {"integration_id": "int-a"},
-                    {"integration_id": "int-b"},
-                ]
-            ),
-        ):
-            result = await client.get_all_connected_tools()
-
-        assert "int-a" in result
-        assert "int-b" in result
-        # Must be the exact same list objects – no copying or re-fetching
-        assert result["int-a"] is tools_a
-        assert result["int-b"] is tools_b
-
-    # ------------------------------------------------------------------
     # 9. connect() raises when requires_auth=True but no token stored
     # ------------------------------------------------------------------
 

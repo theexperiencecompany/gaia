@@ -2,7 +2,6 @@
 
 Supplements existing test_memory_service.py to cover:
 - store_memory_batch (all branches)
-- search_agent_memories
 - get_all_memories
 - delete_all_memories
 - get_project_info
@@ -206,76 +205,6 @@ class TestStoreMemoryBatch:
 # ---------------------------------------------------------------------------
 # search_agent_memories
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestSearchAgentMemories:
-    async def test_returns_empty_for_no_agent_id(self, service):
-        result = await service.search_agent_memories("query", "")
-        assert isinstance(result, MemorySearchResult)
-        assert result.total_count == 0
-
-    async def test_returns_results(self, service):
-        mock_client = AsyncMock()
-        mock_client.search = AsyncMock(
-            return_value={
-                "results": [{"id": "m1", "memory": "Gaia can do X", "score": 0.9}],
-                "relations": [],
-            }
-        )
-
-        with patch.object(service, "_get_client", return_value=mock_client):
-            result = await service.search_agent_memories("capabilities", "agent_123")
-
-        assert result.total_count == 1
-        assert result.memories[0].content == "Gaia can do X"
-        # search called with agent_id filter
-        call_kwargs = mock_client.search.call_args.kwargs
-        assert call_kwargs["filters"] == {"agent_id": "agent_123"}
-
-    async def test_includes_relations(self, service):
-        mock_client = AsyncMock()
-        mock_client.search = AsyncMock(
-            return_value={
-                "results": [{"id": "m1", "memory": "data", "score": 0.8}],
-                "relations": [{"source": "gaia", "relation": "supports", "destination": "MCP"}],
-            }
-        )
-
-        with patch.object(service, "_get_client", return_value=mock_client):
-            result = await service.search_agent_memories("MCP", "agent_123")
-
-        assert len(result.relations) == 1
-        assert result.relations[0].source == "gaia"
-
-    async def test_list_response_fallback(self, service):
-        mock_client = AsyncMock()
-        mock_client.search = AsyncMock(
-            return_value=[{"id": "m1", "memory": "Direct list", "score": 0.7}]
-        )
-
-        with patch.object(service, "_get_client", return_value=mock_client):
-            result = await service.search_agent_memories("query", "agent_123")
-
-        assert result.total_count == 1
-
-    async def test_unexpected_format_returns_empty(self, service):
-        mock_client = AsyncMock()
-        mock_client.search = AsyncMock(return_value="unexpected")
-
-        with patch.object(service, "_get_client", return_value=mock_client):
-            result = await service.search_agent_memories("query", "agent_123")
-
-        assert result.total_count == 0
-
-    async def test_error_returns_empty(self, service):
-        mock_client = AsyncMock()
-        mock_client.search = AsyncMock(side_effect=Exception("fail"))
-
-        with patch.object(service, "_get_client", return_value=mock_client):
-            result = await service.search_agent_memories("query", "agent_123")
-
-        assert result.total_count == 0
 
 
 # ---------------------------------------------------------------------------

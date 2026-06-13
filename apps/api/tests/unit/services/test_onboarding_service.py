@@ -73,6 +73,17 @@ def sample_background_tasks():
 
 
 @pytest.fixture
+def mock_enqueue_intelligence_job():
+    """complete_onboarding enqueues the intelligence pipeline on success; mock it
+    so success-path tests don't touch the real job queue / database."""
+    with patch(
+        "app.services.onboarding.onboarding_service.enqueue_intelligence_job",
+        new_callable=AsyncMock,
+    ) as mock_enqueue:
+        yield mock_enqueue
+
+
+@pytest.fixture
 def sample_updated_user(sample_user_id):
     oid = ObjectId(sample_user_id)
     return {
@@ -100,6 +111,7 @@ class TestCompleteOnboarding:
     async def test_successful_onboarding(
         self,
         mock_users_collection,
+        mock_enqueue_intelligence_job,
         sample_user_id,
         sample_onboarding_request,
         sample_background_tasks,
@@ -115,6 +127,7 @@ class TestCompleteOnboarding:
 
         assert result["_id"] == sample_user_id
         assert result["user_id"] == sample_user_id
+        mock_enqueue_intelligence_job.assert_awaited_once_with(sample_user_id)
         sample_background_tasks.add_task.assert_called_once()
 
     async def test_user_not_found(
@@ -136,57 +149,65 @@ class TestCompleteOnboarding:
 
         assert exc_info.value.status_code == 404
 
-    async def test_already_onboarded(
+    async def test_already_onboarded_replays_idempotently(
         self,
         mock_users_collection,
         sample_user_id,
         sample_onboarding_request,
         sample_background_tasks,
     ):
+        # The atomic `onboarding: {$exists: false}` gate makes a repeat submission
+        # a no-op: find_one_and_update returns None and the existing user is
+        # returned unchanged (idempotent replay), not an error.
+        existing = {
+            "_id": ObjectId(sample_user_id),
+            "onboarding": {"completed": True, "phase": OnboardingPhase.PERSONALIZATION_PENDING},
+        }
         mock_users_collection.find_one_and_update = AsyncMock(return_value=None)
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(sample_user_id),
-                "onboarding": {"completed": True},
-            }
+        mock_users_collection.find_one = AsyncMock(return_value=existing)
+
+        result = await complete_onboarding(
+            sample_user_id,
+            sample_onboarding_request,
+            sample_background_tasks,
         )
 
-        with pytest.raises(HTTPException) as exc_info:
-            await complete_onboarding(
-                sample_user_id,
-                sample_onboarding_request,
-                sample_background_tasks,
-            )
+        assert result["_id"] == sample_user_id
+        sample_background_tasks.add_task.assert_not_called()
 
-        assert exc_info.value.status_code == 409
-
-    async def test_update_failure(
+    async def test_enqueue_failure_rolls_back_and_raises_503(
         self,
         mock_users_collection,
         sample_user_id,
         sample_onboarding_request,
         sample_background_tasks,
+        sample_updated_user,
     ):
-        mock_users_collection.find_one_and_update = AsyncMock(return_value=None)
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(sample_user_id),
-                "onboarding": {"completed": False},
-            }
-        )
+        # If enqueuing the intelligence pipeline fails, the onboarding subdoc is
+        # rolled back and the caller gets a 503 to retry.
+        mock_users_collection.find_one_and_update = AsyncMock(return_value=sample_updated_user)
+        mock_users_collection.update_one = AsyncMock()
 
-        with pytest.raises(HTTPException) as exc_info:
-            await complete_onboarding(
-                sample_user_id,
-                sample_onboarding_request,
-                sample_background_tasks,
-            )
+        with patch(
+            "app.services.onboarding.onboarding_service.enqueue_intelligence_job",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("queue down"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await complete_onboarding(
+                    sample_user_id,
+                    sample_onboarding_request,
+                    sample_background_tasks,
+                )
 
-        assert exc_info.value.status_code == 500
+        assert exc_info.value.status_code == 503
+        mock_users_collection.update_one.assert_awaited_once()
+        sample_background_tasks.add_task.assert_not_called()
 
     async def test_sets_timezone(
         self,
         mock_users_collection,
+        mock_enqueue_intelligence_job,
         sample_user_id,
         sample_background_tasks,
         sample_updated_user,
@@ -249,16 +270,13 @@ class TestGetUserOnboardingStatus:
         assert result["completed"] is True
         assert result["preferences"]["profession"] == "Engineer"
 
-    async def test_user_not_found_raises_500(self, mock_users_collection, sample_user_id):
-        """The inner 404 is caught by the broad except and re-raised as 500."""
+    async def test_user_not_found_raises_404(self, mock_users_collection, sample_user_id):
         mock_users_collection.find_one = AsyncMock(return_value=None)
 
         with pytest.raises(HTTPException) as exc_info:
             await get_user_onboarding_status(sample_user_id)
 
-        # The function's broad except catches the inner HTTPException(404)
-        # and wraps it as a 500
-        assert exc_info.value.status_code == 500
+        assert exc_info.value.status_code == 404
         assert "User not found" in exc_info.value.detail
 
     async def test_no_onboarding_data(self, mock_users_collection, sample_user_id):
@@ -403,21 +421,16 @@ class TestSavePersonalizationData:
 
 @pytest.mark.unit
 class TestSeedInitialUserData:
-    async def test_runs_parallel_seeding(self):
-        with (
-            patch(
-                "app.services.onboarding.post_onboarding_service.seed_onboarding_todo",
-                new_callable=AsyncMock,
-            ) as mock_todo,
-            patch(
-                "app.services.onboarding.post_onboarding_service.seed_initial_conversation",
-                new_callable=AsyncMock,
-            ) as mock_conv,
-        ):
+    async def test_seeds_onboarding_todo(self):
+        # The welcome conversation is seeded by the intelligence pipeline now;
+        # seed_initial_user_data only seeds the onboarding todo.
+        with patch(
+            "app.services.onboarding.post_onboarding_service.seed_onboarding_todo",
+            new_callable=AsyncMock,
+        ) as mock_todo:
             await seed_initial_user_data("user1")
 
             mock_todo.assert_awaited_once_with("user1")
-            mock_conv.assert_awaited_once_with("user1")
 
     async def test_handles_exception(self):
         with patch(

@@ -28,6 +28,7 @@ from app.models.integration_models import (
     ListIntegrationsResult,
     SuggestedIntegration,
 )
+from app.services.connect_link_service import build_connect_link_url
 from app.services.oauth.oauth_service import (
     check_integration_status as check_single_integration_status,
     check_multiple_integrations_status,
@@ -37,6 +38,7 @@ from app.templates.docstrings.integration_tool_docs import (
     CONNECT_INTEGRATION,
     LIST_INTEGRATIONS,
 )
+from app.utils.integration_checker import build_integration_connection_message
 from shared.py.wide_events import log
 
 # Stopwords to filter out from search queries
@@ -286,9 +288,9 @@ async def suggest_integrations(
 @tool
 @with_doc(CONNECT_INTEGRATION)
 async def connect_integration(
-    integration_names: Annotated[
+    integration_ids: Annotated[
         list[str],
-        "List of integration names or IDs to connect (e.g., ['gmail', 'notion', 'twitter']). Can also be a single integration.",
+        "List of exact integration IDs to connect (e.g., ['gmail', 'notion', 'twitter']).",
     ],
     config: RunnableConfig,
 ) -> str:
@@ -299,35 +301,28 @@ async def connect_integration(
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        # Ensure integration_names is a list
-        if isinstance(integration_names, str):
-            integration_names = [integration_names]
+        if isinstance(integration_ids, str):
+            integration_ids = [integration_ids]
+        integration_ids = list(
+            dict.fromkeys(iid.lower().strip() for iid in integration_ids if iid.strip())
+        )
 
         writer = get_stream_writer()
 
         results = []
         connections_to_initiate = []
 
-        for integration_name in integration_names:
-            # Find the integration by name or ID
-            integration = None
-            search_name = integration_name.lower().strip()
-
-            for integ in OAUTH_INTEGRATIONS:
-                if (
-                    integ.id.lower() == search_name
-                    or integ.name.lower() == search_name
-                    or (integ.short_name and integ.short_name.lower() == search_name)
-                ):
-                    integration = integ
-                    break
+        for integration_id in integration_ids:
+            integration = next(
+                (integ for integ in OAUTH_INTEGRATIONS if integ.id.lower() == integration_id),
+                None,
+            )
 
             if not integration:
-                # Return list of available integrations as suggestion
-                available = [i.name for i in OAUTH_INTEGRATIONS if i.available]
+                available = [i.id for i in OAUTH_INTEGRATIONS if i.available]
                 results.append(
-                    f"❌ '{integration_name}' not found. "
-                    f"Available: {', '.join(available[:5])}{'...' if len(available) > 5 else ''}"
+                    f"❌ '{integration_id}' not found. "
+                    f"Available IDs: {', '.join(available[:5])}{'...' if len(available) > 5 else ''}"
                 )
                 continue
 
@@ -335,16 +330,13 @@ async def connect_integration(
                 results.append(f"⏳ {integration.name} is not available yet. Coming soon!")
                 continue
 
-            # Check if already connected using unified service
             is_connected = await check_single_integration_status(integration.id, user_id)
             if is_connected:
                 results.append(f"✅ {integration.name} is already connected!")
                 continue
 
-            # Queue for connection
             connections_to_initiate.append(integration)
 
-        # Initiate connections for all queued integrations
         for integration in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
 
@@ -355,15 +347,13 @@ async def connect_integration(
 
             writer({"integration_connection_required": integration_data})
 
-            results.append(
-                f"🔗 Connection initiated for {integration.name}. "
-                f"Please follow the authentication flow."
-            )
+            connect_url = build_connect_link_url(str(user_id), integration.id)
+            results.append(build_integration_connection_message(integration.name, connect_url))
 
         return "\n".join(results) if results else "No integrations to connect."
 
     except Exception as e:
-        log.error(f"Error connecting integrations {integration_names}: {e}")
+        log.error(f"Error connecting integrations {integration_ids}: {e}")
         return f"Error connecting integrations: {e!s}"
 
 

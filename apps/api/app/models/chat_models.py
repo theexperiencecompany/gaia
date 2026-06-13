@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Union
+from typing import Union
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -8,21 +8,11 @@ from app.models.message_models import FileData, ReplyToMessageData, SelectedWork
 
 
 class ImageData(BaseModel):
+    """Generated-image metadata attached to a chat message."""
+
     url: str
     prompt: str
     improved_prompt: str | None = None
-
-
-class MCPAppData(BaseModel):
-    tool_call_id: str
-    tool_name: str
-    server_url: str
-    resource_uri: str
-    html_content: str
-    csp: dict[str, Any] | None = None
-    permissions: list[str] = []
-    tool_result: Any | None = None
-    tool_arguments: dict[str, Any] = {}
 
 
 class ToolDataEntry(TypedDict):
@@ -50,9 +40,9 @@ tool_fields = [
     "search_results",
     "deep_research_results",
     "notification_data",
+    "send_notification_data",
     "memory_data",
     "todo_data",
-    "document_data",
     "goal_data",
     "code_data",
     "google_docs_data",
@@ -69,6 +59,8 @@ tool_fields = [
 
 
 class MessageModel(BaseModel):
+    """A single chat message with its content, attachments and tool data."""
+
     type: str
     response: str
     date: str | None = None
@@ -91,6 +83,8 @@ class MessageModel(BaseModel):
 
 
 class SystemPurpose(str, Enum):
+    """Why a system-generated conversation was created."""
+
     EMAIL_PROCESSING = "email_processing"
     REMINDER_PROCESSING = "reminder_processing"
     WORKFLOW_EXECUTION = "workflow_execution"
@@ -98,6 +92,8 @@ class SystemPurpose(str, Enum):
 
 
 class ConversationSource(str, Enum):
+    """Client or channel a conversation originated from."""
+
     WEB = "web"
     MOBILE = "mobile"
     TELEGRAM = "telegram"
@@ -105,9 +101,70 @@ class ConversationSource(str, Enum):
     SLACK = "slack"
     WHATSAPP = "whatsapp"
     WORKFLOW_SYSTEM = "workflow_system"
+    BACKGROUND = "background"
+
+    @classmethod
+    def coerce(cls, value: "ConversationSource | str | None") -> "ConversationSource | None":
+        """Parse a raw source value (e.g. a stored string) into the enum.
+
+        Returns None for blank or unrecognised values so callers can compare on
+        enum members instead of raw strings.
+        """
+        if value is None or isinstance(value, cls):
+            return value
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+
+
+class SourceCategory(str, Enum):
+    """Generalized origin of a graph invocation.
+
+    Coarser than ``ConversationSource``: every specific channel rolls up to one
+    of these so traces and tools can branch on "where did this run come from"
+    without enumerating every platform.
+    """
+
+    BG = "bg"  # autonomous background work (workflows, scheduled todos, sweeps)
+    UI = "ui"  # first-party clients (web, mobile, desktop)
+    BOT = "bot"  # messaging-platform bots (whatsapp, telegram, discord, slack)
+
+    @classmethod
+    def from_source(cls, source: "ConversationSource | str | None") -> "SourceCategory":
+        """Map a specific ``ConversationSource`` to its category.
+
+        Unknown / unset sources fall back to ``BG`` — the only callers that
+        leave the source blank are the silent background paths.
+        """
+        channel = ConversationSource.coerce(source)
+        if channel in _UI_SOURCES:
+            return cls.UI
+        if channel in BOT_CONVERSATION_SOURCES:
+            return cls.BOT
+        return cls.BG
+
+
+# Specific channels that belong to each generalized category. Single source of
+# truth for "which conversation sources are messaging-platform bots" — reused by
+# delivery routing and the web conversation-list filter. Members are enums so all
+# comparisons happen on ConversationSource, never raw strings.
+_UI_SOURCES: frozenset[ConversationSource] = frozenset(
+    {ConversationSource.WEB, ConversationSource.MOBILE}
+)
+BOT_CONVERSATION_SOURCES: frozenset[ConversationSource] = frozenset(
+    {
+        ConversationSource.WHATSAPP,
+        ConversationSource.TELEGRAM,
+        ConversationSource.DISCORD,
+        ConversationSource.SLACK,
+    }
+)
 
 
 class ConversationModel(BaseModel):
+    """A chat conversation and its display/system metadata."""
+
     conversation_id: str
     description: str = "New Chat"
     is_system_generated: bool | None = False
@@ -118,26 +175,38 @@ class ConversationModel(BaseModel):
 
 
 class UpdateMessagesRequest(BaseModel):
+    """Request to replace the messages of a conversation."""
+
     conversation_id: str
     messages: list[MessageModel]
 
 
 class StarredUpdate(BaseModel):
+    """Request to set a conversation's starred flag."""
+
     starred: bool
 
 
 class PinnedUpdate(BaseModel):
+    """Request to set a conversation's pinned flag."""
+
     pinned: bool
 
 
 class UpdateDescriptionRequest(BaseModel):
+    """Request to rename a conversation's description."""
+
     description: str
 
 
 class ConversationSyncItem(BaseModel):
+    """A conversation id and its last-updated timestamp for client sync."""
+
     conversation_id: str
     last_updated: str | None = None
 
 
 class BatchSyncRequest(BaseModel):
+    """Batch of conversation sync items sent by a client to reconcile state."""
+
     conversations: list[ConversationSyncItem]

@@ -46,7 +46,16 @@ export default function middleware(request: NextRequest) {
   }
   // For non-translated routes: still run middleware (needed for [locale]
   // routing) but force default locale — no locale prefix in URL.
-  return intlMiddlewareDefaultOnly(request);
+  const response = intlMiddlewareDefaultOnly(request);
+  // These routes are locale-invariant (no detection, no prefix), so the
+  // NEXT_LOCALE cookie next-intl writes here is inert — it can never change
+  // what locale is served. Dropping the Set-Cookie lets Cloudflare's edge
+  // cache store the ISR HTML for these public pages (CF bypasses the cache on
+  // any response carrying Set-Cookie), removing the Worker — and its cold
+  // start — from the critical path. Translated routes above keep the cookie,
+  // since their locale genuinely varies and must not be edge-cached.
+  response.headers.delete("set-cookie");
+  return response;
 }
 
 export const config = {

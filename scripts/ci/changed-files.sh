@@ -59,7 +59,13 @@ ext_regex="\.(${ext_alt})$"
 # Ensure the PR base ref is available for the merge-base diff. Best-effort:
 # on a fetch-depth:0 checkout this is a cheap no-op; on a shallow one it
 # unshallows just enough to resolve the base.
-git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
+#
+# Hard timeout + low-speed guard so a stalled HTTPS connection fails fast
+# instead of hanging until the job's timeout-minutes cap (which surfaces as a
+# `cancelled` lane and fails the quality gate). If the fetch dies, the diff
+# below falls back to whatever base ref is already local.
+timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
+  fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
 
 # `...HEAD` diffs against the merge-base of the base ref and HEAD — the same set
 # of files GitHub shows as "Files changed" in the PR. --diff-filter=ACMR drops

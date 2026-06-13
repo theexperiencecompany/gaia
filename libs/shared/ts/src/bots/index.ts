@@ -28,5 +28,9 @@ export * from "./adapter";
 export * from "./api";
 export * from "./commands";
 export * from "./config";
+// Outbound envelope types/schema (zod-only — RN-safe). The full consumer
+// (`./consumer/outbound-consumer`) is NOT re-exported here: it imports amqplib
+// (Node-only), which Metro/React Native cannot resolve.
+export * from "./consumer/envelope";
 export * from "./types";
 export * from "./utils";

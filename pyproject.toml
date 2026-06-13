@@ -23,6 +23,51 @@ members = [
   "apps/voice-agent",
 ]
 
+# vulture — Python dead-code detection (scripts/dead-code-check.sh + CI).
+# Lives at the repo root because vulture reads [tool.vulture] from the CWD and
+# the script runs from here.
+#
+# min_confidence = 60 so unused functions/methods/classes are surfaced (70 only
+# catches imports and locals). Suppress false positives by the mechanism that
+# consumes the symbol: ignore_decorators for decorator-registered symbols (one
+# entry covers all of that kind), ignore_names only for framework-reserved names
+# (matched globally, so keep it tiny). Never suppress a real finding — delete it.
+[tool.vulture]
+min_confidence = 60
+paths = ["apps/api", "apps/voice-agent", "libs/shared/py"]
+exclude = [
+  "*/tests/*",
+  "*/test_*.py",
+  "*_test.py",
+  "*/conftest.py",
+  "*/.venv/*",
+  "*/venv/*",
+  "*/.virtualenv/*",
+  "*/site-packages/*",
+  "*/node_modules/*",
+  "*/.nx/*",
+]
+ignore_decorators = [
+  "@field_validator",
+  "@model_validator",
+  "@field_serializer",
+  "@model_serializer",
+  "@router.*",
+  "@app.exception_handler",
+  "@composio.tools.custom_tool",
+  "@register_before_hook",
+  "@register_after_hook",
+  "@register_schema_modifier",
+  "@*.on",          # LiveKit event handlers (@session.on / @ctx.room.on)
+]
+ignore_names = [
+  "model_config",   # Pydantic v2 config attribute (set on every model)
+  "Config",         # Pydantic v1-style inner config class (framework-reserved name)
+  "dispatch",       # Starlette BaseHTTPMiddleware.dispatch override
+  "__getattr__",    # module-level dunder called by Python's import machinery
+  "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
+]
+
 # ---------------------------------------------------------------------------
 # ruff — strict, monorepo-wide configuration. Each Python workspace member
 # inherits these settings via "extend = '../../pyproject.toml'" in its own
@@ -311,7 +356,7 @@ unfixable = [
   "PT015",
 ]
 "**/conftest.py" = ["ANN", "INP001", "ARG", "S101"]
-"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S607"]
+"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S606", "S607"]
 "**/migrations/**/*.py" = ["INP001", "N999", "ANN"]
 "**/__init__.py" = ["F401"]
 "**/patches.py" = ["F401", "PLC", "ANN", "ARG"]
@@ -367,6 +412,10 @@ disallow_any_generics = false
 warn_return_any = false
 warn_unreachable = false
 warn_unused_ignores = false
+# Builtin-skill resource files (templates/, scripts/) are sandbox-executed assets,
+# not importable API modules — they run in the docgen sandbox toolchain (Typst,
+# openpyxl, docx-js), so they are not type-checked against the API environment.
+exclude = "app/agents/skills/builtin/[^/]+/(templates|scripts)/"
 
 # Shared library code: ratchet stricter than apps once legacy gaps are closed.
 # Today it inherits the global baseline; the per-module override exists so

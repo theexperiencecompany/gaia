@@ -77,11 +77,13 @@ async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
       return {};
     }
 
-    const data = await response.json();
-    const resultCount = Object.keys(data.results || {}).length;
+    const data = (await response.json()) as {
+      results?: Record<string, ToolMetadata>;
+    };
+    const resultCount = Object.keys(data.results ?? {}).length;
     console.log(`${logPrefix} ✓ Successfully fetched metadata for ${resultCount}/${tools.length} tools,
     `);
-    return data.results || {};
+    return data.results ?? {};
   } catch (error) {
     console.error(`
 ╔════════════════════════════════════════════════════════════════╗

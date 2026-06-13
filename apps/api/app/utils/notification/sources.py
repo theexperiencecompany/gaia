@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
 from app.models.notification.notification_models import (
-    ChannelConfig,
     NotificationAction,
     NotificationContent,
     NotificationRequest,
@@ -11,13 +10,7 @@ from app.models.notification.notification_models import (
 
 
 class AIProactiveNotificationSource:
-    """
-    Notification source for AI-initiated proactive actions.
-
-    This class contains static methods to create notifications for various
-    AI-driven proactive actions like email composition, calendar events,
-    and task creation that are initiated by backend workers.
-    """
+    """Builds notifications for AI-initiated proactive actions (reminders, etc.)."""
 
     @staticmethod
     def create_reminder_notification(
@@ -33,7 +26,6 @@ class AIProactiveNotificationSource:
             source=NotificationSourceEnum.AI_REMINDER,
             type=NotificationType.INFO,
             priority=1,
-            channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
             content=NotificationContent(
                 title=title,
                 body=body,

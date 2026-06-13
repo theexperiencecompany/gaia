@@ -25,7 +25,6 @@ import { useChatLayout } from "@/features/chat/components/interface/hooks/useCha
 import { useScrollBehavior } from "@/features/chat/components/interface/hooks/useScrollBehavior";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
-import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -42,7 +41,6 @@ import ScrollToBottomButton from "./ScrollToBottomButton";
 
 const ChatPage = React.memo(function MainChat() {
   const [voiceModeActive, setVoiceModeActive] = useState(false);
-  const { convoMessages } = useConversation();
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
   const setActiveConversationId = useChatStore(
@@ -145,10 +143,10 @@ const ChatPage = React.memo(function MainChat() {
 
   const {
     scrollContainerRef,
+    contentRef,
     scrollToBottom,
-    handleScroll,
     shouldShowScrollButton,
-  } = useScrollBehavior(hasMessages, convoMessages?.length);
+  } = useScrollBehavior();
 
   // Drag and drop functionality
   const { isDragging, dragHandlers } = useDragAndDrop({
@@ -220,8 +218,8 @@ const ChatPage = React.memo(function MainChat() {
         <>
           <ChatWithMessages
             scrollContainerRef={scrollContainerRef}
+            contentRef={contentRef}
             chatRef={chatRef}
-            handleScroll={handleScroll}
             dragHandlers={dragHandlers}
             composerProps={composerProps}
           />
@@ -235,8 +233,8 @@ const ChatPage = React.memo(function MainChat() {
         <>
           <NewChatLayout
             scrollContainerRef={scrollContainerRef}
+            contentRef={contentRef}
             dummySectionRef={dummySectionRef}
-            handleScroll={handleScroll}
             dragHandlers={dragHandlers}
             composerProps={composerProps}
           />

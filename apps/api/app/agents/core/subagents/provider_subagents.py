@@ -5,14 +5,11 @@ This module contains the factory methods for creating specialized sub-agent grap
 for different providers (Gmail, Notion, Twitter, LinkedIn, etc.) with full tool
 registry and retrieval capabilities.
 
-Subagents are lazy-loaded on first access via providers.
-Configuration comes from the subagent registry (OAuth-derived + builtins).
-Tools are registered on-demand when subagent is first created.
+Subagents are built on-demand each turn. Per-user MCP tools are read live from
+MCPClient (the source of truth) rather than copied into a process-global cache.
 """
 
-import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
 
 from langgraph.graph.state import CompiledStateGraph
 
@@ -28,33 +25,6 @@ from app.services.mcp.mcp_client import get_mcp_client
 from shared.py.wide_events import log
 
 from .base_subagent import SubAgentFactory
-
-# In-memory cache for per-user subagent graphs.
-#
-# **Why in-memory (not Redis)?** Values are compiled LangGraph objects that
-# embed ``functools.partial`` closures, bound-method references, and live
-# Pydantic models. These are NOT pickleable. Process-local memo is the only
-# viable option.
-#
-# Keyed by ``(integration_id, user_id)``. Invalidated on process restart,
-# explicit calls to ``invalidate_user_subagent_cache()``, or MCP config
-# change (callers must invalidate explicitly).
-_USER_SUBAGENT_CACHE: dict[tuple[str, str], CompiledStateGraph] = {}
-_USER_SUBAGENT_LOCK = asyncio.Lock()
-
-
-def invalidate_user_subagent_cache(integration_id: str, user_id: str | None = None) -> None:
-    """Drop cached subagent graphs for a given integration.
-
-    If user_id is None, invalidates every user's graph for that integration
-    (useful when an MCP config changes globally).
-    """
-    if user_id is not None:
-        _USER_SUBAGENT_CACHE.pop((integration_id, user_id), None)
-        return
-    for key in list(_USER_SUBAGENT_CACHE.keys()):
-        if key[0] == integration_id:
-            _USER_SUBAGENT_CACHE.pop(key, None)
 
 
 async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
@@ -146,65 +116,27 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
 
 
 async def create_subagent_for_user(integration_id: str, user_id: str) -> CompiledStateGraph | None:
+    """Build a per-user subagent graph.
+
+    No memoization — every handoff rebuilds the graph from live MCPClient
+    state. The build itself is sub-second; the cost that used to motivate
+    caching (MCP connect + Chroma indexing) lives in MCPClient, which keeps
+    warm sessions per integration for the worker's lifetime.
     """
-    Create (or retrieve from in-memory cache) a per-user subagent graph.
-
-    The compiled graph is memoised in-process keyed by
-    ``(integration_id, user_id)`` so repeat handoffs skip the expensive
-    MCP-connect + ChromaDB-indexing rebuild. Invalidation happens on:
-      - process restart
-      - ``invalidate_user_subagent_cache(integration_id, user_id=?)``
-      - MCP config change (callers must invalidate explicitly)
-    """
-    cache_key = (integration_id, user_id)
-    cached = _USER_SUBAGENT_CACHE.get(cache_key)
-    if cached is not None:
-        log.set(
-            subagent_graph_cache={
-                "integration_id": integration_id,
-                "user_id": user_id,
-                "outcome": "hit",
-            }
-        )
-        return cached
-
-    async with _USER_SUBAGENT_LOCK:
-        # Double-check: another task may have populated while we waited.
-        cached = _USER_SUBAGENT_CACHE.get(cache_key)
-        if cached is not None:
-            log.set(
-                subagent_graph_cache={
-                    "integration_id": integration_id,
-                    "user_id": user_id,
-                    "outcome": "hit_after_wait",
-                }
-            )
-            return cached
-
-        graph = await _build_user_subagent(integration_id, user_id)
-        if graph is not None:
-            _USER_SUBAGENT_CACHE[cache_key] = graph
-        log.set(
-            subagent_graph_cache={
-                "integration_id": integration_id,
-                "user_id": user_id,
-                "outcome": "miss_built" if graph is not None else "miss_failed",
-            }
-        )
-        return graph
+    return await _build_user_subagent(integration_id, user_id)
 
 
 async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledStateGraph | None:
-    """Build a per-user subagent graph from scratch (called on cache miss).
+    """Build a per-user subagent graph for an MCP integration.
 
-    Used for:
-    - MCP integrations (platform) that require OAuth authentication
-    - Custom MCP integrations created by users
+    Pulls live tools from MCPClient. Lazy-connects on first use per integration;
+    subsequent builds reuse the warm session. No registry-side state is written
+    — tool objects only live inside MCPClient.
     """
     subagent = get_subagent_by_id(integration_id)
 
-    # Handle custom MCPs from MongoDB (not in registry)
-    # Custom MCPs can have either "custom_" prefix or 12-char hex IDs
+    # Custom MCPs from MongoDB (not in static registry) — IDs can be 'custom_'
+    # prefixed or 12-char hex.
     if not subagent:
         return await _create_custom_mcp_subagent(integration_id, user_id)
 
@@ -214,66 +146,34 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
         return None
 
     config = subagent.config
-    tool_registry = await get_tool_registry()
+    mcp_client = await get_mcp_client(user_id=user_id)
 
-    # Use user-specific category name to avoid conflicts
-    category_name = f"mcp_{subagent.id}_{user_id}"
-
-    if category_name not in tool_registry._categories:
-        mcp_client = await get_mcp_client(user_id=user_id)
-
-        # Fast path: connect ONLY the needed integration instead of all
-        if subagent.id in mcp_client._tools:
-            tools = mcp_client._tools[subagent.id]
+    if subagent.id in mcp_client._tools:
+        tools = mcp_client._tools[subagent.id]
+        log.info(
+            f"_build_user_subagent: integration={integration_id} user={user_id} "
+            f"using warm MCPClient tools ({len(tools)})"
+        )
+    else:
+        try:
+            tools = await mcp_client.connect(subagent.id)
             log.info(
                 f"_build_user_subagent: integration={integration_id} user={user_id} "
-                f"using cached in-memory tools ({len(tools)})"
+                f"cold connect, got {len(tools)} tools"
             )
-        else:
-            try:
-                tools = await mcp_client.connect(subagent.id)
-                log.info(
-                    f"_build_user_subagent: integration={integration_id} user={user_id} "
-                    f"connected MCP, got {len(tools)} tools"
-                )
-            except Exception as e:
-                log.error(
-                    f"_build_user_subagent: integration={integration_id} user={user_id} "
-                    f"connect FAILED: {type(e).__name__}: {e}"
-                )
-                return None
-
-        if not tools:
+        except Exception as e:
             log.error(
                 f"_build_user_subagent: integration={integration_id} user={user_id} "
-                f"got 0 tools — cannot create subagent"
+                f"connect FAILED: {type(e).__name__}: {e}"
             )
             return None
 
-        # Background: warm up other integrations for future handoffs
-        asyncio.create_task(mcp_client.get_all_connected_tools())
-
-        log.set(
-            subagent_register={
-                "integration_id": integration_id,
-                "user_id": user_id,
-                "category_name": category_name,
-                "tool_space": config.tool_space,
-                "tools_count": len(tools),
-            }
+    if not tools:
+        log.error(
+            f"_build_user_subagent: integration={integration_id} user={user_id} "
+            f"got 0 tools — cannot create subagent"
         )
-        tool_registry._add_category(
-            name=category_name,
-            tools=tools,
-            space=config.tool_space,
-            integration_name=subagent.id,
-        )
-        await tool_registry._index_category_tools(category_name)
-        log.info(
-            f"_build_user_subagent: registered {len(tools)} user-specific MCP tools "
-            f"for {integration_id} user={user_id} category={category_name} "
-            f"space={config.tool_space}"
-        )
+        return None
 
     llm = init_llm()
 
@@ -291,6 +191,7 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
         disable_retrieve_tools=config.disable_retrieve_tools,
         auto_bind_tools=config.auto_bind_tools,
         include_finish_task=config.include_finish_task,
+        mcp_tools=tools,
     )
 
     log.info(f"User-specific subagent {config.agent_name} created successfully")
@@ -300,94 +201,47 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
 async def _create_custom_mcp_subagent(
     integration_id: str, user_id: str
 ) -> CompiledStateGraph | None:
+    """Build a subagent graph for a custom MCP integration from MongoDB.
+
+    Pulls live tools from MCPClient (lazy-connects on first use). Namespace
+    derives from the custom integration's server URL.
     """
-    Create a subagent graph for a custom MCP integration from MongoDB.
-
-    Custom MCPs don't have static SubAgentConfig in the registry.
-    They use the universal prompt and have all their tools loaded directly.
-
-    Args:
-        integration_id: The custom integration ID (starts with 'custom_')
-        user_id: The user's ID for token lookup and tool loading
-
-    Returns:
-        Compiled subagent graph, or None if creation fails
-    """
-    # Fetch custom integration from MongoDB
     custom_doc = await integrations_collection.find_one({"integration_id": integration_id})
     if not custom_doc:
         log.error(f"Custom integration {integration_id} not found in MongoDB")
         return None
 
-    tool_registry = await get_tool_registry()
-
-    # Use user-specific category name to avoid conflicts
-    category_name = f"mcp_{integration_id}_{user_id}"
-    tools: list[Any] | None = None  # Track tools for count-based strategy decision
-    tool_namespace: str = ""  # Will be set in either branch below
-
-    # Derive namespace upfront from mcp_config (needed regardless of cache branch)
     mcp_config = custom_doc.get("mcp_config", {})
     server_url = mcp_config.get("server_url", "")
     tool_namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
 
-    if category_name not in tool_registry._categories:
-        mcp_client = await get_mcp_client(user_id=user_id)
+    mcp_client = await get_mcp_client(user_id=user_id)
 
-        # Fast path: connect ONLY the needed integration instead of all
-        if integration_id in mcp_client._tools:
-            tools = mcp_client._tools[integration_id]
-        else:
-            try:
-                tools = await mcp_client.connect(integration_id)
-            except Exception as e:
-                log.error(f"Failed to get MCP tools for {integration_id}: {e}")
-                return None
-
-        if not tools:
-            log.error(f"No tools available for {integration_id}")
+    if integration_id in mcp_client._tools:
+        tools = mcp_client._tools[integration_id]
+    else:
+        try:
+            tools = await mcp_client.connect(integration_id)
+        except Exception as e:
+            log.error(f"Failed to get MCP tools for {integration_id}: {e}")
             return None
 
-        # Background: warm up other integrations for future handoffs
-        asyncio.create_task(mcp_client.get_all_connected_tools())
-
-        tool_registry._add_category(
-            name=category_name,
-            tools=tools,
-            space=tool_namespace,  # Use URL domain to match mcp_client.py indexing
-            integration_name=integration_id,
-        )
-        await tool_registry._index_category_tools(category_name)
-        log.info(
-            f"Registered {len(tools)} custom MCP tools for {integration_id} in namespace '{tool_namespace}'"
-        )
-    else:
-        # Category exists - get tool count and namespace from registry
-        category = tool_registry.get_category(category_name)
-        if category:
-            tools = category.tools
-            tool_namespace = category.space
-
-    if not tool_namespace:
-        # Fallback: derive namespace if not set from either branch
-        mcp_cfg = custom_doc.get("mcp_config", {})
-        tool_namespace = derive_integration_namespace(
-            integration_id, mcp_cfg.get("server_url", ""), is_custom=True
-        )
+    if not tools:
+        log.error(f"No tools available for {integration_id}")
+        return None
 
     llm = init_llm()
     agent_name = f"custom_mcp_{integration_id}"
 
     log.set(subagent={"name": agent_name, "provider": integration_id})
-    log.info(f"Creating custom MCP subagent {agent_name} for user {user_id}")
 
     # Dynamic tool-count override: if actual tool count is small (1-10),
     # bind all tools directly and skip retrieve_tools for lower latency.
-    tool_count = len(tools) if tools else 0
+    tool_count = len(tools)
     use_direct = 0 < tool_count <= 10
 
     log.info(
-        f"Custom MCP {integration_id} has {tool_count} tools - "
+        f"Custom MCP {integration_id} has {tool_count} tools — "
         f"using {'direct binding' if use_direct else 'retrieve_tools'}"
     )
 
@@ -398,6 +252,7 @@ async def _create_custom_mcp_subagent(
         name=agent_name,
         use_direct_tools=use_direct,
         disable_retrieve_tools=use_direct,
+        mcp_tools=tools,
     )
 
     log.info(f"Custom MCP subagent {agent_name} created successfully")

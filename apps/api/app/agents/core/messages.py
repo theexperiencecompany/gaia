@@ -37,6 +37,8 @@ async def construct_langchain_messages(
     reply_to_message: ReplyToMessageData | None = None,
     trigger_context: dict | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
+    active_todo_id: str | None = None,
+    execution_mode: Literal["interactive", "background"] = "interactive",
     conversation_id: str | None = None,
     source: str | None = None,
 ) -> list[AnyMessage]:
@@ -80,7 +82,8 @@ async def construct_langchain_messages(
     user_preferences = onboarding.get("preferences") if onboarding else None
     writing_style = onboarding.get("writing_style") if onboarding else None
 
-    # Dynamic-context SystemMessage — user name, preferences, memories.
+    # Dynamic-context SystemMessage — user name, preferences, memories,
+    # tracked-todos, and (on bound / headless runs) run-binding banners.
     # Intentionally does NOT contain the clock or any output-format
     # instructions; both live elsewhere to protect the cache prefix.
     dynamic_msg = await build_dynamic_context_message(
@@ -91,6 +94,8 @@ async def construct_langchain_messages(
         user_preferences=user_preferences,
         writing_style=writing_style,
         source=source,
+        active_todo_id=active_todo_id,
+        execution_mode=execution_mode,
     )
     # Current time lives in a HumanMessage in ``contents`` (not
     # ``system_instruction``) so minute ticks never invalidate the cache
@@ -136,7 +141,7 @@ async def construct_langchain_messages(
 
     # Append file context if files are uploaded
     if currently_uploaded_file_ids and (
-        files_str := format_files_list(files_data, currently_uploaded_file_ids)
+        files_str := format_files_list(files_data, currently_uploaded_file_ids, conversation_id)
     ):
         content += f"\n\n{files_str}"
 

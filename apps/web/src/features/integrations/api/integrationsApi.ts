@@ -7,6 +7,7 @@ import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
+  IntegrationInstructions,
   PublicIntegrationResponse,
   UserIntegrationsResponse,
 } from "../types";
@@ -93,6 +94,32 @@ export const integrationsApi = {
   },
 
   /**
+   * Get the user's custom instructions for one integration.
+   */
+  getIntegrationInstructions: async (
+    integrationId: string,
+  ): Promise<IntegrationInstructions> => {
+    return await apiService.get<IntegrationInstructions>(
+      `/integrations/users/me/integrations/${integrationId}/instructions`,
+      { silent: true },
+    );
+  },
+
+  /**
+   * Save the user's custom instructions for one integration.
+   */
+  updateIntegrationInstructions: async (
+    integrationId: string,
+    content: string,
+  ): Promise<IntegrationInstructions> => {
+    return await apiService.put<IntegrationInstructions>(
+      `/integrations/users/me/integrations/${integrationId}/instructions`,
+      { content },
+      { silent: true },
+    );
+  },
+
+  /**
    * Connect an integration using the unified backend endpoint.
    */
   connectIntegration: async (
@@ -145,17 +172,12 @@ export const integrationsApi = {
   },
 
   /**
-   * Disconnect an integration.
+   * Disconnect an integration. The success toast is fired by the hook caller
+   * (useIntegrations.disconnectIntegration) — don't double up here.
    */
   disconnectIntegration: async (integrationId: string): Promise<void> => {
     try {
-      await apiService.delete(
-        `/integrations/${integrationId}`,
-        {},
-        {
-          successMessage: "Integration disconnected successfully",
-        },
-      );
+      await apiService.delete(`/integrations/${integrationId}`);
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
       throw error;

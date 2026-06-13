@@ -21,8 +21,11 @@ from app.db.mongodb.collections import (
     calendars_collection,
     conversations_collection,
     device_tokens_collection,
+    e2b_sandboxes_collection,
+    e2b_warm_pool_collection,
     files_collection,
     goals_collection,
+    integration_instructions_collection,
     integrations_collection,
     mail_collection,
     notes_collection,
@@ -38,7 +41,6 @@ from app.db.mongodb.collections import (
     usage_snapshots_collection,
     user_integrations_collection,
     users_collection,
-    vfs_nodes_collection,
     workflow_executions_collection,
     workflows_collection,
 )
@@ -47,16 +49,7 @@ from shared.py.wide_events import log
 
 
 async def create_all_indexes():
-    """
-    Create all database indexes for optimal performance.
-    This is the main function called during application startup.
-
-    Indexes are created with best practices:
-    - User-specific compound indexes for multi-tenant queries
-    - Date-based sorting indexes for pagination
-    - Text search indexes for full-text search
-    - Unique indexes for data integrity    - Compound indexes ordered by: equality → range → sort
-    """
+    """Create all database indexes. Called during application startup."""
     try:
         log.set(db={"operation": "create_indexes", "collection": "all"})
         log.info("Starting comprehensive database index creation...")
@@ -82,11 +75,12 @@ async def create_all_indexes():
             create_ai_models_indexes(),
             create_integration_indexes(),
             create_user_integration_indexes(),
+            create_integration_instructions_indexes(),
             create_device_token_indexes(),
-            create_vfs_indexes(),
             create_installed_skills_indexes(),
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
+            create_e2b_sandbox_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -112,11 +106,12 @@ async def create_all_indexes():
             "ai_models",
             "integrations",
             "user_integrations",
+            "integration_instructions",
             "device_tokens",
-            "vfs_nodes",
             "skills",
             "workflow_executions",
             "bot_sessions",
+            "e2b_sandboxes",
         ]
 
         index_results = {}
@@ -239,6 +234,19 @@ async def create_todo_indexes():
             todos_collection.create_index(
                 [("user_id", 1), ("project_id", 1), ("due_date", 1)],
                 name="user_project_due",
+            ),
+            # For tracked-todo cron sweeps (safety-net + maintenance). Both
+            # scan by gaia-tracked label + completion, then range on
+            # scheduled_at / gaia_retry_count. ESR ordering: equality fields
+            # first (labels, completed), then range fields.
+            todos_collection.create_index(
+                [
+                    ("labels", 1),
+                    ("completed", 1),
+                    ("scheduled_at", 1),
+                    ("gaia_retry_count", 1),
+                ],
+                name="tracked_sweep",
             ),
         )
 
@@ -836,6 +844,27 @@ async def create_user_integration_indexes():
         raise
 
 
+async def create_integration_instructions_indexes():
+    """
+    Create indexes for integration_instructions collection.
+
+    Query patterns:
+    - Read one integration's instructions: user_id + integration_id (unique)
+    - List all of a user's instructions for materialization
+    """
+    try:
+        await _create_index_safe(
+            integration_instructions_collection,
+            [("user_id", 1), ("integration_id", 1)],
+            unique=True,
+            name="user_integration_instructions_unique",
+        )
+
+    except Exception as e:
+        log.error(f"Error creating integration instructions indexes: {e!s}")
+        raise
+
+
 async def create_device_token_indexes():
     """Create indexes for device_tokens collection for push notifications."""
     try:
@@ -850,78 +879,6 @@ async def create_device_token_indexes():
 
     except Exception as e:
         log.error(f"Error creating device token indexes: {e!s}")
-        raise
-
-
-async def create_vfs_indexes() -> None:
-    """
-    Create indexes for vfs_nodes collection (Virtual Filesystem).
-
-    Query patterns:
-    - Primary path lookups (unique per user)
-    - Directory listing (parent_path queries)
-    - Session-based queries (conversation_id in metadata)
-    - Agent-specific queries (agent_name in metadata)
-    - Cleanup/retention queries (created_at)
-    """
-    try:
-        await asyncio.gather(
-            # Primary unique index: user + path combination
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("path", 1)],
-                unique=True,
-                name="user_path_unique",
-            ),
-            # Directory listing: find all children of a parent path
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("parent_path", 1)],
-                name="user_parent_path",
-            ),
-            # Session-based queries: find files in a conversation
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("metadata.conversation_id", 1)],
-                sparse=True,
-                name="user_conversation",
-            ),
-            # Agent-based queries: find files created by a specific agent
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("metadata.agent_name", 1)],
-                sparse=True,
-                name="user_agent",
-            ),
-            # Tool-based queries: find outputs from a specific tool
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("metadata.tool_name", 1)],
-                sparse=True,
-                name="user_tool",
-            ),
-            # Retention/cleanup queries: order by creation time
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("created_at", 1)],
-                name="user_created",
-            ),
-            # Recent access queries
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("accessed_at", -1)],
-                name="user_accessed",
-            ),
-            # Node type filtering (folders vs files)
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("node_type", 1), ("parent_path", 1)],
-                name="user_type_parent",
-            ),
-        )
-
-    except Exception as e:
-        log.error(f"Error creating VFS indexes: {e!s}")
         raise
 
 
@@ -993,78 +950,28 @@ async def create_installed_skills_indexes() -> None:
         raise
 
 
-async def get_index_status() -> dict[str, list[str]]:
+async def create_e2b_sandbox_indexes() -> None:
     """
-    Get the current index status for all collections.
-    Useful for monitoring and debugging index usage.
+    Create indexes for e2b_sandboxes and e2b_warm_pool collections.
 
-    Returns:
-        Dict mapping collection names to lists of index names
+    Query patterns:
+    - Sandbox lookup by user_id (1 sandbox per user, unique)
+    - Sweeper: scan by last_used_at to find evictable sandboxes
+    - Warm pool: claim a ready sandbox by (shard_id, state)
     """
     try:
-        collections = {
-            "users": users_collection,
-            "conversations": conversations_collection,
-            "todos": todos_collection,
-            "projects": projects_collection,
-            "goals": goals_collection,
-            "notes": notes_collection,
-            "files": files_collection,
-            "mail": mail_collection,
-            "calendar": calendars_collection,
-            "blog": blog_collection,
-            "notifications": notifications_collection,
-            "reminders": reminders_collection,
-            "workflows": workflows_collection,
-            "vfs_nodes": vfs_nodes_collection,
-            "skills": skills_collection,
-        }
-
-        # Get all collection indexes concurrently
-        async def get_collection_indexes(name: str, collection):
-            try:
-                indexes = await collection.list_indexes().to_list(length=None)
-                return name, [idx.get("name", "unnamed") for idx in indexes]
-            except Exception as e:
-                log.error(f"Failed to get indexes for {name}: {e!s}")
-                return name, [f"ERROR: {e!s}"]
-
-        # Execute all index status queries concurrently
-        tasks = [
-            get_collection_indexes(name, collection) for name, collection in collections.items()
-        ]
-        results = await asyncio.gather(*tasks)
-
-        # Convert results to dictionary
-        index_status = dict(results)
-
-        return index_status
-
+        await asyncio.gather(
+            e2b_sandboxes_collection.create_index("user_id", unique=True),
+            e2b_sandboxes_collection.create_index("last_used_at"),
+            e2b_sandboxes_collection.create_index([("shard_id", 1), ("state", 1)]),
+            e2b_warm_pool_collection.create_index(
+                [("shard_id", 1), ("state", 1), ("created_at", 1)]
+            ),
+            e2b_warm_pool_collection.create_index(
+                "created_at",
+                expireAfterSeconds=3600,  # 1 hour TTL on pool entries
+            ),
+        )
     except Exception as e:
-        log.error(f"Error getting index status: {e!s}")
-        return {"error": [str(e)]}
-
-
-async def log_index_summary():
-    """Log a summary of all collection indexes for monitoring purposes."""
-    try:
-        index_status = await get_index_status()
-
-        log.info("=== DATABASE INDEX SUMMARY ===")
-
-        total_indexes = 0
-        for collection_name, indexes in index_status.items():
-            if not indexes or (len(indexes) == 1 and indexes[0].startswith("ERROR")):
-                log.warning(f"{collection_name}: No indexes or error")
-            else:
-                index_count = len(indexes)
-                total_indexes += index_count
-                log.info(
-                    f"INDEX CREATED: {collection_name}: {index_count} indexes - {', '.join(indexes)}"
-                )
-
-        log.info(f"Total indexes across all collections: {total_indexes}")
-        log.info("=== END INDEX SUMMARY ===")
-
-    except Exception as e:
-        log.error(f"Error logging index summary: {e!s}")
+        log.error(f"Error creating e2b sandbox indexes: {e!s}")
+        raise

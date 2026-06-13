@@ -21,6 +21,7 @@ from app.agents.prompts.comms_prompts import (
     _strip_openui_section,
 )
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
+from app.agents.workspace.operational_docs import GAIA_CORE
 
 # Base comms prompt with the embedded OpenUI component-instructions section
 # stripped out, so the per-channel addendum below is the single source of
@@ -51,6 +52,7 @@ OUTPUT RESTRICTIONS for this platform:
 - The user CANNOT see tool_data UI, MCP apps, or any frontend components
 - When showing structured data (search results, calendar events, emails, etc.), format as clean text lists
 - Artifacts and HTML content blocks are invisible to the user — describe results in plain text instead
+- When an integration needs to be connected: paste the connect URL directly in your reply — there is no connect button on this platform, the URL is the only way for the user to connect
 
 WHAT TO DO INSTEAD:
 - Present all information as formatted text using the platform's native formatting
@@ -110,4 +112,10 @@ def get_comms_static_prompt(source: str | None) -> str:
 # default web-style prompt; all per-channel users should go through
 # ``get_comms_static_prompt``.
 COMMS_PROMPT_TEMPLATE: Final[str] = COMMS_PROMPT_DEFAULT
-EXECUTOR_PROMPT_TEMPLATE: Final[str] = EXECUTOR_AGENT_PROMPT
+
+# The executor's static prefix carries the always-on operating core (GAIA_CORE):
+# user-independent self-knowledge + the self-management capability menu + the
+# read_manual topic routing. It is appended here (not interpolated per user) so
+# the whole executor prompt stays byte-identical across users and rides the
+# provider's prompt cache.
+EXECUTOR_PROMPT_TEMPLATE: Final[str] = EXECUTOR_AGENT_PROMPT + "\n\n" + GAIA_CORE

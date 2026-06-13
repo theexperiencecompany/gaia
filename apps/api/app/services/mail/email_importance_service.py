@@ -4,8 +4,6 @@ from typing import Any
 
 from langchain_core.output_parsers import PydanticOutputParser
 
-from app.agents.llm.client import init_llm
-from app.agents.prompts.mail_prompts import EMAIL_COMPREHENSIVE_ANALYSIS
 from app.db.mongodb.collections import mail_collection
 from app.models.mail_models import EmailComprehensiveAnalysis
 from shared.py.wide_events import log
@@ -16,17 +14,7 @@ email_comprehensive_parser = PydanticOutputParser(pydantic_object=EmailComprehen
 async def get_email_importance_summaries(
     user_id: str, limit: int = 50, important_only: bool = False
 ) -> dict[str, Any]:
-    """
-    Get email importance summaries for a user.
-
-    Args:
-        user_id: User ID
-        limit: Maximum number of emails to return
-        important_only: If True, only return important emails
-
-    Returns:
-        Dictionary containing email summaries and metadata
-    """
+    """Get email importance summaries for a user."""
     log.set(mail_user_id=user_id, mail_limit=limit, mail_important_only=important_only)
     try:
         # Build query filter
@@ -59,16 +47,7 @@ async def get_email_importance_summaries(
 async def get_single_email_importance_summary(
     user_id: str, message_id: str
 ) -> dict[str, Any] | None:
-    """
-    Get importance summary for a specific email.
-
-    Args:
-        user_id: User ID
-        message_id: Gmail message ID
-
-    Returns:
-        Dictionary containing email summary
-    """
+    """Get the importance summary for a specific email."""
     log.set(mail_user_id=user_id, mail_message_id=message_id)
     try:
         # Find the email in database
@@ -89,74 +68,10 @@ async def get_single_email_importance_summary(
         raise
 
 
-async def process_email_comprehensive_analysis(
-    subject: str, sender: str, date: str, content: str
-) -> EmailComprehensiveAnalysis | None:
-    """
-    Process email to determine importance, generate summary, and create semantic labels in one go.
-    This is more efficient than separate API calls for importance and semantic analysis.
-
-    Args:
-        subject: Email subject
-        sender: Email sender
-        date: Email date
-        content: Email content
-
-    Returns:
-        EmailComprehensiveAnalysis or None if processing fails
-    """
-    log.set(mail_subject=subject, mail_sender=sender, mail_date=date)
-    try:
-        # Initialize Gemini LLM
-        llm = init_llm(preferred_provider="gemini")
-
-        # Format prompt with email data and format instructions
-        prompt = EMAIL_COMPREHENSIVE_ANALYSIS.format(
-            subject=subject,
-            sender=sender,
-            date=date,
-            content=content,
-            format_instructions=email_comprehensive_parser.get_format_instructions(),
-        )
-
-        # Get response from llm
-        response = await llm.ainvoke(prompt)
-
-        if isinstance(response, str):
-            response_text = response.strip()
-        else:
-            response_text = response.text
-
-        # Parse response following agent.py pattern
-        try:
-            # Parse using the parser directly
-            result = email_comprehensive_parser.parse(response_text)
-            log.info(f"Successfully parsed comprehensive email analysis: {result}")
-            return result
-
-        except Exception as parse_error:
-            log.error(f"Failed to parse AI response with parser: {parse_error}")
-
-            raise ValueError("Failed to parse AI response. Please check the response format.")
-
-    except Exception as e:
-        log.error(f"Error processing email comprehensive analysis with Gemini: {e}")
-        return None
-
-
 async def get_bulk_email_importance_summaries(
     user_id: str, message_ids: list[str]
 ) -> dict[str, Any]:
-    """
-    Get importance summaries for multiple emails in bulk.
-
-    Args:
-        user_id: User ID
-        message_ids: List of Gmail message IDs
-
-    Returns:
-        Dictionary containing email summaries indexed by message_id
-    """
+    """Get importance summaries for multiple emails in bulk, indexed by message_id."""
     log.set(
         mail_user_id=user_id,
         mail_bulk_message_count=len(message_ids),

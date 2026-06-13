@@ -1,7 +1,10 @@
 name: gaia-dev
 
 services:
-  # FastAPI Application (use profile to run in docker, otherwise run locally with mise)
+  # FastAPI Application — profile-gated so `mise dev` runs the API natively on
+  # the host (hot reload, fast iteration on macOS). Opt into the dockered API
+  # with `docker compose --profile backend up -d` when you need the juicefs CLI
+  # + /mnt/jfs FUSE mount that a native `nx dev api` on macOS cannot provide.
   gaia-backend:
     container_name: gaia-backend
     profiles: ["backend", "all"]
@@ -10,10 +13,12 @@ services:
       dockerfile: apps/api/Dockerfile
     image: gaia
     working_dir: /app/apps/api
+    # Packages are already installed system-wide by the Dockerfile via
+    # `uv sync --frozen` against UV_PROJECT_ENVIRONMENT=/usr/local. Call python
+    # directly so we don't trigger uv's runtime sync (which would try to mutate
+    # root-owned files in /usr/local/lib as appuser).
     command:
       [
-        "uv",
-        "run",
         "python",
         "-m",
         "uvicorn",
@@ -35,10 +40,62 @@ services:
       PYTHONPATH: /app/apps/api
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
+      # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
+      # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
+      # unset — the storage helper short-circuits gracefully in that case).
+      JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
+      # Skip uv's env sync at runtime; the Dockerfile already installed every
+      # package system-wide via `uv sync --frozen` at build time. Without this,
+      # `uv run` tries to mutate root-owned files in /usr/local/lib as appuser.
+      UV_NO_SYNC: "1"
+      # Override Infisical's localhost URLs with the docker-compose service
+      # hostnames. Infisical respects pre-set env vars, so these take precedence.
+      # (The "localhost" URLs in Infisical are for `nx dev api` where Python
+      # runs on the host and connects to dockered infra at host-mapped ports.)
+      # libpq form (not postgresql+asyncpg://): the langgraph checkpointer
+      # feeds POSTGRES_URL straight to psycopg, and db/postgresql.py adapts
+      # this same URL for the asyncpg SQLAlchemy engine. The +asyncpg dialect
+      # form makes psycopg fail with: missing "=" after "postgresql+asyncpg://".
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/langgraph
+      REDIS_URL: redis://redis:6379/0
+      MONGO_DB: mongodb://mongo:27017/
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      CHROMADB_HOST: chromadb
+      CHROMADB_PORT: "8000"
+      # E2B's watch_dir (inotify) cannot watch the FUSE-mounted JuiceFS
+      # ("cannot watch path on network filesystem"). Use the JuiceFS-native
+      # .accesslog tail instead — the Phase 0 verdict for this stack.
+      ARTIFACT_DETECTION_MODE: accesslog
+      # JUICEFS_META_URL_TEMPLATE is intentionally NOT overridden: the API host
+      # and the E2B sandboxes must share one JuiceFS namespace (the artifact
+      # watcher reads host-side what the sandbox wrote). Let Infisical supply
+      # the same cloud meta the sandboxes use. A local postgres meta would be a
+      # separate namespace over the same R2 volume — JuiceFS refuses to
+      # double-format it ("Storage ... is not empty; pick another volume name").
     env_file:
       - ../../apps/api/.env
     volumes:
       - ../../apps/api/app:/app/apps/api/app
+      - juicefs_cache:/var/cache/juicefs
+    # Harden the resolver: Docker's embedded DNS (127.0.0.11) intermittently
+    # drops rapid back-to-back external lookups, so juicefs sees a spurious
+    # "no such host" for the managed-Postgres meta. Retry/extend timeouts
+    # WITHOUT overriding `dns:` (that would break compose service discovery
+    # for postgres/redis/etc.). Single-request avoids the parallel A/AAAA
+    # race that surfaced "network is unreachable" on IPv6-less networks.
+    dns_opt:
+      - attempts:5
+      - timeout:3
+      - single-request
+    # FUSE mount inside container requires SYS_ADMIN + /dev/fuse + an
+    # unconfined apparmor profile on Ubuntu/Debian hosts. Without these,
+    # `juicefs mount` fails with "fusermount3: cannot open /dev/fuse".
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
     ports:
       - "${API_HOST_PORT:-8000}:80"
     restart: on-failure
@@ -93,6 +150,8 @@ services:
       POSTGRES_DB: langgraph
     volumes:
       - pgdata:/var/lib/postgresql
+      # postgres-init/*.sql runs once on first init — creates gaia_juicefs_0
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     restart: on-failure
@@ -172,16 +231,36 @@ services:
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
       - ARQ_METRICS_PORT=9100
+      - JUICEFS_HOST_MOUNT_PATH=/mnt/jfs
+      - UV_NO_SYNC=1
+      # Same Infisical-overrides as gaia-backend (container hostnames)
+      - POSTGRES_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/langgraph
+      - REDIS_URL=redis://redis:6379/0
+      - MONGO_DB=mongodb://mongo:27017/
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8000
+      - JUICEFS_META_URL_TEMPLATE=postgres://postgres:postgres@postgres:5432/gaia_juicefs_{shard}?sslmode=disable
     expose:
       - "9100"
-    command: ["uv", "run", "python", "-m", "arq", "app.worker.WorkerSettings"]
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
       - ../../apps/api/app:/app/apps/api/app
+      - juicefs_cache:/var/cache/juicefs
+    # JuiceFS mount needs FUSE; same caps/devices as gaia-backend
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
     depends_on:
       redis:
         condition: service_healthy
       mongo:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - gaia_network
@@ -218,11 +297,16 @@ services:
       - BOT_SERVER_PORT=3200
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
+      # In-container the broker is reached via its network alias, overriding
+      # any host-oriented RABBITMQ_URL from apps/bots/.env.
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     ports:
       - "${DISCORD_BOT_PORT:-3200}:3200"
     restart: on-failure
     depends_on:
       gaia-backend:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - gaia_network
@@ -242,11 +326,14 @@ services:
       - BOT_SERVER_PORT=3201
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     ports:
       - "${SLACK_BOT_PORT:-3201}:3201"
     restart: on-failure
     depends_on:
       gaia-backend:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - gaia_network
@@ -267,11 +354,14 @@ services:
       - BOT_SERVER_PORT=3202
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     ports:
       - "${TELEGRAM_BOT_PORT:-3202}:3202"
     restart: on-failure
     depends_on:
       gaia-backend:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - gaia_network
@@ -291,11 +381,14 @@ services:
       - BOT_SERVER_PORT=3203
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     ports:
       - "${WHATSAPP_BOT_PORT:-3203}:3203"
     restart: on-failure
     depends_on:
       gaia-backend:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - gaia_network
@@ -416,6 +509,7 @@ volumes:
   loki_data:
   grafana_data:
   prometheus_data:
+  juicefs_cache:
 
 networks:
   gaia_network:
