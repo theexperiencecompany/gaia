@@ -48,6 +48,11 @@ interface VoiceTableProps {
   showLanguage?: boolean;
   /** Show the trailing Preview play/pause column. */
   showPreview?: boolean;
+  /**
+   * Drop the Gender column and render the gender icon (no label) inline
+   * beside the voice name instead — for the compact in-session picker.
+   */
+  inlineGender?: boolean;
   /** Play the sample when a row is selected. Off in live voice sessions. */
   previewOnSelect?: boolean;
   classNames?: TableProps["classNames"];
@@ -73,6 +78,7 @@ export function VoiceTable({
   countryFilter = ALL_FILTER,
   showLanguage = true,
   showPreview = true,
+  inlineGender = false,
   previewOnSelect = true,
   classNames,
   "aria-label": ariaLabel = "Available voices",
@@ -97,16 +103,15 @@ export function VoiceTable({
   // picker. Built dynamically so react-aria's collection stays valid (it
   // rejects conditionally-null static children).
   const columns = useMemo<Column[]>(() => {
-    const cols: Column[] = [
-      { key: "voice", label: "Voice" },
-      { key: "gender", label: "Gender" },
-    ];
+    const cols: Column[] = [{ key: "voice", label: "Voice" }];
+    // Compact mode folds gender into the voice cell as an inline icon.
+    if (!inlineGender) cols.push({ key: "gender", label: "Gender" });
     if (showLanguage) cols.push({ key: "language", label: "Language" });
     cols.push({ key: "country", label: "Country" });
     if (showPreview)
       cols.push({ key: "preview", label: "Preview", align: "end" });
     return cols;
-  }, [showLanguage, showPreview]);
+  }, [showLanguage, showPreview, inlineGender]);
 
   // Selection and playback are baked into the items so the table's cached
   // row nodes rebuild the instant either changes (optimistic select included)
@@ -213,6 +218,7 @@ export function VoiceTable({
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <p className="truncate text-sm text-white">{voice.name}</p>
+                  {inlineGender && <GenderIcon gender={voice.gender} />}
                   {voice.isSelected && (
                     <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-primary" />
                   )}
@@ -303,7 +309,7 @@ export function VoiceTable({
           return null;
       }
     },
-    [starVoice, togglePreview],
+    [starVoice, togglePreview, inlineGender],
   );
 
   return (

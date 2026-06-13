@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
-import { PencilEdit02Icon } from "@icons";
+import { EditIcon } from "@icons";
 
 import { VoiceTable } from "@/features/settings/components/VoiceTable";
 
@@ -21,7 +21,7 @@ export function VoiceCustomizePopover() {
         <Button
           variant="flat"
           radius="full"
-          startContent={<PencilEdit02Icon className="h-4 w-4" />}
+          startContent={<EditIcon className="h-4 w-4" />}
           className="bg-zinc-900/80 text-zinc-200 shadow-lg backdrop-blur-md hover:bg-zinc-800"
         >
           Customise voice
@@ -32,6 +32,7 @@ export function VoiceCustomizePopover() {
           aria-label="Choose a voice"
           showLanguage={false}
           showPreview={false}
+          inlineGender
           previewOnSelect={false}
           classNames={{
             base: "max-h-[60vh] overflow-auto",
