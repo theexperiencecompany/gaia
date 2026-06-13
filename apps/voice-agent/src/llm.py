@@ -421,10 +421,13 @@ class _VoiceTurn:
 
         # Delegated executor's narrated answer, delivered after the main
         # response (so after main_response_complete disabled TTS). Speak it
-        # regardless of tts_enabled; do NOT forward to the frontend — it
-        # renders this from its WebSocket push.
+        # regardless of tts_enabled. Forward the frame to the frontend as the
+        # comms→executor boundary marker (it does NOT render the text — the
+        # answer comes from its own WebSocket push — but uses the frame's
+        # arrival to stop folding TTS-aligned transcript into the comms bubble).
         voice_tts = event_payload.get(VOICE_TTS_KEY)
         if isinstance(voice_tts, str) and voice_tts:
+            await self.llm.forward_stream_event_to_frontend(data)
             return self._on_executor_answer(voice_tts)
 
         # Plumbing events never contribute to TTS — drop here even if they

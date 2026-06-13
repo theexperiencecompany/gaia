@@ -8,8 +8,12 @@ FRONTEND_STREAM_TOPIC = "backend-stream-event"
 RESPONSE_KEY = "response"
 MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
 # Backend sends this (voice-mode streams only) carrying a delegated executor's
-# narrated answer for the agent to SPEAK. The frontend renders the same answer
-# from its WebSocket push, so this is never forwarded to the UI — TTS only.
+# narrated answer for the agent to SPEAK. The frontend never renders its text
+# (the same answer arrives via its WebSocket push), but the event IS forwarded
+# as a boundary marker: the bot bubble renders the comms agent's speech from the
+# TTS-aligned transcript, which can't tell comms speech from the executor's —
+# only the agent knows the boundary, and this frame is it. After it, the
+# frontend stops folding transcript into the live bubble.
 # Must match VOICE_TTS_KEY in apps/api/app/agents/core/background/executor_runner.py.
 VOICE_TTS_KEY = "voice_tts"
 

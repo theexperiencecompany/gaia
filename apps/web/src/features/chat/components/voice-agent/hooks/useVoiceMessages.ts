@@ -37,6 +37,13 @@ interface VoiceBotTurn {
    * full text before the word-by-word transcript replaces it.
    */
   showResponseFallback: boolean;
+  /**
+   * Set when the agent starts speaking the delegated executor's answer (the
+   * `voice_tts` boundary frame). That answer is persisted and pushed as its
+   * OWN bot message, so its TTS-aligned transcript segments must NOT also be
+   * folded into this (comms) bubble, or the answer renders twice.
+   */
+  executorNarrating: boolean;
   tool_data: ToolDataEntry[];
   follow_up_actions: string[];
   loading: boolean;
@@ -100,6 +107,42 @@ function userGroupToIMessage(
     updatedAt: new Date(),
     optimistic: true,
   };
+}
+
+/**
+ * Fold one renderable bot-stream event (response text, a tool card, follow-up
+ * actions, or the completion marker) into the active turn. Returns whether the
+ * turn changed and should re-render. Plumbing and the `voice_tts` boundary are
+ * handled by the caller — this only touches content that belongs in the bubble.
+ */
+function applyBotContentEvent(
+  turn: VoiceBotTurn,
+  event: Record<string, unknown>,
+): boolean {
+  if (typeof event.response === "string" && event.response) {
+    turn.response += event.response;
+    return true;
+  }
+  if (event.tool_data && typeof event.tool_data === "object") {
+    const entry = event.tool_data as ToolDataEntry;
+    if (entry.tool_name === ("tool_output" as ToolDataEntry["tool_name"])) {
+      return false;
+    }
+    turn.tool_data = [...turn.tool_data, entry];
+    return true;
+  }
+  if (event.follow_up_actions && Array.isArray(event.follow_up_actions)) {
+    turn.follow_up_actions = event.follow_up_actions as string[];
+    return true;
+  }
+  if (event.main_response_complete === true) {
+    // Response done, but keep the turn active: the backend emits
+    // follow_up_actions AFTER this marker and they must attach to the same
+    // bubble. The turn closes when the next user utterance starts.
+    turn.loading = false;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -211,6 +254,7 @@ export function useVoiceMessages(
       response: "",
       transcriptTexts: new Map(),
       showResponseFallback: false,
+      executorNarrating: false,
       tool_data: [],
       follow_up_actions: [],
       loading: true,
@@ -237,31 +281,16 @@ export function useVoiceMessages(
 
       const turn = activeTurnRef.current ?? openBotTurn();
 
-      let changed = false;
-      if (typeof event.response === "string" && event.response) {
-        turn.response += event.response;
-        changed = true;
-      } else if (event.tool_data && typeof event.tool_data === "object") {
-        const entry = event.tool_data as ToolDataEntry;
-        if (entry.tool_name !== ("tool_output" as ToolDataEntry["tool_name"])) {
-          turn.tool_data = [...turn.tool_data, entry];
-          changed = true;
-        }
-      } else if (
-        event.follow_up_actions &&
-        Array.isArray(event.follow_up_actions)
-      ) {
-        turn.follow_up_actions = event.follow_up_actions as string[];
-        changed = true;
-      } else if (event.main_response_complete === true) {
-        // Response done, but keep the turn active: the backend emits
-        // follow_up_actions AFTER this marker and they must attach to the same
-        // bubble. The turn closes when the next user utterance starts.
-        turn.loading = false;
-        changed = true;
+      // Boundary marker: the agent is now speaking the delegated executor's
+      // answer. Its TTS-aligned transcript belongs to the executor's own pushed
+      // message — flag the turn so the transcript effect stops folding it into
+      // this comms bubble. The frame's text is not rendered here.
+      if (typeof event.voice_tts === "string" && event.voice_tts) {
+        turn.executorNarrating = true;
+        return;
       }
 
-      if (!changed) return;
+      if (!applyBotContentEvent(turn, event)) return;
       // Don't render a visually-empty bubble: response text accumulates
       // silently until the audio (transcript) starts, or cards/follow-ups
       // give the bubble something to show.
@@ -392,6 +421,15 @@ export function useVoiceMessages(
     for (const t of agentTrans) {
       const id = t.streamInfo.id;
       if (consumedBotTranscriptionIdsRef.current.has(id)) continue;
+      // A NEW segment (not the growing tail of one already in this bubble) that
+      // arrives once the executor is narrating is the executor's answer — the
+      // backend pushes that as its own bot message, so swallow it here to avoid
+      // rendering it twice.
+      const isContinuation = turn?.transcriptTexts.has(id) ?? false;
+      if (!isContinuation && turn?.executorNarrating) {
+        consumedBotTranscriptionIdsRef.current.add(id);
+        continue;
+      }
       // A segment with no open turn (e.g. the session greeting) opens one.
       turn = turn ?? openBotTurn();
       turn.transcriptTexts.set(id, t.text);
