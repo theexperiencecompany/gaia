@@ -22,6 +22,7 @@ import {
   useVoiceSpectrum,
 } from "@/features/chat/components/voice-agent/hooks/useVoiceSpectrum";
 import { VoiceConnectionStatus } from "@/features/chat/components/voice-agent/VoiceConnectionStatus";
+import { VoiceCustomizePopover } from "@/features/chat/components/voice-agent/VoiceCustomizePopover";
 import {
   useVoiceSession,
   VoiceSessionProvider,
@@ -462,9 +463,13 @@ export function VoiceControlBarSlot({
   if (!session) return null;
 
   return (
-    <div className="relative z-10 flex flex-col items-center">
+    <div className="relative z-10 flex w-full flex-col items-center">
       <VoiceConnectionStatus />
       <AgentControlBar onDisconnect={onEndCall} />
+      {/* Bottom-right of the bar — opens upward, clear of the centered controls. */}
+      <div className="absolute right-4 bottom-2">
+        <VoiceCustomizePopover />
+      </div>
     </div>
   );
 }
