@@ -22,6 +22,7 @@ from typing import Any
 
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.core.stream_manager import stream_manager
+from app.db.mongodb.collections import conversations_collection
 from app.db.redis import redis_cache
 from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
@@ -76,18 +77,21 @@ async def forward_artifact_events(
     user_id: str,
     conversation_id: str,
     stream_id: str,
-    tool_data: dict[str, Any],
+    bot_message_id: str | None,
     source: str | None = None,
 ) -> None:
     """Forward this conversation's artifact events to the chat SSE stream
-    *and* record them into the conversation's ``tool_data`` so they persist.
+    *and* persist each one onto the turn's bot message so it survives a reload.
 
     Subscribes to ``artifacts:{user_id}`` (published by the coding tools and the
     upload pipeline) and re-emits events whose ``session_id`` matches this
     conversation as ``artifact_data`` tool chunks. Each forwarded artifact is
-    also appended to the shared ``tool_data`` accumulator that the persistence
-    layer writes to Mongo — without this the card only lives in the live stream
-    / client cache and is gone on a server reload.
+    also ``$push``-ed straight onto the bot message's ``tool_data`` in Mongo.
+    We persist on arrival rather than via the in-memory accumulator because the
+    turn's early ``_persist_turn`` saves before the background executor has
+    created any artifact, and the executor-tool-data attach only drains the
+    executor's own events, so an appended entry would never reach Mongo and the
+    card would vanish on reload.
 
     De-duped by ``path`` (artifacts are pushed repeatedly in real time): an
     unchanged file is neither re-sent nor re-persisted; the last write wins.
@@ -129,8 +133,8 @@ async def forward_artifact_events(
                 "timestamp": datetime.now(UTC).isoformat(),
                 "tool_category": "artifact",
             }
-            # Persist with the conversation (re-renders on server reload)…
-            tool_data.setdefault("tool_data", []).append(entry)
+            # Persist onto the bot message so the card re-renders on reload…
+            await _persist_artifact_entry(user_id, conversation_id, bot_message_id, entry)
             # …and push live so the card appears during this turn.
             chunk = "data: " + json.dumps({"tool_data": entry}) + "\n\n"
             await stream_manager.publish_chunk(stream_id, chunk)
@@ -143,6 +147,38 @@ async def forward_artifact_events(
             await pubsub.unsubscribe(channel)
         with contextlib.suppress(Exception):
             await pubsub.aclose()
+
+
+async def _persist_artifact_entry(
+    user_id: str,
+    conversation_id: str,
+    bot_message_id: str | None,
+    entry: dict[str, Any],
+) -> None:
+    """``$push`` one ``artifact_data`` entry onto the turn's bot message.
+
+    Best-effort: the live SSE stream already delivered the card, so a failed
+    persist (or a not-yet-saved bot message) only costs the reload re-render,
+    which the ``GET /sessions/{conv}/artifacts`` recovery path still backstops.
+    """
+    if not bot_message_id:
+        return
+    try:
+        result = await conversations_collection.update_one(
+            {
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "messages.message_id": bot_message_id,
+            },
+            {"$push": {"messages.$.tool_data": entry}},
+        )
+        if result.matched_count == 0:
+            log.warning(
+                "[chat] artifact persist matched no bot message "
+                f"(conv={conversation_id}, msg={bot_message_id})"
+            )
+    except Exception as e:  # noqa: BLE001 — best-effort; live stream already delivered it
+        log.warning(f"[chat] failed to persist artifact entry: {e}")
 
 
 def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> dict[str, Any] | None:
