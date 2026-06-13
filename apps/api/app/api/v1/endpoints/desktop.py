@@ -21,7 +21,7 @@ from shared.py.wide_events import log
 router = APIRouter()
 
 
-@router.post("/desktop/tool-result", response_model=DesktopToolResultResponse)
+@router.post("/desktop/tool-result")
 async def desktop_tool_result(
     payload: DesktopToolResultRequest,
     user: Annotated[dict, Depends(get_current_user)],
