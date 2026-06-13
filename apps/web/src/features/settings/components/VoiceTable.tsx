@@ -192,7 +192,14 @@ export function VoiceTable({
       switch (columnKey) {
         case "voice":
           return (
-            <div className="flex min-w-0 items-center gap-2">
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-2",
+                // Keep the voice column narrow in the compact picker so the
+                // description wraps early and country gets room.
+                wrapText && "max-w-[13rem]",
+              )}
+            >
               {/* Star toggle — propagation stopped so starring never doubles
                   as selecting the row. */}
               <div // NOSONAR S6848: propagation guard around the interactive Button below, not a control itself
