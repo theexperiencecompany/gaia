@@ -31,8 +31,15 @@ def _mount_root() -> Path:
 
 
 def _is_mounted() -> bool:
-    root = _mount_root()
-    return root.exists() and root.is_dir()
+    # Must verify ``root`` is an ACTUAL mount point, not merely that the
+    # directory exists. The container image pre-creates ``/mnt/jfs`` (see the
+    # Dockerfile) and the host-side bootstrap can populate it, so an
+    # ``exists()``/``is_dir()`` check returns True even when the JuiceFS FUSE
+    # mount failed or was skipped — the API would then silently read/write a
+    # throwaway overlay shadow tree instead of raising ``JuiceFSUnavailable``.
+    # ``is_mount()`` returns False for a plain directory and True only once
+    # JuiceFS is mounted, so the "mount missing" signal stays load-bearing.
+    return _mount_root().is_mount()
 
 
 def _require_mount() -> Path:
