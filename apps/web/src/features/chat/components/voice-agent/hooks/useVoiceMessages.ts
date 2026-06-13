@@ -8,42 +8,15 @@ import {
   LK_CHAT_TOPIC,
   VOICE_STREAM_TOPIC,
 } from "@/features/chat/components/voice-agent/constants";
+import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import type { IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import { useLoadingStore } from "@/stores/loadingStore";
-
-/**
- * OpenUI fences (and the markdown around them) are stripped from the spoken
- * transcript by the agent's TTS sanitiser, so any turn carrying one must
- * render the raw backend response instead. Same marker the bubble renderer
- * keys on (TextBubble / ChatBubbleBot).
- */
-const OPENUI_MARKER = ":::openui";
+import { useVoiceModeActions } from "@/stores/voiceModeStore";
 
 interface VoiceBotTurn {
   localId: string;
-  /** Backend response text — fallback when no aligned transcript arrives. */
   response: string;
-  /**
-   * TTS-aligned transcript per LiveKit segment id. This is what the bubble
-   * renders: it streams in sync with the audio actually playing, while
-   * `response` runs ahead (it accumulates as text is HANDED to TTS).
-   */
-  transcriptTexts: Map<string, string>;
-  /**
-   * Render `response` instead of the transcript. Only flipped once the agent
-   * is back to listening with an empty transcript (a turn whose audio never
-   * materialized, e.g. TTS failure) — falling back any earlier flashes the
-   * full text before the word-by-word transcript replaces it.
-   */
-  showResponseFallback: boolean;
-  /**
-   * Set when the agent starts speaking the delegated executor's answer (the
-   * `voice_tts` boundary frame). That answer is persisted and pushed as its
-   * OWN bot message, so its TTS-aligned transcript segments must NOT also be
-   * folded into this (comms) bubble, or the answer renders twice.
-   */
-  executorNarrating: boolean;
   tool_data: ToolDataEntry[];
   follow_up_actions: string[];
   loading: boolean;
@@ -58,24 +31,10 @@ interface VoiceUserGroup {
 }
 
 function turnToIMessage(turn: VoiceBotTurn, conversationId: string): IMessage {
-  // Render the audio-aligned transcript so the bubble fills as the agent is
-  // heard. The backend response text is the fallback for turns whose audio
-  // never produced a transcript (e.g. a TTS failure).
-  const transcript = Array.from(turn.transcriptTexts.values())
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .join(" ");
-  // OpenUI components never reach the spoken transcript (TTS strips the fence),
-  // so render the raw response for those turns — otherwise the bubble shows
-  // only the prose and the component vanishes. Plain prose keeps the
-  // audio-aligned transcript so it stays in sync with the speech.
-  const content = turn.response.includes(OPENUI_MARKER)
-    ? turn.response
-    : transcript || (turn.showResponseFallback ? turn.response : "");
   return {
     id: turn.localId,
     conversationId,
-    content,
+    content: turn.response,
     role: "assistant",
     status: turn.loading ? "sending" : "sent",
     createdAt: turn.createdAt,
@@ -110,42 +69,6 @@ function userGroupToIMessage(
 }
 
 /**
- * Fold one renderable bot-stream event (response text, a tool card, follow-up
- * actions, or the completion marker) into the active turn. Returns whether the
- * turn changed and should re-render. Plumbing and the `voice_tts` boundary are
- * handled by the caller — this only touches content that belongs in the bubble.
- */
-function applyBotContentEvent(
-  turn: VoiceBotTurn,
-  event: Record<string, unknown>,
-): boolean {
-  if (typeof event.response === "string" && event.response) {
-    turn.response += event.response;
-    return true;
-  }
-  if (event.tool_data && typeof event.tool_data === "object") {
-    const entry = event.tool_data as ToolDataEntry;
-    if (entry.tool_name === ("tool_output" as ToolDataEntry["tool_name"])) {
-      return false;
-    }
-    turn.tool_data = [...turn.tool_data, entry];
-    return true;
-  }
-  if (event.follow_up_actions && Array.isArray(event.follow_up_actions)) {
-    turn.follow_up_actions = event.follow_up_actions as string[];
-    return true;
-  }
-  if (event.main_response_complete === true) {
-    // Response done, but keep the turn active: the backend emits
-    // follow_up_actions AFTER this marker and they must attach to the same
-    // bubble. The turn closes when the next user utterance starts.
-    turn.loading = false;
-    return true;
-  }
-  return false;
-}
-
-/**
  * Subscribes to LiveKit transcriptions (user speech, in real time) and the
  * agent's bot stream, writing both into `chatStore`. Returns `sendUserTurn` for
  * injecting a typed/clicked message (e.g. a follow-up suggestion) as a new voice
@@ -165,13 +88,12 @@ export function useVoiceMessages(
   const room = useRoomContext();
   const transcriptions = useTranscriptions();
   const addOrUpdateMessage = useChatStore((s) => s.addOrUpdateMessage);
+  const { setDiscoveredConversationId } = useVoiceModeActions();
 
   const activeTurnRef = useRef<VoiceBotTurn | null>(null);
   const currentUserGroupRef = useRef<VoiceUserGroup | null>(null);
   /** Transcription stream ids already flushed as part of a closed user group. */
   const consumedUserTranscriptionIdsRef = useRef<Set<string>>(new Set());
-  /** Agent transcription ids belonging to already-closed bot turns. */
-  const consumedBotTranscriptionIdsRef = useRef<Set<string>>(new Set());
   const botTurnIndexRef = useRef(0);
   const userGroupIndexRef = useRef(0);
   /** Last issued message timestamp (ms) — kept strictly increasing. */
@@ -179,19 +101,12 @@ export function useVoiceMessages(
   /** Bot-stream events that arrived before the conversation id was known. */
   const pendingEventsRef = useRef<Record<string, unknown>[]>([]);
   /**
-   * Whether the current turn has produced an audible bot transcript yet. Once
-   * true the thinking indicator stays cleared until the NEXT user turn — so
-   * the backend re-entering "thinking" to generate follow-ups (after the
-   * reply is already on screen) can't resurrect it.
+   * Whether the current turn has produced a bot token yet. Once true the
+   * thinking indicator stays cleared until the NEXT user turn — so the backend
+   * re-entering "thinking" to generate follow-ups (after the reply is already
+   * on screen) can't resurrect it.
    */
   const botTokenSeenThisTurnRef = useRef(false);
-  /**
-   * Whether the current turn's USER message has rendered. The agent can enter
-   * "thinking" before the user's transcript reaches the frontend — showing
-   * the indicator first and the user's words after looks glitchy, so the
-   * indicator only shows once the bubble exists.
-   */
-  const userMessageRenderedRef = useRef(false);
 
   // Stash the latest conversationId in a ref so the bot-stream handler closure
   // (registered once) always reads the current value.
@@ -203,13 +118,11 @@ export function useVoiceMessages(
     activeTurnRef.current = null;
     currentUserGroupRef.current = null;
     consumedUserTranscriptionIdsRef.current = new Set();
-    consumedBotTranscriptionIdsRef.current = new Set();
     botTurnIndexRef.current = 0;
     userGroupIndexRef.current = 0;
     seqClockRef.current = 0;
     pendingEventsRef.current = [];
     botTokenSeenThisTurnRef.current = false;
-    userMessageRenderedRef.current = false;
   }, []);
 
   // Strictly-increasing timestamp so the chatStore `createdAt` sort matches
@@ -231,20 +144,8 @@ export function useVoiceMessages(
     currentUserGroupRef.current = null;
   }, []);
 
-  // Close the active bot turn: mark its transcript segment ids consumed so a
-  // late update (e.g. the tail of interrupted speech) can't reopen it.
-  const closeBotTurn = useCallback(() => {
-    const turn = activeTurnRef.current;
-    if (!turn) return;
-    for (const id of turn.transcriptTexts.keys()) {
-      consumedBotTranscriptionIdsRef.current.add(id);
-    }
-    activeTurnRef.current = null;
-  }, []);
-
-  // Open a new bot turn. Closes the open user group. The thinking indicator
-  // intentionally stays on — backend tokens arrive seconds before any audio,
-  // so it clears on the first audible transcript segment instead.
+  // Open a new bot turn. Closes the open user group and clears the thinking
+  // indicator (this turn's first token has arrived).
   const openBotTurn = useCallback((): VoiceBotTurn => {
     closeUserGroup();
     botTurnIndexRef.current += 1;
@@ -252,15 +153,16 @@ export function useVoiceMessages(
     const turn: VoiceBotTurn = {
       localId: `voice-bot-${sid}-${botTurnIndexRef.current}`,
       response: "",
-      transcriptTexts: new Map(),
-      showResponseFallback: false,
-      executorNarrating: false,
       tool_data: [],
       follow_up_actions: [],
       loading: true,
       createdAt: nextCreatedAt(),
     };
     activeTurnRef.current = turn;
+    // This turn's first token has arrived — clear the thinking indicator and
+    // keep it cleared for the rest of the turn.
+    botTokenSeenThisTurnRef.current = true;
+    useLoadingStore.getState().setLoading(false);
     return turn;
   }, [room, nextCreatedAt, closeUserGroup]);
 
@@ -281,28 +183,46 @@ export function useVoiceMessages(
 
       const turn = activeTurnRef.current ?? openBotTurn();
 
-      // Boundary marker: the agent is now speaking the delegated executor's
-      // answer. Its TTS-aligned transcript belongs to the executor's own pushed
-      // message — flag the turn so the transcript effect stops folding it into
-      // this comms bubble. The frame's text is not rendered here.
-      if (typeof event.voice_tts === "string" && event.voice_tts) {
-        turn.executorNarrating = true;
-        return;
+      let changed = false;
+      if (typeof event.response === "string" && event.response) {
+        turn.response += event.response;
+        changed = true;
+      } else if (event.tool_data && typeof event.tool_data === "object") {
+        const entry = event.tool_data as ToolDataEntry;
+        if (entry.tool_name !== ("tool_output" as ToolDataEntry["tool_name"])) {
+          turn.tool_data = [...turn.tool_data, entry];
+          // Surface the same per-tool labelled loading line text mode shows,
+          // from the same hint payload, store, and LoadingIndicator. The
+          // hints ride tool_calls_data; the spinner must be on for the line to
+          // render, so re-arm it if a bot token already cleared it.
+          const hints = readToolDataLoadingHints(
+            (entry as { data?: unknown }).data,
+          );
+          if (hints) {
+            const { message, ...toolInfo } = hints;
+            const loading = useLoadingStore.getState();
+            if (!loading.isLoading) loading.setLoading(true);
+            loading.setLoadingText({ text: message, toolInfo });
+          }
+          changed = true;
+        }
+      } else if (
+        event.follow_up_actions &&
+        Array.isArray(event.follow_up_actions)
+      ) {
+        turn.follow_up_actions = event.follow_up_actions as string[];
+        changed = true;
+      } else if (event.main_response_complete === true) {
+        // Response done, but keep the turn active: the backend emits
+        // follow_up_actions AFTER this marker and they must attach to the same
+        // bubble. The turn closes when the next user utterance starts.
+        turn.loading = false;
+        // Drop any per-tool loading label so it doesn't linger past the reply.
+        useLoadingStore.getState().resetLoadingText();
+        changed = true;
       }
 
-      if (!applyBotContentEvent(turn, event)) return;
-      // Don't render a visually-empty bubble: response text accumulates
-      // silently until the audio (transcript) starts, or cards/follow-ups
-      // give the bubble something to show.
-      const hasVisibleContent =
-        turn.transcriptTexts.size > 0 ||
-        turn.tool_data.length > 0 ||
-        turn.follow_up_actions.length > 0 ||
-        turn.showResponseFallback ||
-        // A pure-OpenUI turn has no spoken prose, so its transcript stays
-        // empty — show the bubble as soon as the fence arrives in the response.
-        turn.response.includes(OPENUI_MARKER);
-      if (!hasVisibleContent) return;
+      if (!changed) return;
       addOrUpdateMessage(turnToIMessage(turn, cid));
     },
     [addOrUpdateMessage, openBotTurn],
@@ -328,6 +248,17 @@ export function useVoiceMessages(
         return;
       }
 
+      // The backend mints the conversation id for a new chat and sends it in the
+      // init frame, forwarded here on the bot topic. Adopt it from this in-band
+      // event — the bot stream provably delivers (the reply itself rides it) —
+      // rather than depending only on the separate `conversation-id` text
+      // stream, whose single send is dropped if its handler isn't registered
+      // yet, leaving the id (and so the bot bubble + URL) stuck for the session.
+      const convId = event.conversation_id;
+      if (typeof convId === "string" && convId) {
+        setDiscoveredConversationId(convId);
+      }
+
       const cid = conversationIdRef.current;
       if (!cid) {
         // Buffer until the backend conversation id arrives, then flush in order.
@@ -341,7 +272,7 @@ export function useVoiceMessages(
     return () => {
       room.unregisterTextStreamHandler(VOICE_STREAM_TOPIC);
     };
-  }, [room, processBotEvent]);
+  }, [room, processBotEvent, setDiscoveredConversationId]);
 
   // Flush buffered bot events once the conversation id is known.
   useEffect(() => {
@@ -358,7 +289,7 @@ export function useVoiceMessages(
   // arrives (so the first turn isn't dropped during the null-id window).
   useEffect(() => {
     const cid = conversationIdRef.current;
-    if (!cid || !room) return;
+    if (!room) return;
 
     const localIdentity = room.localParticipant.identity;
     const userTrans = transcriptions.filter(
@@ -375,7 +306,7 @@ export function useVoiceMessages(
     // the active bot turn so the previous reply/tools/followups don't merge
     // into the next turn.
     if (currentUserGroupRef.current === null) {
-      closeBotTurn();
+      activeTurnRef.current = null;
       // New user turn — re-arm the thinking indicator for the upcoming reply.
       botTokenSeenThisTurnRef.current = false;
       userGroupIndexRef.current += 1;
@@ -391,58 +322,38 @@ export function useVoiceMessages(
     for (const t of fresh) {
       group.transcriptionTexts.set(t.streamInfo.id, t.text);
     }
-    addOrUpdateMessage(userGroupToIMessage(group, cid));
-    userMessageRenderedRef.current = true;
-  }, [
-    transcriptions,
-    room,
-    addOrUpdateMessage,
-    conversationId,
-    nextCreatedAt,
-    closeBotTurn,
-  ]);
+    if (cid) {
+      addOrUpdateMessage(userGroupToIMessage(group, cid));
+    } else {
+      // First turn of a new chat: no backend conversation id yet. Show the
+      // utterance via the same optimistic slot text mode uses (rendered by
+      // useConversation while activeConversationId is null), so the user's text
+      // appears the instant they finish speaking — before the thinking
+      // indicator. When the id arrives this effect re-runs and writes the real
+      // message under it; the handoff effect below clears the slot.
+      useChatStore.getState().setOptimisticMessage({
+        id: group.localId,
+        conversationId: null,
+        role: "user",
+        content: Array.from(group.transcriptionTexts.values())
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .join("\n\n"),
+        createdAt: group.createdAt,
+      });
+    }
+  }, [transcriptions, room, addOrUpdateMessage, conversationId, nextCreatedAt]);
 
-  // Agent's TTS-aligned transcript → live bot bubble. With
-  // `use_tts_aligned_transcript` on the agent, these segments stream in sync
-  // with the audio actually playing — unlike the backend response chunks,
-  // which accumulate as fast as the LLM generates.
+  // Promote the optimistic first turn once the backend conversation id arrives:
+  // activate the conversation so its stored messages render, and drop the slot.
+  // Must fire on the id (not the title), or the bot reply stays hidden until the
+  // description arrives ~1-2s later.
   useEffect(() => {
-    const cid = conversationIdRef.current;
-    if (!cid || !room) return;
-
-    const localIdentity = room.localParticipant.identity;
-    const agentTrans = transcriptions.filter(
-      (t) => t.participantInfo.identity !== localIdentity && t.text.trim(),
-    );
-    if (agentTrans.length === 0) return;
-
-    let turn = activeTurnRef.current;
-    let changed = false;
-    for (const t of agentTrans) {
-      const id = t.streamInfo.id;
-      if (consumedBotTranscriptionIdsRef.current.has(id)) continue;
-      // A NEW segment (not the growing tail of one already in this bubble) that
-      // arrives once the executor is narrating is the executor's answer — the
-      // backend pushes that as its own bot message, so swallow it here to avoid
-      // rendering it twice.
-      const isContinuation = turn?.transcriptTexts.has(id) ?? false;
-      if (!isContinuation && turn?.executorNarrating) {
-        consumedBotTranscriptionIdsRef.current.add(id);
-        continue;
-      }
-      // A segment with no open turn (e.g. the session greeting) opens one.
-      turn = turn ?? openBotTurn();
-      turn.transcriptTexts.set(id, t.text);
-      changed = true;
-    }
-    if (changed && turn) {
-      // First audible words of this turn — the thinking indicator's job is
-      // done, and it stays cleared for the rest of the turn.
-      botTokenSeenThisTurnRef.current = true;
-      useLoadingStore.getState().setLoading(false);
-      addOrUpdateMessage(turnToIMessage(turn, cid));
-    }
-  }, [transcriptions, room, addOrUpdateMessage, openBotTurn]);
+    if (!conversationId) return;
+    const store = useChatStore.getState();
+    store.setActiveConversationId(conversationId);
+    store.clearOptimisticMessage();
+  }, [conversationId]);
 
   // Send a typed/clicked message (e.g. a follow-up suggestion) as a new voice
   // turn. There is no STT transcription for an injected message, so this mirrors
@@ -457,7 +368,7 @@ export function useVoiceMessages(
       if (!trimmed || !room || !cid) return;
 
       closeUserGroup();
-      closeBotTurn();
+      activeTurnRef.current = null;
       botTokenSeenThisTurnRef.current = false;
       userGroupIndexRef.current += 1;
       const sid = room.name || "voice";
@@ -469,48 +380,25 @@ export function useVoiceMessages(
         createdAt: nextCreatedAt(),
       };
       addOrUpdateMessage(userGroupToIMessage(group, cid));
-      userMessageRenderedRef.current = true;
 
       await room.localParticipant.sendText(trimmed, { topic: LK_CHAT_TOPIC });
     },
-    [room, addOrUpdateMessage, nextCreatedAt, closeUserGroup, closeBotTurn],
+    [room, addOrUpdateMessage, nextCreatedAt, closeUserGroup],
   );
 
   // Thinking-indicator lifecycle. Armed once per turn: show it when the user's
-  // turn ends and the agent starts processing (`thinking`), but only until
-  // this turn's first audible transcript — `botTokenSeenThisTurnRef` (reset
+  // turn ends and the agent starts processing (`thinking`), but only until this
+  // turn's first token — `botTokenSeenThisTurnRef` (set in openBotTurn, reset
   // when a new user turn starts) suppresses the LATER "thinking" the backend
-  // enters while generating follow-ups. Skipped when the user's own bubble
-  // hasn't rendered yet (the STT transcript can lag the agent by a beat) —
-  // an indicator above nothing reads as a glitch. `listening` clears it as a
-  // safety net.
+  // enters while generating follow-ups, which is what kept the indicator on
+  // screen after the reply. `listening` clears it as a safety net.
   useEffect(() => {
     if (agentState === "thinking" && !botTokenSeenThisTurnRef.current) {
-      if (userMessageRenderedRef.current) {
-        useLoadingStore.getState().setLoading(true);
-      }
+      useLoadingStore.getState().setLoading(true);
     } else if (agentState === "listening") {
       useLoadingStore.getState().setLoading(false);
-
-      // Turn finished with audio never materializing (e.g. TTS failure):
-      // fall back to the backend response text so the reply isn't lost.
-      // Doing this any earlier flashes the full text before the streaming
-      // transcript replaces it.
-      const turn = activeTurnRef.current;
-      const cid = conversationIdRef.current;
-      if (
-        turn &&
-        cid &&
-        !turn.loading &&
-        turn.transcriptTexts.size === 0 &&
-        turn.response &&
-        !turn.showResponseFallback
-      ) {
-        turn.showResponseFallback = true;
-        addOrUpdateMessage(turnToIMessage(turn, cid));
-      }
     }
-  }, [agentState, addOrUpdateMessage]);
+  }, [agentState]);
 
   // Clear the indicator when leaving voice mode.
   useEffect(() => () => useLoadingStore.getState().setLoading(false), []);
