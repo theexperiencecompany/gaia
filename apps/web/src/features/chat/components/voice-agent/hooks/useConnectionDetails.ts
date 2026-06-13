@@ -46,11 +46,16 @@ export type ConnectionDetails = {
 
 const fetchDetails = async (
   conversationId?: string,
+  // Hover-intent prefetch is best-effort background work — suppress its toast so
+  // a failed prefetch never surfaces a user-facing error (the foreground session
+  // start still toasts on failure).
+  silent = false,
 ): Promise<ConnectionDetails> => {
   return apiService.get<ConnectionDetails>(
     conversationId ? `/token?conversationId=${conversationId}` : "/token",
     {
       errorMessage: "Failed to initiate livekit room",
+      silent,
     },
   );
 };
@@ -67,7 +72,7 @@ export function usePrefetchConnectionDetails(conversationId?: string) {
     queryClient
       .prefetchQuery({
         queryKey: ["connectionDetails", conversationId ?? "default"],
-        queryFn: () => fetchDetails(conversationId),
+        queryFn: () => fetchDetails(conversationId, true),
         staleTime: CONNECTION_DETAILS_STALE_TIME_MS,
       })
       .catch(() => {});
