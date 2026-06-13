@@ -109,10 +109,7 @@ from prometheus_client import (  # noqa: F401  # Gauge used via lambda factories
     Histogram,
 )
 
-from shared.py.logging import get_contextual_logger
-
-_log = get_contextual_logger("app.services.storage.metrics")
-
+from shared.py.wide_events import log
 
 # Prometheus collectors. Allowed labels (CHANGES REQUIRE A SPEC UPDATE on
 # either the `fs-metrics-prometheus` or `fs-metrics-coverage` capability):
@@ -233,7 +230,7 @@ def set_sandbox_pool_size(kind: str, shard: str, n: int) -> None:
     try:
         _SANDBOX_POOL_SIZE.labels(kind=kind, shard=shard).set(n)
     except Exception as e:  # noqa: BLE001
-        _log.warning(
+        log.warning(
             "[metrics] sandbox_pool_size set failed",
             kind=kind,
             shard=shard,
@@ -385,7 +382,7 @@ def record_fs_op(
         if bytes > 0:
             _FS_OP_BYTES_TOTAL.labels(operation=op).inc(bytes)
     except Exception as e:  # noqa: BLE001 — dashboard surface must not break callers
-        _log.warning(
+        log.warning(
             "[metrics] prometheus observe failed",
             op=op,
             error_type=type(e).__name__,
@@ -407,7 +404,7 @@ def add_fs_bytes(op: str, n: int) -> None:
     try:
         _FS_OP_BYTES_TOTAL.labels(operation=op).inc(n)
     except Exception as e:  # noqa: BLE001
-        _log.warning(
+        log.warning(
             "[metrics] prometheus bytes inc failed",
             op=op,
             error_type=type(e).__name__,
@@ -433,7 +430,7 @@ async def fs_timer(op: str, **labels: Any) -> AsyncIterator[None]:
     try:
         _FS_OP_IN_FLIGHT.labels(operation=op).inc()
     except Exception as e:  # noqa: BLE001
-        _log.warning(
+        log.warning(
             "[metrics] in_flight inc failed",
             op=op,
             error_type=type(e).__name__,
@@ -448,7 +445,7 @@ async def fs_timer(op: str, **labels: Any) -> AsyncIterator[None]:
         try:
             _FS_OP_IN_FLIGHT.labels(operation=op).dec()
         except Exception as e:  # noqa: BLE001
-            _log.warning(
+            log.warning(
                 "[metrics] in_flight dec failed",
                 op=op,
                 error_type=type(e).__name__,

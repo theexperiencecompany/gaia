@@ -9,9 +9,7 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from shared.py.logging import get_contextual_logger
-
-logger = get_contextual_logger("config")
+from shared.py.wide_events import log
 
 
 class BaseAppSettings(BaseSettings):
@@ -32,7 +30,7 @@ class BaseAppSettings(BaseSettings):
         try:
             return cls(**kwargs)
         except Exception as e:
-            logger.warning(f"Error creating settings: {e!s}")
+            log.warning(f"Error creating settings: {e!s}")
             fields = cls.model_fields
             defaults = {
                 field_name: ""
