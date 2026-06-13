@@ -73,9 +73,9 @@ class TestPopNextQueuedRun:
     async def test_unparseable_item_returns_none_without_taking_lock(self) -> None:
         with patch.object(eq, "redis_cache") as redis:
             redis.client.lpop = AsyncMock(return_value="{not json")
-            redis.set = AsyncMock()
+            redis.client.set = AsyncMock()
             assert await pop_next_queued_run("conv-1") is None
-            redis.set.assert_not_awaited()
+            redis.client.set.assert_not_awaited()
 
     async def test_valid_item_prepares_run_and_overwrites_lock(self) -> None:
         with (
@@ -84,7 +84,7 @@ class TestPopNextQueuedRun:
             patch.object(eq, "websocket_manager") as ws,
         ):
             redis.client.lpop = AsyncMock(return_value=_queue_item())
-            redis.set = AsyncMock()
+            redis.client.set = AsyncMock()
             sm.start_stream = AsyncMock()
             ws.broadcast_to_user = AsyncMock()
 
@@ -108,12 +108,14 @@ class TestPopNextQueuedRun:
         assert prepared.task == "summarize my inbox"
         assert prepared.user_time.year == 2026
 
-        # Lock overwritten with the new run's value BEFORE returning.
-        redis.set.assert_awaited_once()
-        args, kwargs = redis.set.await_args
+        # Lock overwritten with the new run's value BEFORE returning, via the RAW
+        # client.set — the value must be the unquoted lock string get_lock_state
+        # reads back, NOT redis_cache.set's JSON-encoded (quoted) form.
+        redis.client.set.assert_awaited_once()
+        args, kwargs = redis.client.set.await_args
         assert args[0] == "executor:busy:conv-1"
         assert args[1] == build_lock_value(run.stream_id, "task-7")
-        assert kwargs["ttl"] == EXECUTOR_BUSY_TTL
+        assert kwargs["ex"] == EXECUTOR_BUSY_TTL
 
         # Session registered as QUEUED with the executor pre-marked spawned
         # (queued runs have no chat_service to register for them).
@@ -145,7 +147,7 @@ class TestPopNextQueuedRun:
             patch.object(eq, "websocket_manager") as ws,
         ):
             redis.client.lpop = AsyncMock(return_value=item)
-            redis.set = AsyncMock()
+            redis.client.set = AsyncMock()
             sm.start_stream = AsyncMock()
             ws.broadcast_to_user = AsyncMock()
 

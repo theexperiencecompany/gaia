@@ -352,7 +352,12 @@ async def _broadcast_bot_message(
         ws_payload["tool_data"] = tool_data
     if follow_up_actions:
         ws_payload["follow_up_actions"] = follow_up_actions
-    if task_id:
+    # Only advertise task_id when the saved message is actually keyed on it
+    # (queued runs set message_id == task_id). For live runs message_id is a
+    # fresh uuid, so emitting task_id would make the client's
+    # replaceMessage(task_id) target a key that doesn't match the persisted
+    # message — a latent wrong-key delete.
+    if task_id and bot_message.message_id == task_id:
         ws_payload["task_id"] = task_id
     if show_reply_quote:
         ws_payload["replyToMessage"] = {

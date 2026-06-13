@@ -14,7 +14,7 @@ keeps the import graph acyclic.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 import json
 from typing import Any
@@ -267,16 +267,21 @@ async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None
     queued_user_message_id = item.get("user_message_id")
     configurable: dict = item.get("configurable", {})
     user_time_str: str = item.get("user_time_str", "")
-    user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
+    user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now(UTC)
 
     queued_stream_id = f"{QUEUED_STREAM_ID_PREFIX}{uuid4()}"
     user_id: str = configurable.get("user_id", "")
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    await redis_cache.set(
+    # Overwrite the busy lock with this queued run's value using the RAW client,
+    # matching try_acquire_lock / get_lock_state. redis_cache.set() JSON-encodes
+    # the string (wrapping it in quotes), which get_lock_state's raw read would
+    # never match — so the queued run would see its own lock as FOREIGN, strand
+    # the queue, and leave the lock wedged until its TTL.
+    await redis_cache.client.set(
         lock_key,
         build_lock_value(queued_stream_id, task_id or ""),
-        ttl=EXECUTOR_BUSY_TTL,
+        ex=EXECUTOR_BUSY_TTL,
     )
 
     session = create_session(queued_stream_id, RunKind.QUEUED)
