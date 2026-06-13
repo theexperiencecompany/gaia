@@ -20,7 +20,6 @@ from app.constants.cache import (
 from app.constants.voices import (
     DEFAULT_STARRED_VOICE_IDS,
     DEFAULT_VOICE_ID,
-    ELEVENLABS_ADD_VOICE_URL,
     ELEVENLABS_REQUEST_TIMEOUT_S,
     ELEVENLABS_SHARED_VOICES_URL,
     ELEVENLABS_VOICES_URL,
@@ -31,7 +30,6 @@ from app.constants.voices import (
     VOICE_IDS,
 )
 from app.db.mongodb.collections import users_collection
-from app.db.redis import redis_cache
 from app.decorators.caching import Cacheable
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
@@ -235,74 +233,26 @@ async def set_voice_star(user_id: str, voice_id: str, starred: bool) -> list[str
     return updated
 
 
-async def _add_library_voice_to_account(voice: dict[str, Any]) -> str:
-    """Add a shared-library voice to the ElevenLabs account so TTS can use it.
-
-    Returns the (account) voice id. Raises AppError with ElevenLabs' reason
-    when the add fails — most commonly the account's voice slots are full.
-    """
-    url = ELEVENLABS_ADD_VOICE_URL.format(
-        owner_id=voice["public_owner_id"], voice_id=voice["voice_id"]
-    )
-    try:
-        async with httpx.AsyncClient(timeout=ELEVENLABS_REQUEST_TIMEOUT_S) as client:
-            resp = await client.post(
-                url,
-                headers={"xi-api-key": settings.ELEVENLABS_API_KEY or ""},
-                json={"new_name": voice["name"]},
-            )
-            resp.raise_for_status()
-            added_id = resp.json().get("voice_id") or voice["voice_id"]
-    except httpx.HTTPStatusError as e:
-        detail = e.response.text[:200]
-        log.warning("Failed to add library voice", voice_id=voice["voice_id"], detail=detail)
-        # ElevenLabs returns missing_permissions when the API key lacks the
-        # add_voice_from_voice_library scope — a different remedy from a
-        # full-slots rejection, so don't always blame voice slots.
-        if "missing_permission" in detail or "add_voice_from_voice_library" in detail:
-            fix = (
-                "Grant the ElevenLabs API key the 'add_voice_from_voice_library' "
-                "permission in the ElevenLabs dashboard (or use a key with full permissions)"
-            )
-        else:
-            fix = "Free a voice slot on the ElevenLabs account or pick another voice"
-        raise AppError(
-            message="Could not add this voice to the account",
-            why=f"ElevenLabs rejected the add: {detail}",
-            fix=fix,
-            status_code=422,
-        ) from e
-    except httpx.HTTPError as e:
-        raise AppError(
-            message="Could not reach ElevenLabs to add this voice",
-            why=str(e),
-            fix="Try again in a moment",
-            status_code=502,
-        ) from e
-
-    # The account voice list changed — refetch on next read so the new voice
-    # lists (and validates) immediately.
-    await redis_cache.delete(ELEVENLABS_VOICES_CACHE_KEY)
-    return str(added_id)
-
-
 async def set_user_voice(user_id: str, voice_id: str) -> str:
-    """Persist the user's voice selection, adding library voices to the account.
+    """Persist the user's voice selection.
 
-    Account (and curated-fallback) voices persist directly. A shared-library
-    voice is first added to the ElevenLabs account — TTS can only synthesize
-    account voices — and the resulting account voice id is stored.
+    The voice must be on the account or in the public ElevenLabs library. Library
+    voices are stored and synthesized by id directly — ElevenLabs TTS accepts a
+    library voice id without first adding it to the account (verified across both
+    free and professional library voices). The old add-to-account step was
+    unnecessary: it consumed account voice slots and failed outright when the API
+    key lacked the ``add_voice_from_voice_library`` permission, blocking
+    otherwise-usable voices.
     """
     if voice_id not in await _known_voice_ids():
-        shared = {v["voice_id"]: v for v in await get_shared_voices()}
-        if voice_id not in shared:
+        shared_ids = {v["voice_id"] for v in await get_shared_voices()}
+        if voice_id not in shared_ids:
             raise AppError(
                 message="Unknown voice",
                 why=f"Voice id {voice_id!r} is not on the account or in the voice library",
                 fix="Pick a voice from GET /voice/voices",
                 status_code=404,
             )
-        voice_id = await _add_library_voice_to_account(shared[voice_id])
 
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},
