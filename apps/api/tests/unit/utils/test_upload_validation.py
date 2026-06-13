@@ -17,6 +17,7 @@ class TestVerifyWebpContainer:
         "content",
         [
             b"RIFF\x10\x00\x00\x00AVI ",
+            b"XXXX\x10\x00\x00\x00WEBPVP8 ",
             b"RIFF",
             b"",
         ],

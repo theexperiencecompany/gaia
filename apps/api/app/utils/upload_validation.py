@@ -169,7 +169,7 @@ def verify_magic_bytes(content: bytes, signatures: tuple[bytes, ...]) -> None:
 
 def verify_webp_container(content: bytes) -> None:
     """Confirm RIFF payloads are actually WebP containers."""
-    if len(content) < 12 or content[8:12] != b"WEBP":
+    if len(content) < 12 or not content.startswith(b"RIFF") or content[8:12] != b"WEBP":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File content does not match the claimed content type.",
