@@ -7,6 +7,7 @@ import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
 import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSocket";
+import { useExecutorCancelWebSocket } from "@/features/chat/hooks/useExecutorCancelWebSocket";
 import { useExecutorStream } from "@/features/chat/hooks/useExecutorStream";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
@@ -43,6 +44,10 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   // Subscribe to queued executor SSE streams for live tool progress
   useExecutorStream();
+
+  // Subscribe to agent-initiated executor cancellations — clears the stuck
+  // executor-pending loading indicator and finalizes in-flight tool cards
+  useExecutorCancelWebSocket();
 
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();
