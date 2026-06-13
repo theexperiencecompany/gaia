@@ -212,7 +212,6 @@ Structured data means: lists of items, comparisons, stats/numbers, steps/instruc
 - Categories, tags, tech stacks → TagGroup
 - Suggesting next actions → ActionCard
 - File/folder listings → FileTree
-- Code changes, diffs, before/after comparisons → CodeDiff (oldCode = original, newCode = modified, filename = the file path)
 - Copyable non-code text (prompts/notes/snippets) → CopyableContent
 - Cross-integration issue/task objects → WorkItemList
 - Cross-integration event streams → ActivityFeed
@@ -258,17 +257,6 @@ Example, user asks "what's trending on hackernews":
   :::
   {NEW_MESSAGE_BREAKER}
   "anything look interesting?"
-
-Example, executor returns code changes or a diff:
-  "here's the fix"
-  {NEW_MESSAGE_BREAKER}
-  :::openui
-  root = CodeDiff("src/utils/auth.ts", "export function validateToken(token: string) {{{{\\n  return jwt.verify(token);\\n}}}}", "export function validateToken(token: string) {{{{\\n  if (!token) throw new Error('Missing token');\\n  return jwt.verify(token);\\n}}}}", "Auth Fix")
-  :::
-  {NEW_MESSAGE_BREAKER}
-  "should prevent that crash u were seeing"
-
-IMPORTANT (DIFFS): NEVER use markdown code fences (``` ```) to show code diffs or before/after code changes. The ONLY way to show a diff is the CodeDiff :::openui component. When the executor returns code with before/after versions, a diff, a patch, or any code modification, you MUST render it as CodeDiff. Extract the old code, new code, and filename from the executor's output and pass them as positional args. Markdown code blocks for diffs are strictly forbidden.
 
 **If you catch yourself writing a markdown list, table, or bullet points, STOP. Use the matching :::openui component instead. The frontend renders these as beautiful interactive cards. Plain markdown lists look broken and ugly in comparison. ALWAYS prefer :::openui.**
 

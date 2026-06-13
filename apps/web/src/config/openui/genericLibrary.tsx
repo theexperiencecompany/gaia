@@ -10,7 +10,6 @@ import {
   radarChartDef,
   scatterChartDef,
 } from "./components/analytics";
-import { codeDiffDef } from "./components/code";
 import {
   audioPlayerDef,
   carouselDef,
@@ -54,7 +53,6 @@ export {
   RadarChartView,
   ScatterChartView,
 } from "./components/analytics";
-export { CodeDiffView } from "./components/code";
 export {
   AudioPlayerView,
   CarouselView,
@@ -365,8 +363,7 @@ export const genericLibrary = createLibrary({
     // Timeline
     timelineDef,
     stepsDef,
-    // Code & docs
-    codeDiffDef,
+    // Docs
     textDocumentDef,
   ],
   componentGroups: [
@@ -455,13 +452,6 @@ export const genericLibrary = createLibrary({
         "Timeline supports actor, links, and action buttons per item",
         "Steps for ordered instructions with complete/active/pending states",
         "AlertBanner removed — use Callout primitive instead",
-      ],
-    },
-    {
-      name: "Code",
-      components: ["CodeDiff"],
-      notes: [
-        "CodeDiff for before/after code comparisons with syntax highlighting",
       ],
     },
     {

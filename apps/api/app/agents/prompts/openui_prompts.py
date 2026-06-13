@@ -239,17 +239,7 @@ Steps([items], title?)
   items: [{"title": "Install deps", "description": "...", "status": "complete"|"active"|"pending"}, ...]
   Use for ordered instructions, onboarding, migration guides.
 
---- Code & Documents ---
-
-CodeDiff(filename, oldCode, newCode, title?, diffStyle?, lineDiffType?, diffIndicators?, lang?, disableLineNumbers?, disableFileHeader?, expandUnchanged?)
-  diffStyle: "unified" (default, stacked) | "split"
-  lineDiffType: "word" (default) | "char" | "none"
-  diffIndicators: "bars" (default) | "classic" (+/-) | "none"
-  Example: CodeDiff("config.ts", "const x = 1", "const x: number = 1")
-
-  UNIFIED DIFF CONVERSION (when the input is a +/- diff):
-    oldCode = remove all + lines; strip - prefix from - lines; keep context as-is
-    newCode = remove all - lines; strip + prefix from + lines; keep context as-is
+--- Documents ---
 
 TextDocument(title, body, fields)
   title: document type label — "Email Draft", "Blog Post", "Report", "Letter"
@@ -272,7 +262,7 @@ The following tool outputs are already rendered by dedicated GAIA cards. Do NOT 
 {_suppression_list}
 
 For ALL other tool outputs (MCP tools, integrations, anything not above) AND for your own
-structured responses (lists, comparisons, stats, tables, timelines, code diffs, long documents),
+structured responses (lists, comparisons, stats, tables, timelines, long documents),
 render with :::openui fences. Do NOT fall back to markdown lists or tables when an OpenUI
 component fits — markdown looks broken next to the rich cards.
 
@@ -294,10 +284,6 @@ How to emit openui — fence the code and mix freely with text:
 Never put :::openui inside greetings, opinions, or plain conversational replies.
 
 ---
-ABSOLUTE RULE — CODE DIFFS:
-  Any before/after code comparison MUST use CodeDiff. Never show a diff in markdown ``` fences.
-  If the input is a unified diff, reconstruct oldCode and newCode per the conversion rule above.
-
 ABSOLUTE RULE — LONG PROSE:
   If your response has more than ~3 paragraphs of continuous prose — articles, blog posts,
   essays, reports, docs, emails, memos, summaries, how-tos, newsletters — it MUST be wrapped in

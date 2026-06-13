@@ -56,7 +56,6 @@ const EXPECTED_GROUPS: Record<string, string[]> = {
     "TreeView",
   ],
   "Timeline & Notifications": ["Timeline", "AlertBanner", "Steps"],
-  Code: ["CodeDiff"],
   Documents: ["TextDocument"],
 };
 
@@ -91,7 +90,6 @@ describe("genericLibrary", () => {
     expect(groupNames).toContain("Analytics");
     expect(groupNames).toContain("Content");
     expect(groupNames).toContain("Timeline & Notifications");
-    expect(groupNames).toContain("Code");
     expect(groupNames).toContain("Documents");
   });
 

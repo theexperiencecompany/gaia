@@ -229,11 +229,11 @@ cd apps/api && uv run pytest tests/test_openui_prompts.py -v
 
 ## 9. Async / External Data in Components
 
-Some components need async initialization (e.g., `CodeDiff` loading Shiki via `@pierre/diffs`).
-Use `useState` + `useEffect` pattern:
+Some components need async initialization (e.g., lazily fetching or computing data
+before the first paint). Use `useState` + `useEffect` pattern:
 
 ```typescript
-export function CodeDiffView(props: z.infer<typeof codeDiffSchema>) {
+export function AsyncDataView(props: z.infer<typeof someSchema>) {
   const [data, setData] = React.useState<SomeType | null>(null);
 
   React.useEffect(() => {
@@ -273,5 +273,4 @@ To debug: open the browser console and look for `[openui] Parse error:` or
 | Analytics          | StatRow, BarChart, LineChart, AreaChart, PieChart, ScatterChart, RadarChart, GaugeChart       |
 | Content            | ImageBlock, ImageGallery, VideoBlock, AudioPlayer, MapBlock, CalendarMini, NumberTicker, Carousel, TreeView |
 | Timeline           | Timeline, AlertBanner, Steps                                                                   |
-| Code               | CodeDiff                                                                                       |
 | Layout (internal)  | Stack (used in :::openui code only, not LLM-visible as a standalone)                         |

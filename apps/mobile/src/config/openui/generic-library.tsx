@@ -12,7 +12,6 @@ import {
   scatterChartDef,
   statRowDef,
 } from "./components/analytics";
-import { codeDiffDef } from "./components/code";
 import {
   audioPlayerDef,
   calendarMiniDef,
@@ -52,7 +51,6 @@ export {
   ScatterChartView,
   StatRowView,
 } from "./components/analytics";
-export { CodeDiffView } from "./components/code";
 export {
   AudioPlayerView,
   CalendarMiniView,
@@ -172,7 +170,6 @@ export const genericLibrary = createLibrary({
     timelineDef,
     alertBannerDef,
     stepsDef,
-    codeDiffDef,
     textDocumentDef,
   ],
   componentGroups: [
@@ -224,10 +221,6 @@ export const genericLibrary = createLibrary({
     {
       name: "Timeline & Notifications",
       components: ["Timeline", "AlertBanner", "Steps"],
-    },
-    {
-      name: "Code",
-      components: ["CodeDiff"],
     },
     {
       name: "Documents",

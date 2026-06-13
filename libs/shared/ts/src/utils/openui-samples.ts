@@ -12,7 +12,6 @@ export interface OpenUISample {
     | "Analytics"
     | "Content"
     | "Timeline & Notifications"
-    | "Code"
     | "Documents";
   code: string;
 }
@@ -196,20 +195,6 @@ export const OPENUI_SAMPLES: OpenUISample[] = [
   {"title": "Initialize the project", "description": "gaia init in your repo", "status": "active"},
   {"title": "Deploy", "description": "Push to main", "status": "pending"}
 ], "Getting started")`,
-  },
-
-  // ---------------------------------------------------------------------------
-  // Code
-  // ---------------------------------------------------------------------------
-  {
-    name: "CodeDiff",
-    group: "Code",
-    code: `root = CodeDiff(
-  "utils.ts",
-  "export function add(a: number, b: number) {\\n  return a + b;\\n}",
-  "export function add(a: number, b: number): number {\\n  if (Number.isNaN(a) || Number.isNaN(b)) return 0;\\n  return a + b;\\n}",
-  "Harden the add helper"
-)`,
   },
 
   // ---------------------------------------------------------------------------
