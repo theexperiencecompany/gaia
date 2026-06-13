@@ -308,7 +308,10 @@ class TestReconstructSubagentGroups:
 
     def _group(self, tool_data: dict, subagent_id: str) -> dict:
         for entry in tool_data["tool_data"]:
-            if entry.get("tool_name") == "subagent_group" and entry["data"]["subagent_id"] == subagent_id:
+            if (
+                entry.get("tool_name") == "subagent_group"
+                and entry["data"]["subagent_id"] == subagent_id
+            ):
                 return entry["data"]
         raise AssertionError(f"no group for {subagent_id}")
 
@@ -318,7 +321,11 @@ class TestReconstructSubagentGroups:
             starts={"sub-1": {"subagent_name": "todoist", "agent_type": "handoff"}},
             ends={},
             entries=[
-                {"tool_name": "tool_calls_data", "subagent_id": "sub-1", "data": {"tool_call_id": "tc-1"}}
+                {
+                    "tool_name": "tool_calls_data",
+                    "subagent_id": "sub-1",
+                    "data": {"tool_call_id": "tc-1"},
+                }
             ],
         )
 
