@@ -46,17 +46,18 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build web (standalone)
         run: pnpm nx build web --skip-nx-cache
+      # Pack into a single tarball: deterministic paths (no upload-artifact
+      # path inference), captures the hidden .next dir, and preserves the
+      # traced node_modules verbatim.
+      - name: Archive standalone server
+        run: tar -czf web-standalone.tar.gz apps/web/.next/standalone apps/web/.next/static apps/web/public
       - name: Upload standalone server
         uses: actions/upload-artifact@v4
         with:
           name: web-standalone
           if-no-files-found: error
           retention-days: 3
-          include-hidden-files: true
-          path: |
-            apps/web/.next/standalone
-            apps/web/.next/static
-            apps/web/public
+          path: web-standalone.tar.gz
 
   # ---------------------------------------------------------------------------
   # Package the desktop app on each OS (no installer) to prove it builds.
@@ -92,14 +93,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: web-standalone
-          path: restored
-      - name: Place standalone where the build expects it
+      - name: Unpack standalone (restores apps/web/.next/{standalone,static} + public)
         shell: bash
-        run: |
-          mkdir -p apps/web/.next
-          cp -R restored/.next/standalone apps/web/.next/standalone
-          cp -R restored/.next/static apps/web/.next/static
-          cp -R restored/public apps/web/public
+        run: tar -xzf web-standalone.tar.gz
 
       - name: Build Electron main/preload
         run: pnpm nx build desktop
