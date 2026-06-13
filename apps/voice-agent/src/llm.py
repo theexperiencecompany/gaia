@@ -1,5 +1,6 @@
 """CustomLLM — streams SSE from the GAIA backend and yields ChatChunks for ElevenLabs TTS."""
 
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 import json
@@ -36,6 +37,7 @@ from src.utils import (
 )
 
 if TYPE_CHECKING:
+    from livekit.agents import AgentSession
     from loguru import Logger
 
 # Plumbing event keys that must never reach TTS.
@@ -79,6 +81,11 @@ class CustomLLM(LLM):
         self._turn_index = 0
         # Reused across turns to avoid TCP reconnect overhead per turn
         self._http_session: aiohttp.ClientSession | None = None
+        # Set by the entrypoint once the AgentSession exists. The drain uses it
+        # to speak each delegated executor answer as its own utterance.
+        self.session: AgentSession | None = None
+        # Keep drain tasks referenced so they aren't garbage-collected mid-run.
+        self._drain_tasks: set[asyncio.Task[None]] = set()
 
     def get_http_session(self) -> aiohttp.ClientSession:
         """Return the shared HTTP session, creating it on first call."""
@@ -158,6 +165,52 @@ class CustomLLM(LLM):
         if text:
             await self.forward_stream_event_to_frontend(json.dumps({RESPONSE_KEY: text}))
 
+    def spawn_drain(self, resp: aiohttp.ClientResponse) -> None:
+        """Drain the rest of a comms turn's stream in the background.
+
+        The comms turn (its chat() generator) ends as soon as the reply is done,
+        so the ack plays immediately. The executor's UI events and narrated
+        answer arrive later on the same still-open stream — this keeps reading
+        them: forwarding tool cards to the screen and speaking each answer.
+        """
+        task = asyncio.create_task(self._drain(resp))
+        self._drain_tasks.add(task)
+        task.add_done_callback(self._drain_tasks.discard)
+
+    async def _drain(self, resp: aiohttp.ClientResponse) -> None:
+        """Forward the post-reply UI events and speak each executor answer.
+
+        Mirrors what's shown on screen: forward what's displayed (tool cards,
+        follow-ups), speak what's a bot message (each ``voice_tts`` answer, in
+        order, as its own utterance via ``session.say``).
+        """
+        try:
+            async for raw in resp.content:
+                data = _parse_sse_line(raw)
+                if data is None:
+                    continue
+                if data == DONE_SENTINEL:
+                    await self.forward_stream_event_to_frontend(data)
+                    break
+                try:
+                    event = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                voice_tts = event.get(VOICE_TTS_KEY)
+                if isinstance(voice_tts, str) and voice_tts:
+                    spoken = sanitize_for_tts(voice_tts)
+                    if spoken and self.session is not None:
+                        # say() schedules its own utterance; the comms turn is
+                        # already over so it plays as soon as it lands.
+                        self.session.say(spoken)
+                    continue
+                if event.keys() & PLUMBING_EVENT_KEYS:
+                    await self.forward_stream_event_to_frontend(data)
+        except Exception as e:
+            logger.warning("Voice stream drain failed", error=str(e))
+        finally:
+            await resp.release()
+
     # The base class declares chat() -> LLMStream, but the LiveKit pipeline calls it as
     # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly
     # what @asynccontextmanager + yield gen() provides
@@ -236,6 +289,12 @@ class _VoiceTurn:
         self.executor_tts_chars = 0
         self.text_buffer: list[str] = []
         self.deferred_flushes = 0
+        # Set once the comms reply is done. The turn ends here so the ack plays
+        # immediately instead of being held while the executor runs (~tens of s).
+        self.comms_complete = False
+        # Set when the stream fully ended ([DONE]) within the comms turn — then
+        # there's nothing left to drain.
+        self.stream_done = False
 
     async def run(self) -> AsyncGenerator[ChatChunk, None]:
         """Drive the whole turn; yields sanitized TTS chunks as they flush."""
@@ -247,9 +306,9 @@ class _VoiceTurn:
             )
             return
 
-        self.tlog.debug(
-            f"[{ts}] ▶ TURN START ({len(self.user_message)} chars)",
-            phase="turn_start",
+        self.tlog.info(
+            f"[{ts}] 🟢 CHAT() GENERATOR START | user={self.user_message[:50]!r}",
+            phase="chat_turn_start",
             user_msg=self.user_message,
             user_msg_len=len(self.user_message),
         )
@@ -264,37 +323,51 @@ class _VoiceTurn:
             history_turns=len(self.messages),
         )
 
-        session = self.llm.get_http_session()
+        http_session = self.llm.get_http_session()
+        resp = await http_session.post(
+            f"{self.llm.base_url}/api/v1/chat-stream",
+            headers=self._build_headers(),
+            json=payload,
+            timeout=aiohttp.ClientTimeout(sock_read=self.llm.request_timeout_s),
+        )
+        handed_off = False
         try:
-            async with session.post(
-                f"{self.llm.base_url}/api/v1/chat-stream",
-                headers=self._build_headers(),
-                json=payload,
-                timeout=aiohttp.ClientTimeout(sock_read=self.llm.request_timeout_s),
-            ) as resp:
-                if resp.status >= 400:
-                    body = await resp.text()
-                    self.tlog.error(
-                        "Backend returned error response",
-                        status=resp.status,
-                        body=body[:500],
-                        conversation_id=self.llm.conversation_id,
-                        elapsed_ms=ms_since(self.turn_start),
-                    )
-                    resp.raise_for_status()
-
-                async for chunk in self._stream_chunks(resp):
-                    yield chunk
-
-                # Canonical per-turn wide event — one INFO line carrying the
-                # whole turn so Loki can answer latency/volume/behaviour
-                # questions without stitching DEBUG lines together.
-                self.tlog.info(
-                    f"[{now_ts()}] ✓ TURN COMPLETE | tokens={self.total_tokens} total={ms_since(self.turn_start):.0f}ms",
-                    phase="turn_complete",
-                    status="ok",
-                    **self._turn_fields(),
+            if resp.status >= 400:
+                body = await resp.text()
+                self.tlog.error(
+                    "Backend returned error response",
+                    status=resp.status,
+                    body=body[:500],
+                    conversation_id=self.llm.conversation_id,
+                    elapsed_ms=ms_since(self.turn_start),
                 )
+                resp.raise_for_status()
+
+            async for chunk in self._stream_chunks(resp):
+                yield chunk
+
+            # The comms reply is done but the stream is still open — a delegated
+            # executor's events/answer are still coming. Hand the open stream to
+            # a background reader (which forwards tool cards and speaks each
+            # answer) and end this turn now, so the ack plays immediately.
+            if self.comms_complete and not self.stream_done:
+                self.llm.spawn_drain(resp)
+                handed_off = True
+
+            self.tlog.info(
+                f"[{now_ts()}] 🔴 CHAT() GENERATOR END | elapsed={ms_since(self.turn_start):.0f}ms",
+                phase="chat_turn_end",
+                elapsed_ms=ms_since(self.turn_start),
+            )
+            # Canonical per-turn wide event — one INFO line carrying the comms
+            # turn so Loki can answer latency/volume/behaviour questions without
+            # stitching DEBUG lines together.
+            self.tlog.info(
+                f"[{now_ts()}] ✓ TURN COMPLETE | tokens={self.total_tokens} total={ms_since(self.turn_start):.0f}ms",
+                phase="turn_complete",
+                status="ok",
+                **self._turn_fields(),
+            )
 
         except Exception as e:
             # Same wide event on the failure path (status=error) so error
@@ -308,6 +381,22 @@ class _VoiceTurn:
                 **self._turn_fields(),
             )
             raise
+        finally:
+            # The drain owns the response once handed off; otherwise release it.
+            if not handed_off:
+                await resp.release()
+
+    def _emit(self, text: str, source: str) -> ChatChunk:
+        """Log + wrap a TTS chunk so we can see exactly WHEN text is handed to TTS."""
+        self.tlog.info(
+            f"[{now_ts()}] 📤 YIELD→TTS [{source}] ({len(text)} chars) "
+            f"elapsed={ms_since(self.turn_start):.0f}ms | {text[:60]!r}",
+            phase="yield_tts",
+            source=source,
+            char_count=len(text),
+            elapsed_ms=ms_since(self.turn_start),
+        )
+        return _tts_chunk(text)
 
     async def _stream_chunks(self, resp: aiohttp.ClientResponse) -> AsyncGenerator[ChatChunk, None]:
         """Consume the SSE body, yielding TTS chunks until [DONE] or stream end."""
@@ -317,23 +406,37 @@ class _VoiceTurn:
                 continue
 
             if data == DONE_SENTINEL:
+                self.stream_done = True
+                self.tlog.info(
+                    f"[{now_ts()}] 🏁 [DONE] received | elapsed={ms_since(self.turn_start):.0f}ms",
+                    phase="done_received",
+                    elapsed_ms=ms_since(self.turn_start),
+                )
                 tail = await self._on_stream_done()
                 if tail:
-                    yield _tts_chunk(tail)
+                    yield self._emit(tail, "stream_done_tail")
                 # Forward [DONE] so the frontend knows the stream ended
                 await self.llm.forward_stream_event_to_frontend(data)
                 break
 
             spoken = await self._handle_event(data)
             if spoken:
-                yield _tts_chunk(spoken)
+                yield self._emit(spoken, "event")
 
+            # Comms reply done — end the audio turn now so the ack plays at
+            # once. The rest of the stream (executor events + answer) is handled
+            # by the background drain spawned in run().
+            if self.comms_complete:
+                return
+
+        # Stream ended without a completion marker — nothing left to drain.
+        self.stream_done = True
         if self.tts_enabled:
             final_tail = await self._flush_buffer(
                 min_chars=TTS_FINAL_MIN_CHARS, count_stats=True, label="TTS FINAL"
             )
             if final_tail:
-                yield _tts_chunk(final_tail)
+                yield self._emit(final_tail, "final_tail")
 
     def _build_headers(self) -> dict[str, str]:
         headers = {"x-timezone": "UTC"}
@@ -397,8 +500,9 @@ class _VoiceTurn:
         if is_plumbing:
             await self.llm.forward_stream_event_to_frontend(data)
 
-        self.tlog.debug(
-            f"[{now_ts()}] ~ BACKEND EVENT | keys={list(event_keys)} plumbing={is_plumbing}",
+        self.tlog.info(
+            f"[{now_ts()}] ~ BACKEND EVENT | keys={list(event_keys)} "
+            f"plumbing={is_plumbing} elapsed={ms_since(self.turn_start):.0f}ms",
             phase="backend_event",
             event_keys=list(event_keys),
             event_data=data[:300],
@@ -454,8 +558,10 @@ class _VoiceTurn:
         if self.tts_enabled:
             tail = await self._flush_buffer(min_chars=1, count_stats=False, label=None)
         self.tts_enabled = False
-        self.tlog.debug(
-            f"[{now_ts()}] ✓ MAIN RESPONSE COMPLETE — TTS disabled for remaining events",
+        self.comms_complete = True
+        self.tlog.info(
+            f"[{now_ts()}] ✅ MAIN RESPONSE COMPLETE — ending audio turn | "
+            f"elapsed={ms_since(self.turn_start):.0f}ms (ack flushed: {bool(tail)})",
             phase="main_response_complete",
             elapsed_ms=ms_since(self.turn_start),
         )
@@ -466,10 +572,12 @@ class _VoiceTurn:
         if not spoken:
             return None
         self.executor_tts_chars += len(spoken)
-        self.tlog.debug(
-            f"[{now_ts()}] 🔊 TTS EXECUTOR ANSWER ({len(spoken)} chars)",
+        self.tlog.info(
+            f"[{now_ts()}] 🗣 EXECUTOR ANSWER ARRIVED ({len(spoken)} chars) "
+            f"elapsed={ms_since(self.turn_start):.0f}ms | {spoken[:60]!r}",
             phase="tts_executor_answer",
             char_count=len(spoken),
+            elapsed_ms=ms_since(self.turn_start),
         )
         return spoken
 

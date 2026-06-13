@@ -282,6 +282,10 @@ async def entrypoint(ctx: JobContext) -> None:
         use_tts_aligned_transcript=True,
     )
 
+    # The drain speaks each delegated executor answer as its own utterance once
+    # the comms turn has ended.
+    custom_llm.session = session
+
     _register_session_logging(ctx, session, slog)
 
     # Tracks the currently-applied TTS voice so repeated metadata events
