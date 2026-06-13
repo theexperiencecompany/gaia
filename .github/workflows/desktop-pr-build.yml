@@ -1,0 +1,128 @@
+name: Desktop PR Build
+
+# Catches desktop packaging/platform regressions BEFORE merge — the class of bug
+# that passes lint + type-check but only surfaces at package time or on an OS you
+# didn't build locally (script divergence, asar/dependency breakage, native-dep
+# install, the wake-word prune, code-signing seal).
+#
+# Efficient by design: the expensive Next.js build runs ONCE on cheap Linux and
+# is shared as an artifact; each OS then only installs + packages (electron-builder
+# --dir, no installer). macOS additionally verifies the code-signing seal.
+on:
+  pull_request:
+    paths:
+      # Desktop app, the shared TS lib it bundles, and this workflow. Web is
+      # intentionally excluded (high churn, its own gates) — desktop-specific
+      # regressions live in these paths.
+      - "apps/desktop/**"
+      - "libs/shared/ts/**"
+      - ".github/workflows/desktop-pr-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-pr-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build the Next.js standalone once (platform-agnostic) on cheap Linux.
+  # ---------------------------------------------------------------------------
+  web:
+    name: Build web standalone
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build web (standalone)
+        run: pnpm nx build web --skip-nx-cache
+      - name: Upload standalone server
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-standalone
+          if-no-files-found: error
+          retention-days: 3
+          include-hidden-files: true
+          path: |
+            apps/web/.next/standalone
+            apps/web/.next/static
+            apps/web/public
+
+  # ---------------------------------------------------------------------------
+  # Package the desktop app on each OS (no installer) to prove it builds.
+  # ---------------------------------------------------------------------------
+  package:
+    name: Package desktop (${{ matrix.target }})
+    needs: web
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac
+          - os: windows-latest
+            target: win
+          - os: ubuntu-latest
+            target: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Restore the prebuilt Next.js output instead of rebuilding it per-OS.
+      - name: Restore web standalone
+        uses: actions/download-artifact@v4
+        with:
+          name: web-standalone
+          path: restored
+      - name: Place standalone where the build expects it
+        shell: bash
+        run: |
+          mkdir -p apps/web/.next
+          cp -R restored/.next/standalone apps/web/.next/standalone
+          cp -R restored/.next/static apps/web/.next/static
+          cp -R restored/public apps/web/public
+
+      - name: Build Electron main/preload
+        run: pnpm nx build desktop
+
+      - name: Prepare standalone for packaging (prune + wake-word canary)
+        working-directory: apps/desktop
+        run: node ./scripts/prepare-next-server.mjs
+
+      # --dir = unpacked app, no installer: fast, and enough to catch asar /
+      # dependency / prune regressions. macOS ad-hoc-signs via the afterSign hook
+      # (CSC_IDENTITY_AUTO_DISCOVERY=false) so the seal can be verified below.
+      - name: Package (electron-builder --dir)
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder --${{ matrix.target }} --dir --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # Layer 4: the signing regression only shows at runtime — assert the seal
+      # is valid in CI instead.
+      - name: Verify macOS code-signing seal
+        if: matrix.target == 'mac'
+        run: |
+          APP=$(find apps/desktop/release -name 'GAIA.app' -type d | head -1)
+          echo "Verifying $APP"
+          codesign --verify --deep --strict --verbose=1 "$APP"
+          echo "macOS bundle seal is valid"
