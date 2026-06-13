@@ -40,6 +40,11 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
+from app.constants.executor import (
+    EXECUTOR_ERROR_MARKER,
+    EXECUTOR_RESULT_MARKER,
+    VOICE_TTS_KEY,
+)
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import conversations_collection
@@ -54,10 +59,6 @@ from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
 _queued_executor_tasks: set[asyncio.Task] = set()
-
-VOICE_TTS_KEY = "voice_tts"
-EXECUTOR_RESULT_MARKER = "[EXECUTOR_RESULT]"
-EXECUTOR_ERROR_MARKER = "[EXECUTOR_ERROR]"
 
 
 def _strip_executor_markers(text: str) -> str:

@@ -18,11 +18,14 @@ from app.constants.cache import (
     ONE_DAY_TTL,
 )
 from app.constants.voices import (
-    ACCENT_TO_COUNTRY,
     DEFAULT_STARRED_VOICE_IDS,
     DEFAULT_VOICE_ID,
-    LANGUAGE_NAMES,
+    ELEVENLABS_ADD_VOICE_URL,
+    ELEVENLABS_REQUEST_TIMEOUT_S,
+    ELEVENLABS_SHARED_VOICES_URL,
+    ELEVENLABS_VOICES_URL,
     SELECTED_VOICE_FIELD,
+    SHARED_VOICES_PAGE_SIZE,
     STARRED_VOICES_FIELD,
     VOICE_CATALOG,
     VOICE_IDS,
@@ -32,53 +35,13 @@ from app.db.redis import redis_cache
 from app.decorators.caching import Cacheable
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
+from app.utils.voice_utils import (
+    _language_names,
+    _map_account_voice,
+    _map_shared_voice,
+    _verified_language_codes,
+)
 from shared.py.wide_events import log
-
-ELEVENLABS_VOICES_URL = "https://api.elevenlabs.io/v1/voices"
-ELEVENLABS_SHARED_VOICES_URL = "https://api.elevenlabs.io/v1/shared-voices"
-ELEVENLABS_ADD_VOICE_URL = "https://api.elevenlabs.io/v1/voices/add/{owner_id}/{voice_id}"
-ELEVENLABS_REQUEST_TIMEOUT_S = 10.0
-# One page of featured library voices is plenty for the picker without
-# ballooning the table; previews come straight off the library response.
-SHARED_VOICES_PAGE_SIZE = 100
-
-
-def _verified_language_codes(voice: dict[str, Any]) -> list[str]:
-    """Ordered, deduped ISO codes from a voice's verified_languages.
-
-    ElevenLabs repeats a language once per supporting model — collapse to one
-    entry per language, preserving first-seen order.
-    """
-    seen: list[str] = []
-    for entry in voice.get("verified_languages") or []:
-        code = str(entry.get("language") or "").lower()
-        if code and code not in seen:
-            seen.append(code)
-    return seen
-
-
-def _language_names(codes: list[str], primary: str) -> list[str]:
-    """Display names for language codes, with the primary language first."""
-    names: list[str] = []
-    for code in codes:
-        name = LANGUAGE_NAMES.get(code, code.upper())
-        if name not in names:
-            names.append(name)
-    if primary in names:
-        names.remove(primary)
-    return [primary, *names]
-
-
-def _normalize_accent(raw: str) -> str:
-    """Human label for an ElevenLabs accent string.
-
-    ElevenLabs tags accent-neutral voices as "standard" — render those as
-    International rather than a meaningless "Standard" country.
-    """
-    accent = raw.strip().lower()
-    if not accent or accent == "standard":
-        return "International"
-    return accent.title()
 
 
 @Cacheable(ttl=ONE_DAY_TTL, key_pattern=ELEVENLABS_VOICES_CACHE_KEY)
@@ -169,72 +132,6 @@ async def get_shared_voices() -> list[dict[str, Any]]:
         return []
 
 
-def _split_display_name(raw_name: str) -> tuple[str, str]:
-    """Split ElevenLabs' "Name - Short description" naming into columns."""
-    name, _, blurb = raw_name.partition(" - ")
-    return name.strip() or raw_name, blurb.strip()
-
-
-def _build_voice_option(
-    voice: dict[str, Any],
-    *,
-    accent: str,
-    gender: str,
-    descriptive: str,
-    use_case: str,
-    language_code: str,
-    source: str,
-    fallback_description: str,
-) -> VoiceOption:
-    """Shape a non-catalog ElevenLabs voice into a catalog-compatible option."""
-    name, blurb = _split_display_name(voice["name"])
-    accent_label = _normalize_accent(accent)
-    primary = LANGUAGE_NAMES.get(language_code, language_code.upper() or "English")
-    descriptive = descriptive.replace("_", " ")
-    use_case = use_case.replace("_", " ")
-    return VoiceOption(
-        voice_id=voice["voice_id"],
-        name=name,
-        language=primary,
-        accent=accent_label,
-        country_code=ACCENT_TO_COUNTRY.get(accent_label.lower(), ""),
-        gender=gender.strip().title() or "Neutral",
-        description=blurb or descriptive.title() or use_case.title() or fallback_description,
-        preview_url=voice.get("preview_url"),
-        source=source,
-        languages=_language_names(voice.get("language_codes") or [], primary),
-    )
-
-
-def _map_account_voice(voice: dict[str, Any]) -> VoiceOption:
-    """Shape a non-catalog account voice (metadata in ``labels``) into an option."""
-    labels: dict[str, Any] = voice["labels"]
-    return _build_voice_option(
-        voice,
-        accent=str(labels.get("accent") or ""),
-        gender=str(labels.get("gender") or ""),
-        descriptive=str(labels.get("descriptive") or ""),
-        use_case=str(labels.get("use_case") or ""),
-        language_code=str(labels.get("language") or ""),
-        source="account",
-        fallback_description="Account voice",
-    )
-
-
-def _map_shared_voice(voice: dict[str, Any]) -> VoiceOption:
-    """Shape a shared-library voice (metadata at the top level) into an option."""
-    return _build_voice_option(
-        voice,
-        accent=voice["accent"],
-        gender=voice["gender"],
-        descriptive=voice["descriptive"],
-        use_case=voice["use_case"],
-        language_code=voice["language"],
-        source="library",
-        fallback_description="Community voice",
-    )
-
-
 async def _known_voice_ids() -> set[str]:
     """All selectable voice ids.
 
@@ -305,6 +202,14 @@ async def list_voices(user_id: str) -> VoiceListResponse:
     # Starred voices float to the top; order is otherwise preserved
     # (curated catalog, then account, then library).
     voices.sort(key=lambda v: not v.starred)
+
+    # Reconcile the stored selection against what is actually listed: a voice
+    # deleted from the ElevenLabs account would otherwise show as selected in the
+    # picker (and fail TTS if kept). Free here since the full catalog is already
+    # assembled — unlike get_user_voice, which stays validation-free for /token.
+    available_ids = {v.voice_id for v in voices}
+    if selected not in available_ids:
+        selected = DEFAULT_VOICE_ID if DEFAULT_VOICE_ID in available_ids else None
     return VoiceListResponse(voices=voices, selected_voice_id=selected)
 
 

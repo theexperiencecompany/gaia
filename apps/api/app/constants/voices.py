@@ -296,6 +296,16 @@ ACCENT_TO_COUNTRY: dict[str, str] = {
     "welsh": "GB",
 }
 
+# ElevenLabs API endpoints and request tuning for resolving preview samples and
+# adding shared-library voices to the account.
+ELEVENLABS_VOICES_URL = "https://api.elevenlabs.io/v1/voices"
+ELEVENLABS_SHARED_VOICES_URL = "https://api.elevenlabs.io/v1/shared-voices"
+ELEVENLABS_ADD_VOICE_URL = "https://api.elevenlabs.io/v1/voices/add/{owner_id}/{voice_id}"
+ELEVENLABS_REQUEST_TIMEOUT_S = 10.0
+# One page of featured library voices is plenty for the picker without
+# ballooning the table; previews come straight off the library response.
+SHARED_VOICES_PAGE_SIZE = 100
+
 # Human names for ElevenLabs ISO-639 language labels.
 LANGUAGE_NAMES: dict[str, str] = {
     "en": "English",
