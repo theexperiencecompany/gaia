@@ -70,9 +70,10 @@ def integration_skills_block(subagent_id: str) -> str:
     base = f"/workspace/integrations/{subagent_id}/agent/skills"
     lines = [f"## Available skills for {subagent_id}"]
     lines.append(
-        f"Read `{base}/<slug>/skill.md` before invoking the underlying tool. "
-        "The body is the full recipe; the description below is a one-line "
-        "trigger so you know which file to cat."
+        f"Read `{base}/<slug>/skill.md` before invoking the underlying tool. Use "
+        "the exact path shown for each skill below; do not rewrite it. The body is "
+        "the full recipe; the description below is a one-line trigger so you know "
+        "which file to cat."
     )
     for skill in skills:
         desc = (skill.description or "").strip()
