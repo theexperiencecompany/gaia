@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function DesktopLayout({ children }: { children: ReactNode }) {
+export default function DesktopLayout({
+  children,
+}: Readonly<{ children: ReactNode }>) {
   return <>{children}</>;
 }

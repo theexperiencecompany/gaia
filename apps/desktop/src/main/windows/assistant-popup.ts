@@ -375,7 +375,7 @@ export function showAssistantPopup(trigger: PopupTrigger = "shortcut"): void {
 
   if (popupShown && composerWindow.isVisible()) {
     fadeTo(composerWindow, 1);
-    if (feedWindow && feedWindow.isVisible()) fadeTo(feedWindow, 1);
+    if (feedWindow?.isVisible()) fadeTo(feedWindow, 1);
     app.focus({ steal: true });
     composerWindow.focus();
     return;

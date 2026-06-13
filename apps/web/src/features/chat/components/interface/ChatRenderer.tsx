@@ -78,10 +78,10 @@ function markBubbleRevealed(bubbleKey: string): void {
 function CompactReveal({
   bubbleKey,
   children,
-}: {
+}: Readonly<{
   bubbleKey: string;
   children: ReactNode;
-}) {
+}>) {
   const isNew = !revealedBubbleKeys.has(bubbleKey);
 
   useEffect(() => {

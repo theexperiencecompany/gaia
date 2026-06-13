@@ -93,16 +93,18 @@ export function DesktopPermissions() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    refresh();
     // Instant update when the user comes back from System Settings,
     // with polling as a fallback while the page stays visible.
-    const onFocus = () => void refresh();
-    window.addEventListener("focus", onFocus);
+    const onFocus = () => {
+      refresh();
+    };
+    globalThis.addEventListener("focus", onFocus);
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") refresh();
     }, REFRESH_INTERVAL_MS);
     return () => {
-      window.removeEventListener("focus", onFocus);
+      globalThis.removeEventListener("focus", onFocus);
       clearInterval(interval);
     };
   }, [refresh]);
@@ -150,7 +152,9 @@ export function DesktopPermissions() {
                   size="sm"
                   variant="flat"
                   className="rounded-xl"
-                  onPress={() => void handleRequest(row)}
+                  onPress={() => {
+                    handleRequest(row);
+                  }}
                 >
                   {row.promptable ? "Allow" : "Open Settings"}
                 </Button>

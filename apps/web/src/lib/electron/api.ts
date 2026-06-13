@@ -44,24 +44,26 @@ export interface ElectronAPI {
   setAppIcon: (id: string) => Promise<boolean>;
 }
 
-/** Type guard: `window.api` exists and is the Electron preload API. */
-export function hasElectronAPI(
-  window: Window,
-): window is Window & { api: ElectronAPI } {
+/** Type guard: `win.api` exists and is the Electron preload API. */
+function hasElectronAPI(win: Window): win is Window & { api: ElectronAPI } {
   return (
-    typeof window !== "undefined" &&
-    "api" in window &&
-    typeof window.api === "object" &&
-    window.api !== null &&
-    "isElectron" in window.api &&
-    window.api.isElectron === true
+    "api" in win &&
+    typeof win.api === "object" &&
+    win.api !== null &&
+    "isElectron" in win.api &&
+    win.api.isElectron === true
   );
 }
 
 /** The preload API, or null outside the desktop app (including SSR). */
 export function getElectronAPI(): ElectronAPI | null {
-  if (typeof window === "undefined" || !hasElectronAPI(window)) return null;
-  return window.api;
+  if (
+    typeof globalThis.window === "undefined" ||
+    !hasElectronAPI(globalThis.window)
+  ) {
+    return null;
+  }
+  return globalThis.window.api;
 }
 
 /** Header the backend reads to surface desktop-only tools. */

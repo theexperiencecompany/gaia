@@ -57,12 +57,11 @@ async def request_desktop_action(
     user_id: str,
     tool: str,
     params: dict[str, Any] | None = None,
-    timeout: float = DESKTOP_TOOL_TIMEOUT_SECONDS,
 ) -> DesktopToolOutcome:
     """Execute one action on the user's desktop and await its result.
 
     Publishes the request onto the chat SSE stream and blocks (up to
-    ``timeout``) on the per-request Redis result channel.
+    ``DESKTOP_TOOL_TIMEOUT_SECONDS``) on the per-request Redis result channel.
     """
     if not redis_cache.redis:
         log.error("Desktop bridge: Redis unavailable")
@@ -83,9 +82,9 @@ async def request_desktop_action(
     await redis_cache.set(
         request_key,
         {"user_id": user_id, "stream_id": stream_id, "tool": tool},
-        # Derive the TTL from this call's timeout so the key always outlives
-        # the wait (see DESKTOP_REQUEST_TTL_GRACE_SECONDS).
-        ttl=int(timeout) + DESKTOP_REQUEST_TTL_GRACE_SECONDS,
+        # Derive the TTL from the tool timeout so the key always outlives the
+        # wait (see DESKTOP_REQUEST_TTL_GRACE_SECONDS).
+        ttl=int(DESKTOP_TOOL_TIMEOUT_SECONDS) + DESKTOP_REQUEST_TTL_GRACE_SECONDS,
     )
 
     pubsub = redis_cache.redis.pubsub()
@@ -99,16 +98,16 @@ async def request_desktop_action(
                 "request_id": request_id,
                 "tool": tool,
                 "params": params or {},
-                "timeout_ms": int(timeout * 1000),
+                "timeout_ms": int(DESKTOP_TOOL_TIMEOUT_SECONDS * 1000),
             }
         }
         await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(frame)}\n\n")
 
         try:
-            async with asyncio.timeout(timeout):
+            async with asyncio.timeout(DESKTOP_TOOL_TIMEOUT_SECONDS):
                 outcome = await _await_result(pubsub)
         except TimeoutError:
-            log.warning(f"Desktop tool '{tool}' timed out after {timeout}s")
+            log.warning(f"Desktop tool '{tool}' timed out after {DESKTOP_TOOL_TIMEOUT_SECONDS}s")
             return DesktopToolOutcome(ok=False, error=ERROR_TIMEOUT)
 
         return outcome

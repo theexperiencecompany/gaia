@@ -10,9 +10,7 @@ import ProvidersLayout from "@/layouts/ProvidersLayout";
  */
 export default function DesktopPopupLayout({
   children,
-}: {
-  children: ReactNode;
-}) {
+}: Readonly<{ children: ReactNode }>) {
   return (
     <ProvidersLayout>
       <PopupRouteLock />

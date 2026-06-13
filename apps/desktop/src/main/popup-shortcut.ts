@@ -44,12 +44,12 @@ const NAMED_KEYS = new Set([
 function isValidAccelerator(accelerator: string): boolean {
   const parts = accelerator.split("+");
   if (parts.length < 2) return false;
-  const key = parts[parts.length - 1];
+  const key = parts.at(-1) ?? "";
   const modifiers = parts.slice(0, -1);
   if (!modifiers.every((part) => MODIFIERS.has(part))) return false;
   return (
     /^[A-Z0-9]$/.test(key) ||
-    /^F([1-9]|1[0-9]|2[0-4])$/.test(key) ||
+    /^F([1-9]|1\d|2[0-4])$/.test(key) ||
     NAMED_KEYS.has(key)
   );
 }

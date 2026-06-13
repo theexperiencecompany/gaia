@@ -34,7 +34,7 @@ export function usePopupEscapeDismiss(): void {
       if (event.key !== "Escape") return;
       dismissIfIdle();
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    globalThis.addEventListener("keydown", handleKeyDown);
+    return () => globalThis.removeEventListener("keydown", handleKeyDown);
   }, [dismissIfIdle]);
 }

@@ -73,7 +73,7 @@ function requireStringParam(
 ): string {
   const value = params[key];
   if (typeof value !== "string") {
-    throw new Error(`Missing required string parameter '${key}'`);
+    throw new TypeError(`Missing required string parameter '${key}'`);
   }
   return value;
 }

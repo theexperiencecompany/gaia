@@ -17,6 +17,9 @@ interface PopupOrbProps {
  * state. No containing card: the canvas composites its own glow straight
  * onto the window's liquid glass.
  */
-export default function PopupOrb({ state, className }: PopupOrbProps) {
+export default function PopupOrb({
+  state,
+  className,
+}: Readonly<PopupOrbProps>) {
   return <GaiaOrb state={state} className={className ?? "size-40"} />;
 }

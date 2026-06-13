@@ -43,53 +43,61 @@ export async function handleDeepLink(
     const urlObj = new URL(url);
 
     if (urlObj.hostname !== "auth" || urlObj.pathname !== "/callback") return;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
 
     const token = urlObj.searchParams.get("token");
     const error = urlObj.searchParams.get("error");
 
     if (error) {
       console.log("[Main] Auth error:", error);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        const serverUrl = getServerUrl();
-        mainWindow.loadURL(
-          `${serverUrl}/login?error=${encodeURIComponent(error)}`,
-        );
-      }
+      const serverUrl = getServerUrl();
+      mainWindow.loadURL(
+        `${serverUrl}/login?error=${encodeURIComponent(error)}`,
+      );
       return;
     }
 
     if (token) {
-      console.log("[Main] Auth token received, storing as cookie");
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        const apiOrigin = getApiOrigin();
-        const secure = isApiOriginSecure();
-        await session.defaultSession.cookies.set({
-          url: apiOrigin,
-          name: "wos_session",
-          value: token,
-          httpOnly: true,
-          // SameSite=None requires Secure; over http (localhost dev) the
-          // renderer and API are same-site anyway, so Lax suffices.
-          secure,
-          sameSite: secure ? "no_restriction" : "lax",
-          expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
-        });
-
-        // Notify the renderer so it can show a redirecting spinner
-        mainWindow.webContents.send(IPC.authRedirecting);
-
-        // Brief pause to let the spinner render before navigating away
-        await new Promise((resolve) =>
-          setTimeout(resolve, AUTH_SPINNER_DELAY_MS),
-        );
-
-        const serverUrl = getServerUrl();
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.loadURL(`${serverUrl}/c`);
-        }
-      }
+      await storeSessionAndRedirect(token, mainWindow);
     }
   } catch (err) {
     console.error("[Main] Failed to parse deep link:", err);
+  }
+}
+
+/**
+ * Store the session cookie on the API origin, flash the redirect spinner,
+ * then navigate the main window to the chat view. The window can be torn
+ * down during the spinner pause, so re-check before navigating.
+ */
+async function storeSessionAndRedirect(
+  token: string,
+  mainWindow: BrowserWindow,
+): Promise<void> {
+  console.log("[Main] Auth token received, storing as cookie");
+
+  const apiOrigin = getApiOrigin();
+  const secure = isApiOriginSecure();
+  await session.defaultSession.cookies.set({
+    url: apiOrigin,
+    name: "wos_session",
+    value: token,
+    httpOnly: true,
+    // SameSite=None requires Secure; over http (localhost dev) the
+    // renderer and API are same-site anyway, so Lax suffices.
+    secure,
+    sameSite: secure ? "no_restriction" : "lax",
+    expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
+  });
+
+  // Notify the renderer so it can show a redirecting spinner.
+  mainWindow.webContents.send(IPC.authRedirecting);
+
+  // Brief pause to let the spinner render before navigating away.
+  await new Promise((resolve) => setTimeout(resolve, AUTH_SPINNER_DELAY_MS));
+
+  const serverUrl = getServerUrl();
+  if (!mainWindow.isDestroyed()) {
+    mainWindow.loadURL(`${serverUrl}/c`);
   }
 }

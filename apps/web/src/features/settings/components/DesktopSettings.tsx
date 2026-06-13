@@ -32,19 +32,24 @@ export default function DesktopSettings() {
     async (accelerator: string): Promise<boolean> => {
       const api = getElectronAPI();
       if (!api) return false;
-      const result = await api.setPopupShortcut(accelerator);
-      setSnapshot((prev) =>
-        prev
-          ? {
-              ...prev,
-              settings: { ...prev.settings, popupShortcut: result.shortcut },
-            }
-          : prev,
-      );
-      if (!result.ok && result.error) {
-        toast.error(result.error);
+      try {
+        const result = await api.setPopupShortcut(accelerator);
+        setSnapshot((prev) =>
+          prev
+            ? {
+                ...prev,
+                settings: { ...prev.settings, popupShortcut: result.shortcut },
+              }
+            : prev,
+        );
+        if (!result.ok && result.error) {
+          toast.error(result.error);
+        }
+        return result.ok;
+      } catch {
+        toast.error("Could not update the shortcut");
+        return false;
       }
-      return result.ok;
     },
     [],
   );
@@ -52,12 +57,18 @@ export default function DesktopSettings() {
   const handleSelectIcon = useCallback(async (id: string) => {
     const api = getElectronAPI();
     if (!api) return;
-    const ok = await api.setAppIcon(id);
-    if (ok) {
-      setSnapshot((prev) =>
-        prev ? { ...prev, settings: { ...prev.settings, appIcon: id } } : prev,
-      );
-    } else {
+    try {
+      const ok = await api.setAppIcon(id);
+      if (ok) {
+        setSnapshot((prev) =>
+          prev
+            ? { ...prev, settings: { ...prev.settings, appIcon: id } }
+            : prev,
+        );
+      } else {
+        toast.error("Could not apply that icon");
+      }
+    } catch {
       toast.error("Could not apply that icon");
     }
   }, []);
@@ -102,7 +113,9 @@ export default function DesktopSettings() {
           <AppIconPicker
             icons={snapshot.icons}
             selectedId={snapshot.settings.appIcon}
-            onSelect={(id) => void handleSelectIcon(id)}
+            onSelect={(id) => {
+              handleSelectIcon(id);
+            }}
           />
         )}
       </SettingsSection>

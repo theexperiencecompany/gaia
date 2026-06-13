@@ -15,7 +15,7 @@ export function AppIconPicker({
   icons,
   selectedId,
   onSelect,
-}: AppIconPickerProps) {
+}: Readonly<AppIconPickerProps>) {
   return (
     <div className="grid grid-cols-4 gap-3 p-4 sm:grid-cols-5">
       {icons.map((icon) => {

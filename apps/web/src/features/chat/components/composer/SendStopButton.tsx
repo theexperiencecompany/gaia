@@ -22,7 +22,7 @@ export default function SendStopButton({
   hasContent,
   onSend,
   className = "h-9 min-h-9 w-9 max-w-9 min-w-9",
-}: SendStopButtonProps) {
+}: Readonly<SendStopButtonProps>) {
   const { stopStream } = useLoading();
   // Only the INITIAL response phase locks sending (send → main_response_complete).
   const isResponding = useIsMainResponseStreaming();

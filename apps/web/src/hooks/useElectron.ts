@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { hasElectronAPI } from "@/lib/electron/api";
+import { getElectronAPI } from "@/lib/electron/api";
+
+const noopCleanup = () => {
+  // No-op cleanup: no listener was registered outside the desktop app.
+};
 
 /**
  * Hook to check if the app is running inside Electron
@@ -11,10 +15,7 @@ function useIsElectron(): boolean {
   const [isElectron, setIsElectron] = useState(false);
 
   useEffect(() => {
-    // Check if running in Electron by looking for window.api
-    const electronDetected =
-      typeof window !== "undefined" && hasElectronAPI(window);
-    setIsElectron(electronDetected);
+    setIsElectron(getElectronAPI() !== null);
   }, []);
 
   return isElectron;
@@ -32,39 +33,32 @@ export function useElectron() {
    * This closes the splash screen and shows the main window
    */
   const signalReady = useCallback(() => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      window.api.signalReady();
-    }
+    getElectronAPI()?.signalReady();
   }, []);
 
   /**
    * Get the current platform (darwin, win32, linux)
    */
-  const getPlatform = useCallback(async (): Promise<NodeJS.Platform | null> => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      return window.api.getPlatform();
-    }
-    return null;
-  }, []);
+  const getPlatform = useCallback(
+    async (): Promise<NodeJS.Platform | null> =>
+      getElectronAPI()?.getPlatform() ?? null,
+    [],
+  );
 
   /**
    * Get the app version
    */
-  const getVersion = useCallback(async (): Promise<string | null> => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      return window.api.getVersion();
-    }
-    return null;
-  }, []);
+  const getVersion = useCallback(
+    async (): Promise<string | null> => getElectronAPI()?.getVersion() ?? null,
+    [],
+  );
 
   /**
    * Open a URL in the system's default browser
    * Used for OAuth flows to open login in external browser
    */
   const openExternal = useCallback((url: string) => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      window.api.openExternal(url);
-    }
+    getElectronAPI()?.openExternal(url);
   }, []);
 
   /**
@@ -73,12 +67,8 @@ export function useElectron() {
    * Returns a cleanup function to remove the listener
    */
   const onAuthRedirecting = useCallback(
-    (callback: () => void): (() => void) => {
-      if (typeof window !== "undefined" && hasElectronAPI(window)) {
-        return window.api.onAuthRedirecting(callback);
-      }
-      return () => {}; // No-op cleanup if not in Electron
-    },
+    (callback: () => void): (() => void) =>
+      getElectronAPI()?.onAuthRedirecting(callback) ?? noopCleanup,
     [],
   );
 
@@ -87,27 +77,21 @@ export function useElectron() {
    * Sent by the hidden wake-listener window; shows the assistant popup
    */
   const notifyWakeWord = useCallback(() => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      window.api.notifyWakeWord();
-    }
+    getElectronAPI()?.notifyWakeWord();
   }, []);
 
   /**
    * Ask the main process to dismiss the assistant popup
    */
   const dismissPopup = useCallback(() => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      window.api.dismissPopup();
-    }
+    getElectronAPI()?.dismissPopup();
   }, []);
 
   /**
    * Resize the assistant popup window to fit its content
    */
   const resizePopup = useCallback((height: number) => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      window.api.resizePopup(height);
-    }
+    getElectronAPI()?.resizePopup(height);
   }, []);
 
   /**
@@ -117,12 +101,8 @@ export function useElectron() {
   const onPopupActivate = useCallback(
     (
       callback: (data: { trigger: "wake-word" | "shortcut" }) => void,
-    ): (() => void) => {
-      if (typeof window !== "undefined" && hasElectronAPI(window)) {
-        return window.api.onPopupActivate(callback);
-      }
-      return () => {}; // No-op cleanup if not in Electron
-    },
+    ): (() => void) =>
+      getElectronAPI()?.onPopupActivate(callback) ?? noopCleanup,
     [],
   );
 
@@ -132,12 +112,8 @@ export function useElectron() {
    * Returns a cleanup function to remove the listener
    */
   const onPopupDeactivate = useCallback(
-    (callback: () => void): (() => void) => {
-      if (typeof window !== "undefined" && hasElectronAPI(window)) {
-        return window.api.onPopupDeactivate(callback);
-      }
-      return () => {}; // No-op cleanup if not in Electron
-    },
+    (callback: () => void): (() => void) =>
+      getElectronAPI()?.onPopupDeactivate(callback) ?? noopCleanup,
     [],
   );
 

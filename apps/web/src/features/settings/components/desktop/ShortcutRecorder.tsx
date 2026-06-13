@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import type { KbdKey } from "@heroui/kbd";
 import { Kbd } from "@heroui/kbd";
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 interface ShortcutRecorderProps {
   /** Electron accelerator string, e.g. "CommandOrControl+Shift+G". */
@@ -75,8 +75,8 @@ function acceleratorToKbd(accelerator: string): {
 function eventKeyToken(event: KeyboardEvent): string | null {
   const { code } = event;
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
-  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
-  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return code;
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  if (/^F([1-9]|1\d|2[0-4])$/.test(code)) return code;
   const named: Record<string, string> = {
     Space: "Space",
     Tab: "Tab",
@@ -107,7 +107,7 @@ function eventModifiers(event: KeyboardEvent): string[] {
   return modifiers;
 }
 
-function ShortcutKbd({ accelerator }: { accelerator: string }) {
+function ShortcutKbd({ accelerator }: Readonly<{ accelerator: string }>) {
   const { keys, label } = acceleratorToKbd(accelerator);
   return (
     <Kbd keys={keys} classNames={{ base: "bg-zinc-700/80 shadow-none" }}>
@@ -120,7 +120,10 @@ function ShortcutKbd({ accelerator }: { accelerator: string }) {
  * Industry-standard shortcut recorder: click to arm, press the combo,
  * Esc cancels. Shows the live combo while keys are held.
  */
-export function ShortcutRecorder({ value, onRecord }: ShortcutRecorderProps) {
+export function ShortcutRecorder({
+  value,
+  onRecord,
+}: Readonly<ShortcutRecorderProps>) {
   const [recording, setRecording] = useState(false);
   const [heldPreview, setHeldPreview] = useState<string | null>(null);
 
@@ -156,18 +159,29 @@ export function ShortcutRecorder({ value, onRecord }: ShortcutRecorderProps) {
 
       const accelerator = [...modifiers, key].join("+");
       stopRecording();
-      void onRecord(accelerator);
+      onRecord(accelerator);
     };
 
     const handleKeyUp = () => setHeldPreview(null);
 
-    window.addEventListener("keydown", handleKeyDown, true);
-    window.addEventListener("keyup", handleKeyUp, true);
+    globalThis.addEventListener("keydown", handleKeyDown, true);
+    globalThis.addEventListener("keyup", handleKeyUp, true);
     return () => {
-      window.removeEventListener("keydown", handleKeyDown, true);
-      window.removeEventListener("keyup", handleKeyUp, true);
+      globalThis.removeEventListener("keydown", handleKeyDown, true);
+      globalThis.removeEventListener("keyup", handleKeyUp, true);
     };
   }, [recording, onRecord, stopRecording]);
+
+  let content: ReactNode;
+  if (!recording) {
+    content = <ShortcutKbd accelerator={value} />;
+  } else if (heldPreview) {
+    content = <ShortcutKbd accelerator={heldPreview} />;
+  } else {
+    content = (
+      <span className="text-xs text-primary">Type shortcut, Esc to cancel</span>
+    );
+  }
 
   return (
     <Button
@@ -178,17 +192,7 @@ export function ShortcutRecorder({ value, onRecord }: ShortcutRecorderProps) {
       onBlur={stopRecording}
       className="h-9 min-w-36 px-3"
     >
-      {recording ? (
-        heldPreview ? (
-          <ShortcutKbd accelerator={heldPreview} />
-        ) : (
-          <span className="text-xs text-primary">
-            Type shortcut, Esc to cancel
-          </span>
-        )
-      ) : (
-        <ShortcutKbd accelerator={value} />
-      )}
+      {content}
     </Button>
   );
 }

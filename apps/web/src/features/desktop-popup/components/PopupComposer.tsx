@@ -30,7 +30,7 @@ export default function PopupComposer({
   active,
   agentState,
   disabled = false,
-}: PopupComposerProps) {
+}: Readonly<PopupComposerProps>) {
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const sendMessage = useSendMessage();

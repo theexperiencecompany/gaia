@@ -21,7 +21,7 @@ const STATE_TARGETS: Record<
   idle: { intensity: 0.35, turbulence: 0.45, pulse: 0 },
   listening: { intensity: 0.9, turbulence: 0.75, pulse: 0.18 },
   thinking: { intensity: 0.7, turbulence: 2.1, pulse: 0 },
-  speaking: { intensity: 1.0, turbulence: 1.1, pulse: 1.0 },
+  speaking: { intensity: 1, turbulence: 1.1, pulse: 1 },
 };
 
 /** Exponential smoothing rate for state transitions (per second). */
@@ -311,7 +311,10 @@ function createOrbRenderer(
  * premultiplied alpha so it composites directly onto liquid glass /
  * vibrancy backgrounds with no containing card.
  */
-export default function GaiaOrb({ state = "idle", className }: GaiaOrbProps) {
+export default function GaiaOrb({
+  state = "idle",
+  className,
+}: Readonly<GaiaOrbProps>) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GaiaOrbState>(state);
   stateRef.current = state;
