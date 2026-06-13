@@ -191,6 +191,9 @@ services:
       LOG_COLORIZE: "false"
       ENV: production
       INFISICAL_ENV: prod
+      # Persist the ~1.85GB fastembed weights so they download ONCE, not on every
+      # restart/redeploy (measured ~148s cold-load). Mounted volume below.
+      MEMORY_MODEL_CACHE_DIR: /models
       # MEMORY_EMBEDDING_SIDECAR_URL MUST stay unset here so the sidecar serves
       # from its own local models rather than calling itself.
     secrets:
@@ -198,6 +201,8 @@ services:
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
+    volumes:
+      - embedding_models:/models
     networks:
       gaia-prod-shared:
         aliases:
@@ -873,6 +878,7 @@ volumes:
   redis_data:
   rabbitmq_data:
   voice_agent_models:
+  embedding_models:
   loki_data:
   grafana_data:
   prometheus_data:

@@ -282,7 +282,12 @@ services:
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
       - UV_NO_SYNC=1
+      # Persist the ~1.85GB model weights so repeated `compose up` runs don't
+      # re-download them (the prod sidecar does the same with a named volume).
+      - MEMORY_MODEL_CACHE_DIR=/models
       # MUST be unset here so the sidecar itself uses the local models.
+    volumes:
+      - embedding_models:/models
     expose:
       - "8200"
     command:
@@ -551,6 +556,7 @@ volumes:
   mongo_data:
   rabbitmq_data:
   voice_agent_models:
+  embedding_models:
   loki_data:
   grafana_data:
   prometheus_data:

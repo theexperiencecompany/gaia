@@ -34,6 +34,7 @@ from app.constants.memory import (
     EMBEDDING_MODEL_NAME,
     EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
     EMBEDDING_SIDECAR_URL_ENV,
+    MODEL_CACHE_DIR,
     RERANKER_MODEL_NAME,
 )
 from shared.py.wide_events import log
@@ -78,7 +79,9 @@ def _get_embedding_model() -> TextEmbedding:
         with _embedding_lock:
             if _embedding_model is None:
                 started = time.perf_counter()
-                _embedding_model = TextEmbedding(model_name=EMBEDDING_MODEL_NAME)
+                _embedding_model = TextEmbedding(
+                    model_name=EMBEDDING_MODEL_NAME, cache_dir=MODEL_CACHE_DIR
+                )
                 log.info(
                     f"Loaded memory embedding model {EMBEDDING_MODEL_NAME} "
                     f"in {time.perf_counter() - started:.2f}s"
@@ -93,7 +96,9 @@ def _get_reranker_model() -> TextCrossEncoder:
         with _reranker_lock:
             if _reranker_model is None:
                 started = time.perf_counter()
-                _reranker_model = TextCrossEncoder(model_name=RERANKER_MODEL_NAME)
+                _reranker_model = TextCrossEncoder(
+                    model_name=RERANKER_MODEL_NAME, cache_dir=MODEL_CACHE_DIR
+                )
                 log.info(
                     f"Loaded memory reranker model {RERANKER_MODEL_NAME} "
                     f"in {time.perf_counter() - started:.2f}s"

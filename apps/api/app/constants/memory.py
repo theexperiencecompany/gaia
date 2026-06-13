@@ -28,6 +28,12 @@ RERANKER_MODEL_NAME = "jinaai/jina-reranker-v1-turbo-en"
 EMBEDDING_SIDECAR_URL_ENV = "MEMORY_EMBEDDING_SIDECAR_URL"
 EMBEDDING_SIDECAR_TIMEOUT_SECONDS = 30.0
 
+# Persistent on-disk cache for the fastembed model weights. Set in prod (on the
+# embedding sidecar) to a mounted volume so the ~1.85GB download happens ONCE
+# rather than on every restart/redeploy (measured ~148s cold-load). Unset falls
+# back to fastembed's ephemeral default, which is fine for local dev.
+MODEL_CACHE_DIR = os.getenv("MEMORY_MODEL_CACHE_DIR") or None
+
 # ChromaDB collections holding memory, episode, and conversation vectors.
 CHROMA_MEMORIES_COLLECTION = "gaia_memories" + _COLLECTION_SUFFIX
 CHROMA_MEMORY_EPISODES_COLLECTION = "gaia_memory_episodes" + _COLLECTION_SUFFIX
