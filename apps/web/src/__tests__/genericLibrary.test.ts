@@ -1,7 +1,8 @@
 /**
- * Spec-driven tests for genericLibrary.
- * Derived from the OpenUI Generic UI Architecture spec — does not read the
- * implementation to derive expected values.
+ * Contract tests for genericLibrary.
+ * The expected groups and members below are the library's public contract —
+ * hardcoded (not derived by reading the implementation at runtime) so a drift
+ * between the declared componentGroups and the registered components fails here.
  */
 import { describe, expect, it } from "vitest";
 import { genericLibrary } from "@/config/openui/genericLibrary";
@@ -10,34 +11,36 @@ import { genericLibrary } from "@/config/openui/genericLibrary";
 // Spec-defined component groups and their members
 // ---------------------------------------------------------------------------
 const EXPECTED_GROUPS: Record<string, string[]> = {
-  "Layout & Data": [
+  Primitives: [
+    "TextContent",
+    "CardHeader",
+    "Tag",
+    "TagBlock",
+    "Callout",
+    "Stat",
+    "Col",
+    "Table",
+    "Button",
+    "Buttons",
+    "Progress",
+    "Avatar",
+    "Checkbox",
+    "Radio",
+  ],
+  Layout: [
     "Stack",
     "Card",
     "Grid",
     "Row",
     "Column",
     "Separator",
-    "DataCard",
-    "ResultList",
-    "ComparisonTable",
-    "DataTable",
     "CopyableContent",
-    "WorkItemList",
-    "ActivityFeed",
-    "EntityCard",
-    "StatusCard",
-    "ActionCard",
-    "TagGroup",
     "FileTree",
     "Accordion",
     "TabsBlock",
-    "ProgressList",
-    "SelectableList",
-    "AvatarList",
-    "KbdBlock",
+    "KbdRow",
   ],
   Analytics: [
-    "StatRow",
     "BarChart",
     "LineChart",
     "AreaChart",
@@ -53,9 +56,8 @@ const EXPECTED_GROUPS: Record<string, string[]> = {
     "MapBlock",
     "NumberTicker",
     "Carousel",
-    "TreeView",
   ],
-  "Timeline & Notifications": ["Timeline", "AlertBanner", "Steps"],
+  Timeline: ["Timeline", "Steps"],
   Documents: ["TextDocument"],
 };
 
@@ -74,9 +76,9 @@ describe("genericLibrary", () => {
     expect(typeof genericLibrary.components).toBe("object");
   });
 
-  it("contains exactly 47 components", () => {
+  it("contains exactly 41 components", () => {
     const count = Object.keys(genericLibrary.components).length;
-    expect(count).toBe(47);
+    expect(count).toBe(41);
   });
 
   it("has exactly 6 component groups", () => {
@@ -86,10 +88,11 @@ describe("genericLibrary", () => {
 
   it("has component groups with the exact expected names", () => {
     const groupNames = genericLibrary.componentGroups!.map((g) => g.name);
-    expect(groupNames).toContain("Layout & Data");
+    expect(groupNames).toContain("Primitives");
+    expect(groupNames).toContain("Layout");
     expect(groupNames).toContain("Analytics");
     expect(groupNames).toContain("Content");
-    expect(groupNames).toContain("Timeline & Notifications");
+    expect(groupNames).toContain("Timeline");
     expect(groupNames).toContain("Documents");
   });
 
