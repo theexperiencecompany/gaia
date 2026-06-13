@@ -5,6 +5,7 @@ import {
   DiscordIcon,
   Link04Icon,
   MessageMultiple02Icon,
+  NoteEditIcon,
   NotificationIcon,
   UserCircleIcon,
   VoiceIdIcon,
@@ -55,6 +56,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Voices",
     icon: VoiceIdIcon,
     href: "/settings?section=voice",
+  },
+  {
+    key: "instructions",
+    label: "Custom Instructions",
+    icon: NoteEditIcon,
+    href: "/settings?section=instructions",
   },
   {
     key: "memory",

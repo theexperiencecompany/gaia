@@ -96,9 +96,7 @@ export function SubscriptionSettings() {
         <div className="rounded-2xl bg-zinc-900/60 px-5 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-                Current Plan
-              </p>
+              <p className="text-xs font-medium text-zinc-500">Current Plan</p>
               <p className="mt-1 text-2xl font-semibold text-white">Free</p>
             </div>
             <Chip color="success" variant="flat" size="sm" className="text-xs">
@@ -172,9 +170,7 @@ export function SubscriptionSettings() {
       <div className="rounded-2xl bg-zinc-900/60 px-5 py-4">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Current Plan
-            </p>
+            <p className="text-xs font-medium text-zinc-500">Current Plan</p>
             <p className="mt-1 text-2xl font-semibold text-white">{planName}</p>
             {plan?.description && (
               <p className="mt-0.5 text-sm text-zinc-500">{plan.description}</p>

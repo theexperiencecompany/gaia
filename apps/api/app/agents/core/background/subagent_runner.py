@@ -10,11 +10,11 @@ subagents complete and to collect their results.
 
 import time
 
-from app.agents.core.background.inbox import (
+from app.agents.core.background.redis_writer import make_redis_stream_writer
+from app.agents.core.background.session import (
     append_bg_subagent_result,
     decrement_pending_subagents,
 )
-from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
