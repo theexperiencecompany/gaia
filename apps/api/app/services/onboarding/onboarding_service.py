@@ -11,6 +11,7 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
     users_collection,
 )
+from app.memory.engine import memory_engine
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -20,7 +21,6 @@ from app.models.user_models import (
 from app.services.integrations.integration_connection_service import (
     disconnect_integration,
 )
-from app.services.memory_service import memory_service
 from app.services.onboarding.intelligence_job import (
     abort_active_intelligence_job,
     enqueue_intelligence_job,
@@ -349,7 +349,7 @@ async def _disconnect_user_integrations(user_id: str) -> int:
 
 async def _clear_user_memories(user_id: str) -> int:
     try:
-        return 1 if await memory_service.delete_all_memories(user_id=user_id) else 0
+        return await memory_engine.delete_all(user_id)
     except Exception as e:
         log.warning(f"[reset_onboarding] failed to clear memories: {e}")
         return 0

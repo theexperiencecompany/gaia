@@ -164,13 +164,6 @@ async def _clamp_n_results(collection: AsyncCollection, n: int) -> int:
     return min(n, count)
 
 
-async def ensure_collections() -> None:
-    """Create the memory collections if they don't exist yet."""
-    await _get_collection(CHROMA_MEMORIES_COLLECTION)
-    await _get_collection(CHROMA_MEMORY_EPISODES_COLLECTION)
-    await _get_collection(CHROMA_CONVERSATION_CHUNKS_COLLECTION)
-
-
 async def upsert_memories(items: list[MemoryVectorItem]) -> None:
     """Upsert memory vectors with their filterable metadata."""
     if not items:
