@@ -126,18 +126,27 @@ if [ "$_jfs_can_mount" = "1" ] && command -v juicefs >/dev/null 2>&1; then
         echo "[entrypoint] Mounting JuiceFS at $JFS_MOUNT_PATH"
         # --backup-meta=0 because R2 ListObjects is not S3-sorted (see JuiceFS docs).
         # No --writeback: writeback loses data on container kill, unacceptable for agent writes.
-        # `|| echo` keeps a mount failure non-fatal: under `set -e` a FATAL exit
-        # (e.g. meta DB unreachable) would abort the entrypoint and crash-loop the
-        # container. JuiceFS is best-effort — when it can't mount, the app boots
-        # and the storage layer surfaces a clean JuiceFSUnavailable (503) instead.
+        # `|| true`: --background's readiness probe gives up after ~10s, but on a
+        # remote meta (e.g. Neon / cloud Postgres) the daemon often needs longer
+        # and finishes the mount right after. Don't trust that exit code; poll the
+        # real mountpoint below. Non-fatal either way (set -e would crash-loop us).
         juicefs mount \
             --backup-meta=0 \
             --cache-dir=/var/cache/juicefs \
             --cache-size=4096 \
             --max-uploads=20 \
             --background \
-            "$META_URL" "$JFS_MOUNT_PATH" \
-            || echo "[entrypoint] juicefs mount failed — booting without JuiceFS; storage-backed features (uploads, artifacts) return 503 until it mounts"
+            "$META_URL" "$JFS_MOUNT_PATH" 2>&1 || true
+        _jfs_ready=0
+        for _ in $(seq 1 45); do
+            if mountpoint -q "$JFS_MOUNT_PATH" 2>/dev/null; then _jfs_ready=1; break; fi
+            sleep 1
+        done
+        if [ "$_jfs_ready" = "1" ]; then
+            echo "[entrypoint] JuiceFS mounted at $JFS_MOUNT_PATH"
+        else
+            echo "[entrypoint] juicefs mount not ready after 45s; booting without JuiceFS (storage-backed features return 503 until it mounts)"
+        fi
     fi
 else
     echo "[entrypoint] JuiceFS bootstrap skipped (env not configured or binary missing)"
