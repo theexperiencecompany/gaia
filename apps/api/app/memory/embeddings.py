@@ -20,9 +20,11 @@ event loop is never blocked. The locks are ``threading.Lock`` (not
 """
 
 import asyncio
+from collections.abc import Awaitable
 import os
 import threading
 import time
+from typing import TypeVar
 
 from fastembed import TextEmbedding
 from fastembed.rerank.cross_encoder import TextCrossEncoder
@@ -41,6 +43,32 @@ _embedding_lock = threading.Lock()
 
 _reranker_model: TextCrossEncoder | None = None
 _reranker_lock = threading.Lock()
+
+_T = TypeVar("_T")
+
+
+async def _observed(operation: str, backend: str, count: int, awaitable: Awaitable[_T]) -> _T:
+    """Await an embed/rerank call; on failure emit a structured error and re-raise.
+
+    The embedding sidecar (HTTP) and the local ONNX model are the most
+    failure-prone parts of the memory path (timeouts, 5xx, OOM, dimension
+    mismatch). This makes those failures queryable by ``backend``/``error_type``
+    instead of propagating as an opaque exception with no memory context.
+    """
+    started = time.perf_counter()
+    try:
+        return await awaitable
+    except Exception as exc:
+        log.error(
+            "memory_embedding_failed",
+            operation=operation,
+            backend=backend,
+            batch_size=count,
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        raise
 
 
 def _get_embedding_model() -> TextEmbedding:
@@ -114,8 +142,11 @@ async def _sidecar_post(path: str, payload: dict) -> dict:
 async def embed_query(text: str) -> list[float]:
     """Embed a single query string (with the model's query instruction)."""
     if _sidecar_url():
-        return (await _sidecar_post("/embed_query", {"text": text}))["vector"]
-    return await asyncio.to_thread(_embed_query_sync, text)
+        result = await _observed(
+            "embed_query", "sidecar", 1, _sidecar_post("/embed_query", {"text": text})
+        )
+        return result["vector"]
+    return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
 
 
 async def embed_batch(texts: list[str]) -> list[list[float]]:
@@ -123,8 +154,11 @@ async def embed_batch(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     if _sidecar_url():
-        return (await _sidecar_post("/embed", {"texts": texts}))["vectors"]
-    return await asyncio.to_thread(_embed_sync, texts)
+        result = await _observed(
+            "embed", "sidecar", len(texts), _sidecar_post("/embed", {"texts": texts})
+        )
+        return result["vectors"]
+    return await _observed("embed", "local", len(texts), asyncio.to_thread(_embed_sync, texts))
 
 
 async def rerank(query: str, documents: list[str]) -> list[float]:
@@ -132,5 +166,13 @@ async def rerank(query: str, documents: list[str]) -> list[float]:
     if not documents:
         return []
     if _sidecar_url():
-        return (await _sidecar_post("/rerank", {"query": query, "documents": documents}))["scores"]
-    return await asyncio.to_thread(_rerank_sync, query, documents)
+        result = await _observed(
+            "rerank",
+            "sidecar",
+            len(documents),
+            _sidecar_post("/rerank", {"query": query, "documents": documents}),
+        )
+        return result["scores"]
+    return await _observed(
+        "rerank", "local", len(documents), asyncio.to_thread(_rerank_sync, query, documents)
+    )

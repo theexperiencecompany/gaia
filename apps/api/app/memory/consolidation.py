@@ -9,6 +9,7 @@ hot core context, reschedules the workspace projection).
 """
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 import time
 
@@ -39,7 +40,7 @@ from app.memory.prompts import (
 )
 from app.memory.schemas import ExtractedFact
 from app.models.memory_db_models import MemoryRecord
-from shared.py.wide_events import log
+from shared.py.wide_events import MemoryContext, UserContext, log, wide_task
 
 # Which core documents a fact feeds, keyed by its top-level category folder.
 # Folders not listed here default to user.md (general life context); facts of
@@ -150,23 +151,28 @@ async def cancel_consolidation(user_id: str) -> None:
 
 
 async def _debounce_waiter(user_id: str) -> None:
-    """Sleep out the debounce window, then consume the pending set and consolidate."""
+    """Sleep out the debounce window, then consume the pending set and consolidate.
+
+    Runs in its own ``wide_task`` scope: this is a fire-and-forget background
+    task with no request middleware, so the scope is what makes consolidation
+    outcomes and failures emit a queryable wide event.
+    """
     try:
-        await asyncio.sleep(CONSOLIDATION_DEBOUNCE_SECONDS)
-        pending = await get_and_delete_cache(CONSOLIDATION_PENDING_KEY.format(user_id=user_id))
-        if not pending:
-            return
-        doc_types = [MemoryDocType(value) for value in pending.get(_PENDING_DOC_TYPES, [])]
-        agenda_updates = pending.get(_PENDING_AGENDA_UPDATES) or None
-        if doc_types:
-            await consolidate(user_id, doc_types, agenda_updates=agenda_updates)
-    except Exception as e:  # noqa: BLE001 — fire-and-forget body must not crash
-        log.warning(
-            "memory_consolidation_failed",
-            user_id=user_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+        # wide_task emits any failure (error_type + outcome=failed) as a wide
+        # event + error line; suppress the re-raise so this fire-and-forget task
+        # stays quiet (it must not crash the event loop).
+        with contextlib.suppress(Exception):
+            async with wide_task("memory_consolidation", user=UserContext(id=user_id)):
+                await asyncio.sleep(CONSOLIDATION_DEBOUNCE_SECONDS)
+                pending = await get_and_delete_cache(
+                    CONSOLIDATION_PENDING_KEY.format(user_id=user_id)
+                )
+                if not pending:
+                    return
+                doc_types = [MemoryDocType(value) for value in pending.get(_PENDING_DOC_TYPES, [])]
+                agenda_updates = pending.get(_PENDING_AGENDA_UPDATES) or None
+                if doc_types:
+                    await consolidate(user_id, doc_types, agenda_updates=agenda_updates)
     finally:
         _waiters.pop(user_id, None)
 
@@ -203,20 +209,29 @@ async def consolidate(
         )
         if content is None or not content.strip():
             outcomes[doc_type.value] = "failed"
+            # Surface the per-doc failure so a user whose core document stops
+            # converging is countable/alertable, not silently skipped.
+            log.warning(
+                "memory_consolidation_doc_failed",
+                user_id=user_id,
+                doc_type=doc_type.value,
+                error_type="llm_returned_empty",
+            )
             continue
 
         await update_document(user_id, doc_type, content.strip())
         outcomes[doc_type.value] = "rewritten"
         rewritten.append(doc_type)
 
-    log.info(
-        "memory_consolidation_completed",
-        memory={
-            "operation": "consolidate",
-            "user_id": user_id,
-            "outcomes": outcomes,
-            "total_ms": int((time.perf_counter() - started) * 1000),
-        },
+    log.set(
+        memory=MemoryContext(
+            operation="consolidate",
+            result_count=len(rewritten),
+            doc_types=[doc_type.value for doc_type in targets],
+            outcomes=outcomes,
+            success="failed" not in outcomes.values(),
+            timings={"total_ms": (time.perf_counter() - started) * 1000},
+        ),
     )
     return rewritten
 

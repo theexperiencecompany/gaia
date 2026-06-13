@@ -62,7 +62,7 @@ from app.templates.docstrings.memory_tool_docs import (
     UPDATE_MEMORY_DOCUMENT,
 )
 from app.utils.chat_utils import get_user_id_from_config
-from shared.py.wide_events import log
+from shared.py.wide_events import MemoryContext, UserContext, log
 
 _ERR_NO_USER_ID = "Error: user_id not found in config"
 
@@ -187,11 +187,26 @@ async def add_memory(
             user_id, content, category_path=folder, source_type=MemorySourceType.TOOL
         )
     except Exception as e:
-        log.error(f"add_memory failed for user {user_id}: {e}")
+        log.error(
+            "memory_tool_failed",
+            operation="create",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="create", success=False))
         return f"Error storing memory: {e}"
 
     entry = retained.entry
     outcome = _ADD_OUTCOMES[retained.outcome]
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="create",
+            success=True,
+            memory_id=entry.id,
+            content_length=len(content),
+        ),
+    )
     messages = {
         "new": f"Memory stored under '{entry.category_path}'",
         "updated": f"Updated an existing memory under '{entry.category_path}'",
@@ -226,8 +241,28 @@ async def search_memory(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    result = await memory_engine.recall(
-        user_id, query, limit=limit or DEFAULT_RECALL_LIMIT, category_prefix=folder
+    try:
+        result = await memory_engine.recall(
+            user_id, query, limit=limit or DEFAULT_RECALL_LIMIT, category_prefix=folder
+        )
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="recall",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="recall", success=False))
+        raise
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="recall",
+            success=True,
+            query=query,
+            result_count=len(result.memories),
+        ),
     )
 
     scope = f" in '{folder}'" if folder else ""
@@ -263,12 +298,29 @@ async def update_memory(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    entry = await memory_engine.update_memory(user_id, memory_id, new_content)
+    try:
+        entry = await memory_engine.update_memory(user_id, memory_id, new_content)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="update",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="update", success=False))
+        raise
+
     if entry is None:
+        log.warning("memory_tool_memory_not_found", operation="update", memory_id=memory_id)
         return (
             f"Error: memory {memory_id} not found or already superseded — "
             "search_memory for the current version and use its ID."
         )
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="update", success=True, memory_id=entry.id),
+    )
 
     message = f"Memory corrected (now v{entry.version} under '{entry.category_path}')"
     _stream_memory_data(
@@ -288,9 +340,26 @@ async def forget_memory(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    forgotten = await memory_engine.forget_memory(user_id, memory_id, reason)
+    try:
+        forgotten = await memory_engine.forget_memory(user_id, memory_id, reason)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="delete",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="delete", success=False))
+        raise
+
     if not forgotten:
+        log.warning("memory_tool_memory_not_found", operation="delete", memory_id=memory_id)
         return f"Error: memory {memory_id} not found."
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="delete", success=True, memory_id=memory_id),
+    )
 
     message = "Memory forgotten"
     _stream_memory_data(
@@ -309,8 +378,28 @@ async def search_journal(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    hits = await memory_engine.recall_episodes(user_id, query)
+    try:
+        hits = await memory_engine.recall_episodes(user_id, query)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="recall_episodes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="recall_episodes", success=False))
+        raise
+
     episodes = _hits_to_episode_payloads(hits)
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="recall_episodes",
+            success=True,
+            query=query,
+            result_count=len(episodes),
+        ),
+    )
     message = f"Found journal activity on {len(episodes)} days" if hits else "No journal matches"
     _stream_memory_data(
         {"action": "journal", "query": query, "episodes": episodes, "message": message}
@@ -340,7 +429,27 @@ async def search_conversations(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    hits = await memory_engine.recall_transcripts(user_id, query)
+    try:
+        hits = await memory_engine.recall_transcripts(user_id, query)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="recall_transcripts",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="recall_transcripts", success=False))
+        raise
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="recall_transcripts",
+            success=True,
+            query=query,
+            result_count=len(hits),
+        ),
+    )
     if not hits:
         return f"No past-conversation passages matching '{query}'."
     blocks = [
@@ -363,17 +472,49 @@ async def get_journal(
     try:
         day = date_type.fromisoformat(date)
     except ValueError:
+        log.warning("memory_tool_invalid_date", operation="episodes", start=date)
         return f"Error: invalid date '{date}'. Use YYYY-MM-DD."
 
-    response = await memory_engine.get_episodes(user_id, day, day)
+    try:
+        response = await memory_engine.get_episodes(user_id, day, day)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="episodes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="episodes", success=False))
+        raise
+
     episode = response.episodes[0] if response.episodes else None
     if episode is None or (not episode.entries and not episode.summary):
+        log.set(
+            user=UserContext(id=user_id),
+            memory=MemoryContext(
+                operation="episodes",
+                success=True,
+                result_count=0,
+                start=date,
+                end=date,
+            ),
+        )
         message = f"No journal entries for {date}"
         _stream_memory_data(
             {"action": "journal", "query": None, "episodes": [], "message": message}
         )
         return f"{message}."
 
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="episodes",
+            success=True,
+            result_count=len(episode.entries),
+            start=date,
+            end=date,
+        ),
+    )
     message = f"Journal for {date} ({len(episode.entries)} entries)"
     _stream_memory_data(
         {
@@ -405,9 +546,25 @@ async def read_memory_document(
 
     resolved = _resolve_doc_type(doc_type)
     if resolved is None:
+        log.warning("memory_tool_unknown_doc", operation="read_document", doc_type=doc_type)
         return f"Error: unknown document '{doc_type}'. Use one of: {_DOC_TYPE_CHOICES}."
 
-    document = await memory_engine.get_document(user_id, resolved)
+    try:
+        document = await memory_engine.get_document(user_id, resolved)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="read_document",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="read_document", success=False))
+        raise
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="read_document", success=True, doc_type=resolved.value),
+    )
     if document is None or not document.content.strip():
         return (
             f"The '{doc_type}' document is empty — nothing has been written to it yet. "
@@ -438,9 +595,25 @@ async def update_memory_document(
 
     resolved = _resolve_doc_type(doc_type)
     if resolved is None:
+        log.warning("memory_tool_unknown_doc", operation="update_document", doc_type=doc_type)
         return f"Error: unknown document '{doc_type}'. Use one of: {_DOC_TYPE_CHOICES}."
 
-    document = await memory_engine.update_document(user_id, resolved, content)
+    try:
+        document = await memory_engine.update_document(user_id, resolved, content)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="update_document",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="update_document", success=False))
+        raise
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="update_document", success=True, doc_type=resolved.value),
+    )
     message = f"Rewrote the '{doc_type}' memory document (now v{document.version})"
     _stream_memory_data(
         {

@@ -36,7 +36,7 @@ from app.models.memory_models import (
     UpdateDocumentRequest,
     UpdateMemoryRequest,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import MemoryContext, UserContext, log
 
 USER_DELETED_REASON = "user_deleted"
 
@@ -67,15 +67,15 @@ async def list_memories(
     """
     user_id = _require_user_id(user)
     log.set(
-        user={"id": user_id},
-        memory={"operation": "list", "page": page, "page_size": page_size, "category": category},
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="list", page=page, page_size=page_size, category=category),
     )
 
     result = await memory_engine.list_memories(
         user_id, page=page, page_size=page_size, category=category
     )
 
-    log.set(memory={"operation": "list", "result_count": len(result.memories)})
+    log.set(memory=MemoryContext(operation="list", result_count=len(result.memories)))
     return result
 
 
@@ -91,11 +91,11 @@ async def search_memories(
     memories anywhere, not just on the currently loaded page.
     """
     user_id = _require_user_id(user)
-    log.set(user={"id": user_id}, memory={"operation": "search", "query": q})
+    log.set(user=UserContext(id=user_id), memory=MemoryContext(operation="recall", query=q))
 
     result = await memory_engine.recall(user_id, q, limit=limit, include_graph_expansion=False)
 
-    log.set(memory={"operation": "search", "result_count": len(result.memories)})
+    log.set(memory=MemoryContext(operation="recall", result_count=len(result.memories)))
     return result
 
 
@@ -105,11 +105,17 @@ async def get_memory_overview(
 ) -> MemoryOverviewResponse:
     """Headline counts and core-document previews for the settings UI."""
     user_id = _require_user_id(user)
-    log.set(user={"id": user_id}, memory={"operation": "overview"})
+    log.set(user=UserContext(id=user_id), memory=MemoryContext(operation="overview"))
 
     result = await memory_engine.get_overview(user_id)
 
-    log.set(memory={"operation": "overview", "total_memories": result.total_memories})
+    log.set(
+        memory=MemoryContext(
+            operation="overview",
+            total_memories=result.total_memories,
+            result_count=result.total_memories,
+        )
+    )
     return result
 
 
@@ -119,11 +125,17 @@ async def get_memory_tree(
 ) -> MemoryTreeResponse:
     """The memory folder tree with per-folder counts (memories lazy-load)."""
     user_id = _require_user_id(user)
-    log.set(user={"id": user_id}, memory={"operation": "tree"})
+    log.set(user=UserContext(id=user_id), memory=MemoryContext(operation="tree"))
 
     result = await memory_engine.get_tree(user_id)
 
-    log.set(memory={"operation": "tree", "total_count": result.total_count})
+    log.set(
+        memory=MemoryContext(
+            operation="tree",
+            total_count=result.total_count,
+            result_count=result.total_count,
+        )
+    )
     return result
 
 
@@ -133,11 +145,18 @@ async def get_memory_graph(
 ) -> MemoryGraphResponse:
     """The entity graph: nodes, labeled edges, and their provenance memories."""
     user_id = _require_user_id(user)
-    log.set(user={"id": user_id}, memory={"operation": "graph"})
+    log.set(user=UserContext(id=user_id), memory=MemoryContext(operation="graph"))
 
     result = await memory_engine.get_graph(user_id)
 
-    log.set(memory={"operation": "graph", "nodes": len(result.nodes), "edges": len(result.edges)})
+    log.set(
+        memory=MemoryContext(
+            operation="graph",
+            nodes=len(result.nodes),
+            edges=len(result.edges),
+            result_count=len(result.nodes),
+        )
+    )
     return result
 
 
@@ -166,17 +185,17 @@ async def get_memory_episodes(
         )
 
     log.set(
-        user={"id": user_id},
-        memory={
-            "operation": "episodes",
-            "start": resolved_start.isoformat(),
-            "end": resolved_end.isoformat(),
-        },
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="episodes",
+            start=resolved_start.isoformat(),
+            end=resolved_end.isoformat(),
+        ),
     )
 
     result = await memory_engine.get_episodes(user_id, resolved_start, resolved_end)
 
-    log.set(memory={"operation": "episodes", "result_count": len(result.episodes)})
+    log.set(memory=MemoryContext(operation="episodes", result_count=len(result.episodes)))
     return result
 
 
@@ -186,11 +205,11 @@ async def get_memory_documents(
 ) -> MemoryDocumentsResponse:
     """All of the user's core memory documents."""
     user_id = _require_user_id(user)
-    log.set(user={"id": user_id}, memory={"operation": "get_documents"})
+    log.set(user=UserContext(id=user_id), memory=MemoryContext(operation="get_documents"))
 
     result = await memory_engine.get_documents(user_id)
 
-    log.set(memory={"operation": "get_documents", "result_count": len(result.documents)})
+    log.set(memory=MemoryContext(operation="get_documents", result_count=len(result.documents)))
     return result
 
 
@@ -204,17 +223,17 @@ async def update_memory_document(
     """Rewrite one core document (full replace; bumps its version)."""
     user_id = _require_user_id(user)
     log.set(
-        user={"id": user_id},
-        memory={
-            "operation": "update_document",
-            "doc_type": doc_type.value,
-            "content_length": len(request.content),
-        },
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="update_document",
+            doc_type=doc_type.value,
+            content_length=len(request.content),
+        ),
     )
 
     result = await memory_engine.update_document(user_id, doc_type, request.content)
 
-    log.set(memory={"operation": "update_document", "version": result.version})
+    log.set(memory=MemoryContext(operation="update_document", version=result.version))
     return result
 
 
@@ -227,12 +246,12 @@ async def create_memory(
     """Store one explicit memory (auto-categorized when no folder is given)."""
     user_id = _require_user_id(user)
     log.set(
-        user={"id": user_id},
-        memory={
-            "operation": "create",
-            "content_length": len(request.content),
-            "category": request.category_path,
-        },
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="create",
+            content_length=len(request.content),
+            category=request.category_path,
+        ),
     )
 
     try:
@@ -243,11 +262,17 @@ async def create_memory(
             source_type=MemorySourceType.MANUAL,
         )
     except Exception as e:
-        log.error(f"Failed to create memory for user {user_id}: {e}")
+        log.error(
+            "create_memory_failed",
+            operation="create",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="create", success=False))
         return CreateMemoryResponse(success=False, message="Failed to create memory")
 
     entry = retained.entry
-    log.set(memory={"operation": "create", "memory_id": entry.id, "success": True})
+    log.set(memory=MemoryContext(operation="create", memory_id=entry.id, success=True))
     return CreateMemoryResponse(
         success=True,
         memory_id=entry.id,
@@ -265,11 +290,19 @@ async def get_memory_history(
     Lets the UI expand a v2+ row to show the older versions it replaced.
     """
     user_id = _require_user_id(user)
-    log.set(user={"id": user_id}, memory={"operation": "history", "memory_id": memory_id})
+    log.set(
+        user=UserContext(id=user_id), memory=MemoryContext(operation="history", memory_id=memory_id)
+    )
 
     result = await memory_engine.get_history(user_id, memory_id)
 
-    log.set(memory={"operation": "history", "versions": len(result.memories)})
+    log.set(
+        memory=MemoryContext(
+            operation="history",
+            versions=len(result.memories),
+            result_count=len(result.memories),
+        )
+    )
     return result
 
 
@@ -286,15 +319,16 @@ async def update_memory(
     """Correct a memory: chains a new version, returns the new chain head."""
     user_id = _require_user_id(user)
     log.set(
-        user={"id": user_id},
-        memory={"operation": "update", "memory_id": memory_id},
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="update", memory_id=memory_id),
     )
 
     entry = await memory_engine.update_memory(user_id, memory_id, request.content)
     if entry is None:
+        log.warning("memory_not_found", operation="update", memory_id=memory_id)
         raise HTTPException(status_code=404, detail="Memory not found or already superseded")
 
-    log.set(memory={"operation": "update", "new_memory_id": entry.id, "version": entry.version})
+    log.set(memory=MemoryContext(operation="update", new_memory_id=entry.id, version=entry.version))
     return entry
 
 
@@ -310,14 +344,15 @@ async def delete_memory(
     """Soft-delete one memory (hidden from recall, kept for lineage history)."""
     user_id = _require_user_id(user)
     log.set(
-        user={"id": user_id},
-        memory={"operation": "delete", "memory_id": memory_id},
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="delete", memory_id=memory_id),
     )
 
     success = await memory_engine.forget_memory(user_id, memory_id, USER_DELETED_REASON)
 
-    log.set(memory={"operation": "delete", "memory_id": memory_id, "success": success})
+    log.set(memory=MemoryContext(operation="delete", memory_id=memory_id, success=success))
     if not success:
+        log.warning("memory_not_found", operation="delete", memory_id=memory_id)
         raise HTTPException(status_code=404, detail="Memory not found")
     return DeleteMemoryResponse(success=True, message="Memory deleted successfully")
 
@@ -329,9 +364,16 @@ async def clear_all_memories(
 ) -> DeleteMemoryResponse:
     """Hard-wipe the user's entire memory (memories, graph, journal, documents)."""
     user_id = _require_user_id(user)
-    log.set(user={"id": user_id}, memory={"operation": "delete_all"})
+    log.set(user=UserContext(id=user_id), memory=MemoryContext(operation="delete_all"))
 
     deleted = await memory_engine.delete_all(user_id)
 
-    log.set(memory={"operation": "delete_all", "deleted_count": deleted, "success": True})
+    log.set(
+        memory=MemoryContext(
+            operation="delete_all",
+            deleted_count=deleted,
+            result_count=deleted,
+            success=True,
+        )
+    )
     return DeleteMemoryResponse(success=True, message=f"Cleared {deleted} memories")

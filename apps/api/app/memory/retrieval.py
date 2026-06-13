@@ -55,7 +55,7 @@ from app.memory.embeddings import embed_query, rerank
 from app.memory.mappers import row_to_entry
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry, MemorySearchResult
-from shared.py.wide_events import log
+from shared.py.wide_events import MemoryContext, UserContext, log
 
 _SECONDS_PER_DAY = 86_400.0
 _TOKEN_PATTERN = re.compile(r"[a-z0-9']+")
@@ -155,18 +155,18 @@ async def recall(
     entries = _drop_below_relevance(entries)
 
     timings["total_ms"] = _elapsed_ms(started)
-    log.info(
-        "memory_recall_completed",
-        memory={
-            "operation": "recall",
-            "user_id": user_id,
-            "query": query,
-            "ann_hits": len(ann_hits),
-            "fts_hits": len(fts_hits),
-            "candidates": len(candidates),
-            "results": len(entries),
-            **timings,
-        },
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="recall",
+            query=query,
+            result_count=len(entries),
+            ann_hits=len(ann_hits),
+            fts_hits=len(fts_hits),
+            candidate_count=len(candidates),
+            success=True,
+            timings={key: float(value) for key, value in timings.items()},
+        ),
     )
     return MemorySearchResult(memories=entries, total_count=len(entries))
 

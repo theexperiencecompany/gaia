@@ -138,17 +138,33 @@ async def _try_one_provider(
             if _is_transient_error(e) and attempt < _MAX_STRUCTURED_RETRIES - 1:
                 delay = _RETRY_BASE_DELAY_SECONDS * (2**attempt)
                 log.warning(
-                    f"[memory] {operation}: {provider_name} transient error, "
-                    f"retrying in {delay:.0f}s ({attempt + 1}/{_MAX_STRUCTURED_RETRIES}): {e}"
+                    "memory_llm_transient_retry",
+                    operation=operation,
+                    provider=provider_name,
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_STRUCTURED_RETRIES,
+                    delay_s=delay,
+                    error_type=type(e).__name__,
+                    error=str(e),
                 )
                 await asyncio.sleep(delay)
                 continue
             if not is_last:
                 log.warning(
-                    f"[memory] {operation}: {provider_name} failed, trying next provider: {e}"
+                    "memory_llm_provider_failed",
+                    operation=operation,
+                    provider=provider_name,
+                    error_type=type(e).__name__,
+                    error=str(e),
                 )
             else:
-                log.error(f"[memory] {operation}: all LLM providers failed. Last error: {e}")
+                log.error(
+                    "memory_llm_all_providers_failed",
+                    operation=operation,
+                    provider=provider_name,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
             break
     return None
 
@@ -168,7 +184,12 @@ async def _invoke_structured(
     try:
         llm_chain = get_free_llm_chain()
     except RuntimeError as e:
-        log.error(f"[memory] {operation}: no LLM provider configured: {e}")
+        log.error(
+            "memory_llm_no_provider",
+            operation=operation,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return None
 
     for index, llm in enumerate(llm_chain):
@@ -225,18 +246,11 @@ async def extract_memories(
         operation="extraction",
     )
     if result is None:
-        log.error(f"[memory] extraction failed for user {user_id}; returning empty batch")
+        # Memory context (operation/counts) is owned by retain, the orchestrator;
+        # here we only flag that the extraction stage degraded to an empty batch.
+        log.error("memory_extraction_failed", user_id=user_id, error_type="llm_returned_none")
         return ExtractedMemoryBatch()
 
-    log.set(
-        memory={
-            "operation": "extract",
-            "user_id": user_id,
-            "fact_count": len(result.facts),
-            "episode_entry_count": len(result.episode_entries),
-            "agenda_update_count": len(result.agenda_updates),
-        }
-    )
     return result
 
 
@@ -342,7 +356,12 @@ async def reconcile_facts(
         operation="reconcile",
     )
     if result is None:
-        log.error("[memory] reconcile failed; treating all facts as NEW")
+        log.error(
+            "memory_reconcile_failed",
+            error_type="llm_returned_none",
+            fact_count=len(pairs),
+            fallback="all_new",
+        )
         return _all_new_decisions(len(pairs))
 
     # Normalize: one decision per fact, indexed 0..n-1; anything the LLM

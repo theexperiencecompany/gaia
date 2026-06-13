@@ -38,7 +38,7 @@ from app.memory.schemas import ExtractedFact
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry
 from app.services.memory_fs import schedule_memory_vfs_sync
-from shared.py.wide_events import log
+from shared.py.wide_events import MemoryContext, UserContext, log
 
 _DEFAULT_USER_NAME = "the user"
 _FALLBACK_CATEGORY_PATH = "general"
@@ -100,6 +100,13 @@ async def retain(
     started = time.perf_counter()
     now = now or datetime.now(UTC)
 
+    # Set operation context up front so a mid-ingest failure still attributes
+    # the wide event to a retain (the completion set below replaces this).
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="retain", source_type=source_type.value),
+    )
+
     folder_tree = await pg_store.get_folder_tree(user_id)
     recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
     today_episode = await pg_store.get_episode(user_id, now.date())
@@ -132,6 +139,15 @@ async def retain(
 
     result = RetainResult(facts_extracted=len(batch.facts))
     if not batch.facts and not batch.episode_entries:
+        log.set(
+            memory=MemoryContext(
+                operation="retain",
+                source_type=source_type.value,
+                facts_extracted=0,
+                result_count=0,
+                success=True,
+            )
+        )
         return result
 
     stage = time.perf_counter()
@@ -173,22 +189,22 @@ async def retain(
     )
 
     timings["total_ms"] = _elapsed_ms(started)
-    log.info(
-        "memory_retain_completed",
-        memory={
-            "operation": "retain",
-            "user_id": user_id,
-            "source_type": source_type.value,
-            "facts_extracted": result.facts_extracted,
-            "new": result.new,
-            "updated": result.updated,
-            "extended": result.extended,
-            "duplicates": result.duplicates,
-            "entities_linked": result.entities_linked,
-            "edges_added": result.edges_added,
-            "episode_entries": result.episode_entries,
-            **timings,
-        },
+    log.set(
+        memory=MemoryContext(
+            operation="retain",
+            source_type=source_type.value,
+            facts_extracted=result.facts_extracted,
+            result_count=result.new + result.updated + result.extended,
+            new_count=result.new,
+            updated_count=result.updated,
+            extended_count=result.extended,
+            duplicate_count=result.duplicates,
+            entities_linked=result.entities_linked,
+            edges_added=result.edges_added,
+            episode_entries=result.episode_entries,
+            success=True,
+            timings={key: float(value) for key, value in timings.items()},
+        ),
     )
     return result
 

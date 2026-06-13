@@ -7,6 +7,7 @@ zero added latency on the turn.
 """
 
 import asyncio
+import contextlib
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -19,7 +20,7 @@ from app.constants.memory import (
 )
 from app.memory.engine import memory_engine
 from app.override.langgraph_bigtool.utils import State
-from shared.py.wide_events import log
+from shared.py.wide_events import UserContext, log, wide_task
 
 MAX_TOOL_OUTPUT_SIZE = 500
 
@@ -145,26 +146,29 @@ async def _store_user_memory_background(
     Integration-specific extraction prompts (Slack, GitHub, ...) ride along
     as extraction hints so the engine pulls out entity IDs, contacts, and
     preferences relevant to that integration. Memories are private per user.
-    """
-    try:
-        formatted = _format_messages_for_user_memory(messages)
-        if not formatted:
-            return
 
-        result = await memory_engine.retain(
-            user_id,
-            formatted,
-            source_type=MemorySourceType.CONVERSATION,
-            source_id=session_id,
-            extraction_hints=extraction_prompt,
-            user_name=user_name,
-        )
-        log.info(
-            f"[{subagent_id or 'agent'}] User memory ingested for {user_id[:8]}...: "
-            f"{result.facts_extracted} facts extracted"
-        )
-    except Exception as e:
-        log.error(f"[{subagent_id or 'agent'}] User memory storage failed: {e}")
+    Runs in its own ``wide_task`` scope: this is a fire-and-forget background
+    task outside any request middleware, so without an explicit task scope the
+    engine's structured logging (and any failure) would never be emitted.
+    """
+    formatted = _format_messages_for_user_memory(messages)
+    if not formatted:
+        return
+
+    # wide_task records any failure (error_type + outcome=failed) as an emitted
+    # wide event and a real-time error line; suppress the re-raised exception so
+    # this fire-and-forget task doesn't surface an un-retrieved-exception warning.
+    with contextlib.suppress(Exception):
+        async with wide_task("memory_retain", user=UserContext(id=user_id)):
+            log.set(subagent_id=subagent_id or "agent", session_id=session_id)
+            await memory_engine.retain(
+                user_id,
+                formatted,
+                source_type=MemorySourceType.CONVERSATION,
+                source_id=session_id,
+                extraction_hints=extraction_prompt,
+                user_name=user_name,
+            )
 
 
 async def memory_node(
