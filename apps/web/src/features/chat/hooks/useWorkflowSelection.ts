@@ -30,25 +30,31 @@ export const useWorkflowSelection = () => {
       // Use store to persist the workflow selection
       storeSelectWorkflow(workflow, options);
 
-      // Track first workflow use as feature discovery
-      const hasTrackedFeatureDiscovered =
-        typeof globalThis.window !== "undefined" &&
-        localStorage.getItem(FEATURE_DISCOVERED_WORKFLOWS_KEY);
-
-      if (!hasTrackedFeatureDiscovered) {
-        trackEvent(ANALYTICS_EVENTS.FEATURE_DISCOVERED, {
-          feature: "workflows",
-          workflow_title: workflow.title,
-        });
-
-        if (typeof globalThis.window !== "undefined") {
-          localStorage.setItem(FEATURE_DISCOVERED_WORKFLOWS_KEY, "true");
-        }
-      }
-
-      // Navigate to chat page if not already there
+      // Navigate to chat page if not already there. This MUST happen before
+      // analytics — a throwing/blocked analytics SDK must never prevent the
+      // user from reaching the chat where the workflow auto-runs.
       if (pathname !== "/c") {
         router.push("/c");
+      }
+
+      // Track first workflow use as feature discovery (best-effort).
+      try {
+        const hasTrackedFeatureDiscovered =
+          typeof globalThis.window !== "undefined" &&
+          localStorage.getItem(FEATURE_DISCOVERED_WORKFLOWS_KEY);
+
+        if (!hasTrackedFeatureDiscovered) {
+          trackEvent(ANALYTICS_EVENTS.FEATURE_DISCOVERED, {
+            feature: "workflows",
+            workflow_title: workflow.title,
+          });
+
+          if (typeof globalThis.window !== "undefined") {
+            localStorage.setItem(FEATURE_DISCOVERED_WORKFLOWS_KEY, "true");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to track workflow feature discovery:", error);
       }
     },
     [storeSelectWorkflow, pathname, router],

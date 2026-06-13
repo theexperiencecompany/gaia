@@ -197,26 +197,22 @@ async def update_onboarding_preferences(
     try:
         user_object_id = ObjectId(user_id)
 
-        # Sanitize and prepare preferences
-        # First, validate using the Pydantic model which will handle empty string normalization
-        validated_preferences = OnboardingPreferences(**preferences.model_dump())
-        sanitized_preferences = validated_preferences.model_dump(exclude_none=True)
-
-        if "custom_instructions" in sanitized_preferences:
-            # Basic sanitization - remove potentially harmful content
-            sanitized_preferences["custom_instructions"] = sanitized_preferences[
-                "custom_instructions"
-            ].strip()[:500]
+        # PATCH semantics: write only the fields the caller actually sent, each at
+        # its own dotted path. Different settings surfaces (Preferences vs. Custom
+        # Instructions) own disjoint fields, so a partial save from one can no
+        # longer clobber a field owned by the other. Values are already normalized
+        # by the OnboardingPreferences validators (empty string -> None, length
+        # capped), so they can be persisted as-is.
+        provided = preferences.model_dump(exclude_unset=True)
+        set_ops: dict[str, Any] = {"updated_at": datetime.now(UTC)}
+        for field in ("profession", "response_style", "custom_instructions"):
+            if field in provided:
+                set_ops[f"onboarding.preferences.{field}"] = getattr(preferences, field)
 
         # Atomic update with user existence check
         updated_user = await users_collection.find_one_and_update(
             {"_id": user_object_id},
-            {
-                "$set": {
-                    "onboarding.preferences": sanitized_preferences,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+            {"$set": set_ops},
             return_document=ReturnDocument.AFTER,
         )
 
