@@ -33,6 +33,8 @@ class PooledSandbox:
     refcount: int = 0
     pause_task: asyncio.Task[None] | None = None
     last_canary_ts: str | None = None
+    # monotonic timestamp of the last sandbox kill-timer refresh (set_timeout)
+    timeout_refreshed_at: float = 0.0
     # ArtifactWatcher | None — Any to avoid importing it at module load.
     watcher: Any = None
 
@@ -73,6 +75,11 @@ class SandboxPool:
         self._publish_size()
 
     def evict(self, user_id: str) -> PooledSandbox | None:
+        # Deliberately does NOT prune _lock_registry: an unheld lock can still
+        # have a concurrent acquirer mid-`get_lock`→`acquire` that would then be
+        # handed a different Lock object, breaking per-user mutual exclusion.
+        # The registry grows only with distinct active users and resets on
+        # deploy — a bounded, minor cost not worth that race.
         removed = self._entries.pop(user_id, None)
         if removed is not None:
             self._publish_size()
@@ -94,7 +101,9 @@ class SandboxPool:
         switch to incremental counts; today it's cheap.
         """
         counts: dict[int, int] = {}
-        for user_id in self._entries:
+        # Snapshot keys: a concurrent put/evict from another user's acquire can
+        # mutate _entries, and iterating a dict mid-mutation raises RuntimeError.
+        for user_id in list(self._entries):
             shard = shard_for(user_id)
             counts[shard] = counts.get(shard, 0) + 1
         for shard, n in counts.items():

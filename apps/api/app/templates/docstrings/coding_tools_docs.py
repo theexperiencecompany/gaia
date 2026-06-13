@@ -44,7 +44,7 @@ PARAMETERS:
 - command (str): The shell command to run. Use `bash -c "…"` for pipelines.
 - cwd (str): Working directory; defaults to your session root. Must be
   inside the workspace unless inspecting system paths.
-- timeout (int): Max seconds before the command is killed. Default 120, max 600.
+- timeout (int): Max seconds before the command is killed. Default 300, max 1800.
 - background (bool): If true, runs the command detached and returns a `pid`
   plus a log path the agent can `tail` later. Useful for servers, watch
   processes, anything long-running.
