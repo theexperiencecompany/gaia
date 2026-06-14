@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.19.0...web-v0.20.0) (2026-06-14)
+
+
+### Features
+
+* custom local memory engine replacing mem0 ([#750](https://github.com/theexperiencecompany/gaia/issues/750)) ([11948ea](https://github.com/theexperiencecompany/gaia/commit/11948eacbf4fe9115e058ef13aef0e2fb5ef19cd))
+
 ## [0.19.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.18.0...web-v0.19.0) (2026-06-12)
 
 
