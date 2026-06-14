@@ -225,12 +225,20 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-        max_attempts: 3
+        # No max_attempts: an OOM or crash must always self-heal. Previously
+        # capped at 3 — under real traffic the sidecar OOM-looped, exhausted
+        # the 3 retries, and Swarm parked the service at 0/1 for hours (DNS
+        # for `embedding-sidecar` then drops, so every embed call fails).
       resources:
         limits:
-          memory: 2560M
+          # Working set under production load is ~3.0-3.1 GiB (two ONNX models
+          # — mxbai embedder + jina reranker — plus per-batch arenas that grow
+          # with batch_size, up to 40). The old 2560M cap sat below that, so
+          # the kernel OOM-killed it (exit 137) on first real traffic. 5G gives
+          # headroom; host has 15 GiB total / ~10 GiB free.
+          memory: 5120M
         reservations:
-          memory: 2G
+          memory: 3G
 
   # ---------------------------------------------------------------------------
   # Bots
