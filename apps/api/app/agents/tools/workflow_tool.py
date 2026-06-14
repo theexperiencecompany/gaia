@@ -31,6 +31,7 @@ from app.services.workflow import WorkflowService
 from app.services.workflow.context_extractor import WorkflowContextExtractor
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
+from app.utils.timezone import home_timezone_from_config, user_time_from_config
 from app.utils.workflow_utils import (
     build_from_conversation_task,
     build_new_workflow_task,
@@ -39,8 +40,6 @@ from app.utils.workflow_utils import (
     error_response,
     get_thread_id,
     get_user_id,
-    get_user_time,
-    get_user_timezone,
     success_response,
 )
 from shared.py.wide_events import log
@@ -107,9 +106,9 @@ async def create_workflow(
         user_id = get_user_id(config)
         thread_id = get_thread_id(config) or ""
         user_name = config.get("configurable", {}).get("user_name")
-        user_time = get_user_time(config)
-        # Get user's timezone offset from configurable (e.g., +05:30)
-        user_timezone = get_user_timezone(config)
+        user_time = user_time_from_config(config)
+        # Home timezone offset (e.g. +05:30) for the new workflow's schedule default.
+        user_timezone = home_timezone_from_config(config).value
 
         # Build task description based on mode
         if mode == "new":

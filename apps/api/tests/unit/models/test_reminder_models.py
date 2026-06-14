@@ -215,11 +215,9 @@ class TestCreateReminderRequest:
             agent="static",
             payload=StaticReminderPayload(title="T", body="B"),
             scheduled_at=future,
-            base_time=future,
         )
         data = m.model_dump(mode="json")
         assert isinstance(data["scheduled_at"], str)
-        assert isinstance(data["base_time"], str)
 
     def test_serializer_none_stays_none(self):
         m = CreateReminderRequest(
@@ -228,7 +226,7 @@ class TestCreateReminderRequest:
         )
         data = m.model_dump()
         assert data["scheduled_at"] is None
-        assert data["base_time"] is None
+        assert data["timezone"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +352,7 @@ class TestCreateReminderToolRequestConversion:
         assert result.repeat == "0 9 * * *"
         assert result.max_occurrences == 10
         assert result.agent == AgentType.STATIC
-        assert result.base_time is not None
+        assert result.timezone is not None
 
     def test_conversion_invalid_scheduled_at_format(self):
         m = CreateReminderToolRequest(**self._base_data(scheduled_at="not-a-datetime"))

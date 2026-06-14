@@ -1,12 +1,11 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.helpers.agent_helpers import (
-    _extract_timezone_offset,
     build_agent_config,
     build_initial_state,
     execute_graph_silent,
@@ -60,58 +59,6 @@ FAKE_USER = {
 def _make_user_time(offset_hours: int = 0) -> datetime:
     tz = timezone(timedelta(hours=offset_hours))
     return datetime(2025, 6, 1, 12, 0, 0, tzinfo=tz)
-
-
-# ---------------------------------------------------------------------------
-# _extract_timezone_offset
-# ---------------------------------------------------------------------------
-
-
-class TestExtractTimezoneOffset:
-    def test_utc(self):
-        dt = datetime(2025, 1, 1, tzinfo=UTC)
-        assert _extract_timezone_offset(dt) == "+00:00"
-
-    def test_positive_offset(self):
-        tz = timezone(timedelta(hours=5, minutes=30))
-        dt = datetime(2025, 1, 1, tzinfo=tz)
-        assert _extract_timezone_offset(dt) == "+05:30"
-
-    def test_negative_offset(self):
-        tz = timezone(timedelta(hours=-8))
-        dt = datetime(2025, 1, 1, tzinfo=tz)
-        assert _extract_timezone_offset(dt) == "-08:00"
-
-    def test_naive_datetime_returns_utc(self):
-        dt = datetime(2025, 1, 1)
-        assert _extract_timezone_offset(dt) == "+00:00"
-
-    def test_none_utcoffset_returns_utc(self):
-        """Datetime with tzinfo that returns None for utcoffset."""
-        from datetime import tzinfo as _tzinfo
-
-        class _NoneOffsetTZ(_tzinfo):
-            def utcoffset(self, dt):
-                return None
-
-            def tzname(self, dt):
-                return "NONE"
-
-            def dst(self, dt):
-                return None
-
-        dt = datetime(2025, 1, 1, tzinfo=_NoneOffsetTZ())
-        assert _extract_timezone_offset(dt) == "+00:00"
-
-    def test_zero_negative_offset(self):
-        tz = timezone(timedelta(hours=0))
-        dt = datetime(2025, 1, 1, tzinfo=tz)
-        assert _extract_timezone_offset(dt) == "+00:00"
-
-    def test_large_positive_offset(self):
-        tz = timezone(timedelta(hours=12, minutes=45))
-        dt = datetime(2025, 1, 1, tzinfo=tz)
-        assert _extract_timezone_offset(dt) == "+12:45"
 
 
 # ---------------------------------------------------------------------------
@@ -237,8 +184,24 @@ class TestBuildAgentConfig:
 
         assert config["configurable"]["thread_id"] == CONV_ID
         assert config["configurable"]["user_id"] == USER_ID
+        # No stored home zone -> falls back to the current-time offset.
         assert config["configurable"]["user_timezone"] == "+05:00"
         assert config["recursion_limit"] == AGENT_RECURSION_LIMIT
+
+    @patch("app.helpers.agent_helpers.providers")
+    def test_uses_home_profile_timezone_over_current_offset(self, mock_providers):
+        """With a stored home zone, the agent operates in it (IANA, DST-aware)
+        regardless of the user's current location (user_time offset)."""
+        mock_providers.get.return_value = None
+
+        traveling_user = {**FAKE_USER, "timezone": "Asia/Kolkata"}
+        config = build_agent_config(
+            conversation_id=CONV_ID,
+            user=traveling_user,
+            user_time=_make_user_time(-4),  # currently in a -04:00 zone
+            agent_name="comms_agent",
+        )
+        assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
     @patch("app.helpers.agent_helpers.providers")
     def test_custom_thread_id(self, mock_providers):

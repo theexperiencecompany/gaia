@@ -5,7 +5,6 @@ Contains all workflow-related background tasks and execution logic.
 
 from datetime import UTC, datetime
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 from bson import ObjectId
 
@@ -50,7 +49,7 @@ from app.services.workflow.conversation_service import (
 )
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
-from app.utils.timezone import format_local_time
+from app.utils.timezone import Timezone, format_local_time
 from shared.py.wide_events import WorkflowContext, log, wide_task
 
 
@@ -444,18 +443,31 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
     try:
         log.info(f"Executing workflow {workflow.id} as chat session for user {user_id}")
 
-        # Get user data and create timezone-aware datetime
+        # Build the agent's "now" in the user's zone. There is no request header
+        # here (ARQ worker), so prefer the real profile zone; fall back to the
+        # workflow's own schedule zone before UTC so a missing/poisoned profile
+        # doesn't silently run the agent hours off in UTC.
         try:
-            user_data = await get_user_by_id(user_id)
-            if user_data:
-                user_data["user_id"] = user_id  # Ensure user_id is present
-                user_tz = ZoneInfo(user_data.get("timezone", "UTC"))
-            else:
-                user_data = {"user_id": user_id}
-                user_tz = ZoneInfo("UTC")
-            user_time = datetime.now(user_tz)
+            user_data = await get_user_by_id(user_id) or {}
+            user_data["user_id"] = user_id
+
+            profile_tz = (user_data.get("timezone") or "").strip()
+            schedule_tz = (getattr(workflow.trigger_config, "timezone", None) or "").strip()
+            resolved_tz = Timezone.parse(
+                profile_tz
+                if profile_tz and profile_tz.upper() != "UTC"
+                else (schedule_tz or profile_tz or "UTC")
+            )
+            if resolved_tz.is_utc:
+                log.warning(
+                    "Workflow agent time falling back to UTC; no real user/schedule timezone",
+                    workflow_id=workflow.id,
+                    user_id=user_id,
+                )
+            log.set(workflow_agent_timezone=resolved_tz.value)
+            user_time = resolved_tz.now()
         except Exception as e:
-            log.warning(f"Could not get user data for {user_id}: {e}")
+            log.warning(f"Could not resolve workflow user time for {user_id}: {e}")
             user_data = {"user_id": user_id}
             user_time = datetime.now(UTC)
 

@@ -2,7 +2,7 @@
 Reminder models for task scheduling system.
 """
 
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Union
 
@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from app.models.scheduler_models import BaseScheduledTask, ScheduledTaskStatus
 from app.utils.cron_utils import validate_cron_expression
+from app.utils.timezone import Timezone
 
 # Use the base scheduler status directly
 ReminderStatus = ScheduledTaskStatus
@@ -47,6 +48,14 @@ class ReminderModel(BaseScheduledTask):
     """Reminder document model for MongoDB (one-time or recurring)."""
 
     agent: AgentType = Field(..., description="Agent responsible for this reminder task")
+    timezone: str | None = Field(
+        default=None,
+        description=(
+            "UTC offset (or IANA name) the recurrence is computed in, captured from "
+            "the user's time at creation. None falls back to UTC. Lets recurring "
+            "reminders re-arm at the right wall-clock hour instead of in UTC."
+        ),
+    )
     stop_after: datetime | None = Field(
         default=datetime.now(UTC) + timedelta(days=180),
         description="Stop executing after this date (optional), defaults to 6 months from now",
@@ -71,9 +80,12 @@ class CreateReminderRequest(BaseModel):
     payload: StaticReminderPayload = Field(
         ..., description="Task-specific data for static reminder"
     )
-    base_time: datetime | None = Field(
+    timezone: str | None = Field(
         None,
-        description="Base time for handling time zones and scheduling (optional, defaults to None)",
+        description=(
+            "IANA name or ±HH:MM offset the schedule runs in (the recurrence "
+            "wall-clock zone). None falls back to UTC."
+        ),
     )
 
     @field_validator("repeat")
@@ -122,7 +134,7 @@ class CreateReminderRequest(BaseModel):
                 raise ValueError("stop_after must be in the future")
         return v
 
-    @field_serializer("scheduled_at", "stop_after", "base_time", when_used="json")
+    @field_serializer("scheduled_at", "stop_after", when_used="json")
     def serialize_datetime(self, value: datetime | None) -> str | None:
         """ISO strings for JSON only; python mode keeps native datetimes so a
         model_dump() used to build a Mongo document never persists a string date."""
@@ -170,6 +182,10 @@ class CreateReminderToolRequest(BaseModel):
         ),
     )
     user_time: str = Field(..., description="User's current time for timezone handling")
+    home_timezone: str | None = Field(
+        None,
+        description="User's home timezone (IANA) the recurrence runs in; defaults the schedule zone.",
+    )
 
     @field_validator("repeat")
     @classmethod
@@ -223,7 +239,9 @@ class CreateReminderToolRequest(BaseModel):
                 # Handle timezone based on the rules
                 if self.timezone_offset:
                     # User explicitly provided timezone - create timezone from offset
-                    processed_scheduled_at = self._apply_timezone_offset(dt, self.timezone_offset)
+                    processed_scheduled_at = dt.replace(
+                        tzinfo=Timezone.parse(self.timezone_offset).tzinfo
+                    )
                 else:
                     processed_scheduled_at = dt.replace(tzinfo=user_timezone)
 
@@ -241,8 +259,8 @@ class CreateReminderToolRequest(BaseModel):
                 # Handle timezone based on the rules
                 if self.stop_after_timezone_offset:
                     # User explicitly provided timezone - create timezone from offset
-                    processed_stop_after = self._apply_timezone_offset(
-                        dt, self.stop_after_timezone_offset
+                    processed_stop_after = dt.replace(
+                        tzinfo=Timezone.parse(self.stop_after_timezone_offset).tzinfo
                     )
                 else:
                     # Absolute time with no explicit timezone - use user's timezone
@@ -253,6 +271,17 @@ class CreateReminderToolRequest(BaseModel):
                     f"Invalid stop_after format: {self.stop_after}. Use YYYY-MM-DD HH:MM:SS format. Error: {e}"
                 )
 
+        # Recurrence runs in the user's zone. Prefer an explicitly stated offset,
+        # else the offset carried by the user's current time (the tool only has
+        # the user's home zone (IANA, DST-aware) from the agent config; else the
+        # offset carried by the user's current time (DST-naive last resort).
+        user_tz = Timezone.of_offset(user_datetime)
+        reminder_timezone = (
+            self.timezone_offset
+            or self.home_timezone
+            or (user_tz.value if user_tz is not None else None)
+        )
+
         return CreateReminderRequest(
             agent=self.agent,
             payload=self.payload,
@@ -260,17 +289,8 @@ class CreateReminderToolRequest(BaseModel):
             scheduled_at=processed_scheduled_at,
             max_occurrences=self.max_occurrences,
             stop_after=processed_stop_after,
-            base_time=user_datetime,
+            timezone=reminder_timezone,
         )
-
-    def _apply_timezone_offset(self, dt: datetime, offset_str: str) -> datetime:
-        """Apply timezone offset to datetime object."""
-        # Parse offset string (+|-)HH:MM
-        sign = 1 if offset_str.startswith("+") else -1
-        hours, minutes = map(int, offset_str[1:].split(":"))
-        offset_seconds = sign * (hours * 3600 + minutes * 60)
-        tz = timezone(timedelta(seconds=offset_seconds))
-        return dt.replace(tzinfo=tz)
 
 
 class UpdateReminderRequest(BaseModel):

@@ -1,6 +1,6 @@
 """Reminder LangChain tools."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 import json
 from typing import Annotated, Any
 
@@ -23,17 +23,8 @@ from app.templates.docstrings.reminder_tool_docs import (
     SEARCH_REMINDERS,
     UPDATE_REMINDER,
 )
+from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
-
-
-def _apply_timezone_offset(dt: datetime, offset_str: str) -> datetime:
-    """Apply timezone offset to datetime object."""
-    # Parse offset string (+|-)HH:MM
-    sign = 1 if offset_str.startswith("+") else -1
-    hours, minutes = map(int, offset_str[1:].split(":"))
-    offset_seconds = sign * (hours * 3600 + minutes * 60)
-    tz = timezone(timedelta(seconds=offset_seconds))
-    return dt.replace(tzinfo=tz)
 
 
 @tool()
@@ -102,6 +93,9 @@ async def create_reminder_tool(
             stop_after=stop_after,
             stop_after_timezone_offset=stop_after_timezone_offset,
             user_time=user_time_str,
+            # The recurrence runs in the user's HOME zone (agent config), so a
+            # "daily at 9am" reminder fires at 9am home regardless of where they are.
+            home_timezone=home_timezone_from_config(config).value,
         )
 
         # Convert to the service request model
@@ -236,7 +230,9 @@ async def update_reminder_tool(
                 # Handle timezone based on the rules
                 if stop_after_timezone_offset:
                     # User explicitly provided timezone - create timezone from offset
-                    processed_stop_after = _apply_timezone_offset(dt, stop_after_timezone_offset)
+                    processed_stop_after = dt.replace(
+                        tzinfo=Timezone.parse(stop_after_timezone_offset).tzinfo
+                    )
                 else:
                     # Absolute time with no timezone - no timezone info
                     processed_stop_after = dt

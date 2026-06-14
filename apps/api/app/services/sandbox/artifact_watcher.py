@@ -116,6 +116,7 @@ class ArtifactWatcher:
             else:
                 await self._start_watch_dir()
             self._stopped = False
+            log.set(sandbox_artifact_mode=self._mode)
             log.info(
                 "[artifact-watcher] started",
                 user_id=self.user_id,

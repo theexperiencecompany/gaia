@@ -46,6 +46,7 @@ from app.templates.docstrings.calendar_tool_docs import (
 )
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
@@ -103,21 +104,21 @@ def _get_user_id(auth_credentials: dict[str, Any]) -> str:
 
 
 def _get_user_timezone() -> tzinfo | None:
-    """Retrieve the user's timezone offset from the LangGraph RunnableConfig."""
+    """User's timezone from the LangGraph RunnableConfig, or None if absent.
+
+    None (not UTC) is deliberate: the caller leaves an event time naive when the
+    config carries no zone, so Google interprets it in the calendar's own zone.
+    """
     try:
-        config = get_config()
-        configurable = config.get("configurable", {})
+        configurable = get_config().get("configurable", {})
 
         user_timezone_str = configurable.get("user_timezone")
-        if user_timezone_str and len(user_timezone_str) >= 6:
-            sign = 1 if user_timezone_str.startswith("+") else -1
-            hours, minutes = map(int, user_timezone_str[1:].split(":"))
-            return timezone(timedelta(seconds=sign * (hours * 3600 + minutes * 60)))
+        if user_timezone_str:
+            return Timezone.parse(user_timezone_str).tzinfo
 
         user_time_str = configurable.get("user_time")
         if user_time_str:
-            dt = datetime.fromisoformat(user_time_str)
-            return dt.tzinfo
+            return datetime.fromisoformat(user_time_str).tzinfo
     except Exception:
         log.error("Error getting user timezone")
     return None

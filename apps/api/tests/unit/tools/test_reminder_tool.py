@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.reminder_tool."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -46,36 +46,6 @@ def _reminder_mock(**overrides: Any) -> MagicMock:
     for k, v in defaults.items():
         setattr(mock, k, v)
     return mock
-
-
-# ---------------------------------------------------------------------------
-# Tests: _apply_timezone_offset
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestApplyTimezoneOffset:
-    def test_positive_offset(self) -> None:
-        from app.agents.tools.reminder_tool import _apply_timezone_offset
-
-        dt = datetime(2026, 3, 20, 10, 0, 0)
-        result = _apply_timezone_offset(dt, "+05:30")
-        assert result.tzinfo is not None
-        assert result.utcoffset() == timedelta(hours=5, minutes=30)
-
-    def test_negative_offset(self) -> None:
-        from app.agents.tools.reminder_tool import _apply_timezone_offset
-
-        dt = datetime(2026, 3, 20, 10, 0, 0)
-        result = _apply_timezone_offset(dt, "-08:00")
-        assert result.utcoffset() == timedelta(hours=-8)
-
-    def test_zero_offset(self) -> None:
-        from app.agents.tools.reminder_tool import _apply_timezone_offset
-
-        dt = datetime(2026, 3, 20, 10, 0, 0)
-        result = _apply_timezone_offset(dt, "+00:00")
-        assert result.utcoffset() == timedelta(0)
 
 
 # ---------------------------------------------------------------------------

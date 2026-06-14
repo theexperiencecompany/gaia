@@ -19,6 +19,7 @@ import {
   readMCPResource,
 } from "@/features/chat/api/mcpProxyApi";
 import { useSendMessage } from "@/hooks/useSendMessage";
+import { getBrowserTimezone } from "@/lib/timezone";
 
 type DisplayMode = "inline" | "fullscreen";
 
@@ -76,7 +77,7 @@ export function MCPAppRenderer({ data }: Props) {
       platform: "web",
       theme: getTheme(),
       locale: navigator.language,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timeZone: getBrowserTimezone(),
       displayMode: "inline",
       availableDisplayModes: AVAILABLE_MODES,
     };

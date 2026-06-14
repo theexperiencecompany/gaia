@@ -18,6 +18,7 @@ from app.models.scheduler_models import (
     TaskExecutionResult,
 )
 from app.utils.cron_utils import get_next_run_time
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 
@@ -54,11 +55,10 @@ class BaseSchedulerService(ABC):
         """Schedule a task using the provided configuration."""
         scheduled_at = schedule_config.scheduled_at
 
-        # If no scheduled_at but has repeat, calculate next run time
+        # If no scheduled_at but has repeat, calculate next run time (from now in
+        # UTC; callers that need a specific zone pre-compute scheduled_at).
         if not scheduled_at and schedule_config.repeat:
-            scheduled_at = get_next_run_time(
-                cron_expr=schedule_config.repeat, base_time=schedule_config.base_time
-            )
+            scheduled_at = get_next_run_time(schedule_config.repeat)
 
         if not scheduled_at:
             raise ValueError("scheduled_at must be provided or repeat must be specified")
@@ -177,18 +177,19 @@ class BaseSchedulerService(ABC):
             log.error("Task ID is None, cannot handle recurring task")
             return
 
-        # Calculate next run time with user timezone context
-        user_timezone = None
-
-        # For workflows, extract timezone from trigger_config
+        # Recurrence is computed in the task's own timezone. Reminders store it on
+        # the task itself; workflows store it on trigger_config (the zone the cron
+        # was authored against) which therefore wins. Neither set => UTC.
+        user_timezone = getattr(task, "timezone", None)
         trigger_config = getattr(task, "trigger_config", None)
-        if trigger_config and hasattr(trigger_config, "timezone"):
-            user_timezone = trigger_config.timezone
-            log.debug(f"Using workflow timezone: {user_timezone}")
+        trigger_timezone = getattr(trigger_config, "timezone", None) if trigger_config else None
+        if trigger_timezone:
+            user_timezone = trigger_timezone
+        log.set(scheduler_recurrence_timezone=user_timezone)
 
         # Advance from now, not from a (possibly stale) scheduled_at, so a dormant
         # task resumes at its next future occurrence instead of replaying missed runs.
-        next_run = get_next_run_time(task.repeat, datetime.now(UTC), user_timezone)
+        next_run = get_next_run_time(task.repeat, datetime.now(UTC), Timezone.parse(user_timezone))
 
         if self._should_continue_recurring(task, occurrence_count, next_run):
             await self._reschedule_recurring_task(task, occurrence_count, next_run, trigger_config)

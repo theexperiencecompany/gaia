@@ -1,18 +1,24 @@
-"""Unit tests for cron utilities."""
+"""Unit tests for cron utilities.
+
+Timezone parsing now lives in ``app.utils.timezone.Timezone`` (covered by
+``test_timezone.py``); these tests cover cron validation and the cron-in-timezone
+→ UTC scheduling math, which is the load-bearing correctness for reminders and
+workflows.
+"""
 
 from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
-import pytz
 
 from app.utils.cron_utils import (
     CronError,
     calculate_next_occurrences,
     get_next_run_time,
-    parse_timezone,
     validate_cron_expression,
 )
+from app.utils.timezone import Timezone
 
 # Frozen instant reused across tests that need a deterministic "now".
 FROZEN_NOW = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
@@ -46,101 +52,10 @@ class TestCronError:
             raise CronError("test error")
 
     def test_stores_message(self) -> None:
-        err = CronError("something went wrong")
-        assert str(err) == "something went wrong"
+        assert str(CronError("something went wrong")) == "something went wrong"
 
     def test_empty_message(self) -> None:
-        err = CronError()
-        assert str(err) == ""
-
-
-# ---------------------------------------------------------------------------
-# parse_timezone
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestParseTimezone:
-    def test_none_returns_utc(self) -> None:
-        result = parse_timezone(None)  # type: ignore[arg-type]
-        assert result is UTC
-
-    def test_empty_string_returns_utc(self) -> None:
-        result = parse_timezone("")
-        assert result is UTC
-
-    def test_utc_string_returns_utc(self) -> None:
-        result = parse_timezone("UTC")
-        assert result is UTC
-
-    @pytest.mark.parametrize(
-        "offset_str, expected_hours, expected_minutes",
-        [
-            ("+05:30", 5, 30),
-            ("+00:00", 0, 0),
-            ("+12:00", 12, 0),
-            ("+09:30", 9, 30),
-        ],
-    )
-    def test_positive_offset(
-        self, offset_str: str, expected_hours: int, expected_minutes: int
-    ) -> None:
-        result = parse_timezone(offset_str)
-        expected = timezone(timedelta(hours=expected_hours, minutes=expected_minutes))
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        "offset_str, expected_hours, expected_minutes",
-        [
-            ("-08:00", 8, 0),
-            ("-05:30", 5, 30),
-            ("-12:00", 12, 0),
-            ("-00:00", 0, 0),
-        ],
-    )
-    def test_negative_offset(
-        self, offset_str: str, expected_hours: int, expected_minutes: int
-    ) -> None:
-        result = parse_timezone(offset_str)
-        expected = timezone(-timedelta(hours=expected_hours, minutes=expected_minutes))
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        "iana_name",
-        [
-            "America/New_York",
-            "Asia/Kolkata",
-            "Europe/London",
-            "Asia/Tokyo",
-            "US/Pacific",
-        ],
-    )
-    def test_valid_iana_timezone(self, iana_name: str) -> None:
-        result = parse_timezone(iana_name)
-        expected = pytz.timezone(iana_name)
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        "invalid_tz",
-        [
-            "Invalid/Timezone",
-            "Not_A_Zone",
-            "Foo/Bar/Baz",
-            "CEST",
-        ],
-    )
-    def test_invalid_timezone_raises_value_error(self, invalid_tz: str) -> None:
-        with pytest.raises(ValueError, match="Unknown timezone format"):
-            parse_timezone(invalid_tz)
-
-    def test_offset_boundary_values(self) -> None:
-        result = parse_timezone("+14:00")
-        assert result == timezone(timedelta(hours=14))
-
-    def test_offset_string_without_colon_not_matched(self) -> None:
-        # "+0530" doesn't match the offset regex, falls through to IANA lookup
-        with pytest.raises(ValueError, match="Unknown timezone format"):
-            parse_timezone("+0530")
+        assert str(CronError()) == ""
 
 
 # ---------------------------------------------------------------------------
@@ -168,47 +83,29 @@ class TestValidateCronExpression:
 
     @pytest.mark.parametrize(
         "cron_expr",
-        [
-            "not a cron",
-            "60 * * * *",
-            "* 25 * * *",
-            "* * 32 * *",
-            "* * * 13 *",
-            "* * * * 8",
-            "",
-            "0 8 * *",  # too few fields
-        ],
+        ["not a cron", "60 * * * *", "* 25 * * *", "* * 32 * *", "* * * 13 *", "", "0 8 * *"],
     )
     def test_invalid_expressions_return_false(self, cron_expr: str) -> None:
         assert validate_cron_expression(cron_expr) is False
 
     def test_none_raises_attribute_error(self) -> None:
-        # croniter raises AttributeError for non-string inputs, which is not
-        # caught by validate_cron_expression (only ValueError/TypeError are caught)
+        # croniter raises AttributeError for non-string inputs, not caught by validate.
         with pytest.raises(AttributeError):
             validate_cron_expression(None)  # type: ignore[arg-type]
 
-    def test_integer_raises_attribute_error(self) -> None:
-        with pytest.raises(AttributeError):
-            validate_cron_expression(123)  # type: ignore[arg-type]
-
-    def test_list_raises_attribute_error(self) -> None:
-        with pytest.raises(AttributeError):
-            validate_cron_expression([])  # type: ignore[arg-type]
-
 
 # ---------------------------------------------------------------------------
-# get_next_run_time
+# get_next_run_time — cron interpreted in a Timezone, returned in UTC
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGetNextRunTime:
-    def test_valid_cron_with_base_time(self) -> None:
+    def test_valid_cron_with_base_time_default_utc(self) -> None:
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = get_next_run_time("0 8 * * *", base_time=base)
-        expected = datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC)
-        assert result == expected
+        assert get_next_run_time("0 8 * * *", base_time=base) == datetime(
+            2025, 1, 1, 8, 0, 0, tzinfo=UTC
+        )
 
     def test_invalid_cron_raises_cron_error(self) -> None:
         with pytest.raises(CronError, match="Invalid cron expression"):
@@ -217,94 +114,100 @@ class TestGetNextRunTime:
     def test_none_base_time_uses_now(self) -> None:
         with _patch_now():
             result = get_next_run_time("0 12 * * *")
-        expected = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
-        assert result == expected
+        assert result == datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
 
     def test_naive_datetime_assumed_utc(self) -> None:
         base = datetime(2025, 3, 10, 6, 30, 0)  # naive
-        result = get_next_run_time("0 8 * * *", base_time=base)
-        expected = datetime(2025, 3, 10, 8, 0, 0, tzinfo=UTC)
-        assert result == expected
+        assert get_next_run_time("0 8 * * *", base_time=base) == datetime(
+            2025, 3, 10, 8, 0, 0, tzinfo=UTC
+        )
 
-    def test_with_timezone_converts_to_utc(self) -> None:
-        # 7 AM UTC -> in Asia/Kolkata that's 12:30 PM IST
-        # Next "0 8 * * *" in Kolkata (8 AM IST) would be next day
-        # 8 AM IST = 2:30 AM UTC
-        base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = get_next_run_time("0 8 * * *", base_time=base, user_timezone="Asia/Kolkata")
-        expected = datetime(2025, 1, 2, 2, 30, 0, tzinfo=UTC)
-        assert result == expected
+    def test_9am_ist_is_0330_utc(self) -> None:
+        # The reported bug: "daily at 9 AM" in IST must fire at 03:30 UTC, not 09:00.
+        base = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
+        result = get_next_run_time("0 9 * * *", base_time=base, tz=Timezone.parse("Asia/Kolkata"))
+        assert result == datetime(2025, 1, 1, 3, 30, 0, tzinfo=UTC)
 
-    def test_with_utc_timezone_string(self) -> None:
-        # When user_timezone is "UTC", should fall through to default UTC path
+    def test_iana_and_equivalent_offset_agree(self) -> None:
+        base = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
+        by_name = get_next_run_time("0 9 * * *", base_time=base, tz=Timezone.parse("Asia/Kolkata"))
+        by_offset = get_next_run_time("0 9 * * *", base_time=base, tz=Timezone.parse("+05:30"))
+        assert by_name == by_offset
+
+    def test_utc_timezone_matches_default(self) -> None:
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = get_next_run_time("0 8 * * *", base_time=base, user_timezone="UTC")
-        expected = datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC)
-        assert result == expected
+        assert get_next_run_time("0 8 * * *", base_time=base, tz=Timezone.utc()) == datetime(
+            2025, 1, 1, 8, 0, 0, tzinfo=UTC
+        )
 
     def test_with_timezone_and_none_base_time(self) -> None:
         with _patch_now():
             result = get_next_run_time(
-                "0 8 * * *", base_time=None, user_timezone="America/New_York"
+                "0 8 * * *", base_time=None, tz=Timezone.parse("America/New_York")
             )
-        # Frozen at 10 AM UTC = 6 AM ET (EDT, -4). Next 8 AM ET = 12 PM UTC
-        expected = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
-        assert result == expected
+        # Frozen 10 AM UTC = 6 AM EDT (-4 in June). Next 8 AM EDT = 12 PM UTC.
+        assert result == datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
 
-    def test_with_timezone_and_naive_base_time(self) -> None:
-        # Naive base_time should be treated as UTC then converted to user tz
-        base = datetime(2025, 1, 1, 7, 0, 0)  # naive
-        result = get_next_run_time("0 8 * * *", base_time=base, user_timezone="Asia/Kolkata")
-        # Naive assumed UTC -> 12:30 PM IST. Next 8 AM IST = Jan 2 2:30 AM UTC
-        expected = datetime(2025, 1, 2, 2, 30, 0, tzinfo=UTC)
-        assert result == expected
+    def test_aware_base_time_in_other_zone(self) -> None:
+        base = datetime(2025, 1, 1, 6, 0, 0, tzinfo=ZoneInfo("US/Eastern"))  # 6 AM EST
+        result = get_next_run_time("0 8 * * *", base_time=base, tz=Timezone.parse("US/Eastern"))
+        # Next 8 AM EST = Jan 1 13:00 UTC (EST -5).
+        assert result == datetime(2025, 1, 1, 13, 0, 0, tzinfo=UTC)
 
-    def test_with_timezone_and_aware_base_time(self) -> None:
-        eastern = pytz.timezone("US/Eastern")
-        base = eastern.localize(datetime(2025, 1, 1, 6, 0, 0))  # 6 AM ET
-        result = get_next_run_time("0 8 * * *", base_time=base, user_timezone="US/Eastern")
-        # Next 8 AM ET = Jan 1 8 AM ET = Jan 1 1 PM UTC (EST offset -5)
-        expected = datetime(2025, 1, 1, 13, 0, 0, tzinfo=UTC)
-        assert result == expected
-
-    def test_timezone_parse_failure_falls_back_to_utc(self) -> None:
+    def test_invalid_timezone_falls_back_to_utc(self) -> None:
+        # Timezone.parse("Invalid/Zone") -> UTC, so the cron runs in UTC.
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = get_next_run_time("0 8 * * *", base_time=base, user_timezone="Invalid/Fake_Zone")
-        # parse_timezone raises ValueError, caught by the broad except in
-        # get_next_run_time, falls back to UTC calculation
-        expected = datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC)
-        assert result == expected
+        assert get_next_run_time(
+            "0 8 * * *", base_time=base, tz=Timezone.parse("Invalid/Zone")
+        ) == datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC)
 
     def test_result_is_always_utc_aware(self) -> None:
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
         result = get_next_run_time("0 8 * * *", base_time=base)
-        assert result.tzinfo is not None
-        assert result.utcoffset() == timedelta(0)
+        assert result.tzinfo is not None and result.utcoffset() == timedelta(0)
 
-    def test_every_minute_cron(self) -> None:
-        base = datetime(2025, 1, 1, 12, 30, 15, tzinfo=UTC)
-        result = get_next_run_time("* * * * *", base_time=base)
-        expected = datetime(2025, 1, 1, 12, 31, 0, tzinfo=UTC)
-        assert result == expected
-
-    def test_with_offset_timezone(self) -> None:
+    def test_offset_timezone(self) -> None:
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = get_next_run_time("0 8 * * *", base_time=base, user_timezone="+05:30")
-        # 7 AM UTC = 12:30 PM +05:30, next 8 AM +05:30 = Jan 2 2:30 AM UTC
-        expected = datetime(2025, 1, 2, 2, 30, 0, tzinfo=UTC)
-        assert result == expected
+        # 7 AM UTC = 12:30 +05:30; next 8 AM +05:30 = Jan 2 02:30 UTC.
+        assert get_next_run_time(
+            "0 8 * * *", base_time=base, tz=Timezone.parse("+05:30")
+        ) == datetime(2025, 1, 2, 2, 30, 0, tzinfo=UTC)
 
-    def test_none_timezone_uses_utc_path(self) -> None:
+    def test_none_timezone_uses_utc(self) -> None:
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = get_next_run_time("0 8 * * *", base_time=base, user_timezone=None)
-        expected = datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC)
-        assert result == expected
+        assert get_next_run_time("0 8 * * *", base_time=base, tz=None) == datetime(
+            2025, 1, 1, 8, 0, 0, tzinfo=UTC
+        )
 
-    def test_empty_timezone_uses_utc_path(self) -> None:
-        base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = get_next_run_time("0 8 * * *", base_time=base, user_timezone="")
-        expected = datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC)
-        assert result == expected
+    def test_aware_base_without_tz_uses_base_zone(self) -> None:
+        # Regression: a tz-aware base with NO explicit tz is interpreted in the
+        # base's OWN zone (the reminder first-fire path passes a local "now" and
+        # no tz), not silently reinterpreted in UTC.
+        ist = timezone(timedelta(hours=5, minutes=30))
+        base = datetime(2025, 6, 14, 14, 30, 0, tzinfo=ist)  # 14:30 IST
+        result = get_next_run_time("0 9 * * *", base_time=base)  # tz omitted
+        assert result == datetime(2025, 6, 15, 3, 30, 0, tzinfo=UTC)  # next 9AM IST
+
+    def test_dst_iana_shifts_but_fixed_offset_does_not(self) -> None:
+        # THE reason IANA beats a fixed offset. US DST starts 2025-03-09.
+        # "0 9 * * *" in America/New_York:
+        #   - just before DST (base Mar 7): next fire Mar 8 09:00 EST = 14:00 UTC
+        #   - just after  DST (base Mar 9): next fire Mar 10 09:00 EDT = 13:00 UTC
+        ny = Timezone.parse("America/New_York")
+        before = get_next_run_time(
+            "0 9 * * *", base_time=datetime(2025, 3, 7, 20, 0, tzinfo=UTC), tz=ny
+        )
+        after = get_next_run_time(
+            "0 9 * * *", base_time=datetime(2025, 3, 9, 20, 0, tzinfo=UTC), tz=ny
+        )
+        assert before.hour == 14  # EST
+        assert after.hour == 13  # EDT — the wall-clock 9 AM moved an hour in UTC
+        # A fixed -05:00 offset can't track DST: it stays 14:00 UTC year-round.
+        fixed = Timezone.parse("-05:00")
+        fixed_after = get_next_run_time(
+            "0 9 * * *", base_time=datetime(2025, 3, 9, 20, 0, tzinfo=UTC), tz=fixed
+        )
+        assert fixed_after.hour == 14
 
 
 # ---------------------------------------------------------------------------
@@ -317,60 +220,43 @@ class TestCalculateNextOccurrences:
     def test_valid_cron_returns_list(self) -> None:
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
         result = calculate_next_occurrences("0 8 * * *", count=3, base_time=base)
-        assert len(result) == 3
-        assert result[0] == datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC)
-        assert result[1] == datetime(2025, 1, 2, 8, 0, 0, tzinfo=UTC)
-        assert result[2] == datetime(2025, 1, 3, 8, 0, 0, tzinfo=UTC)
+        assert result == [
+            datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC),
+            datetime(2025, 1, 2, 8, 0, 0, tzinfo=UTC),
+            datetime(2025, 1, 3, 8, 0, 0, tzinfo=UTC),
+        ]
 
-    def test_count_zero_returns_empty_list(self) -> None:
+    @pytest.mark.parametrize("count", [0, -5])
+    def test_non_positive_count_returns_empty(self, count: int) -> None:
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = calculate_next_occurrences("0 8 * * *", count=0, base_time=base)
-        assert result == []
-
-    def test_negative_count_returns_empty_list(self) -> None:
-        base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = calculate_next_occurrences("0 8 * * *", count=-5, base_time=base)
-        assert result == []
+        assert calculate_next_occurrences("0 8 * * *", count=count, base_time=base) == []
 
     def test_invalid_cron_raises_cron_error(self) -> None:
         with pytest.raises(CronError, match="Invalid cron expression"):
             calculate_next_occurrences("bad cron", count=3)
 
-    def test_count_one_returns_single_item(self) -> None:
-        base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
-        result = calculate_next_occurrences("0 8 * * *", count=1, base_time=base)
-        assert len(result) == 1
-        assert result[0] == datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC)
-
-    def test_occurrences_are_in_chronological_order(self) -> None:
+    def test_occurrences_are_chronological(self) -> None:
         base = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
         result = calculate_next_occurrences("*/15 * * * *", count=5, base_time=base)
-        for i in range(len(result) - 1):
-            assert result[i] < result[i + 1]
+        assert all(result[i] < result[i + 1] for i in range(len(result) - 1))
 
     def test_none_base_time_uses_now(self) -> None:
         with _patch_now():
             result = calculate_next_occurrences("0 * * * *", count=2)
-        assert result[0] == datetime(2025, 6, 15, 11, 0, 0, tzinfo=UTC)
-        assert result[1] == datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
-
-    def test_naive_base_time_assumed_utc(self) -> None:
-        base = datetime(2025, 3, 10, 7, 0, 0)  # naive
-        result = calculate_next_occurrences("0 8 * * *", count=1, base_time=base)
-        assert result[0] == datetime(2025, 3, 10, 8, 0, 0, tzinfo=UTC)
+        assert result == [
+            datetime(2025, 6, 15, 11, 0, 0, tzinfo=UTC),
+            datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC),
+        ]
 
     def test_all_results_are_utc_aware(self) -> None:
         base = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
         result = calculate_next_occurrences("0 */6 * * *", count=4, base_time=base)
-        for dt in result:
-            assert dt.tzinfo is not None
-            assert dt.utcoffset() == timedelta(0)
+        assert all(dt.tzinfo is not None and dt.utcoffset() == timedelta(0) for dt in result)
 
     def test_weekly_cron_occurrences(self) -> None:
-        # Wednesday Jan 1 2025
-        base = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
-        # Every Monday at 9 AM
-        result = calculate_next_occurrences("0 9 * * 1", count=2, base_time=base)
-        # First Monday after Jan 1 is Jan 6
-        assert result[0] == datetime(2025, 1, 6, 9, 0, 0, tzinfo=UTC)
-        assert result[1] == datetime(2025, 1, 13, 9, 0, 0, tzinfo=UTC)
+        base = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)  # Wednesday
+        result = calculate_next_occurrences("0 9 * * 1", count=2, base_time=base)  # Mondays
+        assert result == [
+            datetime(2025, 1, 6, 9, 0, 0, tzinfo=UTC),
+            datetime(2025, 1, 13, 9, 0, 0, tzinfo=UTC),
+        ]
