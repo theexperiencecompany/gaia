@@ -2,6 +2,11 @@ import Image from "next/image";
 import { RaisedButton } from "@/components/ui/raised-button";
 
 export default function PublishWorkflowCTA() {
+  const docsBaseUrl =
+    process.env.NODE_ENV === "development"
+      ? "http://localhost:3001"
+      : "https://docs.heygaia.io";
+
   return (
     <div className="mx-auto mt-20 max-w-7xl rounded-4xl bg-black p-6 py-20 text-center relative overflow-hidden outline-zinc-900 outline-2">
       <Image
@@ -18,7 +23,7 @@ export default function PublishWorkflowCTA() {
           Build and share your automation ideas with the GAIA community
         </p>
         <a
-          href={`${typeof window !== "undefined" && window.location.hostname === "localhost" ? "http://localhost:3001" : "https://docs.heygaia.io"}/guides/marketplace`}
+          href={`${docsBaseUrl}/guides/marketplace`}
           target="_blank"
           rel="noopener noreferrer"
         >

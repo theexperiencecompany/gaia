@@ -12,7 +12,6 @@ import { escapeXml } from "@/lib/sitemapXml";
  */
 export async function GET() {
   const baseUrl = getSiteUrl();
-  const lastmod = new Date().toISOString();
 
   const images = BRAND_IMAGE_ASSETS.map((asset) =>
     [
@@ -28,7 +27,6 @@ export async function GET() {
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>${escapeXml(`${baseUrl}${BRAND_PAGE_PATH}`)}</loc>
-    <lastmod>${lastmod}</lastmod>
 ${images}
   </url>
 </urlset>`;
