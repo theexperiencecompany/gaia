@@ -8,21 +8,33 @@ import type { ChatMessage } from "./types";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
-function LandingUserBubble({ content }: { content: string }) {
+function LandingUserBubble({
+  content,
+  compact,
+}: {
+  content: string;
+  compact?: boolean;
+}) {
   return (
     <div className="mb-3 flex items-end justify-end gap-3">
       <div className="imessage-bubble imessage-from-me select-none text-sm">
         {content}
       </div>
-      <div className="w-[35px] shrink-0" />
+      {!compact && <div className="w-[35px] shrink-0" />}
     </div>
   );
 }
 
-function ThinkingIndicator() {
+function ThinkingIndicator({ compact }: { compact?: boolean }) {
   return (
     <div className="mb-3 flex items-end gap-3">
-      <div className="relative z-[1] flex h-[35px] w-[35px] items-center justify-center">
+      <div
+        className={
+          compact
+            ? "relative z-[1] flex h-[35px] items-center"
+            : "relative z-[1] flex h-[35px] w-[35px] items-center justify-center"
+        }
+      >
         <MiniWaveSpinner />
       </div>
     </div>
@@ -32,9 +44,13 @@ function ThinkingIndicator() {
 export default function ChatDemo({
   messages,
   minHeight = 220,
+  compact = false,
 }: {
   messages: ChatMessage[];
   minHeight?: number;
+  // Avatar-less variant for tight surfaces (bento cards): no profile photos,
+  // no avatar gutters on either side.
+  compact?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -82,12 +98,12 @@ export default function ChatDemo({
   return (
     <div
       ref={ref}
-      className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900 p-5 text-left"
+      className="flex h-full flex-col overflow-hidden rounded-3xl bg-zinc-900 p-5 text-left"
       style={{ minHeight }}
     >
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 space-y-1 overflow-y-auto no-scrollbar"
+        className={`flex min-h-0 flex-1 flex-col space-y-1 overflow-y-auto no-scrollbar ${compact ? "justify-center" : ""}`}
       >
         {messages.slice(0, visibleCount).map((msg, i) => {
           if (msg.role === "thinking" && i < visibleCount - 1) return null;
@@ -100,11 +116,13 @@ export default function ChatDemo({
               transition={{ duration: 0.35, ease }}
             >
               {msg.role === "user" && (
-                <LandingUserBubble content={msg.content} />
+                <LandingUserBubble content={msg.content} compact={compact} />
               )}
-              {msg.role === "thinking" && <ThinkingIndicator />}
+              {msg.role === "thinking" && (
+                <ThinkingIndicator compact={compact} />
+              )}
               {msg.role === "tools" && msg.tools && (
-                <div className="mb-2 pl-[47px]">
+                <div className={compact ? "mb-2" : "mb-2 pl-[47px]"}>
                   <DemoToolCalls
                     tools={msg.tools}
                     expanded={expandedIds.has(msg.id)}
@@ -113,10 +131,14 @@ export default function ChatDemo({
                 </div>
               )}
               {msg.role === "assistant" && (
-                <SimpleChatBubbleBot>{msg.content}</SimpleChatBubbleBot>
+                <SimpleChatBubbleBot hideAvatar={compact}>
+                  {msg.content}
+                </SimpleChatBubbleBot>
               )}
               {msg.role === "card" && (
-                <div className="mb-3 pl-[47px]">{msg.cardContent}</div>
+                <div className={compact ? "mb-3" : "mb-3 pl-[47px]"}>
+                  {msg.cardContent}
+                </div>
               )}
             </m.div>
           );

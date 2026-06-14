@@ -331,22 +331,27 @@ class TestUpdateOnboardingPreferences:
 
         assert exc_info.value.status_code == 404
 
-    async def test_custom_instructions_trimmed(self, mock_users_collection, sample_user_id):
+    async def test_partial_patch_merges_only_sent_fields(
+        self, mock_users_collection, sample_user_id
+    ):
         updated_doc = {
             "_id": ObjectId(sample_user_id),
             "onboarding": {"preferences": {}},
         }
         mock_users_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
 
-        long_instructions = "x" * 600
-        prefs = OnboardingPreferences(custom_instructions=long_instructions[:500])
+        # Only custom_instructions is provided — a partial save from the Custom
+        # Instructions surface must not touch profession/response_style.
+        prefs = OnboardingPreferences(custom_instructions="Focus on email")
         await update_onboarding_preferences(sample_user_id, prefs)
 
-        call_args = mock_users_collection.find_one_and_update.call_args
-        set_data = call_args[0][1]["$set"]
-        saved_prefs = set_data["onboarding.preferences"]
-        if "custom_instructions" in saved_prefs:
-            assert len(saved_prefs["custom_instructions"]) <= 500
+        set_data = mock_users_collection.find_one_and_update.call_args[0][1]["$set"]
+        # Field-level dotted paths, never a full-object replace, so concurrent
+        # edits from different surfaces can't clobber each other.
+        assert set_data["onboarding.preferences.custom_instructions"] == "Focus on email"
+        assert "onboarding.preferences.profession" not in set_data
+        assert "onboarding.preferences.response_style" not in set_data
+        assert "onboarding.preferences" not in set_data
 
     async def test_generic_exception_returns_500(self, mock_users_collection, sample_user_id):
         mock_users_collection.find_one_and_update = AsyncMock(

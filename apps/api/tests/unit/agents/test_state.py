@@ -78,7 +78,7 @@ class TestCoreState:
         assert state.query == ""
         assert state.messages == []
         assert state.current_datetime is None
-        assert state.mem0_user_id is None
+        assert state.memory_user_id is None
         assert state.memories == []
         assert state.memories_stored is False
         assert state.conversation_id is None
@@ -102,14 +102,14 @@ class TestCoreState:
         state = CoreState(
             query="what time is it",
             current_datetime="2026-03-03T12:00:00",
-            mem0_user_id="user-123",
+            memory_user_id="user-123",
             memories=["likes python"],
             memories_stored=True,
             conversation_id="conv-456",
         )
         assert state.query == "what time is it"
         assert state.current_datetime == "2026-03-03T12:00:00"
-        assert state.mem0_user_id == "user-123"
+        assert state.memory_user_id == "user-123"
         assert state.memories == ["likes python"]
         assert state.memories_stored is True
         assert state.conversation_id == "conv-456"

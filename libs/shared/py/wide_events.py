@@ -130,13 +130,61 @@ class TodoContext(TypedDict, total=False):
 
 
 class MemoryContext(TypedDict, total=False):
-    """Long-term memory operation context."""
+    """Long-term memory operation context.
 
-    operation: str  # "create"|"get_all"|"delete"|"delete_all"
+    Covers the HTTP endpoints, agent tools, and background write/consolidation
+    paths so a single LogQL query can chart memory activity across all three.
+    Always set ``operation`` and (for anything that returns or affects a count)
+    the canonical ``result_count`` — operation-specific counts are additive,
+    never replacements for ``result_count``.
+    """
+
+    # Operation identity — use these exact canonical names:
+    #   read:  "list"|"recall"|"overview"|"tree"|"graph"|"episodes"
+    #          |"recall_episodes"|"recall_transcripts"|"get_documents"
+    #          |"read_document"|"history"
+    #   write: "create"|"update"|"delete"|"delete_all"|"update_document"
+    #   background: "retain"|"consolidate"|"vfs_sync"
+    operation: str
+    source_type: str  # retain: "conversation"|"email"|"manual"|...
     memory_id: str
+    new_memory_id: str  # update → superseding entry id
     content_length: int
-    result_count: int
+    query: str
+    category: str
+    doc_type: str
+    version: int
+    page: int
+    page_size: int
+    start: str
+    end: str
     success: bool
+    error_type: str  # exception class name on failure
+    # Canonical result metric — set for every op that returns/affects a count.
+    result_count: int
+    # Operation-specific counts (additive; do not replace result_count).
+    total_memories: int
+    total_count: int
+    nodes: int
+    edges: int
+    deleted_count: int
+    versions: int
+    # recall retrieval diagnostics (which leg produced candidates).
+    ann_hits: int
+    fts_hits: int
+    candidate_count: int
+    # retain/consolidate write-path outcome.
+    facts_extracted: int
+    episode_entries: int
+    entities_linked: int
+    edges_added: int
+    new_count: int
+    updated_count: int
+    extended_count: int
+    duplicate_count: int
+    doc_types: list[str]
+    outcomes: dict[str, str]  # consolidation: {doc_type: "rewritten"|"failed"}
+    timings: dict[str, float]  # per-stage latency buckets (ms)
 
 
 class CalendarContext(TypedDict, total=False):

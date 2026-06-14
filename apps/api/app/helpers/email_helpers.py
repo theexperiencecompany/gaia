@@ -10,8 +10,9 @@ import html2text
 from app.agents.memory.profile_extractor import PLATFORM_CONFIG
 from app.agents.prompts.email_filter_prompts import EMAIL_MEMORY_EXTRACTION_PROMPT
 from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
+from app.constants.memory import MemorySourceType
 from app.db.mongodb.collections import users_collection
-from app.services.memory_service import memory_service
+from app.memory.engine import memory_engine
 from shared.py.wide_events import log
 
 # HTML to text converter
@@ -110,28 +111,25 @@ def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
     return processed, failed_count
 
 
-async def store_emails_to_mem0(
+async def store_emails_to_memory(
     user_id: str,
     processed_emails: list[dict],
     user_name: str | None = None,
     user_email: str | None = None,
-    async_mode: bool = True,
 ) -> None:
     """
-    Store email batch to Mem0.
+    Ingest an email batch into the memory engine.
 
     Args:
         user_id: User ID
         processed_emails: List of processed email dicts
         user_name: User's name (optional)
         user_email: User's email (optional)
-        async_mode: If True, Mem0 queues in background (fast). If False, waits for completion (slower but guaranteed)
     """
     if not processed_emails:
         return
 
     try:
-        # Build messages for Mem0
         messages = [
             {
                 "role": "user",
@@ -149,40 +147,25 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
         if not messages:
             return
 
-        # Build user context
         user_context = _build_user_context(user_name, user_email)
 
-        # Store with configurable async_mode
-        t0_mem0 = time.monotonic()
-        success = await memory_service.store_memory_batch(
-            messages=messages,
-            user_id=user_id,
-            metadata={
-                "timestamp": datetime.now(UTC).isoformat(),
-                "source": "gmail_batch",
-                "batch_size": len(messages),
-                "user_name": user_name,
-                "user_email": user_email,
-            },
-            async_mode=async_mode,
-            custom_instructions=f"{user_context}\n\n{EMAIL_MEMORY_EXTRACTION_PROMPT}",
+        t0_store = time.monotonic()
+        result = await memory_engine.retain(
+            user_id,
+            messages,
+            source_type=MemorySourceType.EMAIL,
+            extraction_hints=f"{user_context}\n\n{EMAIL_MEMORY_EXTRACTION_PROMPT}",
+            user_name=user_name,
         )
-        mem0_elapsed = time.monotonic() - t0_mem0
+        store_elapsed = time.monotonic() - t0_store
 
-        mode_str = "async queue" if async_mode else "synchronously"
-        if success:
-            log.info(
-                f"[timing] Mem0 store_memory_batch ({len(messages)} emails, {mode_str}): "
-                f"{mem0_elapsed:.1f}s — OK"
-            )
-        else:
-            log.warning(
-                f"[timing] Mem0 store_memory_batch ({len(messages)} emails, {mode_str}): "
-                f"{mem0_elapsed:.1f}s — FAILED"
-            )
+        log.info(
+            f"[timing] Memory retain ({len(messages)} emails): {store_elapsed:.1f}s — "
+            f"{result.facts_extracted} facts extracted"
+        )
 
     except Exception as e:
-        log.error(f"Error storing batch to Mem0: {e}")
+        log.error(f"Error storing email batch to memory: {e}")
         # Don't re-raise - we want to continue processing other batches
 
 
@@ -212,7 +195,6 @@ async def store_single_profile(
     profile_url: str,
     content: str,
     user_name: str | None = None,
-    async_mode: bool = True,
 ) -> None:
     """
     Store a single social profile to memory.
@@ -223,23 +205,21 @@ async def store_single_profile(
         profile_url: Profile URL
         content: Crawled profile content
         user_name: User's name (optional)
-        async_mode: If True, Mem0 queues in background. If False, waits for completion
     """
     try:
         memory_content = f"User's {platform} profile: {profile_url} {content}"
 
-        await memory_service.store_memory_batch(
-            messages=[{"role": "user", "content": memory_content}],
-            user_id=user_id,
-            metadata={
-                "type": "social_profile",
-                "platform": platform,
-                "url": profile_url,
-                "source": "gmail_extraction",
-                "discovered_at": datetime.now(UTC).isoformat(),
-                "user_name": user_name,
-            },
-            async_mode=async_mode,
+        await memory_engine.retain(
+            user_id,
+            [{"role": "user", "content": memory_content}],
+            source_type=MemorySourceType.EMAIL,
+            source_id=profile_url,
+            extraction_hints=(
+                f"This is the user's own {platform} profile, discovered during email "
+                "onboarding. Extract durable facts about the user: their handle, bio, "
+                "role, projects, interests, and location."
+            ),
+            user_name=user_name,
         )
         log.info(f"Stored {platform} profile to memory: {profile_url}")
     except Exception as e:

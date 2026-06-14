@@ -219,7 +219,7 @@ GAIA can "crystallize" conversation patterns into persistent, automated agents.
 
 I have a persistent memory that processes experiences into knowledge.
 
-**Context Injection:** When you send me a message, I query my vector store (Mem0) for relevant past interactions and inject them into the system prompt, giving me immediate awareness of your preferences.
+**Context Injection:** When you send me a message, I run a hybrid search over my memory engine (semantic vectors in ChromaDB plus full-text retrieval, fused and reranked) for relevant past interactions and inject them into the system prompt, giving me immediate awareness of your preferences.
 
 **Background Learning:** A dedicated learning process runs in the background of every conversation, extracting "facts" and "skills" to reinforce my knowledge without slowing down the chat.
 
