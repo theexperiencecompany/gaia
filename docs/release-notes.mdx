@@ -8,6 +8,122 @@ rss: true
   <img src="/images/changelog/release-notes-hero.png" alt="GAIA release notes" />
 </Frame>
 
+<Update label="Jun 14, 2026" description="API, Web, CLI">
+
+![GAIA memory graph](/images/changelog/release-jun-14-2026.webp)
+
+# A New Memory Engine
+
+GAIA's memory now runs entirely on our own infrastructure. We replaced the third-party memory service with a custom engine built on Postgres, Chroma, and Redis with local embedding and reranking models, so what GAIA learns about you never leaves our stack.
+
+## [API v0.19.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.19.0)
+
+### Features
+- **Local Memory Engine**: Rebuilt memory from the ground up as a fully local engine, replacing the previous cloud memory provider. Recall makes no external calls on the read path, so it is faster and more private.
+- **Four Kinds of Memory**: GAIA now organizes what it learns into facts filed in folders, a dated journal of what happened over time, auto-maintained core documents about you, and an entity graph of the people, tools, and projects in your life. See the [memory guide](/guides/memory) for how each one works.
+- **Sharper Recall**: Hybrid semantic and keyword search with local reranking surfaces the right memory even when your request never names it directly.
+- **Memory Tools for the Agent**: GAIA can search your memory, journal, and past conversations, and add, update, or forget specific facts on request, each shown inline as a card in chat.
+- **Conflict-Aware Updates**: When new information replaces something GAIA already knew, it updates the fact and keeps a version history instead of piling up duplicates.
+
+## [Web v0.20.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.20.0)
+
+### Features
+- **Redesigned Memory Settings**: A new memory page with Folders, Documents, Graph, Journal, and All views, so you can see exactly what GAIA knows and how it is organized.
+- **Entity Graph View**: Explore the network of people, tools, and projects GAIA has connected, and jump from any node to the memories behind it.
+- **Memory Journal**: A collapsible, day-by-day timeline of what GAIA recorded over time.
+- **Version History**: See how a memory changed across updates, and delete anything you don't want GAIA to keep.
+- **Email Previews with Avatars**: Email addresses in chat now show the person's name and photo, pulled from your contacts.
+
+## [CLI v0.4.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.4.0)
+
+### Improvements
+- **Self-Hosted Memory**: Self-hosting now runs the local memory engine out of the box, with no external memory service to configure.
+</Update>
+
+<Update label="Jun 13, 2026" description="API, Web, Mobile, Bots, CLI">
+
+# Code Sandbox, Hey GAIA Wake Word & Richer Bots
+
+## [API v0.18.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.18.0)
+
+### Features
+- **Code Sandbox**: Agents now run code in an isolated sandbox environment, making data analysis, scripting, and file generation safer and more reliable.
+- **Self-Managing Agent Workspace**: GAIA maintains its own working files across a task, so multi-step work carries context from one step to the next.
+- **Notification Tools**: Agents can proactively send you notifications when something needs your attention.
+- **Agent-Generated Files**: GAIA can create files during a task and deliver them straight to you, including over Discord, Slack, Telegram, and WhatsApp.
+- **GAIA Self-Knowledge**: A dedicated subagent lets GAIA answer questions about its own features and how to use them.
+- **Per-Integration Custom Instructions**: Add your own instructions to any connected integration to tailor how GAIA uses it.
+- **Quick Actions and Community Workflows**: Refreshed quick actions plus a seeded set of community workflows to start from.
+
+### Bug Fixes
+- **Overdue Reminders**: Reminders that fell past due are now settled and re-armed correctly instead of being skipped.
+- **Disconnected Integrations**: Logged-in users are no longer shown a login prompt when an integration simply needs reconnecting.
+- **MCP Connections**: More resilient MCP sessions with transparent reconnects and instant OAuth.
+- **Web Research**: Prevented fabricated URLs in web search and improved deep research result quality.
+- **Workflows and Todos**: Fixes across workflow execution, recurrence, and tracked todos.
+- **Security**: Patched six high-confidence vulnerabilities found during a security audit.
+
+### Performance
+- **Lower Chat Cost**: Byte-stable prompt caching cut chat-stream input cost by roughly 46% with more accurate billing.
+- **Leaner Backend**: Reduced backend memory usage by dropping unused heavy dependencies.
+
+---
+
+
+## [Web v0.19.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.19.0)
+
+### Features
+- **What's New in the App**: A new sidebar card and settings timeline surface the latest release notes right inside GAIA.
+- **Redesigned Chat**: A cleaner chat interface with less clutter and snappier interactions.
+- **Revamped Onboarding**: A rebuilt onboarding flow with a guided intelligence pipeline and a smoother card reveal sequence.
+- **Hey GAIA Wake Word**: On-device "Hey GAIA" detection so you can start a conversation hands-free.
+- **Todo Link Previews**: Links in todo titles now show inline favicons for quick context.
+- **Landing Page Overhaul**: Updated copy, navbar, pricing, comparison grid, and a live iPhone chat demo.
+
+### Bug Fixes
+- **Integration Reconnect**: Logged-in users no longer see a login modal when an integration needs reconnecting.
+- **Workflow Schedules**: Schedule chips on workflow cards now show times in your own timezone.
+- **Desktop Downloads**: Download links now always resolve to the latest desktop release.
+
+### Performance
+- **Faster Landing Page**: Largest Contentful Paint on the landing page dropped from about 6s to 0.47s.
+
+---
+
+
+## [Mobile v0.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.6.0)
+
+### Features
+- **Redesigned Chat**: The mobile chat interface picks up the same cleaner, faster redesign as the web app.
+- **Hey GAIA Wake Word**: On-device "Hey GAIA" detection for hands-free use on the go.
+- **Notification Tools and Agent Files**: GAIA can send you proactive notifications and deliver generated files on mobile.
+
+### Bug Fixes
+- **Android Stability**: Fixed an audio playback crash on Android.
+
+---
+
+
+## [Bots v1.4.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.4.0)
+
+### Features
+- **Media and Voice on WhatsApp and Telegram**: Send and receive images and voice messages directly in your bot conversations.
+- **Agent-Generated Files**: Files GAIA creates during a task are now delivered straight into your bot chat.
+- **Proactive Bot Messages**: Background tasks and notifications can reach you on your connected bot platforms.
+
+### Bug Fixes
+- **WhatsApp Polish**: A more reliable typing indicator and welcome message.
+- **Long Messages**: Long replies are split cleanly across multiple message bubbles.
+
+---
+
+
+## [CLI v0.3.1](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.3.1)
+
+### Bug Fixes
+- **Self-Hosting Reliability**: Fixes for self-host setup and non-interactive terminals, uncovered during end-to-end VM testing.
+</Update>
+
 <Update label="Apr 5, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
 
 # WhatsApp Bot, MCP Apps Builder & Deep Research
