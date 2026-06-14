@@ -20,9 +20,11 @@ The yielded object is a live `AsyncSandbox` from `e2b`.
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import AsyncIterator
 import contextlib
 from datetime import UTC, datetime
+from pathlib import Path
 import time
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -53,7 +55,13 @@ from app.services.storage import (
 from shared.py.wide_events import log
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
-MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"
+MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"  # template-baked copy (runtime-ship fallback)
+# The API ships its OWN copy of mount_juicefs.sh into the sandbox at acquire time
+# (see _run_mount_script), so changes to the mount script take effect on the next
+# sandbox without an E2B template rebuild. Timeout covers the in-script
+# mount-readiness poll (primary + skills + system, ~105s worst case) plus margin.
+MOUNT_SCRIPT_FILE = Path(__file__).resolve().parents[3] / "scripts" / "mount_juicefs.sh"
+MOUNT_SCRIPT_TIMEOUT_SECONDS = 120
 SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
 
 
@@ -177,25 +185,36 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
 
 
 async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
-    """Run the bundled mount script that mounts JuiceFS + bind-mounts /workspace.
+    """Run the JuiceFS mount script in the sandbox as root.
 
-    The mount itself is best-effort inside the script: if the JuiceFS
-    metadata DB or R2 isn't reachable from the sandbox, the script falls
-    back to a plain ``/workspace`` directory and exits 0. We only raise here
-    if the script genuinely crashed (couldn't even fall back).
+    Ships the API's CURRENT copy of ``mount_juicefs.sh`` at acquire time
+    (base64 -> ``bash -s``) instead of executing the copy baked into the E2B
+    template, so changes to the mount script take effect on the next sandbox
+    without rebuilding the template. The script body is not secret and rides in
+    argv; the credentials stay in ``envs`` (never in argv), and nothing is
+    written to a sandbox file that root then executes. Falls back to the
+    template-baked copy if the API's own file is unreadable.
+
+    The mount itself is best-effort inside the script: if the JuiceFS metadata
+    DB or R2 isn't reachable, the script falls back to a plain ``/workspace``
+    and exits 0. We only raise here if the script genuinely crashed.
 
     ``user="root"`` makes e2b's envd fork the process directly as root, with
-    ``envs=mount_env`` set on that root process's environment. The
-    unprivileged sandbox user never holds the credentials — no
-    ``sudo --preserve-env`` shell is involved, so there is no parent-shell
-    environ race window. The sandbox user has no `sudo` (template removes
-    them from the `sudo` group), so root's ``/proc/<pid>/environ`` stays
-    inaccessible.
+    ``envs=mount_env`` set on that root process's environment. The unprivileged
+    sandbox user never holds the credentials (no ``sudo --preserve-env`` shell,
+    no parent-shell environ race), and has no ``sudo``, so root's
+    ``/proc/<pid>/environ`` stays inaccessible.
     """
+    try:
+        script = await asyncio.to_thread(MOUNT_SCRIPT_FILE.read_bytes)
+        b64 = base64.b64encode(script).decode("ascii")
+        cmd = f"printf %s '{b64}' | base64 -d | bash -s"
+    except OSError:
+        cmd = MOUNT_SCRIPT_PATH
     async with fs_timer(FsOps.SBX_MOUNT_SCRIPT):
         result = await sbx.commands.run(
-            MOUNT_SCRIPT_PATH,
-            timeout=60,
+            cmd,
+            timeout=MOUNT_SCRIPT_TIMEOUT_SECONDS,
             envs=mount_env,
             user="root",
         )
