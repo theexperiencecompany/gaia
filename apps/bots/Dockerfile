@@ -9,8 +9,12 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 
-# Copy workspace config
+# Copy workspace config + pnpm patch files. The patch sources must travel
+# with the patchedDependencies declared in package.json/pnpm-lock.yaml —
+# pnpm hashes every patch during --frozen-lockfile, even for deps this bot
+# doesn't use. Copying the whole dir auto-includes any future patch.
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY patches ./patches
 
 # Copy shared lib (bundled into output by tsup) and the target bot
 COPY libs/shared/ts ./libs/shared/ts
