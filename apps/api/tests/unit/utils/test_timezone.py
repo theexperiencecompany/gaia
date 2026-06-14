@@ -23,7 +23,6 @@ from app.utils.timezone import (
     is_valid_timezone,
     is_within_local_daytime,
     resolve_home_timezone,
-    user_time_from_config,
 )
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -325,29 +324,6 @@ class TestHomeTimezoneFromConfig:
 
     def test_missing_configurable_is_utc(self) -> None:
         assert home_timezone_from_config({}).is_utc
-
-
-@pytest.mark.unit
-class TestUserTimeFromConfig:
-    def test_iso_with_offset_normalized_to_utc(self) -> None:
-        cfg = {"configurable": {"user_time": "2026-06-13T09:00:00+05:30"}}
-        result = user_time_from_config(cfg)
-        assert result.tzinfo == UTC
-        assert (result.hour, result.minute) == (3, 30)  # 09:00 IST == 03:30 UTC
-
-    def test_z_suffix_parsed(self) -> None:
-        result = user_time_from_config({"configurable": {"user_time": "2026-06-13T09:00:00Z"}})
-        assert result.tzinfo == UTC and result.hour == 9
-
-    def test_naive_iso_assumed_utc(self) -> None:
-        result = user_time_from_config({"configurable": {"user_time": "2026-06-13T09:00:00"}})
-        assert result.tzinfo == UTC and result.hour == 9
-
-    def test_missing_returns_now_utc(self) -> None:
-        assert user_time_from_config({"configurable": {}}).tzinfo == UTC
-
-    def test_garbage_returns_now_utc(self) -> None:
-        assert user_time_from_config({"configurable": {"user_time": "not-a-date"}}).tzinfo == UTC
 
 
 # ---------------------------------------------------------------------------

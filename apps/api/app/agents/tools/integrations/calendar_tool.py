@@ -10,9 +10,8 @@ in {successful, data, error} format automatically.
 
 import asyncio
 import concurrent.futures
-from datetime import UTC, date, datetime, timedelta, timezone, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
-import zoneinfo
 
 from composio import Composio
 from langgraph.config import get_config, get_stream_writer
@@ -46,7 +45,7 @@ from app.templates.docstrings.calendar_tool_docs import (
 )
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
-from app.utils.timezone import Timezone
+from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
 
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
@@ -104,21 +103,15 @@ def _get_user_id(auth_credentials: dict[str, Any]) -> str:
 
 
 def _get_user_timezone() -> tzinfo | None:
-    """User's timezone from the LangGraph RunnableConfig, or None if absent.
+    """User's home timezone from the LangGraph RunnableConfig, or None if absent.
 
     None (not UTC) is deliberate: the caller leaves an event time naive when the
     config carries no zone, so Google interprets it in the calendar's own zone.
     """
     try:
-        configurable = get_config().get("configurable", {})
-
-        user_timezone_str = configurable.get("user_timezone")
-        if user_timezone_str:
-            return Timezone.parse(user_timezone_str).tzinfo
-
-        user_time_str = configurable.get("user_time")
-        if user_time_str:
-            return datetime.fromisoformat(user_time_str).tzinfo
+        config = get_config()
+        if (config.get("configurable") or {}).get("user_timezone"):
+            return home_timezone_from_config(config).tzinfo
     except Exception:
         log.error("Error getting user timezone")
     return None
@@ -176,14 +169,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         except Exception:
             user_timezone = None
 
-        tz: zoneinfo.ZoneInfo | timezone = UTC
-        try:
-            if user_timezone:
-                tz = zoneinfo.ZoneInfo(user_timezone)
-            else:
-                user_timezone = "UTC"
-        except Exception:
-            user_timezone = "UTC"
+        # Timezone.parse is offset-safe (a stored ±HH:MM home zone makes
+        # zoneinfo.ZoneInfo raise) and normalizes None/blank to UTC.
+        home_tz = Timezone.parse(user_timezone)
+        tz = home_tz.tzinfo
+        user_timezone = home_tz.value
 
         now = datetime.now(tz)
         if request.date:
@@ -569,7 +559,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             if event.create_meeting_room:
                 body["conferenceData"] = {
                     "createRequest": {
-                        "requestId": f"meet_{index}_{int(datetime.now().timestamp())}",
+                        "requestId": f"meet_{index}_{int(datetime.now(UTC).timestamp())}",
                         "conferenceSolutionKey": {"type": "hangoutsMeet"},
                     }
                 }

@@ -348,7 +348,7 @@ class TestFileContext:
                 currently_uploaded_file_ids=["f1"],
             )
 
-        mock_files.assert_called_once_with(files_data, ["f1"])
+        mock_files.assert_called_once_with(files_data, ["f1"], None)
         assert "Uploaded Files" in result[-1].content
         assert result[-1].content.startswith("check this")
 

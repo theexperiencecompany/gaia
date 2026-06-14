@@ -11,7 +11,6 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 """
 
 import asyncio
-from datetime import datetime
 import re
 import time
 from typing import Annotated
@@ -532,13 +531,10 @@ async def handoff(
             "email": configurable.get("email"),
             "name": configurable.get("user_name"),
         }
-        user_time_str = configurable.get("user_time", "")
-        user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
 
         subagent_config = build_agent_config(
             conversation_id=thread_id,
             user=user,
-            user_time=user_time,
             thread_id=subagent_thread_id,
             base_configurable=configurable,
             agent_name=agent_name,

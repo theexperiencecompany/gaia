@@ -181,10 +181,12 @@ class CreateReminderToolRequest(BaseModel):
             "scheduled_at / timezone_offset are ignored."
         ),
     )
-    user_time: str = Field(..., description="User's current time for timezone handling")
     home_timezone: str | None = Field(
         None,
-        description="User's home timezone (IANA) the recurrence runs in; defaults the schedule zone.",
+        description=(
+            "User's home timezone (IANA or ±HH:MM) — the zone absolute clock times "
+            "are interpreted in and the recurrence runs in. None falls back to UTC."
+        ),
     )
 
     @field_validator("repeat")
@@ -220,31 +222,28 @@ class CreateReminderToolRequest(BaseModel):
         return v
 
     def to_create_reminder_request(self) -> "CreateReminderRequest":
-        """Convert to CreateReminderRequest with proper datetime handling."""
-        # Extract user's timezone from user_time
-        user_datetime = datetime.fromisoformat(self.user_time)
-        user_timezone = user_datetime.tzinfo if user_datetime.tzinfo else UTC
+        """Convert to CreateReminderRequest with proper datetime handling.
+
+        Absolute clock times with no explicit offset are interpreted in the
+        user's HOME zone (IANA, DST-aware); relative delays are measured from
+        the server's current instant. The agent never does timezone math.
+        """
+        home_tz = Timezone.parse(self.home_timezone)
 
         processed_scheduled_at = None
         if self.delay_seconds is not None:
-            # Relative reminder ("in N minutes/seconds"): compute from the
-            # authoritative current time so the LLM never does timezone math.
-            # user_datetime is tz-aware, so adding a delta preserves the instant.
-            processed_scheduled_at = user_datetime + timedelta(seconds=self.delay_seconds)
+            # Relative reminder ("in N minutes/seconds"): the absolute instant is
+            # simply now + delay, independent of any zone.
+            processed_scheduled_at = datetime.now(UTC) + timedelta(seconds=self.delay_seconds)
         elif self.scheduled_at:
             try:
-                # Parse the datetime string
                 dt = datetime.fromisoformat(self.scheduled_at.replace(" ", "T"))
-
-                # Handle timezone based on the rules
-                if self.timezone_offset:
-                    # User explicitly provided timezone - create timezone from offset
-                    processed_scheduled_at = dt.replace(
-                        tzinfo=Timezone.parse(self.timezone_offset).tzinfo
-                    )
-                else:
-                    processed_scheduled_at = dt.replace(tzinfo=user_timezone)
-
+                tzinfo = (
+                    Timezone.parse(self.timezone_offset).tzinfo
+                    if self.timezone_offset
+                    else home_tz.tzinfo
+                )
+                processed_scheduled_at = dt.replace(tzinfo=tzinfo)
             except ValueError as e:
                 raise ValueError(
                     f"Invalid scheduled_at format: {self.scheduled_at}. Use YYYY-MM-DD HH:MM:SS format. Error: {e}"
@@ -253,34 +252,21 @@ class CreateReminderToolRequest(BaseModel):
         processed_stop_after = None
         if self.stop_after:
             try:
-                # Parse the datetime string
                 dt = datetime.fromisoformat(self.stop_after.replace(" ", "T"))
-
-                # Handle timezone based on the rules
-                if self.stop_after_timezone_offset:
-                    # User explicitly provided timezone - create timezone from offset
-                    processed_stop_after = dt.replace(
-                        tzinfo=Timezone.parse(self.stop_after_timezone_offset).tzinfo
-                    )
-                else:
-                    # Absolute time with no explicit timezone - use user's timezone
-                    processed_stop_after = dt.replace(tzinfo=user_timezone)
-
+                tzinfo = (
+                    Timezone.parse(self.stop_after_timezone_offset).tzinfo
+                    if self.stop_after_timezone_offset
+                    else home_tz.tzinfo
+                )
+                processed_stop_after = dt.replace(tzinfo=tzinfo)
             except ValueError as e:
                 raise ValueError(
                     f"Invalid stop_after format: {self.stop_after}. Use YYYY-MM-DD HH:MM:SS format. Error: {e}"
                 )
 
-        # Recurrence runs in the user's zone. Prefer an explicitly stated offset,
-        # else the offset carried by the user's current time (the tool only has
-        # the user's home zone (IANA, DST-aware) from the agent config; else the
-        # offset carried by the user's current time (DST-naive last resort).
-        user_tz = Timezone.of_offset(user_datetime)
-        reminder_timezone = (
-            self.timezone_offset
-            or self.home_timezone
-            or (user_tz.value if user_tz is not None else None)
-        )
+        # Recurrence wall-clock zone: an explicitly stated offset wins, else the
+        # user's home zone (None only if the agent config had no zone -> UTC).
+        reminder_timezone = self.timezone_offset or self.home_timezone
 
         return CreateReminderRequest(
             agent=self.agent,

@@ -209,6 +209,37 @@ class TestGetNextRunTime:
         )
         assert fixed_after.hour == 14
 
+    def test_dst_cross_boundary_fire_uses_target_period_offset(self) -> None:
+        # Regression: croniter handed a tz-aware base carried the base's UTC
+        # offset forward, so a fire landing in a DIFFERENT DST period came out an
+        # hour off (a summer "now" computing a winter 9 AM gave 15:00Z, not
+        # 14:00Z). The fire must use the offset of its OWN date.
+        ny = Timezone.parse("America/New_York")
+        # Summer base (EDT) -> next 9 AM Jan 1 is EST = 14:00 UTC.
+        winter_fire = get_next_run_time(
+            "0 9 1 1 *", base_time=datetime(2025, 6, 15, 12, 0, tzinfo=UTC), tz=ny
+        )
+        assert winter_fire.hour == 14
+        # Winter base (EST) -> next 9 AM Jul 1 is EDT = 13:00 UTC.
+        summer_fire = get_next_run_time(
+            "0 9 1 7 *", base_time=datetime(2025, 1, 15, 12, 0, tzinfo=UTC), tz=ny
+        )
+        assert summer_fire.hour == 13
+        # A fixed offset is DST-naive: both fires stay at the same UTC hour.
+        fixed = Timezone.parse("-05:00")
+        assert (
+            get_next_run_time(
+                "0 9 1 1 *", base_time=datetime(2025, 6, 15, 12, 0, tzinfo=UTC), tz=fixed
+            ).hour
+            == 14
+        )
+        assert (
+            get_next_run_time(
+                "0 9 1 7 *", base_time=datetime(2025, 1, 15, 12, 0, tzinfo=UTC), tz=fixed
+            ).hour
+            == 14
+        )
+
 
 # ---------------------------------------------------------------------------
 # calculate_next_occurrences

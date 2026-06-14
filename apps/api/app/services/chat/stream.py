@@ -12,7 +12,6 @@ on completion, even if the client disconnects mid-stream.
 
 import asyncio
 import contextlib
-from datetime import datetime
 import json
 from typing import Any
 from uuid import uuid4
@@ -54,7 +53,6 @@ async def run_chat_stream_background(
     stream_id: str,
     body: MessageRequestWithHistory,
     user: dict,
-    user_time: datetime,
     conversation_id: str,
     source: str | None = None,
     start_event: asyncio.Event | None = None,
@@ -73,7 +71,6 @@ async def run_chat_stream_background(
             stream_id=stream_id,
             body=body,
             user=user,
-            user_time=user_time,
             conversation_id=conversation_id,
             source=source,
             start_event=start_event,
@@ -121,7 +118,6 @@ async def _run_chat_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
     user: dict,
-    user_time: datetime,
     conversation_id: str,
     source: str | None = None,
     start_event: asyncio.Event | None = None,
@@ -172,7 +168,6 @@ async def _run_chat_stream(
         description_task = await _consume_agent_stream(
             body,
             user,
-            user_time,
             conversation_id,
             stream_id,
             source,
@@ -314,7 +309,6 @@ async def _publish_init_chunk(
 async def _consume_agent_stream(
     body: MessageRequestWithHistory,
     user: dict,
-    user_time: datetime,
     conversation_id: str,
     stream_id: str,
     source: str | None,
@@ -331,7 +325,6 @@ async def _consume_agent_stream(
         request=body,
         user=user,
         conversation_id=conversation_id,
-        user_time=user_time,
         usage_metadata_callback=usage_callback,
         stream_id=stream_id,
         user_message_id=state.user_message_id,

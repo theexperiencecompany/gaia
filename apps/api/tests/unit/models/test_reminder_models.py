@@ -237,7 +237,7 @@ class TestCreateReminderToolRequest:
     def _base_data(self, **overrides) -> dict:
         data: dict[str, Any] = {
             "payload": {"title": "Reminder", "body": "Don't forget"},
-            "user_time": "2025-06-01T10:00:00+05:30",
+            "home_timezone": "Asia/Kolkata",
         }
         data.update(overrides)
         return data
@@ -294,7 +294,7 @@ class TestCreateReminderToolRequestConversion:
     def _base_data(self, **overrides) -> dict:
         data: dict[str, Any] = {
             "payload": {"title": "Reminder", "body": "Don't forget"},
-            "user_time": "2025-06-01T10:00:00+05:30",
+            "home_timezone": "Asia/Kolkata",
         }
         data.update(overrides)
         return data
@@ -306,11 +306,15 @@ class TestCreateReminderToolRequestConversion:
         assert result.scheduled_at is None
         assert result.stop_after is None
 
-    def test_conversion_with_scheduled_at_user_tz(self):
+    def test_conversion_with_scheduled_at_home_tz(self):
         m = CreateReminderToolRequest(**self._base_data(scheduled_at="2030-06-15 09:00:00"))
         result = m.to_create_reminder_request()
         assert result.scheduled_at is not None
         assert result.scheduled_at.tzinfo is not None  # type: ignore[union-attr]
+        # No explicit offset -> interpreted in the home zone (Asia/Kolkata, +05:30).
+        assert result.scheduled_at.utcoffset() == timedelta(  # type: ignore[union-attr]
+            hours=5, minutes=30
+        )
 
     def test_conversion_with_explicit_tz_offset(self):
         m = CreateReminderToolRequest(
@@ -324,11 +328,15 @@ class TestCreateReminderToolRequestConversion:
         offset = result.scheduled_at.utcoffset()  # type: ignore[union-attr]
         assert offset == timedelta(hours=-8)
 
-    def test_conversion_with_stop_after_user_tz(self):
+    def test_conversion_with_stop_after_home_tz(self):
         m = CreateReminderToolRequest(**self._base_data(stop_after="2030-12-31 23:59:59"))
         result = m.to_create_reminder_request()
         assert result.stop_after is not None
         assert result.stop_after.tzinfo is not None  # type: ignore[union-attr]
+        # No explicit offset -> interpreted in the home zone (Asia/Kolkata, +05:30).
+        assert result.stop_after.utcoffset() == timedelta(  # type: ignore[union-attr]
+            hours=5, minutes=30
+        )
 
     def test_conversion_with_stop_after_explicit_tz(self):
         m = CreateReminderToolRequest(
@@ -364,16 +372,29 @@ class TestCreateReminderToolRequestConversion:
         with pytest.raises(ValueError, match="Invalid stop_after format"):
             m.to_create_reminder_request()
 
-    def test_conversion_user_time_utc_fallback(self):
-        """When user_time has no timezone, UTC is used."""
+    def test_conversion_no_home_timezone_utc_fallback(self):
+        """When no home_timezone is provided, absolute clock times fall back to UTC."""
         m = CreateReminderToolRequest(
             payload=StaticReminderPayload(title="T", body="B"),
-            user_time="2025-06-01T10:00:00",
             scheduled_at="2030-06-15 09:00:00",
         )
         result = m.to_create_reminder_request()
         assert result.scheduled_at is not None
         assert result.scheduled_at.tzinfo == UTC  # type: ignore[union-attr]
+
+    def test_conversion_delay_seconds_uses_server_now(self):
+        """A relative delay computes now (server) + delay_seconds, tz-aware in the future."""
+        before = datetime.now(UTC)
+        m = CreateReminderToolRequest(**self._base_data(delay_seconds=60))
+        result = m.to_create_reminder_request()
+        after = datetime.now(UTC)
+
+        assert result.scheduled_at is not None
+        assert result.scheduled_at.tzinfo is not None  # type: ignore[union-attr]
+        # ~now + 60s, allowing for the elapsed wall-clock during the call.
+        assert (
+            before + timedelta(seconds=60) <= result.scheduled_at <= after + timedelta(seconds=60)
+        )
 
 
 # ---------------------------------------------------------------------------

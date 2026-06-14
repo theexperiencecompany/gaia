@@ -24,8 +24,8 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.reminder_tool"
 
 
-def _cfg(user_id: str = FAKE_USER_ID, user_time: str = "2026-03-20T10:00:00") -> dict[str, Any]:
-    return {"configurable": {"user_id": user_id, "user_time": user_time}}
+def _cfg(user_id: str = FAKE_USER_ID, user_timezone: str = "Asia/Kolkata") -> dict[str, Any]:
+    return {"configurable": {"user_id": user_id, "user_timezone": user_timezone}}
 
 
 def _cfg_no_user() -> dict[str, Any]:
@@ -84,15 +84,6 @@ class TestCreateReminderTool:
             config=_cfg_no_user(), payload=payload
         )
         assert result == {"error": "User ID is required to create a reminder"}
-
-    async def test_no_user_time(self) -> None:
-        from app.agents.tools.reminder_tool import create_reminder_tool
-        from app.models.reminder_models import StaticReminderPayload
-
-        payload = StaticReminderPayload(title="Test", body="Body")
-        cfg = {"configurable": {"user_id": FAKE_USER_ID, "user_time": ""}}
-        result = await create_reminder_tool.coroutine(config=cfg, payload=payload)  # type: ignore[attr-defined]
-        assert result == {"error": "User time is required to create a reminder"}
 
     @patch(f"{MODULE}.reminder_scheduler")
     @patch(f"{MODULE}.CreateReminderToolRequest", side_effect=ValueError("Invalid cron"))

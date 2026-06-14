@@ -1656,7 +1656,7 @@ Exact tool names for reminder-related tasks. Use retrieve_tools exact_names para
 — Rule 1: Time and Timezone Handling
 - Always use YYYY-MM-DD HH:MM:SS format for scheduled_at and stop_after
 - Only use timezone_offset when the user EXPLICITLY mentions a timezone
-- If user says "remind me at 3pm" without timezone, use their local time (from user_time in config)
+- If user says "remind me at 3pm" without a timezone, leave timezone_offset unset: the server interprets the time in the user's home zone (shown as User Timezone in your context)
 - Format timezone offset as (+|-)HH:MM (e.g., +05:30 for IST, -08:00 for PST)
 
 — Rule 2: Recurring Reminders with Cron

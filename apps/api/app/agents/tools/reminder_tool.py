@@ -77,10 +77,6 @@ async def create_reminder_tool(
         if not user_id:
             return {"error": "User ID is required to create a reminder"}
 
-        user_time_str: str = config.get("configurable", {}).get("user_time", "")
-        if not user_time_str:
-            return {"error": "User time is required to create a reminder"}
-
         # Create the tool request model which handles all validation and conversion
         tool_request = CreateReminderToolRequest(
             agent=agent,
@@ -92,9 +88,9 @@ async def create_reminder_tool(
             max_occurrences=max_occurrences,
             stop_after=stop_after,
             stop_after_timezone_offset=stop_after_timezone_offset,
-            user_time=user_time_str,
-            # The recurrence runs in the user's HOME zone (agent config), so a
-            # "daily at 9am" reminder fires at 9am home regardless of where they are.
+            # Absolute times and the recurrence run in the user's HOME zone (from
+            # the agent config), so "daily at 9am" fires at 9am home wherever they
+            # are; relative delays are computed from the server's current instant.
             home_timezone=home_timezone_from_config(config).value,
         )
 

@@ -7,7 +7,6 @@ run_executor_background.
 """
 
 import asyncio
-from datetime import datetime
 import json
 from typing import Annotated
 from uuid import uuid4
@@ -45,7 +44,6 @@ _CONFIGURABLE_SCALAR_KEYS = frozenset(
         "email",
         "user_timezone",
         "user_name",
-        "user_time",
         "stream_id",
         "provider",
         "model_name",
@@ -122,7 +120,6 @@ async def _enqueue_task(
             "task": task,
             "task_id": task_id,
             "configurable": safe_configurable,
-            "user_time_str": configurable.get("user_time", ""),
             "conversation_id": conversation_id,
             "user_message_id": user_message_id,
         }
@@ -260,9 +257,6 @@ async def _dispatch_executor(
     # warmup hit get_all_connected_tools() on every executor call and
     # dominated cold-start latency.
 
-    user_time_str = configurable.get("user_time", "")
-    user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
-
     if stream_id:
         mark_executor_spawned(stream_id)
 
@@ -270,7 +264,6 @@ async def _dispatch_executor(
         run_executor_background(
             task=task,
             configurable=configurable,
-            user_time=user_time,
             stream_id=stream_id or "",
             conversation_id=conversation_id,
             task_id=task_id,

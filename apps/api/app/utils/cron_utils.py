@@ -72,14 +72,19 @@ def get_next_run_time(
     # time's own (now tz-aware) zone rather than forcing UTC.
     zone = tz or Timezone.parse(base_time.tzinfo)
     log.set(cron_expr=cron_expr, user_timezone=zone.value)
-    base = base_time.astimezone(zone.tzinfo)
+
+    # Advance the cron over NAIVE local wall-clock, then localize the result to
+    # the zone. A tz-aware base makes croniter carry the base's current UTC
+    # offset forward, so a fire that lands in a different DST period (e.g. a
+    # summer "now" computing a winter fire) comes out an hour off. Stepping the
+    # bare wall-clock and re-localizing lets the zone apply the correct offset
+    # for the fire date (a fixed-offset zone stays DST-naive, by design).
+    base_local = base_time.astimezone(zone.tzinfo).replace(tzinfo=None)
 
     try:
-        cron = croniter(cron_expr, base)
-        next_time: datetime = cron.get_next(datetime)
-        if next_time.tzinfo is None:
-            next_time = next_time.replace(tzinfo=zone.tzinfo)
-        return next_time.astimezone(UTC)
+        cron = croniter(cron_expr, base_local)
+        next_local: datetime = cron.get_next(datetime)
+        return next_local.replace(tzinfo=zone.tzinfo).astimezone(UTC)
     except Exception as e:
         raise CronError(f"Failed to calculate next run time: {e!s}")
 

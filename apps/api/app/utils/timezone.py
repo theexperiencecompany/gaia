@@ -230,23 +230,6 @@ def home_timezone_from_config(config: RunnableConfig) -> Timezone:
     return Timezone.utc()
 
 
-def user_time_from_config(config: RunnableConfig) -> datetime:
-    """The agent's ``user_time`` from a LangGraph config as tz-aware UTC.
-
-    Returns ``datetime.now(UTC)`` when absent/unparseable.
-    """
-    raw = (config.get("configurable") or {}).get("user_time")
-    if raw:
-        try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            return (
-                parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
-            )
-        except (ValueError, AttributeError):
-            pass
-    return datetime.now(UTC)
-
-
 def format_local_time(
     instant: datetime, timezone_name: str | None, fmt: str = "%I:%M %p %Z"
 ) -> str:

@@ -93,7 +93,6 @@ async def _invoke_comms_graph(
         config = build_agent_config(
             conversation_id=conversation_id,
             user=user,
-            user_time=datetime.now(UTC),
             agent_name="comms_agent",
         )
         initial_state = {
@@ -455,11 +454,16 @@ async def _broadcast_bot_message(
 
 
 def _user_from_configurable(configurable: dict[str, Any]) -> dict:
-    """Shape a comms-friendly user dict from the executor's configurable."""
+    """Shape a comms-friendly user dict from the executor's configurable.
+
+    Carries the home timezone forward so the comms re-voicing run reads the
+    user's zone via build_agent_config instead of silently falling back to UTC.
+    """
     return {
         "user_id": configurable.get("user_id", ""),
         "email": configurable.get("email", ""),
         "name": configurable.get("user_name", ""),
+        "timezone": configurable.get("user_timezone"),
     }
 
 
@@ -572,7 +576,6 @@ async def _finalize_executor_run(
 async def _execute_executor(
     task: str,
     configurable: dict[str, Any],
-    user_time: datetime,
     stream_id: str,
 ) -> tuple[str, str]:
     """Run the executor agent graph once. Returns (result_text, result_type).
@@ -585,7 +588,6 @@ async def _execute_executor(
         ctx, error = await prepare_executor_execution(
             task=task,
             configurable=configurable,
-            user_time=user_time,
             stream_id=stream_id,
         )
         if error or ctx is None:
@@ -603,7 +605,6 @@ async def _execute_executor(
 async def run_executor_background(
     task: str,
     configurable: dict[str, Any],
-    user_time: datetime,
     stream_id: str,
     conversation_id: str,
     task_id: str | None = None,
@@ -635,7 +636,7 @@ async def run_executor_background(
     result_type = "final"
 
     try:
-        result_text, result_type = await _execute_executor(task, configurable, user_time, stream_id)
+        result_text, result_type = await _execute_executor(task, configurable, stream_id)
         log.info("Background executor completed", task_id=task_id, stream_id=stream_id)
     finally:
         await _finalize_executor_run(
@@ -685,8 +686,6 @@ async def _process_next_queued_task(conversation_id: str) -> bool:
     task_id = item.get("task_id")
     queued_user_message_id = item.get("user_message_id")
     configurable: dict = item.get("configurable", {})
-    user_time_str: str = item.get("user_time_str", "")
-    user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
 
     queued_stream_id = f"queued_{uuid4()}"
     user_id: str = configurable.get("user_id", "")
@@ -721,7 +720,6 @@ async def _process_next_queued_task(conversation_id: str) -> bool:
         run_executor_background(
             task=task,
             configurable=configurable,
-            user_time=user_time,
             stream_id=queued_stream_id,
             conversation_id=conversation_id,
             task_id=task_id,

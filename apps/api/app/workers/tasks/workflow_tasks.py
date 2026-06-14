@@ -443,10 +443,11 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
     try:
         log.info(f"Executing workflow {workflow.id} as chat session for user {user_id}")
 
-        # Build the agent's "now" in the user's zone. There is no request header
+        # Resolve the agent's home zone for this run. There is no request header
         # here (ARQ worker), so prefer the real profile zone; fall back to the
         # workflow's own schedule zone before UTC so a missing/poisoned profile
-        # doesn't silently run the agent hours off in UTC.
+        # doesn't silently run the agent hours off in UTC. build_agent_config
+        # reads it off user_data["timezone"].
         try:
             user_data = await get_user_by_id(user_id) or {}
             user_data["user_id"] = user_id
@@ -465,11 +466,10 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
                     user_id=user_id,
                 )
             log.set(workflow_agent_timezone=resolved_tz.value)
-            user_time = resolved_tz.now()
+            user_data["timezone"] = resolved_tz.value
         except Exception as e:
-            log.warning(f"Could not resolve workflow user time for {user_id}: {e}")
+            log.warning(f"Could not resolve workflow timezone for {user_id}: {e}")
             user_data = {"user_id": user_id}
-            user_time = datetime.now(UTC)
 
         # Get or create the workflow conversation for thread context
         conversation = await get_or_create_workflow_conversation(
@@ -527,7 +527,6 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            user_time=user_time,
             trigger_context={
                 **(context or {}),
                 "workflow_id": workflow.id,
