@@ -191,6 +191,7 @@ export const Share01Icon = createIcon("Share01Icon");
 export const Share08Icon = createIcon("Share08Icon");
 export const ShareIcon = createIcon("ShareIcon");
 export const ShieldUserIcon = createIcon("ShieldUserIcon");
+export const SlackIcon = createIcon("SlackIcon");
 export const SourceCodeCircleIcon = createIcon("SourceCodeCircleIcon");
 export const SquareArrowUpRight02Icon = createIcon("SquareArrowUpRight02Icon");
 export const Sun03Icon = createIcon("Sun03Icon");

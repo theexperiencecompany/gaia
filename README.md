@@ -3,9 +3,7 @@
 
 # GAIA — Your Personal AI Assistant
 
-[![GAIA](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/theexperiencecompany/gaia/refs/heads/master/apps/web/public/badge.json)](https://heygaia.io) [![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) ![last update](https://img.shields.io/github/commit-activity/m/theexperiencecompany/gaia) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/theexperiencecompany/gaia)
-
-[![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![Twitter Follow](https://img.shields.io/twitter/follow/trygaia?style=social)](https://x.com/intent/user?screen_name=trygaia) [![Whatsapp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)
+[![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) [![Whatsapp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)
 
 <br />
 
@@ -13,7 +11,7 @@ https://github.com/user-attachments/assets/19928409-9f05-413f-9ada-d501bc99bc67
 
 </div>
 
-**[GAIA](https://heygaia.io)** is the personal AI assistant that does the work you shouldn't be doing manually — email triage, meeting prep, cross-tool workflows, and everything that quietly eats your day.
+**[GAIA](https://heygaia.io)** is the open-source personal AI assistant that does the work you shouldn't be doing manually. It connects your tools, runs the repetitive work in the background, and reaches out to you — on WhatsApp, Telegram, Slack, or Discord — the moment something actually needs you. Proactive, multi-channel, and fully self-hostable.
 
 <div align="center">
 
@@ -62,14 +60,14 @@ Most automation doesn't fix this. Tools are rigid, built for power users, and as
 
 An assistant, not a chatbot. The difference shows up in what each of these actually does.
 
-- **Proactive** — Acts before you ask: handles deadlines, drafts replies, flags what matters, and watches events in the background
+- **Proactive** — Acts before you ask: handles deadlines, drafts replies, flags what matters, and watches events in the background — then texts you when there's something to see
 - **Workflows** — Multi-step automations across your tools, triggered on a schedule or by an event (new email, calendar change, webhook)
 - **Smart todos** — Todos that research, draft, and execute themselves, not just reminders
 - **Cross-tool memory** — Remembers the people, projects, and preferences that come up across conversations; ask once, it sticks
 - **One view** — Tasks, email, calendar, and goals in one place, instead of five browser tabs
-- **Integration catalogue** — Gmail, Calendar, Slack, Linear, Notion, and more — plus a community marketplace and custom MCP servers
+- **Integration marketplace** — Connect Gmail, Calendar, Slack, Linear, Notion and more in one click — then browse a community marketplace for more, plug in any MCP server, and publish your own
 - **Runs everywhere** — Web, Desktop (macOS, Windows, Linux), Mobile
-- **Chat from anywhere** — Ping GAIA on Discord, Slack, Telegram, or WhatsApp — it arrives with your full context
+- **Works where you already are** — Message GAIA on WhatsApp, Telegram, Slack, or Discord — and it messages you back there too, with your full context, so you never have to open another app to act
 - **Open source & self-hostable** — Full transparency, runs on your own infrastructure
 
 <br />
@@ -133,29 +131,38 @@ Real things people use GAIA for — not hypothetical features. Every example bel
 
 Visit **[heygaia.io](https://heygaia.io)** to get started instantly — no installation required.
 
-### Self-host or Develop
+### Self-host (own your data)
 
 <a href="https://heygaia.io/install">
   <img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" style="width:500px; border-radius:12px;">
 </a>
 
-**Prerequisites:** [Node.js](https://nodejs.org) 20+, one package manager (npm/pnpm/bun), [Docker](https://docs.docker.com/get-docker/)
-
-Start with the CLI — it handles setup for both self-hosters and local dev:
+One CLI sets up the whole stack — clone, configure, and launch every service in Docker. **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
 
 ```bash
+# 1. Install the CLI  (pnpm add -g / bun add -g also work)
 npm install -g @heygaia/cli
-# or
-pnpm add -g @heygaia/cli
-# or
-bun add -g @heygaia/cli
-gaia init
+
+# 2. Clone, configure, and launch — the wizard walks you through it
+gaia init        # pick "Self-Host (Docker)" when asked
+
+# 3. Open GAIA in your browser
+#    http://localhost:3000
 ```
 
-`gaia init` will ask whether you want a **production deployment** or a **local dev environment** and configure everything accordingly.
+`gaia init` checks your prerequisites, clones the repo, helps you fill in environment variables, then builds and starts everything in Docker. Manage it anytime:
 
-- Self-hosters → [Self-Hosting Guide](https://docs.heygaia.io/self-hosting/overview)
-- Contributors → [Developer Setup](https://docs.heygaia.io/developers/development-setup)
+```bash
+gaia status   # health-check every service
+gaia logs     # stream logs
+gaia stop     # stop everything
+gaia start    # bring it back up
+```
+
+Already cloned the repo? Run `gaia setup` inside it to configure an existing checkout.
+
+- **Self-hosters** → [Self-Hosting Guide](https://docs.heygaia.io/self-hosting/overview)
+- **Contributors** → choose **"Developer"** in `gaia init` for hot-reload local dev, then see [Developer Setup](https://docs.heygaia.io/developers/development-setup)
 
 
 ## Chat with GAIA on Your Favorite Platforms
@@ -164,10 +171,11 @@ Use GAIA directly inside the tools you're already in.
 
 |&emsp;&emsp;&emsp;&emsp; | Platform | How to Use |
 |---|---|---|
-| <img src="apps/web/public/images/icons/macos/discord.webp" alt="Discord" width="50" height="50"/>| **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) — use `/gaia` or `@mention` GAIA in any channel |
-| <img src="apps/web/public/images/icons/macos/slack.webp"  alt="Slack" width="50" height="50" /> | **Slack** | [Add GAIA to your workspace](https://heygaia.io/slack-bot) and use `/gaia` and other slash commands |
-|<img src="apps/web/public/images/icons/macos/telegram.webp" alt="Telegram" width="50" height="50" />|  **Telegram** | [Message @heygaia_bot](https://t.me/heygaia_bot) and send messages or use `/gaia` commands |
 |<img src="apps/web/public/images/icons/macos/whatsapp.webp" alt="WhatsApp" width="50" height="50" />|  **WhatsApp** | [Message GAIA](https://wa.me/12762088737) and send messages or use `/gaia` commands |
+|<img src="apps/web/public/images/icons/macos/telegram.webp" alt="Telegram" width="50" height="50" />|  **Telegram** | [Message @heygaia_bot](https://t.me/heygaia_bot) and send messages or use `/gaia` commands |
+| <img src="apps/web/public/images/icons/macos/slack.webp"  alt="Slack" width="50" height="50" /> | **Slack** | [Add GAIA to your workspace](https://heygaia.io/slack-bot) and use `/gaia` and other slash commands |
+| <img src="apps/web/public/images/icons/macos/discord.webp" alt="Discord" width="50" height="50"/>| **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) — use `/gaia` or `@mention` GAIA in any channel |
+|<img src="apps/web/public/images/icons/macos/imessage.svg" alt="iMessage" width="50" height="50" />|  **iMessage** | _Coming soon_ — text GAIA right from Messages on your iPhone or Mac |
 
 See the [Bot Integrations Guide](https://docs.heygaia.io/bots/overview) for setup and usage details.
 
@@ -353,6 +361,8 @@ See the full license terms at [LICENSE.md](LICENSE.md).
 Feel free to contact the team at contact@heygaia.io or aryan@heygaia.io for any questions
 
 ## Star History
+
+If GAIA could save you even an hour a week, consider giving it a ⭐ — it helps more people find the project and keeps us building in the open.
 
 <a href="https://www.star-history.com/#theexperiencecompany/gaia&Date">
  <picture>

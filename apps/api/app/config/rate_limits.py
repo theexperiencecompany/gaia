@@ -189,6 +189,14 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         info=FeatureInfo(title="Memory Operations", description="Store and retrieve memories"),
     ),
     # Coding tools (persistent E2B workspace)
+    "sandbox_creation": TieredRateLimits(
+        free=RateLimitConfig(day=3, month=20),  # Each create provisions a fresh E2B VM
+        pro=RateLimitConfig(day=150, month=3000),
+        info=FeatureInfo(
+            title="Sandbox Creation",
+            description="Provision a fresh coding sandbox for shell and workspace tools",
+        ),
+    ),
     "bash_execution": TieredRateLimits(
         free=RateLimitConfig(day=20, month=200),  # Restrictive: sandbox cost
         pro=RateLimitConfig(day=1500, month=45000),

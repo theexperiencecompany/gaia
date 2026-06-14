@@ -1,14 +1,12 @@
 ---
 title: "Commands"
-description: "Full reference for GAIA bot commands on Discord, Slack, and Telegram, including chat, auth, and workflow triggers."
+description: "Full reference for GAIA bot commands on Discord, Slack, Telegram, and WhatsApp, including chat, auth, and workflow triggers."
 icon: "terminal"
 ---
 
-# Bot Commands Reference
+All available commands across GAIA bot platforms: Discord, Slack, Telegram, and WhatsApp.
 
-This page documents all available commands across GAIA bot platforms.
-
-## General Commands
+## General commands
 
 ### Chat with GAIA
 
@@ -24,7 +22,7 @@ Send a message to GAIA and get a response.
 /gaia What's on my schedule today?
 ```
 
-### Link Account
+### Link account
 
 ```
 /auth
@@ -40,7 +38,7 @@ Generate a link to connect your messaging account to GAIA.
 
 You'll receive a URL to complete authentication in your browser.
 
-### Unlink Account
+### Unlink account
 
 ```
 /unlink
@@ -48,7 +46,7 @@ You'll receive a URL to complete authentication in your browser.
 
 Disconnect your messaging account from GAIA. You can re-link at any time with `/auth`.
 
-### Check Status
+### Check status
 
 ```
 /status
@@ -56,7 +54,7 @@ Disconnect your messaging account from GAIA. You can re-link at any time with `/
 
 Check if the bot and API are online, and whether your account is linked.
 
-### View Settings
+### View settings
 
 ```
 /settings
@@ -74,9 +72,9 @@ Show all available commands and getting-started information.
 
 ---
 
-## Conversation Commands
+## Conversation commands
 
-### Start a New Conversation
+### Start a new conversation
 
 ```
 /new
@@ -84,7 +82,7 @@ Show all available commands and getting-started information.
 
 Reset your session and start a fresh conversation. Your previous conversation is preserved in the GAIA web app.
 
-### Stop Current Response
+### Stop the current response
 
 ```
 /stop
@@ -92,7 +90,7 @@ Reset your session and start a fresh conversation. Your previous conversation is
 
 Stop the current response and start a new conversation. Use this when GAIA is taking too long or you want to change direction.
 
-### List Conversations
+### List conversations
 
 ```
 /conversations [page]
@@ -109,9 +107,9 @@ View your recent GAIA conversations with links to the web interface.
 
 ---
 
-## Workflow Commands
+## Workflow commands
 
-### List Workflows
+### List workflows
 
 ```
 /workflow list
@@ -119,7 +117,7 @@ View your recent GAIA conversations with links to the web interface.
 
 Display all your workflows with their status.
 
-### Get Workflow Details
+### Get workflow details
 
 ```
 /workflow get <id>
@@ -127,7 +125,7 @@ Display all your workflows with their status.
 
 Get detailed information about a specific workflow.
 
-### Execute Workflow
+### Execute a workflow
 
 ```
 /workflow execute <id>
@@ -135,7 +133,7 @@ Get detailed information about a specific workflow.
 
 Manually trigger a workflow to run.
 
-### Create Workflow (Discord only)
+### Create a workflow (Discord only)
 
 ```
 /workflow create <name> <description>
@@ -145,9 +143,9 @@ Create a new workflow with a name and description.
 
 ---
 
-## Todo Commands
+## Todo commands
 
-### List Todos
+### List todos
 
 ```
 /todo list
@@ -155,7 +153,7 @@ Create a new workflow with a name and description.
 
 Show all active (incomplete) todos.
 
-### Add Todo
+### Add a todo
 
 ```
 /todo add <title> [priority] [description]
@@ -171,7 +169,7 @@ Create a new todo. Priority is optional (low, medium, high).
 /todo add "Update documentation" medium "Add API examples"
 ```
 
-### Complete Todo
+### Complete a todo
 
 ```
 /todo complete <id>
@@ -179,7 +177,7 @@ Create a new todo. Priority is optional (low, medium, high).
 
 Mark a todo as completed.
 
-### Delete Todo
+### Delete a todo
 
 ```
 /todo delete <id>
@@ -189,7 +187,7 @@ Permanently delete a todo.
 
 ---
 
-## Platform-Specific Notes
+## Platform-specific notes
 
 ### Discord
 
@@ -210,9 +208,22 @@ Permanently delete a todo.
 - Free-text messages (without a command prefix) are sent to GAIA automatically
 - Supports Markdown formatting
 
+### WhatsApp
+
+- Message GAIA directly at [wa.me/12762088737](https://wa.me/12762088737)
+- Commands are matched by text prefix (for example, type `/gaia` at the start of a message)
+- Free-text messages go straight to GAIA, no command needed
+- No streaming, responses arrive as complete messages
+- Sent messages can't be edited
+- Responses are limited to 4,096 characters per message
+- Formatting uses WhatsApp markdown: `*bold*` and `_italic_`
+- Voice notes are transcribed automatically
+- Images and documents are uploaded to GAIA
+- Video and stickers aren't supported
+
 ---
 
-## Getting Help
+## Getting help
 
 Can't find what you need? Use the help command:
 
@@ -220,8 +231,9 @@ Can't find what you need? Use the help command:
 /help
 ```
 
-Or visit the platform-specific guides:
+Or visit the platform guides:
 
-- [Discord Setup](/bots/discord)
-- [Slack Setup](/bots/slack)
-- [Telegram Setup](/bots/telegram)
+- [Discord bot guide](/guides/discord-bot)
+- [Slack bot guide](/guides/slack-bot)
+- [Telegram bot guide](/guides/telegram-bot)
+- [WhatsApp bot guide](/guides/whatsapp-bot)

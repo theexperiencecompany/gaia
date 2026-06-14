@@ -50,7 +50,6 @@ export function writeEnvFile(repoPath: string, values: EnvValues): void {
     "RESEND",
     "SENTRY",
     "POSTHOG",
-    "MEM0",
     "E2B",
     "DODO",
     "NEXT_PUBLIC",

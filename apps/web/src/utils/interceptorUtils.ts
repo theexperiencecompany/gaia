@@ -6,6 +6,7 @@ import {
   showRateLimitToast,
   showTokenLimitToast,
 } from "@/components/shared/RateLimitToast";
+import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 import { toast } from "@/lib/toast";
 import { useLoginModalStore } from "@/stores/loginModalStore";
 
@@ -13,11 +14,19 @@ interface ErrorHandlerDependencies {
   router: AppRouterInstance;
 }
 
+const getErrorCode = (data: unknown): string | undefined => {
+  const detail =
+    data && typeof data === "object" && "detail" in data
+      ? (data as { detail: unknown }).detail
+      : undefined;
+  if (detail && typeof detail === "object" && "error_code" in detail)
+    return (detail as { error_code?: string }).error_code;
+  return undefined;
+};
+
 /**
- * Surfaces API error UI for app-shell requests: toasts on 5xx/429/403,
- * login modal on 401. Only mounted inside the (main) provider tree —
- * landing pages never surface background-fetch errors because anonymous
- * visitors should not be interrupted by UI they did not trigger.
+ * Surfaces API error UI for app-shell requests. Only mounted inside the (main)
+ * provider tree.
  */
 export const processAxiosError = (
   error: AxiosError & { handled?: boolean },
@@ -35,7 +44,11 @@ export const processAxiosError = (
 
   switch (status) {
     case 401:
-      useLoginModalStore.getState().openModal();
+      // Only a genuine auth failure prompts re-login. Integration/permission
+      // problems come back as 403, never 401.
+      if (getErrorCode(data) === API_ERROR_CODES.NOT_AUTHENTICATED) {
+        useLoginModalStore.getState().openModal();
+      }
       error.handled = true;
       break;
 
@@ -84,14 +97,18 @@ const handleForbiddenError = (
     "type" in detail &&
     detail.type === "integration"
   ) {
-    const integrationDetail = detail as { type: string; message?: string };
-    const toastKey = `integration-${integrationDetail.type || "default"}`;
+    const integrationDetail = detail as {
+      type: string;
+      message?: string;
+      toolkit?: string;
+    };
+    const toastKey = `integration-${integrationDetail.toolkit || "default"}`;
 
     toast.error(integrationDetail.message || "Integration required.", {
       id: toastKey,
       duration: Infinity,
       action: {
-        label: "Connect",
+        label: "Reconnect",
         onClick: () => {
           router.push("/integrations");
         },

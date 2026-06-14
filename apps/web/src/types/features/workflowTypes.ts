@@ -142,6 +142,8 @@ export interface Workflow {
   execution_config?: ExecutionConfig;
   metadata?: WorkflowMetadata;
   activated: boolean;
+  /** Whether GAIA sends the automatic completion notification after each run */
+  notify_on_completion: boolean;
   user_id: string;
   created_at: string;
   updated_at: string;
@@ -181,6 +183,8 @@ export interface CreateWorkflowRequest {
   execution_config?: ExecutionConfig;
   metadata?: Partial<WorkflowMetadata>;
   generate_immediately?: boolean;
+  /** Whether GAIA sends the automatic completion notification after each run */
+  notify_on_completion?: boolean;
   /** Integration slugs selected by the user to hint step generation */
   selected_integrations?: string[];
 }

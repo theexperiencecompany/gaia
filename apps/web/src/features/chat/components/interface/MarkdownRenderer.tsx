@@ -3,7 +3,11 @@ import "katex/dist/katex.min.css";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import type React from "react";
-import ReactMarkdown from "react-markdown";
+import { useMemo } from "react";
+import ReactMarkdown, {
+  type Components,
+  defaultUrlTransform,
+} from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
@@ -89,6 +93,13 @@ export interface MarkdownRendererProps {
   className?: string;
   isStreaming?: boolean;
   hideCodeToolbar?: boolean;
+  /** Per-element overrides merged over the default component map. */
+  components?: Components;
+  /**
+   * Extra URL protocols allowed on links (e.g. ["mention"]), for callers
+   * whose component overrides give such links a custom rendering.
+   */
+  extraLinkProtocols?: string[];
 }
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
@@ -96,7 +107,28 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   className,
   isStreaming,
   hideCodeToolbar,
+  components,
+  extraLinkProtocols,
 }) => {
+  const schema = useMemo(() => {
+    if (!extraLinkProtocols?.length) return sanitizeSchema;
+    return {
+      ...sanitizeSchema,
+      protocols: {
+        ...defaultSchema.protocols,
+        href: [...(defaultSchema.protocols?.href ?? []), ...extraLinkProtocols],
+      },
+    };
+  }, [extraLinkProtocols]);
+
+  const urlTransform = useMemo(() => {
+    if (!extraLinkProtocols?.length) return defaultUrlTransform;
+    return (url: string) =>
+      extraLinkProtocols.some((protocol) => url.startsWith(`${protocol}:`))
+        ? url
+        : defaultUrlTransform(url);
+  }, [extraLinkProtocols]);
+
   return (
     <div
       className={cn(
@@ -182,6 +214,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               {...props}
             />
           ),
+          ...components,
         }}
         remarkPlugins={[
           remarkGfm,
@@ -190,7 +223,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           remarkSmartypants,
           remarkSupersub,
         ]}
-        rehypePlugins={[[rehypeSanitize, sanitizeSchema], rehypeKatex]}
+        rehypePlugins={[[rehypeSanitize, schema], rehypeKatex]}
+        urlTransform={urlTransform}
       >
         {content}
       </ReactMarkdown>

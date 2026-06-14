@@ -883,6 +883,16 @@ const notificationFixture: Record<string, unknown> = {
   ],
 };
 
+const sendNotificationFixture: Record<string, unknown> = {
+  success: true,
+  notification_id: "notif-7f3a",
+  title: "GAIA",
+  message: "Your weekly review is ready — 3 items need your attention.",
+  notification_type: "success",
+  status: "delivered",
+  delivered_channels: ["inapp", "whatsapp", "telegram"],
+};
+
 const rateLimitFixture: RateLimitData = {
   feature: "Deep research",
   plan_required: "Pro",
@@ -1152,6 +1162,12 @@ export const TOOL_FIXTURES: readonly ToolFixture[] = [
     label: "Notifications",
     description: "List of recent user notifications.",
     data: notificationFixture,
+  },
+  {
+    toolName: "send_notification_data",
+    label: "Notification sent",
+    description: "Confirmation that a proactive notification was delivered.",
+    data: sendNotificationFixture,
   },
   {
     toolName: "rate_limit_data",

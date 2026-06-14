@@ -3,6 +3,12 @@
 import { Switch } from "@heroui/switch";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import {
+  NOTIFICATION_PLATFORM_ICONS,
+  NOTIFICATION_PLATFORM_LABELS,
+  NOTIFICATION_PLATFORMS,
+  type NotificationPlatform,
+} from "@/features/notification/constants";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -12,33 +18,13 @@ import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import type { PlatformLink } from "@/types/platform";
 
-const NOTIFICATION_PLATFORMS = [
-  {
-    id: "telegram" as const,
-    name: "Telegram",
-    image: "/images/icons/macos/telegram.webp",
-  },
-  {
-    id: "discord" as const,
-    name: "Discord",
-    image: "/images/icons/macos/discord.webp",
-  },
-  {
-    id: "whatsapp" as const,
-    name: "WhatsApp",
-    image: "/images/icons/macos/whatsapp.webp",
-  },
-];
-
 export default function NotificationSettings() {
   const [platformLinks, setPlatformLinks] = useState<
     Record<string, PlatformLink | null>
   >({});
-  const [channelPrefs, setChannelPrefs] = useState<{
-    telegram: boolean;
-    discord: boolean;
-    whatsapp: boolean;
-  }>({ telegram: true, discord: true, whatsapp: true });
+  const [channelPrefs, setChannelPrefs] = useState<
+    Record<NotificationPlatform, boolean>
+  >({ telegram: true, discord: true, whatsapp: true, slack: true });
   const [loading, setLoading] = useState(true);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 
@@ -65,7 +51,7 @@ export default function NotificationSettings() {
   }, []);
 
   const handleToggle = async (
-    platform: "telegram" | "discord" | "whatsapp",
+    platform: NotificationPlatform,
     enabled: boolean,
   ) => {
     setTogglingPlatform(platform);
@@ -87,11 +73,12 @@ export default function NotificationSettings() {
     <SettingsPage>
       <SettingsSection description="Choose where to receive GAIA notifications.">
         {NOTIFICATION_PLATFORMS.map((platform) => {
-          const isConnected = !!platformLinks[platform.id]?.platformUserId;
+          const label = NOTIFICATION_PLATFORM_LABELS[platform];
+          const isConnected = !!platformLinks[platform]?.platformUserId;
           return (
             <SettingsRow
-              key={platform.id}
-              label={platform.name}
+              key={platform}
+              label={label}
               description={
                 isConnected
                   ? "Send notifications to this platform"
@@ -99,8 +86,8 @@ export default function NotificationSettings() {
               }
               icon={
                 <Image
-                  src={platform.image}
-                  alt={platform.name}
+                  src={NOTIFICATION_PLATFORM_ICONS[platform]}
+                  alt={label}
                   width={36}
                   height={36}
                   className="rounded-xl"
@@ -109,12 +96,12 @@ export default function NotificationSettings() {
             >
               <Switch
                 size="sm"
-                isSelected={isConnected ? channelPrefs[platform.id] : false}
+                isSelected={isConnected ? channelPrefs[platform] : false}
                 isDisabled={
-                  !isConnected || loading || togglingPlatform === platform.id
+                  !isConnected || loading || togglingPlatform === platform
                 }
-                onValueChange={(enabled) => handleToggle(platform.id, enabled)}
-                aria-label={`Enable ${platform.name} notifications`}
+                onValueChange={(enabled) => handleToggle(platform, enabled)}
+                aria-label={`Enable ${label} notifications`}
               />
             </SettingsRow>
           );

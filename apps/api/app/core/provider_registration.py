@@ -71,6 +71,7 @@ from app.services.sandbox.pool import init_sandbox_pool
 from app.services.startup_validation import validate_startup_requirements
 from app.services.storage.bootstrap import init_juicefs_mount
 from app.services.tools.tools_warmup import warmup_tools_cache
+from app.services.workspace_sync import init_system_subtree, resync_stale_user_workspaces
 from shared.py.wide_events import log
 
 
@@ -223,6 +224,9 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         # The provider is a no-op when R2/JFS settings are unconfigured, so
         # this is safe to include unconditionally.
         (lambda: providers.aget("juicefs_mount"), "juicefs_mount"),
+        # Global shared system subtree (INDEX/GUIDE/builtin skills) — once,
+        # Awaits the mount internally.
+        (init_system_subtree, "system_subtree"),
     ]
 
     # Outbound bot-message queues must exist before any executor reply or
@@ -232,6 +236,9 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # Context-specific services: WebSocket only needed for web interface
     if context == "main_app":
         eager_services.append((init_websocket_consumer, "websocket_consumer"))
+        # Re-sync active users whose skill catalog is stale (deploy shipped new
+        # skills). Detached so it never blocks boot; runs only in the web app.
+        _spawn_background_task("workspace_stale_resync", resync_stale_user_workspaces)
 
     startup_services: list[tuple[Callable[[], Awaitable[object]], str]] = list(eager_services)
     startup_services.append(

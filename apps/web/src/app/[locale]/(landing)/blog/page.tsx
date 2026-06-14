@@ -30,7 +30,9 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default async function BlogPage() {
   try {
-    const blogs = await getAllBlogPosts(false);
+    // Load content so the ItemList schema can derive per-post descriptions;
+    // it is stripped again before crossing the RSC→client boundary below.
+    const blogs = await getAllBlogPosts(true);
 
     const webPageSchema = generateWebPageSchema(
       "Blog",

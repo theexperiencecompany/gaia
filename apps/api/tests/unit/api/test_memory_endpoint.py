@@ -24,7 +24,6 @@ def _search_result(memories: list | None = None) -> MemorySearchResult:
     mems = memories or []
     return MemorySearchResult(
         memories=mems,
-        relations=[],
         total_count=len(mems),
     )
 
@@ -108,9 +107,9 @@ class TestCreateMemory:
         data = resp.json()
         assert data["success"] is False
 
-    async def test_create_memory_with_metadata(self, client: AsyncClient) -> None:
+    async def test_create_memory_with_category_path(self, client: AsyncClient) -> None:
         mock_entry = MagicMock()
-        mock_entry.id = "mem_meta"
+        mock_entry.id = "mem_categorized"
         with patch(
             "app.api.v1.endpoints.memory.memory_service.store_memory",
             new_callable=AsyncMock,
@@ -118,7 +117,7 @@ class TestCreateMemory:
         ):
             resp = await client.post(
                 API,
-                json={"content": "Important fact", "metadata": {"source": "chat"}},
+                json={"content": "Important fact", "category_path": "work/gaia"},
             )
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -208,7 +207,7 @@ class TestClearAllMemories:
         with patch(
             "app.api.v1.endpoints.memory.memory_service.delete_all_memories",
             new_callable=AsyncMock,
-            side_effect=Exception("Mem0 unreachable"),
+            side_effect=Exception("memory engine unreachable"),
         ):
             resp = await client.delete(API)
         assert resp.status_code == 200

@@ -1,5 +1,6 @@
 import type React from "react";
 import type {
+  MemoryData,
   RateLimitData,
   ToolDataMap,
   ToolName,
@@ -46,6 +47,7 @@ import FileArtifactSection from "../FileArtifactSection";
 import GoogleDocsSection from "../GoogleDocsSection";
 import GoalSection from "../goals/GoalSection";
 import type { GoalAction } from "../goals/types";
+import MemoryCard from "../MemoryCard";
 import NotificationListSection from "../NotificationListSection";
 import PeopleSearchSection from "../PeopleSearchSection";
 import RateLimitCard from "../RateLimitCard";
@@ -53,6 +55,7 @@ import RedditCommentSection from "../RedditCommentSection";
 import RedditCreatedSection from "../RedditCreatedSection";
 import RedditPostSection from "../RedditPostSection";
 import RedditSearchSection from "../RedditSearchSection";
+import SendNotificationSection from "../SendNotificationSection";
 import SupportTicketSection from "../SupportTicketSection";
 import TodoSection from "../TodoSection";
 import TwitterSearchSection from "../TwitterSearchSection";
@@ -272,6 +275,12 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       title="Your Notifications"
     />
   ),
+  send_notification_data: (data, index) => (
+    <SendNotificationSection
+      key={`tool-notification-sent-${index}`}
+      send_notification_data={data}
+    />
+  ),
   integration_connection_required: (data, index) => {
     // Data can be a single item or an array (when grouped)
     const items = (
@@ -422,6 +431,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
         ))}
       </>
     );
+  },
+
+  // Memory — multiple calls in one turn (e.g. several add_memory or a search
+  // followed by an add) are grouped into one card with stacked action rows.
+  memory_data: (data, index) => {
+    const items = (Array.isArray(data) ? data : [data]) as MemoryData[];
+    return <MemoryCard key={`tool-memory-${index}`} items={items} />;
   },
 };
 

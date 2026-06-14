@@ -4,9 +4,13 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
+from app.constants.notifications import ALL_AUTO_INJECTED_CHANNELS, CHANNEL_TYPE_INAPP
 from app.decorators import with_doc, with_rate_limiting
 from app.models.notification.notification_models import (
     BulkActions,
+    ChannelConfig,
+    NotificationContent,
+    NotificationRequest,
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
@@ -14,11 +18,14 @@ from app.models.notification.notification_models import (
 from app.services.notification_service import notification_service
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
+    GET_NOTIFICATION_PREFERENCES,
     GET_NOTIFICATIONS,
     MARK_NOTIFICATIONS_READ,
     SEARCH_NOTIFICATIONS,
+    SEND_NOTIFICATION,
 )
 from app.utils.chat_utils import get_user_id_from_config
+from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
 
@@ -178,10 +185,146 @@ async def mark_notifications_read(
         return {"error": str(e), "success": False}
 
 
+@tool
+@with_rate_limiting("notification_operations")
+@with_doc(SEND_NOTIFICATION)
+async def send_notification(
+    config: RunnableConfig,
+    message: Annotated[str, "Notification body text — keep it concise and actionable"],
+    title: Annotated[
+        str,
+        "Short, specific title summarizing the update (e.g. 'Reminder', 'Task completed', "
+        "'Build failed'). Always write a meaningful title — never a generic app name.",
+    ],
+    channels: Annotated[
+        list[str] | None,
+        "Channel names to target ('whatsapp', 'telegram', 'discord', 'slack', 'inapp'). "
+        "Omit to use all user-enabled channels.",
+    ] = None,
+    notification_type: Annotated[
+        NotificationType | None,
+        "Notification type: 'info', 'success', 'warning', or 'error'",
+    ] = NotificationType.INFO,
+) -> dict[str, Any]:
+    """Send a notification to the user on their connected channels."""
+    try:
+        log.set(tool={"name": "send_notification", "action": "send"})
+        user_id = get_user_id_from_config(config)
+        if not user_id:
+            return {"error": "User authentication required", "success": False}
+
+        if not message.strip():
+            return {"error": "Notification message cannot be empty", "success": False}
+
+        if not title.strip():
+            return {"error": "Notification title cannot be empty", "success": False}
+
+        resolved_title = title.strip()
+        resolved_message = message.strip()
+        resolved_type = notification_type or NotificationType.INFO
+
+        # Build channel configs when specific channels are requested. Unknown
+        # channel names would otherwise be accepted and silently skipped at
+        # delivery, so reject them here where the LLM can read the error and
+        # self-correct.
+        channel_configs: list[ChannelConfig] = []
+        if channels:
+            unknown_channels = [ch for ch in channels if ch not in ALL_AUTO_INJECTED_CHANNELS]
+            if unknown_channels:
+                return {
+                    "error": (
+                        f"Unknown channel(s): {', '.join(unknown_channels)}. "
+                        f"Valid channels: {', '.join(ALL_AUTO_INJECTED_CHANNELS)}."
+                    ),
+                    "success": False,
+                }
+            channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
+        # Empty list triggers auto-injection of all user-enabled channels in the orchestrator
+
+        request = NotificationRequest(
+            user_id=user_id,
+            source=NotificationSourceEnum.AI_AGENT,
+            type=resolved_type,
+            channels=channel_configs,
+            content=NotificationContent(title=resolved_title, body=resolved_message),
+        )
+
+        record = await notification_service.create_notification(request)
+        if not record:
+            return {"error": "Failed to create notification", "success": False}
+
+        delivered_channels = [
+            ch.channel_type
+            for ch in record.channels
+            if ch.status == NotificationStatus.DELIVERED and not ch.skipped
+        ]
+
+        log.set(
+            tool={
+                "name": "send_notification",
+                "notification_id": record.id,
+                "status": record.status.value,
+                "delivered_channels": delivered_channels,
+            }
+        )
+
+        result = {
+            "success": True,
+            "notification_id": record.id,
+            "title": resolved_title,
+            "message": resolved_message,
+            "notification_type": resolved_type.value,
+            "status": record.status.value,
+            "delivered_channels": delivered_channels,
+        }
+
+        # Stream to frontend so the chat renders a "notification sent" card
+        writer = get_stream_writer()
+        writer({"send_notification_data": result})
+
+        return result
+
+    except Exception as e:
+        log.error(f"Error sending notification: {e!s}")
+        return {"error": str(e), "success": False}
+
+
+@tool
+@with_rate_limiting("notification_operations")
+@with_doc(GET_NOTIFICATION_PREFERENCES)
+async def get_notification_preferences(
+    config: RunnableConfig,
+) -> dict[str, Any]:
+    """Get the user's notification channel preferences."""
+    try:
+        log.set(tool={"name": "get_notification_preferences", "action": "get"})
+        user_id = get_user_id_from_config(config)
+        if not user_id:
+            return {"error": "User authentication required", "preferences": {}}
+
+        preferences = await fetch_channel_preferences(user_id)
+
+        # inapp is always available regardless of per-channel preferences;
+        # force it last so it can never be overridden by a stored preference.
+        all_preferences = {**preferences, CHANNEL_TYPE_INAPP: True}
+
+        return {
+            "preferences": all_preferences,
+            "available_channels": list(all_preferences.keys()),
+            "enabled_channels": [ch for ch, enabled in all_preferences.items() if enabled],
+        }
+
+    except Exception as e:
+        log.error(f"Error fetching notification preferences: {e!s}")
+        return {"error": str(e), "preferences": {}}
+
+
 # Export tools for registration
 tools = [
     get_notifications,
     search_notifications,
     get_notification_count,
     mark_notifications_read,
+    send_notification,
+    get_notification_preferences,
 ]

@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from app.db.mongodb.collections import user_integrations_collection
 from app.decorators.caching import CacheInvalidator
+from app.services.integrations_fs import schedule_user_integrations_sync
 from shared.py.wide_events import log
 
 
@@ -55,6 +56,9 @@ async def update_user_integration_status(
     # (matched_count > 0 means document exists with same values - still success)
     if result.modified_count > 0 or result.upserted_id or result.matched_count > 0:
         log.info(f"Updated user {user_id} integration {integration_id} status to {status}")
+        if status == "connected":
+            # Reflect the new connected set in the user's workspace VFS.
+            schedule_user_integrations_sync(user_id)
         return True
 
     return False

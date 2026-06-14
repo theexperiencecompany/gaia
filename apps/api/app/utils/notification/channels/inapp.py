@@ -29,9 +29,16 @@ class InAppChannelAdapter(ChannelAdapter):
         return CHANNEL_TYPE_INAPP
 
     def can_handle(self, notification: NotificationRequest) -> bool:
-        return any(ch.channel_type == CHANNEL_TYPE_INAPP for ch in notification.channels)
+        """Return True — in-app delivery is always available for any request."""
+        # In-app is always deliverable. The orchestrator decides targeting:
+        # explicit requests look adapters up by channel_type, and auto-injection
+        # always includes inapp — checking the request's channel list here would
+        # silently skip the real-time push whenever channels are auto-injected
+        # (the list is empty in that mode).
+        return True
 
     async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
+        """Build the WebSocket payload for the in-app ``notification.new`` event."""
         return {
             "id": notification.id,
             "title": notification.content.title,
@@ -55,6 +62,7 @@ class InAppChannelAdapter(ChannelAdapter):
         }
 
     async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
+        """Push the in-app payload to the user's live WebSocket connection."""
         log.set(
             operation="inapp_deliver",
             user_id=user_id,

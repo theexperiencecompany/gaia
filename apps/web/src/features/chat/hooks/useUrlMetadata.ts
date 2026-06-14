@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from "@/lib/api/client";
+import { apiauth } from "@/lib/api/client";
 
 interface UrlMetadata {
   title: string | null;
@@ -27,6 +27,11 @@ const isValidHttpUrl = (str: string): boolean => {
   }
 };
 
+// Emails (bare or mailto:) get person previews from the same endpoint —
+// the backend resolves them via Google Contacts / Gravatar.
+const isPreviewable = (str: string): boolean =>
+  isValidHttpUrl(str) || isEmail(str) || str.startsWith("mailto:");
+
 // Global batch manager for automatic request batching
 const pendingBatch = new Set<string>();
 const batchResolvers = new Map<
@@ -51,7 +56,9 @@ const processBatch = async () => {
 
   try {
     // Single API call for all URLs
-    const response = await api.post("/fetch-url-metadata", { urls });
+    // Authenticated client: email previews resolve against the user's own
+    // Google contacts, so the endpoint requires the session.
+    const response = await apiauth.post("/fetch-url-metadata", { urls });
 
     // Resolve individual promises with their data
     urls.forEach((url) => {
@@ -96,8 +103,7 @@ const batchUrlRequest = (url: string): Promise<UrlMetadata> => {
  * - Conditional fetching based on URL validity
  */
 export const useUrlMetadata = (url: string | undefined | null) => {
-  const isValidUrl =
-    url && isValidHttpUrl(url) && !isEmail(url) && !url.startsWith("mailto:");
+  const isValidUrl = url && isPreviewable(url);
 
   const result = useQuery<UrlMetadata, UrlMetadataError>({
     queryKey: ["url-metadata", url],
@@ -145,10 +151,7 @@ export const usePrefetchUrlMetadata = () => {
   const queryClient = useQueryClient();
 
   return (url: string) => {
-    const isValidUrl =
-      url && isValidHttpUrl(url) && !isEmail(url) && !url.startsWith("mailto:");
-
-    if (!isValidUrl) return;
+    if (!url || !isPreviewable(url)) return;
 
     queryClient.prefetchQuery({
       queryKey: ["url-metadata", url],

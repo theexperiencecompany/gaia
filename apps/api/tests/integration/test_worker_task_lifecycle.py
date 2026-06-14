@@ -22,8 +22,7 @@ from app.models.user_models import BioStatus
 from app.workers.lifecycle.startup import startup
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
 from app.workers.tasks.memory_email_tasks import process_gmail_emails_to_memory
-from app.workers.tasks.memory_tasks import store_memories_batch
-from app.workers.tasks.onboarding_tasks import process_personalization_task
+from app.workers.tasks.onboarding_tasks import process_onboarding_intelligence_task
 from app.workers.tasks.reminder_tasks import (
     cleanup_expired_reminders,
     process_reminder,
@@ -127,128 +126,7 @@ class TestReminderTaskExecution:
 
 
 # ---------------------------------------------------------------------------
-# TEST 2: Memory task processing (store_memories_batch)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestMemoryTaskProcessing:
-    """Verify store_memories_batch builds correct messages and calls memory_service."""
-
-    async def test_store_memories_batch_success(self):
-        """Batch of emails should be formatted and stored via memory_service."""
-
-        emails = [
-            {
-                "content": "Hello, your order has shipped.",
-                "metadata": {
-                    "subject": "Order Update",
-                    "sender": "shop@example.com",
-                },
-            },
-            {
-                "content": "Meeting tomorrow at 3pm.",
-                "metadata": {
-                    "subject": "Calendar Invite",
-                    "sender": "boss@work.com",
-                },
-            },
-        ]
-
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            mock_mem.store_memory_batch = AsyncMock(return_value=True)
-
-            result = await store_memories_batch(
-                ARQ_CTX,
-                user_id=FAKE_USER_ID,
-                emails_batch=emails,
-                user_name="Test User",
-                user_email="test@example.com",
-            )
-
-            mock_mem.store_memory_batch.assert_awaited_once()
-            call_kwargs = mock_mem.store_memory_batch.call_args[1]
-
-            # Verify messages were built correctly
-            messages = call_kwargs["messages"]
-            assert len(messages) == 2
-            assert messages[0]["role"] == "user"
-            assert "Order Update" in messages[0]["content"]
-            assert "shop@example.com" in messages[0]["content"]
-            assert messages[1]["role"] == "user"
-            assert "Calendar Invite" in messages[1]["content"]
-
-            # Verify user_id passed
-            assert call_kwargs["user_id"] == FAKE_USER_ID
-
-            # Verify custom_instructions contain user context
-            assert "Test User" in call_kwargs["custom_instructions"]
-            assert "test@example.com" in call_kwargs["custom_instructions"]
-
-            assert "Stored 2 emails" in result
-
-    async def test_store_memories_batch_empty_input(self):
-        """Empty batch should short-circuit without calling memory_service."""
-
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=[])
-
-            mock_mem.store_memory_batch.assert_not_called()
-            assert "No emails to process" in result
-
-    async def test_store_memories_batch_skips_blank_content(self):
-        """Emails with empty/whitespace content should be filtered out."""
-
-        emails = [
-            {"content": "   ", "metadata": {"subject": "Empty", "sender": "a@b.com"}},
-            {"content": "", "metadata": {"subject": "Blank", "sender": "c@d.com"}},
-        ]
-
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails)
-
-            mock_mem.store_memory_batch.assert_not_called()
-            assert "No valid emails" in result
-
-    async def test_store_memories_batch_mem0_filters_all(self):
-        """When Mem0 returns False (filtered all), report accordingly without error."""
-
-        emails = [
-            {
-                "content": "Some content",
-                "metadata": {"subject": "Test", "sender": "x@y.com"},
-            },
-        ]
-
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            mock_mem.store_memory_batch = AsyncMock(return_value=False)
-
-            result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails)
-
-            assert "filtered all" in result.lower() or "non-memorable" in result.lower()
-
-    async def test_store_memories_batch_service_error(self):
-        """When memory_service raises, the task should catch and return error message."""
-
-        emails = [
-            {
-                "content": "Valid content",
-                "metadata": {"subject": "Test", "sender": "x@y.com"},
-            },
-        ]
-
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            mock_mem.store_memory_batch = AsyncMock(side_effect=ConnectionError("Mem0 unreachable"))
-
-            result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails)
-
-            # The task catches exceptions and returns an error string
-            assert "Error" in result
-            assert "Mem0 unreachable" in result
-
-
-# ---------------------------------------------------------------------------
-# TEST 3: Email memory extraction (process_gmail_emails_to_memory)
+# TEST 2: Email memory extraction (process_gmail_emails_to_memory)
 # ---------------------------------------------------------------------------
 
 
@@ -307,7 +185,7 @@ class TestEmailMemoryExtraction:
 
 
 # ---------------------------------------------------------------------------
-# TEST 4: Cleanup task safety (cleanup_stuck_personalization)
+# TEST 3: Cleanup task safety (cleanup_stuck_personalization)
 # ---------------------------------------------------------------------------
 
 
@@ -413,7 +291,7 @@ class TestCleanupTaskSafety:
 
 
 # ---------------------------------------------------------------------------
-# TEST 5: Task error handling (various tasks with invalid input)
+# TEST 4: Task error handling (various tasks with invalid input)
 # ---------------------------------------------------------------------------
 
 
@@ -441,20 +319,28 @@ class TestTaskErrorHandling:
             with pytest.raises(ValueError, match="Invalid user ID format"):
                 await process_gmail_emails_to_memory(ARQ_CTX, "bad-id")
 
-    async def test_onboarding_task_propagates_service_error(self):
-        """If post_onboarding_service raises, the task should propagate."""
+    async def test_onboarding_task_reports_service_error(self):
+        """If the intelligence service raises, the task catches it and returns a failure message."""
 
-        with patch(
-            "app.workers.tasks.onboarding_tasks.process_post_onboarding_personalization"
-        ) as mock_service:
-            mock_service.side_effect = RuntimeError("LLM timeout")
+        with (
+            patch(
+                "app.services.onboarding.intelligence_service.process_onboarding_intelligence",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("LLM timeout"),
+            ),
+            patch("app.workers.tasks.onboarding_tasks.users_collection") as mock_users,
+        ):
+            mock_users.update_one = AsyncMock()
 
-            with pytest.raises(RuntimeError, match="LLM timeout"):
-                await process_personalization_task(ARQ_CTX, FAKE_USER_ID)
+            result = await process_onboarding_intelligence_task(ARQ_CTX, FAKE_USER_ID)
+
+            assert "failed" in result.lower()
+            assert "LLM timeout" in result
+            assert FAKE_USER_ID in result
 
 
 # ---------------------------------------------------------------------------
-# TEST 6: Workflow task execution
+# TEST 5: Workflow task execution
 # ---------------------------------------------------------------------------
 
 
@@ -610,7 +496,7 @@ class TestWorkflowTaskExecution:
 
 
 # ---------------------------------------------------------------------------
-# TEST 7: Worker startup hooks
+# TEST 6: Worker startup hooks
 # ---------------------------------------------------------------------------
 
 
@@ -647,7 +533,7 @@ class TestWorkerStartupHooks:
 
 
 # ---------------------------------------------------------------------------
-# TEST 8: User task (check_inactive_users)
+# TEST 7: User task (check_inactive_users)
 # ---------------------------------------------------------------------------
 
 
@@ -743,7 +629,7 @@ class TestUserTasks:
 
 
 # ---------------------------------------------------------------------------
-# TEST 9: Onboarding task
+# TEST 8: Onboarding task
 # ---------------------------------------------------------------------------
 
 
@@ -751,22 +637,22 @@ class TestUserTasks:
 class TestOnboardingTask:
     """Verify onboarding task delegates correctly."""
 
-    async def test_personalization_task_success(self):
-        """Successful personalization should call the service and return a message."""
+    async def test_onboarding_intelligence_task_success(self):
+        """Successful run should call the intelligence service and return a message."""
 
         with patch(
-            "app.workers.tasks.onboarding_tasks.process_post_onboarding_personalization",
+            "app.services.onboarding.intelligence_service.process_onboarding_intelligence",
             new_callable=AsyncMock,
         ) as mock_service:
-            result = await process_personalization_task(ARQ_CTX, FAKE_USER_ID)
+            result = await process_onboarding_intelligence_task(ARQ_CTX, FAKE_USER_ID)
 
             mock_service.assert_awaited_once_with(FAKE_USER_ID)
-            assert "personalization completed" in result.lower()
+            assert "onboarding intelligence completed" in result.lower()
             assert FAKE_USER_ID in result
 
 
 # ---------------------------------------------------------------------------
-# TEST 10: Workflow generation task
+# TEST 9: Workflow generation task
 # ---------------------------------------------------------------------------
 
 

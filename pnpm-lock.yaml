@@ -671,6 +671,9 @@ importers:
       '@sentry/nextjs':
         specifier: ^10.5.0
         version: 10.47.0(@opentelemetry/context-async-hooks@2.6.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.6.1(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.6.1(@opentelemetry/api@1.9.1))(encoding@0.1.13)(next@16.2.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.99.0))(react@19.1.0)(webpack@5.105.4(@swc/core@1.15.24(@swc/helpers@0.5.21)))
+      '@supermemory/memory-graph':
+        specifier: ^0.2.2
+        version: 0.2.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@swc-node/register':
         specifier: ^1.11.1
         version: 1.11.1(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@swc/core@1.15.24(@swc/helpers@0.5.21))(@swc/types@0.1.26)(typescript@5.9.3)
@@ -8675,6 +8678,12 @@ packages:
 
   '@standard-schema/utils@0.3.0':
     resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
+
+  '@supermemory/memory-graph@0.2.2':
+    resolution: {integrity: sha512-FPoAAcOGMnao1tdh+Vd8cNjY+h+KILPiLe7qwmxqLKC72piThaKRfmeJ6dS55+6kUuKF97pqVI2XeRB6ognZjA==}
+    peerDependencies:
+      react: 19.1.0
+      react-dom: 19.1.0
 
   '@svgr/babel-plugin-add-jsx-attribute@8.0.0':
     resolution: {integrity: sha512-b9MIk7yhdS1pMCZM8VeNfUlSKVRhsHZNMl5O9SfaX0l0t5wjdgu4IDzGB8bpnGBBOjGST3rRFVsaaEtI4W6f7g==}
@@ -29665,6 +29674,12 @@ snapshots:
   '@standard-schema/spec@1.1.0': {}
 
   '@standard-schema/utils@0.3.0': {}
+
+  '@supermemory/memory-graph@0.2.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      d3-force: 3.0.0
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
 
   '@svgr/babel-plugin-add-jsx-attribute@8.0.0(@babel/core@7.29.0)':
     dependencies:
