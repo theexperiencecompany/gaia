@@ -97,6 +97,7 @@ The in-app "What's New" sidebar card and modal parse `release-notes.mdx` to disp
 - Mintlify rewrites the relative `/images/...` path to an absolute `https://docs.heygaia.io/...` URL in the feed, so the app loads it directly — no extra config needed.
 - The image is optional — omitting it is fine, the card will render without one
 - The parser grabs **only the first image** in the block; any subsequent images are ignored for the card
+- **Don't hand-edit the page-level hero `<img src>` at the top of `release-notes.mdx`.** `scripts/generate-changelog-pages.js` auto-syncs it to the newest release's image on every run (pre-commit + CI), so the page banner always matches the latest release. Just give the newest `<Update>` block its hero image and the page banner follows. If the newest release has no image, the existing banner is left untouched.
 
 ## Non-obvious Patterns
 
