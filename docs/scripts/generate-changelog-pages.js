@@ -245,22 +245,26 @@ function generateCategoryPages(blocks) {
     // Also handle legacy blocks (pre per-app era) where there are no ## [App] headings
     const legacyCategories = sections.length === 0 ? extractCategorySections(block.content) : {};
 
-    // Per-app sections: extract matching category content under each app heading
-    const catContent = {}; // cat -> lines[]
+    // Per-app sections: collect each app's category content as a discrete block
+    // so they can be joined with a blank-line separator regardless of source spacing.
+    const catContent = {}; // cat -> array of per-app block strings
 
     for (const section of sections) {
       const lines = section.lines;
       let currentCat = null;
       let catLines = [];
 
+      const flushCat = function () {
+        if (currentCat && catLines.length) {
+          if (!catContent[currentCat]) catContent[currentCat] = [];
+          catContent[currentCat].push(trimSeparators(catLines).join("\n"));
+        }
+      };
+
       for (const line of lines) {
         const catMatch = line.match(CAT_HEADING);
         if (catMatch) {
-          // Flush previous
-          if (currentCat && catLines.length) {
-            if (!catContent[currentCat]) catContent[currentCat] = [];
-            catContent[currentCat].push(...catLines);
-          }
+          flushCat();
           const catName = catMatch[1].trim().toLowerCase();
           currentCat = CAT_MAP[catName] || null;
           // Start with the app heading (## [App vX.Y.Z]), skip the ### category heading
@@ -270,19 +274,16 @@ function generateCategoryPages(blocks) {
         }
       }
 
-      if (currentCat && catLines.length) {
-        if (!catContent[currentCat]) catContent[currentCat] = [];
-        catContent[currentCat].push(...catLines);
-      }
+      flushCat();
     }
 
-    // Add per-app category content to catBlocks
-    for (const [cat, lines] of Object.entries(catContent)) {
+    // Add per-app category content to catBlocks, separating apps with a blank line
+    for (const [cat, appBlockStrings] of Object.entries(catContent)) {
       if (!catBlocks[cat]) catBlocks[cat] = [];
       catBlocks[cat].push({
         label: block.label,
         description: block.description,
-        content: trimSeparators(lines).join("\n"),
+        content: appBlockStrings.join("\n\n"),
       });
     }
 
