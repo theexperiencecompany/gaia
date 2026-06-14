@@ -58,9 +58,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/integrations/connect-link",
         ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
-        # addition to a WorkOS session cookie. No prefix-scoped routes are
-        # currently configured — the legacy `/api/v1/dev/*` smoke-test prefix
-        # was removed when those routes were deleted.
+        # addition to a WorkOS session cookie.
         self.agent_only_paths = ["/api/v1/chat-stream"]
         self.agent_only_path_prefixes: tuple[str, ...] = ()
         self.user_cache_expiry = 3600

@@ -47,15 +47,16 @@ from app.constants.email import (
     MAX_RESULTS,
     ONBOARDING_EMAIL_SCAN_LIMIT,
 )
+from app.constants.memory import MemorySourceType
 from app.db.mongodb.collections import users_collection
 from app.helpers.email_helpers import (
     mark_email_processing_complete,
     process_email_content,
-    store_emails_to_mem0,
+    store_emails_to_memory,
     store_single_profile,
 )
+from app.memory.engine import memory_engine
 from app.services.mail.mail_service import search_messages
-from app.services.memory_service import memory_service
 from shared.py.wide_events import log
 
 
@@ -241,7 +242,7 @@ async def fetch_emails_for_onboarding(
 
 async def process_gmail_to_memory(user_id: str) -> dict:
     """
-    Process user's Gmail emails into Mem0 memories.
+    Process user's Gmail emails into memories.
 
     Flow:
     1. TWO PARALLEL TRACKS:
@@ -345,15 +346,14 @@ async def process_gmail_to_memory(user_id: str) -> dict:
                 parse_elapsed,
             )
 
-            # Store batch to Mem0 with sync mode during onboarding (ensures completion)
+            # Store batch to memory in the background during onboarding
             if processed_batch:
                 task = asyncio.create_task(
-                    store_emails_to_mem0(
+                    store_emails_to_memory(
                         user_id,
                         processed_batch,
                         user_name,
                         user_email,
-                        async_mode=True,
                     )
                 )
                 email_storage_tasks.append(task)
@@ -368,7 +368,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
 
     # Await all email storage tasks in parallel with error handling
     log.info(
-        f"[timing] Awaiting {len(email_storage_tasks)} Mem0 storage tasks ({total_parsed} emails total)..."
+        f"[timing] Awaiting {len(email_storage_tasks)} memory storage tasks ({total_parsed} emails total)..."
     )
     storage_results: list[Any] = []
     storage_errors = 0
@@ -378,10 +378,10 @@ async def process_gmail_to_memory(user_id: str) -> dict:
             storage_results = await asyncio.gather(*email_storage_tasks, return_exceptions=True)
             storage_elapsed = time.monotonic() - t0_storage
             timer.record(
-                f"Mem0 email storage await ({len(email_storage_tasks)} batches queued)",
+                f"Memory email storage await ({len(email_storage_tasks)} batches queued)",
                 storage_elapsed,
             )
-            log.info(f"[timing] Mem0 email storage tasks dispatched in {storage_elapsed:.1f}s")
+            log.info(f"[timing] Memory email storage tasks dispatched in {storage_elapsed:.1f}s")
 
             for idx, result in enumerate(storage_results):
                 if isinstance(result, Exception):
@@ -512,7 +512,6 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
                     crawl_semaphore,
                     user_name,
                     crawled_urls,
-                    async_mode=True,
                 )
             )
             platform_tasks.append((platform, task))
@@ -577,7 +576,6 @@ async def _process_single_platform(
     semaphore: asyncio.Semaphore,
     user_name: str | None = None,
     crawled_urls: set | None = None,
-    async_mode: bool = False,
 ) -> dict:
     """
     Process a single platform: Extract -> Crawl -> Return content.
@@ -585,7 +583,6 @@ async def _process_single_platform(
 
     Args:
         crawled_urls: Shared set to track already-crawled URLs for deduplication
-        async_mode: Memory storage mode (False for onboarding to ensure completion)
     """
     try:
         t0_platform = time.monotonic()
@@ -629,7 +626,7 @@ async def _process_single_platform(
             log.warning(f"Failed to crawl {platform} profile: {crawl_result.get('error')}")
             return {"error": crawl_result.get("error", "Crawl failed")}
 
-        # 3. Store profile with configured mode
+        # 3. Store profile
         t0_store = time.monotonic()
         await store_single_profile(
             user_id,
@@ -637,10 +634,9 @@ async def _process_single_platform(
             profile_url,
             crawl_result["content"],
             user_name,
-            async_mode=async_mode,
         )
         store_elapsed = time.monotonic() - t0_store
-        log.info(f"[timing:{platform}] Mem0 profile store: {store_elapsed:.1f}s")
+        log.info(f"[timing:{platform}] Memory profile store: {store_elapsed:.1f}s")
         log.info(
             f"[timing:{platform}] TOTAL {time.monotonic() - t0_platform:.1f}s "
             f"(llm={llm_elapsed:.1f}s, crawl={crawl_elapsed:.1f}s, store={store_elapsed:.1f}s)"
@@ -764,25 +760,24 @@ async def _discover_and_store_linked_profiles(
 """
                 profile_messages.append({"role": "user", "content": memory_content})
 
-        # Store in batch if we have any (sync mode for onboarding)
+        # Store in batch if we have any
         if profile_messages:
-            success = await memory_service.store_memory_batch(
-                messages=profile_messages,
-                user_id=user_id,
-                metadata={
-                    "type": "social_profile",
-                    "source": f"discovered_from_{source_platform}",
-                    "discovered_at": datetime.now(UTC).isoformat(),
-                    "batch_size": len(profile_messages),
-                },
-                async_mode=True,
+            retain_result = await memory_engine.retain(
+                user_id,
+                profile_messages,
+                source_type=MemorySourceType.EMAIL,
+                extraction_hints=(
+                    f"These are the user's own social profiles, discovered from their "
+                    f"{source_platform} emails. Extract durable facts about the user: "
+                    "handles, bio, role, projects, interests, and location."
+                ),
             )
-            if success:
+            if retain_result.facts_extracted > 0:
                 log.info(
-                    f"✓ Stored {len(profile_messages)} discovered profiles from {source_platform}"
+                    f"Stored {len(profile_messages)} discovered profiles from {source_platform}"
                 )
                 return len(profile_messages)
-            log.error(f"Failed to store discovered profiles from {source_platform}")
+            log.warning(f"No facts extracted from discovered profiles from {source_platform}")
             return 0
 
         return 0

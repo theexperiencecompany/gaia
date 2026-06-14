@@ -38,7 +38,6 @@ MOBILE_REDIRECT_TTL = FIVE_MINUTES_TTL
 
 # Long TTLs with event-driven invalidation — short TTLs are a symptom of
 # missing invalidation, not a safety net.
-MEMORY_SEARCH_CACHE_TTL = ONE_DAY_TTL
 INTEGRATION_STATUS_CACHE_TTL = ONE_DAY_TTL
 SUBAGENT_PROMPT_CACHE_TTL = ONE_DAY_TTL
 PROVIDER_METADATA_CACHE_TTL = ONE_DAY_TTL

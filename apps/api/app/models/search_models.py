@@ -1,6 +1,6 @@
 from typing import Union
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
 
 class URLRequest(BaseModel):
@@ -13,7 +13,8 @@ class URLResponse(BaseModel):
     favicon: Union[str, None] = None
     website_name: Union[str, None] = None
     website_image: Union[str, None] = None
-    url: HttpUrl
+    # str, not HttpUrl: email previews use bare addresses / mailto: targets
+    url: str
 
 
 class MultiURLResponse(BaseModel):

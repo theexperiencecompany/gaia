@@ -76,7 +76,7 @@ export function NotificationConnectBanner({
             variant="flat"
             color="primary"
             className="shrink-0 text-xs"
-            onPress={() => router.push("/settings?section=linked-accounts")}
+            onPress={() => router.push("/settings/linked-accounts")}
           >
             Connect
           </Button>
@@ -99,7 +99,7 @@ export function NotificationConnectBanner({
         variant="flat"
         color="primary"
         className="mt-3 text-xs"
-        onPress={() => router.push("/settings?section=linked-accounts")}
+        onPress={() => router.push("/settings/linked-accounts")}
       >
         Connect platforms
       </Button>

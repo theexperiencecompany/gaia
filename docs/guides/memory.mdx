@@ -1,106 +1,103 @@
 ---
-title: "Teaching GAIA to Remember You"
+title: "How GAIA Remembers"
 sidebarTitle: "Memory"
-description: "GAIA learns your contacts, preferences, and patterns, so you never repeat yourself"
+description: "GAIA learns who you are so you never have to repeat yourself"
 icon: "brain"
 ---
 
 import { Chat } from "/snippets/chat-bubbles.jsx";
 
-GAIA remembers who you are, what you care about, and how you work, across every conversation. Mention your manager once, and GAIA knows them forever. The more you use it, the less you have to explain.
+GAIA remembers things about you across every conversation. Mention your sister once, and GAIA knows her forever. Tell it where you live, and it never asks again. The more you talk, the less you explain.
+
+It all happens automatically. You never have to say "remember this" — GAIA picks up on what matters and keeps it.
 
 <Frame>
-  <img className="rounded-lg" src="/images/guides/memory/memory-graph.png" alt="Memory graph view showing entities and relationships" />
+  <img className="rounded-lg" src="/images/guides/memory/memory-folders.png" alt="Memory settings showing folders with stored facts organized by topic" />
 </Frame>
 
-## What to say
+## Four kinds of memory
 
-Just talk. Memory works in the background, no "remember this" required.
+Everything GAIA learns about you lives in one place: **Settings > Memories**. There are four tabs, each showing the same memory a different way.
+
+### Facts
+
+Individual things GAIA knows about you. Each one is a single, specific fact.
+
+- "Sam's email is sam@example.com"
+- "You prefer concise communication"
+- "Your birthday is March 14th"
+
+GAIA adds these automatically during conversations. If you mention something and it changes later ("I moved to Austin"), GAIA quietly updates the existing fact. Nothing is double-stored, and contradictions resolve to whatever you said most recently.
+
+Facts are grouped into **folders** by topic — relationships, work, preferences, and so on. GAIA creates folders on its own as it learns.
+
+### Journal
+
+A short diary entry for each day you've had a conversation. The Journal shows you what happened when — which topics came up, what GAIA helped with, what it learned.
+
+<Frame>
+  <img className="rounded-lg" src="/images/guides/memory/memory-journal.png" alt="Journal tab showing a timeline of conversation summaries grouped by day" />
+</Frame>
+
+You can browse back through time and see how GAIA's understanding of your life has built up. Each entry is created automatically at the end of a conversation.
+
+### Documents
+
+GAIA keeps a small set of auto-written documents that it reads at the start of every conversation. Think of them as living notes about you:
+
+- **user.md** — who you are, where you work, where you live, how you like to communicate
+- **memory.md** — a summary of what GAIA has learned so far
+- **people.md** — the people in your life and how they connect
+- **agenda.md** — your current priorities and what's on your plate
+- **insights.md** — patterns GAIA has noticed about your habits and preferences
+
+<Frame>
+  <img className="rounded-lg" src="/images/guides/memory/memory-documents.png" alt="Documents tab showing the user.md profile document with identity, work, and location sections" />
+</Frame>
+
+GAIA keeps these documents up to date as it learns. You can also edit them directly — click **Edit** on any document to make changes yourself.
+
+### Graph
+
+A visual map of the people, places, and projects in your life, and how they connect. If GAIA knows you have a co-founder, and it knows your co-founder has an email address, those appear as connected nodes.
+
+<Frame>
+  <img className="rounded-lg" src="/images/guides/memory/memory-graph-view.png" alt="Graph tab showing a network visualization of entities and relationships" />
+</Frame>
+
+The graph is useful for getting a bird's-eye view of what GAIA knows. You can zoom, pan, fit to screen, and export it as a PNG or SVG.
+
+## How memory gets updated
 
 <Chat
   messages={[
-    { from: "user", text: "message sarah that I'm running late" },
-    { from: "gaia", text: "Sent, I messaged Sarah on Slack that you're running late." },
-    { from: "user", text: "actually, make all my meetings 25 minutes by default" },
-    { from: "gaia", text: "Noted, 25-minute meetings are now your default." },
+    { from: "user", text: "I just moved to Austin" },
+    { from: "gaia", text: "Got it, I've updated your location. Is there anything you need help with in Austin?" },
+    { from: "user", text: "my new email at work is alex@newcompany.com" },
+    { from: "gaia", text: "Noted, I've updated your work email." },
   ]}
 />
 
-If GAIA has seen Sarah's Slack handle, James's email, or your manager's name before, it fills in the rest. You don't look anything up.
-
-## What GAIA learns
-
-At the end of each conversation, GAIA reviews what happened and keeps anything worth remembering:
-
-- **Identity mappings**, names linked to emails, Slack IDs, GitHub handles, calendar IDs
-- **Preferences**, formats, timezones, communication style, defaults
-- **Contacts and relationships**, who you message, who reports to you, key collaborators
-- **Tools and workflows**, which integrations you use and your recurring patterns
-- **Context**, projects, repositories, channels you work in
-
-When you start a new conversation, GAIA searches these memories and pulls in whatever is relevant to your request, automatically. Memory also drives GAIA's proactive behavior: the more it knows about your routines, the better it anticipates what you need.
+You never have to ask GAIA to remember something. It captures facts from context automatically — during conversations, when you mention people, when you share preferences. If something changes, just say so. GAIA replaces the old information; it doesn't keep both.
 
 <Tip>
-  The more you use GAIA with your connected integrations, the richer your
-  memory becomes. One conversation where you message "Sarah" on Slack teaches
-  GAIA her Slack ID for good.
+  The more you use GAIA across integrations, the richer its memory becomes. A
+  conversation where you message someone on Slack teaches GAIA their handle for
+  good.
 </Tip>
 
-## Teach it directly
+## You're in control
 
-You can add memories yourself instead of waiting for GAIA to pick them up.
+Everything GAIA knows about you is visible and editable in **Settings > Memories**.
 
-<Steps>
-  <Step title="Open memory settings">
-    Go to **Settings** and select **Memories** from the sidebar.
-  </Step>
-  <Step title="Add a memory">
-    Click **Add Memory** and type what you want GAIA to know. Be specific,
-    "My manager is Alex Chen, alex.chen@company.com" or "I prefer meeting
-    agendas as bullet points."
-  </Step>
-  <Step title="Save">
-    Click **Save Memory**. GAIA processes the text and pulls out the key facts.
-  </Step>
-</Steps>
-
-<Note>
-  GAIA won't store a memory if it can't extract something meaningful. "I like
-  coffee" is too vague. "I order from Blue Bottle, size large, oat milk" gives
-  GAIA something it can use.
-</Note>
-
-## See and control what it knows
-
-The Memories page in Settings shows everything GAIA has learned, two ways:
-
-- **Graph view**, a visual network of people, tools, and projects and how they connect. The default view. You can export it as a PNG or SVG.
-- **List view**, every stored memory with its content, date, and category (identity mappings, preferences, context patterns).
-
-<Frame>
-  <img className="rounded-lg" src="/images/guides/memory/memory-list.png" alt="Memory list view showing stored memories with categories and dates" />
-</Frame>
-
-To remove something:
-
-- **Delete one memory**, in List view, click the delete button next to it.
-- **Clear all memories**, click **Clear All** to erase everything.
+- **View** any fact, document, or journal entry
+- **Edit** a fact or document if something is wrong or outdated
+- **Forget** any individual memory with the delete button
+- **Clear all** memories to start fresh
 
 <Warning>
-  Clearing all memories cannot be undone. GAIA resets its knowledge of your
-  preferences, contacts, and workflows and re-learns from future conversations.
+  Clearing all memories cannot be undone. GAIA will re-learn from future
+  conversations, but everything it knows today will be gone.
 </Warning>
 
-## How it works under the hood
-
-You can skip this, memory works without you knowing any of it.
-
-GAIA's memory runs on vector-based semantic search. Each memory is embedded as a vector, a numerical representation of its meaning, so recall doesn't depend on exact keywords. Asking about "my team lead" surfaces a memory stored as "Alex Chen is my manager," because the concepts are related.
-
-Memories also carry graph relationships, structured connections between people, tools, and projects, so GAIA understands how things connect, not just isolated facts.
-
-**Privacy:**
-
-- Memories are per-user. No other user can access yours.
-- They're processed and stored in a dedicated memory service, separate from your chat history.
-- You can view, add, and delete any memory at any time from Settings.
+Memory is per-account and private. No other user can see your memories, and nothing is shared with third-party services. Everything is stored and processed within GAIA's own infrastructure.

@@ -133,7 +133,7 @@ Progress(value, max?, color?, label?, showValue?, width?)
 
 Avatar(name, initials, image, color, showName)
   Default: image-only chip. Pass showName=true to include the label.
-  Example: Avatar("Aryan", "AR", "https://github.com/aryanranderiya.png")
+  Example: Avatar("Sam", "SA", "https://github.com/samcodes.png")
 
 Checkbox(label, checked, description)           Read-only.
 Radio(label, value, description, selected)      Compose multiple inside Stack for a group.
