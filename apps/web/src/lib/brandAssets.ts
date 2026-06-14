@@ -17,53 +17,54 @@ export interface BrandImageAsset {
   caption: string;
 }
 
-export const BRAND_IMAGE_ASSETS: readonly BrandImageAsset[] = [
-  {
-    path: "/brand/gaia_logo.png",
-    title: "GAIA Logo",
-    caption: "The primary GAIA brand mark",
-  },
-  {
-    path: "/brand/gaia_wordmark_black.png",
-    title: "GAIA Wordmark (Black)",
-    caption: "GAIA wordmark for light backgrounds",
-  },
-  {
-    path: "/brand/gaia_wordmark_white.png",
-    title: "GAIA Wordmark (White)",
-    caption: "GAIA wordmark for dark backgrounds",
-  },
-  {
-    path: "/brand/experience_logo_black.png",
-    title: "The Experience Company Logo (Black)",
-    caption: "The Experience Company brand mark for light backgrounds",
-  },
-  {
-    path: "/brand/experience_logo_white.png",
-    title: "The Experience Company Logo (White)",
-    caption: "The Experience Company brand mark for dark backgrounds",
-  },
-  {
-    path: "/brand/experience_wordmark_black.png",
-    title: "Experience Wordmark (Black)",
-    caption: "Experience wordmark for light backgrounds",
-  },
-  {
-    path: "/brand/experience_wordmark_white.png",
-    title: "Experience Wordmark (White)",
-    caption: "Experience wordmark for dark backgrounds",
-  },
-  {
-    path: "/brand/experience_full_wordmark_black.png",
-    title: "The Experience Company Full Wordmark (Black)",
-    caption: "Complete The Experience Company wordmark for light backgrounds",
-  },
-  {
-    path: "/brand/experience_full_wordmark_white.png",
-    title: "The Experience Company Full Wordmark (White)",
-    caption: "Complete The Experience Company wordmark for dark backgrounds",
-  },
-] as const;
+// [file stem under /public/brand (.png), <image:title>, <image:caption>]
+const ASSETS: ReadonlyArray<readonly [string, string, string]> = [
+  ["gaia_logo", "GAIA Logo", "The primary GAIA brand mark"],
+  [
+    "gaia_wordmark_black",
+    "GAIA Wordmark (Black)",
+    "GAIA wordmark, light backgrounds",
+  ],
+  [
+    "gaia_wordmark_white",
+    "GAIA Wordmark (White)",
+    "GAIA wordmark, dark backgrounds",
+  ],
+  [
+    "experience_logo_black",
+    "The Experience Company Logo (Black)",
+    "Experience mark, light backgrounds",
+  ],
+  [
+    "experience_logo_white",
+    "The Experience Company Logo (White)",
+    "Experience mark, dark backgrounds",
+  ],
+  [
+    "experience_wordmark_black",
+    "Experience Wordmark (Black)",
+    "Experience wordmark, light backgrounds",
+  ],
+  [
+    "experience_wordmark_white",
+    "Experience Wordmark (White)",
+    "Experience wordmark, dark backgrounds",
+  ],
+  [
+    "experience_full_wordmark_black",
+    "The Experience Company Full Wordmark (Black)",
+    "Full Experience wordmark, light backgrounds",
+  ],
+  [
+    "experience_full_wordmark_white",
+    "The Experience Company Full Wordmark (White)",
+    "Full Experience wordmark, dark backgrounds",
+  ],
+];
+
+export const BRAND_IMAGE_ASSETS: readonly BrandImageAsset[] = ASSETS.map(
+  ([file, title, caption]) => ({ path: `/brand/${file}.png`, title, caption }),
+);
 
 /** Path of the brand / press-kit page that hosts these assets. */
 export const BRAND_PAGE_PATH = "/brand";

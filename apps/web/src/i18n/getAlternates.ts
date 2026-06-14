@@ -1,4 +1,10 @@
-import { getSiteUrl } from "@/lib/seo";
+import type { Metadata } from "next";
+
+import {
+  generatePageMetadata,
+  getSiteUrl,
+  type PageMetadataOptions,
+} from "@/lib/seo";
 
 import { defaultLocale, locales } from "./config";
 
@@ -59,5 +65,24 @@ export function getLocalizedAlternates(
   return {
     canonical: `${getSiteUrl()}${localizePath(target, locale)}`,
     languages: getAlternates(target),
+  };
+}
+
+/**
+ * Page metadata for a translated route: `generatePageMetadata` plus the
+ * locale-aware self-canonical + hreflang block, in one call. Use on every page
+ * under a translated route family instead of repeating the spread-and-override.
+ */
+export function generateLocalizedPageMetadata(
+  options: PageMetadataOptions & { locale: string },
+): Metadata {
+  const { locale, ...pageOptions } = options;
+  return {
+    ...generatePageMetadata(pageOptions),
+    alternates: getLocalizedAlternates(
+      pageOptions.path,
+      locale,
+      pageOptions.canonicalPath,
+    ),
   };
 }

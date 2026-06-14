@@ -4,12 +4,11 @@ import JsonLd from "@/components/seo/JsonLd";
 import type { AlternativeData } from "@/features/alternatives/data/alternativesData";
 import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { Link } from "@/i18n/navigation";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -22,7 +21,7 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: "Best Alternatives to Popular Productivity Tools",
     description:
       "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian, and 24 more tools. Honest fit scores and migration steps for each.",
@@ -37,11 +36,8 @@ export async function generateMetadata({
       "ai productivity assistant",
       "best productivity tools 2026",
     ],
+    locale,
   });
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates("/alternative-to", locale),
-  };
 }
 
 const CATEGORY_LABELS: Record<AlternativeData["category"], string> = {

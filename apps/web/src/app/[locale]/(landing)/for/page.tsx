@@ -5,11 +5,10 @@ import Link from "next/link";
 import JsonLd from "@/components/seo/JsonLd";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getAllPersonas } from "@/features/personas/data/personasData";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -31,7 +30,7 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: "GAIA for Every Role - AI Assistant for Professionals",
     description:
       "Discover how GAIA helps software developers, product managers, founders, marketers, and 20+ other roles automate their workflows and boost productivity with AI.",
@@ -44,11 +43,8 @@ export async function generateMetadata({
       "AI assistant for teams",
       "professional AI automation",
     ],
+    locale,
   });
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates("/for", locale),
-  };
 }
 
 export default async function PersonasHubPage() {
