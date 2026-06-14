@@ -20,15 +20,18 @@ The yielded object is a live `AsyncSandbox` from `e2b`.
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import AsyncIterator
 import contextlib
 from datetime import UTC, datetime
+from pathlib import Path
 import time
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from e2b import AsyncSandbox
 
+from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
 from app.constants.sandbox import (
     HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS,
@@ -38,6 +41,7 @@ from app.constants.sandbox import (
     SANDBOX_TIMEOUT_REFRESH_SECONDS,
 )
 from app.db.mongodb.collections import e2b_sandboxes_collection
+from app.decorators import enforce_rate_limit
 from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
@@ -51,11 +55,22 @@ from app.services.storage import (
 from shared.py.wide_events import log
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
-MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"
+MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"  # template-baked copy (runtime-ship fallback)
+# The API ships its OWN copy of mount_juicefs.sh into the sandbox at acquire time
+# (see _run_mount_script), so changes to the mount script take effect on the next
+# sandbox without an E2B template rebuild. Timeout covers the in-script
+# mount-readiness poll (primary + skills + system, ~105s worst case) plus margin.
+MOUNT_SCRIPT_FILE = Path(__file__).resolve().parents[3] / "scripts" / "mount_juicefs.sh"
+MOUNT_SCRIPT_TIMEOUT_SECONDS = 120
+SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
 
 
 class SandboxAcquisitionError(RuntimeError):
     """Raised when a usable sandbox cannot be obtained for a user."""
+
+
+class SandboxRateLimitError(SandboxAcquisitionError):
+    """Raised when the user has exhausted their sandbox-creation rate limit."""
 
 
 def _now() -> datetime:
@@ -125,6 +140,28 @@ def _mount_env(user_id: str, shard_id: int) -> dict[str, str]:
     }
 
 
+async def _enforce_creation_limit(user_id: str) -> None:
+    """Gate fresh sandbox provisioning behind the tiered rate limiter.
+
+    Only the create path is gated — reusing or resuming an existing sandbox
+    stays unlimited; provisioning a new E2B VM is the cost driver.
+    """
+    try:
+        await enforce_rate_limit(user_id, SANDBOX_CREATION_FEATURE_KEY)
+    except RateLimitExceededException as e:
+        log.warning(f"[sandbox] creation rate limit hit for user {user_id}")
+        detail: dict[str, Any] = e.detail if isinstance(e.detail, dict) else {}
+        message = "sandbox creation limit reached"
+        if detail.get("reset_time"):
+            message += f"; resets at {detail['reset_time']}"
+        if detail.get("plan_required"):
+            message += f" (upgrade to {detail['plan_required'].upper()} for higher limits)"
+        raise SandboxRateLimitError(message) from e
+    except Exception as e:
+        log.error(f"[sandbox] creation limit check failed for user {user_id}: {e}")
+        raise SandboxAcquisitionError(f"sandbox creation limit check failed: {e}") from e
+
+
 async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
     """Provision a new E2B sandbox for the user, run mount script, return handle."""
     if not settings.E2B_API_KEY:
@@ -148,25 +185,36 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
 
 
 async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
-    """Run the bundled mount script that mounts JuiceFS + bind-mounts /workspace.
+    """Run the JuiceFS mount script in the sandbox as root.
 
-    The mount itself is best-effort inside the script: if the JuiceFS
-    metadata DB or R2 isn't reachable from the sandbox, the script falls
-    back to a plain ``/workspace`` directory and exits 0. We only raise here
-    if the script genuinely crashed (couldn't even fall back).
+    Ships the API's CURRENT copy of ``mount_juicefs.sh`` at acquire time
+    (base64 -> ``bash -s``) instead of executing the copy baked into the E2B
+    template, so changes to the mount script take effect on the next sandbox
+    without rebuilding the template. The script body is not secret and rides in
+    argv; the credentials stay in ``envs`` (never in argv), and nothing is
+    written to a sandbox file that root then executes. Falls back to the
+    template-baked copy if the API's own file is unreadable.
+
+    The mount itself is best-effort inside the script: if the JuiceFS metadata
+    DB or R2 isn't reachable, the script falls back to a plain ``/workspace``
+    and exits 0. We only raise here if the script genuinely crashed.
 
     ``user="root"`` makes e2b's envd fork the process directly as root, with
-    ``envs=mount_env`` set on that root process's environment. The
-    unprivileged sandbox user never holds the credentials — no
-    ``sudo --preserve-env`` shell is involved, so there is no parent-shell
-    environ race window. The sandbox user has no `sudo` (template removes
-    them from the `sudo` group), so root's ``/proc/<pid>/environ`` stays
-    inaccessible.
+    ``envs=mount_env`` set on that root process's environment. The unprivileged
+    sandbox user never holds the credentials (no ``sudo --preserve-env`` shell,
+    no parent-shell environ race), and has no ``sudo``, so root's
+    ``/proc/<pid>/environ`` stays inaccessible.
     """
+    try:
+        script = await asyncio.to_thread(MOUNT_SCRIPT_FILE.read_bytes)
+        b64 = base64.b64encode(script).decode("ascii")
+        cmd = f"printf %s '{b64}' | base64 -d | bash -s"
+    except OSError:
+        cmd = MOUNT_SCRIPT_PATH
     async with fs_timer(FsOps.SBX_MOUNT_SCRIPT):
         result = await sbx.commands.run(
-            MOUNT_SCRIPT_PATH,
-            timeout=60,
+            cmd,
+            timeout=MOUNT_SCRIPT_TIMEOUT_SECONDS,
             envs=mount_env,
             user="root",
         )
@@ -411,6 +459,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         workspace_version = doc.get("workspace_version", 0)
 
     if sbx is None:
+        await _enforce_creation_limit(user_id)
         # Pre-create the per-user subtrees host-side so the sandbox's
         # ``--subdir`` mounts find them ready. Doing this on the host (which
         # holds the full JuiceFS mount) avoids ever exposing the full

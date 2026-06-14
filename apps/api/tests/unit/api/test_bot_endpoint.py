@@ -254,7 +254,7 @@ class TestGetSettings:
     """GET /api/v1/bot/settings/{platform}/{platform_user_id}"""
 
     @patch(
-        "app.api.v1.endpoints.bot.get_user_connected_integrations",
+        "app.api.v1.endpoints.bot.get_user_integration_records",
         new_callable=AsyncMock,
     )
     @patch(

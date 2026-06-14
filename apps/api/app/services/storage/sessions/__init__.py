@@ -20,19 +20,18 @@ from app.services.storage.sessions.artifacts import (
     stat_artifact,
 )
 from app.services.storage.sessions.lifecycle import (
-    bootstrap_user_session,
     chmod_path,
     delete_session_dir,
     ensure_session_dirs,
     list_session_ids,
     list_stale_sessions,
     materialize_user_integrations,
+    provision_user_workspace,
     touch_session_last_active,
 )
 
 __all__ = [
     "ArtifactInfo",
-    "bootstrap_user_session",
     "chmod_path",
     "delete_session_dir",
     "ensure_session_dirs",
@@ -42,6 +41,7 @@ __all__ = [
     "list_user_uploaded",
     "materialize_user_integrations",
     "pin_session_artifact",
+    "provision_user_workspace",
     "resolve_session_path",
     "stat_artifact",
     "touch_session_last_active",

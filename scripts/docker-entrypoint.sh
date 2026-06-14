@@ -1,6 +1,8 @@
 #!/bin/sh
 # Container entrypoint:
 #   1. Project secrets (Docker Swarm secrets → env)
+#   1b. Resolve Infisical-managed secrets the JuiceFS mount needs (R2 / metadata
+#       creds), since the mount runs before the Python app that injects them.
 #   2. JuiceFS host-side mount (writes encryption PEM if provided, formats the
 #      filesystem on first boot, mounts it at $JUICEFS_HOST_MOUNT_PATH).
 #      Skipped transparently when R2/JuiceFS env vars are missing — local dev
@@ -18,6 +20,58 @@ set -e
 [ -f /run/secrets/gaia_infisical_machine_identity_client_secret ] && export INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=$(cat /run/secrets/gaia_infisical_machine_identity_client_secret)
 [ -f /run/secrets/gaia_infisical_project_id ]                     && export INFISICAL_PROJECT_ID=$(cat /run/secrets/gaia_infisical_project_id)
 [ -f /run/secrets/gaia_metrics_token ]                            && export METRICS_TOKEN=$(cat /run/secrets/gaia_metrics_token)
+
+# ---------------------------------------------------------------------------
+# 1b. Resolve Infisical-managed secrets the JuiceFS mount needs
+# ---------------------------------------------------------------------------
+# The Python app injects Infisical secrets at startup, but the JuiceFS mount in
+# section 2 runs here in the entrypoint shell — BEFORE Python — so without this
+# it cannot see the R2 / metadata creds (this deployment stores them in
+# Infisical, not plaintext env) and silently skips the mount, leaving
+# $JUICEFS_HOST_MOUNT_PATH an empty local dir. Reuse the app's own Infisical
+# loader so the auth/fetch logic lives in exactly one place (no CLI dependency);
+# the resolved values land in a 0600 temp file rather than stdout so the
+# structured (NDJSON) app logging the loader emits can't corrupt them. Skipped
+# when the creds are already present (local .env / prod env take precedence) or
+# when the Infisical bootstrap creds are absent (self-host / contributor dev) —
+# the mount gate below then no-ops and the storage layer surfaces a clean
+# JuiceFSUnavailable instead of silently shadowing onto the overlay.
+if [ -z "${R2_ACCESS_KEY:-}" ] && [ -n "${INFISICAL_TOKEN:-}" ] && [ -n "${INFISICAL_MACHINE_IDENTITY_CLIENT_ID:-}" ]; then
+    _jfs_env_file="$(mktemp)"
+    if python - "$_jfs_env_file" <<'PY'
+import os
+import shlex
+import sys
+
+from shared.py.secrets import inject_infisical_secrets
+
+try:
+    inject_infisical_secrets()
+except Exception as exc:
+    # Best-effort: if Infisical is unreachable/misconfigured the mount gate
+    # below no-ops and the storage layer surfaces a clean JuiceFSUnavailable;
+    # the app's own startup injection will raise the authoritative error.
+    print(f"[entrypoint] Infisical secret resolution failed: {exc}", file=sys.stderr)
+
+_JFS_KEYS = (
+    "R2_ACCOUNT_ID",
+    "R2_BUCKET",
+    "R2_ACCESS_KEY",
+    "R2_SECRET_KEY",
+    "JUICEFS_META_URL_TEMPLATE",
+    "JFS_ENCRYPTION_KEY",
+)
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    for key in _JFS_KEYS:
+        value = os.environ.get(key)
+        if value:
+            handle.write(f"export {key}={shlex.quote(value)}\n")
+PY
+    then
+        . "$_jfs_env_file"
+    fi
+    rm -f "$_jfs_env_file"
+fi
 
 # ---------------------------------------------------------------------------
 # 2. JuiceFS host-side mount
@@ -72,13 +126,33 @@ if [ "$_jfs_can_mount" = "1" ] && command -v juicefs >/dev/null 2>&1; then
         echo "[entrypoint] Mounting JuiceFS at $JFS_MOUNT_PATH"
         # --backup-meta=0 because R2 ListObjects is not S3-sorted (see JuiceFS docs).
         # No --writeback: writeback loses data on container kill, unacceptable for agent writes.
+        # `|| true`: --background's readiness probe gives up after ~10s, but on a
+        # remote meta (e.g. Neon / cloud Postgres) the daemon often needs longer
+        # and finishes the mount right after. Don't trust that exit code; poll the
+        # real mountpoint below. Non-fatal either way (set -e would crash-loop us).
+        # --prefetch fetches N blocks concurrently on a read; the default of 1
+        # serializes block fetches from R2, which dominates first-open latency
+        # for an API host far from the bucket region. --buffer-size raises the
+        # read/write buffer to match.
         juicefs mount \
             --backup-meta=0 \
             --cache-dir=/var/cache/juicefs \
             --cache-size=4096 \
             --max-uploads=20 \
+            --prefetch=8 \
+            --buffer-size=600 \
             --background \
-            "$META_URL" "$JFS_MOUNT_PATH"
+            "$META_URL" "$JFS_MOUNT_PATH" 2>&1 || true
+        _jfs_ready=0
+        for _ in $(seq 1 45); do
+            if mountpoint -q "$JFS_MOUNT_PATH" 2>/dev/null; then _jfs_ready=1; break; fi
+            sleep 1
+        done
+        if [ "$_jfs_ready" = "1" ]; then
+            echo "[entrypoint] JuiceFS mounted at $JFS_MOUNT_PATH"
+        else
+            echo "[entrypoint] juicefs mount not ready after 45s; booting without JuiceFS (storage-backed features return 503 until it mounts)"
+        fi
     fi
 else
     echo "[entrypoint] JuiceFS bootstrap skipped (env not configured or binary missing)"

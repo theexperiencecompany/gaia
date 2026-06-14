@@ -10,6 +10,61 @@ from __future__ import annotations
 from enum import StrEnum
 import re
 
+# Source, config, and log files an agent commonly writes render inline as plain
+# text — the file viewer syntax-highlights by file extension, so a more specific
+# text/* subtype would buy nothing here. Enumerated explicitly (rather than a
+# catch-all default) so genuinely binary or unknown files still fall through to
+# application/octet-stream and are never base64-decoded as UTF-8 for inlining.
+_PLAIN_TEXT_EXTS = (
+    "py",
+    "pyi",
+    "js",
+    "mjs",
+    "cjs",
+    "ts",
+    "tsx",
+    "jsx",
+    "css",
+    "scss",
+    "less",
+    "sql",
+    "sh",
+    "bash",
+    "zsh",
+    "rs",
+    "go",
+    "java",
+    "rb",
+    "php",
+    "swift",
+    "kt",
+    "kts",
+    "scala",
+    "c",
+    "cc",
+    "cpp",
+    "cxx",
+    "h",
+    "hpp",
+    "toml",
+    "ini",
+    "cfg",
+    "conf",
+    "env",
+    "properties",
+    "log",
+    "text",
+    "rst",
+    "tsv",
+    "lua",
+    "r",
+    "pl",
+    "dart",
+    "dockerfile",
+    "makefile",
+    "gradle",
+)
+
 _EXT_CONTENT_TYPES = {
     "png": "image/png",
     "jpg": "image/jpeg",
@@ -19,10 +74,16 @@ _EXT_CONTENT_TYPES = {
     "svg": "image/svg+xml",
     "pdf": "application/pdf",
     "json": "application/json",
+    "xml": "application/xml",
+    "yaml": "application/yaml",
+    "yml": "application/yaml",
     "md": "text/markdown",
     "txt": "text/plain",
     "csv": "text/csv",
     "html": "text/html",
+    "htm": "text/html",
+    "tex": "text/x-latex",
+    **dict.fromkeys(_PLAIN_TEXT_EXTS, "text/plain"),
 }
 
 # Small textual artifacts ride the SSE event (and the Mongo conversation)

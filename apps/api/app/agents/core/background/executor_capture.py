@@ -1,28 +1,23 @@
 """Shared lifecycle for capturing background-executor tool events.
 
 The executor runs as a detached asyncio task (spawned by ``call_executor``).
-Its tool events, and those of any subagent it hands off to, are appended to a
-per-``stream_id`` collector by ``make_redis_stream_writer``.
+Its tool events, and those of any subagent it hands off to, are appended to
+the stream's ``StreamSession.tool_events`` by ``make_redis_stream_writer``.
 
 Both the live chat path and the silent path (workflows, background tasks)
-register that collector, wait for the executor, drain it into grouped
-``tool_data``, and tear it down. Centralizing it here keeps one implementation
-so chat and workflow runs render identically.
+register the session, wait for the executor, drain the collected events into
+grouped ``tool_data``, and tear it down. Centralizing it here keeps one
+implementation so chat and workflow runs render identically.
 """
 
 import asyncio
 from typing import Any
 
-from app.agents.core.background.inbox import (
-    deregister_bg_subagent_results,
-    deregister_executor_done_event,
-    deregister_executor_spawned,
-    deregister_pending_subagents,
-    deregister_tool_event_collector,
-    get_executor_done_event,
-    get_tool_event_collector,
-    register_executor_done_event,
-    register_tool_event_collector,
+from app.agents.core.background.session import (
+    RunKind,
+    create_session,
+    get_session,
+    teardown_session,
     was_executor_spawned,
 )
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
@@ -36,14 +31,12 @@ from shared.py.wide_events import log
 
 
 def register_executor_capture(stream_id: str) -> asyncio.Event:
-    """Register the done-event and tool-event collector for a stream.
+    """Register the stream session that captures executor tool events.
 
     Must run before the comms agent executes so ``call_executor``'s background
-    task can append events to the collector. Returns the done-event.
+    task can append events to the session. Returns the done-event.
     """
-    done_event = register_executor_done_event(stream_id)
-    register_tool_event_collector(stream_id)
-    return done_event
+    return create_session(stream_id, RunKind.LIVE).done_event
 
 
 async def await_executor_done(stream_id: str) -> None:
@@ -54,32 +47,32 @@ async def await_executor_done(stream_id: str) -> None:
     """
     if not was_executor_spawned(stream_id):
         return
-    done_event = get_executor_done_event(stream_id)
-    if done_event is None:
+    session = get_session(stream_id)
+    if session is None:
         return
     log.info("Waiting for executor completion", stream_id=stream_id)
     try:
         async with asyncio.timeout(EXECUTOR_WAIT_TIMEOUT):
-            await done_event.wait()
+            await session.done_event.wait()
     except TimeoutError:
         log.warning("Timed out waiting for executor — draining anyway", stream_id=stream_id)
 
 
 def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
-    """Drain the executor tool-event collector into reconstructed tool_data.
+    """Drain the session's tool events into reconstructed tool_data.
 
-    Mirrors the comms-graph accumulation path: ``tool_calls_data`` outputs are
-    merged in, and subagent start/end pairs are grouped into ``subagent_group``
-    entries via ``reconstruct_subagent_groups``. Only ``tool_calls_data``
-    entries get their output backfilled — the message owns those, while
-    subagent groups carry their own outputs from the collector.
+    Non-destructive read. Mirrors the comms-graph accumulation path:
+    ``tool_calls_data`` outputs are merged in, and subagent start/end pairs are
+    grouped into ``subagent_group`` entries via ``reconstruct_subagent_groups``.
+    Only ``tool_calls_data`` entries get their output backfilled — the message
+    owns those, while subagent groups carry their own outputs from the session.
     """
-    collector = get_tool_event_collector(stream_id)
-    if not collector:
+    session = get_session(stream_id)
+    if session is None or not session.tool_events:
         return []
     accumulated: dict[str, Any] = {"tool_data": []}
     outputs: dict[str, str] = {}
-    for evt in collector:
+    for evt in session.tool_events:
         absorb_collector_event(evt, accumulated, outputs)
     apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
@@ -89,11 +82,11 @@ def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
 def build_returned_to_frontend_note(stream_id: str) -> str:
     """Build a note telling comms which native cards already rendered this turn.
 
-    Sourced from the executor's emitted tool events (the same collector +
+    Sourced from the executor's emitted tool events (the same session +
     ``tool_fields`` source of truth as ``OPENUI_SUPPRESSED_TOOLS``), so it states
     what was RETURNED to the frontend — not a claim about DOM rendering.
 
-    MUST be called before the collector is torn down (and, for live streams,
+    MUST be called before the session is torn down (and, for live streams,
     before ``done_event`` is set, since the chat stream drains + tears down in
     parallel). Returns "" when nothing card-worthy was emitted.
     """
@@ -125,12 +118,8 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
 
 
 def teardown_executor_capture(stream_id: str) -> None:
-    """Deregister all per-stream executor orchestration state.
+    """Drop the stream's session and everything it holds.
 
     Safe to call multiple times.
     """
-    deregister_executor_done_event(stream_id)
-    deregister_tool_event_collector(stream_id)
-    deregister_pending_subagents(stream_id)
-    deregister_executor_spawned(stream_id)
-    deregister_bg_subagent_results(stream_id)
+    teardown_session(stream_id)

@@ -43,8 +43,8 @@ class SystemFile(NamedTuple):
     body: str
 
 
-# Static docs that anchor the workspace. Paths match what write_user_root_docs /
-# the gaia-tasks + user-todos materializers write, so reads stay consistent.
+# Static docs that anchor the workspace. Paths match what the skill catalog /
+# gaia-tasks + user-todos materializers write, so reads stay consistent.
 _STATIC_DOCS: list[tuple[str, str]] = [
     ("INDEX.md", INDEX_MD),
     ("sessions/GUIDE.md", SESSIONS_GUIDE_MD),

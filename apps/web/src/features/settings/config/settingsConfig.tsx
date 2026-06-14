@@ -5,6 +5,7 @@ import {
   DiscordIcon,
   Link03Icon,
   MessageMultiple02Icon,
+  NoteEditIcon,
   NotificationIcon,
   SparklesIcon,
   UserCircleIcon,
@@ -64,6 +65,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Preferences",
     icon: MessageMultiple02Icon,
     href: "/settings?section=preferences",
+  },
+  {
+    key: "instructions",
+    label: "Custom Instructions",
+    icon: NoteEditIcon,
+    href: "/settings?section=instructions",
   },
   {
     key: "memory",

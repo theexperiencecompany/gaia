@@ -564,7 +564,7 @@ class TestBotEndpointSettings:
                 return_value=user_doc,
             ),
             patch(
-                "app.api.v1.endpoints.bot.get_user_connected_integrations",
+                "app.api.v1.endpoints.bot.get_user_integration_records",
                 new_callable=AsyncMock,
                 return_value=[],
             ),

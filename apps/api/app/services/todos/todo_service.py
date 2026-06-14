@@ -751,6 +751,9 @@ class TodoService:
 
         await cls._invalidate_cache(user_id, operation="bulk_update")
 
+        if result.modified_count:
+            schedule_user_todos_sync(user_id)
+
         return BulkOperationResponse(
             success=request.todo_ids[: result.modified_count],  # Approximation
             failed=[],
@@ -794,6 +797,9 @@ class TodoService:
 
         await cls._invalidate_cache(user_id, operation="bulk_delete")
 
+        if result.deleted_count:
+            schedule_user_todos_sync(user_id)
+
         return BulkOperationResponse(
             success=todo_ids[: result.deleted_count],  # Approximation
             failed=[],
@@ -826,6 +832,9 @@ class TodoService:
         )
 
         await cls._invalidate_cache(user_id, project_id=request.project_id, operation="bulk_move")
+
+        if result.modified_count:
+            schedule_user_todos_sync(user_id)
 
         return BulkOperationResponse(
             success=request.todo_ids if result.modified_count > 0 else [],

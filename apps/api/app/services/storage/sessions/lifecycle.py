@@ -1,9 +1,10 @@
-"""Session lifecycle — bootstrap, dir creation, deletion, idle scan.
+"""Session lifecycle — dir creation, user provisioning, deletion, idle scan.
 
-Orchestrates the per-turn FS work for a chat conversation. ``bootstrap_user_session``
-is the hot path called on every chat-stream entry; the rest is admin (idle
-prune, user-level integration materialization, hard delete) reached from
-workers and the ``/sessions`` admin endpoints.
+``ensure_session_dirs`` creates a conversation's session dirs (at conversation
+creation). ``provision_user_workspace`` / ``materialize_user_integrations`` do
+the user-level materialization, driven by registration, integration changes,
+and startup — not by the chat turn. The rest is admin (idle prune, hard delete,
+stale scan) reached from workers and the ``/sessions`` admin endpoints.
 """
 
 from __future__ import annotations
@@ -36,86 +37,13 @@ from app.services.storage.sessions.skills import (
     read_skills_marker,
     read_text_or_none,
     write_skills_marker,
-    write_user_root_docs,
 )
-
-
-async def bootstrap_user_session(
-    user_id: str,
-    conv_id: str,
-    connected_ids: set[str] | None = None,
-) -> Path:
-    """Idempotent + hash-gated session bootstrap for a chat turn.
-
-    Combines session-dir creation, ``.meta.json`` touch, SKILL.md catalog
-    materialization, the gaia-tasks VFS sync, and the user-todos VFS
-    sync. Steady-state turns do zero writes when the library hash, the
-    connected set, the gaia-tasks catalog, and the user-todos catalog
-    haven't changed since the last bootstrap.
-
-    Order matters: gaia-tasks runs first because it owns the legacy
-    ``/workspace/todos/`` cleanup (the prior release used that path for
-    gaia-tasks). user-todos then populates the now-empty ``/todos/``.
-    """
-    # Late-bound to break a structural cycle: ``app.services.storage`` re-
-    # exports ``sessions`` (which re-exports this module), and the
-    # gaia-tasks / user-todos modules import ``storage.juicefs`` — which
-    # forces ``storage/__init__.py`` to run mid-import. Importing here,
-    # after the package graph is fully resolved, is the only break that
-    # does not require restructuring multiple ``__init__.py`` files.
-    from app.services.gaia_tasks_fs import sync_user_gaia_tasks
-    from app.services.integration_instructions_service import (
-        get_all_instructions,
-        instructions_signature,
-    )
-    from app.services.storage.system_workspace import (
-        ensure_system_subtree,
-        link_system_files_into_workspace,
-    )
-    from app.services.user_todos_fs import sync_user_todos
-
-    connected = connected_ids or set()
-    expected_hash = library_hash()
-    instructions = await get_all_instructions(user_id)
-    instructions_sig = instructions_signature(instructions)
-
-    def _go() -> Path:
-        base = session_base(user_id, conv_id)
-        u_root = base.parent.parent
-        _ensure_session_subdirs(base)
-        _stamp_meta_on_bootstrap(base / SESSION_META_FILENAME)
-        write_user_root_docs(u_root)
-        _materialize_if_stale(u_root, expected_hash, connected, instructions, instructions_sig)
-        return base
-
-    async with fs_timer(FsOps.BOOTSTRAP_USER_SESSION):
-        # System files (INDEX/GUIDE/builtin skills) are de-duplicated: one shared
-        # `_system` copy + per-user symlinks. Run this BEFORE the copy-writers so
-        # they see the symlinks (matches_text treats a symlink as "matches") and
-        # skip rewriting them. If the shared subtree is unavailable, the linker
-        # no-ops and the copy-writers transparently fall back to per-user copies.
-        await ensure_system_subtree()
-        await link_system_files_into_workspace(user_id)
-        base = await asyncio.to_thread(_go)
-        await sync_user_gaia_tasks(user_id)
-        await sync_user_todos(user_id)
-        return base
 
 
 def _ensure_session_subdirs(base: Path) -> None:
     """Create the scratch/, user-uploaded/, artifacts/ trio under a session root."""
     for sub in (SCRATCH_DIRNAME, USER_UPLOADED_DIRNAME, ARTIFACTS_DIRNAME):
         (base / sub).mkdir(parents=True, exist_ok=True)
-
-
-def _stamp_meta_on_bootstrap(meta: Path) -> None:
-    """Set ``created_at`` (once), ``msg_count`` (once), and bump ``last_active``."""
-    data = read_session_meta(meta)
-    now = now_iso()
-    data.setdefault("created_at", now)
-    data.setdefault("msg_count", 0)
-    data["last_active"] = now
-    write_session_meta(meta, data)
 
 
 def _materialize_if_stale(
@@ -162,7 +90,6 @@ async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
         if not meta.exists():
             now = now_iso()
             write_session_meta(meta, {"created_at": now, "last_active": now, "msg_count": 0})
-        write_user_root_docs(base.parent.parent)
         return base
 
     async with fs_timer(FsOps.ENSURE_SESSION_DIRS):
@@ -174,9 +101,8 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
 
     Soft-fails if the JuiceFS mount is missing (dev mode).
     """
-    # Late-bound to break the same structural import cycle as in
-    # ``bootstrap_user_session`` (storage -> sessions -> lifecycle -> service,
-    # where the service transitively re-enters storage via the decorators pkg).
+    # Late-bound to break the storage -> sessions -> lifecycle -> service ->
+    # storage import cycle (the service transitively re-enters the storage pkg).
     from app.services.integration_instructions_service import (
         get_all_instructions,
         instructions_signature,
@@ -195,6 +121,24 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
 
     async with fs_timer(FsOps.MATERIALIZE_INTEGRATIONS):
         await asyncio.to_thread(_go)
+
+
+async def provision_user_workspace(user_id: str, connected_ids: set[str] | None = None) -> None:
+    """User-level workspace provisioning: system-file symlinks (INDEX/GUIDE +
+    builtin skills) + the SKILL.md / instructions catalog.
+
+    Run on the events that actually change it — registration, integration
+    connect/disconnect, and startup — instead of every chat turn. Idempotent and
+    hash-gated, so repeat calls are near-zero I/O. Soft-fails when JuiceFS is
+    unmounted (native dev).
+    """
+    # Late-bound: ``app.services.storage`` re-exports this module, so importing
+    # ``system_workspace`` (which imports ``storage.juicefs``) at top level would
+    # re-enter the half-initialized storage package.
+    from app.services.storage.system_workspace import link_system_files_into_workspace
+
+    await link_system_files_into_workspace(user_id)
+    await materialize_user_integrations(user_id, connected_ids or set())
 
 
 async def delete_session_dir(user_id: str, conv_id: str) -> None:

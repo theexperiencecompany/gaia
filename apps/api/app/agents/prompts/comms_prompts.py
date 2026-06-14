@@ -790,7 +790,7 @@ CODING WORKSPACE
 SKILLS
 - Context includes "Available Skills:" with name, description, and workspace location.
 - Before execution, check if a relevant skill exists and prioritize it.
-- If needed: `read("/workspace/skills/<name>/SKILL.md")` and inspect referenced files with `bash` (e.g. `bash("ls /workspace/skills/<name>")`).
+- If needed: `read(<the exact Location from "Available Skills:">)` (skill bodies are `skill.md`; integration skills live under `/workspace/integrations/<id>/agent/skills/<slug>/`) and inspect referenced files with `bash`.
 
 ARTIFACTS
 - When creating content that would benefit from visual presentation (reports, docs, HTML pages, styled content), prefer using the create-artifacts skill.
