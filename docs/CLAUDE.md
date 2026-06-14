@@ -98,6 +98,7 @@ The in-app "What's New" sidebar card and modal parse `release-notes.mdx` to disp
 - The image is optional — omitting it is fine, the card will render without one
 - The parser grabs **only the first image** in the block; any subsequent images are ignored for the card
 - **Don't hand-edit the page-level hero `<img src>` at the top of `release-notes.mdx`.** `scripts/generate-changelog-pages.js` auto-syncs it to the newest release's image on every run (pre-commit + CI), so the page banner always matches the latest release. Just give the newest `<Update>` block its hero image and the page banner follows. If the newest release has no image, the existing banner is left untouched.
+- **The newest release's in-block image is hidden on the page, not removed.** Because the page banner already shows the newest release's image, a rule in `style.css` (`.frame + .update-container … :first-child:has(img)`) hides the in-block copy of *only the topmost release* so the image isn't shown twice. The image stays in the MDX source — that's what feeds the RSS, so the in-app card still gets it. Never delete the in-block image to fix the on-page duplicate; that would empty the RSS and break the card. The rule is scoped to the main page (`.frame +`), so sub-pages and year pages keep their in-block images.
 
 ## Non-obvious Patterns
 

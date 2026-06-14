@@ -133,3 +133,14 @@ img {
 #content-area .prose code {
   font-size: 0.8125rem;
 }
+
+/* Release notes: the newest release repeats the hero already shown in the large
+   page header (the page <Frame>) directly above it. Hide the in-block copy so
+   the image appears once on the page. The image stays in the MDX source — and
+   therefore in the RSS feed that powers the in-app "What's New" card — only its
+   on-page duplicate is suppressed. Scoped via `.frame + .update-container` so it
+   only affects the main release-notes page; sub-pages and year pages have no
+   page header and keep their in-block images. */
+.frame + .update-container [data-component-part="update-content"] > span[data-as="p"]:first-child:has(img) {
+  display: none !important;
+}
