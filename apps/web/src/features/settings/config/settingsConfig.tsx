@@ -1,15 +1,15 @@
 import {
-  AiBrain01Icon,
+  Brain02Icon,
   ChartLineData02Icon,
   CreditCardIcon,
   DiscordIcon,
-  Link03Icon,
+  Link04Icon,
   MessageMultiple02Icon,
   NotificationIcon,
-  SparklesIcon,
   UserCircleIcon,
   WhatsappIcon,
 } from "@icons";
+import { PostageStampIcon } from "@/components/shared/icons";
 
 export interface SettingsMenuItem {
   key: string;
@@ -26,7 +26,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "profile",
     label: "Profile Card",
-    icon: SparklesIcon,
+    icon: PostageStampIcon,
     href: "/settings?section=profile",
   },
   {
@@ -38,7 +38,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "linked-accounts",
     label: "Linked Accounts",
-    icon: Link03Icon,
+    icon: Link04Icon,
     href: "/settings?section=linked-accounts",
   },
   {
@@ -68,7 +68,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "memory",
     label: "Memories",
-    icon: AiBrain01Icon,
+    icon: Brain02Icon,
     href: "/settings?section=memory",
   },
 ];
