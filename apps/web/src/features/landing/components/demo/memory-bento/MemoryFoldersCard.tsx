@@ -102,7 +102,7 @@ export default function MemoryFoldersCard() {
         <AnimatePresence mode="wait" initial={false}>
           <m.span
             key={caption}
-            className="text-xs text-zinc-300"
+            className="min-w-0 flex-1 truncate text-xs text-zinc-300"
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
