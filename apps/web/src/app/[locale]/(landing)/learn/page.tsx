@@ -4,7 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
 import { getAllTranslatedGlossaryTerms } from "@/features/glossary/data/getTranslatedGlossary";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAlternates } from "@/i18n/getAlternates";
+import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -44,10 +44,7 @@ export async function generateMetadata({
 
   return {
     ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates("/learn"),
-    },
+    alternates: getLocalizedAlternates("/learn", locale),
   };
 }
 

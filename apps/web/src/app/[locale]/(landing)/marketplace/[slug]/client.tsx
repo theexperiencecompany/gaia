@@ -23,6 +23,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
+import { IntegrationRelatedIntegrations } from "@/features/integrations/components/IntegrationRelatedIntegrations";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
@@ -418,6 +419,13 @@ export function IntegrationDetailClient({
           <IntegrationRichContent
             integration={integration}
             comparisonSlug={comparisonSlug}
+          />
+
+          {/* Related integrations in the same category */}
+          <IntegrationRelatedIntegrations
+            currentSlug={integration.slug}
+            category={integration.category}
+            integrationName={integration.name}
           />
         </div>
       </div>

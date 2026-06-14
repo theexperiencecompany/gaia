@@ -7,7 +7,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
 import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAlternates } from "@/i18n/getAlternates";
+import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -46,10 +46,7 @@ export async function generateMetadata({
 
   return {
     ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates("/automate"),
-    },
+    alternates: getLocalizedAlternates("/automate", locale),
   };
 }
 

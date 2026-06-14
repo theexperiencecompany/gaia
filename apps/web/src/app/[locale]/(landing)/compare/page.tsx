@@ -10,7 +10,7 @@ import {
 } from "@/features/comparisons/data/categories";
 import { getTranslatedComparisons } from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAlternates } from "@/i18n/getAlternates";
+import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -49,10 +49,7 @@ export async function generateMetadata({
 
   return {
     ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates("/compare"),
-    },
+    alternates: getLocalizedAlternates("/compare", locale),
   };
 }
 
