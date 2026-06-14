@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useRef } from "react";
 
 import FinalSection from "@/features/landing/components/sections/FinalSection";
@@ -17,7 +16,6 @@ export default function UseCasesPageClient({
   communityWorkflows,
 }: UseCasesPageClientProps) {
   const contentRef = useRef(null);
-  const router = useRouter();
 
   return (
     <>
@@ -55,9 +53,9 @@ export default function UseCasesPageClient({
                   useBlurEffect={true}
                   variant="community"
                   showCreator={true}
-                  onCardClick={() => {
-                    router.push(`/use-cases/${workflow.slug}`);
-                  }}
+                  href={
+                    workflow.slug ? `/use-cases/${workflow.slug}` : undefined
+                  }
                 />
               ))}
             </div>

@@ -7,11 +7,10 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
 import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -28,7 +27,7 @@ export async function generateMetadata({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "automate" });
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: t("hub_meta_title"),
     description: t("hub_meta_description"),
     path: "/automate",
@@ -42,15 +41,8 @@ export async function generateMetadata({
       "connect two apps AI",
       "productivity tool automation",
     ],
+    locale,
   });
-
-  return {
-    ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates("/automate"),
-    },
-  };
 }
 
 const TOOL_DOMAINS: Record<string, string> = {

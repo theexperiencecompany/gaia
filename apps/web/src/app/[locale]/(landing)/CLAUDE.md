@@ -139,27 +139,35 @@ export async function generateMetadata({ params }): Promise<Metadata> {
 - Always include a `SoftwareApplication` schema, HowTo schema, and FAQ schema
 
 **Canonical URLs:**
-- Use `getCanonicalUrl(path)` from `lib/seo.ts` — never construct URLs manually
-- For near-duplicate pages (glossary terms, synonym slugs), set `canonicalPath` to the primary slug
+- For untranslated pages, `generatePageMetadata({ path })` emits the canonical automatically — never construct URLs manually
+- For translated pages, the canonical MUST be locale-aware (self-referential): use `getLocalizedAlternates(path, locale)` (see Hreflang below). A locale variant must canonical to itself (`/es/my-page`), never to the default-locale URL — otherwise the sitemap lists URLs that disavow themselves ("non-canonical page in sitemap")
+- For near-duplicate pages (glossary terms, synonym slugs), pass the primary slug as `canonicalPath` (3rd arg of `getLocalizedAlternates`, or the `canonicalPath` option of `generatePageMetadata`)
 
 ---
 
 ## Hreflang / Internationalization
 
-Translated pages (anything under `[locale]/`) that have content in all 7 locales must include `alternates.languages`:
+Translated pages (the route families served with a locale prefix) must emit a
+locale-aware self-canonical **and** the hreflang map. Use `getLocalizedAlternates`
+— it returns both, so a `/es/...` page canonicals to itself and cross-references
+its siblings (do NOT hand-roll `alternates.canonical` — that reintroduces the
+"non-canonical page in sitemap" bug):
 
 ```typescript
-import { getAlternates } from "@/i18n/getAlternates";
+import { getLocalizedAlternates } from "@/i18n/getAlternates";
 
 export async function generateMetadata({ params }) {
+  const { locale } = await params;
   return {
     ...generatePageMetadata({ title, description, path }),
-    alternates: {
-      canonical: `/my-page`,
-      languages: getAlternates("/my-page"),
-    },
+    // canonical -> /es/my-page (self), languages -> all locale variants + x-default
+    alternates: getLocalizedAlternates("/my-page", locale),
   };
 }
+
+// Near-duplicate pages (synonym slug -> primary): pass canonicalPath as the 3rd arg
+// so both canonical and hreflang resolve to the primary, never a non-canonical URL.
+// getLocalizedAlternates(`/learn/${term}`, locale, `/learn/${primarySlug}`)
 ```
 
 **Translated (needs hreflang):** `/compare`, `/alternative-to`, `/automate`, `/for`, `/learn`, `/use-cases`
