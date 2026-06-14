@@ -342,6 +342,54 @@ function generateYearPages(blocks) {
   }
 }
 
+// --- Sync the page hero to the most recent release's image ---
+
+function extractFirstImage(content) {
+  // Markdown image: ![alt](src) ; HTML image: <img ... src="...">
+  const md = content.match(/!\[[^\]]*\]\(([^)\s]+)\)/);
+  const html = content.match(/<img[^>]+src="([^"]+)"/);
+  if (md && html) {
+    return content.indexOf(md[0]) <= content.indexOf(html[0]) ? md[1] : html[1];
+  }
+  return md ? md[1] : html ? html[1] : null;
+}
+
+function syncHeroImage(blocks) {
+  if (blocks.length === 0) return;
+
+  // blocks[0] is the most recent release (entries are newest-first).
+  const latestImage = extractFirstImage(blocks[0].content);
+  if (!latestImage) {
+    console.log("  latest release has no image; page hero left unchanged");
+    return;
+  }
+
+  const raw = fs.readFileSync(SOURCE, "utf-8");
+
+  // The hero lives in the page header, before the first <Update> block.
+  // Only the <img> there is rewritten, so per-release images are untouched.
+  const firstUpdateIdx = raw.indexOf("<Update");
+  if (firstUpdateIdx === -1) return;
+
+  const head = raw.slice(0, firstUpdateIdx);
+  const heroMatch = head.match(/<img[^>]+src="([^"]+)"/);
+  if (!heroMatch) {
+    console.log("  no <img> in page header; nothing to sync");
+    return;
+  }
+  if (heroMatch[1] === latestImage) {
+    console.log(`  page hero already current (${latestImage})`);
+    return;
+  }
+
+  const updatedHead = head.replace(
+    /(<img[^>]+src=")[^"]+("[^>]*>)/,
+    `$1${latestImage}$2`,
+  );
+  fs.writeFileSync(SOURCE, updatedHead + raw.slice(firstUpdateIdx));
+  console.log(`  page hero synced to ${latestImage}`);
+}
+
 // --- Main ---
 
 function main() {
@@ -362,6 +410,9 @@ function main() {
 
   console.log("\nBy Year:");
   generateYearPages(blocks);
+
+  console.log("\nHero:");
+  syncHeroImage(blocks);
 
   console.log("\nDone.");
 }

@@ -78,7 +78,7 @@ Always invoke these via the `Skill` tool rather than doing the work ad-hoc:
 
 ## Release Notes Image Convention
 
-The in-app "What's New" sidebar card parses `release-notes.mdx` to display the latest release. To include a hero image in the sidebar card, **place an image as the very first element inside the `<Update>` block**, before the H1 title:
+The in-app "What's New" sidebar card and modal parse `release-notes.mdx` to display releases. They don't read the `.mdx` directly — they read Mintlify's generated RSS feed (`/release-notes/rss.xml`) via `apps/web/src/app/api/releases/route.ts`, which regex-extracts the first `<img>` from each item's `content:encoded`. To include a hero image, **place an image as the very first element inside the `<Update>` block**, before the H1 title:
 
 ```mdx
 <Update label="Mar 15, 2026" description="API, Web">
@@ -91,10 +91,14 @@ The in-app "What's New" sidebar card parses `release-notes.mdx` to display the l
 </Update>
 ```
 
+- **Use a bare markdown image — never wrap it in `<Frame>` (or any JSX component).** Mintlify strips custom components and their children out of the RSS `content:encoded`, so a `<Frame>`-wrapped image renders fine on the docs page but is dropped from the feed entirely. The parser then finds no image and the card/modal fall back to the default wallpaper for that release. Only the bare markdown `![alt](src)` survives into the RSS as a plain `<img>`. (The page-level hero at the top of `release-notes.mdx` is `<Frame>`-wrapped on purpose — it lives outside every `<Update>` block, so it's never part of any RSS item.)
 - Images must go in `images/changelog/` (not the root `images/` dir)
 - Name pattern: `release-{mon}-{dd}-{yyyy}.webp` (e.g. `release-mar-15-2026.webp`)
+- Mintlify rewrites the relative `/images/...` path to an absolute `https://docs.heygaia.io/...` URL in the feed, so the app loads it directly — no extra config needed.
 - The image is optional — omitting it is fine, the card will render without one
 - The parser grabs **only the first image** in the block; any subsequent images are ignored for the card
+- **Don't hand-edit the page-level hero `<img src>` at the top of `release-notes.mdx`.** `scripts/generate-changelog-pages.js` auto-syncs it to the newest release's image on every run (pre-commit + CI), so the page banner always matches the latest release. Just give the newest `<Update>` block its hero image and the page banner follows. If the newest release has no image, the existing banner is left untouched.
+- **The newest release's in-block image is hidden on the page, not removed.** Because the page banner already shows the newest release's image, a rule in `style.css` (`.frame + .update-container … :first-child:has(img)`) hides the in-block copy of *only the topmost release* so the image isn't shown twice. The image stays in the MDX source — that's what feeds the RSS, so the in-app card still gets it. Never delete the in-block image to fix the on-page duplicate; that would empty the RSS and break the card. The rule is scoped to the main page (`.frame +`), so sub-pages and year pages keep their in-block images.
 
 ## Non-obvious Patterns
 
