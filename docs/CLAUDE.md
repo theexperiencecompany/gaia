@@ -78,7 +78,7 @@ Always invoke these via the `Skill` tool rather than doing the work ad-hoc:
 
 ## Release Notes Image Convention
 
-The in-app "What's New" sidebar card parses `release-notes.mdx` to display the latest release. To include a hero image in the sidebar card, **place an image as the very first element inside the `<Update>` block**, before the H1 title:
+The in-app "What's New" sidebar card and modal parse `release-notes.mdx` to display releases. They don't read the `.mdx` directly — they read Mintlify's generated RSS feed (`/release-notes/rss.xml`) via `apps/web/src/app/api/releases/route.ts`, which regex-extracts the first `<img>` from each item's `content:encoded`. To include a hero image, **place an image as the very first element inside the `<Update>` block**, before the H1 title:
 
 ```mdx
 <Update label="Mar 15, 2026" description="API, Web">
@@ -91,8 +91,10 @@ The in-app "What's New" sidebar card parses `release-notes.mdx` to display the l
 </Update>
 ```
 
+- **Use a bare markdown image — never wrap it in `<Frame>` (or any JSX component).** Mintlify strips custom components and their children out of the RSS `content:encoded`, so a `<Frame>`-wrapped image renders fine on the docs page but is dropped from the feed entirely. The parser then finds no image and the card/modal fall back to the default wallpaper for that release. Only the bare markdown `![alt](src)` survives into the RSS as a plain `<img>`. (The page-level hero at the top of `release-notes.mdx` is `<Frame>`-wrapped on purpose — it lives outside every `<Update>` block, so it's never part of any RSS item.)
 - Images must go in `images/changelog/` (not the root `images/` dir)
 - Name pattern: `release-{mon}-{dd}-{yyyy}.webp` (e.g. `release-mar-15-2026.webp`)
+- Mintlify rewrites the relative `/images/...` path to an absolute `https://docs.heygaia.io/...` URL in the feed, so the app loads it directly — no extra config needed.
 - The image is optional — omitting it is fine, the card will render without one
 - The parser grabs **only the first image** in the block; any subsequent images are ignored for the card
 
