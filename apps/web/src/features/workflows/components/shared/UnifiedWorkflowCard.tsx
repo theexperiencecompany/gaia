@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { Link } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { useAppendToInput } from "@/stores/composerStore";
@@ -57,6 +58,11 @@ interface UnifiedWorkflowCardProps {
   primaryAction?: ActionType;
   onCardClick?: () => void;
   onActionComplete?: () => void;
+  /**
+   * When set, the whole card becomes a real crawlable link to this URL (no
+   * client-side router.push). The action button stays clickable above it.
+   */
+  href?: string;
 
   // Button customization
   actionButtonLabel?: string;
@@ -83,6 +89,7 @@ export default function UnifiedWorkflowCard({
   onCardClick,
   onActionComplete,
   actionButtonLabel,
+  href,
 }: UnifiedWorkflowCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -261,13 +268,20 @@ export default function UnifiedWorkflowCard({
     <WorkflowIcons steps={steps} iconSize={25} maxIcons={3} />
   );
 
-  const isClickable = onCardClick || resolvedAction !== "none";
+  const isClickable = !!href || onCardClick || resolvedAction !== "none";
 
   const cardContent = (
     <div
       className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""}`}
-      onClick={handleCardClick}
+      onClick={href ? undefined : handleCardClick}
     >
+      {href && (
+        <Link
+          href={href}
+          aria-label={title}
+          className="absolute inset-0 z-[1] rounded-3xl"
+        />
+      )}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">{renderToolIcons()}</div>
         <div className="flex items-center gap-2">
@@ -328,12 +342,14 @@ export default function UnifiedWorkflowCard({
             )}
 
             {resolvedAction !== "none" && (
-              <WorkflowActionButton
-                label={buttonConfig.label}
-                isLoading={isLoading}
-                onPress={handlePrimaryAction}
-                variant={buttonConfig.variant}
-              />
+              <span className="relative z-[2]">
+                <WorkflowActionButton
+                  label={buttonConfig.label}
+                  isLoading={isLoading}
+                  onPress={handlePrimaryAction}
+                  variant={buttonConfig.variant}
+                />
+              </span>
             )}
           </div>
         </div>

@@ -494,7 +494,7 @@ export default function ChatDemoSection() {
               className="ml-4 text-center text-[11px] text-zinc-500 hover:text-primary w-fit"
               target="_blank"
               rel="noopener noreferrer"
-              href={appConfig.site.domain}
+              href={`https://${appConfig.site.domain}`}
             >
               {appConfig.site.name} — {appConfig.site.domain}
             </a>

@@ -307,6 +307,9 @@ export default function UseCaseSection({
                     actionType={useCase.action_type || "prompt"}
                     prompt={useCase.prompt}
                     slug={useCase.slug}
+                    href={
+                      useCase.slug ? `/use-cases/${useCase.slug}` : undefined
+                    }
                     steps={useCase.steps}
                     totalExecutions={useCase.total_executions || 0}
                     showExecutions={true}

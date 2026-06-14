@@ -114,6 +114,9 @@
       "allowedVersions": {
         "react-remove-scroll>@types/react": "^19.0.0"
       }
+    },
+    "patchedDependencies": {
+      "sileo@0.1.4": "patches/sileo@0.1.4.patch"
     }
   }
 }

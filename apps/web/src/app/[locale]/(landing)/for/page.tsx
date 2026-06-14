@@ -5,13 +5,17 @@ import Link from "next/link";
 import JsonLd from "@/components/seo/JsonLd";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getAllPersonas } from "@/features/personas/data/personasData";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+
+interface PageProps {
+  readonly params: Promise<{ readonly locale: string }>;
+}
 
 const FEATURED_SLUGS = new Set([
   "startup-founders",
@@ -22,20 +26,26 @@ const FEATURED_SLUGS = new Set([
   "agency-owners",
 ]);
 
-export const metadata: Metadata = generatePageMetadata({
-  title: "GAIA for Every Role - AI Assistant for Professionals",
-  description:
-    "Discover how GAIA helps software developers, product managers, founders, marketers, and 20+ other roles automate their workflows and boost productivity with AI.",
-  path: "/for",
-  keywords: [
-    "AI assistant for professionals",
-    "role-based AI assistant",
-    "AI productivity by role",
-    "GAIA use cases by profession",
-    "AI assistant for teams",
-    "professional AI automation",
-  ],
-});
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { locale } = await params;
+  return generateLocalizedPageMetadata({
+    title: "GAIA for Every Role - AI Assistant for Professionals",
+    description:
+      "Discover how GAIA helps software developers, product managers, founders, marketers, and 20+ other roles automate their workflows and boost productivity with AI.",
+    path: "/for",
+    keywords: [
+      "AI assistant for professionals",
+      "role-based AI assistant",
+      "AI productivity by role",
+      "GAIA use cases by profession",
+      "AI assistant for teams",
+      "professional AI automation",
+    ],
+    locale,
+  });
+}
 
 export default async function PersonasHubPage() {
   const personas = await getAllPersonas();

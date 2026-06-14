@@ -4,11 +4,10 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
 import { getAllTranslatedGlossaryTerms } from "@/features/glossary/data/getTranslatedGlossary";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -25,7 +24,7 @@ export async function generateMetadata({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "glossary" });
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: t("hub_meta_title"),
     description: t("hub_meta_description"),
     path: "/learn",
@@ -40,15 +39,8 @@ export async function generateMetadata({
       "MCP explained",
       "workflow automation glossary",
     ],
+    locale,
   });
-
-  return {
-    ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates("/learn"),
-    },
-  };
 }
 
 const CATEGORY_KEYS: Record<string, string> = {
