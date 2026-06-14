@@ -440,7 +440,7 @@ GAIA composes from three component families: **Shadcn** (`src/components/ui/`) f
 
 ### Dark Card Styling Contract
 
-All data cards, tool sections, and info panels follow this two-tone zinc contract. No borders anywhere.
+Most data cards, tool sections, and info panels follow this two-tone zinc pattern (no borders anywhere). It's the default, not a mandate — a card with a deliberately distinct presentation (e.g. an OS-style notification banner) may diverge when the design calls for it.
 
 | Layer | Classes |
 |---|---|

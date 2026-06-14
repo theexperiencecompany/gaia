@@ -187,7 +187,12 @@ jobs:
       - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
         run: |
           echo "::group::jscpd"
-          git fetch --no-tags origin "$GITHUB_BASE_REF"
+          # Timeout + low-speed guard: a stalled HTTPS fetch dies in <=60s rather
+          # than hanging until the job's timeout-minutes cap (a `cancelled` lane
+          # that fails the quality gate). Not `|| true` — jscpd needs the base ref,
+          # so a genuine fetch failure must still fail the lane.
+          timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
+            fetch --no-tags origin "$GITHUB_BASE_REF"
           pnpm run quality:dupe
           echo "::endgroup::"
           echo "Duplicates: OK (<= 3% on changed lines)"
@@ -248,7 +253,12 @@ jobs:
         run: |
           echo "::group::nx type-check"
           if [ -n "${GITHUB_BASE_REF:-}" ]; then
-            git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
+            # Timeout + low-speed guard so a stalled HTTPS fetch fails fast instead
+            # of hanging until the job's timeout-minutes cap (which surfaces as a
+            # `cancelled` lane and fails the quality gate). nx affected falls back
+            # to whatever base ref is already local if the fetch is skipped.
+            timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
+              fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
             # Exclude Python projects (api, voice-agent): their type-check
             # runs mypy via uv, which isn't installed in this Node-only job, and
             # Python typing is already enforced by the dedicated python-mypy lane.

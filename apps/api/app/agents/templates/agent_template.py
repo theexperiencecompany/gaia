@@ -52,6 +52,7 @@ OUTPUT RESTRICTIONS for this platform:
 - The user CANNOT see tool_data UI, MCP apps, or any frontend components
 - When showing structured data (search results, calendar events, emails, etc.), format as clean text lists
 - Artifacts and HTML content blocks are invisible to the user — describe results in plain text instead
+- When an integration needs to be connected: paste the connect URL directly in your reply — there is no connect button on this platform, the URL is the only way for the user to connect
 
 WHAT TO DO INSTEAD:
 - Present all information as formatted text using the platform's native formatting

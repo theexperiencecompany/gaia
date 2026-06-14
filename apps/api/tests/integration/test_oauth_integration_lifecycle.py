@@ -51,8 +51,8 @@ from app.services.integrations.user_integration_status import (
 )
 from app.services.integrations.user_integrations import remove_user_integration
 from app.services.oauth.oauth_state_service import (
-    _is_safe_redirect_path,
     create_oauth_state,
+    is_safe_redirect_path,
     validate_and_consume_oauth_state,
 )
 
@@ -317,31 +317,31 @@ class TestOAuthStateCreationAndValidation:
 
 @pytest.mark.integration
 class TestRedirectPathSafety:
-    """Validates the _is_safe_redirect_path helper used during state creation."""
+    """Validates the is_safe_redirect_path helper used during state creation."""
 
     def test_valid_paths(self) -> None:
-        assert _is_safe_redirect_path("/c") is True
-        assert _is_safe_redirect_path("/integrations") is True
-        assert _is_safe_redirect_path("/settings/integrations") is True
+        assert is_safe_redirect_path("/c") is True
+        assert is_safe_redirect_path("/integrations") is True
+        assert is_safe_redirect_path("/settings/integrations") is True
 
     def test_rejects_empty_path(self) -> None:
-        assert _is_safe_redirect_path("") is False
+        assert is_safe_redirect_path("") is False
 
     def test_rejects_non_slash_start(self) -> None:
-        assert _is_safe_redirect_path("integrations") is False
-        assert _is_safe_redirect_path("https://evil.com") is False
+        assert is_safe_redirect_path("integrations") is False
+        assert is_safe_redirect_path("https://evil.com") is False
 
     def test_rejects_protocol_relative(self) -> None:
-        assert _is_safe_redirect_path("//evil.com/callback") is False
+        assert is_safe_redirect_path("//evil.com/callback") is False
 
     def test_rejects_javascript_protocol(self) -> None:
-        assert _is_safe_redirect_path("/javascript:alert(1)") is False
+        assert is_safe_redirect_path("/javascript:alert(1)") is False
 
     def test_rejects_path_traversal(self) -> None:
-        assert _is_safe_redirect_path("/../etc/passwd") is False
+        assert is_safe_redirect_path("/../etc/passwd") is False
 
     def test_rejects_at_sign(self) -> None:
-        assert _is_safe_redirect_path("/redirect@evil.com") is False
+        assert is_safe_redirect_path("/redirect@evil.com") is False
 
     async def test_unsafe_redirect_defaults_to_safe_path(self) -> None:
         """create_oauth_state replaces unsafe redirect_path with /c."""

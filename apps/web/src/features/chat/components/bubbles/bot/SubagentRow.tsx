@@ -158,17 +158,25 @@ export function ToolCallRow({
 export function SubagentRow({
   group,
   isLast,
+  isStreaming,
   getIconUrl,
   getIntegrationName,
 }: Readonly<{
   group: EnrichedSubagentGroup;
   isLast: boolean;
+  /** Whether the message's stream is still open. A subagent only counts as
+   *  running while its stream is live — once the SSE closes, a missing
+   *  `subagent_end` (dropped/crashed) must not spin the card forever. */
+  isStreaming: boolean;
   getIconUrl: (c: ToolCallEntry) => string | undefined;
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
 }>) {
+  // Running only while the stream is open: completed_at is null both for a
+  // genuinely-running subagent AND for one whose end event never arrived, so
+  // gate on the live stream to tell them apart.
+  const isRunning = group.completed_at === null && isStreaming;
   // Start expanded while running so live tool calls are visible by default
-  const [expanded, setExpanded] = useState(() => group.completed_at === null);
-  const isRunning = group.completed_at === null;
+  const [expanded, setExpanded] = useState(() => isRunning);
 
   // Filter out spawn_subagent tool calls — they're represented by nested SubagentRows
   const visibleToolCalls = group.tool_calls.filter(
@@ -211,17 +219,32 @@ export function SubagentRow({
               height={14}
             />
           </button>
-          {expanded && visibleToolCalls.length > 0 && (
-            <div className="mt-1 space-y-0">
-              {visibleToolCalls.map((tc, tIdx) => (
-                <ToolCallRow
-                  key={`${group.subagent_id}-live-${tc.tool_call_id || tIdx}`}
-                  call={tc}
-                  isLast={tIdx === visibleToolCalls.length - 1}
-                  getIconUrl={getIconUrl}
-                  getIntegrationName={getIntegrationName}
-                />
-              ))}
+          {expanded && (
+            <div className="mt-1">
+              {/* The task is known the moment the subagent is spawned (it's the
+                  handoff call's input), so show it live — don't make the user
+                  wait until completion to see what this subagent is doing. */}
+              {group.handoff_input && (
+                <div className="mb-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 w-fit">
+                  <span className="text-zinc-500 font-medium mb-0.5 block">
+                    Task
+                  </span>
+                  <CompactMarkdown content={group.handoff_input} />
+                </div>
+              )}
+              {visibleToolCalls.length > 0 && (
+                <div className="space-y-0">
+                  {visibleToolCalls.map((tc, tIdx) => (
+                    <ToolCallRow
+                      key={`${group.subagent_id}-live-${tc.tool_call_id || tIdx}`}
+                      call={tc}
+                      isLast={tIdx === visibleToolCalls.length - 1}
+                      getIconUrl={getIconUrl}
+                      getIntegrationName={getIntegrationName}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -312,6 +335,7 @@ export function SubagentRow({
                         key={`nested-${nested.subagent_id}`}
                         group={nested}
                         isLast
+                        isStreaming={isStreaming}
                         getIconUrl={getIconUrl}
                         getIntegrationName={getIntegrationName}
                       />

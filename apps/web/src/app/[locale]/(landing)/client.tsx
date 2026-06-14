@@ -36,12 +36,16 @@ const TimeSavedCounter = dynamic(
   () => import("@/features/landing/components/sections/TimeSavedCounter"),
   { loading: SectionLoader, ssr: false },
 );
-const BuiltForEveryone = dynamic(
-  () => import("@/features/landing/components/sections/BuiltForEveryone"),
-  { loading: SectionLoader, ssr: false },
-);
+// const BuiltForEveryone = dynamic(
+//   () => import("@/features/landing/components/sections/BuiltForEveryone"),
+//   { loading: SectionLoader, ssr: false },
+// );
 const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),
+  { loading: SectionLoader },
+);
+const MemoryShowcaseSection = dynamic(
+  () => import("@/features/landing/components/sections/MemoryShowcaseSection"),
   { loading: SectionLoader },
 );
 const WorkflowSection = dynamic(
@@ -175,13 +179,16 @@ export default function LandingPageClient({
 
           <WorkflowSection />
           <UseCasesSectionLanding />
+
+          {/* Memory — an assistant that actually knows you */}
+          <MemoryShowcaseSection />
           <TodoShowcaseSection />
 
           {/* Decision — how it stacks up, trust, price */}
           <ComparisonGrid />
 
           {/* Positioning — why GAIA exists */}
-          <BuiltForEveryone />
+          {/* <BuiltForEveryone /> */}
 
           <OpenSource />
 

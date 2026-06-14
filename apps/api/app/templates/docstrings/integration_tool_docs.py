@@ -49,18 +49,15 @@ Use this tool when the user asks to:
 - "Set up multiple integrations"
 
 PARAMETERS:
-- `integration_names` (List[str]): List of integration names or IDs to connect
-  - Can be integration IDs (e.g., "gmail", "notion")
-  - Can be integration names (e.g., "Gmail", "Notion")
-  - Can be short names if available
-  - Can be a single integration or multiple integrations
+- `integration_ids` (List[str]): List of exact integration IDs to connect.
+  - Use integration IDs (e.g., "gmail", "notion", "twitter") — call list_integrations first if unsure
+  - Can be a single ID or multiple IDs
 
 BEHAVIOR:
-- Validates each integration name/ID
+- Validates each integration ID (exact match only)
 - Checks if integration is available
 - Checks if integration is already connected
 - Initiates OAuth/connection flow for disconnected integrations
-- Triggers frontend UI to handle authentication
 
 IMPORTANT:
 - This tool does NOT directly connect integrations
@@ -70,15 +67,15 @@ IMPORTANT:
 
 RETURN VALUE:
 Returns a status message for each integration:
-- ✅ Already connected
-- 🔗 Connection initiated (user needs to complete OAuth)
-- ❌ Not found (suggests available integrations)
-- ⏳ Not available yet (coming soon)
+- Already connected
+- Connection initiated (user needs to complete OAuth)
+- Not found (suggests available IDs)
+- Not available yet (coming soon)
 
 Examples:
-- User: "Connect Gmail" → integration_names: ["gmail"]
-- User: "Set up Gmail and Notion" → integration_names: ["gmail", "notion"]
-- User: "Link my calendar" → integration_names: ["calendar"]
+- User: "Connect Gmail" → integration_ids: ["gmail"]
+- User: "Set up Gmail and Notion" → integration_ids: ["gmail", "notion"]
+- User: "Link my calendar" → integration_ids: ["googlecalendar"]
 """
 
 CHECK_INTEGRATIONS_STATUS = """

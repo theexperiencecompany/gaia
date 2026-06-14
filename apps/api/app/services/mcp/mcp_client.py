@@ -49,7 +49,7 @@ from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
 from app.services.integrations.user_integrations import (
-    get_user_connected_integrations,
+    get_user_integration_records,
 )
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -1535,7 +1535,7 @@ class MCPClient:
 
         # Slow path: check user's persisted connected integrations.
         try:
-            user_integrations = await get_user_connected_integrations(self.user_id)
+            user_integrations = await get_user_integration_records(self.user_id)
         except Exception as e:
             log.warning(
                 f"Failed to load user integrations while matching server_url {server_url}: {e}",

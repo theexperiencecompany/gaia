@@ -33,11 +33,7 @@ from app.helpers.agent_helpers import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
-from app.utils.memory_utils import store_user_message_memory
 from shared.py.wide_events import log
-
-# Set to hold references to background tasks to prevent garbage collection
-_background_tasks: set[asyncio.Task] = set()
 
 
 async def _core_agent_logic(
@@ -113,14 +109,6 @@ async def _core_agent_logic(
         request, user_id or "", conversation_id, history, trigger_context
     )
 
-    # Start memory storage in background (fire and forget)
-    if user_id and request.message:
-        task = asyncio.create_task(
-            store_user_message_memory(user_id, request.message, conversation_id)
-        )
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
-
     # Build config with optional tokens
     config = build_agent_config(
         conversation_id=conversation_id,
@@ -144,6 +132,9 @@ async def _core_agent_logic(
     if trigger_context and trigger_context.get("workflow_id"):
         config["configurable"]["workflow_id"] = trigger_context["workflow_id"]
         config["configurable"]["workflow_title"] = trigger_context.get("workflow_title", "")
+        config["configurable"]["workflow_notify_on_completion"] = trigger_context.get(
+            "workflow_notify_on_completion", True
+        )
 
     log.set(
         agent=dict(

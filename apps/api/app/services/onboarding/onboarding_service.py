@@ -11,6 +11,7 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
     users_collection,
 )
+from app.memory.engine import memory_engine
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -20,7 +21,6 @@ from app.models.user_models import (
 from app.services.integrations.integration_connection_service import (
     disconnect_integration,
 )
-from app.services.memory_service import memory_service
 from app.services.onboarding.intelligence_job import (
     abort_active_intelligence_job,
     enqueue_intelligence_job,
@@ -197,26 +197,22 @@ async def update_onboarding_preferences(
     try:
         user_object_id = ObjectId(user_id)
 
-        # Sanitize and prepare preferences
-        # First, validate using the Pydantic model which will handle empty string normalization
-        validated_preferences = OnboardingPreferences(**preferences.model_dump())
-        sanitized_preferences = validated_preferences.model_dump(exclude_none=True)
-
-        if "custom_instructions" in sanitized_preferences:
-            # Basic sanitization - remove potentially harmful content
-            sanitized_preferences["custom_instructions"] = sanitized_preferences[
-                "custom_instructions"
-            ].strip()[:500]
+        # PATCH semantics: write only the fields the caller actually sent, each at
+        # its own dotted path. Different settings surfaces (Preferences vs. Custom
+        # Instructions) own disjoint fields, so a partial save from one can no
+        # longer clobber a field owned by the other. Values are already normalized
+        # by the OnboardingPreferences validators (empty string -> None, length
+        # capped), so they can be persisted as-is.
+        provided = preferences.model_dump(exclude_unset=True)
+        set_ops: dict[str, Any] = {"updated_at": datetime.now(UTC)}
+        for field in ("profession", "response_style", "custom_instructions"):
+            if field in provided:
+                set_ops[f"onboarding.preferences.{field}"] = getattr(preferences, field)
 
         # Atomic update with user existence check
         updated_user = await users_collection.find_one_and_update(
             {"_id": user_object_id},
-            {
-                "$set": {
-                    "onboarding.preferences": sanitized_preferences,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+            {"$set": set_ops},
             return_document=ReturnDocument.AFTER,
         )
 
@@ -349,7 +345,7 @@ async def _disconnect_user_integrations(user_id: str) -> int:
 
 async def _clear_user_memories(user_id: str) -> int:
     try:
-        return 1 if await memory_service.delete_all_memories(user_id=user_id) else 0
+        return await memory_engine.delete_all(user_id)
     except Exception as e:
         log.warning(f"[reset_onboarding] failed to clear memories: {e}")
         return 0

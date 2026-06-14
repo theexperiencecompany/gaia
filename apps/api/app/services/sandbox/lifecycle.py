@@ -27,8 +27,10 @@ from urllib.parse import urlsplit, urlunsplit
 
 from e2b import AsyncSandbox
 
+from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
 from app.db.mongodb.collections import e2b_sandboxes_collection
+from app.decorators import enforce_rate_limit
 from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
@@ -43,10 +45,15 @@ from shared.py.wide_events import log
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
 MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"
+SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
 
 
 class SandboxAcquisitionError(RuntimeError):
     """Raised when a usable sandbox cannot be obtained for a user."""
+
+
+class SandboxRateLimitError(SandboxAcquisitionError):
+    """Raised when the user has exhausted their sandbox-creation rate limit."""
 
 
 def _now() -> datetime:
@@ -114,6 +121,28 @@ def _mount_env(user_id: str, shard_id: int) -> dict[str, str]:
         "JFS_R2_BUCKET": (settings.R2_BUCKET or "").strip(),
         "JFS_R2_ACCOUNT": (settings.R2_ACCOUNT_ID or "").strip(),
     }
+
+
+async def _enforce_creation_limit(user_id: str) -> None:
+    """Gate fresh sandbox provisioning behind the tiered rate limiter.
+
+    Only the create path is gated — reusing or resuming an existing sandbox
+    stays unlimited; provisioning a new E2B VM is the cost driver.
+    """
+    try:
+        await enforce_rate_limit(user_id, SANDBOX_CREATION_FEATURE_KEY)
+    except RateLimitExceededException as e:
+        log.warning(f"[sandbox] creation rate limit hit for user {user_id}")
+        detail: dict[str, Any] = e.detail if isinstance(e.detail, dict) else {}
+        message = "sandbox creation limit reached"
+        if detail.get("reset_time"):
+            message += f"; resets at {detail['reset_time']}"
+        if detail.get("plan_required"):
+            message += f" (upgrade to {detail['plan_required'].upper()} for higher limits)"
+        raise SandboxRateLimitError(message) from e
+    except Exception as e:
+        log.error(f"[sandbox] creation limit check failed for user {user_id}: {e}")
+        raise SandboxAcquisitionError(f"sandbox creation limit check failed: {e}") from e
 
 
 async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
@@ -385,6 +414,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         workspace_version = doc.get("workspace_version", 0)
 
     if sbx is None:
+        await _enforce_creation_limit(user_id)
         # Pre-create the per-user subtrees host-side so the sandbox's
         # ``--subdir`` mounts find them ready. Doing this on the host (which
         # holds the full JuiceFS mount) avoids ever exposing the full

@@ -194,20 +194,20 @@ class _WorkflowList(BaseModel):
     )
 
 
-async def _scan_then_enqueue_mem0(user_id: str, ctx: InboxScanContext) -> None:
-    """Run the visible inbox scan, then queue durable Mem0 ingestion so it
+async def _scan_then_enqueue_memory(user_id: str, ctx: InboxScanContext) -> None:
+    """Run the visible inbox scan, then queue durable memory ingestion so it
     runs in parallel with triage/workflows and survives later failures."""
     await _run_inbox_scanning(user_id, ctx)
     try:
         pool = await RedisPoolManager.get_pool()
         await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
         log.info(
-            "[intelligence] queued gmail->mem0 ingestion",
+            "[intelligence] queued gmail->memory ingestion",
             user_id=user_id,
         )
     except Exception as e:
         log.warning(
-            "[intelligence] failed to queue gmail->mem0 ingestion",
+            "[intelligence] failed to queue gmail->memory ingestion",
             user_id=user_id,
             error=str(e)[:200],
             error_type=type(e).__name__,
@@ -217,11 +217,11 @@ async def _scan_then_enqueue_mem0(user_id: str, ctx: InboxScanContext) -> None:
 def _start_gmail_branch(
     user_id: str,
 ) -> tuple[InboxScanContext, asyncio.Task[None]]:
-    """Kick off the Gmail-only inbox scan + Mem0 ingestion task and the system
+    """Kick off the Gmail-only inbox scan + memory ingestion task and the system
     workflow provisioning task. Returns the shared inbox context and the
     provision future."""
     inbox_ctx = InboxScanContext()
-    scan_task = asyncio.create_task(_scan_then_enqueue_mem0(user_id, inbox_ctx))
+    scan_task = asyncio.create_task(_scan_then_enqueue_memory(user_id, inbox_ctx))
     _background_tasks.add(scan_task)
     scan_task.add_done_callback(_background_tasks.discard)
     provision_future = asyncio.create_task(_run_provision_gmail(user_id))

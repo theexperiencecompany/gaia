@@ -415,7 +415,7 @@ Critical innovations:
 - **Delta awareness**: only shows what changed since last run — not everything from scratch
 - **Cross-domain synthesis**: calendar + email + tasks + goals + GitHub + Slack in one view
 - **Task-aware**: sees all active GaiaTasks and their open loop status
-- **Memory-informed**: Mem0 memories injected, so it knows Priya's role, preferences, etc.
+- **Memory-informed**: memories from the memory engine injected, so it knows Priya's role, preferences, etc.
 
 ### What the Loop Can Do (max 3 actions per run)
 

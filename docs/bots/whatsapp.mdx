@@ -1,0 +1,70 @@
+---
+title: "WhatsApp Bot"
+description: "Self-host the GAIA WhatsApp bot using Kapso and the Meta WhatsApp Cloud API."
+icon: "/images/icons/whatsapp.webp"
+---
+
+# WhatsApp Bot Development
+
+Run your own instance of the GAIA WhatsApp bot. The bot receives messages through [Kapso](https://kapso.ai), a proxy for the Meta WhatsApp Cloud API, via a signed webhook, so you need a publicly reachable URL.
+
+<Note>
+  Looking to use GAIA on WhatsApp as a user? See [Using GAIA on WhatsApp](/guides/whatsapp-bot).
+</Note>
+
+## Prerequisites
+
+- Node.js 18+ and pnpm
+- A [Kapso](https://kapso.ai) account with a connected WhatsApp Business number
+- GAIA API running (see [Self-Hosting Guide](/self-hosting/overview))
+- A publicly reachable URL for the webhook (or a tunnel like ngrok during development)
+
+## Step 1: Set up Kapso
+
+1. Create a Kapso project and connect your WhatsApp Business phone number
+2. Copy your **API key** and **Phone Number ID**
+3. Configure a webhook pointing to your bot's `/webhook` endpoint (the bot listens on port `3203` by default; override with `BOT_SERVER_PORT`)
+4. Copy the **webhook secret**: Kapso signs every request with HMAC-SHA256, and the bot rejects requests with invalid signatures
+
+## Step 2: Configure environment variables
+
+Create a `.env` file in `apps/bots/whatsapp/` (or use the shared `apps/bots/.env`):
+
+```bash
+KAPSO_API_KEY=your_kapso_api_key
+KAPSO_PHONE_NUMBER_ID=your_phone_number_id
+KAPSO_WEBHOOK_SECRET=your_webhook_secret
+GAIA_API_URL=http://localhost:8000
+GAIA_BOT_API_KEY=your_secure_bot_api_key
+GAIA_FRONTEND_URL=http://localhost:3000
+BOT_LOG_HASH_SECRET=your_32_char_random_secret
+```
+
+`GAIA_BOT_API_KEY` must match the `BOT_API_KEY` configured in your GAIA API. Generate `BOT_LOG_HASH_SECRET` with `openssl rand -hex 32`.
+
+## Step 3: Start the bot
+
+```bash
+# Development (hot reload)
+nx dev bot-whatsapp
+
+# Production
+nx build bot-whatsapp && nx start bot-whatsapp
+```
+
+## Platform behavior
+
+A few WhatsApp-specific constraints, handled automatically by the adapter:
+
+- **No streaming or edits**, responses are sent as complete messages once generation finishes
+- **Commands are matched by text prefix** (e.g. `/gaia ...`), there is no native slash-command registration like Discord or Telegram
+- **Media**: voice notes are transcribed (up to 25 MB), images and documents are uploaded (up to 10 MB), videos and stickers get a polite "not supported" reply
+- **Message cap**: 4,096 characters; longer responses are split
+
+## Troubleshooting
+
+| Problem                  | Solution                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| Webhook returns 401/403  | Verify `KAPSO_WEBHOOK_SECRET` matches the secret configured in Kapso                       |
+| Bot doesn't respond      | Check the webhook URL is publicly reachable and points to `/webhook` on the bot's port     |
+| Authentication fails     | Ensure `GAIA_BOT_API_KEY` matches the API's `BOT_API_KEY` and the API is reachable         |

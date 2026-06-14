@@ -14,7 +14,7 @@ from typing import Annotated
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.core.background.inbox import (
+from app.agents.core.background.session import (
     drain_bg_subagent_results,
     get_pending_subagents,
 )

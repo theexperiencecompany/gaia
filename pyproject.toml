@@ -59,6 +59,8 @@ ignore_decorators = [
   "@register_after_hook",
   "@register_schema_modifier",
   "@*.on",          # LiveKit event handlers (@session.on / @ctx.room.on)
+  "@app.get",       # bare-FastAPI route handlers (embedding sidecar)
+  "@app.post",      # bare-FastAPI route handlers (embedding sidecar)
 ]
 ignore_names = [
   "model_config",   # Pydantic v2 config attribute (set on every model)
@@ -66,6 +68,7 @@ ignore_names = [
   "dispatch",       # Starlette BaseHTTPMiddleware.dispatch override
   "__getattr__",    # module-level dunder called by Python's import machinery
   "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
+  "on_llm_end",     # LangChain BaseCallbackHandler override (called by the framework)
 ]
 
 # ---------------------------------------------------------------------------

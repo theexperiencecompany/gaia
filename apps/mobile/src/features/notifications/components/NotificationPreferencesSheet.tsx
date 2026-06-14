@@ -30,6 +30,7 @@ import {
   DiscordIcon,
   Moon02Icon,
   Settings01Icon,
+  SlackIcon,
   TelegramIcon,
   WhatsappIcon,
 } from "@/components/icons";
@@ -58,10 +59,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   system: "System",
 };
 
-// Email delivery is intentionally omitted — only push + in-app are user-facing.
-const CHANNEL_LABELS: Partial<
-  Record<keyof NotificationCategoryPreferences, string>
-> = {
+const CHANNEL_LABELS: Record<keyof NotificationCategoryPreferences, string> = {
   push: "Push",
   in_app: "In-App",
 };
@@ -96,6 +94,13 @@ const PLATFORM_CHANNELS: PlatformChannelMeta[] = [
     iconColor: "#25D366",
     iconBg: "rgba(37,211,102,0.15)",
   },
+  {
+    id: "slack",
+    name: "Slack",
+    icon: SlackIcon,
+    iconColor: "#E01E5A",
+    iconBg: "rgba(224,30,90,0.15)",
+  },
 ];
 
 const DEFAULT_QUIET_HOURS: QuietHours = { from: "22:00", to: "08:00" };
@@ -107,7 +112,7 @@ const CHANNEL_PREFERENCES_QUERY_KEY = [
 const PLATFORM_LINKS_QUERY_KEY = ["platform-links"] as const;
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
-  global: { push: true, email: true, in_app: true },
+  global: { push: true, in_app: true },
   categories: {},
   quiet_hours: null,
 };
@@ -700,6 +705,7 @@ export const NotificationPreferencesSheet =
         telegram: false,
         discord: false,
         whatsapp: false,
+        slack: false,
       };
       const platformLinks = platformLinksQuery.data?.platform_links ?? {};
 

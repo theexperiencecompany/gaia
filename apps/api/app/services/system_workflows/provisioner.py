@@ -158,7 +158,6 @@ async def _notify_workflows_provisioned(
                         )
                     ],
                 ),
-                channels=[],
                 metadata={"integration_display_name": integration_display_name},
             )
         )

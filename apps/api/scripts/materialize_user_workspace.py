@@ -42,34 +42,26 @@ from app.agents.workspace.skill_loader import (
 )
 from app.services.storage import (
     JuiceFSUnavailable,
-    bootstrap_user_session,
+    provision_user_workspace,
 )
 
 
 async def _connected_for(user_id: str) -> set[str]:
     """Connected integration ids from Mongo (status == "connected")."""
-    from app.services.integrations.user_integrations import (
-        get_user_connected_integrations,
-    )
+    from app.services.integrations.user_integrations import get_connected_integration_ids
 
-    docs = await get_user_connected_integrations(user_id)
-    return {
-        str(d.get("integration_id"))
-        for d in docs
-        if d.get("status") == "connected" and d.get("integration_id")
-    }
+    return await get_connected_integration_ids(user_id)
 
 
 async def _materialize_one(user_id: str, connected_override: set[str] | None) -> None:
     connected = (
         connected_override if connected_override is not None else await _connected_for(user_id)
     )
-    # The unified bootstrap lays down INDEX/GUIDE + the full SKILL.md catalog
-    # in one pass. A sentinel conv id keeps the call shape consistent for users
-    # with no live conversation in flight; the resulting session dir is
-    # disposable and the prune worker reaps it on the normal cadence.
+    # User-level provisioning lays down the system-file symlinks (INDEX/GUIDE)
+    # + the full SKILL.md catalog in one hash-gated pass. Soft-fails when the
+    # JuiceFS mount is missing.
     try:
-        await bootstrap_user_session(user_id, "_bootstrap", connected)
+        await provision_user_workspace(user_id, connected)
     except JuiceFSUnavailable:
         print(f"[skip] {user_id}: JuiceFS mount unavailable", file=sys.stderr)
         return

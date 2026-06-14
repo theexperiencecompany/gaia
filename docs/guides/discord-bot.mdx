@@ -1,0 +1,126 @@
+---
+title: "Using GAIA on Discord"
+description: "Chat with GAIA, manage todos, and run workflows without leaving Discord"
+icon: "/images/icons/discord.webp"
+---
+
+import { Chat } from "/snippets/chat-bubbles.jsx";
+import { PlatformDemo } from "/snippets/platform-demos.jsx";
+
+You're already in Discord all day. Instead of switching to another app, talk to GAIA right there, ask questions, manage your todos, trigger workflows, all without leaving the chat.
+
+<PlatformDemo platform="discord" />
+
+## Getting started
+
+<Steps>
+  <Step title="Open a chat with GAIA">
+    Add the bot to your server via [this link](https://heygaia.io/discord-bot), or join the [GAIA community server](https://discord.heygaia.io). You can also DM the bot directly.
+  </Step>
+
+  <Step title="Link your GAIA account">
+    Run `/auth`. You'll get a link, click it, sign in, and your account is connected.
+
+    ```
+    /auth
+    ```
+
+    Once linked, GAIA carries over your preferences, integrations, and conversation history everywhere.
+  </Step>
+
+  <Step title="Send your first message">
+    Use `/gaia` followed by your message:
+
+    ```
+    /gaia What's on my schedule today?
+    ```
+
+    Or just type freely in a DM, no command prefix needed.
+  </Step>
+</Steps>
+
+<Tip>
+  DMs are the most private way to use GAIA. In a DM, only you and the bot see
+  the conversation.
+</Tip>
+
+## What you can do
+
+Ask GAIA anything. Responses stream in real time with a typing indicator so you know it's working.
+
+<Chat
+  messages={[
+    { from: "user", text: "/gaia Summarize my pending todos and flag anything overdue" },
+    { from: "gaia", text: "You have 6 open todos, two are overdue. Want me to reschedule them?" },
+    { from: "user", text: "/gaia What time is the team standup tomorrow?" },
+  ]}
+/>
+
+Manage todos and workflows without touching the web app:
+
+| Command                  | What it does            |
+| ------------------------ | ----------------------- |
+| `/todo list`             | Show all active todos   |
+| `/todo add <title>`      | Create a new todo       |
+| `/workflow list`         | List all your workflows |
+| `/workflow execute <id>` | Run a workflow manually |
+| `/new`                   | Start a fresh conversation |
+| `/help`                  | Show all available commands |
+
+For the complete reference including subcommand options, see the [Bot Commands Reference](/bots/commands).
+
+## Discord-only features
+
+### @Mention in any channel
+
+Mention the bot in a server channel and GAIA replies right there, no slash command needed.
+
+<Chat
+  messages={[
+    { from: "user", text: "@GAIA What time is the team standup tomorrow?" },
+    { from: "gaia", text: "Standup is at 9:30 AM in #engineering." },
+  ]}
+/>
+
+### Context menu actions
+
+Right-click (or long-press on mobile) any message to get two quick actions:
+
+- **Summarize with GAIA**: Get a 2-3 sentence summary of the selected message.
+- **Add as Todo**: Turn any message into a todo item instantly.
+
+<Tip>
+  These work on any message in the server, not just your own. Use them to pull
+  action items out of team discussions without breaking the conversation.
+</Tip>
+
+### Rich embeds and private replies
+
+Responses use native Discord embeds with structured fields and action buttons, and slash command replies are visible only to you by default, other server members won't see what you asked.
+
+### Workflow creation
+
+Create new workflows directly from Discord:
+
+```
+/workflow create <name> <description>
+```
+
+## Tips
+
+- **Connect your integrations first.** Link Gmail, Google Calendar, GitHub, and other tools from the [GAIA web app](/guides/connecting-integrations) so GAIA can act on your behalf.
+- **Use DMs for personal tasks** and channels for team context, mention GAIA in a project channel so everyone sees the answer.
+- **Start fresh when switching topics.** Run `/new` to clear conversation context before asking about something unrelated.
+
+## Troubleshooting
+
+| Problem                            | Solution                                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Bot does not respond               | Check that the bot is online with `/status`. Verify the bot has **Send Messages** and **Use Slash Commands** permissions in your channel. |
+| Authentication link expired        | Run `/auth` again to get a fresh link.                                                                                                |
+| Commands missing from autocomplete | The server admin may need to re-deploy commands.                                                                                      |
+| Long responses are cut off         | Discord truncates messages at 2,000 characters. GAIA splits longer responses into multiple messages automatically.                    |
+
+<Note>
+  Want to run your own instance of the Discord bot? See [Discord Bot Development](/bots/discord).
+</Note>

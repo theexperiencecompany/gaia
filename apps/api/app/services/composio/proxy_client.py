@@ -19,6 +19,7 @@ import time
 from typing import Any, Literal
 
 from app.config.oauth_config import get_composio_social_configs
+from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -123,12 +124,21 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             f"composio: no ACTIVE account for user={user_id} toolkit={toolkit} "
             f"(total_accounts={total_accounts}, sample={account_summary})"
         )
+        # 403, not 401: the user's GAIA session is valid — they simply have no
+        # active connection for this integration. Returning 401 makes the web
+        # client's axios interceptor treat it as session expiry and pop the
+        # "please log in" modal at a logged-in user (e.g. /dashboard firing
+        # /calendar/events). 403 routes to the "reconnect integration" path.
         raise AppError(
             message=f"No active {toolkit} connection",
             why=f"User {user_id} has no active connected account for {toolkit}",
             fix=f"Reconnect the {toolkit} integration",
-            status_code=401,
-            meta={"toolkit": toolkit, "user_id": user_id},
+            status_code=403,
+            meta={
+                "toolkit": toolkit,
+                "user_id": user_id,
+                "error_code": INTEGRATION_NOT_CONNECTED,
+            },
         )
 
     log.info(
@@ -221,20 +231,28 @@ def _proxy_call(
 
     status = int(response.status)
     if status >= 400:
-        # 401 = Composio's stored token is rejected and refresh already failed.
+        # A provider 401 means Composio's stored token was rejected and refresh
+        # already failed — the *integration* needs reconnecting, not the user's
+        # GAIA session. Surface it as 403 so the web client routes it to the
+        # reconnect-integration path instead of passing 401 through and falsely
+        # telling a logged-in user to sign in again.
         if status == 401:
             invalidate_connected_account_cache(user_id=user_id, toolkit=toolkit)
+        gaia_status = 403 if status == 401 else (status if 400 <= status < 600 else 502)
+        meta: dict[str, Any] = {
+            "toolkit": toolkit,
+            "endpoint": endpoint,
+            "method": method,
+            "provider_status": status,
+            "provider_response": response.data,
+        }
+        if status == 401:
+            meta["error_code"] = INTEGRATION_NOT_CONNECTED
         raise AppError(
             message=f"{toolkit} API error ({status})",
             why=f"Provider returned non-2xx for {method} {endpoint}",
-            status_code=status if 400 <= status < 600 else 502,
-            meta={
-                "toolkit": toolkit,
-                "endpoint": endpoint,
-                "method": method,
-                "provider_status": status,
-                "provider_response": response.data,
-            },
+            status_code=gaia_status,
+            meta=meta,
         )
 
     # Normalize header keys to lowercase. Upstream APIs return mixed casing

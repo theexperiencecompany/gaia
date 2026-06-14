@@ -1,21 +1,28 @@
 """E2E tests for node-level RetryPolicy on the GAIA agent graph.
 
 WHAT THIS TESTS (REAL GAIA CODE):
-- ``_AGENT_RETRY_POLICY`` from ``app.agents.core.graph_builder.build_graph``
-  is wired into the ``"agent"`` node via ``create_agent`` from
-  ``app.override.langgraph_bigtool.create_agent``.
+- ``COMMS_RETRY_POLICY`` and ``EXECUTOR_RETRY_POLICY`` from
+  ``app.agents.llm.retry_policies`` are wired into the agent nodes via
+  ``create_agent`` from ``app.override.langgraph_bigtool.create_agent``
+  (``agent_retry_policy=EXECUTOR_RETRY_POLICY`` / ``=COMMS_RETRY_POLICY`` in
+  ``app.agents.core.graph_builder.build_graph``).
 - When the LLM raises a retryable exception (e.g. ``ResourceExhausted``),
   LangGraph retries the full ``acall_model`` node up to 3 times.
 - When the LLM raises a non-retryable exception (e.g. ``ValueError``),
   the error propagates immediately without retrying.
 - Without a retry policy, any exception propagates on the first attempt.
 
+Both production policies are produced by the same ``_llm_retry_policy()``
+factory (``max_attempts=3``, ``retry_on`` over ``_LLM_RETRYABLE_EXCEPTIONS``),
+so every graph-driven case is parametrized across both to verify each wired
+policy independently.
+
 Mock surfaces:
-- LLM: FailOnceFakeModel (raises on attempt 1, succeeds on attempt 2)
+- LLM: FailThenSucceedModel (raises on the first N attempts, then succeeds)
 - Store: InMemoryStore (no ChromaDB)
 - Checkpointer: MemorySaver (no PostgreSQL)
 
-DELETE ``_AGENT_RETRY_POLICY`` → test_retry_policy_retries_on_resource_exhausted FAILS.
+DELETE either policy → its parametrized cases FAIL.
 DELETE ``agent_retry_policy=`` kwarg in create_agent wiring → same.
 """
 
@@ -29,15 +36,24 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatResult
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
+from langgraph.types import RetryPolicy
 from pydantic import PrivateAttr
 import pytest
 
-from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
+from app.agents.llm.retry_policies import COMMS_RETRY_POLICY, EXECUTOR_RETRY_POLICY
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel
+
+# Both production policies are wired into agent nodes in build_graph.py
+# (executor + comms). They share the same factory, so every graph-driven case
+# is run against both to prove each wired policy retries correctly.
+_WIRED_RETRY_POLICIES = [
+    pytest.param(EXECUTOR_RETRY_POLICY, id="executor"),
+    pytest.param(COMMS_RETRY_POLICY, id="comms"),
+]
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -89,13 +105,15 @@ class FailThenSucceedModel(BindableToolsFakeModel):
 def _build_retry_test_graph(
     fake_llm: BindableToolsFakeModel,
     *,
-    with_retry: bool = True,
+    retry_policy: RetryPolicy | None,
 ) -> Any:
     """Build a minimal GAIA agent graph for retry testing.
 
     Uses real GAIA production nodes and the real ``create_agent`` override.
-    Checkpointer and store are always in-memory (retry behavior is
-    independent of persistence backend).
+    ``retry_policy`` is one of the production policies wired in build_graph
+    (``EXECUTOR_RETRY_POLICY`` / ``COMMS_RETRY_POLICY``), or ``None`` for the
+    control case. Checkpointer and store are always in-memory (retry behavior
+    is independent of persistence backend).
     """
     pre_model_hooks: list[HookType] = [
         cast(HookType, filter_messages_node),
@@ -109,7 +127,7 @@ def _build_retry_test_graph(
         initial_tool_ids=[],
         middleware=None,
         pre_model_hooks=pre_model_hooks,
-        agent_retry_policy=_AGENT_RETRY_POLICY if with_retry else None,
+        agent_retry_policy=retry_policy,
     )
     return builder.compile(checkpointer=MemorySaver(), store=InMemoryStore())
 
@@ -124,10 +142,17 @@ def _make_config() -> dict[str, Any]:
 
 
 @pytest.mark.e2e
+@pytest.mark.parametrize("retry_policy", _WIRED_RETRY_POLICIES)
 class TestRetryPolicyEndToEnd:
-    """End-to-end verification that _AGENT_RETRY_POLICY fires on the compiled graph."""
+    """End-to-end verification that the wired retry policies fire on the compiled graph.
 
-    async def test_retries_on_resource_exhausted_and_succeeds(self) -> None:
+    Runs against both ``EXECUTOR_RETRY_POLICY`` and ``COMMS_RETRY_POLICY`` —
+    the two policies wired into agent nodes in build_graph.py.
+    """
+
+    async def test_retries_on_resource_exhausted_and_succeeds(
+        self, retry_policy: RetryPolicy
+    ) -> None:
         """When the LLM raises ResourceExhausted once, the node retries and returns the response.
 
         This is the primary contract: a single transient 429/quota error must
@@ -138,7 +163,7 @@ class TestRetryPolicyEndToEnd:
             fail_attempts=1,
             responses=[AIMessage(content="Recovered after retry!")],
         )
-        graph = _build_retry_test_graph(fake_llm, with_retry=True)
+        graph = _build_retry_test_graph(fake_llm, retry_policy=retry_policy)
 
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="hi")]},
@@ -152,7 +177,9 @@ class TestRetryPolicyEndToEnd:
             f"Expected exactly 2 LLM invocations (1 fail + 1 succeed), got {fake_llm.attempt_count}"
         )
 
-    async def test_retries_twice_on_two_consecutive_failures(self) -> None:
+    async def test_retries_twice_on_two_consecutive_failures(
+        self, retry_policy: RetryPolicy
+    ) -> None:
         """With two consecutive ResourceExhausted errors, the node retries twice and succeeds.
 
         max_attempts=3 means the node is tried at most 3 times total.
@@ -162,7 +189,7 @@ class TestRetryPolicyEndToEnd:
             fail_attempts=2,
             responses=[AIMessage(content="Recovered on attempt 3!")],
         )
-        graph = _build_retry_test_graph(fake_llm, with_retry=True)
+        graph = _build_retry_test_graph(fake_llm, retry_policy=retry_policy)
 
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="hello")]},
@@ -175,7 +202,9 @@ class TestRetryPolicyEndToEnd:
             f"Expected 3 LLM invocations (2 fail + 1 succeed), got {fake_llm.attempt_count}"
         )
 
-    async def test_non_retryable_exception_propagates_immediately(self) -> None:
+    async def test_non_retryable_exception_propagates_immediately(
+        self, retry_policy: RetryPolicy
+    ) -> None:
         """ValueError is not in _LLM_RETRYABLE_EXCEPTIONS and must propagate on the first attempt.
 
         This validates the ``retry_on`` predicate: we should not blindly retry
@@ -186,7 +215,7 @@ class TestRetryPolicyEndToEnd:
             fail_attempts=1,
             responses=[AIMessage(content="should not be returned")],
         )
-        graph = _build_retry_test_graph(fake_llm, with_retry=True)
+        graph = _build_retry_test_graph(fake_llm, retry_policy=retry_policy)
 
         with pytest.raises(ValueError, match="Bad input"):
             await graph.ainvoke(
@@ -199,30 +228,7 @@ class TestRetryPolicyEndToEnd:
             f"got {fake_llm.attempt_count}"
         )
 
-    async def test_without_retry_policy_exception_propagates_immediately(self) -> None:
-        """Without a RetryPolicy, ResourceExhausted propagates on the first attempt.
-
-        This is the control case: proves _AGENT_RETRY_POLICY is what enables
-        the retry behaviour, not some other mechanism.
-        """
-        fake_llm = FailThenSucceedModel(
-            exception=ResourceExhausted("Quota exceeded — no retry configured"),
-            fail_attempts=1,
-            responses=[AIMessage(content="should not be returned")],
-        )
-        graph = _build_retry_test_graph(fake_llm, with_retry=False)
-
-        with pytest.raises(ResourceExhausted):
-            await graph.ainvoke(
-                {"messages": [HumanMessage(content="hi")]},
-                config=_make_config(),
-            )
-
-        assert fake_llm.attempt_count == 1, (
-            f"Expected exactly 1 LLM invocation (no retry policy), got {fake_llm.attempt_count}"
-        )
-
-    async def test_exhausting_all_retries_raises(self) -> None:
+    async def test_exhausting_all_retries_raises(self, retry_policy: RetryPolicy) -> None:
         """With max_attempts=3, failing 3 times in a row re-raises the last exception.
 
         max_attempts=3 means 3 total attempts (1 original + 2 retries).
@@ -233,7 +239,7 @@ class TestRetryPolicyEndToEnd:
             fail_attempts=99,  # always fail
             responses=[AIMessage(content="unreachable")],
         )
-        graph = _build_retry_test_graph(fake_llm, with_retry=True)
+        graph = _build_retry_test_graph(fake_llm, retry_policy=retry_policy)
 
         with pytest.raises(ResourceExhausted, match="Persistent outage"):
             await graph.ainvoke(
@@ -244,3 +250,29 @@ class TestRetryPolicyEndToEnd:
         assert fake_llm.attempt_count == 3, (
             f"Expected exactly 3 LLM invocations (max_attempts=3), got {fake_llm.attempt_count}"
         )
+
+
+@pytest.mark.e2e
+async def test_without_retry_policy_exception_propagates_immediately() -> None:
+    """Without a RetryPolicy, ResourceExhausted propagates on the first attempt.
+
+    This is the control case: proves the wired retry policy is what enables the
+    retry behaviour, not some other mechanism. It passes ``retry_policy=None``,
+    so it is not parametrized over the production policies.
+    """
+    fake_llm = FailThenSucceedModel(
+        exception=ResourceExhausted("Quota exceeded — no retry configured"),
+        fail_attempts=1,
+        responses=[AIMessage(content="should not be returned")],
+    )
+    graph = _build_retry_test_graph(fake_llm, retry_policy=None)
+
+    with pytest.raises(ResourceExhausted):
+        await graph.ainvoke(
+            {"messages": [HumanMessage(content="hi")]},
+            config=_make_config(),
+        )
+
+    assert fake_llm.attempt_count == 1, (
+        f"Expected exactly 1 LLM invocation (no retry policy), got {fake_llm.attempt_count}"
+    )

@@ -78,22 +78,6 @@ def mock_redis():
 
 
 @pytest.fixture
-def mock_mem0():
-    with patch("app.services.memory_service.memory_service") as mock_service:
-        mock_service.store_memory = AsyncMock(return_value=None)
-        mock_service.store_memory_batch = AsyncMock(return_value=True)
-        mock_service.search_memories = AsyncMock(
-            return_value=MagicMock(memories=[], relations=[], total_count=0)
-        )
-        mock_service.get_all_memories = AsyncMock(
-            return_value=MagicMock(memories=[], relations=[], total_count=0)
-        )
-        mock_service.delete_memory = AsyncMock(return_value=True)
-        mock_service.delete_all_memories = AsyncMock(return_value=True)
-        yield mock_service
-
-
-@pytest.fixture
 def sample_user() -> dict:
     return make_user()
 

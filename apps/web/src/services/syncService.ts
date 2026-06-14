@@ -8,6 +8,22 @@ import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
 import type { MessageType } from "@/types/features/convoTypes";
 
+// When a remote message overwrites an existing local one, carry forward a
+// non-empty local tool_data if the remote copy lacks it. Executor tool cards are
+// produced client-side-first during streaming and saved locally on abort; the
+// backend's cancelled/partial copy may not have caught up yet, and a wholesale
+// "remote wins" replacement would otherwise delete the cards the user already saw.
+const withPreservedToolData = (remote: IMessage, local: IMessage): IMessage => {
+  const remoteHasToolData =
+    Array.isArray(remote.tool_data) && remote.tool_data.length > 0;
+  const localHasToolData =
+    Array.isArray(local.tool_data) && local.tool_data.length > 0;
+  if (!remoteHasToolData && localHasToolData) {
+    return { ...remote, tool_data: local.tool_data };
+  }
+  return remote;
+};
+
 const mergeMessageLists = (
   localMessages: IMessage[],
   remoteMessages: IMessage[],
@@ -33,14 +49,15 @@ const mergeMessageLists = (
       if (streamState.isStreamingConversation(existing.conversationId)) {
         return;
       }
-      // Not streaming? Clean up stale "sending" message by overwriting/merging from remote
-      messageMap.set(msg.id, msg);
+      // Not streaming? Clean up stale "sending" message by overwriting from remote,
+      // but keep locally-retained tool cards the backend copy may still be missing.
+      messageMap.set(msg.id, withPreservedToolData(msg, existing));
     } else {
       // Message exists locally
       // ALWAYS prefer remote version for synced messages to ensure consistency
       // Local timestamps might be drifted or ahead due to optimistic updates (like on abort)
       // The only exception is 'sending' status handled above
-      messageMap.set(msg.id, msg);
+      messageMap.set(msg.id, withPreservedToolData(msg, existing));
     }
   });
 

@@ -1,96 +1,44 @@
 ---
 title: "Overview"
-description: "Chat with GAIA on Discord, Slack, and Telegram — without leaving the apps you already use"
+sidebarTitle: "Bot Architecture"
+description: "Self-host GAIA's Discord, Slack, Telegram, and WhatsApp bots, architecture, prerequisites, and per-platform setup guides"
 icon: "circle-info"
 ---
 
-<Frame>
-  <img src="/images/screenshots/bots.webp" alt="GAIA bot integrations for Discord, Slack, and Telegram" />
-</Frame>
 
-# Bot Integrations
+GAIA ships open-source bots for Discord, Slack, Telegram, and WhatsApp. All four live in the monorepo under `apps/bots/` and talk to the same GAIA API, so a self-hosted instance gives users the same synced conversations, todos, and workflows on every platform.
 
-Chat with your assistant, manage todos, and run workflows from the messaging platforms you're already in.
+<Note>
+  Looking to chat with GAIA on these platforms as a user? See [Slack](/guides/slack-bot), [Discord](/guides/discord-bot), [Telegram](/guides/telegram-bot), or [WhatsApp](/guides/whatsapp-bot).
+</Note>
 
-<CardGroup cols={2}>
-  <Card title="Discord" icon="discord" href="/bots/discord">
-    Use slash commands or @mention GAIA in any channel or DM
-  </Card>
-  <Card title="Slack" icon="slack" href="/bots/slack">
-    Chat with GAIA and manage your work inside your Slack workspace
-  </Card>
-  <Card title="Telegram" icon="telegram" href="/bots/telegram">
-    Send messages or use /commands to talk to GAIA on Telegram
-  </Card>
-  <Card title="WhatsApp" icon="whatsapp">
-    WhatsApp updated their [terms of service](https://techcrunch.com/2025/10/18/whatssapp-changes-its-terms-to-bar-general-purpose-chatbots-from-its-platform/) to prohibit general-purpose AI chatbots, so GAIA is not available on WhatsApp.
-  </Card>
-</CardGroup>
+## How the bots work
 
-## What You Can Do
+Each bot is a thin TypeScript client that forwards messages to your GAIA API and renders responses in the platform's native format (embeds on Discord, Block Kit on Slack, Markdown on Telegram). Authentication is shared: users run `/auth` once per platform to link their messaging identity to their GAIA account.
 
-All GAIA bots give you access to the same core capabilities:
+All bots require:
 
-- **Chat with GAIA** — Ask questions, get summaries, request actions
-- **Manage todos** — Create, view, complete, and delete todos
-- **Run workflows** — Execute and monitor your automated workflows
-- **View conversations** — Browse your chat history with links to the web interface
-- **Link your account** — Securely connect your messaging account to GAIA
-- **Stop a response** — Cancel the current response and start fresh with `/stop`
-- **Unlink your account** — Disconnect from GAIA directly from the bot with `/unlink`
+- Node.js 18+ and pnpm
+- A running GAIA API (see [Self-Hosting](/self-hosting/overview))
+- `GAIA_BOT_API_KEY` matching the value configured in your API
 
-## Talking to GAIA: Quick Start
-
-### Step 1 — Link your account
-
-Before using most features, connect your messaging account to GAIA:
-
-```
-/auth
-```
-
-You'll receive a link — click it, log in, and your account is connected.
-
-### Step 2 — Start chatting
-
-```
-/gaia What's on my schedule today?
-```
-
-On Telegram, you can also send free-text messages directly without a command prefix.
-On Discord, you can `@mention` GAIA in any channel.
-On Slack, you can DM the bot directly for free-text chat.
-
-### Step 3 — Manage your work
-
-```
-/todo list
-/workflow list
-/conversations
-```
-
-See the [Commands Reference](/bots/commands) for the full list.
-
-## Add GAIA to Your Platforms
+## Setup guides
 
 <CardGroup cols={3}>
-  <Card title="Add to Discord" icon="discord" href="https://heygaia.io/discord-bot">
-    Invite GAIA to your Discord server or join the community
+  <Card title="Discord" icon="discord" href="/bots/discord">
+    Discord application, gateway intents, OAuth account linking, slash command deployment
   </Card>
-  <Card title="Add to Slack" icon="slack" href="https://heygaia.io/slack-bot">
-    Install GAIA in your Slack workspace
+  <Card title="Slack" icon="slack" href="/bots/slack">
+    Slack app with Socket Mode, no public URL required
   </Card>
-  <Card title="Open on Telegram" icon="telegram" href="https://t.me/heygaia_bot">
-    Start a private chat with GAIA on Telegram
+  <Card title="Telegram" icon="telegram" href="/bots/telegram">
+    BotFather setup with long polling, no webhook required
+  </Card>
+  <Card title="WhatsApp" icon="whatsapp" href="/bots/whatsapp">
+    Kapso + Meta Cloud API via signed webhook
   </Card>
 </CardGroup>
 
-## For Developers
+## Commands
 
-Want to self-host the bots or add them to your own server/workspace? Each platform has a dedicated setup guide:
-
-- [Discord Setup](/bots/discord#developer-setup)
-- [Slack Setup](/bots/slack#developer-setup)
-- [Telegram Setup](/bots/telegram#developer-setup)
-
-All bots are open source and part of the GAIA monorepo under `apps/bots/`.
+All platforms expose the same core command set (`/gaia`, `/todo`, `/workflow`, `/conversations`, `/auth`). The full list, including platform-specific behavior, is in the [Commands Reference](/bots/commands).

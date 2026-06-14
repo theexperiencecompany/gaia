@@ -28,6 +28,7 @@ from app.agents.workspace.system_docs import (
     GAIA_TASKS_GUIDE_MD,
     INDEX_MD,
     INTEGRATIONS_GUIDE_MD,
+    MEMORY_GUIDE_MD,
     SESSIONS_GUIDE_MD,
     USER_TODOS_GUIDE_MD,
 )
@@ -43,14 +44,15 @@ class SystemFile(NamedTuple):
     body: str
 
 
-# Static docs that anchor the workspace. Paths match what write_user_root_docs /
-# the gaia-tasks + user-todos materializers write, so reads stay consistent.
+# Static docs that anchor the workspace. Paths match what the skill catalog /
+# gaia-tasks + user-todos materializers write, so reads stay consistent.
 _STATIC_DOCS: list[tuple[str, str]] = [
     ("INDEX.md", INDEX_MD),
     ("sessions/GUIDE.md", SESSIONS_GUIDE_MD),
     ("integrations/GUIDE.md", INTEGRATIONS_GUIDE_MD),
     ("gaia-tasks/GUIDE.md", GAIA_TASKS_GUIDE_MD),
     ("todos/GUIDE.md", USER_TODOS_GUIDE_MD),
+    ("memory/GUIDE.md", MEMORY_GUIDE_MD),
 ]
 
 

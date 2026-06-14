@@ -77,12 +77,13 @@ export interface PlatformLinksResponse {
   platform_links: Record<string, PlatformLink>;
 }
 
-export type ChannelPlatform = "telegram" | "discord" | "whatsapp";
+export type ChannelPlatform = "telegram" | "discord" | "whatsapp" | "slack";
 
 export interface ChannelPreferences {
   telegram: boolean;
   discord: boolean;
   whatsapp: boolean;
+  slack: boolean;
 }
 
 export interface QuietHours {

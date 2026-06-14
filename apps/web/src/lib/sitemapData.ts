@@ -441,6 +441,52 @@ async function getIntegrationComboPages(
 }
 
 /**
+ * Native (platform) integration pages — first-party integrations served at
+ * /marketplace/{slug}, distinct from the community integrations in shard 4.
+ */
+async function getNativeIntegrationPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  try {
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+    try {
+      response = await fetch(`${apiBaseUrl}/integrations/config`, {
+        next: { revalidate: 3600 },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) return [];
+
+    type ConfigIntegration = {
+      slug: string;
+      source?: string;
+      available?: boolean;
+    };
+    const data = (await response.json()) as {
+      integrations?: ConfigIntegration[];
+    };
+    return (data.integrations ?? [])
+      .filter((i) => i.source === "platform" && i.available !== false)
+      .map((i) => ({
+        url: `${baseUrl}/marketplace/${i.slug}`,
+        lastModified: BUILD_DATE,
+        changeFrequency: "weekly" as const,
+        priority: 0.8,
+      }));
+  } catch (error) {
+    console.error("Error fetching native integrations for sitemap:", error);
+    return [];
+  }
+}
+
+/**
  * Get sitemap entries for a given sitemap ID.
  */
 export async function getSitemapEntries(
@@ -484,7 +530,7 @@ export async function getSitemapEntries(
     case SITEMAP_IDS.INTEGRATION_COMBOS:
       return withLocaleUrls(await getIntegrationComboPages(baseUrl), baseUrl);
     case SITEMAP_IDS.NATIVE_INTEGRATIONS:
-      return [];
+      return getNativeIntegrationPages(baseUrl);
     default:
       return [];
   }
