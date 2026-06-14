@@ -130,11 +130,17 @@ if [ "$_jfs_can_mount" = "1" ] && command -v juicefs >/dev/null 2>&1; then
         # remote meta (e.g. Neon / cloud Postgres) the daemon often needs longer
         # and finishes the mount right after. Don't trust that exit code; poll the
         # real mountpoint below. Non-fatal either way (set -e would crash-loop us).
+        # --prefetch fetches N blocks concurrently on a read; the default of 1
+        # serializes block fetches from R2, which dominates first-open latency
+        # for an API host far from the bucket region. --buffer-size raises the
+        # read/write buffer to match.
         juicefs mount \
             --backup-meta=0 \
             --cache-dir=/var/cache/juicefs \
             --cache-size=4096 \
             --max-uploads=20 \
+            --prefetch=8 \
+            --buffer-size=600 \
             --background \
             "$META_URL" "$JFS_MOUNT_PATH" 2>&1 || true
         _jfs_ready=0

@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime
 import json
+from pathlib import Path
 from typing import Any
 
 from app.constants.outbound import OUTBOUND_QUEUES
@@ -27,7 +28,11 @@ from app.db.redis import redis_cache
 from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
 from app.services.outbound_delivery import publish_outbound_file
-from app.services.storage import JuiceFSUnavailable, touch_session_last_active
+from app.services.storage import (
+    JuiceFSUnavailable,
+    resolve_session_path,
+    touch_session_last_active,
+)
 from shared.py.wide_events import log
 
 
@@ -44,6 +49,7 @@ def _bot_source(source: str | None) -> ConversationSource | None:
 
 
 _last_active_tasks: set[asyncio.Task[None]] = set()
+_warm_tasks: set[asyncio.Task[None]] = set()
 
 
 def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
@@ -138,6 +144,14 @@ async def forward_artifact_events(
             # …and push live so the card appears during this turn.
             chunk = "data: " + json.dumps({"tool_data": entry}) + "\n\n"
             await stream_manager.publish_chunk(stream_id, chunk)
+            # Warm the host JuiceFS cache for files that need a follow-up fetch
+            # (no inline body) so the user's first "open" is served from local
+            # cache instead of a cold R2 read. Inlined files carry their body and
+            # never hit the file endpoint, so they don't need warming.
+            if event == "upsert" and path and not payload.get("body"):
+                warm = asyncio.create_task(_warm_artifact_cache(user_id, conversation_id, path))
+                _warm_tasks.add(warm)
+                warm.add_done_callback(_warm_tasks.discard)
     except asyncio.CancelledError:
         raise
     except Exception as e:  # noqa: BLE001 — log and exit; orchestrator cleans up
@@ -179,6 +193,33 @@ async def _persist_artifact_entry(
             )
     except Exception as e:  # noqa: BLE001 — best-effort; live stream already delivered it
         log.warning(f"[chat] failed to persist artifact entry: {e}")
+
+
+# JuiceFS default block size: reading in block-sized chunks pulls each block
+# into the local cache with no wasted partial fetches.
+_WARM_CHUNK_BYTES = 4 * 1024 * 1024
+
+
+def _warm_artifact_blocks(host_path: Path) -> None:
+    """Read a file through the FUSE mount to pull its blocks into the JuiceFS
+    local cache. Constant memory: chunks are read and discarded."""
+    with host_path.open("rb") as fh:
+        while fh.read(_WARM_CHUNK_BYTES):
+            pass
+
+
+async def _warm_artifact_cache(user_id: str, conversation_id: str, path: str) -> None:
+    """Pre-read a freshly written artifact into the host JuiceFS cache so the
+    user's first open is served warm (local cache) instead of cold (from R2).
+
+    Best-effort: a failure (mount absent, file not yet flushed, deleted) just
+    means the on-demand read pays the cold cost as it did before.
+    """
+    try:
+        host_path = await resolve_session_path(user_id, conversation_id, "artifacts", path)
+        await asyncio.to_thread(_warm_artifact_blocks, host_path)
+    except Exception as e:  # noqa: BLE001 — best-effort cache warm
+        log.debug(f"[chat] artifact cache warm skipped: {e}")
 
 
 def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> dict[str, Any] | None:
