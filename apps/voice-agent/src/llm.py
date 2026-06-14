@@ -174,24 +174,28 @@ class CustomLLM(LLM):
                 if data == DONE_SENTINEL:
                     await self.forward_stream_event_to_frontend(data)
                     break
-                try:
-                    event = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
-                voice_tts = event.get(VOICE_TTS_KEY)
-                if isinstance(voice_tts, str) and voice_tts:
-                    spoken = sanitize_for_tts(voice_tts)
-                    if spoken and self.session is not None:
-                        # say() schedules its own utterance; the comms turn is
-                        # already over so it plays as soon as it lands.
-                        self.session.say(spoken)
-                    continue
-                if event.keys() & PLUMBING_EVENT_KEYS:
-                    await self.forward_stream_event_to_frontend(data)
+                await self._handle_drain_event(data)
         except Exception as e:
             log.warning("Voice stream drain failed", error=str(e))
         finally:
             await resp.release()
+
+    async def _handle_drain_event(self, data: str) -> None:
+        """Speak a ``voice_tts`` answer, or forward a plumbing event to the screen."""
+        try:
+            event = json.loads(data)
+        except json.JSONDecodeError:
+            return
+        voice_tts = event.get(VOICE_TTS_KEY)
+        if isinstance(voice_tts, str) and voice_tts:
+            spoken = sanitize_for_tts(voice_tts)
+            if spoken and self.session is not None:
+                # say() schedules its own utterance; the comms turn is already
+                # over so it plays as soon as it lands.
+                self.session.say(spoken)
+            return
+        if event.keys() & PLUMBING_EVENT_KEYS:
+            await self.forward_stream_event_to_frontend(data)
 
     # The base class declares chat() -> LLMStream, but the LiveKit pipeline calls it as
     # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly

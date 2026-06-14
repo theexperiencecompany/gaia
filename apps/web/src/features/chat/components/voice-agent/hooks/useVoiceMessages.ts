@@ -46,6 +46,44 @@ function turnToIMessage(turn: VoiceBotTurn, conversationId: string): IMessage {
   };
 }
 
+// Event keys that carry plumbing, not bubble content: tool_output is
+// backend-internal; conversation_id/description are handled by the dedicated
+// text-stream handlers in VoiceControlBarContainer; user_message is legacy
+// (user bubbles now come from live transcriptions).
+const NON_RENDERING_EVENT_KEYS = [
+  "tool_output",
+  "conversation_id",
+  "conversation_description",
+  "user_message",
+] as const;
+
+function isNonRenderingEvent(event: Record<string, unknown>): boolean {
+  return NON_RENDERING_EVENT_KEYS.some((key) => key in event);
+}
+
+// Append one tool_data entry to the turn and surface the same per-tool labelled
+// loading line text mode shows (same hints payload, store, and LoadingIndicator;
+// the spinner must be on for the line to render, so re-arm it if a bot token
+// already cleared it). Internal tool_output entries are skipped. Returns whether
+// the turn changed.
+function appendToolDataEntry(
+  turn: VoiceBotTurn,
+  entry: ToolDataEntry,
+): boolean {
+  if (entry.tool_name === ("tool_output" as ToolDataEntry["tool_name"])) {
+    return false;
+  }
+  turn.tool_data = [...turn.tool_data, entry];
+  const hints = readToolDataLoadingHints((entry as { data?: unknown }).data);
+  if (hints) {
+    const { message, ...toolInfo } = hints;
+    const loading = useLoadingStore.getState();
+    if (!loading.isLoading) loading.setLoading(true);
+    loading.setLoadingText({ text: message, toolInfo });
+  }
+  return true;
+}
+
 function userGroupToIMessage(
   group: VoiceUserGroup,
   conversationId: string,
@@ -177,18 +215,7 @@ export function useVoiceMessages(
 
   const processBotEvent = useCallback(
     (event: Record<string, unknown>, cid: string) => {
-      // Ignore plumbing that doesn't render in the bubble. tool_output is
-      // backend-internal; conversation_id/description are handled by the
-      // dedicated text-stream handlers in VoiceControlBarContainer; user_message
-      // is legacy (user bubbles now come from live transcriptions).
-      if (
-        "tool_output" in event ||
-        "conversation_id" in event ||
-        "conversation_description" in event ||
-        "user_message" in event
-      ) {
-        return;
-      }
+      if (isNonRenderingEvent(event)) return;
 
       const turn = activeTurnRef.current ?? openBotTurn();
 
@@ -197,24 +224,7 @@ export function useVoiceMessages(
         turn.response += event.response;
         changed = true;
       } else if (event.tool_data && typeof event.tool_data === "object") {
-        const entry = event.tool_data as ToolDataEntry;
-        if (entry.tool_name !== ("tool_output" as ToolDataEntry["tool_name"])) {
-          turn.tool_data = [...turn.tool_data, entry];
-          // Surface the same per-tool labelled loading line text mode shows,
-          // from the same hint payload, store, and LoadingIndicator. The
-          // hints ride tool_calls_data; the spinner must be on for the line to
-          // render, so re-arm it if a bot token already cleared it.
-          const hints = readToolDataLoadingHints(
-            (entry as { data?: unknown }).data,
-          );
-          if (hints) {
-            const { message, ...toolInfo } = hints;
-            const loading = useLoadingStore.getState();
-            if (!loading.isLoading) loading.setLoading(true);
-            loading.setLoadingText({ text: message, toolInfo });
-          }
-          changed = true;
-        }
+        changed = appendToolDataEntry(turn, event.tool_data as ToolDataEntry);
       } else if (
         event.follow_up_actions &&
         Array.isArray(event.follow_up_actions)

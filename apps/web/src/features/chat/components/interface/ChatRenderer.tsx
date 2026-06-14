@@ -51,12 +51,12 @@ const ChatMessageItem = memo(function ChatMessageItem({
   isPrecededByBot: boolean;
   suppressForBusy: boolean;
 }) {
-  const messageProps =
-    message.type === "bot"
-      ? getMessageProps(message, "bot", options)
-      : message.type === "user"
-        ? getMessageProps(message, "user", options)
-        : null;
+  let messageProps: ChatBubbleBotProps | ChatBubbleUserProps | null = null;
+  if (message.type === "bot") {
+    messageProps = getMessageProps(message, "bot", options);
+  } else if (message.type === "user") {
+    messageProps = getMessageProps(message, "user", options);
+  }
   if (!messageProps) return null;
 
   if (
@@ -79,7 +79,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
       />
     );
   }
-  return <ChatBubbleUser {...(messageProps as ChatBubbleUserProps)} />;
+  return <ChatBubbleUser {...messageProps} />;
 });
 
 export default function ChatRenderer() {

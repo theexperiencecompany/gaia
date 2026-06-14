@@ -73,7 +73,7 @@ const SAMPLE_BOT = [
   "",
   "Inline: $a^2 + b^2 = c^2$. Display:",
   "",
-  "$$\\int_0^\\infty e^{-x}\\,dx = 1$$",
+  String.raw`$$\int_0^\infty e^{-x}\,dx = 1$$`,
   "",
   "## OpenUI",
   "",
@@ -92,15 +92,15 @@ const SAMPLE_BOT = [
  */
 function tokenizeForReveal(full: string): string[] {
   const fence = /:::openui[\s\S]*?\n:::/g;
-  // One token per word with its surrounding whitespace attached — preserves
-  // indentation and blank lines while keeping the reveal at one word per tick.
-  const words = (s: string): string[] => s.match(/\s*\S+\s*/g) ?? [];
+  // One token per whitespace-run or word-run. The two disjoint alternatives can
+  // never overlap, so there's no backtracking, and join("") reconstructs the
+  // source exactly — preserving indentation and blank lines between reveals.
+  const words = (s: string): string[] => s.match(/\s+|\S+/g) ?? [];
   const tokens: string[] = [];
   let last = 0;
   let match: RegExpExecArray | null = fence.exec(full);
   while (match !== null) {
-    tokens.push(...words(full.slice(last, match.index)));
-    tokens.push(match[0]);
+    tokens.push(...words(full.slice(last, match.index)), match[0]);
     last = match.index + match[0].length;
     match = fence.exec(full);
   }
@@ -152,14 +152,14 @@ function Previews({
   speedMs,
   runId,
   burstSize,
-}: {
+}: Readonly<{
   userText: string;
   botText: string;
   streaming: boolean;
   speedMs: number;
   runId: number;
   burstSize: number;
-}) {
+}>) {
   const userShown = useStreamedText(
     userText,
     streaming,
