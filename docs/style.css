@@ -148,3 +148,19 @@ img {
   > span[data-as="p"]:first-child:has(img) {
   display: none !important;
 }
+
+/* Release notes: releases without their own in-block image show a fallback
+   banner, so every entry has a visual (mirrors the in-app card's
+   `imageUrl ?? fallback`). The newest release is unaffected — it has an image
+   (shown in the page header). Scoped to the main release-notes page. */
+#content:has(> div > .frame)
+  .update-container:not(:has([data-component-part="update-content"] img))
+  [data-component-part="update-content"]::before {
+  content: "";
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 1.25rem;
+  border-radius: 15px;
+  background: url("/images/changelog/release-notes-hero.png") center / cover no-repeat;
+}
