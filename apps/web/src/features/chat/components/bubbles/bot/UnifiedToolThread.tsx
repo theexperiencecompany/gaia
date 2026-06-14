@@ -31,6 +31,9 @@ export type TimelineItem =
 interface UnifiedToolThreadProps {
   /** Ordered timeline of tool calls and subagent groups, in emission order. */
   timeline: TimelineItem[];
+  /** Whether the owning message's stream is still open — gates subagent
+   *  spinners so a dropped/missing end event can't spin a card forever. */
+  isStreaming: boolean;
 }
 
 const SHOW_ICONS = 10;
@@ -39,6 +42,7 @@ const SHOW_ICONS = 10;
 
 export default function UnifiedToolThread({
   timeline,
+  isStreaming,
 }: Readonly<UnifiedToolThreadProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { integrations } = useIntegrations();
@@ -200,6 +204,7 @@ export default function UnifiedToolThread({
                   key={`sa-${item.data.subagent_id}`}
                   group={item.data}
                   isLast={isLast}
+                  isStreaming={isStreaming}
                   getIconUrl={getIconUrl}
                   getIntegrationName={getIntegrationName}
                 />

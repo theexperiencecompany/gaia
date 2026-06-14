@@ -30,6 +30,7 @@ const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Product", menu: "product" },
   { type: "link", label: "Pricing", href: "/pricing" },
   { type: "link", label: "About", href: "/about" },
+  { type: "link", label: "Docs", href: "https://docs.heygaia.io" },
   { type: "dropdown", label: "Resources", menu: "resources" },
 ] as const;
 

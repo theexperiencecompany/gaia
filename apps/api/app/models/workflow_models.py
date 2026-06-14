@@ -195,10 +195,19 @@ class Workflow(BaseScheduledTask):
         default=True,
         description="Whether the workflow is activated and can be executed",
     )
+    notify_on_completion: bool = Field(
+        default=True,
+        description=(
+            "Whether GAIA sends the automatic completion notification when a run "
+            "finishes. When False the run is silent (failures still notify) and the "
+            "agent only notifies if the workflow's own instructions ask it to."
+        ),
+    )
     last_executed_at: datetime | None = Field(default=None)
 
     @field_serializer("last_executed_at")
     def serialize_last_executed_at(self, value: datetime | None) -> str | None:
+        """Serialize the last-executed timestamp to an ISO string (or None)."""
         return value.isoformat() if value is not None else None
 
     # Community features
@@ -341,6 +350,10 @@ class CreateWorkflowRequest(BaseModel):
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
     )
+    notify_on_completion: bool = Field(
+        default=True,
+        description="Whether GAIA sends the automatic completion notification when a run finishes.",
+    )
     selected_integrations: list[str] | None = Field(
         default=None,
         description="Integration slugs selected by the user to hint step generation.",
@@ -363,6 +376,7 @@ class CreateWorkflowRequest(BaseModel):
     @field_validator("title", "prompt")
     @classmethod
     def validate_non_empty_strings(cls, v):
+        """Require non-blank title/prompt and strip surrounding whitespace."""
         if not v or not v.strip():
             raise ValueError("Field cannot be empty or contain only whitespace")
         return v.strip()
@@ -370,6 +384,7 @@ class CreateWorkflowRequest(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_optional_description(cls, v):
+        """Normalize an optional description, coercing blank values to None/empty."""
         if v is not None and not v.strip():
             return ""
         return v.strip() if v else None
@@ -384,11 +399,13 @@ class UpdateWorkflowRequest(BaseModel):
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: TriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
+    notify_on_completion: bool | None = Field(default=None)
     selected_integrations: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")
     @classmethod
     def validate_optional_non_empty_strings(cls, v):
+        """Strip provided title/prompt updates and reject blank-only values."""
         if v is not None:
             if not v.strip():
                 raise ValueError("Field cannot be empty or contain only whitespace")
@@ -398,6 +415,7 @@ class UpdateWorkflowRequest(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_optional_update_description(cls, v):
+        """Normalize a description update, coercing blank values to None."""
         if v is None:
             return None
         stripped = v.strip()

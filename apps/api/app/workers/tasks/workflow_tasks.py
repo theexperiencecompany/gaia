@@ -520,6 +520,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
                 **(context or {}),
                 "workflow_id": workflow.id,
                 "workflow_title": workflow.title,
+                "workflow_notify_on_completion": workflow.notify_on_completion,
                 "execution_mode": "background",
             },
         )

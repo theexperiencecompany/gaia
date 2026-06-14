@@ -101,7 +101,11 @@ RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app/libs \
     && chown appuser:appuser /app/uv.lock /app/pyproject.toml \
     && mkdir -p /etc/gaia /var/cache/juicefs /mnt/jfs \
-    && chown -R appuser:appuser /etc/gaia /var/cache/juicefs /mnt/jfs
+    && chown -R appuser:appuser /etc/gaia /var/cache/juicefs /mnt/jfs \
+    # Persistent fastembed model cache (MEMORY_MODEL_CACHE_DIR). Pre-created and
+    # owned by appuser so a mounted named volume inherits writable ownership.
+    && mkdir -p /models \
+    && chown appuser:appuser /models
 
 # Copy API application code (root-owned, readable by appuser)
 COPY apps/api/app ./apps/api/app

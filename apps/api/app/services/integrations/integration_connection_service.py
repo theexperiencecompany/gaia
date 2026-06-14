@@ -29,6 +29,7 @@ from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
 from app.services.integrations.user_integrations import remove_user_integration
+from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import create_oauth_state
@@ -422,6 +423,9 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
         raise ValueError(f"Integration {integration_id} disconnect not supported")
 
     await _invalidate_caches(user_id, integration_id, resolved.managed_by)
+
+    # Reflect the reduced connected set in the user's workspace VFS.
+    schedule_user_integrations_sync(user_id)
 
     log.set(
         integration={

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
+import contextlib
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -33,7 +34,7 @@ from app.services.storage._vfs_common import (
 )
 from app.services.storage.juicefs import _is_mounted, user_workspace_path
 from app.services.storage.metrics import fs_timer
-from shared.py.wide_events import log
+from shared.py.wide_events import UserContext, log, wide_task
 
 # Generic over each module's projection TypedDict (``GaiaTaskProjection``,
 # ``UserTodoProjection``, …). ``Mapping[str, Any]`` is the right bound:
@@ -82,12 +83,7 @@ async def run_hashed_sync(
             return 0
         written = await asyncio.to_thread(materialize_fn, u_root, docs, guide_md)
         write_marker(marker_path, expected)
-        log.info(
-            f"{log_name}.synced",
-            user_id=user_id,
-            written=written,
-            total=len(docs),
-        )
+        log.set(vfs_sync={"name": log_name, "written": written, "total": len(docs)})
         return written
 
 
@@ -112,15 +108,13 @@ def make_scheduler(
     tasks: set[asyncio.Task] = set()
 
     async def _safe(user_id: str) -> None:
-        try:
-            await sync_fn(user_id)
-        except Exception as e:  # noqa: BLE001 — fire-and-forget body must not crash
-            log.warning(
-                f"{log_name}.sync_failed",
-                user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+        # Own ``wide_task`` scope: this body runs in a fire-and-forget task with
+        # no request middleware, so the scope is what makes the sync result and
+        # any failure emit a queryable wide event. wide_task records the failure
+        # itself, so suppress the re-raise to keep the task quiet.
+        with contextlib.suppress(Exception):
+            async with wide_task(log_name, user=UserContext(id=user_id)):
+                await sync_fn(user_id)
 
     def schedule(user_id: str) -> None:
         if not _is_mounted():

@@ -1,7 +1,7 @@
 """
 Service tests: call real construct_langchain_messages().
 
-Mock only: build_dynamic_context_message (needs Mem0/Redis/Mongo).
+Mock only: build_dynamic_context_message (needs the memory engine/Redis/Mongo).
 Real: create_system_message, format_files_list, format_reply_context,
 format_tool_selection_message, message list construction.
 """

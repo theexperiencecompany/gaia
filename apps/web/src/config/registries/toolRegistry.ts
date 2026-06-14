@@ -3,6 +3,11 @@ import type {
   IntegrationListStreamData,
 } from "@/features/integrations/types";
 import type {
+  MemoryDocument,
+  MemoryEntry,
+  MemoryEpisode,
+} from "@/features/memory/api/types";
+import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
   CalendarFetchData,
@@ -17,7 +22,10 @@ import type {
   EmailThreadData,
   PeopleSearchData,
 } from "@/types/features/mailTypes";
-import type { NotificationRecord } from "@/types/features/notificationTypes";
+import type {
+  NotificationRecord,
+  SendNotificationData,
+} from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
 import type {
   DeepResearchResults,
@@ -39,6 +47,47 @@ import type {
   TwitterUserData,
 } from "@/types/features/twitterTypes";
 import type { WeatherData } from "@/types/features/weatherTypes";
+
+// Discriminated union for all memory tool actions (keyed memory_data).
+// Mirrors the backend contract in apps/api/app/agents/tools/memory_tools.py.
+export type MemoryData =
+  | {
+      action: "add";
+      memories: MemoryEntry[];
+      folder: string;
+      outcome: "new" | "updated" | "extended" | "duplicate";
+      message: string;
+    }
+  | {
+      action: "search";
+      query: string;
+      folder: string | null;
+      memories: MemoryEntry[];
+      message: string;
+    }
+  | {
+      action: "update";
+      memories: MemoryEntry[];
+      message: string;
+    }
+  | {
+      action: "forget";
+      memory_id: string;
+      reason: string;
+      message: string;
+    }
+  | {
+      action: "journal";
+      query: string | null;
+      episodes: MemoryEpisode[];
+      message: string;
+    }
+  | {
+      action: "document";
+      document: MemoryDocument;
+      updated: boolean;
+      message: string;
+    };
 
 export interface MCPAppData {
   tool_call_id: string;
@@ -144,6 +193,7 @@ export const TOOL_REGISTRY = {
   todo_data: null as unknown as TodoToolData,
   goal_data: null as unknown as GoalDataMessageType,
   notification_data: null as unknown as { notifications: NotificationRecord[] },
+  send_notification_data: null as unknown as SendNotificationData,
   integration_connection_required: null as unknown as IntegrationConnectionData,
   integration_list_data: null as unknown as IntegrationListStreamData,
   tool_calls_data: null as unknown as ToolCallEntry[],
@@ -156,6 +206,7 @@ export const TOOL_REGISTRY = {
   todo_progress: null as unknown as TodoProgressData,
   rate_limit_data: null as unknown as RateLimitData,
   artifact_data: null as unknown as ArtifactData[],
+  memory_data: null as unknown as MemoryData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
@@ -197,4 +248,5 @@ export const GROUPED_TOOLS = new Set<ToolName>([
   "email_compose_data",
   "email_sent_data",
   "artifact_data",
+  "memory_data",
 ]);

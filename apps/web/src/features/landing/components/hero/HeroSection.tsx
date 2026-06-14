@@ -2,7 +2,6 @@ import { CircleArrowRight02Icon, DiscoverCircleIcon } from "@icons";
 import Image from "next/image";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import { Link } from "@/i18n/navigation";
-import { MotionContainer } from "@/layouts/MotionContainer";
 import GetStartedButton from "../shared/GetStartedButton";
 import { SoftBlurInBlock, TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
@@ -17,13 +16,19 @@ export default function HeroSection({
 }) {
   return (
     <div className="relative w-full flex-col gap-8 pb-20 sm:pb-30">
-      <MotionContainer
-        className="relative z-2 flex h-full flex-col items-center justify-start gap-4 bg-transparent"
-        staggerDelay={0.07}
-        disableIntersectionObserver={true}
-      >
+      {/* Above-the-fold: blur-in is CSS-driven (see TextSoftBlurIn/SoftBlurInBlock
+          `immediate`), so the hero paints and animates straight from SSR HTML
+          without waiting for React hydration. A plain layout div replaces the old
+          Framer-Motion MotionContainer, which gated visibility on hydration and
+          double-blurred the heading. */}
+      <div className="relative z-2 flex h-full flex-col items-center justify-start gap-4 bg-transparent">
         {latestRelease && (
-          <div className="mx-auto mb-2 flex w-full justify-center ">
+          <SoftBlurInBlock
+            immediate
+            delay={0}
+            duration={0.5}
+            className="mx-auto mb-2 flex w-full justify-center"
+          >
             <Link
               href="https://docs.heygaia.io/release-notes"
               target="_blank"
@@ -44,13 +49,8 @@ export default function HeroSection({
               >
                 {latestRelease.headline}
               </span>
-              {/* <CircleArrowRight02Icon
-                width={17}
-                height={17}
-                className={`${isDark ? "text-white!" : "text-black!"}`}
-              /> */}
             </Link>
-          </div>
+          </SoftBlurInBlock>
         )}
 
         <div onClick={onTextClick} className="cursor-default select-none">
@@ -85,7 +85,7 @@ export default function HeroSection({
             />
           </h1>
         </div>
-      </MotionContainer>
+      </div>
 
       {/* Subtitle + CTA rendered outside MotionContainer to avoid stagger delay (LCP fix) */}
       <div className="relative z-2 flex flex-col items-center gap-4 bg-transparent">

@@ -14,17 +14,16 @@ import {
 } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
-import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
-import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
+import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type { Integration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
 import { useUserStore } from "@/stores/userStore";
@@ -52,14 +51,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 }) => {
   const isConnected = integration.status === "connected";
   const showRetry = integration.status === "created";
-  const { tools } = useToolsWithIntegrations();
   const queryClient = useQueryClient();
 
-  // Hoist RegExp out of render loop - same pattern for all tools
-  const categoryPrefixRegex = useMemo(
-    () => (category ? new RegExp(`^${category}\\s*`, "gi") : null),
-    [category],
-  );
+  const { tools: integrationTools, mentionNames: toolMentionNames } =
+    useIntegrationTools(integration, category);
 
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -102,49 +97,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   ].filter(Boolean).length;
 
   const useIconOnly = buttonCount >= 3;
-
-  // Get tools that belong to this integration
-  const integrationTools = React.useMemo(() => {
-    const integrationIds = [
-      integration.id,
-      ...(integration.includedIntegrations || []),
-    ].map((id) => id.toLowerCase());
-
-    const fromToolsEndpoint = tools.filter((tool) =>
-      integrationIds.includes(tool.category.toLowerCase()),
-    );
-
-    // Fallback: if the /tools endpoint doesn't know about this integration's
-    // tools yet, use the tools array from the integration record itself
-    if (fromToolsEndpoint.length === 0 && integration.tools?.length) {
-      return integration.tools.map((t) => ({
-        name: t.name,
-        category: integration.id,
-        displayName: integration.name,
-        iconUrl: integration.iconUrl,
-        isLocked: false,
-      }));
-    }
-
-    return fromToolsEndpoint;
-  }, [
-    tools,
-    integration.id,
-    integration.includedIntegrations,
-    integration.tools,
-    integration.name,
-    integration.iconUrl,
-  ]);
-
-  // Readable tool names (prefix-stripped, like the chips) for @/# mentions.
-  const toolMentionNames = useMemo(() => {
-    const names = integrationTools.map((tool) =>
-      categoryPrefixRegex
-        ? formatToolName(tool.name).replace(categoryPrefixRegex, "").trim()
-        : formatToolName(tool.name),
-    );
-    return Array.from(new Set(names.filter(Boolean)));
-  }, [integrationTools, categoryPrefixRegex]);
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;
@@ -492,8 +444,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         {isConnected && (
           <div className="mt-3">
             <IntegrationInstructionsEditor
-              integrationId={integration.id}
-              integrationName={integration.name}
+              integration={integration}
               toolNames={toolMentionNames}
             />
           </div>
@@ -517,11 +468,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   radius="full"
                   className="font-light border-1 text-zinc-300"
                 >
-                  {categoryPrefixRegex
-                    ? formatToolName(tool.name)
-                        .replace(categoryPrefixRegex, "")
-                        .trim()
-                    : formatToolName(tool.name)}
+                  {tool.label}
                 </Chip>
               ))}
             </div>

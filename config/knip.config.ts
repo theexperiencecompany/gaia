@@ -120,6 +120,11 @@ const config: KnipConfig = {
     // (ignored above), so knip can't see the import. Kept for the gallery.
     "apps/web/src/features/chat/components/bubbles/bot/ToolCallsSection.tsx",
 
+    // BuiltForEveryone: landing "positioning" section, parked — its dynamic
+    // import and render are commented out in app/[locale]/(landing)/client.tsx.
+    // Kept intact for re-enablement, not dead code.
+    "apps/web/src/features/landing/components/sections/BuiltForEveryone.tsx",
+
     // Wake-word ("Hey GAIA"): recently merged, currently wired only into the
     // dev/wake-word gallery (ignored above). Work-in-progress, not dead.
     "apps/web/src/features/wake-word/**",
@@ -130,6 +135,10 @@ const config: KnipConfig = {
     // One-shot maintenance scripts, not imported by app code.
     "apps/mobile/src/scripts/**",
     "docs/scripts/**",
+
+    // Mintlify React snippets: consumed via `import` in .mdx files, which knip
+    // cannot trace. These are legitimately used — knip has no MDX resolver.
+    "docs/snippets/**",
 
     // Tailwind v4 entry: knip misreads the `@source` content globs as JS
     // imports. Tailwind scans these paths; they are not module imports.

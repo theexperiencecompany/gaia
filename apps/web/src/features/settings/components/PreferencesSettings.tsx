@@ -5,7 +5,6 @@ import {
   Select,
   SelectItem,
   type SharedSelection,
-  Textarea,
 } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
@@ -15,6 +14,7 @@ import { StatusIndicator } from "@/features/settings/components/StatusIndicator"
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { mergedOnboardingUpdate } from "@/features/settings/utils/onboardingPreferences";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import {
@@ -68,11 +68,11 @@ export default function PreferencesSettings({
     label: tz.formattedLabel,
   }));
 
+  // custom_instructions is owned by Settings > Custom Instructions and saved
+  // independently, so it's deliberately not part of this surface's payload.
   const [preferences, setPreferences] = useState({
     profession: user.onboarding?.preferences?.profession || "",
     response_style: user.onboarding?.preferences?.response_style || "",
-    custom_instructions:
-      user.onboarding?.preferences?.custom_instructions || null,
     timezone: normalizeTimezone(user.timezone || "UTC"),
   });
 
@@ -102,30 +102,24 @@ export default function PreferencesSettings({
         setIsUpdating(true);
         setHasUnsavedChanges(false);
 
-        // Extract timezone for separate handling
-        const { timezone, ...preferencesWithoutTimezone } = updatedPreferences;
+        const { timezone, profession, response_style } = updatedPreferences;
 
-        // Filter out empty strings and only send valid values for non-timezone preferences
-        const sanitizedPreferences = Object.entries(
-          preferencesWithoutTimezone,
-        ).reduce(
-          (acc, [key, value]) => {
-            // Only include non-empty values, convert empty strings to undefined
-            if (value !== "" && value !== null && value !== undefined)
-              acc[key] = value;
-            else if (value === null) acc[key] = null;
-            // Explicitly include null values (for custom_instructions)
-
-            return acc;
-          },
-          {} as Record<string, string | null>,
-        );
-
-        // Update preferences (without timezone)
-        const response =
-          await authApi.updateOnboardingPreferences(sanitizedPreferences);
+        // PATCH only the fields this surface owns. Empty strings are sent as-is
+        // and normalized to "cleared" server-side; the backend merges these in
+        // without disturbing custom_instructions (owned by another surface).
+        const response = await authApi.updateOnboardingPreferences({
+          profession,
+          response_style,
+        });
 
         if (response.success) {
+          updateUser(
+            mergedOnboardingUpdate(user.onboarding, {
+              profession: profession || undefined,
+              response_style: response_style || undefined,
+            }),
+          );
+
           // If timezone changed, update it separately
           if (timezone !== lastSavedPreferences.current.timezone) {
             await updateTimezone(timezone);
@@ -155,7 +149,7 @@ export default function PreferencesSettings({
         setIsUpdating(false);
       }
     },
-    [updateTimezone],
+    [updateTimezone, updateUser, user.onboarding],
   );
 
   // Debounced update function
@@ -214,18 +208,6 @@ export default function PreferencesSettings({
     debouncedUpdate(updatedPreferences);
   };
 
-  const handleCustomInstructionsChange = (customInstructions: string) => {
-    // Convert empty strings to null for backend
-    const instructions =
-      customInstructions.trim() === "" ? null : customInstructions;
-    const updatedPreferences = {
-      ...preferences,
-      custom_instructions: instructions,
-    };
-    setPreferences(updatedPreferences);
-    debouncedUpdate(updatedPreferences);
-  };
-
   const handleTimezoneChange = (keys: SharedSelection) => {
     const selectedKeys = Array.from(keys);
     const timezoneValue = selectedKeys[0] as string;
@@ -262,8 +244,6 @@ export default function PreferencesSettings({
     const newPreferences = {
       profession: user.onboarding?.preferences?.profession || "",
       response_style: user.onboarding?.preferences?.response_style || "",
-      custom_instructions:
-        user.onboarding?.preferences?.custom_instructions || null,
       timezone: normalizeTimezone(user.timezone || "") || "UTC", // Normalize legacy timezone names
     };
     setPreferences(newPreferences);
@@ -397,24 +377,6 @@ export default function PreferencesSettings({
                 isDisabled={isUpdating}
               />
             )}
-        </SettingsRow>
-
-        <SettingsRow
-          label="Custom Instructions"
-          description="These instructions will be included in every conversation."
-          stacked
-        >
-          <Textarea
-            placeholder="Add any specific instructions for how GAIA should assist you..."
-            value={preferences.custom_instructions || ""}
-            onChange={(e) => handleCustomInstructionsChange(e.target.value)}
-            isDisabled={isUpdating}
-            minRows={3}
-            classNames={{
-              input: "bg-zinc-800/50 text-sm",
-              inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
-            }}
-          />
         </SettingsRow>
       </SettingsSection>
 

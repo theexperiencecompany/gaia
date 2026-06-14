@@ -295,6 +295,23 @@
   }
 }
 
+/* Soft blur-in entrance, CSS-driven so it auto-plays from SSR HTML without
+   waiting for React hydration (used by TextSoftBlurIn/SoftBlurInBlock in their
+   `immediate` / above-the-fold mode). Blur amount and Y offset are passed via
+   custom properties so callers keep their existing values. */
+@keyframes gaia-soft-blur-in {
+  from {
+    opacity: 0;
+    filter: blur(var(--sbi-blur, 12px));
+    transform: translateY(var(--sbi-y, 16px));
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
 .hero-split-word {
   display: inline-block;
   opacity: 0;
@@ -312,6 +329,21 @@
   .hero-fade-in {
     animation: none;
     opacity: 1;
+  }
+
+  /* TextSoftBlurIn/SoftBlurInBlock apply their motion via inline styles, so the
+     resets need `!important` to win over them and render the final state. */
+  .sbi-anim {
+    /* biome-ignore lint/complexity/noImportantStyles: override inline animation */
+    animation: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override inline transition */
+    transition: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override inline opacity */
+    opacity: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override inline filter */
+    filter: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override inline transform */
+    transform: none !important;
   }
 }
 

@@ -1,6 +1,6 @@
 """Proactive notifications for workflow runs.
 
-These fire from the executor delivery path (``_deliver_bg_notification``) once a
+These fire from the executor delivery path (``deliver_result``) once a
 workflow's executor run finishes, so the notification carries the real,
 comms-voiced result instead of the pre-execution acknowledgment. They live in
 their own module to keep the executor runner free of a circular import on

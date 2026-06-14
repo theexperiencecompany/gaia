@@ -18,7 +18,7 @@ def with_doc(docstring):
     Example:
         @with_doc(USER_DOC)
         def get_user(user_id: int):
-            return {"id": user_id, "name": "Aryan"}
+            return {"id": user_id, "name": "Sam"}
     """
 
     def decorator(func):

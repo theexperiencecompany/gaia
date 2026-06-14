@@ -17,6 +17,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
+from app.models.usage_models import UsageInfo
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -284,6 +285,23 @@ class LangChainRateLimitException(Exception):
             message += f" Upgrade to {detail['plan_required'].upper()} for higher limits."
 
         super().__init__(message)
+
+
+async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageInfo]:
+    """Check-and-increment a feature's tiered rate limit from service-layer code.
+
+    For call sites that are neither FastAPI endpoints nor LangChain tools
+    (e.g. sandbox lifecycle), where the decorator forms don't apply.
+
+    Raises RateLimitExceededException when the limit is exceeded.
+    """
+    subscription = await _get_cached_subscription(user_id)
+    user_plan = subscription.plan_type or PlanType.FREE
+    return await tiered_limiter.check_and_increment(
+        user_id=user_id,
+        feature_key=feature_key,
+        user_plan=user_plan,
+    )
 
 
 async def _get_cached_subscription(user_id: str):

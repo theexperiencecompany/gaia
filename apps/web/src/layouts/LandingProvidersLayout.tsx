@@ -39,7 +39,13 @@ export default function LandingProvidersLayout({
       <Suspense fallback={<></>}>
         <GlobalAuth />
       </Suspense>
-      <GlobalInterceptor />
+      {/* GlobalInterceptor reads useSearchParams() (via useOAuthSuccessToast) —
+          it MUST be inside a Suspense boundary, otherwise it deopts the whole
+          statically-generated page to client-side rendering (the hero + every
+          section vanish from the SSR HTML, killing LCP). */}
+      <Suspense fallback={null}>
+        <GlobalInterceptor />
+      </Suspense>
       <Toaster position="bottom-right" />
       {children}
     </QueryProvider>

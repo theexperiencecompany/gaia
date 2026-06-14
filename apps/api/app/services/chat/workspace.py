@@ -1,9 +1,12 @@
-"""Per-turn workspace setup and artifact-event forwarding.
+"""Per-turn workspace upkeep and artifact-event forwarding.
 
-:func:`prepare_user_workspace` is the fused host-side bootstrap — what used to
-be three sequential ``asyncio.to_thread`` hops (sessions dir + INDEX/GUIDE +
-integrations tree) is now one call into the storage layer. It soft-fails when
-the JuiceFS mount is missing so chat still serves in dev.
+:func:`schedule_last_active_touch` is the only workspace work a chat turn now
+does — a fire-and-forget bump of the session's ``last_active`` so the daily
+idle-prune doesn't reap an actively-used conversation. The heavy per-user
+materialization (system files, skill/instruction catalog, integration tree) is
+event-driven elsewhere: registration, integration connect/disconnect, and
+startup. Session dirs are created at conversation creation
+(:func:`app.services.chat.persistence.initialize_new_conversation`).
 
 :func:`forward_artifact_events` is the bridge between the coding tools
 (which write to ``artifacts:{user_id}`` on Redis pub/sub) and the live SSE
@@ -22,11 +25,8 @@ from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
-from app.services.integrations.user_integrations import (
-    get_user_connected_integrations,
-)
 from app.services.outbound_delivery import publish_outbound_file
-from app.services.storage import JuiceFSUnavailable, bootstrap_user_session
+from app.services.storage import JuiceFSUnavailable, touch_session_last_active
 from shared.py.wide_events import log
 
 
@@ -42,29 +42,34 @@ def _bot_source(source: str | None) -> ConversationSource | None:
     return cs if cs in OUTBOUND_QUEUES else None
 
 
-async def prepare_user_workspace(user_id: str, conversation_id: str) -> None:
-    """Materialize the user's session dirs + INDEX/GUIDE + integrations tree.
+_last_active_tasks: set[asyncio.Task[None]] = set()
 
-    Soft-fails when JuiceFS isn't mounted (dev mode) so the chat stream still
-    serves; coding-tool errors will surface clearly if the user tries to use
-    the sandbox.
+
+def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
+    """Fire-and-forget bump of the session's ``last_active`` for idle-prune.
+
+    The heavy per-user workspace materialization is no longer done on the chat
+    turn — it's event-driven (registration, integration connect/disconnect,
+    startup). All a turn owes the workspace is keeping the conversation's
+    ``last_active`` current so the daily idle-prune doesn't reap an actively-used
+    session. Non-blocking; soft-fails when JuiceFS is unmounted (dev).
     """
     try:
-        docs = await get_user_connected_integrations(user_id)
-    except Exception as e:  # noqa: BLE001 — Mongo flake must not block chat
-        log.warning(f"[chat] could not load connected integrations: {e}")
-        docs = []
-    connected_ids = {
-        str(d.get("integration_id"))
-        for d in docs
-        if d.get("status") == "connected" and d.get("integration_id")
-    }
-    try:
-        await bootstrap_user_session(user_id, conversation_id, connected_ids)
-    except JuiceFSUnavailable:
-        return  # dev mode — proceed; tool errors will surface clearly
-    except Exception as e:  # noqa: BLE001 — never block chat on FS infra
-        log.warning(f"[chat] session dir setup failed: {e}")
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    async def _touch() -> None:
+        try:
+            await touch_session_last_active(user_id, conversation_id)
+        except JuiceFSUnavailable:
+            return  # dev mode — no mount, nothing to touch
+        except Exception as e:  # noqa: BLE001 — last_active bump must not affect chat
+            log.warning(f"[chat] last_active touch failed: {e}")
+
+    task = loop.create_task(_touch())
+    _last_active_tasks.add(task)
+    task.add_done_callback(_last_active_tasks.discard)
 
 
 async def forward_artifact_events(

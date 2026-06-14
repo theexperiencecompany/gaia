@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from app.agents.workspace.operational_docs import (
     INTEGRATIONS_DOC,
+    MEMORY_DOC,
     SESSIONS_ARTIFACTS_DOC,
     TRACKED_TODOS_DOC,
     USER_TODOS_DOC,
@@ -37,6 +38,9 @@ here survives across conversations for this user.
                       One folder per active user todo. (see todos/GUIDE.md)
     gaia-tasks/       YOUR (the agent's) work threads — institutional memory
                       of initiatives you've worked on. (see gaia-tasks/GUIDE.md)
+    memory/           your long-term memory about the user: core documents,
+                      daily journal, facts by topic. Read-only projection —
+                      mutate via the memory tools. (see memory/GUIDE.md)
     pinned/           cross-session files the user has pinned for reuse
 
 ## How to navigate
@@ -60,6 +64,7 @@ SESSIONS_GUIDE_MD = SESSIONS_ARTIFACTS_DOC
 INTEGRATIONS_GUIDE_MD = INTEGRATIONS_DOC
 GAIA_TASKS_GUIDE_MD = TRACKED_TODOS_DOC
 USER_TODOS_GUIDE_MD = USER_TODOS_DOC
+MEMORY_GUIDE_MD = MEMORY_DOC
 
 
 def integration_skills_block(subagent_id: str) -> str:
@@ -85,6 +90,7 @@ __all__ = [
     "GAIA_TASKS_GUIDE_MD",
     "INDEX_MD",
     "INTEGRATIONS_GUIDE_MD",
+    "MEMORY_GUIDE_MD",
     "SESSIONS_GUIDE_MD",
     "USER_TODOS_GUIDE_MD",
     "integration_skills_block",
