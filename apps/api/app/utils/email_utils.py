@@ -215,6 +215,64 @@ async def send_welcome_email(user_email: str, user_name: str | None = None) -> N
         raise
 
 
+async def send_referral_invite_email(
+    to_email: str,
+    referrer_name: str,
+    referrer_picture: str | None,
+    invite_link: str,
+    offer_label: str,
+) -> None:
+    """Send a gift-framed referral invite from a friend, via Resend + Jinja2.
+
+    Promotional email — carries a List-Unsubscribe header and a visible footer
+    note for compliance.
+    """
+    try:
+        subject = f"{referrer_name} gifted you GAIA PRO"
+        html_content = generate_referral_invite_html(
+            referrer_name=referrer_name,
+            referrer_picture=referrer_picture,
+            invite_link=invite_link,
+            offer_label=offer_label,
+        )
+
+        resend.Emails.send(
+            {
+                "from": f"Aryan from GAIA <{CONTACT_EMAIL}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+                "reply_to": CONTACT_EMAIL,
+                "headers": {"List-Unsubscribe": f"<mailto:{CONTACT_EMAIL}?subject=unsubscribe>"},
+            }
+        )
+        log.info(f"Referral invite email sent to {to_email}")
+    except Exception as e:
+        log.error(f"Failed to send referral invite email to {to_email}: {e!s}")
+        raise
+
+
+def generate_referral_invite_html(
+    referrer_name: str,
+    referrer_picture: str | None,
+    invite_link: str,
+    offer_label: str,
+) -> str:
+    """Render the referral invite email HTML using the Jinja2 template."""
+    try:
+        template = jinja_env.get_template("referral_invite.html")
+        return template.render(
+            referrer_name=referrer_name,
+            referrer_picture=referrer_picture,
+            invite_link=invite_link,
+            offer_label=offer_label,
+            contact_email=CONTACT_EMAIL,
+        )
+    except Exception as e:
+        log.error(f"Error generating referral invite email HTML: {e!s}")
+        raise
+
+
 async def add_contact_to_resend(user_email: str, user_name: str | None = None) -> None:
     """Add new user contact to Resend audience."""
     if not settings.RESEND_AUDIENCE_ID:

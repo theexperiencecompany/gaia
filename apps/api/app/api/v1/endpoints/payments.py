@@ -17,6 +17,7 @@ from app.models.payment_models import (
 )
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
+from app.services.referrals import referral_service
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -56,8 +57,17 @@ async def create_subscription_endpoint(
         },
     )
     try:
+        # Auto-apply the referred friend's 50%-off gift, if any, so there is
+        # nothing for them to type. Resolved here (not in the payment service)
+        # to keep the payment layer decoupled from the referral domain.
+        referral_discount = await referral_service.get_pending_friend_discount(user_id)
+        if referral_discount:
+            log.set(payment={"referral_discount_applied": True})
         return await payment_service.create_subscription(
-            user_id, subscription_data.product_id, subscription_data.quantity
+            user_id,
+            subscription_data.product_id,
+            subscription_data.quantity,
+            discount_code=referral_discount,
         )
     except Exception as e:
         log.error(f"Error creating subscription: {e!s}")

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { SubscriptionSuccessModal } from "@/features/pricing/components/SubscriptionSuccessModal";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
+import { PostPaymentShareModal } from "@/features/referrals/components/PostPaymentShareModal";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
@@ -17,6 +18,7 @@ export default function PaymentSuccessPage() {
   const [isVerifying, setIsVerifying] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
     // Set page title
@@ -45,7 +47,14 @@ export default function PaymentSuccessPage() {
   }, [verifyPayment]);
 
   const handleSuccessClose = () => {
+    // Hand off to the referral share prompt — the highest-converting moment —
+    // before routing into the app.
     setShowSuccessModal(false);
+    setShowShareModal(true);
+  };
+
+  const handleShareClose = () => {
+    setShowShareModal(false);
     router.push("/c");
   };
 
@@ -128,6 +137,11 @@ export default function PaymentSuccessPage() {
         onClose={handleSuccessClose}
         onNavigateToChat={handleSuccessClose}
         planName="Pro Plan"
+      />
+
+      <PostPaymentShareModal
+        isOpen={showShareModal}
+        onClose={handleShareClose}
       />
     </>
   );
