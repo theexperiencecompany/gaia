@@ -225,6 +225,9 @@ class DodoPaymentService:
         except Exception:
             plan = None
 
+        # Resolve the tier from the plan name — Max grants a larger credit pool.
+        plan_type = PlanType.MAX if plan and "max" in (plan.name or "").lower() else PlanType.PRO
+
         return UserSubscriptionStatus(
             user_id=user_id,
             current_plan=plan.model_dump() if plan else None,
@@ -234,7 +237,7 @@ class DodoPaymentService:
             can_upgrade=True,
             can_downgrade=True,
             has_subscription=True,
-            plan_type=PlanType.PRO,
+            plan_type=plan_type,
             status=SubscriptionStatus(subscription["status"]),
         )
 

@@ -15,8 +15,10 @@ from app.config.rate_limits import (
     get_limits_for_plan,
     get_reset_time,
 )
+from app.constants.credits import CREDITS_FEATURE_KEY
 from app.decorators.rate_limiting import tiered_limiter
 from app.models.payment_models import PlanType
+from app.services.credits import credit_service, credit_wallet_service
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
@@ -52,6 +54,46 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
     except Exception as e:
         log.error(f"Error getting usage summary: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get usage summary")
+
+
+@router.get("/credits")
+async def get_credit_balance(user: dict = Depends(get_current_user)) -> dict[str, Any]:
+    """Combined credit balance: resetting plan allotment + persistent top-up wallet."""
+    log.set(operation="get_credit_balance")
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    subscription = await payment_service.get_user_subscription_status(user_id)
+    plan = subscription.plan_type or PlanType.FREE
+    balance = await credit_service.get_balance(user_id, plan)
+    limits = get_limits_for_plan(CREDITS_FEATURE_KEY, plan)
+
+    periods: dict[str, Any] = {}
+    for period in (RateLimitPeriod.DAY, RateLimitPeriod.MONTH):
+        limit = getattr(limits, period.value)
+        raw = await tiered_limiter.redis.get(
+            tiered_limiter._get_redis_key(user_id, CREDITS_FEATURE_KEY, period)
+        )
+        used = int(raw) if raw else 0
+        periods[period.value] = {
+            "used": used,
+            "limit": limit,
+            "remaining": max(0, limit - used),
+            "reset_time": get_reset_time(period).isoformat(),
+        }
+
+    grants = await credit_wallet_service.get_active_grants(user_id)
+    return {
+        "plan_type": plan.value,
+        "allotment_remaining": balance["allotment"],
+        "topup_remaining": balance["topup"],
+        "total_remaining": balance["total"],
+        "periods": periods,
+        "topup_grants": [
+            {"remaining": g["remaining"], "expires_at": g["expires_at"].isoformat()} for g in grants
+        ],
+    }
 
 
 @router.get("/history")

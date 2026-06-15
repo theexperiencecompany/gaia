@@ -15,6 +15,7 @@ from app.constants.search import (
 )
 from app.db.redis import get_cache, set_cache
 from app.decorators import with_doc, with_rate_limiting
+from app.services.credits import credit_service
 from app.templates.docstrings.research_tool_docs import (
     DEEP_RESEARCH,
     RESEARCH_INSTRUCTIONS,
@@ -237,6 +238,10 @@ async def deep_research(
             await set_cache(cache_key, result, ttl=ONE_HOUR_TTL)
 
         writer({"research_data": result})
+
+        # Charge the fixed deep-research cost (the LLM tokens it used are metered
+        # separately by the accounting middleware).
+        await credit_service.charge_action(config, "deep_research")
 
         return {
             **result,

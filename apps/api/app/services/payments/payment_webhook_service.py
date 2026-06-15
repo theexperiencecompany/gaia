@@ -25,6 +25,7 @@ from app.services.analytics_service import (
     track_payment_event,
     track_subscription_event,
 )
+from app.services.credits import credit_pack_service
 from app.utils.email_utils import send_pro_subscription_email
 from shared.py.wide_events import log
 
@@ -217,6 +218,11 @@ class PaymentWebhookService:
             raise ValueError("Invalid payment data")
 
         log.info(f"Payment succeeded: {payment_data.payment_id}")
+
+        # If this was a top-up pack purchase, grant the credits (idempotent).
+        await credit_pack_service.grant_pack_from_payment(
+            payment_data.metadata or {}, payment_data.payment_id
+        )
 
         # Track payment success in PostHog
         user_email = await self._get_user_email_from_metadata(payment_data.metadata)

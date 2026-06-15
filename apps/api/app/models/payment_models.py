@@ -14,6 +14,7 @@ class PlanType(str, Enum):
 
     FREE = "free"
     PRO = "pro"
+    MAX = "max"
 
 
 class SubscriptionStatus(str, Enum):

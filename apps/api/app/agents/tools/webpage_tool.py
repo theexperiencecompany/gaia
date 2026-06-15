@@ -10,6 +10,7 @@ from langgraph.config import get_stream_writer
 
 from app.agents.templates.fetch_template import FETCH_TEMPLATE
 from app.decorators import with_doc, with_rate_limiting
+from app.services.credits import credit_service
 from app.templates.docstrings.search_tool_docs import (
     WEB_SEARCH_TOOL,
 )
@@ -130,6 +131,9 @@ async def web_search_tool(
                 }
             }
         )
+
+        # Charge the fixed web-search cost to the unified credit pool.
+        await credit_service.charge_action(config, "web_search")
 
         # Return the raw search results for the LLM to use
         # Include explicit URL list so the LLM has a ground-truth set and cannot hallucinate

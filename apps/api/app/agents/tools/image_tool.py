@@ -5,6 +5,7 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
 from app.decorators import with_doc, with_rate_limiting
+from app.services.credits import credit_service
 from app.services.image_service import api_generate_image
 from app.templates.docstrings.image_tool_docs import GENERATE_IMAGE
 from shared.py.wide_events import log
@@ -29,6 +30,9 @@ async def generate_image(
 
         # Send image data to frontend via writer
         writer({"image_data": image_result})
+
+        # Charge the fixed image-generation cost to the unified credit pool.
+        await credit_service.charge_action(config, "image_generation")
 
         # Return simple confirmation message with clear instructions to prevent markdown image rendering
         return {

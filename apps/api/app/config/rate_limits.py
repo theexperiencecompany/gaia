@@ -20,7 +20,7 @@ Usage:
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.models.payment_models import PlanType
 
@@ -43,11 +43,33 @@ class FeatureInfo(BaseModel):
 class TieredRateLimits(BaseModel):
     free: RateLimitConfig = RateLimitConfig()
     pro: RateLimitConfig = RateLimitConfig()
+    max: RateLimitConfig | None = None
     info: FeatureInfo
+
+    @model_validator(mode="after")
+    def _default_max_to_pro(self) -> "TieredRateLimits":
+        # Max shares Pro's discrete feature caps; the tiers differ only in the
+        # unified `credits` allotment. Features that don't set `max` explicitly
+        # inherit Pro's limits.
+        if self.max is None:
+            self.max = self.pro
+        return self
 
 
 # RECOMMENDED FEATURE LIMITS FOR $30/MONTH
 FEATURE_LIMITS: dict[str, TieredRateLimits] = {
+    # UNIFIED CREDITS — the headline pool. Every LLM call and metered action
+    # draws from this (1 credit = $0.0001 of compute). This is the only feature
+    # whose limits differ between Pro and Max; all others share Pro's caps.
+    "credits": TieredRateLimits(
+        free=RateLimitConfig(day=750, month=7500),
+        pro=RateLimitConfig(day=15000, month=200000),
+        max=RateLimitConfig(day=75000, month=1000000),
+        info=FeatureInfo(
+            title="Credits",
+            description="AI compute for chat, workflows, voice, and tools",
+        ),
+    ),
     # CORE COMMUNICATION
     "chat_messages": TieredRateLimits(
         free=RateLimitConfig(day=200, month=5000),  # Unchanged - good trial
@@ -276,7 +298,12 @@ def get_feature_limits(feature_key: str) -> TieredRateLimits:
 def get_limits_for_plan(feature_key: str, plan_type: PlanType) -> RateLimitConfig:
     """Get rate limits for a specific feature and plan."""
     limits = get_feature_limits(feature_key)
-    return limits.free if plan_type == PlanType.FREE else limits.pro
+    if plan_type == PlanType.MAX:
+        # `max` is always populated by the model validator (defaults to pro).
+        return limits.max or limits.pro
+    if plan_type == PlanType.PRO:
+        return limits.pro
+    return limits.free
 
 
 def get_reset_time(period: RateLimitPeriod) -> datetime:

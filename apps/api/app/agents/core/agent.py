@@ -25,6 +25,7 @@ from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
+from app.constants.credits import CREDIT_LIMIT_MESSAGE, CREDITS_ENFORCEMENT_ENABLED
 from app.helpers.agent_helpers import (
     build_agent_config,
     build_initial_state,
@@ -33,6 +34,10 @@ from app.helpers.agent_helpers import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
+from app.models.payment_models import PlanType
+from app.services.credits import credit_service
+from app.services.payments.payment_service import payment_service
+from app.utils.agent_utils import format_sse_response
 from shared.py.wide_events import log
 
 
@@ -150,6 +155,26 @@ async def _core_agent_logic(
     return graph, initial_state, config
 
 
+async def _resolve_plan_and_gate(user: dict, config: dict) -> str | None:
+    """Resolve the user's plan, stash it on the config for the accounting
+    middleware, and return a graceful out-of-credits message when the user has
+    no credits left (enforcement only). Returns ``None`` to proceed normally.
+
+    This is the single credit gate for every agent entry point — the "clean
+    stop": a turn runs to completion if the user has any credits, and the next
+    turn is gated once the balance hits zero.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        return None
+    subscription = await payment_service.get_user_subscription_status(user_id)
+    plan = subscription.plan_type or PlanType.FREE
+    config["configurable"]["plan_type"] = plan.value
+    if CREDITS_ENFORCEMENT_ENABLED and not await credit_service.has_credits(user_id, plan):
+        return CREDIT_LIMIT_MESSAGE
+    return None
+
+
 async def call_agent(
     request: MessageRequestWithHistory,
     conversation_id: str,
@@ -198,6 +223,16 @@ async def call_agent(
         # Add user_message_id so executor can link notifications back
         if user_message_id:
             config["configurable"]["user_message_id"] = user_message_id
+
+        gate_message = await _resolve_plan_and_gate(user, config)
+        if gate_message:
+
+            async def credit_limit_stream() -> AsyncGenerator[str, None]:
+                """Yield the out-of-credits notice as a normal assistant turn."""
+                yield format_sse_response(gate_message)
+                yield "data: [DONE]\n\n"
+
+            return credit_limit_stream()
 
         return execute_graph_streaming(graph, initial_state, config)
 
@@ -255,6 +290,11 @@ async def call_agent_silent(
         # the stream_id + register the collector before the graph runs so the
         # executor's tool events are captured.
         config["configurable"]["stream_id"] = stream_id
+
+        gate_message = await _resolve_plan_and_gate(user, config)
+        if gate_message:
+            return gate_message, {}
+
         register_executor_capture(stream_id)
 
         complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)
