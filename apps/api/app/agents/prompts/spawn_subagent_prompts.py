@@ -25,7 +25,7 @@ These are ephemeral — your current work only, not persistent user tasks.
 You do NOT have tracked todo tools — those are executor-only.
 
 —INSTALLED SKILLS
-If context includes a skill path, read it with `read("/workspace/skills/<name>/SKILL.md")` before executing — it contains curated workflows.
+If context includes a skill path, read it with `read(<that exact path>)` before executing: skill bodies are `skill.md`, served instantly from memory. It contains curated workflows.
 
 —EXECUTION
 - Try alternative approaches if something doesn't work before concluding it's not possible

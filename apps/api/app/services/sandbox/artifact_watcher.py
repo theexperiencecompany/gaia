@@ -38,6 +38,7 @@ from app.agents.workspace.paths import (
     session_artifacts,
 )
 from app.config.settings import settings
+from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
 from app.services.artifact_events import (
     publish_artifact_event,
     remove_event,
@@ -62,7 +63,6 @@ SESSIONS_WATCH_ROOT = f"{WORKSPACE_ROOT}/{SESSIONS_DIRNAME}"
 # through `commands.run(user="root")` so the sandbox user never needs sudo.
 SANDBOX_JFS_MOUNT = "/mnt/jfs"
 ACCESSLOG_PATH = f"{SANDBOX_JFS_MOUNT}/.accesslog"
-_TMP_SUFFIX = ".gaia-tmp"
 
 # accesslog ops that can change what's visible. JuiceFS .accesslog lines look
 # like: "<ts> [uid:..,gid:..,pid:..] write (12345,4096,0): OK <0.000123>".
@@ -104,10 +104,18 @@ class ArtifactWatcher:
         # per-conv snapshot {rel_path: (size, mtime)} for diffing
         self._snapshots: dict[str, dict[str, tuple[int, float]]] = {}
         self._rescan_task: asyncio.Task[None] | None = None
+        # accesslog mode only: watches the background tail handle for exit so
+        # is_alive() reflects a dead stream (watch_dir gets this via on_exit).
+        self._accesslog_monitor: asyncio.Task[None] | None = None
 
     # -- public surface ---------------------------------------------------
 
     async def start(self) -> None:
+        """Begin watching the sandbox for artifact changes (accesslog or watch_dir).
+
+        Best-effort: a failure is logged and leaves the watcher stopped — it's a
+        latency optimization and must never block sandbox acquisition.
+        """
         if not self._stopped:
             return
         try:
@@ -132,10 +140,14 @@ class ArtifactWatcher:
             )
 
     async def stop(self) -> None:
+        """Stop watching and tear down the tail/watch handle and rescan tasks."""
         self._stopped = True
         if self._rescan_task is not None and not self._rescan_task.done():
             self._rescan_task.cancel()
         self._rescan_task = None
+        if self._accesslog_monitor is not None and not self._accesslog_monitor.done():
+            self._accesslog_monitor.cancel()
+        self._accesslog_monitor = None
         handle, self._handle = self._handle, None
         if handle is None:
             return
@@ -157,15 +169,17 @@ class ArtifactWatcher:
                     await handle.stop()
 
     def is_alive(self) -> bool:
+        """Return True if the watcher is running with a live underlying handle."""
         return not self._stopped and self._handle is not None
 
     # -- watch_dir mode ---------------------------------------------------
 
     async def _start_watch_dir(self) -> None:
         # watch_dir errors if the path doesn't exist yet; sessions are created
-        # lazily on first chat message, so make the root eagerly.
+        # lazily on first chat message, so make the root eagerly. `make_dir`
+        # creates parents and no-ops if it already exists.
         with contextlib.suppress(Exception):
-            await self.sandbox.commands.run(f"mkdir -p {SESSIONS_WATCH_ROOT}", timeout=10)
+            await self.sandbox.files.make_dir(SESSIONS_WATCH_ROOT)
         self._handle = await self.sandbox.files.watch_dir(
             SESSIONS_WATCH_ROOT,
             self._on_fs_event,
@@ -184,7 +198,7 @@ class ArtifactWatcher:
         try:
             name = getattr(ev, "name", "") or ""
             abs_path = f"{SESSIONS_WATCH_ROOT}/{name}"
-            if abs_path.endswith(_TMP_SUFFIX):
+            if abs_path.endswith(WORKSPACE_TMP_SUFFIX):
                 return
             role, conv = classify(abs_path)
             if role != MountRole.ARTIFACTS or conv is None:
@@ -219,6 +233,20 @@ class ArtifactWatcher:
             timeout=0,
             user="root",
         )
+        self._accesslog_monitor = asyncio.create_task(self._watch_accesslog_exit(self._handle))
+
+    async def _watch_accesslog_exit(self, handle: Any) -> None:
+        """Mark the watcher dead when the background tail stream ends.
+
+        The tail handle has no exit callback (unlike watch_dir's on_exit), so a
+        paused/restarted sandbox would otherwise leave is_alive() returning True
+        forever and the next acquire would never reopen the watcher.
+        """
+        with contextlib.suppress(Exception):
+            await handle.wait()
+        if self._handle is handle:
+            self._stopped = True
+            self._handle = None
 
     def _on_accesslog_line(self, line: str) -> None:
         if not line:
