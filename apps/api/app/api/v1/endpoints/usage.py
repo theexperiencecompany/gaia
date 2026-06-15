@@ -15,7 +15,11 @@ from app.config.rate_limits import (
     get_limits_for_plan,
     get_reset_time,
 )
-from app.constants.credits import CREDITS_FEATURE_KEY
+from app.constants.credits import (
+    ACTION_CREDIT_COSTS,
+    CREDIT_VALUE_USD,
+    CREDITS_FEATURE_KEY,
+)
 from app.decorators.rate_limiting import tiered_limiter
 from app.models.payment_models import PlanType
 from app.services.credits import credit_service, credit_wallet_service
@@ -93,6 +97,47 @@ async def get_credit_balance(user: dict = Depends(get_current_user)) -> dict[str
         "topup_grants": [
             {"remaining": g["remaining"], "expires_at": g["expires_at"].isoformat()} for g in grants
         ],
+    }
+
+
+@router.get("/catalog")
+async def get_usage_catalog() -> dict[str, Any]:
+    """Public catalog of credit costs + per-tier feature limits.
+
+    Dynamically derived from the rate-limit config and action costs, so the
+    "what uses credits" UI never drifts from what the backend actually enforces.
+    """
+    action_titles = {
+        "web_search": "Web search",
+        "image_generation": "Image generation",
+        "deep_research": "Deep research",
+    }
+    action_costs = [
+        {"key": key, "title": action_titles.get(key, key), "credits": credits}
+        for key, credits in ACTION_CREDIT_COSTS.items()
+    ]
+
+    features = []
+    for key, limits in FEATURE_LIMITS.items():
+        if key == CREDITS_FEATURE_KEY:
+            continue
+        max_limits = limits.max or limits.pro
+        features.append(
+            {
+                "key": key,
+                "title": limits.info.title,
+                "description": limits.info.description,
+                "free": {"day": limits.free.day, "month": limits.free.month},
+                "pro": {"day": limits.pro.day, "month": limits.pro.month},
+                "max": {"day": max_limits.day, "month": max_limits.month},
+            }
+        )
+
+    return {
+        "credit_value_usd": CREDIT_VALUE_USD,
+        "chat_message_estimate": "7–80",
+        "action_costs": action_costs,
+        "features": features,
     }
 
 

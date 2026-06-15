@@ -142,7 +142,7 @@ export function PricingCard({
     if (isCurrentPlan && hasActiveSubscription) return "Current Plan";
     if (hasActiveSubscription && !isCurrentPlan) return "Switch Plan";
     if (price === 0) return "Start for Free";
-    return "Get GAIA Pro";
+    return `Get GAIA ${title}`;
   };
 
   const isFree = price === 0 && !isEnterprise;

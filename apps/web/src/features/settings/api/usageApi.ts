@@ -43,6 +43,33 @@ export interface CreditPack {
   name: string;
 }
 
+export interface ActionCost {
+  key: string;
+  title: string;
+  credits: number;
+}
+
+export interface CatalogFeatureLimit {
+  day: number;
+  month: number;
+}
+
+export interface CatalogFeature {
+  key: string;
+  title: string;
+  description: string;
+  free: CatalogFeatureLimit;
+  pro: CatalogFeatureLimit;
+  max: CatalogFeatureLimit;
+}
+
+export interface UsageCatalog {
+  credit_value_usd: number;
+  chat_message_estimate: string;
+  action_costs: ActionCost[];
+  features: CatalogFeature[];
+}
+
 class UsageApiService {
   async getUsageSummary(): Promise<UsageSummary> {
     const response = await apiauth.get("/usage/summary");
@@ -56,6 +83,11 @@ class UsageApiService {
 
   async getCreditPacks(): Promise<CreditPack[]> {
     const response = await apiauth.get("/payments/credit-packs");
+    return response.data;
+  }
+
+  async getUsageCatalog(): Promise<UsageCatalog> {
+    const response = await apiauth.get("/usage/catalog");
     return response.data;
   }
 

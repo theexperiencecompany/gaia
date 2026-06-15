@@ -14,10 +14,11 @@ import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 import { useUsageSummary } from "../hooks/useUsage";
 import { CreditBalanceHero } from "./CreditBalanceHero";
-import { WhatUsesCredits } from "./WhatUsesCredits";
+import { UsageCatalogModal } from "./UsageCatalogModal";
 
 export default function UsageSettings() {
   const [selectedPeriod, setSelectedPeriod] = useState("day");
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const { data: summary, isLoading: summaryLoading } = useUsageSummary();
   const periodLabel =
@@ -160,7 +161,21 @@ export default function UsageSettings() {
         )}
       </SettingsSection>
 
-      <WhatUsesCredits />
+      <div className="flex justify-center">
+        <Button
+          size="sm"
+          variant="light"
+          className="text-zinc-400"
+          onPress={() => setCatalogOpen(true)}
+        >
+          What uses credits?
+        </Button>
+      </div>
+
+      <UsageCatalogModal
+        isOpen={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+      />
     </SettingsPage>
   );
 }

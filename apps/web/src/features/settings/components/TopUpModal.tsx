@@ -28,7 +28,7 @@ export function TopUpModal({ isOpen, onClose }: TopUpModalProps) {
     queryFn: () => usageApi.getCreditPacks(),
     staleTime: 5 * 60 * 1000,
   });
-  const [selected, setSelected] = useState(1);
+  const [selected, setSelected] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const pack = packs?.[Math.min(selected, (packs?.length ?? 1) - 1)];
