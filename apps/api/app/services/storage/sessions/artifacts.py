@@ -34,6 +34,8 @@ _ROLE_DIRNAMES: dict[SessionRole, str] = {
 
 @dataclass(slots=True)
 class ArtifactInfo:
+    """A single listed artifact/upload: relative path, size, mtime, MIME type."""
+
     path: str
     size_bytes: int
     mtime: float

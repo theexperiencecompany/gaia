@@ -111,6 +111,11 @@ class ArtifactWatcher:
     # -- public surface ---------------------------------------------------
 
     async def start(self) -> None:
+        """Begin watching the sandbox for artifact changes (accesslog or watch_dir).
+
+        Best-effort: a failure is logged and leaves the watcher stopped — it's a
+        latency optimization and must never block sandbox acquisition.
+        """
         if not self._stopped:
             return
         try:
@@ -135,6 +140,7 @@ class ArtifactWatcher:
             )
 
     async def stop(self) -> None:
+        """Stop watching and tear down the tail/watch handle and rescan tasks."""
         self._stopped = True
         if self._rescan_task is not None and not self._rescan_task.done():
             self._rescan_task.cancel()
@@ -163,6 +169,7 @@ class ArtifactWatcher:
                     await handle.stop()
 
     def is_alive(self) -> bool:
+        """Return True if the watcher is running with a live underlying handle."""
         return not self._stopped and self._handle is not None
 
     # -- watch_dir mode ---------------------------------------------------

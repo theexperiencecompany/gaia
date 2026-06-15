@@ -68,13 +68,16 @@ class SandboxPool:
             return lock
 
     def get(self, user_id: str) -> PooledSandbox | None:
+        """Return the user's pooled sandbox entry, or None if not cached."""
         return self._entries.get(user_id)
 
     def put(self, user_id: str, entry: PooledSandbox) -> None:
+        """Cache ``entry`` as the user's pooled sandbox and republish pool size."""
         self._entries[user_id] = entry
         self._publish_size()
 
     def evict(self, user_id: str) -> PooledSandbox | None:
+        """Remove and return the user's pooled entry (keeps its lock); republish size."""
         # Deliberately does NOT prune _lock_registry: an unheld lock can still
         # have a concurrent acquirer mid-`get_lock`→`acquire` that would then be
         # handed a different Lock object, breaking per-user mutual exclusion.
@@ -86,6 +89,7 @@ class SandboxPool:
         return removed
 
     def all(self) -> dict[str, PooledSandbox]:
+        """Return a snapshot copy of all pooled entries keyed by user id."""
         return dict(self._entries)
 
     def _publish_size(self) -> None:

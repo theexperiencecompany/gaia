@@ -38,7 +38,8 @@ async def test_publish_artifact_builds_upsert_event_with_content_type() -> None:
     assert ev["session_id"] == "c1"
     assert ev["path"] == "report.md"
     assert ev["size_bytes"] == 12
-    assert ev["mtime"] == 1_700_000_000.0
+    # NOSONAR python:S1244 — deterministic epoch passed in must round-trip verbatim
+    assert ev["mtime"] == 1_700_000_000.0  # NOSONAR python:S1244
     assert ev["content_type"] == "text/markdown"
     assert ev["body"] == "hello"
 

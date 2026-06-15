@@ -80,7 +80,8 @@ async def test_mtime_is_true_utc_epoch_regardless_of_worker_timezone() -> None:
         if hasattr(time, "tzset"):
             time.tzset()
 
-    assert mtime == 1_700_000_000.0, (
+    # NOSONAR python:S1244 — exact epoch is the assertion's purpose (TZ-drift guard)
+    assert mtime == 1_700_000_000.0, (  # NOSONAR python:S1244
         f"mtime {mtime} is not the true UTC epoch — naive datetime was "
         f"reinterpreted in local TZ (off by the UTC offset)"
     )
@@ -107,7 +108,8 @@ async def test_mtime_stable_across_timezones(tz_name: str) -> None:
             os.environ["TZ"] = original_tz
         if hasattr(time, "tzset"):
             time.tzset()
-    assert mtime == 1_700_000_000.0
+    # NOSONAR python:S1244 — exact epoch is the assertion's purpose (TZ-drift guard)
+    assert mtime == 1_700_000_000.0  # NOSONAR python:S1244
 
 
 async def test_orphan_temp_is_removed_when_rename_fails() -> None:

@@ -125,6 +125,8 @@ PINNED_DIRNAME = "pinned"
 
 
 class MountRole(StrEnum):
+    """Top-level role of a workspace path, used to route writes and tag events."""
+
     SCRATCH = "scratch"
     USER_UPLOADED = "user-uploaded"
     ARTIFACTS = "artifacts"
@@ -136,26 +138,32 @@ class MountRole(StrEnum):
 
 
 def session_dir(conv_id: str) -> str:
+    """Absolute workspace path of a session's root directory."""
     return f"{WORKSPACE_ROOT}/{SESSIONS_DIRNAME}/{conv_id}"
 
 
 def session_scratch(conv_id: str) -> str:
+    """Absolute workspace path of a session's scratch (agent working) dir."""
     return f"{session_dir(conv_id)}/{SCRATCH_DIRNAME}"
 
 
 def session_user_uploaded(conv_id: str) -> str:
+    """Absolute workspace path of a session's user-uploaded files dir."""
     return f"{session_dir(conv_id)}/{USER_UPLOADED_DIRNAME}"
 
 
 def session_artifacts(conv_id: str) -> str:
+    """Absolute workspace path of a session's agent-generated artifacts dir."""
     return f"{session_dir(conv_id)}/{ARTIFACTS_DIRNAME}"
 
 
 def runs_log_dir() -> str:
+    """Absolute workspace path of the shared agent run-log directory."""
     return f"{WORKSPACE_ROOT}/{GAIA_RUNTIME_DIRNAME}/{RUNS_DIRNAME}"
 
 
 def is_under_workspace(abs_path: str) -> bool:
+    """Return True if ``abs_path`` is the workspace root or nested under it."""
     return abs_path == WORKSPACE_ROOT or abs_path.startswith(WORKSPACE_ROOT + "/")
 
 
