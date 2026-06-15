@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import type { UserInfo } from "@/features/auth/api/authApi";
+import { getBrowserTimezone } from "@/lib/timezone";
 import { useUserStore } from "@/stores/userStore";
 
 import { completeOnboarding } from "../api/onboardingApi";
@@ -69,7 +70,7 @@ export function useOnboardingSubmission(
     const body = {
       name: responses[FIELD_NAMES.NAME]?.trim() ?? "",
       profession: responses[FIELD_NAMES.PROFESSION] ?? "",
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezone: getBrowserTimezone(),
       focus: responses[FIELD_NAMES.FOCUS] ?? "",
       ...(clarifyAnswers ? { clarify_answers: clarifyAnswers } : {}),
     };

@@ -102,26 +102,6 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
         return {}
 
 
-def _extract_timezone_offset(user_time: datetime) -> str:
-    """Extract timezone offset string (e.g. "+05:30") from a datetime; "+00:00" if naive."""
-    if user_time.tzinfo is None:
-        return "+00:00"
-
-    # Get the UTC offset as a timedelta
-    offset = user_time.utcoffset()
-    if offset is None:
-        return "+00:00"
-
-    # Convert to hours and minutes
-    total_seconds = int(offset.total_seconds())
-    sign = "+" if total_seconds >= 0 else "-"
-    total_seconds = abs(total_seconds)
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes = remainder // 60
-
-    return f"{sign}{hours:02d}:{minutes:02d}"
-
-
 def _build_agent_callbacks(
     conversation_id: str,
     user: dict,
@@ -223,7 +203,6 @@ def _inherit_from_parent_configurable(
 def build_agent_config(  # NOSONAR python:S107
     conversation_id: str,
     user: dict,
-    user_time: datetime,
     agent_name: str,
     user_model_config: ModelConfig | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
@@ -281,13 +260,24 @@ def build_agent_config(  # NOSONAR python:S107
     source_channel = resolved["source"] or ConversationSource.BACKGROUND.value
     source_category = SourceCategory.from_source(resolved["source"]).value
 
+    # The agent operates in the user's HOME timezone (IANA, DST-aware): schedule
+    # defaults (workflow/reminder/calendar) and the local-time prompt all read it
+    # via home_timezone_from_config. Top-level callers pass the resolved home zone
+    # on user["timezone"]; child agents (executor/handoff/subagent) reconstruct a
+    # bare user dict, so inherit the parent's zone from base_configurable. UTC is
+    # the loud last resort (logged downstream by home_timezone_from_config).
+    home_timezone = (user.get("timezone") or "").strip()
+    if not home_timezone and base_configurable:
+        home_timezone = (base_configurable.get("user_timezone") or "").strip()
+    if not home_timezone:
+        home_timezone = "UTC"
+
     configurable = {
         "thread_id": thread_id or conversation_id,
         "user_id": user.get("user_id"),
         "email": user.get("email"),
         "user_name": user.get("name", ""),
-        "user_time": user_time.isoformat(),
-        "user_timezone": _extract_timezone_offset(user_time),
+        "user_timezone": home_timezone,
         "provider": resolved["provider_name"],
         "max_tokens": resolved["max_tokens"],
         "model_name": resolved["model_name"],

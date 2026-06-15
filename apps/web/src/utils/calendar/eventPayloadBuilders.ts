@@ -1,3 +1,4 @@
+import { getBrowserTimezone } from "@/lib/timezone";
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -7,7 +8,7 @@ import type {
 import { isTimedEvent } from "./eventTypeGuards";
 
 export const buildAddEventPayload = (event: CalendarEvent) => {
-  const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const userTimeZone = getBrowserTimezone();
 
   if (isTimedEvent(event)) {
     return {

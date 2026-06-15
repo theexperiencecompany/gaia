@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.reminder_tool."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,8 +24,8 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.reminder_tool"
 
 
-def _cfg(user_id: str = FAKE_USER_ID, user_time: str = "2026-03-20T10:00:00") -> dict[str, Any]:
-    return {"configurable": {"user_id": user_id, "user_time": user_time}}
+def _cfg(user_id: str = FAKE_USER_ID, user_timezone: str = "Asia/Kolkata") -> dict[str, Any]:
+    return {"configurable": {"user_id": user_id, "user_timezone": user_timezone}}
 
 
 def _cfg_no_user() -> dict[str, Any]:
@@ -46,36 +46,6 @@ def _reminder_mock(**overrides: Any) -> MagicMock:
     for k, v in defaults.items():
         setattr(mock, k, v)
     return mock
-
-
-# ---------------------------------------------------------------------------
-# Tests: _apply_timezone_offset
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestApplyTimezoneOffset:
-    def test_positive_offset(self) -> None:
-        from app.agents.tools.reminder_tool import _apply_timezone_offset
-
-        dt = datetime(2026, 3, 20, 10, 0, 0)
-        result = _apply_timezone_offset(dt, "+05:30")
-        assert result.tzinfo is not None
-        assert result.utcoffset() == timedelta(hours=5, minutes=30)
-
-    def test_negative_offset(self) -> None:
-        from app.agents.tools.reminder_tool import _apply_timezone_offset
-
-        dt = datetime(2026, 3, 20, 10, 0, 0)
-        result = _apply_timezone_offset(dt, "-08:00")
-        assert result.utcoffset() == timedelta(hours=-8)
-
-    def test_zero_offset(self) -> None:
-        from app.agents.tools.reminder_tool import _apply_timezone_offset
-
-        dt = datetime(2026, 3, 20, 10, 0, 0)
-        result = _apply_timezone_offset(dt, "+00:00")
-        assert result.utcoffset() == timedelta(0)
 
 
 # ---------------------------------------------------------------------------
@@ -114,15 +84,6 @@ class TestCreateReminderTool:
             config=_cfg_no_user(), payload=payload
         )
         assert result == {"error": "User ID is required to create a reminder"}
-
-    async def test_no_user_time(self) -> None:
-        from app.agents.tools.reminder_tool import create_reminder_tool
-        from app.models.reminder_models import StaticReminderPayload
-
-        payload = StaticReminderPayload(title="Test", body="Body")
-        cfg = {"configurable": {"user_id": FAKE_USER_ID, "user_time": ""}}
-        result = await create_reminder_tool.coroutine(config=cfg, payload=payload)  # type: ignore[attr-defined]
-        assert result == {"error": "User time is required to create a reminder"}
 
     @patch(f"{MODULE}.reminder_scheduler")
     @patch(f"{MODULE}.CreateReminderToolRequest", side_effect=ValueError("Invalid cron"))

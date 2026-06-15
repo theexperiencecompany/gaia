@@ -12,8 +12,6 @@ The subagent has access to:
 - search_memory: Access user memories
 """
 
-from datetime import UTC, datetime
-
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
@@ -90,26 +88,25 @@ class WorkflowSubagentRunner:
         user_id: str,
         thread_id: str,
         user_name: str | None = None,
-        user_time: datetime | None = None,
+        user_timezone: str | None = None,
         stream_writer=None,
     ) -> str:
         """Execute the workflow subagent with streaming, returning the complete response text."""
         subagent_graph = await get_workflow_subagent()
 
         # Build config
-        user_time = user_time or datetime.now(UTC)
         subagent_thread_id = f"workflow_{thread_id}"
 
         user = {
             "user_id": user_id,
             "email": None,
             "name": user_name,
+            "timezone": user_timezone,
         }
 
         config: RunnableConfig = build_agent_config(  # type: ignore[assignment]
             conversation_id=thread_id,
             user=user,
-            user_time=user_time,
             thread_id=subagent_thread_id,
             agent_name="workflow_agent",
             subagent_id="workflow_agent",

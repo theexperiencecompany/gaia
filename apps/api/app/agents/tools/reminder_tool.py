@@ -1,6 +1,6 @@
 """Reminder LangChain tools."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 import json
 from typing import Annotated, Any
 
@@ -23,17 +23,8 @@ from app.templates.docstrings.reminder_tool_docs import (
     SEARCH_REMINDERS,
     UPDATE_REMINDER,
 )
+from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
-
-
-def _apply_timezone_offset(dt: datetime, offset_str: str) -> datetime:
-    """Apply timezone offset to datetime object."""
-    # Parse offset string (+|-)HH:MM
-    sign = 1 if offset_str.startswith("+") else -1
-    hours, minutes = map(int, offset_str[1:].split(":"))
-    offset_seconds = sign * (hours * 3600 + minutes * 60)
-    tz = timezone(timedelta(seconds=offset_seconds))
-    return dt.replace(tzinfo=tz)
 
 
 @tool()
@@ -86,10 +77,6 @@ async def create_reminder_tool(
         if not user_id:
             return {"error": "User ID is required to create a reminder"}
 
-        user_time_str: str = config.get("configurable", {}).get("user_time", "")
-        if not user_time_str:
-            return {"error": "User time is required to create a reminder"}
-
         # Create the tool request model which handles all validation and conversion
         tool_request = CreateReminderToolRequest(
             agent=agent,
@@ -101,7 +88,10 @@ async def create_reminder_tool(
             max_occurrences=max_occurrences,
             stop_after=stop_after,
             stop_after_timezone_offset=stop_after_timezone_offset,
-            user_time=user_time_str,
+            # Absolute times and the recurrence run in the user's HOME zone (from
+            # the agent config), so "daily at 9am" fires at 9am home wherever they
+            # are; relative delays are computed from the server's current instant.
+            home_timezone=home_timezone_from_config(config).value,
         )
 
         # Convert to the service request model
@@ -236,7 +226,9 @@ async def update_reminder_tool(
                 # Handle timezone based on the rules
                 if stop_after_timezone_offset:
                     # User explicitly provided timezone - create timezone from offset
-                    processed_stop_after = _apply_timezone_offset(dt, stop_after_timezone_offset)
+                    processed_stop_after = dt.replace(
+                        tzinfo=Timezone.parse(stop_after_timezone_offset).tzinfo
+                    )
                 else:
                     # Absolute time with no timezone - no timezone info
                     processed_stop_after = dt

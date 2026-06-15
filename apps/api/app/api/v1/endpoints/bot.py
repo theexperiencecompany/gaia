@@ -1,5 +1,4 @@
 import asyncio
-from datetime import UTC, datetime
 import json
 import secrets
 from typing import Annotated
@@ -227,7 +226,6 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
             stream_id=stream_id,
             body=message_request,
             user=user,
-            user_time=datetime.now(UTC),
             conversation_id=conversation_id,
             source=body.platform,
         )

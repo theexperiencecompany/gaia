@@ -8,7 +8,6 @@ and search across canvas context via ChromaDB.
 import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
-from zoneinfo import ZoneInfo
 
 from bson import ObjectId
 from croniter import croniter as _croniter
@@ -22,6 +21,8 @@ from app.services.todo_canvas_storage import append_canvas, read_canvas, write_c
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import search_canvas_context
+from app.utils.cron_utils import get_next_run_time
+from app.utils.timezone import Timezone, is_valid_timezone
 from shared.py.wide_events import log
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
@@ -40,16 +41,9 @@ async def _get_user_tz(user_id: str) -> str:
         user = await get_user_by_id(user_id)
         if user and user.get("timezone"):
             tz_name = user["timezone"]
-            try:
-                ZoneInfo(tz_name)
+            if is_valid_timezone(tz_name):
                 return tz_name
-            except Exception as tz_err:
-                log.debug(
-                    "tracked_todo.invalid_user_tz",
-                    user_id=user_id,
-                    tz_name=tz_name,
-                    error=str(tz_err),
-                )
+            log.debug("tracked_todo.invalid_user_tz", user_id=user_id, tz_name=tz_name)
     except Exception as e:
         log.warning("tracked_todo.user_tz_lookup_failed", user_id=user_id, error=str(e))
     log.warning("tracked_todo.user_tz_fallback_utc", user_id=user_id)
@@ -57,14 +51,12 @@ async def _get_user_tz(user_id: str) -> str:
 
 
 def _compute_first_fire_from_cron(cron_expr: str, tz_name: str) -> datetime:
-    """Compute the next fire of a cron expression in the given timezone, returned as UTC."""
-    tz = ZoneInfo(tz_name)
-    now_local = datetime.now(UTC).astimezone(tz)
-    cron = _croniter(cron_expr, now_local)
-    next_dt: datetime = cron.get_next(datetime)
-    if next_dt.tzinfo is None:
-        next_dt = next_dt.replace(tzinfo=tz)
-    return next_dt.astimezone(UTC)
+    """Next fire of a cron in ``tz_name``, returned as UTC.
+
+    Thin wrapper over the canonical ``get_next_run_time`` so todo recurrence and
+    reminder/workflow recurrence share one cron-in-timezone implementation.
+    """
+    return get_next_run_time(cron_expr, tz=Timezone.parse(tz_name))
 
 
 def _is_cron_expression(recurrence: str) -> bool:
@@ -205,7 +197,7 @@ def _format_first_fire_note(parsed_scheduled_at: datetime, user_tz_name: str | N
     """Append a human-readable note about the first fire, timezone-aware when possible."""
     if user_tz_name:
         try:
-            local_fire = parsed_scheduled_at.astimezone(ZoneInfo(user_tz_name))
+            local_fire = parsed_scheduled_at.astimezone(Timezone.parse(user_tz_name).tzinfo)
         except Exception:
             return f"\nFirst fire (UTC): {parsed_scheduled_at.isoformat()}"
         return (
