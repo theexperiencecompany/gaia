@@ -197,9 +197,14 @@ def classify(abs_path: str) -> tuple[MountRole, str | None]:
 
 
 def detect_content_type(path: str) -> str | None:
-    """Best-effort MIME type from extension. Returns None if unknown."""
-    _, _, ext = path.rpartition(".")
-    return _EXT_CONTENT_TYPES.get(ext.lower())
+    """Best-effort MIME type from extension. Returns None if unknown.
+
+    Dotless filenames (``Dockerfile``, ``Makefile``) are matched on the whole
+    basename so the plain-text entries for them actually resolve.
+    """
+    name = path.rsplit("/", 1)[-1].lower()
+    _, dot, ext = name.rpartition(".")
+    return _EXT_CONTENT_TYPES.get(ext if dot else name)
 
 
 def safe_upload_filename(filename: str) -> str:

@@ -7,6 +7,7 @@ real set_timeout call count and real pool state.
 from __future__ import annotations
 
 import time
+from typing import Any
 from unittest.mock import AsyncMock, patch
 import uuid
 
@@ -31,7 +32,7 @@ def _seed(entry: PooledSandbox) -> str:
     return user_id
 
 
-def _patch_probes_healthy():
+def _patch_probes_healthy() -> tuple[Any, Any, Any, Any]:
     return (
         patch.object(lifecycle, "_health_probe", AsyncMock(return_value=True)),
         patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
@@ -40,7 +41,7 @@ def _patch_probes_healthy():
     )
 
 
-async def _reuse(entry: PooledSandbox):
+async def _reuse(entry: PooledSandbox) -> tuple[str, PooledSandbox | None]:
     user_id = _seed(entry)
     try:
         return user_id, await lifecycle._reuse_cached_entry(user_id, {})

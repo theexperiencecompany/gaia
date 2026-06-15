@@ -127,6 +127,15 @@ if [[ -z "${JFS_META_URL:-}" ]]; then
     exit 0
 fi
 
+# Without R2 creds the mount can only fail; short-circuit to the ephemeral
+# fallback now instead of letting `juicefs mount` fail and burning the full
+# 45s wait_mounted window (a noticeable acquire stall in local/self-hosted).
+if [[ -z "${JFS_R2_KEY:-}" || -z "${JFS_R2_SECRET:-}" ]]; then
+    echo "WARN: JFS_R2_KEY/JFS_R2_SECRET not set — falling back to ephemeral /workspace" >&2
+    ensure_workspace_writable
+    exit 0
+fi
+
 # JuiceFS reads its S3-compatible credentials from these standard AWS vars.
 # Both are exported here only for the lifetime of THIS script + its child
 # juicefs daemon — they never leave the per-call env block the API set.

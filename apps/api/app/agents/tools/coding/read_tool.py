@@ -182,6 +182,10 @@ async def _read_file_sandbox(
             "sandbox-read limit — read a narrower range or run with the host mount"
         )
 
-    raw = bytes(await sbx.files.read(abs_path, format="bytes"))
+    try:
+        raw = bytes(await sbx.files.read(abs_path, format="bytes"))
+    except NotFoundException:
+        # Deleted between the get_info check and the read — same answer.
+        return f"Error: file not found at {abs_path}"
     text = raw.decode("utf-8", errors="replace")
     return _format_text_read(abs_path, text, offset, limit, session_id)

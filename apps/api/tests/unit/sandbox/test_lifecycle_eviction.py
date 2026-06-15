@@ -8,11 +8,13 @@ for real so we exercise the actual eviction path all four tools depend on.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 from unittest.mock import AsyncMock, patch
 import uuid
 
-from e2b import NotFoundException
+from e2b import NotFoundException, TimeoutException
 import pytest
 
 from app.services.sandbox import lifecycle
@@ -22,7 +24,9 @@ pytestmark = pytest.mark.unit
 
 
 @asynccontextmanager
-async def _run(sandbox: AsyncMock, *, body_error: Exception | None):
+async def _run(
+    sandbox: AsyncMock, *, body_error: Exception | None
+) -> AsyncIterator[tuple[str, Any, AsyncMock, Any, Exception | None]]:
     """Drive acquire_sandbox for a fresh user; yield (user_id, pool, coll, sched)."""
     user_id = f"u-{uuid.uuid4().hex}"
     pool = get_sandbox_pool()
@@ -113,8 +117,6 @@ async def test_command_deadline_timeout_does_not_evict_a_live_sandbox() -> None:
     # A slow command hits its deadline → TimeoutException, but the SANDBOX is
     # fine. Eviction keys off is_running(), so a slow command must not evict a
     # healthy (just busy) sandbox — only a wedged/dead one.
-    from e2b import TimeoutException
-
     sbx = AsyncMock()
     sbx.is_running = AsyncMock(return_value=True)  # alive, the command was just slow
     async with _run(

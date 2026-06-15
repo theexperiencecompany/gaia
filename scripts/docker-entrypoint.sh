@@ -36,7 +36,20 @@ set -e
 # when the Infisical bootstrap creds are absent (self-host / contributor dev) —
 # the mount gate below then no-ops and the storage layer surfaces a clean
 # JuiceFSUnavailable instead of silently shadowing onto the overlay.
-if [ -z "${R2_ACCESS_KEY:-}" ] && [ -n "${INFISICAL_TOKEN:-}" ] && [ -n "${INFISICAL_MACHINE_IDENTITY_CLIENT_ID:-}" ]; then
+# The mount in section 2 needs ALL of these; gate Infisical injection on the
+# whole set (any one missing → resolve) rather than R2_ACCESS_KEY alone, so a
+# partially populated env can't skip injection and then fail _jfs_can_mount.
+_jfs_required="R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY R2_SECRET_KEY JUICEFS_META_URL_TEMPLATE"
+_jfs_missing=0
+for v in $_jfs_required; do
+    eval _val="\${$v:-}"
+    if [ -z "$_val" ]; then
+        _jfs_missing=1
+        break
+    fi
+done
+
+if [ "$_jfs_missing" = "1" ] && [ -n "${INFISICAL_TOKEN:-}" ] && [ -n "${INFISICAL_MACHINE_IDENTITY_CLIENT_ID:-}" ]; then
     _jfs_env_file="$(mktemp)"
     if python - "$_jfs_env_file" <<'PY'
 import os
@@ -79,7 +92,8 @@ fi
 JFS_MOUNT_PATH="${JUICEFS_HOST_MOUNT_PATH:-/mnt/jfs}"
 JFS_KEY_FILE="/etc/gaia/jfs-master.pem"
 
-_jfs_required="R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY R2_SECRET_KEY JUICEFS_META_URL_TEMPLATE"
+# Re-check after the optional Infisical injection above ($_jfs_required is
+# defined there). All five must be present for the host-side mount to succeed.
 _jfs_can_mount=1
 for v in $_jfs_required; do
     eval _val="\${$v:-}"

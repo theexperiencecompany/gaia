@@ -10,8 +10,8 @@ startup. Session dirs are created at conversation creation
 
 :func:`forward_artifact_events` is the bridge between the coding tools
 (which write to ``artifacts:{user_id}`` on Redis pub/sub) and the live SSE
-stream. Forwarded events are appended to the shared ``tool_data`` accumulator
-so the card persists with the conversation on server reload.
+stream. Each forwarded event is ``$push``-ed straight onto the turn's bot
+message in Mongo so the card persists with the conversation on server reload.
 """
 
 import asyncio
@@ -199,6 +199,12 @@ async def _persist_artifact_entry(
 # into the local cache with no wasted partial fetches.
 _WARM_CHUNK_BYTES = 4 * 1024 * 1024
 
+# Cap concurrent cache-warm reads so a burst of artifacts in one turn can't
+# saturate the shared default thread pool (``asyncio.to_thread``) and starve
+# other blocking IO. Tasks past the cap queue on the semaphore, not the pool.
+_WARM_MAX_CONCURRENCY = 4
+_warm_semaphore = asyncio.Semaphore(_WARM_MAX_CONCURRENCY)
+
 
 def _warm_artifact_blocks(host_path: Path) -> None:
     """Read a file through the FUSE mount to pull its blocks into the JuiceFS
@@ -216,8 +222,9 @@ async def _warm_artifact_cache(user_id: str, conversation_id: str, path: str) ->
     means the on-demand read pays the cold cost as it did before.
     """
     try:
-        host_path = await resolve_session_path(user_id, conversation_id, "artifacts", path)
-        await asyncio.to_thread(_warm_artifact_blocks, host_path)
+        async with _warm_semaphore:
+            host_path = await resolve_session_path(user_id, conversation_id, "artifacts", path)
+            await asyncio.to_thread(_warm_artifact_blocks, host_path)
     except Exception as e:  # noqa: BLE001 — best-effort cache warm
         log.debug(f"[chat] artifact cache warm skipped: {e}")
 

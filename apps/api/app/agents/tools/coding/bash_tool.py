@@ -36,6 +36,7 @@ from app.constants.sandbox import (
     BASH_DEFAULT_TIMEOUT_SECONDS,
     BASH_MAX_COMMAND_LENGTH,
     BASH_MAX_TIMEOUT_SECONDS,
+    WORKSPACE_TMP_SUFFIX,
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import (
@@ -248,7 +249,7 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
     max_inline = INLINE_ARTIFACT_MAX_BYTES
     enumerate_cmd = (
         f"find {sh_quote(artifacts_root)} -type f "
-        f"! -name '*.gaia-tmp' "
+        f"! -name '*{WORKSPACE_TMP_SUFFIX}' "
         f"-printf '%P\\0%s\\0%T@\\0' "
         f"-exec sh -c '"
         f'  s=$(stat -c%s "$0"); '
