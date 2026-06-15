@@ -23,6 +23,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
+from app.agents.llm.dev_model_override import apply_comms_dev_override
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
 from app.helpers.agent_helpers import (
@@ -124,6 +125,14 @@ async def _core_agent_logic(
         source=source,
         langfuse_trace_id=langfuse_trace_id,
         langfuse_tags=langfuse_tags,
+    )
+
+    # Dev-only (ENV=development): apply the chat-header model picker selections.
+    # Forces the comms model and stashes the executor selection for call_executor.
+    apply_comms_dev_override(
+        config["configurable"],
+        request.comms_model,
+        request.executor_model,
     )
 
     # Workflow runs carry their id/title so the background executor's delivery

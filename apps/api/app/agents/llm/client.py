@@ -135,6 +135,13 @@ def init_openrouter_llm():
         },
     ).configurable_fields(
         model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
+        # Dev model picker lifts the output cap so reasoning models aren't truncated.
+        # Absent from configurable -> falls back to the constructor max_tokens above.
+        max_tokens=ConfigurableField(
+            id="dev_max_output_tokens",
+            name="Max output tokens",
+            description="Dev-only output token cap override",
+        ),
     )
 
 

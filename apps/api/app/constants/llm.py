@@ -11,5 +11,12 @@ DEFAULT_MAX_TOKENS = 1_000_000
 DEFAULT_MODEL_NAME = "gemini-3.1-flash-lite"
 # Direct Gemini API model
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
-DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.1-fast"
+DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+# Dev-only model picker (ENV=development): the web chat header can force specific
+# OpenRouter models for the comms/executor agents to benchmark them per task.
+# All dev overrides route through OpenRouter and lift the output cap so reasoning
+# models aren't truncated. No effect in production.
+DEV_MODEL_INFERENCE_PROVIDER = "openrouter"
+DEV_OPENROUTER_MAX_OUTPUT_TOKENS = 16384
