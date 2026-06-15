@@ -32,7 +32,6 @@ from app.constants.referrals import (
     RESERVED_REFERRAL_CODES,
 )
 from app.db.mongodb.collections import (
-    plans_collection,
     referral_rewards_collection,
     referrals_collection,
     users_collection,
@@ -58,7 +57,6 @@ from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 _CODE_REGEX = re.compile(REFERRAL_CODE_PATTERN)
-_DEFAULT_OFFER_LABEL = "50% off your first 2 months of GAIA PRO"
 
 
 # ---------------------------------------------------------------------------
@@ -96,13 +94,8 @@ def _mask_email(email: str) -> str:
 
 
 async def _friend_offer_label() -> str:
-    """Human, honest friend-offer label including the $ gift value when known."""
-    plan = await plans_collection.find_one({"name": "Pro", "duration": "monthly"})
-    if plan and plan.get("amount"):
-        # 50% off two months saves exactly one month's price — the gift value.
-        gift_value = plan["amount"] / 100
-        return f"50% off your first {FRIEND_DISCOUNT_CYCLES} months — a ${gift_value:.0f} gift"
-    return _DEFAULT_OFFER_LABEL
+    """Short, clean friend-offer label. The gift framing carries the value."""
+    return f"50% off your first {FRIEND_DISCOUNT_CYCLES} months"
 
 
 # ---------------------------------------------------------------------------

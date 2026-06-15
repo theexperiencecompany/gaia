@@ -34,16 +34,9 @@ export default function InvitePage() {
 
   const valid = data?.valid ?? false;
   const referrerName = data?.referrer_name || "A friend";
-  const offerLabel =
-    data?.offer_label || "50% off your first 2 months of GAIA PRO";
 
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-primary-bg px-6 py-16 text-center">
-      {/* soft ambient backdrop — legible, no hard glow */}
-      <div className="pointer-events-none absolute inset-0 opacity-60">
-        <div className="absolute top-1/4 left-1/2 h-[42rem] w-[42rem] -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]" />
-      </div>
-
       <div className="animate-scale-in relative z-10 flex w-full max-w-xl flex-col items-center">
         {valid && (
           <div className="mb-7 flex items-center gap-2.5 rounded-full bg-zinc-800/60 py-1.5 pr-4 pl-1.5 backdrop-blur-xl">
@@ -62,9 +55,9 @@ export default function InvitePage() {
         <h1 className="font-serif text-4xl leading-[1.1] font-normal tracking-tight text-white sm:text-6xl">
           {valid ? (
             <>
-              {referrerName} wants to give
+              {referrerName} gifted you
               <br />
-              you their time back.
+              $30 off GAIA PRO.
             </>
           ) : (
             <>
@@ -78,14 +71,14 @@ export default function InvitePage() {
         <p className="mt-6 max-w-md text-base leading-7 font-light text-zinc-400">
           {valid ? (
             <>
-              GAIA handles the busywork — email, tasks, calendar, follow-ups —
-              so you don't have to. {referrerName} saved you{" "}
-              <span className="font-medium text-zinc-200">{offerLabel}</span>.
+              {referrerName} wants to give you their time back. GAIA is your
+              proactive AI assistant that quietly handles your email, tasks, and
+              follow-ups, so you can focus on what matters.
             </>
           ) : (
             <>
-              GAIA quietly handles the busywork — email, tasks, calendar,
-              follow-ups — so you can focus on what matters.
+              GAIA quietly handles your email, tasks, calendar, and follow-ups,
+              so you can focus on what matters.
             </>
           )}
         </p>
