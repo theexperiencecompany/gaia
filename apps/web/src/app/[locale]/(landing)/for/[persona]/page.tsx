@@ -18,7 +18,7 @@ import {
 } from "@/features/landing/data/personaFaqs";
 import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
 import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
-import { getAlternates } from "@/i18n/getAlternates";
+import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -242,7 +242,7 @@ export async function generateStaticParams() {
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { persona } = await params;
+  const { locale, persona } = await params;
 
   const config = SPECIAL_PERSONA_CONFIGS[persona];
   if (config) {
@@ -252,7 +252,10 @@ export async function generateMetadata({
       path: `/for/${persona}`,
       keywords: config.keywords,
     });
-    return metadata;
+    return {
+      ...metadata,
+      alternates: getLocalizedAlternates(`/for/${persona}`, locale),
+    };
   }
 
   const data = await getTranslatedPersona(persona);
@@ -269,10 +272,7 @@ export async function generateMetadata({
   });
   return {
     ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates(`/for/${persona}`),
-    },
+    alternates: getLocalizedAlternates(`/for/${persona}`, locale),
   };
 }
 

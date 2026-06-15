@@ -8,7 +8,7 @@ import { getTranslatedComparison } from "@/features/comparisons/data/getTranslat
 import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslatedGlossary";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAlternates } from "@/i18n/getAlternates";
+import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateDefinedTermSchema,
@@ -35,7 +35,7 @@ export const dynamicParams = false;
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { term } = await params;
+  const { locale, term } = await params;
   const data = await getTranslatedGlossaryTerm(term);
 
   if (!data) {
@@ -54,10 +54,11 @@ export async function generateMetadata({
 
   return {
     ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates(`/learn/${term}`),
-    },
+    alternates: getLocalizedAlternates(
+      `/learn/${term}`,
+      locale,
+      data.canonicalSlug ? `/learn/${data.canonicalSlug}` : undefined,
+    ),
   };
 }
 

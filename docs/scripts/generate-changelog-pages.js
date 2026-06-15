@@ -245,22 +245,26 @@ function generateCategoryPages(blocks) {
     // Also handle legacy blocks (pre per-app era) where there are no ## [App] headings
     const legacyCategories = sections.length === 0 ? extractCategorySections(block.content) : {};
 
-    // Per-app sections: extract matching category content under each app heading
-    const catContent = {}; // cat -> lines[]
+    // Per-app sections: collect each app's category content as a discrete block
+    // so they can be joined with a blank-line separator regardless of source spacing.
+    const catContent = {}; // cat -> array of per-app block strings
 
     for (const section of sections) {
       const lines = section.lines;
       let currentCat = null;
       let catLines = [];
 
+      const flushCat = function () {
+        if (currentCat && catLines.length) {
+          if (!catContent[currentCat]) catContent[currentCat] = [];
+          catContent[currentCat].push(trimSeparators(catLines).join("\n"));
+        }
+      };
+
       for (const line of lines) {
         const catMatch = line.match(CAT_HEADING);
         if (catMatch) {
-          // Flush previous
-          if (currentCat && catLines.length) {
-            if (!catContent[currentCat]) catContent[currentCat] = [];
-            catContent[currentCat].push(...catLines);
-          }
+          flushCat();
           const catName = catMatch[1].trim().toLowerCase();
           currentCat = CAT_MAP[catName] || null;
           // Start with the app heading (## [App vX.Y.Z]), skip the ### category heading
@@ -270,19 +274,16 @@ function generateCategoryPages(blocks) {
         }
       }
 
-      if (currentCat && catLines.length) {
-        if (!catContent[currentCat]) catContent[currentCat] = [];
-        catContent[currentCat].push(...catLines);
-      }
+      flushCat();
     }
 
-    // Add per-app category content to catBlocks
-    for (const [cat, lines] of Object.entries(catContent)) {
+    // Add per-app category content to catBlocks, separating apps with a blank line
+    for (const [cat, appBlockStrings] of Object.entries(catContent)) {
       if (!catBlocks[cat]) catBlocks[cat] = [];
       catBlocks[cat].push({
         label: block.label,
         description: block.description,
-        content: trimSeparators(lines).join("\n"),
+        content: appBlockStrings.join("\n\n"),
       });
     }
 
@@ -341,6 +342,54 @@ function generateYearPages(blocks) {
   }
 }
 
+// --- Sync the page hero to the most recent release's image ---
+
+function extractFirstImage(content) {
+  // Markdown image: ![alt](src) ; HTML image: <img ... src="...">
+  const md = content.match(/!\[[^\]]*\]\(([^)\s]+)\)/);
+  const html = content.match(/<img[^>]+src="([^"]+)"/);
+  if (md && html) {
+    return content.indexOf(md[0]) <= content.indexOf(html[0]) ? md[1] : html[1];
+  }
+  return md ? md[1] : html ? html[1] : null;
+}
+
+function syncHeroImage(blocks) {
+  if (blocks.length === 0) return;
+
+  // blocks[0] is the most recent release (entries are newest-first).
+  const latestImage = extractFirstImage(blocks[0].content);
+  if (!latestImage) {
+    console.log("  latest release has no image; page hero left unchanged");
+    return;
+  }
+
+  const raw = fs.readFileSync(SOURCE, "utf-8");
+
+  // The hero lives in the page header, before the first <Update> block.
+  // Only the <img> there is rewritten, so per-release images are untouched.
+  const firstUpdateIdx = raw.indexOf("<Update");
+  if (firstUpdateIdx === -1) return;
+
+  const head = raw.slice(0, firstUpdateIdx);
+  const heroMatch = head.match(/<img[^>]+src="([^"]+)"/);
+  if (!heroMatch) {
+    console.log("  no <img> in page header; nothing to sync");
+    return;
+  }
+  if (heroMatch[1] === latestImage) {
+    console.log(`  page hero already current (${latestImage})`);
+    return;
+  }
+
+  const updatedHead = head.replace(
+    /(<img[^>]+src=")[^"]+("[^>]*>)/,
+    `$1${latestImage}$2`,
+  );
+  fs.writeFileSync(SOURCE, updatedHead + raw.slice(firstUpdateIdx));
+  console.log(`  page hero synced to ${latestImage}`);
+}
+
 // --- Main ---
 
 function main() {
@@ -361,6 +410,9 @@ function main() {
 
   console.log("\nBy Year:");
   generateYearPages(blocks);
+
+  console.log("\nHero:");
+  syncHeroImage(blocks);
 
   console.log("\nDone.");
 }

@@ -1,0 +1,38 @@
+diff --git a/dist/index.js b/dist/index.js
+index d37651971f897a3cd099f9e0b02be40476dc3868..570e488da12ffe9c04ef86b8ddc08bd10acc743d 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -600,13 +600,11 @@ const Check = ()=>/*#__PURE__*/ jsxRuntime.jsx(Icon, {
+                 style: canvasStyle,
+                 children: /*#__PURE__*/ jsxRuntime.jsxs("svg", {
+                     "data-sileo-svg": true,
++                    "aria-hidden": true,
+                     width: WIDTH,
+                     height: svgHeight,
+                     viewBox: viewBox,
+                     children: [
+-                        /*#__PURE__*/ jsxRuntime.jsx("title", {
+-                            children: "Sileo Notification"
+-                        }),
+                         /*#__PURE__*/ jsxRuntime.jsx(GooeyDefs, {
+                             filterId: filterId,
+                             blur: blur
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 94bddb59928c91f97dd612e99386237a967d4125..b050f5446f95c649c18989c69ad1048ed60d485c 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -598,13 +598,11 @@ const Check = ()=>/*#__PURE__*/ jsx(Icon, {
+                 style: canvasStyle,
+                 children: /*#__PURE__*/ jsxs("svg", {
+                     "data-sileo-svg": true,
++                    "aria-hidden": true,
+                     width: WIDTH,
+                     height: svgHeight,
+                     viewBox: viewBox,
+                     children: [
+-                        /*#__PURE__*/ jsx("title", {
+-                            children: "Sileo Notification"
+-                        }),
+                         /*#__PURE__*/ jsx(GooeyDefs, {
+                             filterId: filterId,
+                             blur: blur

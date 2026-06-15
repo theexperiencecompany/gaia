@@ -480,9 +480,14 @@ async def _attach_executor_tool_data(
     The SSE stream stays open while the executor produces tool events so the
     frontend renders them live. Comms re-narration runs separately in the
     executor's finally block and is delivered via WebSocket.
+
+    Runs on cancellation too: when the user stops the stream, the executor cards
+    already produced must still be persisted, otherwise the saved message loses
+    every tool card. For live delegated streams this comms path is the SOLE
+    owner of the executor tool_data drain (the executor's own finalize
+    self-persists only for queued/workflow runs), so attaching here cannot
+    duplicate cards.
     """
-    if state.is_cancelled:
-        return
     await await_executor_done(stream_id)
     executor_td = drain_executor_tool_data(stream_id)
     if not executor_td:
@@ -508,11 +513,8 @@ async def _finalize_stream(
     state: _StreamState,
     artifact_task: asyncio.Task[None] | None,
 ) -> None:
-    """Always-run cleanup: tear down executor capture, cancel artifact
-    forwarder, persist (if not already saved), cleanup Redis, emit final wide
-    event."""
-    teardown_executor_capture(stream_id)
-
+    """Always-run cleanup: cancel artifact forwarder, persist (if not already
+    saved), tear down executor capture, cleanup Redis, emit final wide event."""
     if artifact_task is not None:
         artifact_task.cancel()
         with contextlib.suppress(BaseException):
@@ -525,8 +527,18 @@ async def _finalize_stream(
     if not state.saved:
         try:
             await _persist_turn(stream_id, body, user, conversation_id, state)
+            # The try block errored before reaching the normal attach call
+            # (line in _stream_orchestration), so the executor cards were never
+            # pushed onto the saved message. Attach them here as a backstop.
+            # Gated on ``not state.saved`` so this never double-attaches with the
+            # happy/cancel path, which always runs the attach itself.
+            await _attach_executor_tool_data(stream_id, user, conversation_id, state)
         except Exception as save_err:  # noqa: BLE001 — best-effort fallback save
             log.error(f"Fallback save failed for stream {stream_id}: {save_err}")
+
+    # Teardown must come AFTER the fallback save: the backstop attach drains the
+    # session's tool events — tearing down first would leave it nothing to drain.
+    teardown_executor_capture(stream_id)
 
     await stream_manager.cleanup(stream_id)
 

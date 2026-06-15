@@ -271,13 +271,6 @@ class ProductionSettings(CommonSettings):
     BLOG_BEARER_TOKEN: str  # Bearer token for blog management operations
 
     # ----------------------------------------------
-    # Memory & Storage Configuration
-    # ----------------------------------------------
-    MEM0_API_KEY: str
-    MEM0_ORG_ID: str
-    MEM0_PROJECT_ID: str
-
-    # ----------------------------------------------
     # Code Execution Environment
     # ----------------------------------------------
     E2B_API_KEY: str
@@ -455,13 +448,6 @@ class DevelopmentSettings(CommonSettings):
     # Content Management
     # ----------------------------------------------
     BLOG_BEARER_TOKEN: str | None = None  # Bearer token for blog management operations
-
-    # ----------------------------------------------
-    # Memory & Storage Configuration
-    # ----------------------------------------------
-    MEM0_API_KEY: str | None = None
-    MEM0_ORG_ID: str | None = None
-    MEM0_PROJECT_ID: str | None = None
 
     # ----------------------------------------------
     # Code Execution Environment

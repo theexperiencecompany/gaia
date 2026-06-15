@@ -1,7 +1,7 @@
 """
 Memory Extraction Prompts for Subagents.
 
-This module contains integration-specific prompts that tell mem0 WHAT to extract
+This module contains integration-specific prompts that tell the memory engine WHAT to extract
 and remember from agent conversations. Each subagent has its own prompt tailored
 to the entities, patterns, and preferences relevant to that integration.
 

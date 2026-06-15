@@ -28,7 +28,7 @@ repos:
     hooks:
       - id: generate-changelog-pages
         name: Generate changelog sub-pages from release-notes.mdx
-        entry: bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes/'
+        entry: bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes.mdx docs/release-notes/'
         language: system
         files: ^docs/release-notes\.mdx$
         pass_filenames: false

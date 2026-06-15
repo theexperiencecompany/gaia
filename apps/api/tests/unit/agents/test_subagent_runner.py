@@ -876,7 +876,7 @@ class TestCreateAgentContextMessage:
         """
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -898,7 +898,7 @@ class TestCreateAgentContextMessage:
     async def test_includes_user_name(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -918,7 +918,7 @@ class TestCreateAgentContextMessage:
     async def test_includes_user_timezone(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -948,7 +948,7 @@ class TestCreateAgentContextMessage:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=mock_results,
             ),
@@ -971,7 +971,7 @@ class TestCreateAgentContextMessage:
     async def test_skills_included(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -995,7 +995,7 @@ class TestCreateAgentContextMessage:
     async def test_no_memories_without_user_id(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
             ) as mock_search,
             patch(
@@ -1015,7 +1015,7 @@ class TestCreateAgentContextMessage:
     async def test_no_memories_without_query(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
             ) as mock_search,
             patch(
@@ -1035,7 +1035,7 @@ class TestCreateAgentContextMessage:
     async def test_memory_error_handled(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("mem error"),
             ),
@@ -1059,7 +1059,7 @@ class TestCreateAgentContextMessage:
     async def test_skills_error_handled(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -1082,7 +1082,7 @@ class TestCreateAgentContextMessage:
         """A fixed-offset home zone is rendered verbatim as the timezone line."""
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -1103,7 +1103,7 @@ class TestCreateAgentContextMessage:
         """With no home zone in the config, no timezone line is added."""
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -1129,7 +1129,7 @@ class TestCreateAgentContextMessage:
         older persisted state."""
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),

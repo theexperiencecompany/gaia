@@ -377,7 +377,7 @@ class TestBuildInitialState:
         state = build_initial_state(request, USER_ID, CONV_ID, [])
 
         assert state["query"] == "Hello"
-        assert state["mem0_user_id"] == USER_ID
+        assert state["memory_user_id"] == USER_ID
         assert state["conversation_id"] == CONV_ID
         assert state["messages"] == []
         assert "trigger_context" not in state

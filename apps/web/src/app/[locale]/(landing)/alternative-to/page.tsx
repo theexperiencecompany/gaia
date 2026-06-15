@@ -4,31 +4,41 @@ import JsonLd from "@/components/seo/JsonLd";
 import type { AlternativeData } from "@/features/alternatives/data/alternativesData";
 import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { Link } from "@/i18n/navigation";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
 
-export const metadata: Metadata = generatePageMetadata({
-  title: "Best Alternatives to Popular Productivity Tools",
-  description:
-    "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian, and 24 more tools. Honest fit scores and migration steps for each.",
-  path: "/alternative-to",
-  keywords: [
-    "notion alternative",
-    "chatgpt alternative",
-    "todoist alternative",
-    "zapier alternative",
-    "superhuman alternative",
-    "obsidian alternative",
-    "ai productivity assistant",
-    "best productivity tools 2026",
-  ],
-});
+interface PageProps {
+  readonly params: Promise<{ readonly locale: string }>;
+}
+
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { locale } = await params;
+  return generateLocalizedPageMetadata({
+    title: "Best Alternatives to Popular Productivity Tools",
+    description:
+      "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian, and 24 more tools. Honest fit scores and migration steps for each.",
+    path: "/alternative-to",
+    keywords: [
+      "notion alternative",
+      "chatgpt alternative",
+      "todoist alternative",
+      "zapier alternative",
+      "superhuman alternative",
+      "obsidian alternative",
+      "ai productivity assistant",
+      "best productivity tools 2026",
+    ],
+    locale,
+  });
+}
 
 const CATEGORY_LABELS: Record<AlternativeData["category"], string> = {
   "productivity-suite": "Productivity Suites",

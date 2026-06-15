@@ -27,6 +27,8 @@ from app.db.mongodb.collections import (
     users_collection,
 )
 from app.db.redis import get_cache, set_cache
+from app.memory.engine import memory_engine
+from app.memory.mappers import entry_to_note
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -36,7 +38,6 @@ from app.models.message_models import (
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_user_integration_records
-from app.services.memory_service import memory_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
 from app.utils.timezone import Timezone
@@ -118,15 +119,37 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
         Formatted memories section or empty string
     """
     try:
-        results = await memory_service.search_memories(query=query, user_id=user_id, limit=5)
-        if results and (memories := getattr(results, "memories", None)):
-            log.info(f"Added {len(memories)} memories to context")
-            return "\n\nBased on our previous conversations:\n" + "\n".join(
-                f"- {mem.content}" for mem in memories
+        results = await memory_engine.recall(user_id, query, limit=5)
+        if results.memories:
+            log.info(f"Added {len(results.memories)} memories to context")
+            return (
+                "\n\nBased on our previous conversations (bracketed dates say when "
+                "something happened / was last mentioned):\n"
+                + "\n".join(f"- {entry_to_note(mem)}" for mem in results.memories)
             )
     except Exception as e:
         log.warning(f"Error retrieving memories: {e}")
 
+    return ""
+
+
+async def _get_core_memory_section(user_id: str) -> str:
+    """Always-injected memory core: user/memory/agenda docs + recent journal.
+
+    Redis-cached inside the engine (plan F1, sub-5ms steady state).
+    """
+    try:
+        core_context = await memory_engine.get_core_context(user_id)
+        if core_context:
+            return f"What you remember about this user (memory core):\n{core_context}"
+    except Exception as e:
+        log.warning(f"Error retrieving core memory context: {e}")
+
+    return ""
+
+
+async def _empty_section() -> str:
+    """Awaitable empty section, for gathers with conditionally skipped fetches."""
     return ""
 
 
@@ -346,20 +369,32 @@ async def build_dynamic_context_message(
                 user_stable_parts.append(manifest)
 
         # --- Fetches (may change turn-to-turn) -----------------------------
+        # Core memory context (engine-cached, invalidated on ingestion) is
+        # fetched in the same gather as the per-query lookups and injected
+        # first: it is the always-on "what GAIA knows about this user" block.
         if memories_text is not None:
             memories_section = memories_text
             gaia_knowledge_section = ""
-            if user_id and query:
-                gaia_knowledge_section = await _get_gaia_knowledge_section(query)
+            if user_id:
+                core_memory_section, gaia_knowledge_section = await asyncio.gather(
+                    _get_core_memory_section(user_id),
+                    _get_gaia_knowledge_section(query) if query else _empty_section(),
+                )
+            else:
+                core_memory_section = ""
         elif user_id and query:
-            memories_section, gaia_knowledge_section = await asyncio.gather(
+            core_memory_section, memories_section, gaia_knowledge_section = await asyncio.gather(
+                _get_core_memory_section(user_id),
                 _get_user_memories_section(query, user_id),
                 _get_gaia_knowledge_section(query),
             )
         else:
+            core_memory_section = await _get_core_memory_section(user_id) if user_id else ""
             memories_section = ""
             gaia_knowledge_section = ""
 
+        if core_memory_section:
+            variable_parts.append(core_memory_section)
         if memories_section:
             variable_parts.append(memories_section.lstrip("\n"))
         if gaia_knowledge_section:
@@ -393,6 +428,7 @@ async def build_dynamic_context_message(
         log.set(
             dynamic_context={
                 "source": source or "web",
+                "has_core_memory": bool(core_memory_section),
                 "has_memories": bool(memories_section),
                 "has_gaia_knowledge": bool(gaia_knowledge_section),
                 "has_skills": bool(skills_text),

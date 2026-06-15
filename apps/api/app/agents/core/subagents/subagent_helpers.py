@@ -22,8 +22,8 @@ from app.helpers.message_helpers import (
     DYNAMIC_CONTEXT_MARKER,
     _build_active_todo_banner,
 )
+from app.memory.engine import memory_engine
 from app.services.integration_instructions_service import get_instructions
-from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from shared.py.wide_events import log
 
@@ -186,11 +186,11 @@ async def create_agent_context_message(
         if not (user_id and query):
             return ""
         try:
-            results = await memory_service.search_memories(query=query, user_id=user_id, limit=5)
-            if results and (memories := getattr(results, "memories", None)):
-                log.info(f"Added {len(memories)} memories to subagent context")
+            results = await memory_engine.recall(user_id, query, limit=5)
+            if results.memories:
+                log.info(f"Added {len(results.memories)} memories to subagent context")
                 return "\n\nBased on our previous conversations:\n" + "\n".join(
-                    f"- {mem.content}" for mem in memories
+                    f"- {mem.content}" for mem in results.memories
                 )
         except Exception as e:
             log.warning(f"Error retrieving memories for subagent: {e}")

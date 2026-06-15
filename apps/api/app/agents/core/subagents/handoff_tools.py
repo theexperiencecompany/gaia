@@ -21,7 +21,7 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore, PutOp
 
-from app.agents.core.background.inbox import increment_pending_subagents
+from app.agents.core.background.session import increment_pending_subagents
 from app.agents.core.background.subagent_runner import run_subagent_background
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id

@@ -4,6 +4,33 @@ description: "A consolidated list of bug fixes shipped across all GAIA releases,
 icon: "bug"
 ---
 
+<Update label="Jun 13, 2026" description="API, Web, Mobile, Bots, CLI">
+
+## [API v0.18.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.18.0)
+- **Overdue Reminders**: Reminders that fell past due are now settled and re-armed correctly instead of being skipped.
+- **Disconnected Integrations**: Logged-in users are no longer shown a login prompt when an integration simply needs reconnecting.
+- **MCP Connections**: More resilient MCP sessions with transparent reconnects and instant OAuth.
+- **Web Research**: Prevented fabricated URLs in web search and improved deep research result quality.
+- **Workflows and Todos**: Fixes across workflow execution, recurrence, and tracked todos.
+- **Security**: Patched six high-confidence vulnerabilities found during a security audit.
+
+## [Web v0.19.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.19.0)
+- **Integration Reconnect**: Logged-in users no longer see a login modal when an integration needs reconnecting.
+- **Workflow Schedules**: Schedule chips on workflow cards now show times in your own timezone.
+- **Desktop Downloads**: Download links now always resolve to the latest desktop release.
+
+## [Mobile v0.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.6.0)
+- **Android Stability**: Fixed an audio playback crash on Android.
+
+## [Bots v1.4.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.4.0)
+- **WhatsApp Polish**: A more reliable typing indicator and welcome message.
+- **Long Messages**: Long replies are split cleanly across multiple message bubbles.
+
+## [CLI v0.3.1](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.3.1)
+- **Self-Hosting Reliability**: Fixes for self-host setup and non-interactive terminals, uncovered during end-to-end VM testing.
+
+</Update>
+
 <Update label="Apr 5, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
 
 ## [API v0.17.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.17.0)
@@ -30,14 +57,17 @@ icon: "bug"
 - **Dockerfile Ownership and Permissions**: Corrected file ownership for the libs directory so setuptools can create package metadata
 - **Explore Workflow Payload Hardening**: Fixed payload handling for the description/prompt split in explore workflows
 - **Deployment Script Updates**: Improved service verification and environment setup in deployment configurations
+
 ## [Web v0.17.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.17.0)
 - **LazyMotionProvider for Animations**: Wrapped Navbar and main content in a lazy-loaded Framer Motion provider, reducing initial bundle size
 - **SEO Consolidation**: Unified crawl and index signals across all pages, removing SEO drift and conflicting directives
 - **Icon Consistency in Calendar**: Replaced ad-hoc icon components with the standard Chevron component in Calendar and DateTimePicker
 - **Base URL Refactor**: Migrated all base URL references to use siteConfig for consistency across environments
+
 ## [Desktop v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.2.0)
 - **Server Shutdown Reliability**: Fixed graceful shutdown behavior and refined login UI styling
 - **Safer Protocol Registration on Linux**: Replaced execSync with spawnSync to prevent shell injection during protocol handler setup
+
 ## [CLI v0.2.1](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.2.1)
 - **Dependency Updates**: Updated package dependencies and aligned with new Cloudflare configuration
 
@@ -53,12 +83,14 @@ icon: "bug"
 ## [Web v0.16.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.16.0)
 - **Bot Deployment Audit**: Fixed deployment, security, and functional issues uncovered during the comprehensive bot audit
 - **CLI Polish**: Minor UX improvements to CLI-related pages and documentation flows
+
 ## [Bots v1.1.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.1.0)
 - **Public Context Restriction**: Bots now restrict context to public information only, stripping mentions and enforcing rate limit feedback
 - **Security and Deployment Audit**: Comprehensive fixes for deployment scripts, authentication flows, and functional regressions across all three bots
 - **Discord Timeout Fix**: Resolved timeout issues in Discord bot responses by deferring long-running interactions
 - **Streaming Thinking Removal**: Removed visible "thinking..." indicator from Discord streaming responses
 - **Docker Image Tags**: Fixed missing image tags and corrected Docker build commands for all three bot images
+
 ## [CLI v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.2.0)
 - **Graceful Shutdown**: Added SIGINT and SIGTERM handlers across all commands to prevent orphaned processes
 - **Input Timeout**: Optional timeout on interactive prompts to prevent infinite hangs in CI or unattended runs
@@ -76,9 +108,11 @@ icon: "bug"
 - **Timezone-aware scheduled tasks** that reschedule past-due jobs instead of triggering Redis PSETEX errors
 - **MCP namespace normalization** resolving schema breakage and connection failures with PostHog and Twitter integrations
 - **Integration sidebar** fixes for display names and MCP-related rendering issues
+
 ## [Web v0.15.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.15.0)
 - **Sidebar layout** adjusted for improved responsiveness across screen sizes
 - **User reference** resolution fix preventing broken profile lookups
+
 ## [Desktop v0.1.1](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.1.1)
 - **Release workflow** updated to correctly handle desktop-v tags and extract version numbers during CI builds
 
@@ -90,6 +124,7 @@ icon: "bug"
 - **Subagent Stream Cancellation**: Users can now cancel long-running subagent and executor streams mid-flight instead of waiting for completion
 - **Integration Auth Data Sync**: Mismatches between stored integration documents and MCP config for auth requirements are detected and auto-corrected
 - **Build Workflow Project Detection**: Fixed affected-project checks in CI and added missing project type to the API configuration
+
 ## [Web v0.14.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.14.0)
 - **Chat Message Ordering**: Assistant messages are timestamped 1 ms after the user message, guaranteeing correct chronological order in history
 - **Integration Connection Rollback**: Failed OAuth connections now roll back stored credentials and invalidate the cache instead of leaving stale state
@@ -104,10 +139,12 @@ icon: "bug"
 - Resolved "no tool results" error when agent tools returned empty responses
 - Fixed mobile redirect URI to use settings configuration instead of hardcoded values
 - Temporarily disabled auto-loading of tools in production to prevent startup failures
+
 ## [Web v0.13.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.13.0)
 - Fixed duplicate voice messages caused by race condition on call end
 - Resolved audio bar visualizer sensitivity bug producing erratic waveform rendering
 - Fixed streaming issues causing incomplete or stalled message delivery
+
 ## [Mobile v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.2.0)
 - Fixed page stacking when selecting chats by using navigation replacement instead of push
 - Improved push notification token management and error handling

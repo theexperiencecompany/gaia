@@ -13,7 +13,9 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.rate_limiter import limiter
 from app.decorators import tiered_rate_limit
 from app.models.search_models import MultiURLResponse, URLRequest, URLResponse
+from app.services.email_profile_service import fetch_email_profiles
 from app.services.search_service import search_messages
+from app.utils.email_utils import is_email_target
 from app.utils.internet_utils import fetch_url_metadata
 from app.utils.search_utils import perform_search
 from shared.py.wide_events import log
@@ -124,24 +126,36 @@ async def search_email_endpoint(query: str):
 )
 @limiter.limit("100/minute")
 @limiter.limit("500/hour")
-async def fetch_url_metadata_endpoint(request: Request, data: URLRequest):
+async def fetch_url_metadata_endpoint(
+    request: Request, data: URLRequest, user: dict = Depends(get_current_user)
+):
     """
     Fetch metadata for multiple URLs in parallel.
+
+    Email and ``mailto:`` entries resolve to person previews (Google
+    Contacts, then Gravatar) instead of being scraped as web pages.
 
     Args:
         request (Request): The FastAPI request object (required for rate limiting).
         data (URLRequest): The URL request containing an array of URLs.
+        user (dict): The authenticated user (contact lookups are per-user).
 
     Returns:
         MultiURLResponse: The metadata for all URLs.
     """
-    # Process all URLs in parallel
-    tasks = [fetch_url_metadata(url) for url in data.urls]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    email_targets = [url for url in data.urls if is_email_target(url)]
+    web_urls = [url for url in data.urls if url not in email_targets]
 
-    # Build response mapping
+    email_task = fetch_email_profiles(user["user_id"], email_targets)
+    web_tasks = [fetch_url_metadata(url) for url in web_urls]
+    email_results, *web_results = await asyncio.gather(
+        email_task, *web_tasks, return_exceptions=True
+    )
+
     response_data: dict[str, URLResponse] = {}
-    for url, result in zip(data.urls, results):
+    if isinstance(email_results, dict):
+        response_data.update(email_results)
+    for url, result in zip(web_urls, web_results):
         if isinstance(result, Exception):
             # Skip failed URLs - they won't be in the response
             continue
