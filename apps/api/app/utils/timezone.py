@@ -122,30 +122,10 @@ class Timezone:
         except Exception:
             return None
 
-    @classmethod
-    def of_offset(cls, instant: datetime | None) -> Timezone | None:
-        """The fixed-offset ``Timezone`` matching a tz-aware datetime's offset.
-
-        Returns ``None`` for a naive/``None`` datetime (caller then falls back to
-        UTC). Used to capture a user's offset for later recurrence math when only
-        an offset — not an IANA name — is available.
-        """
-        if instant is None or instant.tzinfo is None:
-            return None
-        offset = instant.utcoffset()
-        if offset is None:
-            return None
-        return cls.try_parse(_offset_value(int(offset.total_seconds())))
-
     @property
     def is_utc(self) -> bool:
         """Whether this is UTC."""
         return self.value.upper() == "UTC"
-
-    @property
-    def is_offset_only(self) -> bool:
-        """True for a fixed ``±HH:MM`` offset (DST-naive); False for IANA/UTC."""
-        return bool(_OFFSET_RE.match(self.value))
 
     def now(self) -> datetime:
         """Current instant expressed in this zone (tz-aware)."""

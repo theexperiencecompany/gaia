@@ -6,7 +6,6 @@ handed to the comms agent as internal context (a HumanMessage with an
 persona. This module owns that single invocation.
 """
 
-
 from langchain_core.messages import HumanMessage
 
 from app.agents.core.graph_manager import GraphManager

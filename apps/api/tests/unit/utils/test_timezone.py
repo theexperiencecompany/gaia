@@ -128,43 +128,6 @@ class TestTimezoneTryParse:
 
 
 # ---------------------------------------------------------------------------
-# Timezone.of_offset — capture a datetime's current offset (DST-correct).
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestTimezoneOfOffset:
-    def test_naive_returns_none(self) -> None:
-        assert Timezone.of_offset(datetime(2026, 6, 13, 9, 0)) is None
-
-    def test_none_returns_none(self) -> None:
-        assert Timezone.of_offset(None) is None
-
-    def test_aware_ist_returns_offset(self) -> None:
-        assert Timezone.of_offset(datetime(2026, 6, 13, 9, 0, tzinfo=IST)).value == "+05:30"
-
-    def test_utc_returns_plus_zero(self) -> None:
-        assert Timezone.of_offset(datetime(2026, 6, 13, 9, 0, tzinfo=UTC)).value == "+00:00"
-
-    def test_negative_offset(self) -> None:
-        tz = timezone(timedelta(hours=-8))
-        assert Timezone.of_offset(datetime(2026, 1, 1, tzinfo=tz)).value == "-08:00"
-
-    def test_dst_summer_vs_winter_capture_different_offsets(self) -> None:
-        ny = ZoneInfo("America/New_York")
-        summer = Timezone.of_offset(datetime(2025, 7, 1, 12, 0, tzinfo=ny))
-        winter = Timezone.of_offset(datetime(2025, 1, 1, 12, 0, tzinfo=ny))
-        assert summer.value == "-04:00"  # EDT
-        assert winter.value == "-05:00"  # EST
-
-    def test_round_trips_through_parse(self) -> None:
-        captured = Timezone.of_offset(datetime(2026, 6, 13, 9, 0, tzinfo=IST))
-        assert Timezone.parse(captured.value).tzinfo.utcoffset(None) == timedelta(
-            hours=5, minutes=30
-        )
-
-
-# ---------------------------------------------------------------------------
 # Timezone properties, equality, and behaviour
 # ---------------------------------------------------------------------------
 
@@ -176,12 +139,6 @@ class TestTimezoneProperties:
         assert not Timezone.parse("Asia/Kolkata").is_utc
         # "+00:00" is numerically UTC but a fixed-offset zone, not the "UTC" value.
         assert not Timezone.parse("+00:00").is_utc
-
-    def test_is_offset_only(self) -> None:
-        assert Timezone.parse("+05:30").is_offset_only
-        assert Timezone.parse("-08:00").is_offset_only
-        assert not Timezone.parse("Asia/Kolkata").is_offset_only
-        assert not Timezone.parse("UTC").is_offset_only
 
 
 @pytest.mark.unit

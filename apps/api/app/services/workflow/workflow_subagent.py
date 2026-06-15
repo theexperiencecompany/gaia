@@ -12,7 +12,6 @@ The subagent has access to:
 - search_memory: Access user memories
 """
 
-
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,

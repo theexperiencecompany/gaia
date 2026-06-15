@@ -3,8 +3,8 @@
  *
  * Mirrors the backend `app/utils/timezone.py`. A timezone is a branded string
  * so it cannot be confused with an arbitrary `string`: mint one only via
- * `parseTimezone` / `getBrowserTimezone` / `getUserHomeTimezone`, all of which
- * validate. Two concepts, kept apart:
+ * `getBrowserTimezone` / `getUserHomeTimezone`, both of which validate. Two
+ * concepts, kept apart:
  *
  *  - **Home timezone** — where the user lives. `getUserHomeTimezone()`
  *    (profile, else browser). Default for new schedules, display, etc.
@@ -19,13 +19,6 @@
 import { getUserTimezone } from "@shared/api/timezone";
 
 import { useUserStore } from "@/stores/userStore";
-
-export {
-  getCurrentBrowserTimezone,
-  getTimezoneList,
-  normalizeTimezone,
-  type TimezoneInfo,
-} from "@/utils/timezoneUtils";
 
 declare const timezoneBrand: unique symbol;
 
@@ -47,7 +40,7 @@ export const isValidTimezone = (
 };
 
 /** Validate `raw` into a `Timezone`, falling back to UTC. */
-export const parseTimezone = (raw: string | null | undefined): Timezone =>
+const parseTimezone = (raw: string | null | undefined): Timezone =>
   isValidTimezone(raw) ? raw : ("UTC" as Timezone);
 
 /**
