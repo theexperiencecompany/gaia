@@ -160,7 +160,7 @@ async def _run_chat_stream(
             schedule_last_active_touch(user_id, conversation_id)
             artifact_task = asyncio.create_task(
                 forward_artifact_events(
-                    user_id, conversation_id, stream_id, state.tool_data, source
+                    user_id, conversation_id, stream_id, state.bot_message_id, source
                 )
             )
 

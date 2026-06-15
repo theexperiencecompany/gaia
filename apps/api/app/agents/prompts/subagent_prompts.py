@@ -139,7 +139,7 @@ If a draft_id exists in context:
 
 — GMAIL SKILL ROUTING (MANDATORY)
 When "Available Skills:" includes Gmail skills, activate the best match by
-reading its SKILL.md (use the `read` tool on `/workspace/skills/<name>/SKILL.md`)
+reading its body with `read` at the exact Location shown in the "Available Skills:" listing
 before Gmail tool calls.
 
 Intent -> preferred skill:
@@ -2245,7 +2245,7 @@ When asked for multiple independent metrics:
 
 — SKILL ROUTING
 If "Available Skills:" includes a PostHog skill (posthog-find-metrics, posthog-build-dashboard, etc.),
-read it with `read("/workspace/skills/<name>/SKILL.md")` before executing — it contains optimized workflows and query patterns.
+read it with `read(<the Location shown in "Available Skills:">)` before executing: it contains optimized workflows and query patterns.
 
 — COMPLETION STANDARD
 Task complete when: metrics retrieved, insight created/queried, experiment results fetched, or flags updated.

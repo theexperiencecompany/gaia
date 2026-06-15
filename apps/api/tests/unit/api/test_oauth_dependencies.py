@@ -7,6 +7,7 @@ the root-cause fix for workflows/reminders running in UTC.
 """
 
 import asyncio
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -87,16 +88,16 @@ class TestGetUserTimezoneHeaderDependency:
     def test_returns_canonical_zone_and_now_in_zone(self) -> None:
         tz_str, now = get_user_timezone(x_timezone="Asia/Kolkata")
         assert tz_str == "Asia/Kolkata"
-        assert now.utcoffset().total_seconds() == 5.5 * 3600
+        assert now.utcoffset() == timedelta(hours=5, minutes=30)
 
     def test_bad_header_falls_back_to_utc_without_raising(self) -> None:
         # The old ZoneInfo(header) raised on garbage; Timezone.parse must not.
         tz_str, now = get_user_timezone(x_timezone="Not/A_Zone")
         assert tz_str == "UTC"
-        assert now.utcoffset().total_seconds() == 0
+        assert now.utcoffset() == timedelta(0)
 
     def test_offset_header_is_accepted(self) -> None:
         # ZoneInfo("+05:30") would have raised; the value object handles offsets.
         tz_str, now = get_user_timezone(x_timezone="+05:30")
         assert tz_str == "+05:30"
-        assert now.utcoffset().total_seconds() == 5.5 * 3600
+        assert now.utcoffset() == timedelta(hours=5, minutes=30)
