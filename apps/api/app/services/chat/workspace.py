@@ -139,11 +139,12 @@ async def forward_artifact_events(
                 "timestamp": datetime.now(UTC).isoformat(),
                 "tool_category": "artifact",
             }
-            # Persist onto the bot message so the card re-renders on reload…
-            await _persist_artifact_entry(user_id, conversation_id, bot_message_id, entry)
-            # …and push live so the card appears during this turn.
+            # Push live first so the card appears during this turn — durability
+            # (persisting onto the bot message) must never gate live delivery.
             chunk = "data: " + json.dumps({"tool_data": entry}) + "\n\n"
             await stream_manager.publish_chunk(stream_id, chunk)
+            # …then persist onto the bot message so the card re-renders on reload.
+            await _persist_artifact_entry(user_id, conversation_id, bot_message_id, entry)
             # Warm the host JuiceFS cache for files that need a follow-up fetch
             # (no inline body) so the user's first "open" is served from local
             # cache instead of a cold R2 read. Inlined files carry their body and
@@ -163,6 +164,14 @@ async def forward_artifact_events(
             await pubsub.aclose()
 
 
+# The bot message row is written by ``_persist_turn`` *after* the artifact
+# forwarder starts, so an artifact created early in the turn can arrive before
+# the row exists (``matched_count == 0``). Retry briefly to bridge that window —
+# the row lands within a few hundred ms of the forwarder starting.
+_PERSIST_MAX_ATTEMPTS = 5
+_PERSIST_RETRY_BASE_DELAY = 0.1
+
+
 async def _persist_artifact_entry(
     user_id: str,
     conversation_id: str,
@@ -172,25 +181,29 @@ async def _persist_artifact_entry(
     """``$push`` one ``artifact_data`` entry onto the turn's bot message.
 
     Best-effort: the live SSE stream already delivered the card, so a failed
-    persist (or a not-yet-saved bot message) only costs the reload re-render,
-    which the ``GET /sessions/{conv}/artifacts`` recovery path still backstops.
+    persist only costs the reload re-render. A not-yet-saved bot message (an
+    early-turn artifact racing ``_persist_turn``) is retried with a short backoff
+    so the entry isn't silently dropped before the row exists.
     """
     if not bot_message_id:
         return
     try:
-        result = await conversations_collection.update_one(
-            {
-                "user_id": user_id,
-                "conversation_id": conversation_id,
-                "messages.message_id": bot_message_id,
-            },
-            {"$push": {"messages.$.tool_data": entry}},
-        )
-        if result.matched_count == 0:
-            log.warning(
-                "[chat] artifact persist matched no bot message "
-                f"(conv={conversation_id}, msg={bot_message_id})"
+        for attempt in range(_PERSIST_MAX_ATTEMPTS):
+            result = await conversations_collection.update_one(
+                {
+                    "user_id": user_id,
+                    "conversation_id": conversation_id,
+                    "messages.message_id": bot_message_id,
+                },
+                {"$push": {"messages.$.tool_data": entry}},
             )
+            if result.matched_count:
+                return
+            await asyncio.sleep(_PERSIST_RETRY_BASE_DELAY * (attempt + 1))
+        log.warning(
+            "[chat] artifact persist matched no bot message after retries "
+            f"(conv={conversation_id}, msg={bot_message_id})"
+        )
     except Exception as e:  # noqa: BLE001 — best-effort; live stream already delivered it
         log.warning(f"[chat] failed to persist artifact entry: {e}")
 
