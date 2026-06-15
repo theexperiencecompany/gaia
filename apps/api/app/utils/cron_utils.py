@@ -125,7 +125,7 @@ def calculate_next_occurrences(
             next_time: datetime = cron.get_next(datetime)
             if next_time.tzinfo is None:
                 next_time = next_time.replace(tzinfo=UTC)
-            occurrences.append(next_time)
+            occurrences.append(next_time.astimezone(UTC))
 
         return occurrences
     except Exception as e:

@@ -110,8 +110,12 @@ class Timezone:
         if candidate.upper() == "UTC":
             return cls.utc()
         if _OFFSET_RE.match(candidate):
+            hours = int(candidate[1:3])
+            minutes = int(candidate[4:6])
+            if hours > 23 or minutes > 59:
+                return None
             sign = 1 if candidate[0] == "+" else -1
-            delta = timedelta(hours=int(candidate[1:3]), minutes=int(candidate[4:6]))
+            delta = timedelta(hours=hours, minutes=minutes)
             return cls(candidate, _timezone(sign * delta))
         try:
             return cls(candidate, ZoneInfo(candidate))

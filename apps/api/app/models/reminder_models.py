@@ -88,6 +88,14 @@ class CreateReminderRequest(BaseModel):
         ),
     )
 
+    @field_validator("timezone")
+    @classmethod
+    def canonicalize_timezone(cls, v: str | None) -> str | None:
+        """Persist the canonical zone so re-arm/recovery never reparses a raw value."""
+        if v is None:
+            return None
+        return Timezone.parse(v).value
+
     @field_validator("repeat")
     @classmethod
     def check_repeat_cron(cls, v):
@@ -243,7 +251,9 @@ class CreateReminderToolRequest(BaseModel):
                     if self.timezone_offset
                     else home_tz.tzinfo
                 )
-                processed_scheduled_at = dt.replace(tzinfo=tzinfo)
+                processed_scheduled_at = (
+                    dt.astimezone(tzinfo) if dt.tzinfo is not None else dt.replace(tzinfo=tzinfo)
+                )
             except ValueError as e:
                 raise ValueError(
                     f"Invalid scheduled_at format: {self.scheduled_at}. Use YYYY-MM-DD HH:MM:SS format. Error: {e}"
@@ -258,7 +268,9 @@ class CreateReminderToolRequest(BaseModel):
                     if self.stop_after_timezone_offset
                     else home_tz.tzinfo
                 )
-                processed_stop_after = dt.replace(tzinfo=tzinfo)
+                processed_stop_after = (
+                    dt.astimezone(tzinfo) if dt.tzinfo is not None else dt.replace(tzinfo=tzinfo)
+                )
             except ValueError as e:
                 raise ValueError(
                     f"Invalid stop_after format: {self.stop_after}. Use YYYY-MM-DD HH:MM:SS format. Error: {e}"

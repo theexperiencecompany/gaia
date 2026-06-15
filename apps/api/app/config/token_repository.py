@@ -65,7 +65,7 @@ class TokenRepository:
 
         # Try expires_at first (epoch seconds are UTC).
         expires_at = token_data.get("expires_at")
-        if expires_at:
+        if expires_at is not None:
             try:
                 return datetime.fromtimestamp(float(expires_at), UTC)
             except (ValueError, TypeError, OverflowError):
