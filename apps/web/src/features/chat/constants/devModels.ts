@@ -25,6 +25,23 @@ export interface DevModelOption {
   pricing?: string;
 }
 
+// OpenRouter models as compact [id, label, "input / output per 1M"] tuples —
+// they all share provider "openrouter", so the builder below adds it once
+// instead of repeating the field on every entry.
+const OPENROUTER_MODELS: readonly (readonly [string, string, string])[] = [
+  ["deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", "$0.43 / $0.87 per 1M"],
+  ["deepseek/deepseek-v4-flash", "DeepSeek V4 Flash", "$0.10 / $0.20 per 1M"],
+  ["moonshotai/kimi-k2.7-code", "Kimi K2.7 Code", "$0.75 / $3.50 per 1M"],
+  ["moonshotai/kimi-k2.6", "Kimi K2.6", "$0.68 / $3.41 per 1M"],
+  ["z-ai/glm-5.1", "GLM 5.1", "$0.98 / $3.08 per 1M"],
+  ["z-ai/glm-5", "GLM 5", "$0.60 / $1.92 per 1M"],
+  ["qwen/qwen3.7-max", "Qwen3.7 Max", "$1.25 / $3.75 per 1M"],
+  ["qwen/qwen3.6-max-preview", "Qwen3.6 Max", "$1.04 / $6.24 per 1M"],
+  ["x-ai/grok-4.3", "Grok 4.3", "$1.25 / $2.50 per 1M"],
+  ["x-ai/grok-4.20", "Grok 4.20", "$1.25 / $2.50 per 1M"],
+  ["minimax/minimax-m3", "MiniMax M3", "$0.30 / $1.20 per 1M"],
+];
+
 export const DEV_MODEL_OPTIONS: readonly DevModelOption[] = [
   { id: null, label: "Default" },
   {
@@ -33,73 +50,15 @@ export const DEV_MODEL_OPTIONS: readonly DevModelOption[] = [
     provider: "gemini",
     pricing: "$0.25 / $1.50 per 1M",
   },
-  {
-    id: "deepseek/deepseek-v4-pro",
-    label: "DeepSeek V4 Pro",
-    provider: "openrouter",
-    pricing: "$0.43 / $0.87 per 1M",
-  },
-  {
-    id: "deepseek/deepseek-v4-flash",
-    label: "DeepSeek V4 Flash",
-    provider: "openrouter",
-    pricing: "$0.10 / $0.20 per 1M",
-  },
-  {
-    id: "moonshotai/kimi-k2.7-code",
-    label: "Kimi K2.7 Code",
-    provider: "openrouter",
-    pricing: "$0.75 / $3.50 per 1M",
-  },
-  {
-    id: "moonshotai/kimi-k2.6",
-    label: "Kimi K2.6",
-    provider: "openrouter",
-    pricing: "$0.68 / $3.41 per 1M",
-  },
-  {
-    id: "z-ai/glm-5.1",
-    label: "GLM 5.1",
-    provider: "openrouter",
-    pricing: "$0.98 / $3.08 per 1M",
-  },
-  {
-    id: "z-ai/glm-5",
-    label: "GLM 5",
-    provider: "openrouter",
-    pricing: "$0.60 / $1.92 per 1M",
-  },
-  {
-    id: "qwen/qwen3.7-max",
-    label: "Qwen3.7 Max",
-    provider: "openrouter",
-    pricing: "$1.25 / $3.75 per 1M",
-  },
-  {
-    id: "qwen/qwen3.6-max-preview",
-    label: "Qwen3.6 Max",
-    provider: "openrouter",
-    pricing: "$1.04 / $6.24 per 1M",
-  },
-  {
-    id: "x-ai/grok-4.3",
-    label: "Grok 4.3",
-    provider: "openrouter",
-    pricing: "$1.25 / $2.50 per 1M",
-  },
-  {
-    id: "x-ai/grok-4.20",
-    label: "Grok 4.20",
-    provider: "openrouter",
-    pricing: "$1.25 / $2.50 per 1M",
-  },
-  {
-    id: "minimax/minimax-m3",
-    label: "MiniMax M3",
-    provider: "openrouter",
-    pricing: "$0.30 / $1.20 per 1M",
-  },
-] as const;
+  ...OPENROUTER_MODELS.map(
+    ([id, label, pricing]): DevModelOption => ({
+      id,
+      label,
+      provider: "openrouter",
+      pricing,
+    }),
+  ),
+];
 
 /** Look up a label for a stored model id; falls back to "Default". */
 export function devModelLabel(id: string | null): string {
