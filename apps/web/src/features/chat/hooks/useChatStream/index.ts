@@ -256,6 +256,9 @@ export const useChatStream = () => {
       if (queuedUserId) {
         db.updateMessageStatus(queuedUserId, "sending");
       }
+      // The queued send deferred its loading trigger to here (see useSendMessage):
+      // now that it's actually starting, it takes over the loading indicator.
+      useLoadingStore.getState().setLoadingWithContext(true, pending[0]);
       setTimeout(() => streamFunction(...pending), 100);
     }
   };

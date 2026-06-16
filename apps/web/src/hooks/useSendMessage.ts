@@ -102,10 +102,14 @@ export const useSendMessage = () => {
           : useChatStore.getState().activeConversationId;
 
       // A send that lands while a stream is still open gets queued (held) by
-      // streamFunction. Mark it so the optimistic bubble renders greyed-out
-      // until the queue dispatches it. streamState.isStreaming() mirrors the
-      // streamInProgressRef gate streamFunction uses to decide queueing.
-      const optimisticStatus = streamState.isStreaming() ? "queued" : "sending";
+      // streamFunction. streamState.isStreaming() mirrors the streamInProgressRef
+      // gate streamFunction uses to decide queueing.
+      //  - The optimistic bubble renders greyed-out ("queued") until dispatch.
+      //  - A queued message must NOT take over the loading indicator — the
+      //    active turn owns it. Its loading trigger is deferred to dispatch time
+      //    (see dispatchPending in useChatStream).
+      const willQueue = streamState.isStreaming();
+      const optimisticStatus = willQueue ? "queued" : "sending";
 
       try {
         const userMessage: MessageType = {
@@ -143,9 +147,11 @@ export const useSendMessage = () => {
 
           // Set loading state AFTER user message is in store
           // This ensures the loading indicator appears AFTER the user message in the UI
-          useLoadingStore
-            .getState()
-            .setLoadingWithContext(true, trimmedContent);
+          if (!willQueue) {
+            useLoadingStore
+              .getState()
+              .setLoadingWithContext(true, trimmedContent);
+          }
 
           await fetchChatStream(trimmedContent, [userMessage], {
             fileData: normalizedFiles,
@@ -184,10 +190,13 @@ export const useSendMessage = () => {
         try {
           await db.putMessage(optimisticMessage);
 
-          // Set loading state AFTER user message is persisted
-          useLoadingStore
-            .getState()
-            .setLoadingWithContext(true, trimmedContent);
+          // Set loading state AFTER user message is persisted (skip for queued
+          // sends — the active turn owns the indicator; deferred to dispatch).
+          if (!willQueue) {
+            useLoadingStore
+              .getState()
+              .setLoadingWithContext(true, trimmedContent);
+          }
 
           const streamingUserMessage: MessageType = {
             ...userMessage,
