@@ -32,12 +32,9 @@ from app.constants.cache import (
     SKILLS_TEXT_CACHE_KEY,
     SKILLS_TEXT_CACHE_TTL,
 )
+from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.decorators.caching import Cacheable
 from shared.py.wide_events import log
-
-# Subagent id for executor-target builtins (matches skill_loader's mapping and
-# the `subagent_id or "executor"` fallback in subagent_helpers).
-_EXECUTOR_AGENT_NAME = "executor"
 
 
 def _builtin_entries(agent_name: str) -> list[tuple[str, str, str]]:
@@ -85,7 +82,7 @@ async def get_available_skills_text(
     # executor needs them merged here: integration subagents already get their
     # builtins via system_docs.integration_skills_block, so merging there too
     # would list them twice. Fetch first so a Mongo hiccup can't hide them.
-    builtins = _builtin_entries(agent_name) if agent_name == _EXECUTOR_AGENT_NAME else []
+    builtins = _builtin_entries(agent_name) if agent_name == EXECUTOR_SUBAGENT_ID else []
     try:
         user_skills = await get_skills_for_agent(user_id, agent_name)
     except Exception as e:

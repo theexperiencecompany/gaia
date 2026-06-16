@@ -10,7 +10,9 @@ This module provides functionality to:
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.config.oauth_config import get_toolkit_to_integration_map
+from app.utils.agent_utils import parse_subagent_id
 from shared.py.wide_events import log
 
 
@@ -146,18 +148,22 @@ class WorkflowContextExtractor:
                 tool_args = tc.get("args", {})
                 tool_id = tc.get("id", "")
 
-                # Track agent transitions via handoff
+                # Track agent transitions via handoff. The handoff arg is a
+                # subagent reference ("subagent:gmail", "gmail", …); resolve it to
+                # the canonical integration id so following steps are attributed to it.
                 if tool_name == "handoff":
-                    subagent_id = tool_args.get("subagent_id", "")
-                    current_agent = f"{subagent_id}_agent"
-                    integrations.add(subagent_id)
+                    clean_id, _ = parse_subagent_id(tool_args.get("subagent_id", ""))
+                    sa = get_subagent_by_id(clean_id)
+                    current_agent = sa.id if sa else clean_id
+                    if current_agent:
+                        integrations.add(current_agent)
                     continue
 
                 # Skip internal tools
                 if tool_name in cls.SKIP_TOOLS:
                     continue
 
-                # Infer category from agent or tool name
+                # Infer category from the active subagent or the tool name
                 category = cls._infer_category(current_agent, tool_name)
                 if category != "general":
                     integrations.add(category)
@@ -207,13 +213,15 @@ class WorkflowContextExtractor:
 
     @classmethod
     def _infer_category(cls, agent: str, tool_name: str) -> str:
-        """Infer category from agent name or tool prefix.
+        """Infer the integration category for a step.
 
-        Uses oauth_config.get_toolkit_to_integration_map() as the single source of truth.
+        A step run inside a subagent inherits that subagent's integration id;
+        otherwise the category comes from the tool name's toolkit prefix, using
+        oauth_config.get_toolkit_to_integration_map() as the single source of truth.
         """
-        # From agent name: gmail_agent -> gmail
-        if agent and agent.endswith("_agent") and agent != "executor":
-            return agent.replace("_agent", "")
+        # A subagent handoff already pins the integration for its steps.
+        if agent and agent != "executor":
+            return agent
 
         # From tool name prefix using oauth_config as source of truth
         tool_upper = tool_name.upper()

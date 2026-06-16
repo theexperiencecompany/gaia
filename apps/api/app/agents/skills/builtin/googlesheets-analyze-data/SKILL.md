@@ -1,7 +1,7 @@
 ---
 name: googlesheets-analyze-data
 description: Analyze spreadsheet data intelligently - understand structure, choose right analysis tool (SQL/pivot/chart), apply formatting, present insights.
-target: googlesheets_agent
+target: google_sheets_agent
 ---
 
 # Google Sheets Analyze Data
