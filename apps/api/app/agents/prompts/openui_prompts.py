@@ -239,17 +239,7 @@ Steps([items], title?)
   items: [{"title": "Install deps", "description": "...", "status": "complete"|"active"|"pending"}, ...]
   Use for ordered instructions, onboarding, migration guides.
 
---- Code & Documents ---
-
-CodeDiff(filename, oldCode, newCode, title?, diffStyle?, lineDiffType?, diffIndicators?, lang?, disableLineNumbers?, disableFileHeader?, expandUnchanged?)
-  diffStyle: "unified" (default, stacked) | "split"
-  lineDiffType: "word" (default) | "char" | "none"
-  diffIndicators: "bars" (default) | "classic" (+/-) | "none"
-  Example: CodeDiff("config.ts", "const x = 1", "const x: number = 1")
-
-  UNIFIED DIFF CONVERSION (when the input is a +/- diff):
-    oldCode = remove all + lines; strip - prefix from - lines; keep context as-is
-    newCode = remove all - lines; strip + prefix from + lines; keep context as-is
+--- Documents ---
 
 TextDocument(title, body, fields)
   title: document type label — "Email Draft", "Blog Post", "Report", "Letter"
@@ -268,13 +258,18 @@ _escaped_component_library = OPENUI_COMPONENT_LIBRARY_PROMPT.replace("{", "{{").
 OPENUI_INSTRUCTIONS = f"""
 ---OpenUI Lang (Rich UI Components)---
 
-The following tool outputs are already rendered by dedicated GAIA cards. Do NOT emit :::openui for them:
+SURFACE POLICY — pick the FIRST that matches:
+1. Tool already renders a native card (the list below) → emit NOTHING extra; a short conversational line is enough. Never wrap these in :::openui (it duplicates the card):
 {_suppression_list}
+2. Composing/sending an email → use the draft tool (native compose card), never :::openui or a TextDocument.
+3. Casual chat, a single-sentence answer, an opinion, emotional support → plain text. No component.
+4. Short prose or a simple 2–4 item list → plain markdown is fine. Don't force a component.
+5. Genuinely structured or visual data shown inline (a real table, a comparison, stats/KPIs, steps, a timeline, charts, a file tree, a key-value record) → :::openui with the matching component below. This is where OpenUI shines; prefer it over a markdown table here.
+6. Reusable text the user will copy/paste elsewhere (a prompt, command, env block, config, snippet) → CopyableContent (it has a copy button; mode "inline" for short, "block" for long).
+7. A document the user reviews/edits/reuses (report, letter, memo, email body for review) → TextDocument (editable, with metadata fields).
+8. Longer/substantial content that reads better as its own rendered document → an artifact (a file the executor places in artifacts/). Better for length + readability than cramming a chat bubble.
 
-For ALL other tool outputs (MCP tools, integrations, anything not above) AND for your own
-structured responses (lists, comparisons, stats, tables, timelines, code diffs, long documents),
-render with :::openui fences. Do NOT fall back to markdown lists or tables when an OpenUI
-component fits — markdown looks broken next to the rich cards.
+Use OpenUI when it genuinely helps comprehension — not as a reflex. Plain markdown is an acceptable surface for simple things.
 
 {_escaped_paradigm}
 
@@ -294,16 +289,24 @@ How to emit openui — fence the code and mix freely with text:
 Never put :::openui inside greetings, opinions, or plain conversational replies.
 
 ---
-ABSOLUTE RULE — CODE DIFFS:
-  Any before/after code comparison MUST use CodeDiff. Never show a diff in markdown ``` fences.
-  If the input is a unified diff, reconstruct oldCode and newCode per the conversion rule above.
+LONG PROSE:
+  For a substantial written piece (article, report, essay, doc, memo, newsletter), a
+  TextDocument gives it an editable document UI — good when the user will review or reuse it.
+  Plain markdown is also fine for prose, and a saved artifact suits very long deliverables.
+  Don't reflexively force every multi-paragraph reply into a TextDocument.
+  When you do use TextDocument, use rich HTML in the body: <h2>, <h3>, <p>, <ul>, <ol>, <strong>, <em>.
+  Exception: when actually sending an email, use the draft tool, not a TextDocument.
 
-ABSOLUTE RULE — LONG PROSE:
-  If your response has more than ~3 paragraphs of continuous prose — articles, blog posts,
-  essays, reports, docs, emails, memos, summaries, how-tos, newsletters — it MUST be wrapped in
-  a TextDocument. Never dump long text as raw markdown.
-  Use rich HTML in the body: <h2>, <h3>, <p>, <ul>, <ol>, <strong>, <em>.
-  Exception: when actually sending an email via the send_email tool (not drafting for review).
+Capability-aware component picks (use the one whose affordance matches the intent):
+  - Copyable, paste-elsewhere text (prompt/command/env/config/snippet) → CopyableContent.
+  - Editable/reviewable document (report/letter/email body) → TextDocument (metadata fields).
+  - Numbers/trends/KPIs → Stat (single), Row/Grid of Stat, BarChart/LineChart/AreaChart/PieChart/GaugeChart, NumberTicker.
+  - Records / hierarchies / sequences → Table (+Col), Card (+CardHeader), FileTree, Timeline, Steps, TagBlock.
+  - Depth-on-demand → Accordion / TabsBlock, ONLY when each section/tab carries substantial content (never for thin one-liners).
+  - Media → ImageGallery, VideoBlock, AudioPlayer, MapBlock.
+  - Buttons CAUTION: GAIA already shows next-step suggestion chips via the follow-up-actions
+    feature. Do NOT use Button/Buttons as the reply's "what next" menu — that duplicates it.
+    Reserve Button/Buttons for an action tied INSIDE a specific card (e.g. a link on one item).
 
 Quality notes:
   - Stat for a single KPI; wrap 2+ in Row or Grid.
