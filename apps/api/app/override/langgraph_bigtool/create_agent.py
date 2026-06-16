@@ -140,6 +140,28 @@ def create_agent(
         )
         store_arg = get_store_arg(retrieve_tools)
 
+    def build_tools_to_bind(state: State) -> list[BaseTool]:
+        """Assemble the bound-tool list with a cache-stable ordering.
+
+        Fixed tools (``retrieve_tools``, the agent's initial set, middleware)
+        are bound first so they form a byte-stable prefix for the whole
+        conversation. Dynamically retrieved tools (``selected_tool_ids``, which
+        only ever grows via the append-only reducer) are bound LAST, so each
+        retrieval appends to the tail instead of shifting the fixed tools. That
+        keeps the request's function-declaration prefix stable and lets the
+        provider's implicit prompt cache survive across turns instead of
+        resetting on every tool retrieval.
+        """
+        initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
+        selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
+        tools_to_bind: list[BaseTool] = []
+        if retrieve_tools is not None:
+            tools_to_bind.append(retrieve_tools)
+        tools_to_bind.extend(initial_tools)
+        tools_to_bind.extend(middleware_tools)
+        tools_to_bind.extend(selected_tools)
+        return dedupe_tool_bindings(tools_to_bind)
+
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         state = sync_execute_hooks(pre_model_hooks, state, config, store)
 
@@ -151,16 +173,7 @@ def create_agent(
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
-        selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
-        initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        tools_to_bind: list[BaseTool] = []
-        if retrieve_tools is not None:
-            tools_to_bind.append(retrieve_tools)
-        tools_to_bind.extend(selected_tools)
-        tools_to_bind.extend(initial_tools)
-        tools_to_bind.extend(middleware_tools)
-        tools_to_bind = dedupe_tool_bindings(tools_to_bind)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+        llm_with_tools = _llm.bind_tools(build_tools_to_bind(state))  # type: ignore[attr-defined]
         response = llm_with_tools.invoke(state["messages"])
 
         if not response.tool_calls and not response.content:
@@ -181,15 +194,7 @@ def create_agent(
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
 
-        selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
-        initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        tools_to_bind: list[BaseTool] = []
-        if retrieve_tools is not None:
-            tools_to_bind.append(retrieve_tools)
-        tools_to_bind.extend(selected_tools)
-        tools_to_bind.extend(initial_tools)
-        tools_to_bind.extend(middleware_tools)
-        tools_to_bind = dedupe_tool_bindings(tools_to_bind)
+        tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
 
         try:
