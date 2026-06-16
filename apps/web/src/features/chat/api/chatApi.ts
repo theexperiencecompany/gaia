@@ -3,6 +3,7 @@ import {
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
 
+import { devModelRequestValue } from "@/features/chat/constants/devModels";
 import { apiService } from "@/lib/api/service";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
@@ -311,10 +312,12 @@ export const chatApi = {
           // bundles via the inlined NODE_ENV check.
           ...(process.env.NODE_ENV === "development"
             ? {
-                comms_model:
-                  useComposerStore.getState().selectedCommsModel ?? null,
-                executor_model:
-                  useComposerStore.getState().selectedExecutorModel ?? null,
+                comms_model: devModelRequestValue(
+                  useComposerStore.getState().selectedCommsModel,
+                ),
+                executor_model: devModelRequestValue(
+                  useComposerStore.getState().selectedExecutorModel,
+                ),
               }
             : {}),
           messages: convoMessages

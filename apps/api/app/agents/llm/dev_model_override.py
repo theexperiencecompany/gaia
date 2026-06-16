@@ -35,12 +35,27 @@ def _is_dev() -> bool:
     return settings.ENV == "development"
 
 
-def _force_model(configurable: dict, model_id: str) -> None:
-    """Route the agent through OpenRouter with the given model id and lifted cap."""
-    configurable["provider"] = DEV_MODEL_INFERENCE_PROVIDER
+_ALLOWED_PROVIDERS = (DEFAULT_LLM_PROVIDER, DEV_MODEL_INFERENCE_PROVIDER)
+
+
+def _force_model(configurable: dict, value: str) -> None:
+    """Pin the agent to a specific dev model.
+
+    `value` is "<provider>:<model_id>" (e.g. "openrouter:deepseek/deepseek-v4-pro"
+    or "gemini:gemini-3.1-flash-lite"). The provider is explicit — no guessing
+    from the id shape. A malformed value falls back to OpenRouter. OpenRouter
+    runs get a lifted output cap so reasoning models aren't truncated.
+    """
+    provider, sep, model_id = value.partition(":")
+    if not sep or provider not in _ALLOWED_PROVIDERS:
+        provider, model_id = DEV_MODEL_INFERENCE_PROVIDER, value
+    configurable["provider"] = provider
     configurable["model"] = model_id
     configurable["model_name"] = model_id
-    configurable[DEV_MAX_OUTPUT_TOKENS_KEY] = DEV_OPENROUTER_MAX_OUTPUT_TOKENS
+    if provider == DEV_MODEL_INFERENCE_PROVIDER:
+        configurable[DEV_MAX_OUTPUT_TOKENS_KEY] = DEV_OPENROUTER_MAX_OUTPUT_TOKENS
+    else:
+        configurable.pop(DEV_MAX_OUTPUT_TOKENS_KEY, None)
 
 
 def apply_comms_dev_override(

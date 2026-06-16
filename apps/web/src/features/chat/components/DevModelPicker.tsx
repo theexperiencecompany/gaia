@@ -52,7 +52,10 @@ function AgentModelDropdown({
         }
       >
         {DEV_MODEL_OPTIONS.map((option) => (
-          <DropdownItem key={option.id ?? NULL_KEY}>
+          <DropdownItem
+            key={option.id ?? NULL_KEY}
+            description={option.pricing}
+          >
             {option.label}
           </DropdownItem>
         ))}
