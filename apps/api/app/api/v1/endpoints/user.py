@@ -12,7 +12,6 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import JSONResponse
-import pytz
 from workos import WorkOSClient
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
@@ -23,6 +22,7 @@ from app.models.user_models import UserUpdateResponse
 from app.services.analytics_service import track_logout
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
+from app.utils.timezone import is_valid_timezone
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -153,14 +153,11 @@ async def update_user_timezone(
             operation="update_user_timezone",
             timezone=user_timezone.strip(),
         )
-        try:
-            pytz.timezone(user_timezone.strip())
-        except pytz.UnknownTimeZoneError:
-            if user_timezone.strip().upper() != "UTC":
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
-                )
+        if not is_valid_timezone(user_timezone.strip()):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
+            )
 
         result = await users_collection.update_one(
             {"_id": ObjectId(user["user_id"])},

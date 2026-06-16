@@ -17,7 +17,6 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
 import asyncio
-from datetime import datetime
 from typing import Any
 
 from langsmith import traceable
@@ -53,7 +52,6 @@ async def run_executor_background(
     run: ExecutorRun,
     task: str,
     configurable: dict[str, Any],
-    user_time: datetime,
 ) -> None:
     """Run the executor agent in background and hand its result to delivery.
 
@@ -71,9 +69,7 @@ async def run_executor_background(
     result_type = "final"
 
     try:
-        result_text, result_type = await _execute_executor(
-            task, configurable, user_time, run.stream_id
-        )
+        result_text, result_type = await _execute_executor(task, configurable, run.stream_id)
         log.info("Background executor completed", task_id=run.task_id, stream_id=run.stream_id)
     finally:
         await _finalize_executor_run(run, result_text, result_type)
@@ -82,7 +78,6 @@ async def run_executor_background(
 async def _execute_executor(
     task: str,
     configurable: dict[str, Any],
-    user_time: datetime,
     stream_id: str,
 ) -> tuple[str, str]:
     """Run the executor agent graph once. Returns (result_text, result_type).
@@ -95,7 +90,6 @@ async def _execute_executor(
         ctx, error = await prepare_executor_execution(
             task=task,
             configurable=configurable,
-            user_time=user_time,
             stream_id=stream_id,
         )
         if error or ctx is None:
@@ -229,7 +223,6 @@ def _spawn_queued_run(run: ExecutorRun, prepared: PreparedQueuedTask) -> None:
             run=prepared.run,
             task=prepared.task,
             configurable=prepared.configurable,
-            user_time=prepared.user_time,
         )
     )
     _queued_executor_tasks.add(bg_task)

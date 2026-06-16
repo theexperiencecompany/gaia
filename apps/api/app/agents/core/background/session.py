@@ -85,6 +85,10 @@ class ExecutorRun:
                 "user_id": configurable.get("user_id", ""),
                 "email": configurable.get("email", ""),
                 "name": configurable.get("user_name", ""),
+                # Carry the home timezone forward so the comms re-voicing run
+                # reads the user's zone via build_agent_config instead of
+                # silently falling back to UTC.
+                "timezone": configurable.get("user_timezone"),
             },
             kind=kind,
             task_id=task_id,

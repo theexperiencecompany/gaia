@@ -53,8 +53,8 @@ async def prepare_weather_data(
         # Create a minimal sys object if it doesn't exist
         current_weather["sys"] = {
             "country": country if country else "",
-            "sunrise": int(datetime.datetime.now().timestamp()),
-            "sunset": int(datetime.datetime.now().timestamp() + 43200),  # +12 hours
+            "sunrise": int(datetime.datetime.now(datetime.UTC).timestamp()),
+            "sunset": int(datetime.datetime.now(datetime.UTC).timestamp() + 43200),  # +12 hours
         }
 
     # Create combined weather object with current weather and forecast

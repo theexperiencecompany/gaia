@@ -13,10 +13,8 @@ from datetime import UTC, datetime, timedelta
 import random
 from typing import Any
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 from bson import ObjectId
-from croniter import croniter
 
 from app.agents.core.agent import call_agent_silent
 from app.db.mongodb.collections import todos_collection
@@ -32,7 +30,9 @@ from app.services.notification_service import notification_service
 from app.services.todo_canvas_storage import read_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
+from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.redis_utils import RedisPoolManager
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log, wide_task
 
 MAX_RETRY_ATTEMPTS = 3
@@ -40,23 +40,22 @@ RETRY_BACKOFF = [timedelta(hours=1), timedelta(hours=4)]
 LOCK_TTL_SECONDS = 1800
 
 
-async def _load_user_with_tz(user_id: str) -> tuple[dict, ZoneInfo]:
-    """Fetch user record once and resolve their IANA timezone.
+async def _load_user_with_tz(user_id: str) -> tuple[dict, Timezone]:
+    """Fetch user record once and resolve their home timezone.
 
-    Mirrors the pattern used in workflow_tasks._execute_workflow_as_chat_session
-    so we keep one consistent way to read a user's timezone in worker code.
-    Returns (user_data with user_id populated, ZoneInfo). Falls back to UTC if
-    the user record or timezone is missing.
+    Returns (user_data with user_id populated, Timezone). Uses the canonical
+    Timezone value object so a stored ±HH:MM offset doesn't crash ZoneInfo;
+    falls back to UTC if the user record or timezone is missing.
     """
     try:
         user_data = await get_user_by_id(user_id)
         if user_data:
             user_data["user_id"] = user_id
-            return user_data, ZoneInfo(user_data.get("timezone") or "UTC")
-        return {"user_id": user_id}, ZoneInfo("UTC")
+            return user_data, Timezone.parse(user_data.get("timezone"))
+        return {"user_id": user_id}, Timezone.utc()
     except Exception as e:
         log.warning("tracked_todo.load_user_failed", user_id=user_id, error=str(e))
-        return {"user_id": user_id}, ZoneInfo("UTC")
+        return {"user_id": user_id}, Timezone.utc()
 
 
 async def execute_tracked_todo(_ctx: dict, todo_id: str) -> str:
@@ -126,7 +125,7 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
     user_data, user_tz = await _load_user_with_tz(user_id)
 
     try:
-        await _run_execution(doc, user_id, user_data=user_data, user_tz=user_tz)
+        await _run_execution(doc, user_id, user_data=user_data)
 
         # Reset retry counter on success
         await todos_collection.update_one(
@@ -138,7 +137,7 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         # user's stored timezone (looked up once at the top of this run).
         if doc.get("recurrence"):
             next_run = _compute_next_run(
-                doc["recurrence"], str(user_tz), anchor=doc.get("scheduled_at")
+                doc["recurrence"], user_tz.value, anchor=doc.get("scheduled_at")
             )
             if next_run:
                 await todos_collection.update_one(
@@ -199,7 +198,7 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _run_execution(doc: dict, user_id: str, *, user_data: dict, user_tz: ZoneInfo) -> None:
+async def _run_execution(doc: dict, user_id: str, *, user_data: dict) -> None:
     """
     Dispatch execution to the correct path:
     - If the todo has a workflow_id, queue the workflow.
@@ -224,7 +223,7 @@ async def _run_execution(doc: dict, user_id: str, *, user_data: dict, user_tz: Z
             todo_id=str(doc["_id"]),
         )
     else:
-        await _execute_via_agent(doc, user_id, user_data=user_data, user_tz=user_tz)
+        await _execute_via_agent(doc, user_id, user_data=user_data)
 
 
 def _extract_learnings(ref_canvas: str) -> str | None:
@@ -275,14 +274,13 @@ def _build_execution_prompt(
     return "\n\n".join(prompt_parts)
 
 
-async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict, user_tz: ZoneInfo) -> str:
+async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str:
     """
     Execute the todo using call_agent_silent directly (no workflow needed).
 
     Returns the first 200 chars of the agent response.
     """
     todo_id = str(doc["_id"])
-    user_time = datetime.now(user_tz)
 
     user_model_config = None
     try:
@@ -349,7 +347,6 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict, user_t
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            user_time=user_time,
             user_model_config=user_model_config,
             trigger_context=trigger_context,
         )
@@ -447,15 +444,9 @@ def _compute_next_run(
     evaluated in recurrence_tz so "9am" means user-local 9am.
     Returns None if the recurrence string is unrecognised.
     """
-    try:
-        tz = ZoneInfo(recurrence_tz) if recurrence_tz else UTC
-    except Exception:
-        log.warning(
-            "tracked_todo.next_run_invalid_tz",
-            recurrence_tz=recurrence_tz,
-            fallback="UTC",
-        )
-        tz = UTC
+    # Canonical, offset-safe zone resolution (a stored ±HH:MM won't crash here).
+    home_tz = Timezone.parse(recurrence_tz)
+    tz = home_tz.tzinfo
 
     now_utc = datetime.now(UTC)
 
@@ -487,15 +478,11 @@ def _compute_next_run(
             next_local = anchor_local + step * steps_to_skip
         return next_local.astimezone(UTC)
 
-    # Cron expression — evaluate in the user's local timezone.
+    # Cron expression — evaluate in the user's local timezone via the canonical
+    # helper (single source of cron-in-zone math + observability).
     try:
-        now_local = now_utc.astimezone(tz)
-        cron = croniter(recurrence, now_local)
-        next_dt: datetime = cron.get_next(datetime)
-        if next_dt.tzinfo is None:
-            next_dt = next_dt.replace(tzinfo=tz)
-        return next_dt.astimezone(UTC)
-    except Exception:
+        return get_next_run_time(recurrence, now_utc, home_tz)
+    except CronError:
         log.warning("tracked_todo.next_run_unrecognised", recurrence=recurrence)
         return None
 

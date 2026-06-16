@@ -63,11 +63,11 @@ class TokenRepository:
     def _get_token_expiration(self, token_data: dict) -> datetime:
         """Get token expiration time with fallback logic."""
 
-        # Try expires_at first
+        # Try expires_at first (epoch seconds are UTC).
         expires_at = token_data.get("expires_at")
-        if expires_at:
+        if expires_at is not None:
             try:
-                return datetime.fromtimestamp(float(expires_at))
+                return datetime.fromtimestamp(float(expires_at), UTC)
             except (ValueError, TypeError, OverflowError):
                 log.warning(f"Invalid expires_at: {expires_at}")
 
@@ -75,7 +75,7 @@ class TokenRepository:
         expires_in = token_data.get("expires_in", 3500)  # Default about 1 hour
         try:
             expires_in = float(expires_in)
-            return datetime.now() + timedelta(seconds=expires_in)
+            return datetime.now(UTC) + timedelta(seconds=expires_in)
         except (ValueError, TypeError):
             log.warning(f"Invalid expires_in: {expires_in}, using default")
             return datetime.now(UTC) + timedelta(seconds=3600)
@@ -128,7 +128,7 @@ class TokenRepository:
                         refresh_token=refresh_token_value,
                         token_data=token_json,
                         expires_at=expires_at,
-                        updated_at=datetime.now(),
+                        updated_at=datetime.now(UTC),
                         scopes=token_data.get("scope", ""),
                     )
                 )
