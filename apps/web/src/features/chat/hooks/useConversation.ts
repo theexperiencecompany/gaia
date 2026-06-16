@@ -49,17 +49,6 @@ export const useConversation = () => {
     // Convert IndexedDB messages to MessageType
     const messages = dbMessages.map(mapStoredMessageToConversationMessage);
 
-    console.log(
-      "[useConversation] activeConversationId:",
-      activeConversationId,
-      "dbMessages:",
-      dbMessages.length,
-      "optimisticMessage:",
-      !!optimisticMessage,
-      "optimisticConvoId:",
-      optimisticMessage?.conversationId,
-    );
-
     // Only add optimistic message for NEW conversations (no activeConversationId)
     // For existing conversations, messages are already in IndexedDB with optimistic flag
     if (

@@ -199,17 +199,11 @@ export default function WorkflowSection({
 
   // Run workflow
   const handleRun = useCallback(() => {
-    console.log("[WorkflowSection] handleRun clicked, workflow:", workflow?.id);
     if (!workflow) {
-      console.log("[WorkflowSection] no workflow, returning");
       return;
     }
     try {
-      console.log(
-        "[WorkflowSection] calling selectWorkflow with autoSend:true",
-      );
       selectWorkflow(toWorkflowRunData(workflow), { autoSend: true });
-      console.log("[WorkflowSection] selectWorkflow done");
     } catch (err) {
       console.error("Failed to select workflow for execution:", err);
     }

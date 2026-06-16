@@ -274,13 +274,10 @@ function TextSoftBlurInOnScroll({
   // the browser can only break between words, never mid-word.
   const inner: ReactNode =
     splitBy === "char" ? (
-      <span
-        ref={ref}
-        aria-hidden="true"
-        style={gradientCss(gradient)}
-      >
+      <span ref={ref} aria-hidden="true" style={gradientCss(gradient)}>
         {groupIntoWords(parts).map(({ chars, start, isSpace }, gIdx) => (
           <span
+            // biome-ignore lint/suspicious/noArrayIndexKey: static grouping, stable index
             key={gIdx}
             style={{
               display: isSpace ? "inline" : "inline-block",
@@ -296,6 +293,7 @@ function TextSoftBlurInOnScroll({
           >
             {chars.map((ch, i) => (
               <span
+                // biome-ignore lint/suspicious/noArrayIndexKey: stable position
                 key={i}
                 className="sbi-anim"
                 style={buildCharStyle(start + i)}

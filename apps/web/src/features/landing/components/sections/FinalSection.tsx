@@ -232,9 +232,7 @@ export default function FinalSection({
           />
         </div>
 
-        <div
-          className="z-1 mb-3 max-w-sm px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-white sm:mb-6 sm:max-w-(--breakpoint-md) sm:px-0 sm:text-xl sm:leading-7 md:text-2xl max-[760px]:mb-2 max-[760px]:text-[1.05rem] max-[760px]:leading-6"
-        >
+        <div className="z-1 mb-3 max-w-sm px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-white sm:mb-6 sm:max-w-(--breakpoint-md) sm:px-0 sm:text-xl sm:leading-7 md:text-2xl max-[760px]:mb-2 max-[760px]:text-[1.05rem] max-[760px]:leading-6">
           Join thousands of professionals who gave their grunt work to GAIA.
         </div>
         <div className="flex w-full max-w-sm flex-col gap-3 px-2 sm:w-auto sm:max-w-none sm:flex-row sm:gap-4 sm:px-0">
