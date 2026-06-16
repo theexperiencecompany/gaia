@@ -26,6 +26,7 @@ export default function ChatBubbleUser({
   selectedWorkflow,
   selectedCalendarEvent,
   replyToMessage,
+  queued,
   disableActions = false,
   onRetry,
   isRetrying,
@@ -66,7 +67,11 @@ export default function ChatBubbleUser({
       <div className="flex flex-col items-end gap-1">
         {/* Bubble content + avatar aligned at bottom */}
         <div className="flex items-end gap-1" id={message_id}>
-          <div className="chat_bubble_container user">
+          <div
+            className={`chat_bubble_container user transition-opacity duration-300 ${
+              queued ? "opacity-50" : "opacity-100"
+            }`}
+          >
             {fileData.length > 0 && <ChatBubbleFilePreview files={fileData} />}
 
             {selectedTool && (

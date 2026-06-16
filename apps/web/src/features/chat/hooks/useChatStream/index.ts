@@ -249,6 +249,13 @@ export const useChatStream = () => {
     const pending = pendingStreamArgsRef.current;
     if (pending) {
       pendingStreamArgsRef.current = null;
+      // The held message is now actually being sent — flip its optimistic
+      // bubble from "queued" (grey) to "sending" (normal) so it turns blue the
+      // moment it leaves the queue.
+      const queuedUserId = pending[2]?.optimisticUserId;
+      if (queuedUserId) {
+        db.updateMessageStatus(queuedUserId, "sending");
+      }
       setTimeout(() => streamFunction(...pending), 100);
     }
   };

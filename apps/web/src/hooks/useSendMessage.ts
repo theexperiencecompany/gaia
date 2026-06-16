@@ -9,6 +9,7 @@ import {
   trackEvent,
 } from "@/lib/analytics";
 import { db, type IMessage } from "@/lib/db/chatDb";
+import { streamState } from "@/lib/streamState";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
@@ -100,6 +101,12 @@ export const useSendMessage = () => {
           ? overrides.conversationId
           : useChatStore.getState().activeConversationId;
 
+      // A send that lands while a stream is still open gets queued (held) by
+      // streamFunction. Mark it so the optimistic bubble renders greyed-out
+      // until the queue dispatches it. streamState.isStreaming() mirrors the
+      // streamInProgressRef gate streamFunction uses to decide queueing.
+      const optimisticStatus = streamState.isStreaming() ? "queued" : "sending";
+
       try {
         const userMessage: MessageType = {
           type: "user",
@@ -159,7 +166,7 @@ export const useSendMessage = () => {
           conversationId,
           content: trimmedContent,
           role: "user",
-          status: "sending",
+          status: optimisticStatus,
           createdAt,
           updatedAt: createdAt,
           messageId: optimisticId,

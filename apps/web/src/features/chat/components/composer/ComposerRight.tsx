@@ -1,10 +1,12 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp02Icon, StopIcon } from "@icons";
+import { ArrowUp02Icon, Clock04Icon, StopIcon } from "@icons";
+import { TextMorph } from "torph/react";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { useChatStore } from "@/stores/chatStore";
 import { useComposerFiles } from "@/stores/composerStore";
 import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 
@@ -29,6 +31,12 @@ export default function RightSide({
   // Once the agent has acknowledged the task, the composer unlocks so the user
   // can queue the next message while a background executor keeps running.
   const isResponding = useIsMainResponseStreaming();
+  const streamingConversationId = useChatStore(
+    (state) => state.streamingConversationId,
+  );
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
   const hasText = (searchbarText || "").trim().length > 0;
   const hasSelectedTool = selectedTool != null;
   const hasSelectedWorkflow = selectedWorkflow != null;
@@ -41,8 +49,26 @@ export default function RightSide({
     hasSelectedCalendarEvent ||
     hasFiles;
 
+  // The "held" window: the active conversation's stream is still open but the
+  // initial response already finished (so the composer is unlocked). A send here
+  // is held in the queue until the stream closes — surface that as a Queue button.
+  const isHeldWindow =
+    !isResponding &&
+    streamingConversationId != null &&
+    streamingConversationId === activeConversationId;
+  const showQueue = isHeldWindow && hasContent;
+
   const getTooltipContent = () => {
     if (isResponding) return "Stop generation";
+
+    if (showQueue) {
+      return (
+        <div className="flex items-center gap-2">
+          Queue message
+          <Kbd className="text-zinc-400" keys={["enter"]} />
+        </div>
+      );
+    }
 
     if (hasSelectedCalendarEvent && !hasText && !hasSelectedTool && !hasFiles) {
       return `Send with calendar event: ${selectedCalendarEvent?.summary}`;
@@ -105,9 +131,19 @@ export default function RightSide({
         showArrow
       >
         <Button
-          isIconOnly
-          aria-label={isResponding ? "Stop generation" : "Send message"}
-          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`}
+          isIconOnly={!showQueue}
+          aria-label={
+            isResponding
+              ? "Stop generation"
+              : showQueue
+                ? "Queue message"
+                : "Send message"
+          }
+          className={
+            showQueue
+              ? "h-9 min-h-9 gap-1.5 px-3"
+              : `h-9 min-h-9 w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`
+          }
           color={buttonColor}
           disabled={!isResponding && !hasContent}
           radius="full"
@@ -121,6 +157,13 @@ export default function RightSide({
               height={20}
               fill="lightgray"
             />
+          ) : showQueue ? (
+            <>
+              <Clock04Icon color="black" width={18} height={18} />
+              <TextMorph as="span" className="font-medium text-black text-sm">
+                Queue
+              </TextMorph>
+            </>
           ) : (
             <ArrowUp02Icon color={hasContent ? "black" : "gray"} />
           )}
