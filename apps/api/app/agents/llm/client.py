@@ -121,7 +121,7 @@ def init_openrouter_llm():
         temperature=0.1,
         streaming=True,
         stream_usage=True,
-        max_tokens=4096,  # Conservative limit to avoid credit issues with free accounts
+        max_tokens=512000,  # Full output ceiling of MiniMax M3 (the Pro-tier OpenRouter model)
         api_key=settings.OPENROUTER_API_KEY,
         base_url=OPENROUTER_BASE_URL,
         default_headers={
@@ -135,13 +135,6 @@ def init_openrouter_llm():
         },
     ).configurable_fields(
         model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
-        # Dev model picker lifts the output cap so reasoning models aren't truncated.
-        # Absent from configurable -> falls back to the constructor max_tokens above.
-        max_tokens=ConfigurableField(
-            id="dev_max_output_tokens",
-            name="Max output tokens",
-            description="Dev-only output token cap override",
-        ),
     )
 
 

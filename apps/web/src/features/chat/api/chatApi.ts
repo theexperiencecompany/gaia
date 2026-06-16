@@ -3,11 +3,9 @@ import {
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
 
-import { devModelRequestValue } from "@/features/chat/constants/devModels";
 import { apiService } from "@/lib/api/service";
 import { getBrowserTimezone } from "@/lib/timezone";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
-import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
@@ -308,19 +306,6 @@ export const chatApi = {
           selectedCalendarEvent,
           replyToMessage,
           is_onboarding_demo: isOnboardingDemo,
-          // Dev-only model picker (ENV=development). Sticky selections from the
-          // chat header; backend ignores them in production. Stripped from prod
-          // bundles via the inlined NODE_ENV check.
-          ...(process.env.NODE_ENV === "development"
-            ? {
-                comms_model: devModelRequestValue(
-                  useComposerStore.getState().selectedCommsModel,
-                ),
-                executor_model: devModelRequestValue(
-                  useComposerStore.getState().selectedExecutorModel,
-                ),
-              }
-            : {}),
           messages: convoMessages
             .slice(-30)
             .filter(({ response }) => response.trim().length > 0)

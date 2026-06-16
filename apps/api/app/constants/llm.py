@@ -14,9 +14,7 @@ DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-# Dev-only model picker (ENV=development): the web chat header can force specific
-# OpenRouter models for the comms/executor agents to benchmark them per task.
-# All dev overrides route through OpenRouter and lift the output cap so reasoning
-# models aren't truncated. No effect in production.
-DEV_MODEL_INFERENCE_PROVIDER = "openrouter"
-DEV_OPENROUTER_MAX_OUTPUT_TOKENS = 16384
+# Per-plan model policy (hardcoded; not user-selectable). Free accounts run the
+# default Gemini model above; Pro accounts run a more capable model via OpenRouter.
+PRO_MODEL_PROVIDER = "openrouter"
+PRO_MODEL_NAME = "minimax/minimax-m3"

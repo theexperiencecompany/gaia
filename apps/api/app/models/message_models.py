@@ -61,10 +61,6 @@ class MessageRequestWithHistory(BaseModel):
     selectedCalendarEvent: SelectedCalendarEventData | None = None
     replyToMessage: ReplyToMessageData | None = None
     is_onboarding_demo: bool = False
-    # Dev-only (ENV=development) per-agent model overrides routed via OpenRouter.
-    # Raw OpenRouter model ids (e.g. "deepseek/deepseek-v4-pro"); ignored in prod.
-    comms_model: str | None = None
-    executor_model: str | None = None
 
 
 class MessageRequest(BaseModel):

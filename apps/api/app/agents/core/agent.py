@@ -22,7 +22,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
-from app.agents.llm.dev_model_override import apply_comms_dev_override
+from app.agents.llm.plan_model import apply_plan_model
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
 from app.helpers.agent_helpers import (
@@ -123,13 +123,9 @@ async def _core_agent_logic(
         langfuse_tags=langfuse_tags,
     )
 
-    # Dev-only (ENV=development): apply the chat-header model picker selections.
-    # Forces the comms model and stashes the executor selection for call_executor.
-    apply_comms_dev_override(
-        config["configurable"],
-        request.comms_model,
-        request.executor_model,
-    )
+    # Route the model by subscription plan (Free -> Gemini, Pro -> MiniMax).
+    # Hardcoded policy; the executor and subagents inherit it via the configurable.
+    await apply_plan_model(config["configurable"], user_id)
 
     # Workflow runs carry their id/title so the background executor's delivery
     # path can route the final result to the workflow-completion notification

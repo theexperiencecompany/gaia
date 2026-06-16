@@ -17,10 +17,6 @@ interface ComposerState {
   selectedTool: string | null;
   selectedToolCategory: string | null;
 
-  // Dev-only (ENV=development) per-agent model overrides (OpenRouter slugs).
-  selectedCommsModel: string | null;
-  selectedExecutorModel: string | null;
-
   // File management
   fileUploadModal: boolean;
   uploadedFiles: UploadedFilePreview[];
@@ -45,10 +41,6 @@ interface ComposerActions {
   setSelectedTool: (tool: string | null, category?: string | null) => void;
   setSelectedToolCategory: (category: string | null) => void;
   clearToolSelection: () => void;
-
-  // Dev-only model picker actions
-  setSelectedCommsModel: (model: string | null) => void;
-  setSelectedExecutorModel: (model: string | null) => void;
 
   // File management actions
   setFileUploadModal: (open: boolean) => void;
@@ -79,10 +71,6 @@ const initialState: ComposerState = {
   selectedMode: new Set([null]),
   selectedTool: null,
   selectedToolCategory: null,
-
-  // Dev-only model overrides
-  selectedCommsModel: null,
-  selectedExecutorModel: null,
 
   // File management
   fileUploadModal: false,
@@ -157,12 +145,6 @@ export const useComposerStore = create<ComposerStore>()(
             false,
             "clearToolSelection",
           ),
-
-        setSelectedCommsModel: (selectedCommsModel) =>
-          set({ selectedCommsModel }, false, "setSelectedCommsModel"),
-
-        setSelectedExecutorModel: (selectedExecutorModel) =>
-          set({ selectedExecutorModel }, false, "setSelectedExecutorModel"),
 
         // File management actions
         setFileUploadModal: (fileUploadModal) =>
@@ -246,9 +228,6 @@ export const useComposerStore = create<ComposerStore>()(
         partialize: (state) => ({
           inputText: state.inputText,
           pendingPrompt: state.pendingPrompt,
-          // Keep the dev model picks sticky across reloads.
-          selectedCommsModel: state.selectedCommsModel,
-          selectedExecutorModel: state.selectedExecutorModel,
         }),
       },
     ),
@@ -284,16 +263,6 @@ export const useComposerModeSelection = () =>
       setSelectedTool: state.setSelectedTool,
       setSelectedToolCategory: state.setSelectedToolCategory,
       clearToolSelection: state.clearToolSelection,
-    })),
-  );
-
-export const useComposerDevModels = () =>
-  useComposerStore(
-    useShallow((state) => ({
-      selectedCommsModel: state.selectedCommsModel,
-      selectedExecutorModel: state.selectedExecutorModel,
-      setSelectedCommsModel: state.setSelectedCommsModel,
-      setSelectedExecutorModel: state.setSelectedExecutorModel,
     })),
   );
 

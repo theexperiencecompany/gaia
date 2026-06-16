@@ -11,7 +11,6 @@ from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.llm.dev_model_override import DEV_MAX_OUTPUT_TOKENS_KEY
 from app.config.langfuse import build_langfuse_callback
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
@@ -302,12 +301,6 @@ def build_agent_config(  # NOSONAR python:S107
         configurable["langfuse_trace_id"] = effective_trace_id
     if effective_tags:
         configurable["langfuse_tags"] = effective_tags
-
-    # Carry the dev-only output-cap override (ENV=development model picker) from
-    # the parent so OpenRouter overrides on inherited agents aren't truncated.
-    dev_max_output_tokens = inherited.get(DEV_MAX_OUTPUT_TOKENS_KEY)
-    if dev_max_output_tokens:
-        configurable[DEV_MAX_OUTPUT_TOKENS_KEY] = dev_max_output_tokens
 
     metadata: dict = {
         "user_id": user.get("user_id"),

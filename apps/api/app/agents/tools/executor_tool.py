@@ -27,7 +27,6 @@ from app.agents.core.background.session import (
     RunKind,
     mark_executor_spawned,
 )
-from app.agents.llm.dev_model_override import apply_executor_dev_override
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -73,14 +72,12 @@ async def call_executor(
     conversation as a new bot message when it completes.
     """
     base_configurable = config.get("configurable", {})
-    # Shallow-copy so the executor's overrides (todo binding, dev model) never
-    # mutate the comms agent's live RunnableConfig.
+    # Shallow-copy so the executor's overrides (todo binding) never mutate the
+    # comms agent's live RunnableConfig. The model is inherited from the comms
+    # configurable (set by per-plan routing).
     configurable = {**base_configurable}
     if active_todo_id:
         configurable["active_todo_id"] = active_todo_id
-    # Dev-only (ENV=development): apply the executor model picked in the chat
-    # header, independent of the comms selection. No-op in production.
-    apply_executor_dev_override(configurable)
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:
