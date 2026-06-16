@@ -2,6 +2,7 @@
 
 import { Button, Divider, Input } from "@heroui/react";
 import { Cancel01Icon, Clock01Icon } from "@icons";
+import { getBrowserTimezone } from "@/lib/timezone";
 import BaseFieldChip from "./BaseFieldChip";
 
 interface ScheduledFieldChipProps {
@@ -19,9 +20,7 @@ export default function ScheduledFieldChip({
 }: Readonly<ScheduledFieldChipProps>) {
   // Use user's preferred timezone or fallback to browser timezone
   const userTimezone =
-    timezone && timezone.trim() !== ""
-      ? timezone
-      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+    timezone && timezone.trim() !== "" ? timezone : getBrowserTimezone();
 
   const formatDisplayValue = (dateString: string) => {
     const date = new Date(dateString);

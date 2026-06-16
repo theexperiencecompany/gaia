@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { getBrowserTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import {
   useAddEvent,
@@ -16,10 +17,6 @@ import {
   isoToDateTimeLocal,
   toDateTimeLocalString,
 } from "@/utils/date/dateTimeLocalUtils";
-
-const getUserTimezone = (): string => {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
-};
 
 const buildRecurrencePayload = (
   type: string,
@@ -185,7 +182,7 @@ export const useEventSidebar = ({
         const originalTimezone =
           selectedEvent.start?.timeZone ||
           selectedEvent.end?.timeZone ||
-          getUserTimezone();
+          getBrowserTimezone();
 
         const updatePayload: Record<string, unknown> = {
           event_id: selectedEvent.id,
@@ -372,7 +369,7 @@ export const useEventSidebar = ({
           const originalTimezone =
             selectedEvent.start?.timeZone ||
             selectedEvent.end?.timeZone ||
-            getUserTimezone();
+            getBrowserTimezone();
 
           // For all-day events, extract date safely
           let startDateValue: string;
@@ -499,7 +496,7 @@ export const useEventSidebar = ({
         end: isAllDay ? endDate.split("T")[0] : dateTimeLocalToISO(endDate),
         fixedTime: !isAllDay,
         calendar_id: selectedCalendarId || "primary",
-        timezone: getUserTimezone(),
+        timezone: getBrowserTimezone(),
         ...(recurrence && { recurrence }),
       };
 

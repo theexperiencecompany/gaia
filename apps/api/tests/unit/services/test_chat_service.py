@@ -14,7 +14,7 @@ mocked so tests exercise service logic only.
 
 from collections.abc import AsyncGenerator, Iterator
 import contextlib
-from datetime import UTC, datetime
+from datetime import datetime
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -623,7 +623,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_1",
                 body=basic_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="new_conv_id",
             )
 
@@ -654,7 +653,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_2",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -684,7 +682,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_3",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -709,7 +706,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_4",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -733,7 +729,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_5",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -760,7 +755,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_6",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -801,7 +795,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_7",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -838,7 +831,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_8",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -872,7 +864,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_9",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -910,7 +901,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_10",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -944,7 +934,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_cancel",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -985,7 +974,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_tools",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -1035,7 +1023,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_merge",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -1080,7 +1067,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_fu",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -1124,7 +1110,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_recover",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 
@@ -1165,7 +1150,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_desc",
                 body=basic_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="new_id",
             )
 
@@ -1198,7 +1182,6 @@ class TestRunChatStreamBackground:
                 stream_id="stream_no_desc",
                 body=existing_conv_body,
                 user=test_user,
-                user_time=datetime.now(UTC),
                 conversation_id="conv_existing_123",
             )
 

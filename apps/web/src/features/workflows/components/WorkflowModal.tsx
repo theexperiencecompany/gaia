@@ -22,6 +22,7 @@ import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreat
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { useRouter } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { getUserHomeTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
@@ -37,9 +38,7 @@ import { useWorkflowsStore } from "../stores/workflowsStore";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { createDefaultTriggerConfig } from "../triggers/registry";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
-
 import { findTriggerSchema, getTriggerDisplayInfo } from "../triggers/utils";
-import { getBrowserTimezone } from "../utils/browserTimezone";
 
 interface WorkflowModalProps {
   isOpen: boolean;
@@ -306,7 +305,7 @@ export default function WorkflowModal({
           type: "schedule" as const,
           enabled: true,
           cron_expression: draftData.cron_expression || "0 9 * * *",
-          timezone: getBrowserTimezone(),
+          timezone: getUserHomeTimezone(),
         };
       } else if (
         draftData.trigger_type === "integration" &&

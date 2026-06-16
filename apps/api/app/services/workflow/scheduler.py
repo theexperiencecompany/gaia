@@ -17,6 +17,7 @@ from app.models.scheduler_models import (
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 # How long a workflow may sit in EXECUTING before the recovery scan treats it as a
@@ -234,7 +235,6 @@ class WorkflowScheduler(BaseSchedulerService):
                 repeat=repeat,
                 max_occurrences=max_occurrences,
                 stop_after=stop_after,
-                base_time=scheduled_at,  # Use scheduled_at as base for timezone calculations
             )
 
             # Use the robust BaseSchedulerService scheduling
@@ -322,7 +322,8 @@ class WorkflowScheduler(BaseSchedulerService):
                 updated_at = updated_at.replace(tzinfo=UTC)
             stuck_seconds = int((now - updated_at).total_seconds()) if updated_at else -1
 
-            next_run = get_next_run_time(repeat, now, timezone) if repeat else None
+            schedule_tz = Timezone.parse(timezone) if timezone else None
+            next_run = get_next_run_time(repeat, now, schedule_tz) if repeat else None
             update_fields: dict[str, Any] = {"scheduled_at": next_run}
             if next_run is not None:
                 update_fields["trigger_config.next_run"] = next_run

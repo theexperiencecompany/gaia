@@ -5,9 +5,8 @@ FastAPI endpoints for reminder management.
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
 from app.api.v1.dependencies.oauth_dependencies import (
-    GET_USER_TZ_TYPE,
     get_current_user,
-    get_user_timezone,
+    get_user_timezone_from_preferences,
 )
 from app.decorators import tiered_rate_limit
 from app.models.reminder_models import (
@@ -28,7 +27,7 @@ router = APIRouter(prefix="/reminders", tags=["reminders"])
 async def create_reminder_endpoint(
     reminder_data: CreateReminderRequest,
     user: dict = Depends(get_current_user),
-    tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
+    user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """
     Create a new reminder.
@@ -55,8 +54,10 @@ async def create_reminder_endpoint(
             reminder=ReminderContext(operation="create"),
         )
 
-        # Prepare reminder data
-        reminder_data.base_time = tz_info[1]  # Use user's current time
+        # The schedule runs in the user's HOME zone (DB profile, healed from the
+        # x-timezone header), so recurring reminders fire at the right local hour
+        # — and the same default as workflows, regardless of current location.
+        reminder_data.timezone = user_timezone
 
         # Create the reminder
         reminder_id = await reminder_scheduler.create_reminder(
