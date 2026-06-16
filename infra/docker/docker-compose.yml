@@ -78,6 +78,9 @@ services:
       - ../../apps/api/.env
     volumes:
       - ../../apps/api/app:/app/apps/api/app
+      # Live-mount scripts so mount_juicefs.sh edits (shipped into the sandbox at
+      # runtime by _run_mount_script) apply on the next acquire with no rebuild.
+      - ../../apps/api/scripts:/app/apps/api/scripts
       - juicefs_cache:/var/cache/juicefs
     # Harden the resolver: Docker's embedded DNS (127.0.0.11) intermittently
     # drops rapid back-to-back external lookups, so juicefs sees a spurious
@@ -250,6 +253,9 @@ services:
     restart: always
     volumes:
       - ../../apps/api/app:/app/apps/api/app
+      # Live-mount scripts so mount_juicefs.sh edits (shipped into the sandbox at
+      # runtime by _run_mount_script) apply on the next acquire with no rebuild.
+      - ../../apps/api/scripts:/app/apps/api/scripts
       - juicefs_cache:/var/cache/juicefs
     # JuiceFS mount needs FUSE; same caps/devices as gaia-backend
     cap_add:

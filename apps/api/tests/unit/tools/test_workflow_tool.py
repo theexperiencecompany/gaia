@@ -23,7 +23,6 @@ def _make_config(
     user_id: str = FAKE_USER_ID,
     thread_id: str = "thread-123",
     user_name: str = "Test User",
-    user_time: str = "2026-03-20T10:00:00+00:00",
     user_timezone: str = "+05:30",
 ) -> dict[str, Any]:
     """Return a minimal RunnableConfig with configurable fields."""
@@ -32,7 +31,6 @@ def _make_config(
             "user_id": user_id,
             "thread_id": thread_id,
             "user_name": user_name,
-            "user_time": user_time,
             "user_timezone": user_timezone,
         },
         "metadata": {"user_id": user_id},

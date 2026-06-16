@@ -154,6 +154,56 @@ class TestCreateReminder:
 
         assert reminder_id == str(oid)
 
+    async def test_recurring_reminder_persists_timezone(
+        self,
+        scheduler,
+        mock_reminders_collection,
+        mock_scheduler_base,
+        future_time,
+        sample_payload,
+    ):
+        """A recurring reminder persists its schedule timezone so the re-arm path
+        (handle_recurring_task) computes the next occurrence in that zone, not UTC."""
+        mock_reminders_collection.insert_one = AsyncMock(
+            return_value=MagicMock(inserted_id=ObjectId())
+        )
+        request = CreateReminderRequest(
+            agent=AgentType.STATIC,
+            payload=sample_payload,
+            scheduled_at=future_time,
+            repeat="0 9 * * *",
+            timezone="Asia/Kolkata",
+        )
+
+        await scheduler.create_reminder(request, FAKE_USER_ID)
+
+        doc = mock_reminders_collection.insert_one.call_args.kwargs["document"]
+        assert doc["timezone"] == "Asia/Kolkata"
+
+    async def test_reminder_without_timezone_has_null_timezone(
+        self,
+        scheduler,
+        mock_reminders_collection,
+        mock_scheduler_base,
+        future_time,
+        sample_payload,
+    ):
+        """No timezone on the request => None persisted => recurrence stays UTC."""
+        mock_reminders_collection.insert_one = AsyncMock(
+            return_value=MagicMock(inserted_id=ObjectId())
+        )
+        request = CreateReminderRequest(
+            agent=AgentType.STATIC,
+            payload=sample_payload,
+            scheduled_at=future_time,
+            repeat="0 9 * * *",
+        )
+
+        await scheduler.create_reminder(request, FAKE_USER_ID)
+
+        doc = mock_reminders_collection.insert_one.call_args.kwargs["document"]
+        assert doc["timezone"] is None
+
     async def test_raises_when_no_scheduled_at_and_no_repeat(
         self,
         scheduler,
@@ -173,7 +223,7 @@ class TestCreateReminder:
         request.repeat = None
         request.max_occurrences = None
         request.stop_after = None
-        request.base_time = None
+        request.timezone = None
         request.model_dump.return_value = {
             "agent": "static",
             "payload": {"title": "Test", "body": "Body"},
@@ -203,7 +253,7 @@ class TestCreateReminder:
             request.repeat = "0 9 * * *"
             request.max_occurrences = None
             request.stop_after = None
-            request.base_time = None
+            request.timezone = None
             request.model_dump.return_value = {
                 "agent": "static",
                 "payload": {"title": "Test", "body": "Body"},

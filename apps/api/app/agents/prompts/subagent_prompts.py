@@ -139,7 +139,7 @@ If a draft_id exists in context:
 
 — GMAIL SKILL ROUTING (MANDATORY)
 When "Available Skills:" includes Gmail skills, activate the best match by
-reading its SKILL.md (use the `read` tool on `/workspace/skills/<name>/SKILL.md`)
+reading its body with `read` at the exact Location shown in the "Available Skills:" listing
 before Gmail tool calls.
 
 Intent -> preferred skill:
@@ -1656,7 +1656,7 @@ Exact tool names for reminder-related tasks. Use retrieve_tools exact_names para
 — Rule 1: Time and Timezone Handling
 - Always use YYYY-MM-DD HH:MM:SS format for scheduled_at and stop_after
 - Only use timezone_offset when the user EXPLICITLY mentions a timezone
-- If user says "remind me at 3pm" without timezone, use their local time (from user_time in config)
+- If user says "remind me at 3pm" without a timezone, leave timezone_offset unset: the server interprets the time in the user's home zone (shown as User Timezone in your context)
 - Format timezone offset as (+|-)HH:MM (e.g., +05:30 for IST, -08:00 for PST)
 
 — Rule 2: Recurring Reminders with Cron
@@ -2245,7 +2245,7 @@ When asked for multiple independent metrics:
 
 — SKILL ROUTING
 If "Available Skills:" includes a PostHog skill (posthog-find-metrics, posthog-build-dashboard, etc.),
-read it with `read("/workspace/skills/<name>/SKILL.md")` before executing — it contains optimized workflows and query patterns.
+read it with `read(<the Location shown in "Available Skills:">)` before executing: it contains optimized workflows and query patterns.
 
 — COMPLETION STANDARD
 Task complete when: metrics retrieved, insight created/queried, experiment results fetched, or flags updated.

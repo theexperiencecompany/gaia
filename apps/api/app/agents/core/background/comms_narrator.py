@@ -6,8 +6,6 @@ handed to the comms agent as internal context (a HumanMessage with an
 persona. This module owns that single invocation.
 """
 
-from datetime import UTC, datetime
-
 from langchain_core.messages import HumanMessage
 
 from app.agents.core.graph_manager import GraphManager
@@ -55,7 +53,6 @@ async def narrate_executor_result(
         config = build_agent_config(
             conversation_id=conversation_id,
             user=user,
-            user_time=datetime.now(UTC),
             agent_name="comms_agent",
         )
         initial_state = {
