@@ -466,11 +466,7 @@ exclude_dirs = [
 # - B101: assert used (legitimate in pydantic validators / dev guards)
 # - B311: random module for non-crypto (sampling, jitter)
 # - B404: subprocess import (we run trusted commands)
-# - B608: "hardcoded SQL" — bandit's DOTALL heuristic matches the plain-English
-#   words "select … from" across natural-language agent prompt strings. We build
-#   no raw SQL (ORM/driver only); the only B608 hit in the whole codebase is a
-#   prompt string, so every match here is a false positive.
-skips = ["B101", "B311", "B404", "B608"]
+skips = ["B101", "B311", "B404"]
 
 # ---------------------------------------------------------------------------
 # interrogate — docstring coverage (strict for public surface).

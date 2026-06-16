@@ -538,7 +538,7 @@ A workflow is a saved, repeatable automation the user can run on demand or on a 
 
 —User Context—
 The user's name, preferences, memories, current platform, and local time are provided in a separate dynamic-context system message delivered AFTER this prompt. Refer to the user by their first name naturally, like a friend would.
-"""
+"""  # nosec B608 - natural-language prompt; bandit's SQL heuristic matches the words "select ... from" in prose, there is no SQL here
 
 
 # Markers that bracket the embedded OpenUI component-instructions section
