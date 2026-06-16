@@ -25,6 +25,7 @@ from app.models.chat_models import tool_fields
 from app.utils.stream_utils import (
     absorb_collector_event,
     apply_outputs_to_tool_data,
+    normalize_custom_event,
     reconstruct_subagent_groups,
 )
 from shared.py.wide_events import log
@@ -73,7 +74,11 @@ def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
     accumulated: dict[str, Any] = {"tool_data": []}
     outputs: dict[str, str] = {}
     for evt in session.tool_events:
-        absorb_collector_event(evt, accumulated, outputs)
+        # Hooks (e.g. GMAIL_FETCH_EMAILS) emit raw field payloads like
+        # {"email_fetch_data": [...]}; normalize them to {"tool_data": {...}}
+        # before absorbing, or absorb_collector_event drops them and the list
+        # card never persists onto the background-executor message.
+        absorb_collector_event(normalize_custom_event(evt), accumulated, outputs)
     apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
     return accumulated.get("tool_data", [])
