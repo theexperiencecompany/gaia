@@ -32,6 +32,7 @@ from app.services.integrations.user_integration_status import (
 from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
+from app.services.referrals import referral_service
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.workspace_sync import schedule_user_provision
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
@@ -43,17 +44,20 @@ async def store_user_info(
     name: str,
     email: str,
     picture_url: str | None,
+    ref_code: str | None = None,
 ) -> tuple[ObjectId, bool]:
     """
     Stores user info from Google callback.
 
     - Updates existing users or creates new ones
     - Stores profile picture URL directly without processing
+    - Attributes new signups to a referrer when ``ref_code`` is supplied
 
     Args:
         name (str): The user's name.
         email (str): The user's email.
         picture_url (str): The URL of the profile picture from Google.
+        ref_code (str | None): Referral code from the invite-link cookie, if any.
 
     Returns:
         tuple[ObjectId, bool]: (user_id, is_new_user)
@@ -134,6 +138,21 @@ async def store_user_info(
     # Provision the user's workspace (system files + skills catalog) now, instead
     # of lazily on the first chat turn. Fire-and-forget so signup isn't blocked.
     schedule_user_provision(str(result.inserted_id))
+
+    # Give every new user a referral code up front, so the hub/share surfaces
+    # always have one (idempotent — a later read returns the same code).
+    try:
+        await referral_service.ensure_referral_code(str(result.inserted_id))
+    except Exception as e:
+        log.error(f"Failed to ensure referral code for {email}: {e!s}")
+
+    # Attribute the signup to a referrer if they arrived via an invite link.
+    # Self-referral and re-attribution are guarded inside the service.
+    if ref_code:
+        try:
+            await referral_service.record_attribution(str(result.inserted_id), ref_code)
+        except Exception as e:
+            log.error(f"Failed to record referral attribution for {email}: {e!s}")
 
     return result.inserted_id, True
 

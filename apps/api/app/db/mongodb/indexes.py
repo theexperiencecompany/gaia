@@ -34,6 +34,8 @@ from app.db.mongodb.collections import (
     plans_collection,
     processed_webhooks_collection,
     projects_collection,
+    referral_rewards_collection,
+    referrals_collection,
     reminders_collection,
     skills_collection,
     subscriptions_collection,
@@ -81,6 +83,7 @@ async def create_all_indexes():
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
+            create_referral_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -112,6 +115,7 @@ async def create_all_indexes():
             "workflow_executions",
             "bot_sessions",
             "e2b_sandboxes",
+            "referrals",
         ]
 
         index_results = {}
@@ -145,6 +149,9 @@ async def create_user_indexes():
         await asyncio.gather(
             # Email unique index (primary lookup method)
             users_collection.create_index("email", unique=True),
+            # Referral code lookup (unique + sparse: only set once a user opens
+            # their referral hub, and must be globally unique for attribution).
+            users_collection.create_index("referral_code", unique=True, sparse=True),
             # Onboarding status with creation date
             users_collection.create_index([("onboarding.completed", 1), ("created_at", -1)]),
             # Cache cleanup index (sparse since not all users have cached_at)
@@ -974,4 +981,39 @@ async def create_e2b_sandbox_indexes() -> None:
         )
     except Exception as e:
         log.error(f"Error creating e2b sandbox indexes: {e!s}")
+        raise
+
+
+async def create_referral_indexes():
+    """Create indexes for referrals and referral_rewards collections.
+
+    Query patterns:
+    - Hub overview + counts: referrer_user_id (+ status), sorted by created_at
+    - Attribution / lifecycle transitions: referred_user_id (unique — one
+      referral per friend), referred_email for matching pending invites
+    - Reward ledger idempotency: unique (referrer_user_id, milestone_threshold)
+    """
+    try:
+        await asyncio.gather(
+            # referrals: referrer's list, newest first
+            referrals_collection.create_index([("referrer_user_id", 1), ("created_at", -1)]),
+            # referrals: referrer's counts by status
+            referrals_collection.create_index([("referrer_user_id", 1), ("status", 1)]),
+            # referrals: one referral per referred user (attribution guard)
+            referrals_collection.create_index("referred_user_id", unique=True, sparse=True),
+            # referrals: match pending email invites by referrer + invitee email
+            referrals_collection.create_index(
+                [("referrer_user_id", 1), ("referred_email", 1)], sparse=True
+            ),
+            # referral_rewards: idempotent grants (one per milestone per referrer)
+            referral_rewards_collection.create_index(
+                [("referrer_user_id", 1), ("milestone_threshold", 1)], unique=True
+            ),
+            # referral_rewards: a referrer's granted rewards, newest first
+            referral_rewards_collection.create_index(
+                [("referrer_user_id", 1), ("status", 1), ("granted_at", -1)]
+            ),
+        )
+    except Exception as e:
+        log.error(f"Error creating referral indexes: {e!s}")
         raise

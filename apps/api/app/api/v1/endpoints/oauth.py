@@ -1,7 +1,7 @@
 import secrets
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 import httpx
 from workos import WorkOSClient
@@ -17,6 +17,7 @@ from app.constants.auth import (
     WOS_SESSION_COOKIE,
 )
 from app.constants.cache import MOBILE_REDIRECT_TTL
+from app.constants.referrals import REFERRAL_COOKIE_NAME
 from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.services.composio.composio_service import get_composio_service
@@ -308,6 +309,7 @@ async def workos_desktop_callback(
 
 @router.get("/workos/callback")
 async def workos_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
 ) -> RedirectResponse:
@@ -362,8 +364,12 @@ async def workos_callback(
         ]
         log.set(fields_extracted=fields_extracted)
 
+        # Referral attribution: the invite link sets a first-party gaia_ref
+        # cookie that rides this top-level redirect. Consumed only for new users.
+        ref_code = request.cookies.get(REFERRAL_COOKIE_NAME)
+
         # Store user info in our database
-        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(name, email, picture_url, ref_code=ref_code)
         log.set(user_id=str(user_id), is_new_user=is_new_user)
 
         # Redirect to return_url if provided and safe, otherwise default /redirect
@@ -382,6 +388,10 @@ async def workos_callback(
             secure=settings.ENV == "production",
             samesite="lax",
         )
+
+        # Clear the referral cookie once consumed so it can't re-attribute.
+        if ref_code:
+            response.delete_cookie(REFERRAL_COOKIE_NAME)
 
         return response
 

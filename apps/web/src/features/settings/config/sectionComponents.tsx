@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { ReferralsSettings } from "@/features/referrals";
 import AccountSettings from "@/features/settings/components/AccountSettings";
 import { IntegrationInstructionsSettings } from "@/features/settings/components/IntegrationInstructionsSettings";
 import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
@@ -33,6 +34,8 @@ export function SectionComponent({
       return <LinkedAccountsSettings />;
     case "subscription":
       return <SubscriptionSettings />;
+    case "referrals":
+      return <ReferralsSettings />;
     case "usage":
       return <UsageSettings />;
     case "preferences":

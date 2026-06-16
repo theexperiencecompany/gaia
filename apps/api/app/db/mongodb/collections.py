@@ -113,6 +113,8 @@ _COLLECTION_MAPPINGS = {
     "payments_collection": "payments",
     "subscriptions_collection": "subscriptions",
     "plans_collection": "subscription_plans",
+    "referrals_collection": "referrals",
+    "referral_rewards_collection": "referral_rewards",
     "usage_snapshots_collection": "usage_snapshots",
     "ai_models_collection": "ai_models",
     "integrations_collection": "integrations",

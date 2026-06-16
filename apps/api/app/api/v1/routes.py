@@ -28,6 +28,7 @@ from app.api.v1.endpoints import (
     payments,
     platform_auth,
     platform_links,
+    referrals,
     reminders,
     search,
     sessions,
@@ -77,6 +78,7 @@ router.include_router(reminders.router, tags=["Reminders"])
 router.include_router(skills.router, tags=["Skills"])
 router.include_router(support.router, tags=["Support"])
 router.include_router(payments.router, prefix="/payments", tags=["Payments"])
+router.include_router(referrals.router, prefix="/referrals", tags=["Referrals"])
 router.include_router(usage.router, tags=["Usage"])
 router.include_router(tools.router, tags=["Tools"])
 router.include_router(models.router, tags=["Models"])

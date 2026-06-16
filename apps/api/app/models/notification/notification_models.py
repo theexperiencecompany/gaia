@@ -39,6 +39,7 @@ class NotificationSourceEnum(str, Enum):
     WORKFLOW_COMPLETED = "workflow_completed"
     WORKFLOW_FAILED = "workflow_failed"
     SYSTEM_WORKFLOWS_PROVISIONED = "system_workflows_provisioned"
+    REFERRAL_REWARD = "referral_reward"
 
 
 class ActionType(str, Enum):
