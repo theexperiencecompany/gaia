@@ -36,7 +36,7 @@ export default function TodoShowcaseSection() {
           contentSections={CONTENT_SECTIONS}
         />
       }
-      containerClassName="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-6 sm:px-4"
+      containerClassName="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-4 sm:px-6 lg:px-8"
       sidebarClassName="flex w-full flex-col justify-end gap-7 lg:w-[25%] pb-13"
     />
   );

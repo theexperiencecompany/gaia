@@ -42,8 +42,8 @@ const PrivacyPolicy = () => {
   return (
     <>
       <JsonLd data={[privacySchema, breadcrumbSchema]} />
-      <div className="flex w-screen flex-col items-center justify-center">
-        <div className="privacy-policy max-w-(--breakpoint-xl) p-6 pt-24">
+      <div className="flex w-full flex-col items-center justify-center">
+        <div className="privacy-policy w-full max-w-(--breakpoint-xl) px-4 pb-6 pt-24 sm:px-6 lg:px-8">
           <h1 className="mb-4 text-2xl font-bold">Privacy Policy</h1>
           <p className="mb-4">
             <strong>Effective Date:</strong> July 3, 2025

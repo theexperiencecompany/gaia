@@ -151,7 +151,7 @@ export default function FinalSection({
   }, []);
 
   return (
-    <div className="relative m-0! flex min-h-screen w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
+    <div className="relative m-0! flex min-h-svh w-full flex-col items-center justify-center gap-4 overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
       {shouldPreloadOthers && (
         <div
           aria-hidden="true"
@@ -175,7 +175,7 @@ export default function FinalSection({
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
-      <div className="absolute bottom-6 right-6 z-[1002]">
+      <div className="absolute bottom-6 right-6 z-1002">
         <TimeOfDayToggle timeOfDay={timeOfDay} onPress={handleTimeChange} />
       </div>
 
@@ -214,7 +214,7 @@ export default function FinalSection({
       </m.div>
 
       <div
-        className={`relative z-20 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
+        className={`relative z-20 ${showSocials ? "mb-14 sm:mb-20 md:mb-30 max-[760px]:mb-6 max-[680px]:mb-2" : "mb-8 sm:mb-10 max-[760px]:mb-4"} flex h-full w-full max-w-5xl flex-col items-center justify-start gap-4 max-[760px]:gap-3 max-[680px]:gap-2`}
       >
         <div
           onClick={onTextClick ?? handleInternalClick}
@@ -223,7 +223,7 @@ export default function FinalSection({
           <TextSoftBlurIn
             text="Stop doing everything yourself."
             as="h2"
-            className="z-10 text-center text-[2.2rem] font-serif font-normal sm:text-5xl md:text-8xl tracking-tight leading-snug text-white"
+            className="z-10 max-w-[12ch] text-balance px-2 text-center text-[clamp(1.75rem,8.3vw,5rem)] leading-[1.05] font-serif font-normal tracking-tight text-white sm:text-5xl sm:leading-[1.08] md:text-8xl max-[760px]:text-[clamp(1.7rem,8vw,2.8rem)]"
             gradient={
               isDark || timeOfDay === "morning"
                 ? "linear-gradient(to bottom, #ffffff, #dbdbdb)"
@@ -233,35 +233,35 @@ export default function FinalSection({
         </div>
 
         <div
-          className={`z-1 mb-6 max-w-(--breakpoint-md) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter sm:px-0 sm:text-xl sm:leading-7 md:text-2xl ${isDark ? "text-white" : "text-white"}`}
+          className="z-1 mb-3 max-w-sm px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-white sm:mb-6 sm:max-w-(--breakpoint-md) sm:px-0 sm:text-xl sm:leading-7 md:text-2xl max-[760px]:mb-2 max-[760px]:text-[1.05rem] max-[760px]:leading-6"
         >
           Join thousands of professionals who gave their grunt work to GAIA.
         </div>
-        <div className="flex gap-4">
+        <div className="flex w-full max-w-sm flex-col gap-3 px-2 sm:w-auto sm:max-w-none sm:flex-row sm:gap-4 sm:px-0">
           <GetStartedButton
             btnColor={isDark ? "#00bbff" : "#000000"}
             classname={
               isDark
-                ? "text-black! text-lg h-12 px-2 rounded-2xl hover:scale-105"
-                : "text-white! text-lg h-12 px-2 rounded-2xl hover:scale-105"
+                ? "w-full sm:w-auto text-black! text-lg h-12 px-2 rounded-2xl hover:scale-105 max-[760px]:h-11 max-[760px]:text-base"
+                : "w-full sm:w-auto text-white! text-lg h-12 px-2 rounded-2xl hover:scale-105 max-[760px]:h-11 max-[760px]:text-base"
             }
             text="Try GAIA Free"
           />
           <GetStartedButton
             btnColor="#ffffff"
-            classname="text-lg h-12 px-2 rounded-2xl hover:scale-105"
+            classname="w-full sm:w-auto text-lg h-12 px-2 rounded-2xl hover:scale-105 max-[760px]:h-11 max-[760px]:text-base"
             text="Explore"
             href="/use-cases"
           />
         </div>
         <p
-          className={`text-sm font-light mt-1 ${isDark ? "text-zinc-400" : "text-white/60"}`}
+          className={`mt-1 text-sm font-light max-[760px]:text-xs ${isDark ? "text-zinc-400" : "text-white/60"}`}
         >
           Free forever for personal use. No credit card.
         </p>
 
         {showSocials && (
-          <div className="mt-4 flex items-center gap-3 sm:mt-6 sm:gap-2">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-3 sm:mt-6 sm:gap-2 max-[700px]:hidden">
             {SOCIAL_LINKS.map(
               ({ href, ariaLabel, buttonProps, icon, label }, index) => {
                 const color = `hover:text-[${buttonProps.color}]`;
