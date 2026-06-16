@@ -140,8 +140,15 @@ export default function ChatBubbleUser({
           </div>
         </div>
 
+        {/* Queued: show a persistent "Queued" label, no date or actions. */}
+        {!disableActions && queued && (
+          <div className="flex flex-col items-end gap-1 pr-13 pb-1">
+            <span className="text-xs text-zinc-400 select-none">Queued</span>
+          </div>
+        )}
+
         {/* Actions row below bubble, aligned under content (not avatar) */}
-        {!disableActions && (
+        {!disableActions && !queued && (
           <div className="flex flex-col items-end gap-1 pr-13 pb-1 opacity-0 transition-all group-hover:opacity-100">
             {date && (
               <span
