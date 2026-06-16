@@ -43,7 +43,7 @@ const RECALL_MESSAGES: ChatMessage[] = [
 export default function MemoryRecallCard() {
   return (
     <div className="h-full w-full">
-      <ChatDemo messages={RECALL_MESSAGES} minHeight={260} compact />
+      <ChatDemo messages={RECALL_MESSAGES} minHeight={200} compact />
     </div>
   );
 }
