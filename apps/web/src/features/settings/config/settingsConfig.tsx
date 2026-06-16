@@ -11,7 +11,6 @@ import {
   VoiceIdIcon,
   WhatsappIcon,
 } from "@icons";
-
 import { PostageStampIcon } from "@/components/shared/icons";
 
 export interface SettingsMenuItem {
@@ -25,67 +24,66 @@ export interface SettingsMenuItem {
   external?: boolean;
 }
 
-// Ordered by concern: who you are, how GAIA behaves for you, then billing.
 export const settingsPageItems: SettingsMenuItem[] = [
-  {
-    key: "account",
-    label: "Account",
-    icon: UserCircleIcon,
-    href: "/settings?section=account",
-  },
   {
     key: "profile",
     label: "Profile Card",
     icon: PostageStampIcon,
-    href: "/settings?section=profile",
+    href: "/settings/profile",
+  },
+  {
+    key: "account",
+    label: "Account",
+    icon: UserCircleIcon,
+    href: "/settings/account",
   },
   {
     key: "linked-accounts",
     label: "Linked Accounts",
     icon: Link04Icon,
-    href: "/settings?section=linked-accounts",
-  },
-  {
-    key: "preferences",
-    label: "Preferences",
-    icon: MessageMultiple02Icon,
-    href: "/settings?section=preferences",
-  },
-  {
-    key: "voice",
-    label: "Voices",
-    icon: VoiceIdIcon,
-    href: "/settings?section=voice",
-  },
-  {
-    key: "instructions",
-    label: "Custom Instructions",
-    icon: NoteEditIcon,
-    href: "/settings?section=instructions",
-  },
-  {
-    key: "memory",
-    label: "Memories",
-    icon: Brain02Icon,
-    href: "/settings?section=memory",
+    href: "/settings/linked-accounts",
   },
   {
     key: "notifications",
     label: "Notifications",
     icon: NotificationIcon,
-    href: "/settings?section=notifications",
+    href: "/settings/notifications",
   },
   {
     key: "subscription",
     label: "Subscription",
     icon: CreditCardIcon,
-    href: "/settings?section=subscription",
+    href: "/settings/subscription",
   },
   {
     key: "usage",
     label: "Usage",
     icon: ChartLineData02Icon,
-    href: "/settings?section=usage",
+    href: "/settings/usage",
+  },
+  {
+    key: "preferences",
+    label: "Preferences",
+    icon: MessageMultiple02Icon,
+    href: "/settings/preferences",
+  },
+  {
+    key: "voice",
+    label: "Voices",
+    icon: VoiceIdIcon,
+    href: "/settings/voice",
+  },
+  {
+    key: "instructions",
+    label: "Custom Instructions",
+    icon: NoteEditIcon,
+    href: "/settings/instructions",
+  },
+  {
+    key: "memory",
+    label: "Memories",
+    icon: Brain02Icon,
+    href: "/settings/memory",
   },
 ];
 

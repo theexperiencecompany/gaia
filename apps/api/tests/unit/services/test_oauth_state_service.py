@@ -6,8 +6,8 @@ import pytest
 
 from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
 from app.services.oauth.oauth_state_service import (
-    _is_safe_redirect_path,
     create_oauth_state,
+    is_safe_redirect_path,
     validate_and_consume_oauth_state,
 )
 
@@ -30,93 +30,93 @@ def mock_redis_client():
 
 
 # ---------------------------------------------------------------------------
-# _is_safe_redirect_path (synchronous, no mocks needed)
+# is_safe_redirect_path (synchronous, no mocks needed)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestIsSafeRedirectPath:
     def test_valid_simple_path(self):
-        assert _is_safe_redirect_path("/c") is True
+        assert is_safe_redirect_path("/c") is True
 
     def test_valid_nested_path(self):
-        assert _is_safe_redirect_path("/settings/integrations") is True
+        assert is_safe_redirect_path("/settings/integrations") is True
 
     def test_valid_path_with_query_params(self):
-        assert _is_safe_redirect_path("/c?tab=chat") is True
+        assert is_safe_redirect_path("/c?tab=chat") is True
 
     def test_empty_string_returns_false(self):
-        assert _is_safe_redirect_path("") is False
+        assert is_safe_redirect_path("") is False
 
     def test_none_returns_false(self):
         # Although type-hinted as str, the code handles falsy values
-        assert _is_safe_redirect_path(None) is False
+        assert is_safe_redirect_path(None) is False
 
     def test_relative_path_without_slash_returns_false(self):
-        assert _is_safe_redirect_path("settings") is False
+        assert is_safe_redirect_path("settings") is False
 
     def test_absolute_url_with_http_returns_false(self):
-        assert _is_safe_redirect_path("/redirect?url=http://evil.com") is False
+        assert is_safe_redirect_path("/redirect?url=http://evil.com") is False
 
     def test_absolute_url_with_https_returns_false(self):
-        assert _is_safe_redirect_path("/redirect?url=https://evil.com") is False
+        assert is_safe_redirect_path("/redirect?url=https://evil.com") is False
 
     def test_protocol_relative_url_returns_false(self):
-        assert _is_safe_redirect_path("//evil.com") is False
+        assert is_safe_redirect_path("//evil.com") is False
 
     def test_double_slash_in_path_returns_false(self):
-        assert _is_safe_redirect_path("/foo//bar") is False
+        assert is_safe_redirect_path("/foo//bar") is False
 
     def test_javascript_scheme_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=javascript:alert(1)") is False
+        assert is_safe_redirect_path("/test?x=javascript:alert(1)") is False
 
     def test_javascript_scheme_uppercase_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=JAVASCRIPT:alert(1)") is False
+        assert is_safe_redirect_path("/test?x=JAVASCRIPT:alert(1)") is False
 
     def test_javascript_scheme_mixed_case_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=JaVaScRiPt:alert(1)") is False
+        assert is_safe_redirect_path("/test?x=JaVaScRiPt:alert(1)") is False
 
     def test_data_scheme_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=data:text/html,<h1>hi</h1>") is False
+        assert is_safe_redirect_path("/test?x=data:text/html,<h1>hi</h1>") is False
 
     def test_vbscript_scheme_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=vbscript:msgbox") is False
+        assert is_safe_redirect_path("/test?x=vbscript:msgbox") is False
 
     def test_file_scheme_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=file:///etc/passwd") is False
+        assert is_safe_redirect_path("/test?x=file:///etc/passwd") is False
 
     def test_ftp_scheme_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=ftp://evil.com") is False
+        assert is_safe_redirect_path("/test?x=ftp://evil.com") is False
 
     def test_ftps_scheme_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=ftps://evil.com") is False
+        assert is_safe_redirect_path("/test?x=ftps://evil.com") is False
 
     def test_ws_scheme_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=ws://evil.com") is False
+        assert is_safe_redirect_path("/test?x=ws://evil.com") is False
 
     def test_wss_scheme_returns_false(self):
-        assert _is_safe_redirect_path("/test?x=wss://evil.com") is False
+        assert is_safe_redirect_path("/test?x=wss://evil.com") is False
 
     def test_path_traversal_returns_false(self):
-        assert _is_safe_redirect_path("/../../etc/passwd") is False
+        assert is_safe_redirect_path("/../../etc/passwd") is False
 
     def test_path_traversal_middle_returns_false(self):
-        assert _is_safe_redirect_path("/foo/../bar") is False
+        assert is_safe_redirect_path("/foo/../bar") is False
 
     def test_at_sign_returns_false(self):
-        assert _is_safe_redirect_path("/user@evil.com") is False
+        assert is_safe_redirect_path("/user@evil.com") is False
 
     def test_at_sign_in_query_returns_false(self):
-        assert _is_safe_redirect_path("/foo?email=user@evil.com") is False
+        assert is_safe_redirect_path("/foo?email=user@evil.com") is False
 
     def test_valid_path_with_hash_fragment(self):
-        assert _is_safe_redirect_path("/c#section") is True
+        assert is_safe_redirect_path("/c#section") is True
 
     def test_valid_path_with_numeric_segment(self):
-        assert _is_safe_redirect_path("/c/12345") is True
+        assert is_safe_redirect_path("/c/12345") is True
 
     def test_single_slash_is_valid(self):
-        assert _is_safe_redirect_path("/") is True
+        assert is_safe_redirect_path("/") is True
 
 
 # ---------------------------------------------------------------------------

@@ -1,86 +1,239 @@
+"""Canonical timezone module — the single source of truth for the API.
+
+Timezones bite because a bare ``str`` can secretly be an IANA name
+(``"Asia/Kolkata"``), a fixed offset (``"+05:30"``), ``"UTC"``, ``""`` or
+``None``, and nothing forces a caller to say which. This module makes illegal
+states unrepresentable: the :class:`Timezone` value object is *always valid*
+(constructed only via :meth:`Timezone.parse` / :meth:`Timezone.try_parse`), so
+``.tzinfo`` always resolves and no consumer ever re-implements parsing. Bare
+``str`` survives only at the Mongo / HTTP / LangGraph-config boundaries.
+
+Two distinct concepts (do not cross them):
+
+* **Home timezone** — where the user lives. Drives the agent's "now",
+  notification/display formatting, todos, and the *default* for a new schedule.
+  Resolved by :func:`resolve_home_timezone` (DB profile, healed from header).
+* **Schedule timezone** — the wall-clock zone one specific cron/reminder/event
+  fires in. Stored on the task; passed explicitly to cron math. Defaults to the
+  home timezone at creation time, but is independent thereafter.
 """
-Timezone utilities for datetime manipulation.
 
-This module provides functions to handle timezone operations while preserving
-the actual time values (not converting them across timezones).
-"""
+from __future__ import annotations
 
-from datetime import UTC, datetime, timezone as builtin_timezone
-from typing import Union
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta, timezone as _timezone, tzinfo as _tzinfo
+from enum import Enum
+import re
+from zoneinfo import ZoneInfo
 
-import pytz
+from langchain_core.runnables import RunnableConfig
+
+from shared.py.wide_events import log
+
+# ``±HH:MM`` fixed-offset form (e.g. "+05:30", "-08:00").
+_OFFSET_RE = re.compile(r"^[+-]\d{2}:\d{2}$")
 
 
-def parse_timezone(
-    timezone_input: Union[str, builtin_timezone],
-) -> Union[builtin_timezone, pytz.BaseTzInfo]:
-    """Parse a timezone name or object into a timezone object.
+def _offset_value(total_seconds: int) -> str:
+    """Render a whole-second UTC offset as a canonical ``±HH:MM`` string."""
+    sign = "+" if total_seconds >= 0 else "-"
+    total_seconds = abs(total_seconds)
+    return f"{sign}{total_seconds // 3600:02d}:{total_seconds % 3600 // 60:02d}"
 
-    Raises ValueError on an unrecognized timezone string.
+
+def _canonical_from_tzinfo(tz: _tzinfo) -> str:
+    """Best canonical string for an arbitrary ``tzinfo`` (IANA key or offset)."""
+    key = getattr(tz, "key", None)  # ZoneInfo exposes its IANA name here
+    if key:
+        return str(key)
+    if tz is UTC:
+        return "UTC"
+    offset = tz.utcoffset(None)
+    return _offset_value(int(offset.total_seconds())) if offset is not None else "UTC"
+
+
+class Timezone:
+    """An always-valid timezone: an IANA name, a fixed UTC offset, or UTC.
+
+    There is no public way to hold an invalid ``Timezone`` — construct via
+    :meth:`parse` / :meth:`try_parse`, so every consumer can rely on
+    :attr:`tzinfo` resolving and never re-parse a raw string itself.
     """
-    if isinstance(timezone_input, str):
-        # Handle common timezone string formats
-        if timezone_input.upper() == "UTC":
-            return UTC
 
+    __slots__ = ("tzinfo", "value")
+
+    value: str
+    tzinfo: _tzinfo
+
+    def __init__(self, value: str, tzinfo: _tzinfo) -> None:
+        # Construct through parse()/try_parse()/utc(); these guarantee validity.
+        self.value = value
+        self.tzinfo = tzinfo
+
+    @classmethod
+    def utc(cls) -> Timezone:
+        """The UTC timezone."""
+        return cls("UTC", UTC)
+
+    @classmethod
+    def parse(cls, raw: str | _tzinfo | Timezone | None) -> Timezone:
+        """Parse any reasonable input into a ``Timezone``.
+
+        Accepts an existing ``Timezone`` (idempotent), a ``tzinfo``, an IANA
+        name, a ``±HH:MM`` offset, ``"UTC"``, or ``None``. Falls back to UTC
+        (with a warning) for blank/unrecognized input, so format and
+        notification paths never raise on a bad stored preference.
+        """
+        parsed = cls.try_parse(raw)
+        if parsed is not None:
+            return parsed
+        if raw is not None and not isinstance(raw, (Timezone, _tzinfo)):
+            log.warning("Timezone.parse: unrecognized timezone, using UTC", timezone=raw)
+        return cls.utc()
+
+    @classmethod
+    def try_parse(cls, raw: str | _tzinfo | Timezone | None) -> Timezone | None:
+        """Like :meth:`parse` but returns ``None`` for blank/invalid input.
+
+        Distinguishes "no usable zone" from an explicit ``"UTC"`` (which yields
+        ``Timezone.utc()``) — required by :func:`resolve_home_timezone`.
+        """
+        if isinstance(raw, Timezone):
+            return raw
+        if raw is None:
+            return None
+        if isinstance(raw, _tzinfo):
+            return cls(_canonical_from_tzinfo(raw), raw)
+        candidate = raw.strip()
+        if not candidate:
+            return None
+        if candidate.upper() == "UTC":
+            return cls.utc()
+        if _OFFSET_RE.match(candidate):
+            hours = int(candidate[1:3])
+            minutes = int(candidate[4:6])
+            if hours > 23 or minutes > 59:
+                return None
+            sign = 1 if candidate[0] == "+" else -1
+            delta = timedelta(hours=hours, minutes=minutes)
+            return cls(candidate, _timezone(sign * delta))
         try:
-            # Try parsing as pytz timezone (e.g., 'America/New_York')
-            pytz_tz = pytz.timezone(timezone_input)
-            return pytz_tz
-        except pytz.UnknownTimeZoneError:
-            raise ValueError(
-                f"Unknown timezone string: '{timezone_input}'. Use standard timezone names like 'UTC', 'America/New_York', 'Asia/Kolkata', etc."
-            )
+            return cls(candidate, ZoneInfo(candidate))
+        except Exception:
+            return None
 
-    elif isinstance(timezone_input, builtin_timezone):
-        return timezone_input
+    @property
+    def is_utc(self) -> bool:
+        """Whether this is UTC."""
+        return self.value.upper() == "UTC"
 
-    else:
-        raise ValueError(
-            f"Invalid timezone type: {type(timezone_input)}. Expected string or timezone object."
-        )
+    def now(self) -> datetime:
+        """Current instant expressed in this zone (tz-aware)."""
+        return datetime.now(self.tzinfo)
+
+    def localize(self, instant: datetime) -> datetime:
+        """``instant`` (any tz-aware datetime) re-expressed in this zone."""
+        return instant.astimezone(self.tzinfo)
+
+    def format(self, instant: datetime, fmt: str = "%I:%M %p %Z") -> str:
+        """Render ``instant`` as local time, leading zero stripped (``"9:05 AM"``)."""
+        return self.localize(instant).strftime(fmt).lstrip("0")
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Timezone) and other.value == self.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __repr__(self) -> str:
+        return f"Timezone({self.value!r})"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+def is_valid_timezone(raw: str | None) -> bool:
+    """Whether ``raw`` is a usable IANA name or ``±HH:MM`` offset (``"UTC"`` ok)."""
+    return Timezone.try_parse(raw) is not None
+
+
+class TimezoneSource(str, Enum):
+    """Which input produced a resolved home timezone (emitted for observability)."""
+
+    USER_PROFILE = "user_profile"
+    X_TIMEZONE_HEADER = "x_timezone_header"
+    AGENT_CONFIG = "agent_config"
+    FALLBACK_UTC = "fallback_utc"
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedTimezone:
+    """Result of resolving a user's home timezone."""
+
+    timezone: Timezone
+    source: TimezoneSource
+    should_heal: bool  # write the resolved zone back to user.timezone (DB)
+
+
+def resolve_home_timezone(stored: str | None, header: str | None) -> ResolvedTimezone:
+    """The one home-timezone precedence rule, pure and side-effect-free.
+
+    1. A real (non-UTC) stored ``user.timezone`` is authoritative.
+    2. Else (empty OR low-confidence ``"UTC"`` — often a junk default that then
+       sticks forever and silently runs everything in UTC) a valid non-UTC
+       header wins, and ``should_heal`` asks the caller to backfill the DB so
+       header-less background paths converge.
+    3. Else a genuine stored ``"UTC"``, else UTC.
+    """
+    stored_tz = Timezone.try_parse(stored)
+    if stored_tz is not None and not stored_tz.is_utc:
+        return ResolvedTimezone(stored_tz, TimezoneSource.USER_PROFILE, should_heal=False)
+
+    header_tz = Timezone.try_parse(header)
+    if header_tz is not None and not header_tz.is_utc:
+        return ResolvedTimezone(header_tz, TimezoneSource.X_TIMEZONE_HEADER, should_heal=True)
+
+    return ResolvedTimezone(
+        stored_tz or Timezone.utc(), TimezoneSource.FALLBACK_UTC, should_heal=False
+    )
+
+
+def home_timezone_from_config(config: RunnableConfig) -> Timezone:
+    """Home timezone from a LangGraph ``configurable`` (agent runs).
+
+    The agent config carries a ``±HH:MM`` ``user_timezone`` set at run assembly.
+    Falls back to UTC with a loud warning — the silent-UTC drift that fires
+    scheduled work at the wrong hour.
+    """
+    raw = (config.get("configurable") or {}).get("user_timezone")
+    if raw:
+        log.set(timezone_source=TimezoneSource.AGENT_CONFIG.value, user_timezone=raw)
+        return Timezone.parse(raw)
+    log.set(timezone_source=TimezoneSource.FALLBACK_UTC.value, user_timezone="+00:00")
+    log.warning("home_timezone_from_config: no user_timezone in config; using UTC")
+    return Timezone.utc()
 
 
 def format_local_time(
-    instant: datetime,
-    timezone_name: str | None,
-    fmt: str = "%I:%M %p %Z",
+    instant: datetime, timezone_name: str | None, fmt: str = "%I:%M %p %Z"
 ) -> str:
-    """Render ``instant`` as a human-readable local time string.
+    """Render ``instant`` (tz-aware) as local time in ``timezone_name``.
 
-    Converts ``instant`` (a tz-aware datetime) into ``timezone_name`` and formats
-    it with ``fmt`` — defaulting to e.g. ``"10:22 PM PST"``. The leading zero on
-    the 12-hour clock is stripped (``"09:05 AM"`` -> ``"9:05 AM"``). Falls back to
-    UTC when the timezone is missing or invalid, so a bad/absent preference never
-    raises into a notification path.
+    Convenience wrapper over ``Timezone.parse(...).format(...)`` for the many
+    string-in callers (notifications); offset-aware and never raises.
     """
-    try:
-        tz = parse_timezone(timezone_name or "UTC")
-    except ValueError:
-        tz = UTC
-    local = instant.astimezone(tz)
-    return local.strftime(fmt).lstrip("0")
+    return Timezone.parse(timezone_name).format(instant, fmt)
 
 
 def is_within_local_daytime(
-    instant: datetime,
-    timezone_name: str | None,
-    start_hour: int,
-    end_hour: int,
+    instant: datetime, timezone_name: str | None, start_hour: int, end_hour: int
 ) -> bool:
-    """Return whether ``instant`` falls inside the local daytime window.
-
-    Converts ``instant`` (any tz-aware datetime) into ``timezone_name`` and
-    checks whether the local hour is within ``[start_hour, end_hour)``. Used to
-    avoid pushing proactive notifications during a user's night. Falls back to
-    UTC when the timezone is missing or invalid.
-    """
-    tz = parse_timezone(timezone_name or "UTC")
-    local_hour = instant.astimezone(tz).hour
+    """Whether ``instant`` falls inside ``[start_hour, end_hour)`` local time."""
+    local_hour = Timezone.parse(timezone_name).localize(instant).hour
     return start_hour <= local_hour < end_hour
 
 
-# Commonly used timezone constants for convenience
+# Commonly used timezone constants for convenience.
 TIMEZONE_UTC = UTC
 TIMEZONE_KOLKATA = "Asia/Kolkata"
 TIMEZONE_NEW_YORK = "America/New_York"

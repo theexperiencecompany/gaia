@@ -1,56 +1,229 @@
-"""
-Mem0 LangChain Tools for memory management.
+"""LangChain memory tools backed by the GAIA memory engine (plan F4).
 
-These tools allow agents to store, search, and retrieve memories,
-enabling them to maintain context and learn from past interactions.
+Every tool streams one structured event to the frontend via the LangGraph
+stream writer under the single registry key ``memory_data``. The payload is
+discriminated on ``action`` — these exact JSON shapes are the frontend
+contract (the tool cards mirror them):
+
+    add      {"action": "add", "memories": [MemoryEntry], "folder": str,
+              "outcome": "new" | "updated" | "extended" | "duplicate",
+              "message": str}
+    search   {"action": "search", "query": str, "folder": str | null,
+              "memories": [MemoryEntry], "message": str}
+    update   {"action": "update", "memories": [MemoryEntry], "message": str}
+    forget   {"action": "forget", "memory_id": str, "reason": str,
+              "message": str}
+    journal  {"action": "journal", "query": str | null,
+              "episodes": [{"date": "YYYY-MM-DD",
+                            "entries": [{"time": str | null, "text": str,
+                                         "source": str | null}],
+                            "summary": str | null}],
+              "message": str}
+    document {"action": "document",
+              "document": {"doc_type": str, "content": str, "version": int,
+                           "updated_at": str},
+              "updated": bool, "message": str}
+
+``MemoryEntry`` items are serialized exactly as the REST API serializes
+``app.models.memory_models.MemoryEntry`` (``model_dump(mode="json")``,
+snake_case keys), with ``content`` capped at MEMORY_TOOL_CONTENT_MAX_CHARS.
+Document ``content`` is capped at MEMORY_TOOL_DOCUMENT_MAX_CHARS. ``doc_type``
+is a ``MemoryDocType`` value (``user_md`` ... ``insights_md``).
 """
 
-from typing import Annotated
+from datetime import date as date_type
+from typing import Annotated, Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
 
+from app.constants.memory import (
+    DEFAULT_RECALL_LIMIT,
+    MEMORY_DOC_FILENAMES,
+    MEMORY_TOOL_CONTENT_MAX_CHARS,
+    MEMORY_TOOL_DOCUMENT_MAX_CHARS,
+    MemoryDocType,
+    MemorySourceType,
+    ReconcileOutcome,
+)
 from app.decorators import with_doc
-from app.services.memory_service import memory_service
+from app.memory.engine import memory_engine
+from app.memory.retrieval import EpisodeHit
+from app.models.memory_models import MemoryDocument, MemoryEntry, MemoryEpisode
 from app.templates.docstrings.memory_tool_docs import (
     ADD_MEMORY,
+    FORGET_MEMORY,
+    GET_JOURNAL,
+    READ_MEMORY_DOCUMENT,
+    SEARCH_JOURNAL,
     SEARCH_MEMORY,
+    UPDATE_MEMORY,
+    UPDATE_MEMORY_DOCUMENT,
 )
+from app.utils.chat_utils import get_user_id_from_config
+from shared.py.wide_events import MemoryContext, UserContext, log
+
+_ERR_NO_USER_ID = "Error: user_id not found in config"
+
+# How reconciliation resolved an explicit add, as the frontend payload says it.
+_ADD_OUTCOMES: dict[ReconcileOutcome, str] = {
+    ReconcileOutcome.NEW: "new",
+    ReconcileOutcome.UPDATES: "updated",
+    ReconcileOutcome.EXTENDS: "extended",
+    ReconcileOutcome.DUPLICATE: "duplicate",
+}
+
+# Friendly doc names ('user', 'agenda', ...) plus the canonical enum values.
+_DOC_TYPE_ALIASES: dict[str, MemoryDocType] = {
+    **{doc_type.value: doc_type for doc_type in MemoryDocType},
+    **{
+        filename.removesuffix(".md"): doc_type
+        for doc_type, filename in MEMORY_DOC_FILENAMES.items()
+    },
+}
+_DOC_TYPE_CHOICES = ", ".join(
+    filename.removesuffix(".md") for filename in MEMORY_DOC_FILENAMES.values()
+)
+
+
+def _stream_memory_data(payload: dict[str, Any]) -> None:
+    """Emit one ``memory_data`` event to the frontend (no-op outside a run)."""
+    try:
+        writer = get_stream_writer()
+    except RuntimeError:
+        return
+    writer({"memory_data": payload})
+
+
+def _cap(text: str, limit: int) -> str:
+    """Truncate text to a payload-friendly length."""
+    return text if len(text) <= limit else f"{text[: limit - 3]}..."
+
+
+def _entry_payload(entry: MemoryEntry) -> dict[str, Any]:
+    """Serialize a MemoryEntry exactly as the API does, with capped content."""
+    data = entry.model_dump(mode="json")
+    data["content"] = _cap(entry.content, MEMORY_TOOL_CONTENT_MAX_CHARS)
+    return data
+
+
+def _episode_payload(episode: MemoryEpisode) -> dict[str, Any]:
+    """Serialize a journal day for the ``journal`` tool-data payload."""
+    return {
+        "date": episode.date,
+        "entries": [
+            {
+                "time": entry.time,
+                "text": _cap(entry.text, MEMORY_TOOL_CONTENT_MAX_CHARS),
+                "source": entry.source,
+            }
+            for entry in episode.entries
+        ],
+        "summary": _cap(episode.summary, MEMORY_TOOL_CONTENT_MAX_CHARS)
+        if episode.summary
+        else None,
+    }
+
+
+def _document_payload(document: MemoryDocument) -> dict[str, Any]:
+    """Serialize a core document for the ``document`` tool-data payload."""
+    return {
+        "doc_type": document.doc_type.value,
+        "content": _cap(document.content, MEMORY_TOOL_DOCUMENT_MAX_CHARS),
+        "version": document.version,
+        "updated_at": document.updated_at.isoformat(),
+    }
+
+
+def _hits_to_episode_payloads(hits: list[EpisodeHit]) -> list[dict[str, Any]]:
+    """Group journal search hits by day into the shared episodes payload shape."""
+    by_date: dict[date_type, dict[str, Any]] = {}
+    for hit in hits:
+        day = by_date.setdefault(
+            hit.date, {"date": hit.date.isoformat(), "entries": [], "summary": None}
+        )
+        text = _cap(hit.text, MEMORY_TOOL_CONTENT_MAX_CHARS)
+        if hit.time is None:
+            # Timeless hits are day-summary matches, not journal lines.
+            day["summary"] = text
+        else:
+            day["entries"].append({"time": hit.time, "text": text, "source": None})
+    return [by_date[day] for day in sorted(by_date, reverse=True)]
+
+
+def _format_entry_line(index: int, entry: MemoryEntry) -> str:
+    """One search-result line: content, id, folder, date, score."""
+    details = [f"id: {entry.id}", f"folder: {entry.category_path}"]
+    mentioned = entry.mentioned_at or entry.created_at
+    if mentioned:
+        details.append(f"date: {mentioned.date().isoformat()}")
+    if entry.relevance_score is not None:
+        details.append(f"score: {entry.relevance_score:.2f}")
+    return f"{index}. {entry.content}\n   ({', '.join(details)})"
+
+
+def _resolve_doc_type(doc_type: str) -> MemoryDocType | None:
+    """Map a friendly or canonical document name onto MemoryDocType."""
+    return _DOC_TYPE_ALIASES.get(doc_type.strip().lower().removesuffix(".md"))
 
 
 @tool
 @with_doc(ADD_MEMORY)
 async def add_memory(
     config: RunnableConfig,
-    content: Annotated[str, "Memory content to store"],
-    metadata: Annotated[dict | None, "Additional metadata for the memory"] = None,
+    content: Annotated[str, "The fact to remember, as one self-contained assertion"],
+    folder: Annotated[
+        str | None,
+        "Optional folder to file under (e.g. 'work/gaia'); omit to auto-categorize",
+    ] = None,
 ) -> str:
-    if not config:
-        return "Error: Configuration required but not provided"
-
-    metadata = metadata or {}
-    user_id = config.get("metadata", {}).get("user_id")
-
+    user_id = get_user_id_from_config(config)
     if not user_id:
-        return "Error: User ID is required but not found in configuration"
+        return _ERR_NO_USER_ID
 
-    memory = await memory_service.store_memory(
-        message=content, user_id=user_id, metadata=metadata, async_mode=True
+    try:
+        retained = await memory_engine.retain_single(
+            user_id, content, category_path=folder, source_type=MemorySourceType.TOOL
+        )
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="create",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="create", success=False))
+        return f"Error storing memory: {e}"
+
+    entry = retained.entry
+    outcome = _ADD_OUTCOMES[retained.outcome]
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="create",
+            success=True,
+            memory_id=entry.id,
+            content_length=len(content),
+        ),
     )
-
-    if not memory:
-        return "Failed to store memory"
-
-    # For async mode, return event_id and status from metadata
-    mem_metadata = memory.metadata or {}
-    event_id = mem_metadata.get("event_id")
-    status = mem_metadata.get("status", "unknown")
-
-    if event_id:
-        return f"Memory queued for processing (Event ID: {event_id}, Status: {status})"
-
-    # Fallback for sync mode
-    return f"Memory stored successfully with ID: {memory.id}"
+    messages = {
+        "new": f"Memory stored under '{entry.category_path}'",
+        "updated": f"Updated an existing memory under '{entry.category_path}'",
+        "extended": f"Stored under '{entry.category_path}', extending a related memory",
+        "duplicate": f"Already known — matched an existing memory under '{entry.category_path}'",
+    }
+    message = messages[outcome]
+    _stream_memory_data(
+        {
+            "action": "add",
+            "memories": [_entry_payload(entry)],
+            "folder": entry.category_path,
+            "outcome": outcome,
+            "message": message,
+        }
+    )
+    return f"{message} (ID: {entry.id})"
 
 
 @tool
@@ -59,27 +232,408 @@ async def search_memory(
     config: RunnableConfig,
     query: Annotated[str, "Query string to search for"],
     limit: Annotated[int, "Maximum number of results to return"] = 5,
+    folder: Annotated[
+        str | None,
+        "Optional folder to search within (e.g. 'relationships'); includes subfolders",
+    ] = None,
 ) -> str:
-    if not config:
-        return "Error: Configuration required but not provided"
-
-    user_id = config.get("metadata", {}).get("user_id")
-
+    user_id = get_user_id_from_config(config)
     if not user_id:
-        return "Error: User ID is required but not found in configuration"
+        return _ERR_NO_USER_ID
 
-    results = await memory_service.search_memories(query=query, user_id=user_id, limit=limit)
+    try:
+        result = await memory_engine.recall(
+            user_id, query, limit=limit or DEFAULT_RECALL_LIMIT, category_prefix=folder
+        )
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="recall",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="recall", success=False))
+        raise
 
-    if not results.memories:
-        return "No matching memories found"
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="recall",
+            success=True,
+            query=query,
+            result_count=len(result.memories),
+        ),
+    )
 
-    # Format the results
-    formatted_results = "Found the following memories:\n\n"
-    for i, memory in enumerate(results.memories, 1):
-        score = f" (score: {memory.relevance_score:.2f})" if memory.relevance_score else ""
-        formatted_results += f"{i}. {memory.content}{score}\n\n"
+    scope = f" in '{folder}'" if folder else ""
+    message = (
+        f"Found {len(result.memories)} memories{scope}"
+        if result.memories
+        else f"No matching memories{scope}"
+    )
+    _stream_memory_data(
+        {
+            "action": "search",
+            "query": query,
+            "folder": folder,
+            "memories": [_entry_payload(entry) for entry in result.memories],
+            "message": message,
+        }
+    )
 
-    return formatted_results
+    if not result.memories:
+        return f"No matching memories found{scope}."
+    lines = [_format_entry_line(index, entry) for index, entry in enumerate(result.memories, 1)]
+    return f"{message}:\n\n" + "\n".join(lines)
 
 
-tools = [add_memory, search_memory]
+@tool
+@with_doc(UPDATE_MEMORY)
+async def update_memory(
+    config: RunnableConfig,
+    memory_id: Annotated[str, "ID of the memory to correct (from search_memory)"],
+    new_content: Annotated[str, "The corrected fact, as one self-contained assertion"],
+) -> str:
+    user_id = get_user_id_from_config(config)
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    try:
+        entry = await memory_engine.update_memory(user_id, memory_id, new_content)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="update",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="update", success=False))
+        raise
+
+    if entry is None:
+        log.warning("memory_tool_memory_not_found", operation="update", memory_id=memory_id)
+        return (
+            f"Error: memory {memory_id} not found or already superseded — "
+            "search_memory for the current version and use its ID."
+        )
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="update", success=True, memory_id=entry.id),
+    )
+
+    message = f"Memory corrected (now v{entry.version} under '{entry.category_path}')"
+    _stream_memory_data(
+        {"action": "update", "memories": [_entry_payload(entry)], "message": message}
+    )
+    return f"{message}. New ID: {entry.id}"
+
+
+@tool
+@with_doc(FORGET_MEMORY)
+async def forget_memory(
+    config: RunnableConfig,
+    memory_id: Annotated[str, "ID of the memory to forget (from search_memory)"],
+    reason: Annotated[str, "Short reason why this memory is being forgotten"],
+) -> str:
+    user_id = get_user_id_from_config(config)
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    try:
+        forgotten = await memory_engine.forget_memory(user_id, memory_id, reason)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="delete",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="delete", success=False))
+        raise
+
+    if not forgotten:
+        log.warning("memory_tool_memory_not_found", operation="delete", memory_id=memory_id)
+        return f"Error: memory {memory_id} not found."
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="delete", success=True, memory_id=memory_id),
+    )
+
+    message = "Memory forgotten"
+    _stream_memory_data(
+        {"action": "forget", "memory_id": memory_id, "reason": reason, "message": message}
+    )
+    return f"{message}: {memory_id} ({reason})"
+
+
+@tool
+@with_doc(SEARCH_JOURNAL)
+async def search_journal(
+    config: RunnableConfig,
+    query: Annotated[str, "What to look for in past activity"],
+) -> str:
+    user_id = get_user_id_from_config(config)
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    try:
+        hits = await memory_engine.recall_episodes(user_id, query)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="recall_episodes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="recall_episodes", success=False))
+        raise
+
+    episodes = _hits_to_episode_payloads(hits)
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="recall_episodes",
+            success=True,
+            query=query,
+            result_count=len(episodes),
+        ),
+    )
+    message = f"Found journal activity on {len(episodes)} days" if hits else "No journal matches"
+    _stream_memory_data(
+        {"action": "journal", "query": query, "episodes": episodes, "message": message}
+    )
+
+    if not hits:
+        return f"No journal entries matching '{query}'."
+    lines = [
+        f"- {hit.date.isoformat()}{f' {hit.time}' if hit.time else ' (day summary)'}: {hit.text}"
+        for hit in hits
+    ]
+    return f"{message}:\n" + "\n".join(lines)
+
+
+@tool
+async def search_conversations(
+    config: RunnableConfig,
+    query: Annotated[str, "What to look for verbatim in past conversations"],
+) -> str:
+    """Search raw past-conversation transcripts for verbatim details.
+
+    Use when the user references something specific from an earlier chat that
+    memory search does not surface — "that list you gave me", "the exact move
+    you suggested", "what did we say about X" — and quote the matching passage.
+    """
+    user_id = get_user_id_from_config(config)
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    try:
+        hits = await memory_engine.recall_transcripts(user_id, query)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="recall_transcripts",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="recall_transcripts", success=False))
+        raise
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="recall_transcripts",
+            success=True,
+            query=query,
+            result_count=len(hits),
+        ),
+    )
+    if not hits:
+        return f"No past-conversation passages matching '{query}'."
+    blocks = [
+        f"[{date}] (match {score:.2f})\n{_cap(text, MEMORY_TOOL_DOCUMENT_MAX_CHARS)}"
+        for date, text, score in hits
+    ]
+    return "Matching conversation passages:\n\n" + "\n\n".join(blocks)
+
+
+@tool
+@with_doc(GET_JOURNAL)
+async def get_journal(
+    config: RunnableConfig,
+    date: Annotated[str, "The day to read, as YYYY-MM-DD"],
+) -> str:
+    user_id = get_user_id_from_config(config)
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    try:
+        day = date_type.fromisoformat(date)
+    except ValueError:
+        log.warning("memory_tool_invalid_date", operation="episodes", start=date)
+        return f"Error: invalid date '{date}'. Use YYYY-MM-DD."
+
+    try:
+        response = await memory_engine.get_episodes(user_id, day, day)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="episodes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="episodes", success=False))
+        raise
+
+    episode = response.episodes[0] if response.episodes else None
+    if episode is None or (not episode.entries and not episode.summary):
+        log.set(
+            user=UserContext(id=user_id),
+            memory=MemoryContext(
+                operation="episodes",
+                success=True,
+                result_count=0,
+                start=date,
+                end=date,
+            ),
+        )
+        message = f"No journal entries for {date}"
+        _stream_memory_data(
+            {"action": "journal", "query": None, "episodes": [], "message": message}
+        )
+        return f"{message}."
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(
+            operation="episodes",
+            success=True,
+            result_count=len(episode.entries),
+            start=date,
+            end=date,
+        ),
+    )
+    message = f"Journal for {date} ({len(episode.entries)} entries)"
+    _stream_memory_data(
+        {
+            "action": "journal",
+            "query": None,
+            "episodes": [_episode_payload(episode)],
+            "message": message,
+        }
+    )
+
+    lines = [f"- {entry.time} {entry.text}".rstrip() for entry in episode.entries]
+    parts = [f"{message}:"]
+    if episode.summary:
+        parts.append(f"Summary: {episode.summary}")
+    if lines:
+        parts.append("\n".join(lines))
+    return "\n".join(parts)
+
+
+@tool
+@with_doc(READ_MEMORY_DOCUMENT)
+async def read_memory_document(
+    config: RunnableConfig,
+    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
+) -> str:
+    user_id = get_user_id_from_config(config)
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    resolved = _resolve_doc_type(doc_type)
+    if resolved is None:
+        log.warning("memory_tool_unknown_doc", operation="read_document", doc_type=doc_type)
+        return f"Error: unknown document '{doc_type}'. Use one of: {_DOC_TYPE_CHOICES}."
+
+    try:
+        document = await memory_engine.get_document(user_id, resolved)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="read_document",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="read_document", success=False))
+        raise
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="read_document", success=True, doc_type=resolved.value),
+    )
+    if document is None or not document.content.strip():
+        return (
+            f"The '{doc_type}' document is empty — nothing has been written to it yet. "
+            "It fills in automatically as memory accumulates."
+        )
+
+    _stream_memory_data(
+        {
+            "action": "document",
+            "document": _document_payload(document),
+            "updated": False,
+            "message": f"Read the '{doc_type}' memory document (v{document.version})",
+        }
+    )
+    return document.content
+
+
+@tool
+@with_doc(UPDATE_MEMORY_DOCUMENT)
+async def update_memory_document(
+    config: RunnableConfig,
+    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
+    content: Annotated[str, "The complete new markdown content (full replace)"],
+) -> str:
+    user_id = get_user_id_from_config(config)
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    resolved = _resolve_doc_type(doc_type)
+    if resolved is None:
+        log.warning("memory_tool_unknown_doc", operation="update_document", doc_type=doc_type)
+        return f"Error: unknown document '{doc_type}'. Use one of: {_DOC_TYPE_CHOICES}."
+
+    try:
+        document = await memory_engine.update_document(user_id, resolved, content)
+    except Exception as e:
+        log.error(
+            "memory_tool_failed",
+            operation="update_document",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        log.set(memory=MemoryContext(operation="update_document", success=False))
+        raise
+
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="update_document", success=True, doc_type=resolved.value),
+    )
+    message = f"Rewrote the '{doc_type}' memory document (now v{document.version})"
+    _stream_memory_data(
+        {
+            "action": "document",
+            "document": _document_payload(document),
+            "updated": True,
+            "message": message,
+        }
+    )
+    return f"{message}. The full content was replaced; prior versions are kept as history."
+
+
+tools = [
+    add_memory,
+    search_memory,
+    update_memory,
+    forget_memory,
+    search_journal,
+    search_conversations,
+    get_journal,
+    read_memory_document,
+    update_memory_document,
+]

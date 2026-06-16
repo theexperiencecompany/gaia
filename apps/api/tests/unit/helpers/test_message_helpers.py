@@ -81,8 +81,8 @@ class TestGetUserMemoriesSection:
         mock_results = MagicMock()
         mock_results.memories = [mem1, mem2]
 
-        with patch("app.helpers.message_helpers.memory_service") as mock_svc:
-            mock_svc.search_memories = AsyncMock(return_value=mock_results)
+        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
+            mock_svc.recall = AsyncMock(return_value=mock_results)
             result = await _get_user_memories_section("coffee", "user1")
 
         assert "User likes coffee" in result
@@ -93,8 +93,8 @@ class TestGetUserMemoriesSection:
         mock_results = MagicMock()
         mock_results.memories = None
 
-        with patch("app.helpers.message_helpers.memory_service") as mock_svc:
-            mock_svc.search_memories = AsyncMock(return_value=mock_results)
+        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
+            mock_svc.recall = AsyncMock(return_value=mock_results)
             result = await _get_user_memories_section("query", "user1")
 
         assert result == ""
@@ -104,24 +104,24 @@ class TestGetUserMemoriesSection:
         mock_results = MagicMock()
         mock_results.memories = []
 
-        with patch("app.helpers.message_helpers.memory_service") as mock_svc:
-            mock_svc.search_memories = AsyncMock(return_value=mock_results)
+        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
+            mock_svc.recall = AsyncMock(return_value=mock_results)
             result = await _get_user_memories_section("q", "u")
 
         assert result == ""
 
     @pytest.mark.asyncio
     async def test_none_results(self) -> None:
-        with patch("app.helpers.message_helpers.memory_service") as mock_svc:
-            mock_svc.search_memories = AsyncMock(return_value=None)
+        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
+            mock_svc.recall = AsyncMock(return_value=None)
             result = await _get_user_memories_section("q", "u")
 
         assert result == ""
 
     @pytest.mark.asyncio
     async def test_exception_returns_empty(self) -> None:
-        with patch("app.helpers.message_helpers.memory_service") as mock_svc:
-            mock_svc.search_memories = AsyncMock(side_effect=RuntimeError("mem fail"))
+        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
+            mock_svc.recall = AsyncMock(side_effect=RuntimeError("mem fail"))
             result = await _get_user_memories_section("q", "u")
 
         assert result == ""

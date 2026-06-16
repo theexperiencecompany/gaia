@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-import base64
-from typing import Annotated
+from typing import Annotated, Any
 
+from e2b import NotFoundException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
+from app.agents.tools.coding._artifacts import publish_artifact_write
 from app.agents.tools.coding._context import (
+    atomic_write,
     canonical_path,
     get_session_id,
     get_user_id,
     safe_emit,
-    sh_quote,
 )
 from app.agents.workspace.paths import MountRole
 from app.decorators import with_doc, with_rate_limiting
@@ -50,7 +51,7 @@ async def edit(
     try:
         user_id = get_user_id(config)
         session_id = get_session_id(config)
-        abs_path, role, _ = canonical_path(path, session_id=session_id)
+        abs_path, role, role_conv = canonical_path(path, session_id=session_id)
     except ValueError as e:
         return f"Error: {e}"
 
@@ -62,7 +63,17 @@ async def edit(
 
     try:
         async with fs_timer(FsOps.TOOL_EDIT), acquire_sandbox(user_id) as sbx:
-            return await _do_edit(sbx, abs_path, old_string, new_string, replace_all, session_id)
+            return await _do_edit(
+                sbx,
+                user_id,
+                abs_path,
+                role,
+                role_conv,
+                old_string,
+                new_string,
+                replace_all,
+                session_id,
+            )
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
@@ -70,26 +81,18 @@ async def edit(
         return f"Error editing file: {e}"
 
 
-async def _read_editable_content(sbx: object, abs_path: str) -> tuple[str | None, str]:
+async def _read_editable_content(sbx: Any, abs_path: str) -> tuple[str | None, str]:
     """Read a workspace file's UTF-8 content. Returns ``(content, error)``.
 
     On success ``error`` is empty; on failure ``content`` is ``None`` and
     ``error`` holds the user-facing message.
     """
-    # Read full file via base64 to keep binary-safe and to avoid quoting issues.
-    # Signal "file missing" via exit code, not an in-band marker.
-    read_cmd = (
-        f"if [ ! -f {sh_quote(abs_path)} ]; then exit 44; else base64 -w0 {sh_quote(abs_path)}; fi"
-    )
-    read_result = await sbx.commands.run(read_cmd, timeout=15)  # type: ignore[attr-defined]
-    if (getattr(read_result, "exit_code", 0) or 0) == 44:
-        return None, f"Error: file not found at {abs_path}"
-    raw = (getattr(read_result, "stdout", "") or "").strip()
-
+    # Native filesystem read, binary-safe — no base64/quoting. A missing file
+    # raises NotFoundException rather than returning a sentinel.
     try:
-        content_bytes = base64.b64decode(raw)
-    except Exception as e:
-        return None, f"Error: failed to decode file: {e}"
+        content_bytes = bytes(await sbx.files.read(abs_path, format="bytes"))
+    except NotFoundException:
+        return None, f"Error: file not found at {abs_path}"
 
     if len(content_bytes) > MAX_FILE_BYTES:
         return None, f"Error: file exceeds {MAX_FILE_BYTES} bytes; cannot edit"
@@ -101,8 +104,11 @@ async def _read_editable_content(sbx: object, abs_path: str) -> tuple[str | None
 
 
 async def _do_edit(
-    sbx: object,
+    sbx: Any,
+    user_id: str,
     abs_path: str,
+    role: MountRole,
+    role_conv: str | None,
     old_string: str,
     new_string: str,
     replace_all: bool,
@@ -127,18 +133,7 @@ async def _do_edit(
         new_content = content.replace(old_string, new_string, 1)
 
     new_bytes = new_content.encode("utf-8")
-    payload = base64.b64encode(new_bytes).decode("ascii")
-    tmp_path = f"{abs_path}.gaia-tmp"
-    write_cmd = (
-        f"printf %s {sh_quote(payload)} | base64 -d > {sh_quote(tmp_path)} && "
-        f"mv {sh_quote(tmp_path)} {sh_quote(abs_path)}"
-    )
-    write_result = await sbx.commands.run(write_cmd, timeout=30)  # type: ignore[attr-defined]
-    if getattr(write_result, "exit_code", 1) != 0:
-        return (
-            f"Error: write failed (exit {getattr(write_result, 'exit_code', None)}): "
-            f"{getattr(write_result, 'stderr', '')}"
-        )
+    real_mtime = await atomic_write(sbx, abs_path, new_bytes)
 
     safe_emit(
         {
@@ -150,6 +145,12 @@ async def _do_edit(
             }
         },
         session_id=session_id,
+    )
+
+    # Surface the edit live in chat when it lands under artifacts/ — same path
+    # the write tool takes, so an edited artifact card updates during the turn.
+    await publish_artifact_write(
+        user_id, role, role_conv, abs_path, new_content, len(new_bytes), real_mtime
     )
 
     return (

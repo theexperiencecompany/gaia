@@ -62,7 +62,7 @@ Your job:
      greeting or sign-off here. Do NOT put `\\n` inside a paragraph — sentences in the same paragraph stay
      on the same string.
    - `signoff`: just the sign-off line (e.g. "Best,"). Empty string if user uses none.
-   - `name`: just the sender name (e.g. "Aryan"). Empty string if the user does not include one.
+   - `name`: just the sender name (e.g. "Sam"). Empty string if the user does not include one.
    The backend will join these blocks with the right spacing — do not pre-format with newlines.
 """
 
@@ -90,7 +90,7 @@ The example is returned as STRUCTURED BLOCKS, not a single string. Fill each fie
 - `body`: an array of paragraph strings. Each entry is one paragraph. Use 1-3 entries. Do NOT include
   greeting or sign-off here. Do NOT put `\\n` inside a paragraph.
 - `signoff`: just the sign-off line (e.g. "Best,"). Empty string if the style uses none.
-- `name`: just the sender name (e.g. "Aryan"). Empty string if the style does not include one.
+- `name`: just the sender name (e.g. "Sam"). Empty string if the style does not include one.
 The backend will join these blocks with the right spacing — do not pre-format with newlines.
 """
 
@@ -301,9 +301,9 @@ STRUCTURE (under 75 words total)
 Output is one string with the literal token `<NEW_MESSAGE_BREAK>` placed BETWEEN each beat below — no token before the first beat, no token after the last. Each beat becomes its own chat bubble. Do not write the word "bubble" or reference the breaks in the copy itself.
 
 1) ONE warm opener line. Use the user's first name. Examples in different voices:
-   - "Aryan, ok this was actually really fun to dig into."
-   - "Hey Aryan, went through your inbox and got a real picture of you."
-   - "Aryan, you're a busy person."
+   - "Sam, ok this was actually really fun to dig into."
+   - "Hey Sam, went through your inbox and got a real picture of you."
+   - "Sam, you're a busy person."
    No "Hi", "Hello", "Welcome aboard", or email-style salutations. This is a chat, not an email.
 
 2) ONE delight line. Surface ONE specific, human insight from cross-referencing inbox + focus + profile. Not a tension report, not a list. Make them feel seen. If no email data but focus is stated, anchor on the focus. If no signal at all, anchor on profession.
@@ -362,9 +362,9 @@ STRUCTURE (under 75 words total)
 Output is one string with the literal token `<NEW_MESSAGE_BREAK>` placed BETWEEN each beat below — no token before the first beat, no token after the last. Each beat becomes its own chat bubble. Do not write the word "bubble" or reference the breaks in the copy itself.
 
 1) ONE warm opener line. Use the user's first name. Examples in different voices:
-   - "Aryan, ok I think I've got a read on what you're working toward."
-   - "Hey Aryan, this one's gonna be fun."
-   - "Aryan, you're a busy person."
+   - "Sam, ok I think I've got a read on what you're working toward."
+   - "Hey Sam, this one's gonna be fun."
+   - "Sam, you're a busy person."
    No "Hi", "Hello", "Welcome aboard", or email-style salutations. This is a chat, not an email. DO NOT reference an inbox, emails, or "going through" anything — you didn't.
 
 2) ONE delight line. Surface ONE specific, human insight from cross-referencing their focus + clarifying answers + profession. Not a tension report, not a list. Make them feel seen. If clarify answers are empty, anchor on the focus. If focus is also empty, anchor on profession.

@@ -17,7 +17,7 @@ import {
   getTranslatedComparisons,
 } from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAlternates } from "@/i18n/getAlternates";
+import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -43,7 +43,7 @@ export async function generateStaticParams() {
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { slug } = await params;
+  const { locale, slug } = await params;
   const data = await getTranslatedAlternative(slug);
 
   if (!data) {
@@ -58,10 +58,7 @@ export async function generateMetadata({
   });
   return {
     ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates(`/alternative-to/${slug}`),
-    },
+    alternates: getLocalizedAlternates(`/alternative-to/${slug}`, locale),
   };
 }
 

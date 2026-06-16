@@ -106,7 +106,7 @@ const USER_ITEMS: MenuItemConfig[] = [
     id: "memories",
     label: "Memories",
     icon: <Brain02Icon width={18} height={18} />,
-    path: "/settings?section=memory",
+    path: "/settings/memory",
   },
   {
     id: "discord",

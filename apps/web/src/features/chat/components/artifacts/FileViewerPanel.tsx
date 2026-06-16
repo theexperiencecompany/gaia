@@ -172,6 +172,7 @@ function FileContentRenderer({
 
 interface FileViewerBodyProps {
   isImage: boolean;
+  isPdf: boolean;
   loading: boolean;
   error: boolean;
   content: string | null;
@@ -184,6 +185,7 @@ interface FileViewerBodyProps {
 
 function FileViewerBody({
   isImage,
+  isPdf,
   loading,
   error,
   content,
@@ -202,6 +204,18 @@ function FileViewerBody({
           className="max-h-full max-w-full object-contain"
         />
       </div>
+    );
+  }
+  if (isPdf) {
+    // Render via the browser's native PDF viewer. Never fetch a PDF as text
+    // (the old fallback did, streaming the whole binary as a string — slow on a
+    // cold R2 read, and the bytes rendered as a garbage code block).
+    return (
+      <iframe
+        title={filename}
+        src={sessionFilesApi.artifactUrl(conversationId, path)}
+        className="h-full w-full bg-white"
+      />
     );
   }
   if (loading) {
@@ -240,11 +254,12 @@ export default function FileViewerPanel({
   inlineBody,
 }: FileViewerPanelProps) {
   const isImage = contentType.startsWith("image/");
+  const isPdf = contentType === "application/pdf";
   const {
     text: content,
     loading,
     error,
-  } = useArtifactText(conversationId, path, inlineBody, !isImage);
+  } = useArtifactText(conversationId, path, inlineBody, !isImage && !isPdf);
   const [copied, setCopied] = useState(false);
   const closeSidebar = useRightSidebar((state) => state.close);
 
@@ -374,7 +389,7 @@ export default function FileViewerPanel({
             variant="light"
             onClick={handleDownload}
             aria-label="Download file"
-            isDisabled={!isImage && content === null}
+            isDisabled={!isImage && !isPdf && content === null}
           >
             <Download01Icon size={16} />
           </Button>
@@ -396,6 +411,7 @@ export default function FileViewerPanel({
       >
         <FileViewerBody
           isImage={isImage}
+          isPdf={isPdf}
           loading={loading}
           error={error}
           content={content}

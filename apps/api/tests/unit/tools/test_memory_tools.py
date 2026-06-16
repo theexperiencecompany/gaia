@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.memory import MemorySourceType
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 
 # ---------------------------------------------------------------------------
@@ -40,7 +41,6 @@ def _make_memory_entry(
     return MemoryEntry(
         id=memory_id,
         content=content,
-        user_id=FAKE_USER_ID,
         relevance_score=score,
     )
 
@@ -55,15 +55,15 @@ class TestAddMemory:
     """Tests for the add_memory tool."""
 
     @patch(f"{MODULE}.memory_service")
-    async def test_happy_path_async_mode(
+    async def test_happy_path(
         self,
         mock_service: MagicMock,
     ) -> None:
-        """Successful memory storage in async mode returns event_id."""
+        """Successful memory storage returns the ID and folder."""
         stored = MemoryEntry(
             id="mem-1",
             content="User likes coffee",
-            metadata={"event_id": "evt-123", "status": "queued"},
+            category_path="food-preferences",
         )
         mock_service.store_memory = AsyncMock(return_value=stored)
 
@@ -74,61 +74,13 @@ class TestAddMemory:
             content="User likes coffee",
         )
 
-        assert "evt-123" in result
-        assert "queued" in result
+        assert "mem-1" in result
+        assert "food-preferences" in result
         mock_service.store_memory.assert_awaited_once_with(
-            message="User likes coffee",
-            user_id=FAKE_USER_ID,
-            metadata={},
-            async_mode=True,
+            "User likes coffee",
+            FAKE_USER_ID,
+            source_type=MemorySourceType.TOOL,
         )
-
-    @patch(f"{MODULE}.memory_service")
-    async def test_happy_path_sync_mode_fallback(
-        self,
-        mock_service: MagicMock,
-    ) -> None:
-        """When there is no event_id, falls back to sync response format."""
-        stored = MemoryEntry(
-            id="mem-42",
-            content="Stored sync",
-            metadata={},
-        )
-        mock_service.store_memory = AsyncMock(return_value=stored)
-
-        from app.agents.tools.memory_tools import add_memory
-
-        result = await add_memory.coroutine(
-            config=_make_config(),
-            content="Stored sync",
-        )
-
-        assert "mem-42" in result
-        assert "stored successfully" in result.lower()
-
-    @patch(f"{MODULE}.memory_service")
-    async def test_with_metadata(
-        self,
-        mock_service: MagicMock,
-    ) -> None:
-        """Metadata is passed through to the service layer."""
-        stored = MemoryEntry(
-            id="mem-1",
-            content="data",
-            metadata={"event_id": "e1", "status": "queued"},
-        )
-        mock_service.store_memory = AsyncMock(return_value=stored)
-
-        from app.agents.tools.memory_tools import add_memory
-
-        await add_memory.coroutine(
-            config=_make_config(),
-            content="data",
-            metadata={"source": "chat"},
-        )
-
-        call_kwargs = mock_service.store_memory.call_args.kwargs
-        assert call_kwargs["metadata"] == {"source": "chat"}
 
     @patch(f"{MODULE}.memory_service")
     async def test_no_user_id_returns_error(
@@ -148,14 +100,12 @@ class TestAddMemory:
         """Falsy config triggers the early guard."""
         from app.agents.tools.memory_tools import add_memory
 
-        # Pass an empty dict which is falsy in Python (`bool({})` is False)
-        # The tool checks `if not config:` -- an empty dict is falsy
+        # Empty dict {} is falsy, so the tool returns early with config error
         result = await add_memory.coroutine(
             config={},
             content="data",
         )
 
-        # Empty dict {} is falsy, so the tool returns early with config error
         assert "Configuration required" in result
 
     @patch(f"{MODULE}.memory_service")
@@ -174,29 +124,6 @@ class TestAddMemory:
         )
 
         assert "Failed to store memory" in result
-
-    @patch(f"{MODULE}.memory_service")
-    async def test_default_metadata_is_empty_dict(
-        self,
-        mock_service: MagicMock,
-    ) -> None:
-        """When metadata is not provided, it defaults to {}."""
-        stored = MemoryEntry(
-            id="mem-1",
-            content="test",
-            metadata={"event_id": "e", "status": "ok"},
-        )
-        mock_service.store_memory = AsyncMock(return_value=stored)
-
-        from app.agents.tools.memory_tools import add_memory
-
-        await add_memory.coroutine(
-            config=_make_config(),
-            content="test",
-        )
-
-        call_kwargs = mock_service.store_memory.call_args.kwargs
-        assert call_kwargs["metadata"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -233,9 +160,7 @@ class TestSearchMemory:
         assert "Works at ACME" in result
         assert "0.95" in result
         mock_service.search_memories.assert_awaited_once_with(
-            query="coffee",
-            user_id=FAKE_USER_ID,
-            limit=5,
+            query="coffee", user_id=FAKE_USER_ID, limit=5
         )
 
     @patch(f"{MODULE}.memory_service")

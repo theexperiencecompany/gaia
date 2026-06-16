@@ -1,26 +1,26 @@
-"""
-Memory Learning Node - end_graph_hook for user memory extraction.
+"""Memory learning node — end_graph_hook for user memory ingestion.
 
-Spawns a background task (non-blocking):
-
-- USER MEMORY (user_id namespace) - Uses mem0
-  - Learns user-specific data: IDs, contacts, preferences
-  - Uses integration-specific prompts (SLACK_MEMORY_PROMPT, etc.)
-  - Private to each user
-
-Uses fire-and-forget pattern - node returns immediately with zero latency.
+After a worth-learning conversation ends, spawns a fire-and-forget
+background task that feeds the transcript through
+``memory_engine.retain`` (plan F2). The node returns immediately —
+zero added latency on the turn.
 """
 
 import asyncio
+import contextlib
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
 from app.config.oauth_config import get_memory_extraction_prompt
+from app.constants.memory import (
+    MIN_USER_CONTENT_CHARS,
+    MemorySourceType,
+)
+from app.memory.engine import memory_engine
 from app.override.langgraph_bigtool.utils import State
-from app.services.memory_service import memory_service
-from shared.py.wide_events import log
+from shared.py.wide_events import UserContext, log, wide_task
 
 MAX_TOOL_OUTPUT_SIZE = 500
 
@@ -39,6 +39,11 @@ def _get_user_id(config: RunnableConfig) -> str | None:
     return config.get("configurable", {}).get("user_id")
 
 
+def _get_user_name(config: RunnableConfig) -> str | None:
+    """Extract the user's display name from config for fact attribution."""
+    return config.get("configurable", {}).get("user_name")
+
+
 def _get_subagent_id(config: RunnableConfig) -> str | None:
     """Extract subagent ID from config for memory namespace."""
     return config.get("configurable", {}).get("subagent_id")
@@ -50,31 +55,28 @@ def _get_session_id(config: RunnableConfig) -> str | None:
 
 
 def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
-    """Check if conversation has enough content for memory extraction.
+    """Whether a turn carries any substantive user content worth extracting.
 
-    We skip trivial conversations to avoid noise in memory storage.
+    No message-count or tool-call gating: a single-message disclosure ("my
+    name is Sam", "my girlfriend's birthday is March 12") must be learned.
+    We ingest whenever any user message has real text and let the extraction
+    LLM decide if anything durable is present — it returns an empty batch for
+    smalltalk, so only truly empty turns ("hi", "ok") are skipped here.
 
     Returns:
         Tuple of (should_learn, reason)
     """
-    if len(messages) < 4:
-        return False, "Too few messages"
-
-    # Count tool calls - simple interactions don't need memory
-    tool_calls = sum(
-        len(msg.tool_calls) for msg in messages if isinstance(msg, AIMessage) and msg.tool_calls
-    )
-
-    if tool_calls < 2:
-        return False, f"Only {tool_calls} tool calls - too simple"
-
-    return True, "OK"
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            if len(_extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
+                return True, "OK"
+    return False, "No substantive user message"
 
 
 def _format_messages_for_user_memory(
     messages: list[AnyMessage],
 ) -> list[dict[str, str]]:
-    """Convert messages to mem0 format for user memory extraction.
+    """Convert messages to a role/content transcript for the extraction LLM.
 
     Key design decisions:
     - Keep tool INPUTS intact (they contain entity info like IDs, names, emails)
@@ -83,7 +85,7 @@ def _format_messages_for_user_memory(
     - Skip system messages (not relevant for user memory)
 
     Returns:
-        List of role/content dicts for mem0 API
+        List of role/content dicts for the memory engine
     """
     formatted = []
 
@@ -137,41 +139,36 @@ async def _store_user_memory_background(
     session_id: str | None,
     extraction_prompt: str | None,
     subagent_id: str | None,
+    user_name: str | None,
 ) -> None:
-    """Background task - stores USER memory (user_id namespace).
+    """Background task — ingests the conversation through the memory engine.
 
-    Uses integration-specific prompts (if available) to extract:
-    - Entity IDs (Slack channel IDs, GitHub repos, contact emails)
-    - User preferences (formatting, timing, style)
-    - Personal patterns (who they message, which repos they work on)
+    Integration-specific extraction prompts (Slack, GitHub, ...) ride along
+    as extraction hints so the engine pulls out entity IDs, contacts, and
+    preferences relevant to that integration. Memories are private per user.
 
-    These memories are private to each user.
+    Runs in its own ``wide_task`` scope: this is a fire-and-forget background
+    task outside any request middleware, so without an explicit task scope the
+    engine's structured logging (and any failure) would never be emitted.
     """
-    try:
-        formatted = _format_messages_for_user_memory(messages)
-        if not formatted:
-            return
+    formatted = _format_messages_for_user_memory(messages)
+    if not formatted:
+        return
 
-        metadata = {
-            "memory_type": "user",
-        }
-        if subagent_id:
-            metadata["source_integration"] = subagent_id
-
-        # Store to USER namespace (user_id is the entity)
-        success = await memory_service.store_memory_batch(
-            messages=formatted,
-            user_id=user_id,
-            conversation_id=session_id,
-            metadata=metadata,
-            custom_instructions=extraction_prompt,
-            async_mode=True,
-        )
-
-        if success:
-            log.info(f"[{subagent_id or 'agent'}] User memory stored for {user_id[:8]}...")
-    except Exception as e:
-        log.error(f"[{subagent_id or 'agent'}] User memory storage failed: {e}")
+    # wide_task records any failure (error_type + outcome=failed) as an emitted
+    # wide event and a real-time error line; suppress the re-raised exception so
+    # this fire-and-forget task doesn't surface an un-retrieved-exception warning.
+    with contextlib.suppress(Exception):
+        async with wide_task("memory_retain", user=UserContext(id=user_id)):
+            log.set(subagent_id=subagent_id or "agent", session_id=session_id)
+            await memory_engine.retain(
+                user_id,
+                formatted,
+                source_type=MemorySourceType.CONVERSATION,
+                source_id=session_id,
+                extraction_hints=extraction_prompt,
+                user_name=user_name,
+            )
 
 
 async def memory_node(
@@ -180,15 +177,11 @@ async def memory_node(
     store: BaseStore,
 ) -> State:
     """
-    End-graph hook that stores user memory from subagent executions.
+    End-graph hook that stores user memory from agent executions.
 
-    Spawns a background task (non-blocking) for USER MEMORY (if user_id available):
-    - Entity: user_id
-    - Prompt: Integration-specific (or mem0 default)
-    - Purpose: Learn IDs, contacts, preferences private to user
-
-    Uses fire-and-forget pattern via asyncio.create_task().
-    Node returns immediately - zero added latency.
+    Spawns a background task (non-blocking) that runs ``memory_engine.retain``
+    over the transcript with the integration-specific extraction prompt.
+    Uses fire-and-forget via asyncio.create_task() — zero added latency.
     """
     messages = state.get("messages", [])
 
@@ -196,6 +189,7 @@ async def memory_node(
     user_id = _get_user_id(config)
     subagent_id = _get_subagent_id(config)
     session_id = _get_session_id(config)
+    user_name = _get_user_name(config)
 
     # Look up extraction prompt from registry using subagent_id
     extraction_prompt = get_memory_extraction_prompt(subagent_id) if subagent_id else None
@@ -214,6 +208,7 @@ async def memory_node(
                 session_id=session_id,
                 extraction_prompt=extraction_prompt,
                 subagent_id=subagent_id,
+                user_name=user_name,
             ),
             name="user_memory",
         )

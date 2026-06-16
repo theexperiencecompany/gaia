@@ -11,7 +11,7 @@ import {
   getTranslatedCombos,
 } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAlternates } from "@/i18n/getAlternates";
+import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -38,7 +38,7 @@ export const dynamicParams = false;
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { combo } = await params;
+  const { locale, combo } = await params;
   const data = await getTranslatedCombo(combo);
 
   if (!data) {
@@ -56,10 +56,11 @@ export async function generateMetadata({
   });
   return {
     ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates(`/automate/${combo}`),
-    },
+    alternates: getLocalizedAlternates(
+      `/automate/${combo}`,
+      locale,
+      data.canonicalSlug ? `/automate/${data.canonicalSlug}` : undefined,
+    ),
   };
 }
 

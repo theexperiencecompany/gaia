@@ -5,7 +5,6 @@ Lives here (rather than in handoff_tools.py) so those modules import from it,
 avoiding a cyclic dependency.
 """
 
-from datetime import datetime
 import uuid
 
 from langchain_core.messages import (
@@ -97,7 +96,7 @@ async def build_initial_messages(
         system_message: Pre-built STATIC system message (must not include
             any per-user or per-time content — keeps the cache prefix stable).
         agent_name: Name of the agent (for HumanMessage visibility metadata).
-        configurable: Config dict with user_time, user_name, etc.
+        configurable: Config dict with user_timezone, user_name, etc.
         task: The task/query to execute (goes into the HumanMessage).
         user_id: Optional user ID for memory retrieval.
         subagent_id: Optional subagent ID for skill retrieval.
@@ -263,7 +262,6 @@ async def execute_subagent_stream(
 async def prepare_executor_execution(
     task: str,
     configurable: dict,
-    user_time: datetime,
     stream_id: str | None = None,
 ) -> tuple[SubagentExecutionContext | None, str | None]:
     """Prepare execution context for the executor agent.
@@ -309,11 +307,10 @@ async def prepare_executor_execution(
     config = build_agent_config(
         conversation_id=thread_id,
         user=user,
-        user_time=user_time,
         thread_id=executor_thread_id,
         base_configurable=configurable,
         agent_name="executor_agent",
-        subagent_id="executor_agent",  # Use agent_name as agent_id in mem0
+        subagent_id="executor_agent",  # Use agent_name as the memory namespace id
         vfs_session_id=vfs_session_id,
     )
     new_configurable = config.get("configurable", {})

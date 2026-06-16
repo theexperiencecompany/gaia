@@ -10,6 +10,61 @@ from __future__ import annotations
 from enum import StrEnum
 import re
 
+# Source, config, and log files an agent commonly writes render inline as plain
+# text — the file viewer syntax-highlights by file extension, so a more specific
+# text/* subtype would buy nothing here. Enumerated explicitly (rather than a
+# catch-all default) so genuinely binary or unknown files still fall through to
+# application/octet-stream and are never base64-decoded as UTF-8 for inlining.
+_PLAIN_TEXT_EXTS = (
+    "py",
+    "pyi",
+    "js",
+    "mjs",
+    "cjs",
+    "ts",
+    "tsx",
+    "jsx",
+    "css",
+    "scss",
+    "less",
+    "sql",
+    "sh",
+    "bash",
+    "zsh",
+    "rs",
+    "go",
+    "java",
+    "rb",
+    "php",
+    "swift",
+    "kt",
+    "kts",
+    "scala",
+    "c",
+    "cc",
+    "cpp",
+    "cxx",
+    "h",
+    "hpp",
+    "toml",
+    "ini",
+    "cfg",
+    "conf",
+    "env",
+    "properties",
+    "log",
+    "text",
+    "rst",
+    "tsv",
+    "lua",
+    "r",
+    "pl",
+    "dart",
+    "dockerfile",
+    "makefile",
+    "gradle",
+)
+
 _EXT_CONTENT_TYPES = {
     "png": "image/png",
     "jpg": "image/jpeg",
@@ -19,10 +74,16 @@ _EXT_CONTENT_TYPES = {
     "svg": "image/svg+xml",
     "pdf": "application/pdf",
     "json": "application/json",
+    "xml": "application/xml",
+    "yaml": "application/yaml",
+    "yml": "application/yaml",
     "md": "text/markdown",
     "txt": "text/plain",
     "csv": "text/csv",
     "html": "text/html",
+    "htm": "text/html",
+    "tex": "text/x-latex",
+    **dict.fromkeys(_PLAIN_TEXT_EXTS, "text/plain"),
 }
 
 # Small textual artifacts ride the SSE event (and the Mongo conversation)
@@ -64,6 +125,8 @@ PINNED_DIRNAME = "pinned"
 
 
 class MountRole(StrEnum):
+    """Top-level role of a workspace path, used to route writes and tag events."""
+
     SCRATCH = "scratch"
     USER_UPLOADED = "user-uploaded"
     ARTIFACTS = "artifacts"
@@ -75,26 +138,32 @@ class MountRole(StrEnum):
 
 
 def session_dir(conv_id: str) -> str:
+    """Absolute workspace path of a session's root directory."""
     return f"{WORKSPACE_ROOT}/{SESSIONS_DIRNAME}/{conv_id}"
 
 
 def session_scratch(conv_id: str) -> str:
+    """Absolute workspace path of a session's scratch (agent working) dir."""
     return f"{session_dir(conv_id)}/{SCRATCH_DIRNAME}"
 
 
 def session_user_uploaded(conv_id: str) -> str:
+    """Absolute workspace path of a session's user-uploaded files dir."""
     return f"{session_dir(conv_id)}/{USER_UPLOADED_DIRNAME}"
 
 
 def session_artifacts(conv_id: str) -> str:
+    """Absolute workspace path of a session's agent-generated artifacts dir."""
     return f"{session_dir(conv_id)}/{ARTIFACTS_DIRNAME}"
 
 
 def runs_log_dir() -> str:
+    """Absolute workspace path of the shared agent run-log directory."""
     return f"{WORKSPACE_ROOT}/{GAIA_RUNTIME_DIRNAME}/{RUNS_DIRNAME}"
 
 
 def is_under_workspace(abs_path: str) -> bool:
+    """Return True if ``abs_path`` is the workspace root or nested under it."""
     return abs_path == WORKSPACE_ROOT or abs_path.startswith(WORKSPACE_ROOT + "/")
 
 
@@ -136,9 +205,14 @@ def classify(abs_path: str) -> tuple[MountRole, str | None]:
 
 
 def detect_content_type(path: str) -> str | None:
-    """Best-effort MIME type from extension. Returns None if unknown."""
-    _, _, ext = path.rpartition(".")
-    return _EXT_CONTENT_TYPES.get(ext.lower())
+    """Best-effort MIME type from extension. Returns None if unknown.
+
+    Dotless filenames (``Dockerfile``, ``Makefile``) are matched on the whole
+    basename so the plain-text entries for them actually resolve.
+    """
+    name = path.rsplit("/", 1)[-1].lower()
+    _, dot, ext = name.rpartition(".")
+    return _EXT_CONTENT_TYPES.get(ext if dot else name)
 
 
 def safe_upload_filename(filename: str) -> str:

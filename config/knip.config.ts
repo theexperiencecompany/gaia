@@ -120,6 +120,11 @@ const config: KnipConfig = {
     // (ignored above), so knip can't see the import. Kept for the gallery.
     "apps/web/src/features/chat/components/bubbles/bot/ToolCallsSection.tsx",
 
+    // BuiltForEveryone: landing "positioning" section, parked — its dynamic
+    // import and render are commented out in app/[locale]/(landing)/client.tsx.
+    // Kept intact for re-enablement, not dead code.
+    "apps/web/src/features/landing/components/sections/BuiltForEveryone.tsx",
+
     // Wake-word ("Hey GAIA"): recently merged, currently wired only into the
     // dev/wake-word gallery (ignored above). Work-in-progress, not dead.
     "apps/web/src/features/wake-word/**",

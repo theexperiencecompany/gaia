@@ -4,6 +4,7 @@ import {
 } from "@microsoft/fetch-event-source";
 
 import { apiService } from "@/lib/api/service";
+import { getBrowserTimezone } from "@/lib/timezone";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
@@ -290,7 +291,7 @@ export const chatApi = {
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
-          "x-timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
+          "x-timezone": getBrowserTimezone(),
         },
         credentials: "include",
         signal: controller.signal,

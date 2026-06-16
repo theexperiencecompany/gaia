@@ -30,7 +30,7 @@ export default function MemoryModal({ isOpen, onClose }: MemoryModalProps) {
           <>
             <ModalBody>
               <div className="font-bold">Your Memories</div>
-              <MemoryManagement onClose={onClose} autoFetch={isOpen} />
+              <MemoryManagement autoFetch={isOpen} />
             </ModalBody>
 
             <ModalFooter>

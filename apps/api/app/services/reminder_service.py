@@ -22,6 +22,7 @@ from app.models.scheduler_models import (
 )
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 
@@ -64,19 +65,21 @@ class ReminderScheduler(BaseSchedulerService):
             scheduled_at=reminder_data.scheduled_at,
             max_occurrences=reminder_data.max_occurrences,
             stop_after=reminder_data.stop_after,
-            base_time=reminder_data.base_time,
         )
 
-        # Set scheduled_at if not provided
+        # Set scheduled_at if not provided — compute the first fire in the
+        # reminder's own zone so it (and the recurrence, which reads
+        # reminder.timezone) fire at the right local hour, not in UTC.
         if not schedule_config.scheduled_at:
             if schedule_config.repeat:
                 schedule_config.scheduled_at = get_next_run_time(
-                    cron_expr=schedule_config.repeat,
-                    base_time=schedule_config.base_time,
+                    schedule_config.repeat, tz=Timezone.parse(reminder_data.timezone)
                 )
             else:
                 raise ValueError("scheduled_at must be provided or repeat must be specified")
 
+        # reminder_data.timezone flows through model_dump() onto the persisted
+        # ReminderModel.timezone; handle_recurring_task reads it on re-arm.
         reminder_dict = reminder_data.model_dump()
         reminder_dict["scheduled_at"] = schedule_config.scheduled_at
         reminder = ReminderModel(**reminder_dict, user_id=user_id)

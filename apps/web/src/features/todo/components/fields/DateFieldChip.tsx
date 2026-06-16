@@ -4,6 +4,7 @@ import { Input } from "@heroui/react";
 import { CalendarIcon, Cancel01Icon } from "@icons";
 import { format, isToday, isTomorrow, isYesterday } from "date-fns";
 
+import { getBrowserTimezone } from "@/lib/timezone";
 import BaseFieldChip from "./BaseFieldChip";
 
 interface DateFieldChipProps {
@@ -22,9 +23,7 @@ export default function DateFieldChip({
   // Use user's preferred timezone or fallback to browser timezone
   // Handle empty string as "auto-detect"
   const userTimezone =
-    timezone && timezone.trim() !== ""
-      ? timezone
-      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+    timezone && timezone.trim() !== "" ? timezone : getBrowserTimezone();
   const formatDisplayDate = (dateString: string) => {
     const date = new Date(dateString);
 

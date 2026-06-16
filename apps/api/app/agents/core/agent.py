@@ -8,7 +8,6 @@ Both share _core_agent_logic() for common setup (messages, graph, config).
 
 import asyncio
 from collections.abc import AsyncGenerator
-from datetime import datetime
 import json
 from typing import Literal, cast
 from uuid import uuid4
@@ -33,18 +32,13 @@ from app.helpers.agent_helpers import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
-from app.utils.memory_utils import store_user_message_memory
 from shared.py.wide_events import log
-
-# Set to hold references to background tasks to prevent garbage collection
-_background_tasks: set[asyncio.Task] = set()
 
 
 async def _core_agent_logic(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: dict,
-    user_time: datetime,
     user_model_config: ModelConfig | None = None,
     trigger_context: dict | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
@@ -60,8 +54,7 @@ async def _core_agent_logic(
     Args:
         request: Message request with conversation history and file data
         conversation_id: Unique identifier for the conversation thread
-        user: User information dictionary with ID, email, and name
-        user_time: Current datetime in user's timezone
+        user: User information dictionary with ID, email, name, and home timezone
         user_model_config: Optional model configuration for inference
         trigger_context: Optional context data from workflow triggers
         langfuse_trace_id: Seed for the Langfuse trace; forwarded into the
@@ -113,19 +106,10 @@ async def _core_agent_logic(
         request, user_id or "", conversation_id, history, trigger_context
     )
 
-    # Start memory storage in background (fire and forget)
-    if user_id and request.message:
-        task = asyncio.create_task(
-            store_user_message_memory(user_id, request.message, conversation_id)
-        )
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
-
     # Build config with optional tokens
     config = build_agent_config(
         conversation_id=conversation_id,
         user=user,
-        user_time=user_time,
         user_model_config=user_model_config,
         usage_metadata_callback=usage_metadata_callback,
         agent_name="comms_agent",
@@ -166,7 +150,6 @@ async def call_agent(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: dict,
-    user_time: datetime,
     user_model_config: ModelConfig | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     stream_id: str | None = None,
@@ -195,7 +178,6 @@ async def call_agent(
             request,
             conversation_id,
             user,
-            user_time,
             user_model_config,
             usage_metadata_callback=usage_metadata_callback,
             source=source,
@@ -230,7 +212,6 @@ async def call_agent_silent(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: dict,
-    user_time: datetime,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     user_model_config: ModelConfig | None = None,
     trigger_context: dict | None = None,
@@ -253,7 +234,6 @@ async def call_agent_silent(
             request,
             conversation_id,
             user,
-            user_time,
             user_model_config,
             trigger_context,
             usage_metadata_callback=usage_metadata_callback,

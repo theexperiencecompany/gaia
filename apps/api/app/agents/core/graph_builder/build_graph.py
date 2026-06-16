@@ -11,6 +11,7 @@ from app.agents.core.graph_builder.checkpointer_manager import (
 from app.agents.core.nodes import (
     follow_up_actions_node,
     manage_system_prompts_node,
+    memory_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
@@ -167,8 +168,7 @@ async def build_comms_graph(
     tool_registry = {
         "call_executor": call_executor,
         "cancel_executor": cancel_executor,
-        "add_memory": memory_tools.add_memory,
-        "search_memory": memory_tools.search_memory,
+        **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
     }
     store = await get_tools_store()
 
@@ -184,11 +184,19 @@ async def build_comms_graph(
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
-        initial_tool_ids=["call_executor", "cancel_executor", "add_memory", "search_memory"],
+        initial_tool_ids=[
+            "call_executor",
+            "cancel_executor",
+            *[memory_tool.name for memory_tool in memory_tools.tools],
+        ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
         end_graph_hooks=[
             follow_up_actions_node,
+            # Learn durable user memories from every comms turn (passive
+            # ingestion). Without this, only facts the agent explicitly saves
+            # via add_memory persist — conversational disclosures are lost.
+            memory_node,
         ],
         agent_retry_policy=COMMS_RETRY_POLICY,
     )

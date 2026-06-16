@@ -1,6 +1,5 @@
 """Unit tests for subagent_runner.py and subagent_helpers.py."""
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import (
@@ -130,7 +129,7 @@ class TestBuildInitialMessages:
             result = await build_initial_messages(
                 system_message=sys_msg,
                 agent_name="test_agent",
-                configurable={"user_time": "2025-01-01T00:00:00Z"},
+                configurable={"user_timezone": "Asia/Kolkata"},
                 task="Do the thing",
             )
 
@@ -533,7 +532,6 @@ class TestPrepareExecutorExecution:
                     "email": "t@t.com",
                     "user_name": "Test",
                 },
-                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -552,7 +550,6 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(UTC),
             )
 
         assert ctx is None
@@ -596,7 +593,6 @@ class TestPrepareExecutorExecution:
                     "tool_category": "github",
                     "selected_tool": "github_search_repos",
                 },
-                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -634,7 +630,6 @@ class TestPrepareExecutorExecution:
                     "user_id": "u1",
                     "thread_id": "t1",
                 },
-                user_time=datetime.now(UTC),
             )
 
         human_msg = ctx.initial_state["messages"][-1]
@@ -667,7 +662,6 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(UTC),
                 stream_id="my-stream-id",
             )
 
@@ -701,7 +695,6 @@ class TestPrepareExecutorExecution:
             await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(UTC),
             )
 
         call_kwargs = mock_build_config.call_args.kwargs
@@ -883,7 +876,7 @@ class TestCreateAgentContextMessage:
         """
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -905,7 +898,7 @@ class TestCreateAgentContextMessage:
     async def test_includes_user_name(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -925,7 +918,7 @@ class TestCreateAgentContextMessage:
     async def test_includes_user_timezone(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -937,11 +930,11 @@ class TestCreateAgentContextMessage:
         ):
             result = await create_agent_context_message(
                 configurable={
-                    "user_time": "2025-06-15T10:30:00+05:30",
+                    "user_timezone": "Asia/Kolkata",
                 },
             )
 
-        assert "User Timezone Offset: +05:30" in result.content
+        assert "User Timezone: Asia/Kolkata" in result.content
         # Local clock moved out of the dynamic system message. It's emitted
         # as a HumanMessage by ``build_current_time_message`` instead.
         assert "User Local Time:" not in result.content
@@ -955,7 +948,7 @@ class TestCreateAgentContextMessage:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=mock_results,
             ),
@@ -978,7 +971,7 @@ class TestCreateAgentContextMessage:
     async def test_skills_included(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -1002,7 +995,7 @@ class TestCreateAgentContextMessage:
     async def test_no_memories_without_user_id(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
             ) as mock_search,
             patch(
@@ -1022,7 +1015,7 @@ class TestCreateAgentContextMessage:
     async def test_no_memories_without_query(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
             ) as mock_search,
             patch(
@@ -1042,7 +1035,7 @@ class TestCreateAgentContextMessage:
     async def test_memory_error_handled(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("mem error"),
             ),
@@ -1066,7 +1059,7 @@ class TestCreateAgentContextMessage:
     async def test_skills_error_handled(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -1085,11 +1078,11 @@ class TestCreateAgentContextMessage:
         assert isinstance(result, SystemMessage)
 
     @pytest.mark.asyncio
-    async def test_user_time_z_offset(self):
-        """Z timezone offset should be converted to +00:00."""
+    async def test_user_timezone_offset(self):
+        """A fixed-offset home zone is rendered verbatim as the timezone line."""
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -1100,17 +1093,17 @@ class TestCreateAgentContextMessage:
             ),
         ):
             result = await create_agent_context_message(
-                configurable={"user_time": "2025-06-15T10:30:00Z"},
+                configurable={"user_timezone": "+05:30"},
             )
 
-        # Z should be converted to +00:00
-        assert "User Timezone Offset: +00:00" in result.content
+        assert "User Timezone: +05:30" in result.content
 
     @pytest.mark.asyncio
-    async def test_invalid_user_time_handled(self):
+    async def test_no_timezone_line_without_user_timezone(self):
+        """With no home zone in the config, no timezone line is added."""
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -1122,11 +1115,11 @@ class TestCreateAgentContextMessage:
             patch("app.agents.core.subagents.subagent_helpers.log"),
         ):
             result = await create_agent_context_message(
-                configurable={"user_time": "not-a-valid-time"},
+                configurable={},
             )
 
-        # Should not raise; clock doesn't live here any more.
         assert isinstance(result, SystemMessage)
+        assert "User Timezone:" not in result.content
 
     @pytest.mark.asyncio
     async def test_dynamic_context_marker(self):
@@ -1136,7 +1129,7 @@ class TestCreateAgentContextMessage:
         older persisted state."""
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
+                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
                 new_callable=AsyncMock,
                 return_value=None,
             ),

@@ -69,18 +69,18 @@ class TestGetWeather:
         """Successful weather lookup returns formatted string with data."""
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
-        weather_data = _make_weather_data("Surat")
+        weather_data = _make_weather_data("Mumbai")
         mock_user_weather.return_value = weather_data
 
         from app.agents.tools.weather_tool import get_weather
 
         result = await get_weather.coroutine(
             config=_make_config(),
-            location="Surat,IN",
+            location="Mumbai,IN",
         )
 
-        assert "Surat,IN" in result
-        mock_user_weather.assert_awaited_once_with("Surat,IN")
+        assert "Mumbai,IN" in result
+        mock_user_weather.assert_awaited_once_with("Mumbai,IN")
         # Verify writer was called with progress and data
         assert writer.call_count >= 2
         # First call: progress message

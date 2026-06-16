@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
@@ -62,6 +63,10 @@ export const useFetchIntegrationStatus = ({
  */
 export const useIntegrations = (): UseIntegrationsReturn => {
   const queryClient = useQueryClient();
+  // The platform catalog (/config) is public, but a user's own integrations
+  // and connection status require auth. Gate those on isAuthenticated so public
+  // pages (marketplace, use-cases) don't fire 401s for anonymous visitors.
+  const { isAuthenticated } = useAuth();
 
   // Query for platform integration configuration
   const { data: configData, isLoading: configLoading } = useQuery({
@@ -78,6 +83,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     queryKey: ["integrations", "user"],
     queryFn: integrationsApi.getUserIntegrations,
     staleTime: 0, // Always refetch - user integrations are mutable state
+    enabled: isAuthenticated,
   });
 
   // Query for platform integration status
@@ -85,6 +91,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     queryKey: ["integrations", "status"],
     queryFn: integrationsApi.getIntegrationStatus,
     staleTime: 0, // Always refetch - status can change externally (OAuth callbacks)
+    enabled: isAuthenticated,
   });
 
   // Merge platform integrations with user's custom integrations

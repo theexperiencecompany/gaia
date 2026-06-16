@@ -7,12 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
+from app.constants.memory import MemorySourceType
 from app.helpers.email_helpers import (
     _build_user_context,
     mark_email_processing_complete,
     process_email_content,
     remove_invisible_chars,
-    store_emails_to_mem0,
+    store_emails_to_memory,
     store_single_profile,
 )
 
@@ -404,24 +405,24 @@ class TestProcessEmailContent:
 
 
 # ---------------------------------------------------------------------------
-# store_emails_to_mem0
+# store_emails_to_memory
 # ---------------------------------------------------------------------------
 
 
-class TestStoreEmailsToMem0:
-    """Tests for store_emails_to_mem0()."""
+class TestStoreEmailsToMemory:
+    """Tests for store_emails_to_memory()."""
 
     @pytest.fixture
-    def mock_memory_service(self) -> Generator[AsyncMock, None, None]:
-        with patch("app.helpers.email_helpers.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
-            yield mock_svc
+    def mock_memory_engine(self) -> Generator[AsyncMock, None, None]:
+        with patch("app.helpers.email_helpers.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
+            yield mock_engine
 
-    async def test_empty_list_returns_early(self, mock_memory_service: AsyncMock) -> None:
-        await store_emails_to_mem0("user_1", [])
-        mock_memory_service.store_memory_batch.assert_not_called()
+    async def test_empty_list_returns_early(self, mock_memory_engine: AsyncMock) -> None:
+        await store_emails_to_memory("user_1", [])
+        mock_memory_engine.retain.assert_not_called()
 
-    async def test_calls_store_memory_batch(self, mock_memory_service: AsyncMock) -> None:
+    async def test_calls_retain(self, mock_memory_engine: AsyncMock) -> None:
         processed = [
             {
                 "content": "Email body text",
@@ -431,63 +432,31 @@ class TestStoreEmailsToMem0:
                 },
             }
         ]
-        await store_emails_to_mem0("user_1", processed)
-        mock_memory_service.store_memory_batch.assert_called_once()
+        await store_emails_to_memory("user_1", processed)
+        mock_memory_engine.retain.assert_called_once()
 
-    async def test_passes_user_id(self, mock_memory_service: AsyncMock) -> None:
+    async def test_passes_user_id(self, mock_memory_engine: AsyncMock) -> None:
         processed = [
             {
                 "content": "Body",
                 "metadata": {"sender": "a@b.com", "subject": "S"},
             }
         ]
-        await store_emails_to_mem0("user_42", processed)
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["user_id"] == "user_42"
+        await store_emails_to_memory("user_42", processed)
+        assert mock_memory_engine.retain.call_args.args[0] == "user_42"
 
-    async def test_async_mode_default_true(self, mock_memory_service: AsyncMock) -> None:
+    async def test_source_type_is_email(self, mock_memory_engine: AsyncMock) -> None:
         processed = [
             {
                 "content": "Body",
                 "metadata": {"sender": "a@b.com", "subject": "S"},
             }
         ]
-        await store_emails_to_mem0("user_1", processed)
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["async_mode"] is True
+        await store_emails_to_memory("user_1", processed)
+        call_kwargs = mock_memory_engine.retain.call_args.kwargs
+        assert call_kwargs["source_type"] is MemorySourceType.EMAIL
 
-    async def test_async_mode_false(self, mock_memory_service: AsyncMock) -> None:
-        processed = [
-            {
-                "content": "Body",
-                "metadata": {"sender": "a@b.com", "subject": "S"},
-            }
-        ]
-        await store_emails_to_mem0("user_1", processed, async_mode=False)
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["async_mode"] is False
-
-    async def test_user_name_and_email_in_metadata(
-        self,
-        mock_memory_service: AsyncMock,
-    ) -> None:
-        processed = [
-            {
-                "content": "Body",
-                "metadata": {"sender": "a@b.com", "subject": "S"},
-            }
-        ]
-        await store_emails_to_mem0(
-            "user_1",
-            processed,
-            user_name="Alice",
-            user_email="alice@x.com",
-        )
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["metadata"]["user_name"] == "Alice"
-        assert call_kwargs["metadata"]["user_email"] == "alice@x.com"
-
-    async def test_messages_built_correctly(self, mock_memory_service: AsyncMock) -> None:
+    async def test_messages_built_correctly(self, mock_memory_engine: AsyncMock) -> None:
         processed = [
             {
                 "content": "Email text here",
@@ -497,9 +466,8 @@ class TestStoreEmailsToMem0:
                 },
             }
         ]
-        await store_emails_to_mem0("user_1", processed)
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        messages = call_kwargs["messages"]
+        await store_emails_to_memory("user_1", processed)
+        messages = mock_memory_engine.retain.call_args.args[1]
         assert len(messages) == 1
         assert messages[0]["role"] == "user"
         assert "bob@example.com" in messages[0]["content"]
@@ -508,7 +476,7 @@ class TestStoreEmailsToMem0:
 
     async def test_skips_emails_with_empty_content(
         self,
-        mock_memory_service: AsyncMock,
+        mock_memory_engine: AsyncMock,
     ) -> None:
         processed = [
             {
@@ -520,16 +488,15 @@ class TestStoreEmailsToMem0:
                 "metadata": {"sender": "a@b.com", "subject": "S"},
             },
         ]
-        await store_emails_to_mem0("user_1", processed)
-        # Both have empty/whitespace content, so messages list should be empty
-        # and function returns early after building empty messages
-        mock_memory_service.store_memory_batch.assert_not_called()
+        await store_emails_to_memory("user_1", processed)
+        # Both have empty/whitespace content, so the function returns early
+        mock_memory_engine.retain.assert_not_called()
 
-    async def test_store_failure_logs_warning(
+    async def test_zero_facts_extracted_logs_without_raising(
         self,
-        mock_memory_service: AsyncMock,
+        mock_memory_engine: AsyncMock,
     ) -> None:
-        mock_memory_service.store_memory_batch.return_value = False
+        mock_memory_engine.retain.return_value = MagicMock(facts_extracted=0)
         processed = [
             {
                 "content": "Body",
@@ -537,13 +504,13 @@ class TestStoreEmailsToMem0:
             }
         ]
         # Should not raise
-        await store_emails_to_mem0("user_1", processed)
+        await store_emails_to_memory("user_1", processed)
 
     async def test_exception_does_not_propagate(
         self,
-        mock_memory_service: AsyncMock,
+        mock_memory_engine: AsyncMock,
     ) -> None:
-        mock_memory_service.store_memory_batch.side_effect = Exception("boom")
+        mock_memory_engine.retain.side_effect = Exception("boom")
         processed = [
             {
                 "content": "Body",
@@ -551,11 +518,11 @@ class TestStoreEmailsToMem0:
             }
         ]
         # Should swallow the exception
-        await store_emails_to_mem0("user_1", processed)
+        await store_emails_to_memory("user_1", processed)
 
-    async def test_custom_instructions_include_user_context(
+    async def test_extraction_hints_include_user_context(
         self,
-        mock_memory_service: AsyncMock,
+        mock_memory_engine: AsyncMock,
     ) -> None:
         processed = [
             {
@@ -563,17 +530,18 @@ class TestStoreEmailsToMem0:
                 "metadata": {"sender": "a@b.com", "subject": "S"},
             }
         ]
-        await store_emails_to_mem0(
+        await store_emails_to_memory(
             "user_1",
             processed,
             user_name="Alice",
             user_email="alice@x.com",
         )
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert "Alice" in call_kwargs["custom_instructions"]
-        assert "alice@x.com" in call_kwargs["custom_instructions"]
+        call_kwargs = mock_memory_engine.retain.call_args.kwargs
+        assert "Alice" in call_kwargs["extraction_hints"]
+        assert "alice@x.com" in call_kwargs["extraction_hints"]
+        assert call_kwargs["user_name"] == "Alice"
 
-    async def test_batch_size_in_metadata(self, mock_memory_service: AsyncMock) -> None:
+    async def test_all_emails_in_batch_sent(self, mock_memory_engine: AsyncMock) -> None:
         processed = [
             {
                 "content": f"Email {i}",
@@ -581,10 +549,9 @@ class TestStoreEmailsToMem0:
             }
             for i in range(5)
         ]
-        await store_emails_to_mem0("user_1", processed)
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["metadata"]["batch_size"] == 5
-        assert call_kwargs["metadata"]["source"] == "gmail_batch"
+        await store_emails_to_memory("user_1", processed)
+        messages = mock_memory_engine.retain.call_args.args[1]
+        assert len(messages) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -645,44 +612,37 @@ class TestStoreSingleProfile:
     """Tests for store_single_profile()."""
 
     @pytest.fixture
-    def mock_memory_service(self) -> Generator[AsyncMock, None, None]:
-        with patch("app.helpers.email_helpers.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
-            yield mock_svc
+    def mock_memory_engine(self) -> Generator[AsyncMock, None, None]:
+        with patch("app.helpers.email_helpers.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
+            yield mock_engine
 
-    async def test_stores_profile_content(self, mock_memory_service: AsyncMock) -> None:
+    async def test_stores_profile_content(self, mock_memory_engine: AsyncMock) -> None:
         await store_single_profile(
             "user_1",
             "twitter",
             "https://x.com/alice",
             "Bio: Software Engineer",
         )
-        mock_memory_service.store_memory_batch.assert_called_once()
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        messages = call_kwargs["messages"]
+        mock_memory_engine.retain.assert_called_once()
+        messages = mock_memory_engine.retain.call_args.args[1]
         assert len(messages) == 1
         assert "twitter" in messages[0]["content"]
         assert "https://x.com/alice" in messages[0]["content"]
         assert "Bio: Software Engineer" in messages[0]["content"]
 
-    async def test_metadata_includes_platform_and_url(
-        self,
-        mock_memory_service: AsyncMock,
-    ) -> None:
+    async def test_source_id_is_profile_url(self, mock_memory_engine: AsyncMock) -> None:
         await store_single_profile(
             "user_1",
             "github",
             "https://github.com/alice",
             "repos: 50",
         )
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        metadata = call_kwargs["metadata"]
-        assert metadata["type"] == "social_profile"
-        assert metadata["platform"] == "github"
-        assert metadata["url"] == "https://github.com/alice"
-        assert metadata["source"] == "gmail_extraction"
+        call_kwargs = mock_memory_engine.retain.call_args.kwargs
+        assert call_kwargs["source_id"] == "https://github.com/alice"
+        assert call_kwargs["source_type"] is MemorySourceType.EMAIL
 
-    async def test_user_name_in_metadata(self, mock_memory_service: AsyncMock) -> None:
+    async def test_user_name_passed_through(self, mock_memory_engine: AsyncMock) -> None:
         await store_single_profile(
             "user_1",
             "linkedin",
@@ -690,35 +650,13 @@ class TestStoreSingleProfile:
             "Profile content",
             user_name="Alice",
         )
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["metadata"]["user_name"] == "Alice"
-
-    async def test_default_async_mode_true(self, mock_memory_service: AsyncMock) -> None:
-        await store_single_profile(
-            "user_1",
-            "twitter",
-            "https://x.com/a",
-            "content",
-        )
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["async_mode"] is True
-
-    async def test_async_mode_false(self, mock_memory_service: AsyncMock) -> None:
-        await store_single_profile(
-            "user_1",
-            "twitter",
-            "https://x.com/a",
-            "content",
-            async_mode=False,
-        )
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["async_mode"] is False
+        assert mock_memory_engine.retain.call_args.kwargs["user_name"] == "Alice"
 
     async def test_exception_does_not_propagate(
         self,
-        mock_memory_service: AsyncMock,
+        mock_memory_engine: AsyncMock,
     ) -> None:
-        mock_memory_service.store_memory_batch.side_effect = Exception("boom")
+        mock_memory_engine.retain.side_effect = Exception("boom")
         # Should swallow the exception
         await store_single_profile(
             "user_1",
@@ -729,7 +667,7 @@ class TestStoreSingleProfile:
 
     async def test_user_id_passed_correctly(
         self,
-        mock_memory_service: AsyncMock,
+        mock_memory_engine: AsyncMock,
     ) -> None:
         await store_single_profile(
             "user_99",
@@ -737,21 +675,7 @@ class TestStoreSingleProfile:
             "https://github.com/bob",
             "data",
         )
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["user_id"] == "user_99"
-
-    async def test_discovered_at_in_metadata(
-        self,
-        mock_memory_service: AsyncMock,
-    ) -> None:
-        await store_single_profile(
-            "user_1",
-            "twitter",
-            "https://x.com/a",
-            "content",
-        )
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert "discovered_at" in call_kwargs["metadata"]
+        assert mock_memory_engine.retain.call_args.args[0] == "user_99"
 
     @pytest.mark.parametrize(
         "platform, url",
@@ -764,11 +688,11 @@ class TestStoreSingleProfile:
     )
     async def test_various_platforms(
         self,
-        mock_memory_service: AsyncMock,
+        mock_memory_engine: AsyncMock,
         platform: str,
         url: str,
     ) -> None:
         await store_single_profile("user_1", platform, url, "some content")
-        call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
-        assert call_kwargs["metadata"]["platform"] == platform
-        assert call_kwargs["metadata"]["url"] == url
+        hints = mock_memory_engine.retain.call_args.kwargs["extraction_hints"]
+        assert platform in hints
+        assert mock_memory_engine.retain.call_args.kwargs["source_id"] == url

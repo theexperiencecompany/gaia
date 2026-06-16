@@ -146,7 +146,7 @@ CONTEXT: These emails were SENT TO the user. You need to find the RECIPIENT's us
 
 ABSOLUTELY FORBIDDEN:
 - DO NOT convert the user's name into a username (e.g., "John Doe" → "john-doe" is WRONG)
-- DO NOT extract full names as usernames (e.g., "Dhruv Maradiya" is a NAME, not a username)
+- DO NOT extract full names as usernames (e.g., "Sam Carter" is a NAME, not a username)
 - DO NOT create usernames from email addresses (e.g., "john@example.com" → "john" is WRONG unless explicitly shown)
 - DO NOT guess usernames based on context
 - DO NOT extract newsletter author names (they're senders, not the recipient)
@@ -194,14 +194,14 @@ Extract: "john.doe" ✓
 Email: "You're signed in as @john_doe"
 Extract: "john_doe" ✓
 
-Email: "Your Discord username: dhruvmaradiya"
-Extract: "dhruvmaradiya" ✓
+Email: "Your Discord username: sambuilds"
+Extract: "sambuilds" ✓
 
-Email: "* fix: pricing page issues by @Dhruv-Maradiya in https://github.com/..."
-Extract: "Dhruv-Maradiya" ✓ (GitHub @mention in PR description)
+Email: "* fix: pricing page issues by @Sam-Carter in https://github.com/..."
+Extract: "Sam-Carter" ✓ (GitHub @mention in PR description)
 
-Email: "@aryanranderiya pushed 1 commit."
-Extract: "aryanranderiya" ✓ (GitHub @mention for commit author)
+Email: "@samcodes pushed 1 commit."
+Extract: "samcodes" ✓ (GitHub @mention for commit author)
 
 Email: "View it on GitHub: https://github.com/octocat"
 Extract: "octocat" ✓ (profile URL with single path segment)
@@ -210,7 +210,7 @@ EXAMPLES OF INVALID EXTRACTION (return "NOT_FOUND"):
 Email: "Hi John Doe, thanks for subscribing!"
 Extract: "NOT_FOUND" (full name with space, not a username)
 
-Email: "Dhruv Maradiya uploaded a video"
+Email: "Sam Carter uploaded a video"
 Extract: "NOT_FOUND" (this is a channel NAME displayed, not the @handle)
 
 Email: "Newsletter from John's Blog"

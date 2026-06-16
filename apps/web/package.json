@@ -1,7 +1,7 @@
 {
   "name": "gaia",
   "description": "Frontend Website of GAIA - The personal AI assistant",
-  "version": "0.18.0",
+  "version": "0.20.0",
   "private": true,
   "homepage": "https://github.com/theexperiencecompany/gaia",
   "bugs": {
@@ -99,6 +99,7 @@
     "@radix-ui/react-visually-hidden": "^1.2.3",
     "@react-types/shared": "^3.31.0",
     "@sentry/nextjs": "^10.5.0",
+    "@supermemory/memory-graph": "^0.2.2",
     "@swc-node/register": "^1.11.1",
     "@swc/core": "^1.15.13",
     "@tailwindcss/postcss": "^4.1.12",
@@ -128,8 +129,6 @@
     "@types/react-window-infinite-loader": "^1.0.9",
     "@types/tinycolor2": "^1.4.6",
     "@use-gesture/react": "^10.3.1",
-    "@vercel/analytics": "^1.6.1",
-    "@vercel/speed-insights": "^1.2.0",
     "@xyflow/react": "^12.8.4",
     "agentation": "^3.0.2",
     "animated-number-react": "^0.1.2",

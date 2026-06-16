@@ -14,7 +14,7 @@ from app.utils.weather_utils import user_weather
 @with_doc(GET_WEATHER)
 async def get_weather(
     config: RunnableConfig,
-    location: Annotated[str, "Name of the location (e.g. Surat,IN)"],
+    location: Annotated[str, "Name of the location (e.g. Mumbai,IN)"],
 ) -> dict | str:
     writer = get_stream_writer()
     writer({"progress": f"Fetching weather information for {location}..."})

@@ -10,10 +10,10 @@ import {
   type UseFormSetValue,
   useWatch,
 } from "react-hook-form";
+import { getUserHomeTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import { workflowApi } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
-import { getBrowserTimezone } from "../../utils/browserTimezone";
 import IntegrationChipsSelector from "./IntegrationChipsSelector";
 
 interface WorkflowDescriptionFieldProps {
@@ -79,7 +79,7 @@ export default function WorkflowDescriptionField({
             type: "schedule",
             enabled: true,
             cron_expression: cron_expression || "0 9 * * *",
-            timezone: getBrowserTimezone(),
+            timezone: getUserHomeTimezone(),
           });
         } else if (type === "manual") {
           setValue("activeTab", "manual");
