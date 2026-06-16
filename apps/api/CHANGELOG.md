@@ -1,5 +1,94 @@
 # Changelog
 
+## [0.19.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.18.0...api-v0.19.0) (2026-06-14)
+
+
+### Features
+
+* custom local memory engine replacing mem0 ([#750](https://github.com/theexperiencecompany/gaia/issues/750)) ([11948ea](https://github.com/theexperiencecompany/gaia/commit/11948eacbf4fe9115e058ef13aef0e2fb5ef19cd))
+
+## [0.18.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.17.0...api-v0.18.0) (2026-06-12)
+
+
+### Features
+
+* add integration-aware chips to workflow modal ([#664](https://github.com/theexperiencecompany/gaia/issues/664)) ([b47d0e1](https://github.com/theexperiencecompany/gaia/commit/b47d0e1ccffa3d5946404d222c1c8bc81509bbf9))
+* added sandbox environment ([#687](https://github.com/theexperiencecompany/gaia/issues/687)) ([e70572e](https://github.com/theexperiencecompany/gaia/commit/e70572ef010c5ea2739ba23bb9d61ae91069e461))
+* **api:** add GAIA self-knowledge subagent ([#661](https://github.com/theexperiencecompany/gaia/issues/661)) ([8e456e5](https://github.com/theexperiencecompany/gaia/commit/8e456e5aae33d3b58d2afaa97ad5d10330c44848))
+* **api:** add notification agent tools ([#662](https://github.com/theexperiencecompany/gaia/issues/662)) ([82ca761](https://github.com/theexperiencecompany/gaia/commit/82ca761b59df444dcfc5dca5c250e945621f2420))
+* **api:** connect tool ID-only + bot-aware integration connect URL ([#742](https://github.com/theexperiencecompany/gaia/issues/742)) ([850d823](https://github.com/theexperiencecompany/gaia/commit/850d82337dfb5256821b5922d4bc33bb98b3896a))
+* **api:** deliver background executor messages to bots + source metadata ([#727](https://github.com/theexperiencecompany/gaia/issues/727)) ([74054f7](https://github.com/theexperiencecompany/gaia/commit/74054f7e4cec8c0f0a58806aacf88af24ba15076))
+* **api:** login-free bot connect links + session-VFS docs/tests + agent_helpers test repair ([#726](https://github.com/theexperiencecompany/gaia/issues/726)) ([b82c7f5](https://github.com/theexperiencecompany/gaia/commit/b82c7f5188fa7d44b246b315203fabbd0a8b6e8f))
+* **api:** rate limit E2B sandbox creation ([#754](https://github.com/theexperiencecompany/gaia/issues/754)) ([2863075](https://github.com/theexperiencecompany/gaia/commit/286307525a870190e9ed04832b7aa9f929ee8ec1))
+* **bots:** direct bot endpoints with shared BotServer ([#627](https://github.com/theexperiencecompany/gaia/issues/627)) ([357ad28](https://github.com/theexperiencecompany/gaia/commit/357ad289a9d05c19ed63e3a3dc8dc6c48e6b318c))
+* **bots:** WhatsApp + Telegram media & voice support, with cross-cutting bot and API fixes ([#688](https://github.com/theexperiencecompany/gaia/issues/688)) ([80c67cc](https://github.com/theexperiencecompany/gaia/commit/80c67cc388403860b457674b7519c29903bc151c))
+* deliver agent-generated files to bot users + docgen skill migration ([#734](https://github.com/theexperiencecompany/gaia/issues/734)) ([b71c062](https://github.com/theexperiencecompany/gaia/commit/b71c062054c62e6809651081c858d9bb9b484928))
+* **evals:** generic personal assistant evaluation suite ([#628](https://github.com/theexperiencecompany/gaia/issues/628)) ([51663f4](https://github.com/theexperiencecompany/gaia/commit/51663f492d1b52e35816f642ce51bca8e4a1a7c0))
+* **gaia-task:** Phase 0 — GaiaTask foundation with VFS, 6 agent tools, and context injection ([#573](https://github.com/theexperiencecompany/gaia/issues/573)) ([e2f70bd](https://github.com/theexperiencecompany/gaia/commit/e2f70bd6cde8fc5d4fd53e43a76e204f8a624bcd))
+* improve quick actions and seed community workflows ([#666](https://github.com/theexperiencecompany/gaia/issues/666)) ([575d5ca](https://github.com/theexperiencecompany/gaia/commit/575d5caf3d218ea54827dc5a7f157fb4a6906ed3))
+* **landing:** update pricing, contact, navbar, and bots showcase ([#641](https://github.com/theexperiencecompany/gaia/issues/641)) ([9b12528](https://github.com/theexperiencecompany/gaia/commit/9b12528ea5d8a7245a6c25cdde1c02853c4a8185))
+* **onboarding:** revamp flow with backend intelligence pipeline and card reveal sequence ([#580](https://github.com/theexperiencecompany/gaia/issues/580)) ([23ed293](https://github.com/theexperiencecompany/gaia/commit/23ed2935e956070d9f7eb77423386e264502a349))
+* **openui:** add TextDocument component with HeroUI integration ([#634](https://github.com/theexperiencecompany/gaia/issues/634)) ([e8ef248](https://github.com/theexperiencecompany/gaia/commit/e8ef248ee01ae7cd2fd83fbe810e9b47d1bea3cb))
+* **openui:** extend component library, add MapBlock, fix action wiring and rendering ([#653](https://github.com/theexperiencecompany/gaia/issues/653)) ([c181998](https://github.com/theexperiencecompany/gaia/commit/c181998eea5f44fd1365f3ab0583f361f466a69f))
+* per-integration custom instructions + operational self-knowledge skills ([#728](https://github.com/theexperiencecompany/gaia/issues/728)) ([92c87ff](https://github.com/theexperiencecompany/gaia/commit/92c87ff2fdda9db8e9af25cf030be1d4d7a25064))
+* RabbitMQ outbound delivery to bots + self-managing agent workspace ([#729](https://github.com/theexperiencecompany/gaia/issues/729)) ([a02b1fd](https://github.com/theexperiencecompany/gaia/commit/a02b1fdd40c29e2893335f5e6838f856d7fb9950))
+* Redesign chat UI, remove clutter, and enhance performance ([#678](https://github.com/theexperiencecompany/gaia/issues/678)) ([af70ebf](https://github.com/theexperiencecompany/gaia/commit/af70ebfdccc2e85230e6cb84c4ca3270b048d381))
+* **retrieval:** pass intent state in LangGraph and invalidate service cache after user connects, add lazy hydration of tools ([#646](https://github.com/theexperiencecompany/gaia/issues/646)) ([da18fc4](https://github.com/theexperiencecompany/gaia/commit/da18fc4a7db5706cc621daa7bf576daa9dd9b543))
+* self-hosted Langfuse alongside LangSmith ([#720](https://github.com/theexperiencecompany/gaia/issues/720)) ([570729b](https://github.com/theexperiencecompany/gaia/commit/570729b478d8388d3bc98ddc9b965b8a3dbc7745))
+* show related workflows on integration pages ([#665](https://github.com/theexperiencecompany/gaia/issues/665)) ([5c2fdf0](https://github.com/theexperiencecompany/gaia/commit/5c2fdf088b433be67bfae9f6de6ef35865b2089f))
+* **web:** show link previews with favicons in todo titles ([#659](https://github.com/theexperiencecompany/gaia/issues/659)) ([7faac3d](https://github.com/theexperiencecompany/gaia/commit/7faac3de979093d5cfcb34109030068a46ae9743))
+
+
+### Bug Fixes
+
+* **api,mobile:** migrate ValueError to AppError, improve Reddit logging, fix contact dedup, update EAS project ([eafd0a8](https://github.com/theexperiencecompany/gaia/commit/eafd0a8ef0b97ef90a479790c9ce7def393429f9))
+* **api,web:** return 403 for disconnected integrations so logged-in users aren't shown the login modal ([#741](https://github.com/theexperiencecompany/gaia/issues/741)) ([6a8803b](https://github.com/theexperiencecompany/gaia/commit/6a8803b62a7e03c2fedffd20d2b70a12777a9b1d))
+* **api:** address Composio proxy migration review feedback ([cfdd90c](https://github.com/theexperiencecompany/gaia/commit/cfdd90c03a94d1c83f58d13f8cc43a88f145a93d))
+* **api:** address second-pass review on Composio proxy migration ([d056210](https://github.com/theexperiencecompany/gaia/commit/d056210d9a86d6fcbe6b2c3a9a8cba9afc028da8))
+* **api:** address third-pass review on Composio proxy migration ([73d2751](https://github.com/theexperiencecompany/gaia/commit/73d27510b56f205198d4fecab9708612f7b76985))
+* **api:** align Gmail contact metadataHeaders with build_contact_index ([7b0f63c](https://github.com/theexperiencecompany/gaia/commit/7b0f63c0be29f7b8e14d678c6f2e25b58810e558))
+* **api:** always invalidate proxy cache on disconnect, refresh Linear docstring ([d76c86a](https://github.com/theexperiencecompany/gaia/commit/d76c86ab8f6c43667e1af07830160de32f5a8b4c))
+* **api:** defensive guard on creator lookup for non-OID created_by ([5c2fdf0](https://github.com/theexperiencecompany/gaia/commit/5c2fdf088b433be67bfae9f6de6ef35865b2089f))
+* **api:** harden workflow timezone resolution and add lifecycle wide events ([#644](https://github.com/theexperiencecompany/gaia/issues/644)) ([8da2a8b](https://github.com/theexperiencecompany/gaia/commit/8da2a8bf9a18c6878ca2f8afb81a8ad7e62e996e))
+* **api:** invalidate tool_namespaces cache on integration status change ([#668](https://github.com/theexperiencecompany/gaia/issues/668)) ([f79ddf4](https://github.com/theexperiencecompany/gaia/commit/f79ddf46b758f8237c4fafe69e2a5fadaadd38d4))
+* **api:** MCP resilience + cross-user tool leak + public-workflow agg + ChromaDB observability ([#716](https://github.com/theexperiencecompany/gaia/issues/716)) ([6a5034f](https://github.com/theexperiencecompany/gaia/commit/6a5034fcc16759905b389d445acfcb8b5f46f39c))
+* **api:** persistent MCP sessions, transparent reconnect, instant OAuth ([#719](https://github.com/theexperiencecompany/gaia/issues/719)) ([3edc28d](https://github.com/theexperiencecompany/gaia/commit/3edc28d7fb97ab0bdc6b46f6aca9fcf4b4c74395))
+* **api:** prevent URL hallucination in web search, improve deep research ([#663](https://github.com/theexperiencecompany/gaia/issues/663)) ([cc88a4a](https://github.com/theexperiencecompany/gaia/commit/cc88a4a27ec1de854281e65af5e1662a286ad000))
+* **api:** restore query filter and surface failures in Gmail contact list ([1c9b20a](https://github.com/theexperiencecompany/gaia/commit/1c9b20a816173388a4a1cb60131e58895be3780b))
+* **api:** settle/re-arm overdue reminders in schedule-type backfill ([#753](https://github.com/theexperiencecompany/gaia/issues/753)) ([df2d9e8](https://github.com/theexperiencecompany/gaia/commit/df2d9e8a55ab4bad38058d202217174556c37ba2))
+* **api:** stop crawl4ai leaking Playwright browser processes ([#749](https://github.com/theexperiencecompany/gaia/issues/749)) ([a3da648](https://github.com/theexperiencecompany/gaia/commit/a3da64856f0f1635c4253d8432cb4d59268676fd))
+* **bots:** chunk long messages into multiple bubbles; gate OpenUI from plain comms prompt ([#667](https://github.com/theexperiencecompany/gaia/issues/667)) ([30d08b9](https://github.com/theexperiencecompany/gaia/commit/30d08b9273be1fd6a96f9c954baef02a265e2cc4))
+* Broken streaming race condition & grafana config ([#618](https://github.com/theexperiencecompany/gaia/issues/618)) ([8d02304](https://github.com/theexperiencecompany/gaia/commit/8d02304944b68c2db895be097140c946f69a836c))
+* lint issues ([05b5504](https://github.com/theexperiencecompany/gaia/commit/05b5504ebcd8a42a88d75ed5250f7647eb2e8b6a))
+* notifications, workflow execution & recurrence, tracked todos, Composio 1.0, calendar & chat-UI ([#736](https://github.com/theexperiencecompany/gaia/issues/736)) ([72ce1f0](https://github.com/theexperiencecompany/gaia/commit/72ce1f0fdb8ee3875f23c2d4ef63b4e97f5e7381))
+* onboarding redirect loop and align 409 error handling ([#631](https://github.com/theexperiencecompany/gaia/issues/631)) ([53fbd76](https://github.com/theexperiencecompany/gaia/commit/53fbd76973cf915f1d8d0e23d990b292a2c632e0))
+* **onboarding:** align 409 error shape and sync query cache on conflict ([224a07a](https://github.com/theexperiencecompany/gaia/commit/224a07a8e5cd7e6981262c9870724efcfbef86a3))
+* **onboarding:** prevent post-completion redirect loop ([d050448](https://github.com/theexperiencecompany/gaia/commit/d0504488e4c28ecfb3c769225d55ab62d3723e3c))
+* **onboarding:** prevent post-completion redirect loop ([#630](https://github.com/theexperiencecompany/gaia/issues/630)) ([a085792](https://github.com/theexperiencecompany/gaia/commit/a0857921a98466f5d3e5958a3beb96d44a26f671))
+* platform-aware markdown formatting and OpenUI gating ([#647](https://github.com/theexperiencecompany/gaia/issues/647)) ([82de0e2](https://github.com/theexperiencecompany/gaia/commit/82de0e205b466784d3d4d20de4f1715a7ecc7f02))
+* resolve PR [#618](https://github.com/theexperiencecompany/gaia/issues/618) review comments ([#619](https://github.com/theexperiencecompany/gaia/issues/619)) ([04d07e9](https://github.com/theexperiencecompany/gaia/commit/04d07e998e9ff76a4f2b89b485b6c5dca7002c9f))
+* resolve streaming race condition and missing UI messages ([#617](https://github.com/theexperiencecompany/gaia/issues/617)) ([72c26e0](https://github.com/theexperiencecompany/gaia/commit/72c26e0ecfc2880404f561ac99b4934b74e6bcb9))
+* **security:** patch 6 high-confidence vulnerabilities from audit ([#656](https://github.com/theexperiencecompany/gaia/issues/656)) ([a24cf7d](https://github.com/theexperiencecompany/gaia/commit/a24cf7d1d0c8d037f23457da23450e76916ca11b))
+* **sonar:** resolve SonarQube quality-gate findings for develop→master ([#738](https://github.com/theexperiencecompany/gaia/issues/738)) ([af0be97](https://github.com/theexperiencecompany/gaia/commit/af0be97dcebf3ef7f307d4172123aa47a4c8905a))
+* update litellm version from transitive dependency of opik ([a70a1e1](https://github.com/theexperiencecompany/gaia/commit/a70a1e1c04d80b4e6cee7b9b99f2019311dcb3f3))
+* **workflows:** consistent creator avatar across cards and detail pages ([5c2fdf0](https://github.com/theexperiencecompany/gaia/commit/5c2fdf088b433be67bfae9f6de6ef35865b2089f))
+* **workflows:** make slug the canonical identifier for public workflows ([5c2fdf0](https://github.com/theexperiencecompany/gaia/commit/5c2fdf088b433be67bfae9f6de6ef35865b2089f))
+
+
+### Performance Improvements
+
+* **api:** chat-stream input cost ~46% lower via byte-stable prompt caching + accurate billing ([#651](https://github.com/theexperiencecompany/gaia/issues/651)) ([d0b9ce4](https://github.com/theexperiencecompany/gaia/commit/d0b9ce4f3b64b0b1ce1dcf3d2b97b1959f49cfb8))
+* **api:** cut backend memory by dropping unused heavy imports ([#706](https://github.com/theexperiencecompany/gaia/issues/706)) ([02d4764](https://github.com/theexperiencecompany/gaia/commit/02d4764070dccbb0a69815170d3a3733d41e71fb))
+* **ci:** optimize pipeline with Dagger Cloud, Nx cache, and reduced overhead ([#620](https://github.com/theexperiencecompany/gaia/issues/620)) ([4d63ffd](https://github.com/theexperiencecompany/gaia/commit/4d63ffd7437198aa9980091d37cb319153d93543))
+* Optimise landing page, reduce memory & workers, added more Evals & TextContent in OpenUI ([#638](https://github.com/theexperiencecompany/gaia/issues/638)) ([dbcecde](https://github.com/theexperiencecompany/gaia/commit/dbcecde79e0c6909a5d255a803f5337f0446cd3c))
+* **web:** fix landing SSR bailout + Cloudflare/OpenNext deploy + LCP 6s→0.47s ([#740](https://github.com/theexperiencecompany/gaia/issues/740)) ([b94b51a](https://github.com/theexperiencecompany/gaia/commit/b94b51af387272583dcf546d6bd7b2adaa603104))
+* **workspace:** event-driven workspace materialization + chat title fix ([#751](https://github.com/theexperiencecompany/gaia/issues/751)) ([ffa7054](https://github.com/theexperiencecompany/gaia/commit/ffa7054b27d26178a3f8c59685c5f886c143ade8))
+
+
+### Documentation
+
+* Add Apr 5 release notes ([#610](https://github.com/theexperiencecompany/gaia/issues/610)) ([ddb20cf](https://github.com/theexperiencecompany/gaia/commit/ddb20cf5e03a083346398ca2c8b4c525eeac467c))
+
 ## [0.17.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.16.0...api-v0.17.0) (2026-04-05)
 
 
