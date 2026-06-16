@@ -5,14 +5,17 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import posixpath
 import time
 from typing import Annotated
 import uuid
 
+from e2b import CommandExitException, TimeoutException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from prometheus_client import Counter
 
+from app.agents.tools.coding._artifacts import publish_artifact
 from app.agents.tools.coding._context import (
     get_session_id,
     get_user_id,
@@ -29,19 +32,23 @@ from app.agents.workspace.paths import (
     session_artifacts,
     session_dir,
 )
+from app.constants.sandbox import (
+    BASH_DEFAULT_TIMEOUT_SECONDS,
+    BASH_MAX_COMMAND_LENGTH,
+    BASH_MAX_TIMEOUT_SECONDS,
+    WORKSPACE_TMP_SUFFIX,
+)
 from app.decorators import with_doc, with_rate_limiting
-from app.services.artifact_events import publish_artifact_event, upsert_event
-from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
-from app.services.storage import ArtifactInfo, FsOps, fs_timer
+from app.services.sandbox import (
+    SandboxAcquisitionError,
+    acquire_sandbox,
+)
+from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from shared.py.logging import get_contextual_logger
 from shared.py.wide_events import log
-
-MAX_TIMEOUT_SECONDS = 600
-DEFAULT_TIMEOUT_SECONDS = 120
-MAX_COMMAND_LENGTH = 16_000
 
 _metrics_log = get_contextual_logger("app.agents.tools.coding.bash_tool.metrics")
 
@@ -123,13 +130,22 @@ def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, bool, str | Non
     use_session_cwd = bool(session_id) and (not cwd or cwd == WORKSPACE_ROOT)
     if use_session_cwd and session_id:
         return session_dir(session_id), True, None
-    if cwd and not is_under_workspace(cwd):
-        # LLM-supplied cwd must stay under /workspace. Without this gate the
-        # agent could `cd /etc/gaia` (or anywhere else inside the sandbox)
-        # and read host-internal config files that have no business being in
-        # the agent's reach. Same-user sandbox so it's not a cross-user
-        # issue, but it makes prompt-injection drift much harder to bound.
-        return cwd, use_session_cwd, f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
+    if cwd:
+        # A relative cwd joins to the session dir (or /workspace), mirroring
+        # canonical_path so `cwd="scratch"` means the session's scratch — the
+        # same session-relative model read/write use.
+        if not cwd.startswith("/"):
+            base = session_dir(session_id) if session_id else WORKSPACE_ROOT
+            cwd = posixpath.join(base, cwd)
+        # Normalize BEFORE the containment check — otherwise `/workspace/../etc`
+        # (or a relative `../` that climbs out after the join) starts with
+        # `/workspace/` and slips past, then the shell resolves the `..` and
+        # lands outside. The gate is load-bearing against prompt-injection drift
+        # reaching host-internal config (`/etc/gaia`).
+        normalized = posixpath.normpath(cwd)
+        if not is_under_workspace(normalized):
+            return cwd, False, f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
+        return normalized, False, None
     return cwd, use_session_cwd, None
 
 
@@ -139,8 +155,11 @@ def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, bool, str | Non
 async def bash(
     config: RunnableConfig,
     command: Annotated[str, "Shell command to run inside /workspace"],
-    cwd: Annotated[str, "Working directory; defaults to the session scratch dir"] = "",
-    timeout: Annotated[int, "Seconds before kill (max 600)"] = DEFAULT_TIMEOUT_SECONDS,
+    cwd: Annotated[
+        str,
+        "Working directory; defaults to your session root (holds artifacts/, scratch/, user-uploaded/)",
+    ] = "",
+    timeout: Annotated[int, "Seconds before kill"] = BASH_DEFAULT_TIMEOUT_SECONDS,
     background: Annotated[bool, "Run detached; returns pid + log path"] = False,
 ) -> str:
     """Run a shell command in the user's persistent coding sandbox."""
@@ -149,10 +168,10 @@ async def bash(
 
     if not command or not command.strip():
         return "Error: command cannot be empty"
-    if len(command) > MAX_COMMAND_LENGTH:
-        return f"Error: command exceeds {MAX_COMMAND_LENGTH} characters"
+    if len(command) > BASH_MAX_COMMAND_LENGTH:
+        return f"Error: command exceeds {BASH_MAX_COMMAND_LENGTH} characters"
 
-    timeout = max(1, min(timeout, MAX_TIMEOUT_SECONDS))
+    timeout = max(1, min(timeout, BASH_MAX_TIMEOUT_SECONDS))
     run_id = uuid.uuid4().hex[:12]
 
     try:
@@ -183,8 +202,9 @@ async def bash(
                 # Session scratch is created host-side at chat start, but
                 # silent/background runs may reach here first — make it cheap
                 # and idempotent rather than failing on a missing cwd.
+                # `make_dir` creates parents and no-ops if the dir exists.
                 with contextlib.suppress(Exception):
-                    await sbx.commands.run(f"mkdir -p {sh_quote(cwd)}", timeout=10)
+                    await sbx.files.make_dir(cwd)
             if background:
                 return await _run_background(sbx, run_id, command, cwd, session_id)
             result = await _run_foreground(sbx, run_id, command, cwd, timeout, session_id)
@@ -201,6 +221,8 @@ async def bash(
     except SandboxAcquisitionError as e:
         return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable — {e}", session_id)
     except Exception as e:
+        # acquire_sandbox already evicted the sandbox if this failure means it
+        # died (it health-checks on any error) — here we just surface it.
         log.error(f"bash tool failed: {e}", exc_info=True)
         return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
 
@@ -227,7 +249,7 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
     max_inline = INLINE_ARTIFACT_MAX_BYTES
     enumerate_cmd = (
         f"find {sh_quote(artifacts_root)} -type f "
-        f"! -name '*.gaia-tmp' "
+        f"! -name '*{WORKSPACE_TMP_SUFFIX}' "
         f"-printf '%P\\0%s\\0%T@\\0' "
         f"-exec sh -c '"
         f'  s=$(stat -c%s "$0"); '
@@ -260,22 +282,9 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             mtime = float(mtime_str) if mtime_str else time.time()
         except ValueError:
             mtime = time.time()
-        content_type = detect_content_type(rel)
-        inline_body = _decode_inline(body_b64, size_bytes, content_type)
-        with contextlib.suppress(Exception):
-            await publish_artifact_event(
-                user_id,
-                upsert_event(
-                    session_id,
-                    ArtifactInfo(
-                        path=rel,
-                        size_bytes=size_bytes,
-                        mtime=mtime,
-                        content_type=content_type,
-                    ),
-                    body=inline_body,
-                ),
-            )
+        inline_body = _decode_inline(body_b64, size_bytes, detect_content_type(rel))
+        # Same shared publisher write/edit use — one owner of the event shape.
+        await publish_artifact(user_id, session_id, rel, size_bytes, mtime, inline_body)
 
 
 def _decode_inline(body_b64: str, size_bytes: int, content_type: str | None) -> str | None:
@@ -300,13 +309,10 @@ async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -
     """
     log_path = f"{runs_log_dir()}/{run_id}.log"
     body = stdout + "\n---STDERR---\n" + stderr
-    payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
+    # Native write auto-creates the runs/ parent and takes the body as data —
+    # no base64 round-trip, no shell.
     with contextlib.suppress(Exception):
-        await sbx.commands.run(  # type: ignore[attr-defined]
-            f"mkdir -p {sh_quote(runs_log_dir())} && "
-            f"printf %s {sh_quote(payload)} | base64 -d > {sh_quote(log_path)}",
-            timeout=10,
-        )
+        await sbx.files.write(log_path, body)  # type: ignore[attr-defined]
 
 
 async def _run_foreground(
@@ -346,9 +352,10 @@ async def _run_foreground(
         )
 
     try:
-        # `timeout` is the e2b SDK's server-side command deadline: when it fires
-        # the remote process is killed, which a local `asyncio.timeout` cannot do.
-        # This is not the cancellable local-await pattern S7483 targets.
+        # `timeout` is the e2b server-side command-stream deadline; when it fires
+        # the SDK raises TimeoutException and stops streaming. A local
+        # asyncio.timeout would only cancel our coroutine, not the remote
+        # command, which is why S7483 does not apply here.
         result = await sbx.commands.run(  # type: ignore[attr-defined]  # NOSONAR python:S7483
             command,
             cwd=cwd or WORKSPACE_ROOT,
@@ -356,22 +363,21 @@ async def _run_foreground(
             on_stderr=_on_stderr,
             timeout=timeout,
         )
-    except (TimeoutError, asyncio.CancelledError):
+        exit_code = getattr(result, "exit_code", None)
+        stdout = getattr(result, "stdout", "") or ""
+        stderr = getattr(result, "stderr", "") or ""
+    except CommandExitException as e:
+        # A non-zero exit (grep no-match, failing test, linter) is a normal
+        # command outcome, not a tool failure — the SDK raises instead of
+        # returning, so translate it back into a result we report normally.
+        exit_code, stdout, stderr = e.exit_code, e.stdout or "", e.stderr or ""
+    except (TimeoutException, TimeoutError, asyncio.CancelledError):
         _record_bash_exit_code(None, timed_out=True)
         raise
-    except Exception as e:
-        # The e2b SDK raises a CommandExitException whose class name carries
-        # "Timeout" when the timeout deadline fires. Match by name to avoid
-        # importing SDK-specific types at module load.
-        if "timeout" in type(e).__name__.lower():
-            _record_bash_exit_code(None, timed_out=True)
-        else:
-            _record_bash_exit_code(None, timed_out=False)
+    except Exception:
+        _record_bash_exit_code(None, timed_out=False)
         raise
 
-    stdout = getattr(result, "stdout", "") or ""
-    stderr = getattr(result, "stderr", "") or ""
-    exit_code = getattr(result, "exit_code", None)
     _record_bash_exit_code(exit_code, timed_out=False)
 
     await _persist_run_log(sbx, run_id, stdout, stderr)

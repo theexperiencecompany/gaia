@@ -3,6 +3,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { Clock01Icon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 
+import { getTimezoneList } from "@/utils/timezoneUtils";
 import {
   buildCronExpression,
   type CronSchedule,
@@ -13,7 +14,10 @@ import {
 interface ScheduleBuilderProps {
   value?: string; // cron expression
   onChange: (cronExpression: string) => void;
-  userTimezone?: string; // User's timezone for display only
+  // The timezone the schedule runs in. The cron/time picker is wall-clock time
+  // interpreted in this zone, so it must travel with the schedule to the backend.
+  timezone: string;
+  onTimezoneChange: (timezone: string) => void;
 }
 
 interface SimpleSchedule {
@@ -92,7 +96,12 @@ const to24Hour = (hour12: number, ampm: "AM" | "PM"): number => {
   return hour12 === 12 ? 12 : hour12 + 12;
 };
 
-export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
+export const ScheduleBuilder = ({
+  value,
+  onChange,
+  timezone,
+  onTimezoneChange,
+}: ScheduleBuilderProps) => {
   // Initialize state using pure functions - much faster and cleaner
   const [simpleSchedule, setSimpleSchedule] = useState<SimpleSchedule>(() =>
     initializeScheduleFromCron(value),
@@ -100,6 +109,19 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
   const [customCron, setCustomCron] = useState<string>(() =>
     initializeCustomCron(value),
   );
+
+  // Every IANA zone (not just the popular shortlist) so any user can pick their
+  // exact zone; the active one is guaranteed to be present.
+  const timezoneOptions = useMemo(() => {
+    const options = getTimezoneList(true).map((tz) => ({
+      value: tz.value,
+      label: tz.label,
+    }));
+    if (timezone && !options.some((tz) => tz.value === timezone)) {
+      options.unshift({ value: timezone, label: timezone });
+    }
+    return options;
+  }, [timezone]);
 
   // Update state when value prop changes (e.g., when switching between workflow cards)
   useEffect(() => {
@@ -280,7 +302,6 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
                   selectedKeys={new Set([simpleSchedule.dayOfMonth])}
                   onSelectionChange={(keys) => {
                     const selectedDay = Array.from(keys)[0] as string;
-                    console.log("Monthly day selected:", selectedDay);
                     handleSimpleScheduleChange({
                       dayOfMonth: selectedDay,
                     });
@@ -364,6 +385,27 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
           )}
         </div>
       )}
+
+      {/* Timezone the schedule runs in — the time/cron above is wall-clock in this zone */}
+      <div className="mt-4 flex flex-row items-center gap-3 text-sm">
+        <span className="text-nowrap text-zinc-400">Run in timezone</span>
+        <Select
+          aria-label="Select timezone"
+          size="sm"
+          selectedKeys={timezone ? new Set([timezone]) : undefined}
+          onSelectionChange={(keys) => {
+            const next = Array.from(keys)[0] as string | undefined;
+            if (next) onTimezoneChange(next);
+          }}
+          className="min-w-60"
+        >
+          {timezoneOptions.map((tz) => (
+            <SelectItem key={tz.value} textValue={tz.label}>
+              {tz.label}
+            </SelectItem>
+          ))}
+        </Select>
+      </div>
     </div>
   );
 };

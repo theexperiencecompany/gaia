@@ -18,6 +18,7 @@ import { ChevronRight } from "@/components/shared/icons";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { getBrowserTimezone } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 import {
   Priority,
@@ -67,9 +68,7 @@ const formatScheduledLabel = (
 ): string | undefined => {
   if (!scheduledAt) return undefined;
   const resolvedTimezone =
-    timezone && timezone.trim() !== ""
-      ? timezone
-      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+    timezone && timezone.trim() !== "" ? timezone : getBrowserTimezone();
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",

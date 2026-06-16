@@ -1,7 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 from bson import ObjectId
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -41,6 +40,7 @@ from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
+from app.utils.timezone import Timezone
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
@@ -95,7 +95,9 @@ def build_current_time_message(
     parts = [f"[Current UTC Time: {utc_now}]"]
     if user_timezone:
         try:
-            local_now = datetime.now(ZoneInfo(user_timezone)).strftime("%A, %B %d, %Y, %H:%M")
+            # Timezone.parse handles both IANA names and ±HH:MM offsets (ZoneInfo
+            # raised on offsets, silently dropping this line).
+            local_now = Timezone.parse(user_timezone).now().strftime("%A, %B %d, %Y, %H:%M")
             parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
         except Exception as e:
             log.warning(f"Error formatting user local time: {e}")

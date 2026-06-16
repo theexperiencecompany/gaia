@@ -471,7 +471,8 @@ class TestHandleRecurringTask:
 
             mock_next_run.assert_called_once()
             call_args = mock_next_run.call_args
-            assert call_args[0][2] == "America/New_York"
+            # get_next_run_time now receives a Timezone value object, not a raw str.
+            assert call_args[0][2].value == "America/New_York"
 
 
 # ---------------------------------------------------------------------------

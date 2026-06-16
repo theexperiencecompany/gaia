@@ -2,7 +2,7 @@
 Clean and lean workflow models for GAIA workflow system.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Any
 import uuid
@@ -18,11 +18,8 @@ from pydantic import (
 
 from app.models.scheduler_models import BaseScheduledTask
 from app.models.trigger_configs import TriggerConfigData
-from app.utils.cron_utils import (
-    get_next_run_time,
-    parse_timezone,
-    validate_cron_expression,
-)
+from app.utils.cron_utils import get_next_run_time, validate_cron_expression
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 
@@ -102,7 +99,10 @@ class TriggerConfig(BaseModel):
     cron_expression: str | None = Field(
         default=None, description="Cron expression for scheduled workflows"
     )
-    timezone: str | None = Field(default="UTC", description="Timezone for scheduled execution")
+    # None (not "UTC") is the unset sentinel so callers can distinguish a
+    # timezone the user explicitly chose in the UI from one they never set —
+    # the former is authoritative, the latter falls back to the resolved user tz.
+    timezone: str | None = Field(default=None, description="Timezone for scheduled execution")
     next_run: datetime | None = Field(default=None, description="Next scheduled execution time")
 
     def calculate_next_run(
@@ -110,37 +110,16 @@ class TriggerConfig(BaseModel):
     ) -> datetime | None:
         """Calculate the next run time from the cron expression. Returns UTC.
 
-        user_timezone accepts IANA names ("America/New_York") or offset strings ("+05:30").
+        The schedule runs in ``user_timezone`` if given, else the trigger's own
+        stored timezone, else UTC. Both accept IANA names or "+05:30" offsets.
+        ``get_next_run_time`` interprets the cron in that zone and returns UTC.
         """
         if self.type != TriggerType.SCHEDULE or not self.cron_expression:
             return None
 
         try:
-            # Use user_timezone parameter, fallback to trigger config timezone, then UTC
-            tz_name = user_timezone or self.timezone or "UTC"
-
-            # Convert timezone name/offset to timezone object using the unified parser
-            tz = parse_timezone(tz_name)
-
-            # If base_time is provided, convert it to the user's timezone for cron calculation
-            if base_time:
-                if base_time.tzinfo is None:
-                    base_time = base_time.replace(tzinfo=UTC)
-                # Convert to user timezone for cron calculation
-                if tz_name != "UTC":
-                    base_time = base_time.astimezone(tz)
-            else:
-                # Current time in user's timezone
-                base_time = datetime.now(tz)
-
-            # Calculate next run time using timezone-aware base_time
-            next_run = get_next_run_time(self.cron_expression, base_time, tz_name)
-
-            # Ensure result is in UTC for storage
-            if next_run.tzinfo != UTC:
-                next_run = next_run.astimezone(UTC)
-
-            return next_run
+            schedule_tz = Timezone.parse(user_timezone or self.timezone)
+            return get_next_run_time(self.cron_expression, base_time, schedule_tz)
         except Exception as e:
             log.error(f"Error calculating next run time: {e}")
             return None

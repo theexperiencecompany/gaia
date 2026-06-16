@@ -4,6 +4,7 @@
  * These are built-in triggers that don't require external integrations.
  */
 
+import { getUserHomeTimezone } from "@/lib/timezone";
 import type { RegisteredHandler } from "../registry";
 import type { TriggerConfig } from "../types";
 
@@ -18,7 +19,9 @@ export const scheduleTriggerHandler: RegisteredHandler = {
     type: "schedule",
     enabled: true,
     cron_expression: "0 9 * * *", // Daily at 9 AM
-    timezone: "UTC",
+    // Default a new schedule to the user's home zone (not UTC) so "9 AM" means
+    // 9 AM where they live. Consistent with the workflow-modal trigger section.
+    timezone: getUserHomeTimezone(),
   }),
 
   // Schedule builder is handled directly in WorkflowModal

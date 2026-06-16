@@ -8,7 +8,6 @@ build_initial_state, build_agent_config, execute_graph_streaming.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -67,7 +66,6 @@ class TestCallAgentReal:
                         request=body,
                         conversation_id="call-agent-conv-1",
                         user={"user_id": "agent-user-1", "name": "Test"},
-                        user_time=datetime.now(UTC),
                     )
 
                     chunks = []
@@ -100,7 +98,6 @@ class TestCallAgentReal:
                 request=body,
                 conversation_id="call-agent-conv-2",
                 user={"user_id": "agent-user-2"},
-                user_time=datetime.now(UTC),
             )
 
             chunks = []
