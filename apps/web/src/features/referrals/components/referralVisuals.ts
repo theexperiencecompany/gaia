@@ -6,14 +6,3 @@ const LADDER_EMOJI = ["🎁", "🚀", "👑", "💎"] as const;
 export function emojiForMilestone(index: number): string {
   return LADDER_EMOJI[index % LADDER_EMOJI.length];
 }
-
-// Pluralizes the reward into a ticket value/caption pair.
-export function ticketCopyForMonths(months: number): {
-  value: string;
-  caption: string;
-} {
-  return {
-    value: months === 1 ? "1 Month" : `${months} Months`,
-    caption: "of GAIA PRO, free",
-  };
-}

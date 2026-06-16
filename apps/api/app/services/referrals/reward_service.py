@@ -141,11 +141,15 @@ async def compute_points(referrer_user_id: str) -> int:
     return points_service.total_points(activation_count, upgrade_count, renewal_count)
 
 
-async def _grant_milestone(referrer_user_id: str, threshold: int, reward_months: int) -> None:
+async def _grant_milestone(
+    referrer_user_id: str, threshold: int, reward_months: int
+) -> dict | None:
     """Grant one milestone reward: mint a 100%-off code and ledger it once.
 
     The unique ledger index makes this safe under concurrent/retried calls — a
-    duplicate insert is swallowed and the (already minted) state stands.
+    duplicate insert is swallowed and the (already minted) state stands. Returns
+    the granted reward (threshold, months, code) when this call actually granted
+    it, or ``None`` when a concurrent sync already did.
     """
     pro_product_id = await _get_pro_product_id()
     result = await _create_discount(
@@ -172,11 +176,17 @@ async def _grant_milestone(referrer_user_id: str, threshold: int, reward_months:
         log.info(
             f"Granted referral milestone {threshold} ({reward_months}mo) to {referrer_user_id}"
         )
+        return {
+            "milestone_threshold": threshold,
+            "months_granted": reward_months,
+            "dodo_discount_code": code,
+        }
     except DuplicateKeyError:
         # Another concurrent sync already granted this milestone. If we minted a
         # now-orphaned code, delete it so we don't leak a redeemable discount.
         if discount_id:
             await _safe_delete_discount(discount_id)
+        return None
 
 
 async def _safe_delete_discount(discount_id: str) -> None:
@@ -190,12 +200,13 @@ async def _safe_delete_discount(discount_id: str) -> None:
         log.warning(f"Failed to delete orphaned discount {discount_id}: {e}")
 
 
-async def sync_rewards(referrer_user_id: str) -> None:
+async def sync_rewards(referrer_user_id: str) -> list[dict]:
     """Reconcile a referrer's ledger with their current points.
 
     Grants any milestone now reached but not yet ledgered, and reverts any
     previously-granted milestone that is no longer reached (clawback). Safe to
-    call after every referral status change.
+    call after every referral status change. Returns the rewards newly granted
+    by this call (empty when nothing changed), so callers can notify the user.
     """
     points = await compute_points(referrer_user_id)
 
@@ -209,13 +220,16 @@ async def sync_rewards(referrer_user_id: str) -> None:
     }
 
     # Grant newly-reached milestones (idempotent via the unique index).
+    newly_granted: list[dict] = []
     for milestone in points_service.build_ladder(points):
         if milestone["status"] == "done" and milestone["threshold"] not in granted_thresholds:
-            await _grant_milestone(
+            granted = await _grant_milestone(
                 referrer_user_id,
                 int(milestone["threshold"]),
                 int(milestone["reward_months"]),
             )
+            if granted:
+                newly_granted.append(granted)
 
     # Revert milestones that are no longer reached (refund/chargeback pulled
     # the referrer back below the threshold).
@@ -239,3 +253,5 @@ async def sync_rewards(referrer_user_id: str) -> None:
                 f"Reverted referral milestone {reward['milestone_threshold']} "
                 f"for {referrer_user_id} (points now {points})"
             )
+
+    return newly_granted

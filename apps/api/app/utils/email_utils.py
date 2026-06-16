@@ -273,6 +273,82 @@ def generate_referral_invite_html(
         raise
 
 
+async def send_referral_friend_joined_email(
+    to_email: str,
+    friend_name: str,
+    points: int,
+    hub_link: str,
+) -> None:
+    """Notify a referrer that a friend signed up from their invite link.
+
+    Transactional account notification (own-account activity), so no
+    unsubscribe footer — unlike the promotional invite email.
+    """
+    try:
+        template = jinja_env.get_template("referral_friend_joined.html")
+        html_content = template.render(
+            friend_name=friend_name,
+            points=points,
+            hub_link=hub_link,
+        )
+        resend.Emails.send(
+            {
+                "from": f"GAIA <{CONTACT_EMAIL}>",
+                "to": [to_email],
+                "subject": f"{friend_name} just joined GAIA",
+                "html": html_content,
+                "reply_to": CONTACT_EMAIL,
+            }
+        )
+        log.info(f"Referral friend-joined email sent to {to_email}")
+    except Exception as e:
+        log.error(f"Failed to send referral friend-joined email to {to_email}: {e!s}")
+
+
+async def send_referral_friend_upgraded_email(
+    to_email: str,
+    friend_name: str,
+    earned_months: int,
+    reward_code: str | None,
+    points: int,
+    points_to_next: int,
+    hub_link: str,
+) -> None:
+    """Notify a referrer that a referred friend upgraded to Pro.
+
+    When the upgrade crosses a milestone, ``earned_months`` is non-zero and the
+    email celebrates the earned free month (with the redeemable code); otherwise
+    it reports points progress toward the next free month.
+    """
+    try:
+        template = jinja_env.get_template("referral_friend_upgraded.html")
+        html_content = template.render(
+            friend_name=friend_name,
+            earned_months=earned_months,
+            reward_code=reward_code,
+            points=points,
+            points_to_next=points_to_next,
+            hub_link=hub_link,
+        )
+        subject = (
+            f"You earned a free month — {friend_name} upgraded to GAIA Pro"
+            if earned_months
+            else f"{friend_name} upgraded to GAIA Pro"
+        )
+        resend.Emails.send(
+            {
+                "from": f"GAIA <{CONTACT_EMAIL}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+                "reply_to": CONTACT_EMAIL,
+            }
+        )
+        log.info(f"Referral friend-upgraded email sent to {to_email}")
+    except Exception as e:
+        log.error(f"Failed to send referral friend-upgraded email to {to_email}: {e!s}")
+
+
 async def add_contact_to_resend(user_email: str, user_name: str | None = None) -> None:
     """Add new user contact to Resend audience."""
     if not settings.RESEND_AUDIENCE_ID:

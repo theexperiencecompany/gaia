@@ -43,10 +43,10 @@ export function PostPaymentShareModal({
             <GiftIcon width={20} height={20} />
           </span>
           <h2 className="mt-2 text-xl font-medium text-white">
-            Welcome to GAIA PRO
+            Welcome to GAIA Pro
           </h2>
           <p className="text-sm font-light text-zinc-400">
-            Know someone who'd love this? Give them a month of PRO — and earn a
+            Know someone who'd love this? Give them a month of Pro, and earn a
             free month yourself when they subscribe.
           </p>
         </ModalHeader>

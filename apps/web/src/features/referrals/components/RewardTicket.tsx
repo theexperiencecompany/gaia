@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 interface RewardTicketProps {
   /** Big value on the stub, e.g. "1 MONTH" or "$30". */
   value: string;
-  /** Small line under the value, e.g. "OF GAIA PRO, FREE". */
+  /** Small line under the value, e.g. "OF GAIA Pro, FREE". */
   caption: string;
   /** Tiny eyebrow on the perforated counterfoil, e.g. "REWARD". */
   eyebrow?: string;

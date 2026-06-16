@@ -52,7 +52,12 @@ from app.schemas.referral_schemas import (
     UpdateCodeResponse,
 )
 from app.services.referrals import points_service, reward_service
-from app.utils.email_utils import normalize_email, send_referral_invite_email
+from app.utils.email_utils import (
+    normalize_email,
+    send_referral_friend_joined_email,
+    send_referral_friend_upgraded_email,
+    send_referral_invite_email,
+)
 from app.utils.errors import create_error
 from shared.py.wide_events import log
 
@@ -96,6 +101,22 @@ def _mask_email(email: str) -> str:
 async def _friend_offer_label() -> str:
     """Short, clean friend-offer label. The gift framing carries the value."""
     return f"50% off your first {FRIEND_DISCOUNT_CYCLES} months"
+
+
+def _first_name(user: dict | None) -> str:
+    """Warm, first-name display for notification copy, falling back gracefully."""
+    if not user:
+        return "Your friend"
+    name = (user.get("name") or "").strip()
+    if name:
+        return name.split()[0]
+    email = (user.get("email") or "").strip()
+    return email.split("@")[0] if email else "Your friend"
+
+
+def _hub_link() -> str:
+    """Deep link to the referral hub in settings."""
+    return f"{settings.FRONTEND_URL}/settings/referrals"
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +290,17 @@ async def record_attribution(referred_user_id: str, ref_code: str) -> str | None
         {"$set": {"referred_by_user_id": referrer_id, "updated_at": now}},
     )
     log.set(referral={"operation": "attribute", "referrer_id": referrer_id})
+
+    referrer_email = (referrer.get("email") or "").strip()
+    if referrer_email:
+        points = await reward_service.compute_points(referrer_id)
+        await send_referral_friend_joined_email(
+            to_email=referrer_email,
+            friend_name=_first_name(friend),
+            points=points,
+            hub_link=_hub_link(),
+        )
+
     return referrer_id
 
 
@@ -277,11 +309,12 @@ async def _transition(
     from_states: list[str],
     to_state: ReferralStatus,
     timestamp_field: str,
-) -> None:
+) -> tuple[dict | None, list[dict]]:
     """Move a friend's referral to ``to_state`` and re-sync the referrer's rewards.
 
     Idempotent: only matches when the referral is in one of ``from_states``, so
-    repeated webhooks are no-ops.
+    repeated webhooks are no-ops. Returns the updated referral doc (or ``None``
+    when nothing matched) and the rewards newly granted by the re-sync.
     """
     now = _now()
     updated = await referrals_collection.find_one_and_update(
@@ -289,8 +322,10 @@ async def _transition(
         {"$set": {"status": to_state.value, timestamp_field: now, "updated_at": now}},
         return_document=ReturnDocument.AFTER,
     )
+    newly_granted: list[dict] = []
     if updated:
-        await reward_service.sync_rewards(updated["referrer_user_id"])
+        newly_granted = await reward_service.sync_rewards(updated["referrer_user_id"])
+    return updated, newly_granted
 
 
 async def record_activation(referred_user_id: str) -> None:
@@ -305,11 +340,43 @@ async def record_activation(referred_user_id: str) -> None:
 
 async def record_upgrade(referred_user_id: str) -> None:
     """Mark a referred friend as upgraded to PRO (the revenue conversion)."""
-    await _transition(
+    updated, newly_granted = await _transition(
         referred_user_id,
         [ReferralStatus.SIGNED_UP.value, ReferralStatus.ACTIVATED.value],
         ReferralStatus.UPGRADED,
         "upgraded_at",
+    )
+    if updated:
+        await _notify_referrer_of_upgrade(updated, newly_granted)
+
+
+async def _notify_referrer_of_upgrade(referral: dict, newly_granted: list[dict]) -> None:
+    """Email the referrer that a friend upgraded — celebrating an earned free
+    month when this upgrade crossed a milestone, else reporting progress."""
+    referrer_id = referral["referrer_user_id"]
+    referrer = await users_collection.find_one({"_id": ObjectId(referrer_id)})
+    referrer_email = (referrer.get("email") or "").strip() if referrer else ""
+    if not referrer_email:
+        return
+
+    friend = await users_collection.find_one({"_id": ObjectId(referral["referred_user_id"])})
+    points = await reward_service.compute_points(referrer_id)
+    earned_months = sum(int(r["months_granted"]) for r in newly_granted)
+    reward_code = next(
+        (r["dodo_discount_code"] for r in newly_granted if r.get("dodo_discount_code")),
+        None,
+    )
+    goal = points_service.next_goal(points)
+    points_to_next = max(0, int(goal["threshold"]) - points)
+
+    await send_referral_friend_upgraded_email(
+        to_email=referrer_email,
+        friend_name=_first_name(friend),
+        earned_months=earned_months,
+        reward_code=reward_code,
+        points=points,
+        points_to_next=points_to_next,
+        hub_link=_hub_link(),
     )
 
 

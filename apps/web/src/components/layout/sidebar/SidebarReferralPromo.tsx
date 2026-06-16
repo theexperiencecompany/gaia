@@ -61,7 +61,7 @@ export function SidebarReferralPromo() {
             </Button>
           </div>
           <p className="text-xs text-zinc-400">
-            Gift a friend GAIA PRO. Earn a free month when they subscribe.
+            Gift a friend GAIA Pro. Earn a free month when they subscribe.
           </p>
           {overview && overview.points > 0 && (
             <Progress

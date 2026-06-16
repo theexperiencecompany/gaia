@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light" />
-    <title>You've been invited to GAIA</title>
+    <title>Your friend just joined GAIA</title>
   </head>
   <body
     style="
@@ -35,50 +35,60 @@
               text-align: center;
             "
           >
-            <!-- Referrer avatar -->
-            {% if referrer_picture %}
-            <img
-              src="{{ referrer_picture }}"
-              width="64"
-              height="64"
-              alt="{{ referrer_name }}"
-              style="
-                border-radius: 9999px;
-                display: block;
-                margin: 0 auto 24px;
-              "
-            />
-            {% endif %}
+            <!-- Points badge -->
+            <table
+              align="center"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="margin: 0 auto 24px"
+            >
+              <tbody>
+                <tr>
+                  <td
+                    align="center"
+                    style="
+                      background-color: #ecfeff;
+                      border-radius: 9999px;
+                      padding: 8px 16px;
+                      font-size: 14px;
+                      font-weight: 600;
+                      color: #0e7490;
+                    "
+                  >
+                    {{ points }} points
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-            <!-- Hero -->
             <h1
               style="
                 margin: 0 0 16px;
-                font-size: 26px;
+                font-size: 24px;
                 font-weight: 700;
-                line-height: 1.25;
+                line-height: 1.3;
                 color: #18181b;
               "
             >
-              You've been invited!
+              {{ friend_name }} just joined GAIA
             </h1>
 
-            <!-- One simple, warm sentence -->
             <p
               style="
                 margin: 0 auto 28px;
-                max-width: 340px;
+                max-width: 360px;
                 font-size: 16px;
                 line-height: 26px;
                 color: #52525b;
               "
             >
-              Your friend {{ referrer_name }} gifted you
-              <strong style="color: #18181b">{{ offer_label }}</strong> on GAIA
-              Pro, your proactive AI assistant. Be sure to say thanks!
+              They signed up from your invite link. When {{ friend_name }}
+              upgrades to <strong style="color: #18181b">GAIA Pro</strong>,
+              you'll earn a free month of Pro — on us.
             </p>
 
-            <!-- CTA -->
             <table
               align="center"
               border="0"
@@ -94,7 +104,7 @@
                     style="border-radius: 12px; background-color: #00bbff"
                   >
                     <a
-                      href="{{ invite_link }}"
+                      href="{{ hub_link }}"
                       target="_blank"
                       style="
                         display: inline-block;
@@ -105,23 +115,12 @@
                         text-decoration: none;
                         border-radius: 12px;
                       "
-                      >Claim your gift</a
+                      >View your rewards</a
                     >
                   </td>
                 </tr>
               </tbody>
             </table>
-          </td>
-        </tr>
-
-        <!-- Footer: minimal unsubscribe (promotional-email requirement) -->
-        <tr>
-          <td style="padding: 18px 16px 0; text-align: center">
-            <a
-              href="mailto:{{ contact_email }}?subject=unsubscribe"
-              style="font-size: 12px; color: #a1a1aa; text-decoration: underline"
-              >Unsubscribe</a
-            >
           </td>
         </tr>
       </tbody>

@@ -57,7 +57,7 @@ export default function InvitePage() {
             <>
               {referrerName} gifted you
               <br />
-              $30 off GAIA PRO.
+              $30 off GAIA Pro.
             </>
           ) : (
             <>
@@ -87,7 +87,7 @@ export default function InvitePage() {
           <div className="mt-9">
             <RewardTicket
               value="50% OFF"
-              caption="First 2 months of GAIA PRO"
+              caption="First 2 months of GAIA Pro"
               eyebrow="A gift for you"
             />
           </div>

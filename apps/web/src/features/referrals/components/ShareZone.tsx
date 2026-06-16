@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { useInviteFriends, useUpdateReferralCode } from "../hooks/useReferrals";
 
 const SHARE_MESSAGE =
-  "I've been using GAIA — a proactive personal AI assistant. Here's 50% off your first 2 months of PRO:";
+  "I've been using GAIA, a proactive personal AI assistant. Here's 50% off your first 2 months of Pro:";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -46,7 +46,7 @@ export function ShareZone({ shareLink, code }: ShareZoneProps) {
       toast.success("Link copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("Couldn't copy — try selecting the link manually");
+      toast.error("Couldn't copy. Select the link manually.");
     }
   };
 

@@ -42,7 +42,7 @@ export function CornerReferralBar() {
   };
 
   // Persistent referral home for every logged-in user (free + PRO): free users
-  // are invited to earn a free month of PRO by referring. Render nothing until
+  // are invited to earn a free month of Pro by referring. Render nothing until
   // the overview is ready.
   if (!overview) return null;
 
@@ -56,7 +56,7 @@ export function CornerReferralBar() {
   const headline =
     overview.points > 0
       ? `${friendsToGo} ${friendsToGo === 1 ? "friend" : "friends"} to your free month`
-      : "Invite friends, get a free month of PRO";
+      : "Invite friends, get a free month of Pro";
 
   if (minimized) {
     return (
@@ -80,7 +80,7 @@ export function CornerReferralBar() {
         <div className="animate-shine relative w-[264px] overflow-hidden rounded-2xl bg-zinc-800/40 p-3 backdrop-blur-xl">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="flex size-6 items-center justify-center rounded-lg bg-primary/15 text-primary">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                 <GiftIcon width={15} height={15} />
               </span>
               <span className="text-sm font-medium text-zinc-100">
@@ -113,8 +113,8 @@ export function CornerReferralBar() {
           <PopoverTrigger>
             <Button
               size="sm"
-              variant="flat"
-              className="w-full rounded-xl bg-zinc-900/60 text-xs text-zinc-300 hover:bg-zinc-900"
+              color="primary"
+              className="w-full rounded-xl text-xs font-medium text-black"
             >
               Share & earn
             </Button>
@@ -126,7 +126,7 @@ export function CornerReferralBar() {
             <div>
               <p className="text-sm font-medium text-zinc-100">
                 {overview.next_goal_reward_months} month
-                {overview.next_goal_reward_months === 1 ? "" : "s"} of PRO away
+                {overview.next_goal_reward_months === 1 ? "" : "s"} of Pro away
               </p>
               <p className="text-xs text-zinc-500">
                 Every friend who subscribes earns you a free month.
