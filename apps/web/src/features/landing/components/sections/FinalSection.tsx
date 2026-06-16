@@ -173,7 +173,7 @@ export default function FinalSection({
         </div>
       )}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[40vh] sm:h-[25vh] bg-linear-to-t from-background via-background/80 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
       <div className="absolute bottom-6 right-6 z-1002">
         <TimeOfDayToggle timeOfDay={timeOfDay} onPress={handleTimeChange} />
