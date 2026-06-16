@@ -27,6 +27,7 @@ from app.config.rate_limits import (
     get_reset_time,
     get_time_window_key,
 )
+from app.constants.credits import CREDITS_FEATURE_KEY
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.models.usage_models import (
@@ -162,6 +163,54 @@ class TieredRateLimiter:
         )
 
         return usage_info
+
+    async def get_pool1_remaining(self, user_id: str, user_plan: PlanType) -> int:
+        """Remaining plan-allotment credits (the binding day/month limit)."""
+        limits = get_limits_for_plan(CREDITS_FEATURE_KEY, user_plan)
+        remaining: int | None = None
+        for period in (RateLimitPeriod.DAY, RateLimitPeriod.MONTH):
+            limit = getattr(limits, period.value)
+            if limit <= 0:
+                continue
+            used = await self.redis.get(self._get_redis_key(user_id, CREDITS_FEATURE_KEY, period))
+            rem = max(0, limit - (int(used) if used else 0))
+            remaining = rem if remaining is None else min(remaining, rem)
+        return remaining or 0
+
+    async def add_credit_usage(self, user_id: str, user_plan: PlanType, amount: int) -> int:
+        """Charge up to ``amount`` credits to the plan allotment.
+
+        Applies ``min(amount, remaining)`` to both the day and month counters so
+        neither exceeds its limit, and returns the amount actually applied. Any
+        shortfall is the caller's to draw from the top-up wallet (Pool 2).
+        """
+        if amount <= 0 or not self.redis.redis:
+            return 0
+        applied = min(amount, await self.get_pool1_remaining(user_id, user_plan))
+        if applied <= 0:
+            return 0
+        limits = get_limits_for_plan(CREDITS_FEATURE_KEY, user_plan)
+        for period in (RateLimitPeriod.DAY, RateLimitPeriod.MONTH):
+            if getattr(limits, period.value) <= 0:
+                continue
+            key = self._get_redis_key(user_id, CREDITS_FEATURE_KEY, period)
+            await self.redis.redis.incrby(key, applied)
+            await self.redis.redis.expire(key, self._get_ttl(period))
+        asyncio.create_task(self._sync_usage_real_time(user_id, CREDITS_FEATURE_KEY, user_plan))
+        return applied
+
+    async def remove_credit_usage(self, user_id: str, user_plan: PlanType, amount: int) -> None:
+        """Refund ``amount`` plan-allotment credits (reverse of add_credit_usage)."""
+        if amount <= 0 or not self.redis.redis:
+            return
+        limits = get_limits_for_plan(CREDITS_FEATURE_KEY, user_plan)
+        for period in (RateLimitPeriod.DAY, RateLimitPeriod.MONTH):
+            if getattr(limits, period.value) <= 0:
+                continue
+            key = self._get_redis_key(user_id, CREDITS_FEATURE_KEY, period)
+            new_value = await self.redis.redis.decrby(key, amount)
+            if new_value < 0:
+                await self.redis.redis.set(key, 0, keepttl=True)
 
     async def _sync_usage_real_time(
         self,

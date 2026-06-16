@@ -15,6 +15,7 @@ from app.models.payment_models import (
     PlanResponse,
     UserSubscriptionStatus,
 )
+from app.services.credits import credit_pack_service
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
 from shared.py.wide_events import log
@@ -32,6 +33,27 @@ async def get_plans_endpoint(request: Request, active_only: bool = True):
     except Exception as e:
         log.error(f"Error getting plans: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get plans")
+
+
+@router.get("/credit-packs")
+@limiter.limit("30/minute")
+async def list_credit_packs_endpoint(request: Request):
+    """List available top-up credit packs (Pro/Max only at purchase time)."""
+    log.set(payment={"operation": "list_credit_packs"})
+    return await credit_pack_service.list_packs()
+
+
+@router.post("/credit-packs/{pack_key}/checkout")
+@limiter.limit("5/minute")
+async def create_topup_checkout_endpoint(
+    request: Request, pack_key: str, current_user: dict = Depends(get_current_user)
+):
+    """Create a Dodo checkout session to purchase a top-up credit pack."""
+    user_id = current_user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    log.set(user={"id": user_id}, payment={"operation": "topup_checkout", "pack_key": pack_key})
+    return await credit_pack_service.create_topup_checkout(user_id, pack_key)
 
 
 @router.post("/subscriptions")

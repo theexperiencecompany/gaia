@@ -2,6 +2,7 @@
 
 import { Chip } from "@heroui/chip";
 import { Tick02Icon } from "@icons";
+import NumberFlow from "@number-flow/react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type React from "react";
@@ -70,6 +71,12 @@ export function PricingCard({
     !durationIsMonth && isPro && price > 0
       ? formatUSDPrice(Math.round(price / 12))
       : null;
+
+  // Numeric dollar value backing the animated price (NumberFlow).
+  const priceDollars =
+    !durationIsMonth && isPro && price > 0
+      ? Math.round(price / 12 / 100)
+      : Math.round(price / 100);
 
   const {
     createSubscriptionAndRedirect,
@@ -142,7 +149,7 @@ export function PricingCard({
     if (isCurrentPlan && hasActiveSubscription) return "Current Plan";
     if (hasActiveSubscription && !isCurrentPlan) return "Switch Plan";
     if (price === 0) return "Start for Free";
-    return "Get GAIA Pro";
+    return `Get GAIA ${title}`;
   };
 
   const isFree = price === 0 && !isEnterprise;
@@ -217,7 +224,19 @@ export function PricingCard({
             </span>
           )}
           <span className="text-5xl font-semibold tracking-tight">
-            {priceLabel ?? monthlyEquivalent ?? displayPrice}
+            {priceLabel ? (
+              priceLabel
+            ) : (
+              <NumberFlow
+                value={priceDollars}
+                format={{
+                  style: "currency",
+                  currency: "USD",
+                  maximumFractionDigits: 0,
+                }}
+                willChange
+              />
+            )}
           </span>
         </div>
         {/* Always render this line so height stays consistent */}

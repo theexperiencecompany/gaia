@@ -1,15 +1,15 @@
 """
 LLM Call Accounting Middleware.
 
-Emits a structured ``llm_call`` wide event after every model invocation with
-input/cached/output tokens, credits charged, step index, and agent name. Also
-emits ``recursion_high_water_mark`` when a run has consumed ≥80% of its
-recursion limit so we can tune the cap from real data.
+After every model invocation it (1) emits a structured ``llm_call`` wide event
+with input/cached/output tokens, cost, and step index, (2) charges the unified
+credit pool for the call's cost via :mod:`app.services.credits.credit_service`,
+and (3) emits ``recursion_high_water_mark`` once a run crosses ≥80% of its
+recursion limit.
 
-This middleware is a prerequisite for credit enforcement (CREDITS_PLAN.md
-phase 2) but explicitly does NOT decrement credits or gate calls today. The
-``@before_model`` hook is a no-op stub; turning it on in a later phase only
-requires flipping the gating logic.
+Charging always happens (metering). Blocking out-of-credit users is done at the
+agent entry points (``call_agent`` / ``call_agent_silent``), so this middleware
+never needs to interrupt the graph mid-run.
 
 Runs as a LangChain :class:`AgentMiddleware` via `create_agent(middleware=...)`.
 """
@@ -24,6 +24,9 @@ from langgraph.runtime import Runtime, get_config
 
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
+from app.models.payment_models import PlanType
+from app.services.credits import credit_service
+from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import ModelContext, log
 
 
@@ -124,12 +127,29 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         self._step_counts: dict[str, int] = {}
         self._hwm_emitted: set[str] = set()
         self._start_ts: dict[str, float] = {}
+        # Resolved plan per thread, so charging doesn't hit the DB every step.
+        self._plan_cache: dict[str, PlanType] = {}
 
     # --- helpers ---------------------------------------------------------
 
     def _thread_id(self, config: RunnableConfig) -> str:
         configurable = config.get("configurable", {}) or {}
         return str(configurable.get("thread_id") or configurable.get("stream_id") or "unknown")
+
+    async def _resolve_plan(
+        self, thread_id: str, user_id: str, configurable: dict[str, Any]
+    ) -> PlanType:
+        """Plan for the current run — from config if the entry point stashed it,
+        else fetched once and cached per thread."""
+        stashed = configurable.get("plan_type")
+        if stashed:
+            return PlanType(stashed)
+        if thread_id in self._plan_cache:
+            return self._plan_cache[thread_id]
+        subscription = await payment_service.get_user_subscription_status(user_id)
+        plan = subscription.plan_type or PlanType.FREE
+        self._plan_cache[thread_id] = plan
+        return plan
 
     def _next_step(self, thread_id: str) -> int:
         n = self._step_counts.get(thread_id, 0) + 1
@@ -248,6 +268,34 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             cost_usd=total_cost,
             step_index=step_index,
         )
+
+        # Charge the unified credit pool for this call. Metering always runs;
+        # blocking is enforced at the agent entry points. Never let a billing
+        # failure break the agent run.
+        if user_id and total_cost > 0:
+            try:
+                plan = await self._resolve_plan(thread_id, str(user_id), configurable)
+                amount = credit_service.usd_to_credits(total_cost)
+                from_allotment, from_topup = await credit_service.charge(
+                    str(user_id),
+                    plan,
+                    amount,
+                    reason=f"llm:{self.agent_name}",
+                    thread_id=thread_id,
+                )
+                log.info(
+                    "credits_charged",
+                    credit_event="credits_charged",
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    credits=amount,
+                    from_allotment=from_allotment,
+                    from_topup=from_topup,
+                    agent_name=self.agent_name,
+                    model=model_name,
+                )
+            except Exception as e:
+                log.warning(f"Credit charge failed for user {user_id}: {e}")
 
         # Recursion high-water-mark — emitted once per thread when the run
         # crosses the configured fraction of its recursion limit.

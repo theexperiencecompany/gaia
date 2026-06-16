@@ -14,3 +14,14 @@ export const useUsageSummary = () => {
     refetchOnMount: true, // Refetch when component mounts (navigation)
   });
 };
+
+export const useCreditBalance = () => {
+  return useQuery({
+    queryKey: ["creditBalance"],
+    queryFn: () => usageApi.getCreditBalance(),
+    staleTime: 30 * 1000,
+    retry: 2,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+};

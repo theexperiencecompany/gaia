@@ -28,6 +28,7 @@ from app.agents.core.background.executor_capture import (
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
 from app.models.message_models import MessageRequestWithHistory
+from app.models.payment_models import PlanType
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
@@ -43,6 +44,8 @@ from app.services.chat.workspace import (
     forward_artifact_events,
     schedule_last_active_touch,
 )
+from app.services.credits import credit_service
+from app.services.payments.payment_service import payment_service
 from app.services.storage import flush_fs_metrics
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
@@ -190,8 +193,27 @@ async def _run_chat_stream(
 
     except Exception as e:  # noqa: BLE001 — surface to client + flag the stream
         await _handle_stream_error(stream_id, e, start_event)
+        # The turn errored — refund the credits it consumed (a cancellation,
+        # which exits through the success path above, is NOT refunded).
+        await _refund_turn_credits(user, conversation_id)
     finally:
+        # Drop the per-turn credit accumulator (charge stands on success/cancel).
+        with contextlib.suppress(Exception):
+            await credit_service.finalize_turn(conversation_id)
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
+
+
+async def _refund_turn_credits(user: dict, conversation_id: str) -> None:
+    """Reverse every credit charged during an errored turn."""
+    user_id = user.get("user_id")
+    if not user_id:
+        return
+    try:
+        subscription = await payment_service.get_user_subscription_status(user_id)
+        plan = subscription.plan_type or PlanType.FREE
+        await credit_service.refund_turn(user_id, plan, conversation_id)
+    except Exception as e:
+        log.warning(f"Credit refund on errored turn failed: {e}")
 
 
 def _set_stream_log_context(

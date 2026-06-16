@@ -12,6 +12,7 @@ import { PricingCards } from "@/features/pricing/components/PricingCards";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import type { Plan } from "../api/pricingApi";
+import { CreditExplainer } from "./CreditExplainer";
 import { FAQAccordion } from "./FAQAccordion";
 
 interface PricingPageProps {
@@ -71,6 +72,8 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
             initialPlans={initialPlans}
           />
         </div>
+
+        <CreditExplainer />
 
         <ComparisonGrid />
 

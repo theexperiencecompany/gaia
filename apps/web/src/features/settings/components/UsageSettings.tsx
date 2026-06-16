@@ -13,9 +13,12 @@ import { SettingsSection } from "@/features/settings/components/ui/SettingsSecti
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 import { useUsageSummary } from "../hooks/useUsage";
+import { CreditBalanceHero } from "./CreditBalanceHero";
+import { UsageCatalogModal } from "./UsageCatalogModal";
 
 export default function UsageSettings() {
   const [selectedPeriod, setSelectedPeriod] = useState("day");
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const { data: summary, isLoading: summaryLoading } = useUsageSummary();
   const periodLabel =
@@ -39,18 +42,25 @@ export default function UsageSettings() {
     );
   }
 
-  // Get features for the selected period
+  // Get features for the selected period. The unified "credits" pool is shown
+  // in the balance hero, so exclude it from the per-feature list.
   const featuresWithPeriod = summary
     ? Object.entries(summary.features).filter(
-        ([_, feature]) =>
+        ([key, feature]) =>
+          key !== "credits" &&
           feature.periods[selectedPeriod as keyof typeof feature.periods],
       )
     : [];
 
+  const isPaid = summary?.plan_type === "pro" || summary?.plan_type === "max";
+
   return (
     <SettingsPage>
+      {/* Credit balance — the headline */}
+      <CreditBalanceHero />
+
       {/* Upgrade CTA — only for free plan */}
-      {summary?.plan_type !== "pro" && (
+      {!isPaid && (
         <SettingsSection title="Upgrade">
           <div className="px-4 py-4">
             <p className="mb-3 text-sm text-primary">
@@ -75,7 +85,7 @@ export default function UsageSettings() {
       <div className="flex items-center justify-between">
         <Chip
           size="sm"
-          color={summary?.plan_type === "pro" ? "primary" : "default"}
+          color={isPaid ? "primary" : "default"}
           className="font-medium"
         >
           {summary?.plan_type?.toUpperCase() || "FREE"} PLAN
@@ -150,6 +160,22 @@ export default function UsageSettings() {
           })
         )}
       </SettingsSection>
+
+      <div className="flex justify-center">
+        <Button
+          size="sm"
+          variant="light"
+          className="text-zinc-400"
+          onPress={() => setCatalogOpen(true)}
+        >
+          What uses credits?
+        </Button>
+      </div>
+
+      <UsageCatalogModal
+        isOpen={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+      />
     </SettingsPage>
   );
 }
