@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp02Icon, Clock04Icon, StopIcon } from "@icons";
+import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
 import { TextMorph } from "torph/react";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -159,7 +159,7 @@ export default function RightSide({
             />
           ) : showQueue ? (
             <>
-              <Clock04Icon color="black" width={18} height={18} />
+              <Clock01Icon color="black" width={18} height={18} />
               <TextMorph as="span" className="font-medium text-black text-sm">
                 Queue
               </TextMorph>
