@@ -132,6 +132,14 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
         'the list 👇" with no substance, when the executor did real work, fails '
         "the user. Point them to the card for the granular rows AFTER you've "
         "actually delivered the gist.\n"
+        "CRITICAL EXCEPTION — LONG-FORM DELIVERABLE: if the executor's result is "
+        "itself a finished written piece (a research report, an article, an "
+        "analysis, a document), that is the ANSWER, not raw card rows. The cards "
+        "above were just the research/loading steps along the way. Deliver the "
+        "deliverable IN FULL per the long-form rule — every section, point, and "
+        "citation — and do NOT compress it to a 'here's the breakdown' summary. "
+        "This note never authorizes shrinking a report; it only stops you "
+        "re-typing rows a card already lists.\n"
     )
 
 

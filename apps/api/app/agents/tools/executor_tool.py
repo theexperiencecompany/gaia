@@ -143,7 +143,28 @@ async def _dispatch_executor(
     lock_value = build_lock_value(stream_id, task_id)
 
     if not await try_acquire_lock(lock_key, lock_value):
-        # Executor is busy — queue for later execution
+        # The lock is held. Distinguish two cases by the holder's stream_id:
+        #   - SAME stream_id → the comms model called call_executor twice within
+        #     ONE turn. Queuing it would run the whole task a SECOND time
+        #     (observed: deep research executed twice for a single user message).
+        #     Reject it — the first dispatch already covers this turn.
+        #   - DIFFERENT stream_id → a genuinely new request arrived while the
+        #     executor is busy; queue it to run next.
+        held_value = await redis_cache.client.get(lock_key) if redis_cache.client else None
+        held_stream_id = parse_lock_value(str(held_value))[0] if held_value else ""
+        if stream_id and held_stream_id == stream_id:
+            log.warning(
+                "Duplicate call_executor in same turn — ignored, not queued",
+                task_id=task_id,
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+            )
+            return (
+                "That task is already running from this same message — not "
+                "starting it again. The results are on the way."
+            )
+
+        # Executor is busy with a different turn — queue for later execution
         queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
         await enqueue_task(
             queue_key=queue_key,
