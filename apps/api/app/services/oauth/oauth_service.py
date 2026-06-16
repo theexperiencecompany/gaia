@@ -139,6 +139,13 @@ async def store_user_info(
     # of lazily on the first chat turn. Fire-and-forget so signup isn't blocked.
     schedule_user_provision(str(result.inserted_id))
 
+    # Give every new user a referral code up front, so the hub/share surfaces
+    # always have one (idempotent — a later read returns the same code).
+    try:
+        await referral_service.ensure_referral_code(str(result.inserted_id))
+    except Exception as e:
+        log.error(f"Failed to ensure referral code for {email}: {e!s}")
+
     # Attribute the signup to a referrer if they arrived via an invite link.
     # Self-referral and re-attribution are guarded inside the service.
     if ref_code:

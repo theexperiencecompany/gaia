@@ -3,11 +3,16 @@ import type { AxiosError } from "axios";
 import { apiService } from "@/lib/api/service";
 
 import type {
+  InviteContact,
   InviteResult,
   ReferralOverview,
   ResolveCodeResult,
   UpdateCodeResult,
 } from "../types";
+
+interface InviteContactsResponse {
+  contacts: InviteContact[];
+}
 
 // Helper function for consistent error handling
 interface ApiErrorResponse {
@@ -68,6 +73,18 @@ class ReferralApi {
       });
     } catch (error) {
       return handleApiError(error, "Invite friends");
+    }
+  }
+
+  // Suggest Google contacts to invite (returns [] when Gmail isn't connected)
+  async getInviteContacts(): Promise<InviteContact[]> {
+    try {
+      const { contacts } = await apiService.get<InviteContactsResponse>(
+        "/referrals/contacts",
+      );
+      return contacts;
+    } catch (error) {
+      return handleApiError(error, "Get invite contacts");
     }
   }
 

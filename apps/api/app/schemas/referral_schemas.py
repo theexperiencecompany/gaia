@@ -94,6 +94,21 @@ class InviteResponse(BaseModel):
     skipped: list[str] = Field(description="Addresses skipped (invalid/duplicate/existing user).")
 
 
+class InviteContact(BaseModel):
+    """A suggested invite recipient imported from the user's Google contacts."""
+
+    name: str | None = Field(default=None, description="Contact's display name, if known.")
+    email: str = Field(description="Contact's normalized email address.")
+
+
+class InviteContactsResponse(BaseModel):
+    """Google-contact suggestions for the invite field, deduped and ranked."""
+
+    contacts: list[InviteContact] = Field(
+        description="Suggested recipients, closest first, ready to populate the invite field."
+    )
+
+
 class UpdateCodeResponse(BaseModel):
     """Result of changing the vanity code."""
 

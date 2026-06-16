@@ -11,9 +11,11 @@ Reward/Dodo specifics live in ``reward_service``; pure economics live in
 ``points_service``.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 import re
 import secrets
+from typing import Any
 
 from bson import ObjectId
 from pymongo import ReturnDocument
@@ -21,6 +23,9 @@ from pymongo import ReturnDocument
 from app.config.settings import settings
 from app.constants.referrals import (
     FRIEND_DISCOUNT_CYCLES,
+    GMAIL_GET_CONTACTS_TOOL,
+    IMPORT_CONTACTS_PAGE_SIZE,
+    MAX_IMPORT_CONTACTS,
     MAX_INVITES_PER_DAY,
     MAX_INVITES_PER_REQUEST,
     REFERRAL_CODE_ALPHABET,
@@ -36,6 +41,17 @@ from app.db.mongodb.collections import (
     referrals_collection,
     users_collection,
 )
+from app.models.notification.notification_models import (
+    ActionConfig,
+    ActionStyle,
+    ActionType,
+    NotificationAction,
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+    NotificationType,
+    RedirectConfig,
+)
 from app.models.referral_models import (
     ReferralChannel,
     ReferralRewardStatus,
@@ -44,6 +60,8 @@ from app.models.referral_models import (
 from app.schemas.referral_schemas import (
     EarnedReward,
     FriendReferral,
+    InviteContact,
+    InviteContactsResponse,
     InviteResponse,
     MilestoneState,
     ReferralMeResponse,
@@ -51,7 +69,9 @@ from app.schemas.referral_schemas import (
     ResolveCodeResponse,
     UpdateCodeResponse,
 )
+from app.services.notification_service import notification_service
 from app.services.referrals import points_service, reward_service
+from app.utils.context_utils import execute_tool
 from app.utils.email_utils import (
     normalize_email,
     send_referral_friend_joined_email,
@@ -325,7 +345,51 @@ async def _transition(
     newly_granted: list[dict] = []
     if updated:
         newly_granted = await reward_service.sync_rewards(updated["referrer_user_id"])
+        if newly_granted:
+            await _notify_reward_granted(updated["referrer_user_id"], newly_granted)
     return updated, newly_granted
+
+
+async def _notify_reward_granted(referrer_user_id: str, newly_granted: list[dict]) -> None:
+    """In-app notification when a referrer crosses a milestone and earns months.
+
+    Fires for any grant (an upgrade or a renewal that tips the points over a
+    threshold); the per-step upgrade email is sent separately. Best-effort: a
+    notification failure must never break the webhook-driven transition.
+    """
+    months = sum(int(r["months_granted"]) for r in newly_granted)
+    label = "a free month" if months == 1 else f"{months} free months"
+    try:
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=referrer_user_id,
+                source=NotificationSourceEnum.REFERRAL_REWARD,
+                type=NotificationType.SUCCESS,
+                content=NotificationContent(
+                    title=f"You earned {label} of GAIA Pro",
+                    body=(
+                        "A friend you referred subscribed to Pro. Keep inviting "
+                        "to stack more free months."
+                    ),
+                    actions=[
+                        NotificationAction(
+                            type=ActionType.REDIRECT,
+                            label="View rewards",
+                            style=ActionStyle.PRIMARY,
+                            config=ActionConfig(
+                                redirect=RedirectConfig(
+                                    url="/settings/referrals",
+                                    open_in_new_tab=False,
+                                    close_notification=True,
+                                )
+                            ),
+                        )
+                    ],
+                ),
+            )
+        )
+    except Exception as e:  # noqa: BLE001 - notification is best-effort
+        log.error(f"Failed to send referral reward notification to {referrer_user_id}: {e!s}")
 
 
 async def record_activation(referred_user_id: str) -> None:
@@ -512,6 +576,7 @@ async def send_invites(user_id: str, emails: list[str]) -> InviteResponse:
                 referrer_picture=referrer_picture,
                 invite_link=link,
                 offer_label=offer_label,
+                code=code,
             )
             sent.append(addr)
         except Exception as e:  # noqa: BLE001 - report, don't fail the batch
@@ -520,6 +585,91 @@ async def send_invites(user_id: str, emails: list[str]) -> InviteResponse:
 
     log.set(referral={"operation": "invite", "sent": len(sent), "skipped": len(skipped)})
     return InviteResponse(sent=sent, skipped=skipped)
+
+
+def _parse_contacts(data: dict[str, Any]) -> list[InviteContact]:
+    """Pull ``(name, email)`` pairs from a raw GMAIL_GET_CONTACTS response.
+
+    ``execute_tool`` bypasses the agent's after-hook, so we read the raw People
+    API shape (``response_data.connections``) directly. The API returns contacts
+    in relevance order, with no per-contact interaction signal, so we preserve
+    that order as our "closest first" ranking.
+    """
+    connections = data.get("response_data", {}).get("connections", [])
+    contacts: list[InviteContact] = []
+    for connection in connections:
+        emails = connection.get("emailAddresses", [])
+        primary_email = next(
+            (e for e in emails if e.get("metadata", {}).get("primary")),
+            emails[0] if emails else {},
+        )
+        email = normalize_email(primary_email.get("value", ""))
+        if not email:
+            continue
+
+        names = connection.get("names", [])
+        primary_name = next(
+            (n for n in names if n.get("metadata", {}).get("primary")),
+            names[0] if names else {},
+        )
+        name = (primary_name.get("displayName") or "").strip() or None
+        contacts.append(InviteContact(name=name, email=email))
+    return contacts
+
+
+async def get_invite_contacts(user_id: str) -> InviteContactsResponse:
+    """Suggest Google contacts to invite, deduped against users and prior invites.
+
+    Reads the signed-in user's Google contacts via Composio, drops their own
+    address, anyone who is already a GAIA user, and anyone this referrer has
+    already invited, then caps the list. If Gmail isn't connected (or the tool
+    errors), returns no suggestions rather than failing the request.
+    """
+    try:
+        data = await asyncio.to_thread(
+            execute_tool,
+            GMAIL_GET_CONTACTS_TOOL,
+            {"page_size": IMPORT_CONTACTS_PAGE_SIZE},
+            user_id,
+        )
+    except Exception as e:  # noqa: BLE001 - no Gmail connection / tool error → no suggestions
+        log.warning(f"Could not import Google contacts for {user_id}: {e!s}")
+        return InviteContactsResponse(contacts=[])
+
+    # First-seen wins, preserving the People API's relevance order.
+    by_email: dict[str, InviteContact] = {}
+    for contact in _parse_contacts(data):
+        by_email.setdefault(contact.email, contact)
+
+    referrer = await users_collection.find_one({"_id": ObjectId(user_id)}, {"email": 1})
+    own_email = normalize_email((referrer or {}).get("email") or "")
+    if own_email:
+        by_email.pop(own_email, None)
+
+    candidate_emails = set(by_email)
+    if not candidate_emails:
+        return InviteContactsResponse(contacts=[])
+
+    existing_users = {
+        u["email"].lower()
+        async for u in users_collection.find(
+            {"email": {"$in": list(candidate_emails)}}, {"email": 1}
+        )
+        if u.get("email")
+    }
+    already_invited = {
+        r["referred_email"]
+        async for r in referrals_collection.find(
+            {"referrer_user_id": user_id, "referred_email": {"$in": list(candidate_emails)}},
+            {"referred_email": 1},
+        )
+        if r.get("referred_email")
+    }
+    excluded = existing_users | already_invited
+
+    contacts = [c for email, c in by_email.items() if email not in excluded][:MAX_IMPORT_CONTACTS]
+    log.set(referral={"operation": "import_contacts", "suggested": len(contacts)})
+    return InviteContactsResponse(contacts=contacts)
 
 
 # ---------------------------------------------------------------------------

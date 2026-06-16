@@ -73,6 +73,28 @@ export const useInviteFriends = () => {
   });
 };
 
+/**
+ * Lazily fetch Google contact suggestions for the invite field. Disabled on
+ * mount (the endpoint hits Gmail/Composio); call `fetchContacts` when the user
+ * clicks "Import from Google". The backend never errors — it returns [] when
+ * Gmail isn't connected — so a successful, empty result is a valid state.
+ */
+export const useInviteContacts = () => {
+  const query = useQuery({
+    queryKey: REFERRAL_QUERY_KEYS.contacts,
+    queryFn: () => referralApi.getInviteContacts(),
+    enabled: false,
+    gcTime: 0,
+  });
+
+  return {
+    contacts: query.data ?? [],
+    isLoading: query.isFetching,
+    hasFetched: query.isFetched,
+    fetchContacts: query.refetch,
+  };
+};
+
 // Update the user's referral code
 export const useUpdateReferralCode = () => {
   const queryClient = useQueryClient();

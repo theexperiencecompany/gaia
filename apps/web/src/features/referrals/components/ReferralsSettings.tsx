@@ -2,15 +2,20 @@
 
 import { Avatar } from "@heroui/avatar";
 import { Button } from "@heroui/button";
+import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
 import { Input } from "@heroui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
+import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Skeleton } from "@heroui/skeleton";
+import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import {
   CheckmarkCircle02Icon,
   CopyIcon,
   GiftIcon,
+  GoogleIcon,
   Link01Icon,
   Mail01Icon,
   MailAdd01Icon,
@@ -21,17 +26,22 @@ import {
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import * as m from "motion/react-m";
-import { type KeyboardEvent, useState } from "react";
+import { type KeyboardEvent, useMemo, useState } from "react";
 
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
-import { useInviteFriends, useReferralOverview } from "../hooks/useReferrals";
+import {
+  useInviteContacts,
+  useInviteFriends,
+  useReferralOverview,
+} from "../hooks/useReferrals";
 import type {
   EarnedReward,
   FriendReferral,
+  InviteContact,
   MilestoneState,
   ReferralOverview,
 } from "../types";
@@ -172,6 +182,22 @@ function ReferralsHub({ overview }: { overview: ReferralOverview }) {
       e.preventDefault();
       sendInvite();
     }
+  };
+
+  // Merge imported addresses into whatever's already typed, deduped
+  // (case-insensitive), preserving order: existing tokens first, then new ones.
+  const addEmails = (incoming: string[]) => {
+    setEmail((current) => {
+      const existing = current.split(/[\s,;]+/).filter(Boolean);
+      const seen = new Set(existing.map((e) => e.toLowerCase()));
+      const additions = incoming.filter((e) => {
+        const key = e.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      return [...existing, ...additions].join(", ");
+    });
   };
 
   // The displayed link is "<prefix><slug>"; only the vanity slug is editable.
@@ -347,9 +373,12 @@ function ReferralsHub({ overview }: { overview: ReferralOverview }) {
           <Divider className="my-4 bg-zinc-700/60" />
 
           {/* Tier 3: email invite, a distinct action */}
-          <div className="mb-2 flex items-center gap-1.5">
-            <MailAdd01Icon size={15} className="text-zinc-500" aria-hidden />
-            <p className="text-xs text-zinc-500">Or invite by email</p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <MailAdd01Icon size={15} className="text-zinc-500" aria-hidden />
+              <p className="text-xs text-zinc-500">Or invite by email</p>
+            </div>
+            <ImportFromGoogle onAdd={addEmails} />
           </div>
           <div className="flex items-center gap-2.5">
             <Input
@@ -686,6 +715,146 @@ function Stat({
 
 function StatDivider() {
   return <span className="mx-3 h-8 w-px shrink-0 bg-zinc-800" />;
+}
+
+// ── Import from Google ───────────────────────────────────────────────────────
+// A lazy contact picker for the invite field. The button opens a popover and
+// fetches suggestions on demand (the endpoint hits Gmail/Composio, so we never
+// fetch on mount). Selected contacts are appended to the email input via onAdd;
+// the backend returns [] when Gmail isn't connected, surfaced as a helper line.
+function ImportFromGoogle({ onAdd }: { onAdd: (emails: string[]) => void }) {
+  const { contacts, isLoading, hasFetched, fetchContacts } =
+    useInviteContacts();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const sortedContacts = useMemo(
+    () =>
+      [...contacts].sort((a, b) =>
+        (a.name ?? a.email).localeCompare(b.name ?? b.email),
+      ),
+    [contacts],
+  );
+
+  const openPicker = () => {
+    setOpen(true);
+    if (!hasFetched) fetchContacts();
+  };
+
+  const toggle = (email: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+  };
+
+  const addSelected = () => {
+    onAdd([...selected]);
+    setSelected(new Set());
+    setOpen(false);
+  };
+
+  return (
+    <Popover
+      isOpen={open}
+      onOpenChange={setOpen}
+      placement="bottom-end"
+      offset={8}
+      classNames={{ content: "rounded-2xl bg-zinc-800 p-0 shadow-xl" }}
+    >
+      <PopoverTrigger>
+        <Button
+          variant="light"
+          size="sm"
+          onPress={openPicker}
+          className="h-7 min-w-0 gap-1.5 px-2 text-xs font-medium text-zinc-400 data-[hover=true]:bg-zinc-700/60 data-[hover=true]:text-zinc-100"
+          startContent={<GoogleIcon size={14} />}
+        >
+          Import from Google
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent>
+        <div className="w-72 p-3">
+          {isLoading ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-sm text-zinc-400">
+              <Spinner size="sm" color="current" />
+              Loading contacts
+            </div>
+          ) : sortedContacts.length === 0 ? (
+            <p className="px-1 py-4 text-center text-xs leading-relaxed text-zinc-500">
+              No contacts found. Make sure Gmail is connected in Integrations.
+            </p>
+          ) : (
+            <>
+              <ScrollShadow className="max-h-64">
+                <div className="flex flex-col">
+                  {sortedContacts.map((contact) => (
+                    <ContactRow
+                      key={contact.email}
+                      contact={contact}
+                      checked={selected.has(contact.email)}
+                      onToggle={() => toggle(contact.email)}
+                    />
+                  ))}
+                </div>
+              </ScrollShadow>
+              <Button
+                color="primary"
+                size="sm"
+                fullWidth
+                isDisabled={selected.size === 0}
+                onPress={addSelected}
+                className="mt-2 h-9 font-medium"
+              >
+                {selected.size > 0
+                  ? `Add ${selected.size} ${selected.size === 1 ? "contact" : "contacts"}`
+                  : "Add contacts"}
+              </Button>
+            </>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ContactRow({
+  contact,
+  checked,
+  onToggle,
+}: {
+  contact: InviteContact;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-zinc-700/50"
+    >
+      <Checkbox
+        isSelected={checked}
+        onValueChange={onToggle}
+        size="sm"
+        aria-label={`Select ${contact.email}`}
+        classNames={{ wrapper: "pointer-events-none" }}
+      />
+      <Avatar
+        name={contact.name ?? contact.email}
+        size="sm"
+        className="size-7 shrink-0 text-xs"
+      />
+      <div className="min-w-0 flex-1">
+        {contact.name && (
+          <p className="truncate text-sm text-zinc-200">{contact.name}</p>
+        )}
+        <p className="truncate text-xs text-zinc-500">{contact.email}</p>
+      </div>
+    </button>
+  );
 }
 
 function ChannelIconButton({

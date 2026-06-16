@@ -9,6 +9,7 @@ from app.constants.referrals import (
     REFERRAL_COOKIE_NAME,
 )
 from app.schemas.referral_schemas import (
+    InviteContactsResponse,
     InviteRequest,
     InviteResponse,
     ReferralMeResponse,
@@ -49,6 +50,15 @@ async def resolve_referral_code(code: str, response: Response) -> ResolveCodeRes
             samesite="lax",
         )
     return result
+
+
+@router.get("/contacts", response_model=InviteContactsResponse)
+async def get_invite_contacts(
+    user: dict = Depends(get_current_user),
+) -> InviteContactsResponse:
+    """Suggest Google contacts to invite (deduped against users + prior invites)."""
+    log.set(referral={"operation": "import_contacts"})
+    return await referral_service.get_invite_contacts(user["user_id"])
 
 
 @router.post("/invite", response_model=InviteResponse)

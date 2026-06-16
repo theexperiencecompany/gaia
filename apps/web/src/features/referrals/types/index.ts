@@ -64,6 +64,11 @@ export interface InviteResult {
   skipped: string[];
 }
 
+export interface InviteContact {
+  name: string | null;
+  email: string;
+}
+
 export interface UpdateCodeResult {
   code: string;
   share_link: string;

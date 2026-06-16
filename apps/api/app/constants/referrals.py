@@ -140,3 +140,16 @@ RESERVED_REFERRAL_CODES: Final[frozenset[str]] = frozenset(
 # ---------------------------------------------------------------------------
 MAX_INVITES_PER_REQUEST: Final[int] = 20
 MAX_INVITES_PER_DAY: Final[int] = 50
+
+# ---------------------------------------------------------------------------
+# Google contacts import (invite suggestions)
+# ---------------------------------------------------------------------------
+# How many Google contacts to fetch from the People API in one page, and the
+# upper bound on suggestions returned to populate the multi-address invite field
+# after deduping. The cap keeps the response light while covering most address
+# books worth suggesting from.
+IMPORT_CONTACTS_PAGE_SIZE: Final[int] = 100
+MAX_IMPORT_CONTACTS: Final[int] = 100
+
+# Composio tool that reads the signed-in user's Google contacts (People API).
+GMAIL_GET_CONTACTS_TOOL: Final[str] = "GMAIL_GET_CONTACTS"

@@ -221,6 +221,7 @@ async def send_referral_invite_email(
     referrer_picture: str | None,
     invite_link: str,
     offer_label: str,
+    code: str,
 ) -> None:
     """Send a gift-framed referral invite from a friend, via Resend + Jinja2.
 
@@ -228,12 +229,13 @@ async def send_referral_invite_email(
     note for compliance.
     """
     try:
-        subject = f"{referrer_name} gifted you GAIA PRO"
+        subject = f"{referrer_name} gifted you $30 off GAIA Pro"
         html_content = generate_referral_invite_html(
             referrer_name=referrer_name,
             referrer_picture=referrer_picture,
             invite_link=invite_link,
             offer_label=offer_label,
+            code=code,
         )
 
         resend.Emails.send(
@@ -257,6 +259,7 @@ def generate_referral_invite_html(
     referrer_picture: str | None,
     invite_link: str,
     offer_label: str,
+    code: str,
 ) -> str:
     """Render the referral invite email HTML using the Jinja2 template."""
     try:
@@ -266,6 +269,7 @@ def generate_referral_invite_html(
             referrer_picture=referrer_picture,
             invite_link=invite_link,
             offer_label=offer_label,
+            code=code,
             contact_email=CONTACT_EMAIL,
         )
     except Exception as e:
