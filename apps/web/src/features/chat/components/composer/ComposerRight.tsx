@@ -2,6 +2,8 @@ import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
 import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { TextMorph } from "torph/react";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -122,6 +124,15 @@ export default function RightSide({
     buttonColor = "primary";
   }
 
+  const mode = isResponding ? "stop" : showQueue ? "queue" : "send";
+  // Icons inherit `currentColor`, so the button's text color (transitioned via
+  // transition-colors) animates the icon color on every state change.
+  const contentColor = isResponding
+    ? "text-zinc-300"
+    : hasContent
+      ? "text-black"
+      : "text-zinc-500";
+
   return (
     <div className="ml-2 flex items-center gap-2">
       <Tooltip
@@ -139,34 +150,45 @@ export default function RightSide({
                 ? "Queue message"
                 : "Send message"
           }
-          className={
+          className={`h-9 min-h-9 transition-all duration-300 ${contentColor} ${
             showQueue
-              ? "h-9 min-h-9 gap-1.5 px-3"
-              : `h-9 min-h-9 w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`
-          }
+              ? "gap-1.5 rounded-xl px-3"
+              : `w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`
+          }`}
           color={buttonColor}
           disabled={!isResponding && !hasContent}
           radius="full"
           type="submit"
           onPress={handleButtonPress}
         >
-          {isResponding ? (
-            <StopIcon
-              color="lightgray"
-              width={20}
-              height={20}
-              fill="lightgray"
-            />
-          ) : showQueue ? (
-            <>
-              <Clock01Icon color="black" width={18} height={18} />
-              <TextMorph as="span" className="font-medium text-black text-sm">
-                Queue
-              </TextMorph>
-            </>
-          ) : (
-            <ArrowUp02Icon color={hasContent ? "black" : "gray"} />
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            <m.span
+              key={mode}
+              className="flex items-center gap-1.5"
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.6 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+            >
+              {mode === "stop" ? (
+                <StopIcon
+                  color="currentColor"
+                  fill="currentColor"
+                  width={20}
+                  height={20}
+                />
+              ) : mode === "queue" ? (
+                <>
+                  <Clock01Icon color="currentColor" width={18} height={18} />
+                  <TextMorph as="span" className="font-medium text-sm">
+                    Queue
+                  </TextMorph>
+                </>
+              ) : (
+                <ArrowUp02Icon color="currentColor" />
+              )}
+            </m.span>
+          </AnimatePresence>
         </Button>
       </Tooltip>
     </div>
