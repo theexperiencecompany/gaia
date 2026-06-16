@@ -240,14 +240,14 @@ export default function FinalSection({
             btnColor={isDark ? "#00bbff" : "#000000"}
             classname={
               isDark
-                ? "w-full sm:w-auto text-black! text-lg h-12 px-2 rounded-2xl hover:scale-105 max-[760px]:h-11 max-[760px]:text-base"
-                : "w-full sm:w-auto text-white! text-lg h-12 px-2 rounded-2xl hover:scale-105 max-[760px]:h-11 max-[760px]:text-base"
+                ? "w-full sm:w-auto text-black! text-sm sm:text-lg h-9 sm:h-12 px-4 rounded-2xl hover:scale-105"
+                : "w-full sm:w-auto text-white! text-sm sm:text-lg h-9 sm:h-12 px-4 rounded-2xl hover:scale-105"
             }
             text="Try GAIA Free"
           />
           <GetStartedButton
             btnColor="#ffffff"
-            classname="w-full sm:w-auto text-lg h-12 px-2 rounded-2xl hover:scale-105 max-[760px]:h-11 max-[760px]:text-base"
+            classname="w-full sm:w-auto text-sm sm:text-lg h-9 sm:h-12 px-4 rounded-2xl hover:scale-105"
             text="Explore"
             href="/use-cases"
           />

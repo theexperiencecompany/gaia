@@ -183,7 +183,15 @@ export default function DemoCommunityCards({
                       <Button
                         color="primary"
                         size="sm"
-                        className="rounded-xl font-medium"
+                        isIconOnly
+                        className="rounded-xl font-medium sm:hidden"
+                      >
+                        <ZapIcon width={16} height={16} />
+                      </Button>
+                      <Button
+                        color="primary"
+                        size="sm"
+                        className="hidden sm:flex rounded-xl font-medium"
                         endContent={<ZapIcon width={16} height={16} />}
                       >
                         Create

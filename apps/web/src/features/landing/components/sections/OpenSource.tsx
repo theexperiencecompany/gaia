@@ -32,14 +32,14 @@ const LazyContributors = lazy(() =>
     }) => (
       <AvatarGroup
         isBordered
-        max={contributors.length}
-        renderCount={() => (
+        max={8}
+        renderCount={(count) => (
           <p className="ms-2 text-small font-medium text-foreground text-nowrap">
-            +{totalCount - contributors.length} others
+            +{count} others
           </p>
         )}
-        total={contributors.length}
-        classNames={{ base: "flex-wrap justify-center" }}
+        total={totalCount}
+        classNames={{ base: "flex-wrap justify-center max-w-xs sm:max-w-none" }}
       >
         {contributors.map((contributor) => (
           <Avatar
