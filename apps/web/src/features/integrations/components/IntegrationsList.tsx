@@ -1,5 +1,6 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { RedoIcon } from "@icons";
 import type React from "react";
 import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -23,6 +24,9 @@ const IntegrationRow: React.FC<{
   onClick: (id: string) => void;
 }> = ({ integration, onConnect, onClick }) => {
   const isConnected = integration.status === "connected";
+  // "created" = added but not yet successfully connected (e.g. a failed/pending
+  // connect) — offer a Retry instead of a first-time Connect.
+  const isCreated = integration.status === "created";
   // Custom integrations are always available, platform integrations use available field
   const isAvailable = integration.source === "custom" || integration.available;
 
@@ -62,16 +66,21 @@ const IntegrationRow: React.FC<{
           </Chip>
         )}
 
-        {isAvailable && !isConnected && (
+        {(isAvailable || isCreated) && !isConnected && (
           <Button
             variant="flat"
-            color="primary"
-            className="text-sm text-primary"
+            color={isCreated ? "warning" : "primary"}
+            className={
+              isCreated ? "text-sm text-warning" : "text-sm text-primary"
+            }
+            startContent={
+              isCreated ? <RedoIcon width={16} height={16} /> : undefined
+            }
             onPress={() => {
               onConnect(integration.id);
             }}
           >
-            Connect
+            {isCreated ? "Retry" : "Connect"}
           </Button>
         )}
       </div>

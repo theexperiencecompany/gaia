@@ -9,8 +9,8 @@ import {
   ConnectIcon,
   GlobalIcon,
   LinkSquareIcon,
+  RedoIcon,
   RemoveCircleIcon,
-  RepeatIcon,
   Share08Icon,
   Unlink04Icon,
   UserCircle02Icon,
@@ -141,10 +141,15 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
     setIsConnecting(true);
     try {
-      await onConnect(integration.id);
+      const result = await onConnect(integration.id);
+      // On an OAuth redirect the browser is navigating away — keep the button in
+      // its loading state instead of flashing back to idle for a split second.
+      if (result?.status === "redirecting" || result?.status === "redirect") {
+        return;
+      }
+      setIsConnecting(false);
     } catch {
       // Error toast is handled in the hook
-    } finally {
       setIsConnecting(false);
     }
   };
@@ -337,8 +342,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         </div>
         {/* Connect/Disconnect buttons */}
         {!isConnected ? (
+          // Warning colour for a retry (a previous connect didn't complete),
+          // primary blue for a first-time connect.
           <RaisedButton
-            color="#00bbff"
+            color={showRetry ? "#f5a524" : "#00bbff"}
             className="font-medium text-black!"
             onClick={handleConnect}
             disabled={isConnecting}
@@ -350,7 +357,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               </>
             ) : showRetry ? (
               <>
-                <RepeatIcon width={18} height={18} />
+                <RedoIcon width={18} height={18} />
                 Retry Connection
               </>
             ) : (
