@@ -121,9 +121,10 @@ export const chatApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-    return apiService.post<FileUploadResponse>("/upload", formData, {
-      errorMessage: "Failed to upload file",
-    });
+    // No errorMessage override: let the backend detail surface (e.g. the 413
+    // "File size exceeds the N MB limit." or 415 unsupported-type message)
+    // instead of masking it with a generic "Failed to upload file".
+    return apiService.post<FileUploadResponse>("/upload", formData);
   },
 
   // Generate image
