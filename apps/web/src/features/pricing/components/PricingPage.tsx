@@ -61,8 +61,8 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
           >
             <div className="flex items-center gap-2 text-white">
               Annually
-              <Chip color={"primary"} size="sm">
-                <div className="text-sm font-medium">Save 25%</div>
+              <Chip color="success" size="sm" variant="flat">
+                Save 25%
               </Chip>
             </div>
           </Switch>

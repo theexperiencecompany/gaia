@@ -66,7 +66,7 @@ export function TopUpModal({ isOpen, onClose }: TopUpModalProps) {
                 type="button"
                 onClick={() => setSelected(i)}
                 className={cn(
-                  "rounded-2xl p-3 text-left transition-colors",
+                  "cursor-pointer rounded-2xl p-3 text-left transition-colors",
                   i === selected
                     ? "bg-primary/15 ring-1 ring-primary/40"
                     : "bg-zinc-800/60 hover:bg-zinc-800",

@@ -39,6 +39,10 @@ ACTION_CREDIT_COSTS: dict[str, int] = {
     "deep_research": 1000,  # ≈ $0.10 external search/crawl (LLM tokens charged on top)
 }
 
+# Rough credit range for a typical chat turn (token cost varies by model/length,
+# so this is a published estimate, not an exact charge).
+CHAT_MESSAGE_CREDIT_ESTIMATE = "7–80"
+
 # Surface a warning to the user as they approach the cap.
 CREDIT_WARN_THRESHOLDS: tuple[float, ...] = (0.75, 0.90, 1.0)
 

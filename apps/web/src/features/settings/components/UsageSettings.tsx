@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Progress } from "@heroui/progress";
 import { Tab, Tabs } from "@heroui/tabs";
-import { CalendarIcon, ChartIcon, ChartIncreaseIcon } from "@icons";
+import { ChartIcon } from "@icons";
 import { useState } from "react";
 import Spinner from "@/components/ui/spinner";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
@@ -86,33 +86,17 @@ export default function UsageSettings() {
         <Chip
           size="sm"
           color={isPaid ? "primary" : "default"}
-          className="font-medium"
+          className="font-medium capitalize"
         >
-          {summary?.plan_type?.toUpperCase() || "FREE"} PLAN
+          {summary?.plan_type || "free"} plan
         </Chip>
         <Tabs
           selectedKey={selectedPeriod}
           onSelectionChange={(key) => setSelectedPeriod(key as string)}
           size="sm"
         >
-          <Tab
-            key="day"
-            title={
-              <div className="flex items-center space-x-2">
-                <CalendarIcon size={16} />
-                <span>Daily</span>
-              </div>
-            }
-          />
-          <Tab
-            key="month"
-            title={
-              <div className="flex items-center space-x-2">
-                <ChartIncreaseIcon size={16} />
-                <span>Monthly</span>
-              </div>
-            }
-          />
+          <Tab key="day" title="Daily" />
+          <Tab key="month" title="Monthly" />
         </Tabs>
       </div>
 

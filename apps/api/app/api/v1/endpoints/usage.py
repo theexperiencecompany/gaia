@@ -17,12 +17,13 @@ from app.config.rate_limits import (
 )
 from app.constants.credits import (
     ACTION_CREDIT_COSTS,
+    CHAT_MESSAGE_CREDIT_ESTIMATE,
     CREDIT_VALUE_USD,
     CREDITS_FEATURE_KEY,
 )
 from app.decorators.rate_limiting import tiered_limiter
 from app.models.payment_models import PlanType
-from app.services.credits import credit_service, credit_wallet_service
+from app.services.credits import credit_service
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
@@ -87,25 +88,22 @@ async def get_credit_balance(user: dict = Depends(get_current_user)) -> dict[str
             "reset_time": get_reset_time(period).isoformat(),
         }
 
-    grants = await credit_wallet_service.get_active_grants(user_id)
     return {
         "plan_type": plan.value,
         "allotment_remaining": balance["allotment"],
         "topup_remaining": balance["topup"],
         "total_remaining": balance["total"],
         "periods": periods,
-        "topup_grants": [
-            {"remaining": g["remaining"], "expires_at": g["expires_at"].isoformat()} for g in grants
-        ],
     }
 
 
 @router.get("/catalog")
 async def get_usage_catalog() -> dict[str, Any]:
-    """Public catalog of credit costs + per-tier feature limits.
+    """Public catalog of what uses credits + how many each plan gets monthly.
 
-    Dynamically derived from the rate-limit config and action costs, so the
-    "what uses credits" UI never drifts from what the backend actually enforces.
+    Everything is derived from the same backend config that enforces it
+    (``ACTION_CREDIT_COSTS`` + ``FEATURE_LIMITS["credits"]``), so the
+    "what uses credits" UI never drifts from reality.
     """
     action_titles = {
         "web_search": "Web search",
@@ -117,27 +115,18 @@ async def get_usage_catalog() -> dict[str, Any]:
         for key, credits in ACTION_CREDIT_COSTS.items()
     ]
 
-    features = []
-    for key, limits in FEATURE_LIMITS.items():
-        if key == CREDITS_FEATURE_KEY:
-            continue
-        max_limits = limits.max or limits.pro
-        features.append(
-            {
-                "key": key,
-                "title": limits.info.title,
-                "description": limits.info.description,
-                "free": {"day": limits.free.day, "month": limits.free.month},
-                "pro": {"day": limits.pro.day, "month": limits.pro.month},
-                "max": {"day": max_limits.day, "month": max_limits.month},
-            }
-        )
+    credits = FEATURE_LIMITS[CREDITS_FEATURE_KEY]
+    plan_credits = {
+        "free": credits.free.month,
+        "pro": credits.pro.month,
+        "max": (credits.max or credits.pro).month,
+    }
 
     return {
         "credit_value_usd": CREDIT_VALUE_USD,
-        "chat_message_estimate": "7–80",
+        "chat_message_estimate": CHAT_MESSAGE_CREDIT_ESTIMATE,
         "action_costs": action_costs,
-        "features": features,
+        "plan_credits": plan_credits,
     }
 
 

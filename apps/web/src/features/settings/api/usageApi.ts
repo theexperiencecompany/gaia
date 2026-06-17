@@ -49,25 +49,11 @@ export interface ActionCost {
   credits: number;
 }
 
-export interface CatalogFeatureLimit {
-  day: number;
-  month: number;
-}
-
-export interface CatalogFeature {
-  key: string;
-  title: string;
-  description: string;
-  free: CatalogFeatureLimit;
-  pro: CatalogFeatureLimit;
-  max: CatalogFeatureLimit;
-}
-
 export interface UsageCatalog {
   credit_value_usd: number;
   chat_message_estimate: string;
   action_costs: ActionCost[];
-  features: CatalogFeature[];
+  plan_credits: { free: number; pro: number; max: number };
 }
 
 class UsageApiService {
