@@ -45,6 +45,14 @@ const WhatsNewModal = nextDynamic(
   { ssr: false },
 );
 
+const CornerReferralBar = nextDynamic(
+  () =>
+    import("@/features/referrals/components/CornerReferralBar").then((m) => ({
+      default: m.CornerReferralBar,
+    })),
+  { ssr: false },
+);
+
 const HeaderSidebarTrigger = () => {
   return (
     <div className="">
@@ -178,6 +186,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             isOpen={isHoloCardModalOpen}
             onClose={closeHoloCardModal}
           />
+
+          {/* Persistent referral bar (PRO users only; gates internally) */}
+          <CornerReferralBar />
         </SidebarProvider>
       </TooltipProvider>
     </ProvidersLayout>

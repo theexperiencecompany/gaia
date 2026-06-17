@@ -26,6 +26,7 @@ from app.services.onboarding.intelligence_job import (
     enqueue_intelligence_job,
 )
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
+from app.services.referrals import referral_service
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -103,6 +104,14 @@ async def complete_onboarding(
                 phase=(existing.get("onboarding") or {}).get("phase"),
             )
             return _serialize_user(existing)
+
+        # Mark the user activated for referral points — onboarding completion is
+        # our real-usage signal. Idempotent and only reached by the winning
+        # completion; never blocks onboarding if it fails.
+        try:
+            await referral_service.record_activation(user_id)
+        except Exception as e:
+            log.error(f"Referral activation hook failed for {user_id}: {e!s}")
 
         # Enqueue the pipeline before any other side effects; roll back the
         # subdoc on failure so the user isn't stuck with no worker job.

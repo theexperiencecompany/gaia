@@ -27,6 +27,7 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
 import { SidebarPromo } from "./SidebarPromo";
+import { SidebarReferralPromo } from "./SidebarReferralPromo";
 
 export default function SidebarTopButtons() {
   const pathname = usePathname();
@@ -106,8 +107,11 @@ export default function SidebarTopButtons() {
 
   return (
     <div className="flex flex-col">
-      {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
-      {!subscriptionStatus?.is_subscribed && (
+      {/* Audience-aware slot: free users see the upgrade nudge, PRO users see
+          the referral nudge — never two competing cards. */}
+      {subscriptionStatus?.is_subscribed ? (
+        <SidebarReferralPromo />
+      ) : (
         <SidebarPromo price={price} onUpgrade={openPricingModal} />
       )}
 

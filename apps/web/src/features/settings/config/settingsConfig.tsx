@@ -3,6 +3,7 @@ import {
   ChartLineData02Icon,
   CreditCardIcon,
   DiscordIcon,
+  GiftIcon,
   Link04Icon,
   MessageMultiple02Icon,
   NoteEditIcon,
@@ -53,6 +54,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Subscription",
     icon: CreditCardIcon,
     href: "/settings/subscription",
+  },
+  {
+    key: "referrals",
+    label: "Referrals",
+    icon: GiftIcon,
+    href: "/settings/referrals",
   },
   {
     key: "usage",

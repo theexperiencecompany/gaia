@@ -25,6 +25,7 @@ from app.services.analytics_service import (
     track_payment_event,
     track_subscription_event,
 )
+from app.services.referrals import referral_service
 from app.utils.email_utils import send_pro_subscription_email
 from shared.py.wide_events import log
 
@@ -288,6 +289,21 @@ class PaymentWebhookService:
         if not payment_data:
             raise ValueError("Invalid payment data")
 
+        # Clawback: a reversed payment reverts a referral conversion when it lands
+        # inside the refund window. The service is window-gated and idempotent, so
+        # benign or late cancellations leave the referrer's earned months intact.
+        user_id = payment_data.metadata.get("user_id")
+        if not user_id:
+            user_email = await self._get_user_email_from_metadata(payment_data.metadata)
+            if user_email:
+                user = await users_collection.find_one({"email": user_email}, {"_id": 1})
+                user_id = str(user["_id"]) if user else None
+        if user_id:
+            try:
+                await referral_service.revert_referral(user_id)
+            except Exception as e:
+                log.error(f"Referral clawback hook failed for {user_id}: {e!s}")
+
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
             status="processed",
@@ -374,6 +390,13 @@ class PaymentWebhookService:
         # Send welcome email
         await self._send_welcome_email(user_id)
 
+        # Credit the referrer if this user was referred (idempotent; no-op
+        # otherwise). Isolated so a referral failure never breaks activation.
+        try:
+            await referral_service.record_upgrade(user_id)
+        except Exception as e:
+            log.error(f"Referral upgrade hook failed for {user_id}: {e!s}")
+
         log.info(f"Subscription activated: {sub_data.subscription_id}")
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -415,6 +438,16 @@ class PaymentWebhookService:
                     subscription_id=sub_data.subscription_id,
                     currency=sub_data.currency,
                 )
+
+            # Award the referrer's first-renewal retention bonus (idempotent).
+            renewed_sub = await subscriptions_collection.find_one(
+                {"dodo_subscription_id": sub_data.subscription_id}, {"user_id": 1}
+            )
+            if renewed_sub and renewed_sub.get("user_id"):
+                try:
+                    await referral_service.record_renewal(renewed_sub["user_id"])
+                except Exception as e:
+                    log.error(f"Referral renewal hook failed: {e!s}")
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
