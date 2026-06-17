@@ -23,6 +23,7 @@ from app.helpers.message_helpers import (
     BACKGROUND_EXECUTION_BANNER,
     DYNAMIC_CONTEXT_MARKER,
     _build_active_todo_banner,
+    build_workspace_session_banner,
 )
 from app.memory.engine import memory_engine
 from app.services.integration_instructions_service import get_instructions
@@ -172,6 +173,7 @@ async def create_agent_context_message(
         if banner:
             parts.append(banner)
 
+    # User identity.
     if user_name:
         parts.append(f"User Name: {user_name}")
 
@@ -181,6 +183,17 @@ async def create_agent_context_message(
     # (byte-stable across turns) stays in system_instruction.
     if user_timezone:
         parts.append(f"User Timezone: {user_timezone}")
+
+    # Session directory — stated so the agent never guesses a
+    # `/workspace/sessions/<id>/` id when reporting or delivering artifacts (a
+    # wrong id lands files outside the session the artifact watcher scans). Only
+    # `vfs_session_id` is trusted: the executor pins it to the conversation
+    # thread and subagents inherit it. We deliberately do NOT fall back to
+    # `thread_id` — that is the `executor_<conv>` wrapper, which would yield
+    # `/workspace/sessions/executor_<conv>/` and recreate the wrong-dir bug.
+    session_id = configurable.get("vfs_session_id")
+    if session_id:
+        parts.append(build_workspace_session_banner(session_id))
 
     async def _fetch_memories() -> str:
         if memories_text is not None:
