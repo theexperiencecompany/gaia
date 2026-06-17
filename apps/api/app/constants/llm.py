@@ -15,6 +15,7 @@ DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Per-plan model policy (hardcoded; not user-selectable). Free accounts run the
-# default Gemini model above; Pro accounts run a more capable model via OpenRouter.
-PRO_MODEL_PROVIDER = "openrouter"
-PRO_MODEL_NAME = "minimax/minimax-m3"
+# default Gemini model above; every paid (non-free) plan runs a more capable
+# model via OpenRouter.
+PAID_MODEL_PROVIDER = "openrouter"
+PAID_MODEL_NAME = "minimax/minimax-m3"
