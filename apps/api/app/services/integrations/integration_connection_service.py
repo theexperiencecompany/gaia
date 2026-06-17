@@ -102,16 +102,29 @@ async def connect_mcp_integration(
         probe_result = await mcp_client.probe_connection(server_url)
 
     # Check if probe detected auth requirement
+    detected_auth_type: str | None = None
     if probe_result and not requires_auth and probe_result.get("requires_auth"):
-        auth_type = probe_result.get("auth_type", "oauth")
+        detected_auth_type = probe_result.get("auth_type", "oauth")
         await mcp_client.update_integration_auth_status(
-            integration_id, requires_auth=True, auth_type=auth_type
+            integration_id, requires_auth=True, auth_type=detected_auth_type
         )
         requires_auth = True
 
     if requires_auth:
         if not is_platform:
             await update_user_integration_status(user_id, integration_id, "created")
+
+        # Bearer / API-key servers can't be authorized via an OAuth redirect — the
+        # user must supply a token. The integration is now marked auth_type=bearer
+        # + requires_auth, so the frontend collects the key via the bearer modal.
+        if detected_auth_type == "bearer":
+            return ConnectIntegrationResponse(
+                status="error",
+                integration_id=integration_id,
+                name=integration_name,
+                error="bearer_required",
+                message="This integration requires an API key.",
+            )
 
         auth_url = await mcp_client.build_oauth_auth_url(
             integration_id=integration_id,

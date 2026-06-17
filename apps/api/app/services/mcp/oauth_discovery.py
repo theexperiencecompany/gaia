@@ -6,6 +6,7 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 - RFC 8414 Authorization Server Metadata discovery
 """
 
+from app.constants.mcp import COMPOSIO_MCP_HOST
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.mcp_oauth_utils import (
@@ -123,14 +124,27 @@ async def probe_mcp_connection(server_url: str) -> dict:
     try:
         challenge = await extract_auth_challenge(server_url)
 
-        if challenge.get("raw"):
-            return {
-                "requires_auth": True,
-                "auth_type": "oauth",
-                "oauth_challenge": challenge,
-            }
+        # Empty dict => the probe got a non-401 response: no auth required.
+        if not challenge:
+            return {"requires_auth": False, "auth_type": "none"}
 
-        return {"requires_auth": False, "auth_type": "none"}
+        # Composio's hosted gateways always 401 a probe (no platform x-api-key is
+        # sent during probing) but need no *user* auth — the key is injected at
+        # connect time. Treat them as no-auth so we don't prompt the user.
+        if COMPOSIO_MCP_HOST in server_url:
+            return {"requires_auth": False, "auth_type": "none"}
+
+        # A 401 was returned. It's OAuth when the server gives a parseable
+        # challenge (WWW-Authenticate header, resource_metadata, or scope);
+        # otherwise it's a bare 401 = bearer / API-key auth the user must supply.
+        is_oauth = bool(
+            challenge.get("raw") or challenge.get("resource_metadata") or challenge.get("scope")
+        )
+        return {
+            "requires_auth": True,
+            "auth_type": "oauth" if is_oauth else "bearer",
+            "oauth_challenge": challenge,
+        }
 
     except Exception as e:
         return {
