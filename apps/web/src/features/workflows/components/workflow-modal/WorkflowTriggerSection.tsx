@@ -3,8 +3,8 @@ import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { InformationCircleIcon } from "@icons";
 import type { ReactElement } from "react";
+import { getUserHomeTimezone } from "@/lib/timezone";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
-import { getBrowserTimezone } from "../../utils/browserTimezone";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 
@@ -41,7 +41,7 @@ export default function WorkflowTriggerSection({
           type: "schedule",
           enabled: true,
           cron_expression: "0 9 * * *",
-          timezone: getBrowserTimezone(),
+          timezone: getUserHomeTimezone(),
         });
       }
     } else if (tabKey === "trigger") {
@@ -101,11 +101,24 @@ export default function WorkflowTriggerSection({
             ? (triggerConfig.cron_expression as string) || ""
             : ""
         }
+        timezone={
+          triggerConfig.type === "schedule"
+            ? (triggerConfig.timezone as string) || getUserHomeTimezone()
+            : getUserHomeTimezone()
+        }
         onChange={(cronExpression) => {
           if (triggerConfig.type === "schedule") {
             onTriggerConfigChange({
               ...triggerConfig,
               cron_expression: cronExpression,
+            });
+          }
+        }}
+        onTimezoneChange={(tz) => {
+          if (triggerConfig.type === "schedule") {
+            onTriggerConfigChange({
+              ...triggerConfig,
+              timezone: tz,
             });
           }
         }}
@@ -166,7 +179,7 @@ export default function WorkflowTriggerSection({
               [
                 !isPreview || activeTab === "schedule" ? (
                   <Tab key="schedule" title="Schedule">
-                    <ScrollShadow className="max-h-40 min-h-10">
+                    <ScrollShadow className="max-h-64 min-h-10">
                       {renderScheduleTab()}
                     </ScrollShadow>
                   </Tab>

@@ -22,6 +22,10 @@ DEFAULT_CACHE_TTL = ONE_HOUR_TTL
 STATS_CACHE_TTL = THIRTY_MINUTES_TTL
 CUSTOM_INT_METADATA_TTL = ONE_HOUR_TTL
 SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
+# Subscription plan tier, cached for hot paths (rate limiting, per-request model
+# routing). Eventually consistent: a plan change takes effect within the TTL.
+SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
+SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
@@ -38,7 +42,6 @@ MOBILE_REDIRECT_TTL = FIVE_MINUTES_TTL
 
 # Long TTLs with event-driven invalidation — short TTLs are a symptom of
 # missing invalidation, not a safety net.
-MEMORY_SEARCH_CACHE_TTL = ONE_DAY_TTL
 INTEGRATION_STATUS_CACHE_TTL = ONE_DAY_TTL
 SUBAGENT_PROMPT_CACHE_TTL = ONE_DAY_TTL
 PROVIDER_METADATA_CACHE_TTL = ONE_DAY_TTL

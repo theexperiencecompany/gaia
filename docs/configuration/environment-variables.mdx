@@ -166,11 +166,16 @@ These are required in **both** development and production:
 
 ### Memory & Context
 
-| Variable          | Description          |
-| ----------------- | -------------------- |
-| `MEM0_API_KEY`    | Mem0 memory API key  |
-| `MEM0_ORG_ID`     | Mem0 organization ID |
-| `MEM0_PROJECT_ID` | Mem0 project ID      |
+GAIA's memory runs on a self-hosted engine (PostgreSQL + ChromaDB + local
+embeddings) — no external API keys are required. All variables below are
+optional and have sensible defaults.
+
+| Variable                       | Description                                                                 |
+| ------------------------------ | --------------------------------------------------------------------------- |
+| `GAIA_EMBEDDING_MODEL`         | Embedding model name (default `mixedbread-ai/mxbai-embed-large-v1`)          |
+| `GAIA_EMBEDDING_DIM`           | Embedding vector dimension (default `1024`)                                  |
+| `MEMORY_EMBEDDING_SIDECAR_URL` | URL of a shared embedding sidecar; loads the model in-process when unset     |
+| `GAIA_CHROMA_COLLECTION_SUFFIX`| Suffix appended to ChromaDB collection names (for isolating environments)    |
 
 ---
 
@@ -265,12 +270,6 @@ FIRECRAWL_API_KEY=fc-xxxx
 CLOUDINARY_CLOUD_NAME=your-cloud
 CLOUDINARY_API_KEY=xxxx
 CLOUDINARY_API_SECRET=xxxx
-
-# Memory
-
-MEM0_API_KEY=m0xxxx
-MEM0_ORG_ID=org-xxxx
-MEM0_PROJECT_ID=proj-xxxx
 
 # Monitoring
 

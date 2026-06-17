@@ -10,11 +10,10 @@ import {
 } from "@/features/comparisons/data/categories";
 import { getTranslatedComparisons } from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -31,7 +30,7 @@ export async function generateMetadata({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "comparisons" });
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: t("hub_meta_title"),
     description: t("hub_meta_description"),
     path: "/compare",
@@ -45,15 +44,8 @@ export async function generateMetadata({
       "AI productivity tools",
       "best AI assistant",
     ],
+    locale,
   });
-
-  return {
-    ...metadata,
-    alternates: {
-      ...metadata.alternates,
-      languages: getAlternates("/compare"),
-    },
-  };
 }
 
 export default async function ComparisonsHubPage({ params }: PageProps) {

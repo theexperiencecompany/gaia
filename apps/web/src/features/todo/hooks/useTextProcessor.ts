@@ -4,6 +4,8 @@ import { Priority } from "@shared/types";
 import { addDays } from "date-fns";
 import { useMemo } from "react";
 
+import { getBrowserTimezone } from "@/lib/timezone";
+
 export interface TextProcessorCommands {
   project?: { name: string; id?: string };
   labels?: string[];
@@ -92,8 +94,7 @@ export function useTextProcessor({
       }
 
       // Date patterns
-      const timezone =
-        userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const timezone = userTimezone || getBrowserTimezone();
 
       // Today, tomorrow, yesterday
       const todayMatch = cleanText.match(/\btoday\b/i);

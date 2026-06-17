@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.3.1...cli-v0.4.0) (2026-06-14)
+
+
+### Features
+
+* custom local memory engine replacing mem0 ([#750](https://github.com/theexperiencecompany/gaia/issues/750)) ([11948ea](https://github.com/theexperiencecompany/gaia/commit/11948eacbf4fe9115e058ef13aef0e2fb5ef19cd))
+
+## [0.3.1](https://github.com/theexperiencecompany/gaia/compare/cli-v0.3.0...cli-v0.3.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* **cli:** self-host & non-TTY fixes from end-to-end VM testing ([#691](https://github.com/theexperiencecompany/gaia/issues/691)) ([d2c71d9](https://github.com/theexperiencecompany/gaia/commit/d2c71d916eb9ca9fae03170b829daaa09f232b01))
+
 ## [0.3.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.2.1...cli-v0.3.0) (2026-04-05)
 
 

@@ -8,10 +8,11 @@ user's OAuth token server-side; tools only need `user_id` from
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from composio import Composio
+from langgraph.config import get_config
 
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
@@ -67,6 +68,19 @@ from app.utils.linear_utils import (
     priority_to_int,
     priority_to_str,
 )
+from app.utils.timezone import home_timezone_from_config
+
+
+def _user_local_today() -> date:
+    """Today's date in the user's home zone (from the agent config).
+
+    Due-date filters ("today"/"overdue"/"this week") must use the user's local
+    date, not the server's. Falls back to the UTC date outside an agent run.
+    """
+    try:
+        return home_timezone_from_config(get_config()).now().date()
+    except Exception:
+        return datetime.now(UTC).date()
 
 
 def register_linear_custom_tools(composio: Composio) -> list[str]:
@@ -154,7 +168,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
         )
 
         issues = issues_data.get("issues", {}).get("nodes", [])
-        today = datetime.now().date()
+        today = _user_local_today()
         week_end = today + timedelta(days=7)
 
         filtered = []
@@ -827,7 +841,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
         )
         my_issues = issues_data.get("issues", {}).get("nodes", [])
 
-        today = datetime.now().date()
+        today = _user_local_today()
         overdue = []
         high_priority = []
         sla_at_risk = []
@@ -903,7 +917,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
         )
         my_issues = issues_data.get("issues", {}).get("nodes", [])
 
-        today = datetime.now().date()
+        today = _user_local_today()
         overdue = []
         high_priority = []
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
@@ -17,7 +16,6 @@ export default function YouMightAlsoLike({
   categories = [],
 }: YouMightAlsoLikeProps) {
   const [items, setItems] = useState<CommunityWorkflow[]>([]);
-  const router = useRouter();
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -96,9 +94,7 @@ export default function YouMightAlsoLike({
               communityWorkflow={workflow}
               variant="community"
               showCreator={true}
-              onCardClick={() => {
-                if (workflow.slug) router.push(`/use-cases/${workflow.slug}`);
-              }}
+              href={workflow.slug ? `/use-cases/${workflow.slug}` : undefined}
             />
           ))}
         </div>

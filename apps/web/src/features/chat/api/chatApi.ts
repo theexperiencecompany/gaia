@@ -6,6 +6,7 @@ import {
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { apiService } from "@/lib/api/service";
 import { desktopClientHeaders } from "@/lib/electron/api";
+import { getBrowserTimezone } from "@/lib/timezone";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
@@ -293,7 +294,7 @@ export const chatApi = {
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
-          "x-timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
+          "x-timezone": getBrowserTimezone(),
           ...desktopClientHeaders(),
         },
         credentials: "include",

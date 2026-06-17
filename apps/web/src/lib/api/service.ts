@@ -52,6 +52,11 @@ async function request<T = unknown>(
     const handledByInterceptor =
       (error as { handled?: boolean }).handled === true;
 
+    // 401 means "not authenticated" — an expected state for anonymous visitors
+    // on public pages (which don't mount the interceptor). The app shell surfaces
+    // it via the login modal; never toast it as a generic error.
+    const isAuthError = err.response?.status === 401;
+
     // Track API errors in PostHog (client-only; analytics.ts is "use client")
     if (globalThis.window !== undefined) {
       trackEvent(ANALYTICS_EVENTS.API_ERROR, {
@@ -62,7 +67,7 @@ async function request<T = unknown>(
       });
     }
 
-    if (!options.silent && !handledByInterceptor) {
+    if (!options.silent && !handledByInterceptor && !isAuthError) {
       let errorMessage = options.errorMessage;
 
       // Try to extract error message from various response formats

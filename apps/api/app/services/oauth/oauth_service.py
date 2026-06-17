@@ -358,7 +358,7 @@ async def handle_oauth_connection(
                 log.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
         else:
             log.info(
-                "Deferring Gmail->Mem0 ingestion until onboarding pipeline "
+                "Deferring Gmail->memory ingestion until onboarding pipeline "
                 f"completes for user {user_id}"
             )
 

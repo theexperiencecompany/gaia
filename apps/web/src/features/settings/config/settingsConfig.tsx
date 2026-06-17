@@ -1,16 +1,17 @@
 import {
-  AiBrain01Icon,
+  Brain02Icon,
   ChartLineData02Icon,
   ComputerIcon,
   CreditCardIcon,
   DiscordIcon,
-  Link03Icon,
+  Link04Icon,
   MessageMultiple02Icon,
+  NoteEditIcon,
   NotificationIcon,
-  SparklesIcon,
   UserCircleIcon,
   WhatsappIcon,
 } from "@icons";
+import { PostageStampIcon } from "@/components/shared/icons";
 
 export interface SettingsMenuItem {
   key: string;
@@ -27,57 +28,63 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "profile",
     label: "Profile Card",
-    icon: SparklesIcon,
-    href: "/settings?section=profile",
+    icon: PostageStampIcon,
+    href: "/settings/profile",
   },
   {
     key: "account",
     label: "Account",
     icon: UserCircleIcon,
-    href: "/settings?section=account",
+    href: "/settings/account",
   },
   {
     key: "linked-accounts",
     label: "Linked Accounts",
-    icon: Link03Icon,
-    href: "/settings?section=linked-accounts",
+    icon: Link04Icon,
+    href: "/settings/linked-accounts",
   },
   {
     key: "notifications",
     label: "Notifications",
     icon: NotificationIcon,
-    href: "/settings?section=notifications",
+    href: "/settings/notifications",
   },
   {
     key: "subscription",
     label: "Subscription",
     icon: CreditCardIcon,
-    href: "/settings?section=subscription",
+    href: "/settings/subscription",
   },
   {
     key: "usage",
     label: "Usage",
     icon: ChartLineData02Icon,
-    href: "/settings?section=usage",
+    href: "/settings/usage",
   },
   {
     key: "preferences",
     label: "Preferences",
     icon: MessageMultiple02Icon,
-    href: "/settings?section=preferences",
+    href: "/settings/preferences",
+  },
+  {
+    key: "instructions",
+    label: "Custom Instructions",
+    icon: NoteEditIcon,
+    href: "/settings/instructions",
   },
   {
     key: "memory",
     label: "Memories",
-    icon: AiBrain01Icon,
-    href: "/settings?section=memory",
+    icon: Brain02Icon,
+    href: "/settings/memory",
   },
   // Only rendered inside the Electron app (filtered in SettingsSidebar).
   {
     key: "desktop",
     label: "Desktop",
     icon: ComputerIcon,
-    href: "/settings?section=desktop",
+    href: "/settings/desktop",
   },
 ];
 

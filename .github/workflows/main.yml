@@ -224,7 +224,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_REF: ${{ github.head_ref || github.ref_name }}
         run: |
-          if [ -z "$(git status --porcelain --untracked-files=all docs/release-notes/)" ]; then
+          if [ -z "$(git status --porcelain --untracked-files=all docs/release-notes/ docs/release-notes.mdx)" ]; then
             echo "Changelog sub-pages are up to date."
             exit 0
           fi
@@ -236,7 +236,7 @@ jobs:
           FIX_BRANCH="fix/changelog-sync-${TARGET//\//-}"
 
           git checkout -B "$FIX_BRANCH"
-          git add docs/release-notes/
+          git add docs/release-notes/ docs/release-notes.mdx
           git commit -m "chore(docs): regenerate changelog sub-pages"
           git push --force origin "$FIX_BRANCH"
 

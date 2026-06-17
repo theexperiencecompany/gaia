@@ -11,7 +11,6 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 """
 
 import asyncio
-from datetime import datetime
 import re
 import time
 from typing import Annotated
@@ -22,7 +21,7 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore, PutOp
 
-from app.agents.core.background.inbox import increment_pending_subagents
+from app.agents.core.background.session import increment_pending_subagents
 from app.agents.core.background.subagent_runner import run_subagent_background
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
@@ -532,13 +531,10 @@ async def handoff(
             "email": configurable.get("email"),
             "name": configurable.get("user_name"),
         }
-        user_time_str = configurable.get("user_time", "")
-        user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
 
         subagent_config = build_agent_config(
             conversation_id=thread_id,
             user=user,
-            user_time=user_time,
             thread_id=subagent_thread_id,
             base_configurable=configurable,
             agent_name=agent_name,
@@ -579,6 +575,10 @@ async def handoff(
             task=sanitized_task,
             user_id=user_id,
             subagent_id=agent_name,
+            # Without this the custom-instructions/provider-metadata lookup falls
+            # back to agent_name ("gmail_agent"), which never matches the stored
+            # integration id ("gmail"), so the user's instructions are dropped.
+            integration_id=int_id,
         )
 
         # Create execution context with stream_id for cancellation

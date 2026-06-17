@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import {
   DESKTOP_ONLY_SETTINGS_KEYS,
@@ -11,8 +11,7 @@ import { useElectron } from "@/hooks/useElectron";
 
 export default function SettingsSidebar() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const currentSection = searchParams.get("section") || "general";
+  const pathname = usePathname();
   const { isElectron } = useElectron();
 
   const visibleItems = settingsPageItems.filter(
@@ -27,7 +26,7 @@ export default function SettingsSidebar() {
     <div className="flex h-full max-w-[280px] flex-col border-t-1 border-zinc-800 pt-3">
       <nav className="flex-1 space-y-1">
         {visibleItems.map((item) => {
-          const isActive = currentSection === item.href?.split("section=")[1];
+          const isActive = item.href ? pathname.endsWith(item.href) : false;
           const Icon = item.icon;
 
           return (
@@ -41,7 +40,7 @@ export default function SettingsSidebar() {
             >
               {Icon && (
                 <Icon
-                  className={`mr-1 h-5 w-5 transition-colors`}
+                  className="mr-1 h-5 w-5 transition-colors"
                   color="currentColor"
                 />
               )}

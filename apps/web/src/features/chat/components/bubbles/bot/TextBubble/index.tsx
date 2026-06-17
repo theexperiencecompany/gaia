@@ -104,6 +104,7 @@ export default function TextBubble({
         <UnifiedToolThread
           key={`${baseId}-unified-tools`}
           timeline={timeline}
+          isStreaming={!!loading}
         />
       )}
 

@@ -1,13 +1,15 @@
 """
-Cron utilities for reminder scheduling.
+Cron utilities for reminder and workflow scheduling.
+
+Timezone handling is delegated entirely to :class:`app.utils.timezone.Timezone`
+— this module never parses a timezone string itself.
 """
 
-from datetime import UTC, datetime, timedelta, timezone, tzinfo
-import re
+from datetime import UTC, datetime
 
 from croniter import croniter
-import pytz
 
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 
@@ -17,46 +19,8 @@ class CronError(Exception):
     pass
 
 
-def parse_timezone(user_timezone: str) -> tzinfo:
-    """
-    Parse a timezone string and return a timezone object.
-
-    Supports:
-    - IANA timezone names (e.g., "America/New_York", "Asia/Kolkata")
-    - UTC offset strings (e.g., "+05:30", "-08:00", "+00:00")
-    - "UTC" literal
-
-    Args:
-        user_timezone: Timezone string in IANA or offset format
-
-    Returns:
-        A timezone object (pytz timezone or datetime.timezone)
-
-    Raises:
-        ValueError: If the timezone string cannot be parsed
-    """
-    if not user_timezone or user_timezone == "UTC":
-        return UTC
-
-    # Check if it's an offset string like "+05:30" or "-08:00"
-    offset_match = re.match(r"^([+-])(\d{2}):(\d{2})$", user_timezone)
-    if offset_match:
-        sign = 1 if offset_match.group(1) == "+" else -1
-        hours = int(offset_match.group(2))
-        minutes = int(offset_match.group(3))
-        offset_delta = timedelta(hours=hours, minutes=minutes)
-        return timezone(sign * offset_delta)
-
-    # Try IANA timezone name with pytz
-    try:
-        return pytz.timezone(user_timezone)
-    except Exception as e:
-        raise ValueError(f"Unknown timezone format: {user_timezone}") from e
-
-
 def validate_cron_expression(cron_expr: str) -> bool:
-    """
-    Validate a cron expression.
+    """Validate a cron expression.
 
     Args:
         cron_expr: Cron expression to validate
@@ -74,65 +38,53 @@ def validate_cron_expression(cron_expr: str) -> bool:
 def get_next_run_time(
     cron_expr: str,
     base_time: datetime | None = None,
-    user_timezone: str | None = None,
+    tz: Timezone | None = None,
 ) -> datetime:
-    """
-    Get the next scheduled run time based on cron expression.
+    """Get the next scheduled run time for a cron expression, returned in UTC.
+
+    The cron fields are interpreted as wall-clock time in ``tz`` (the schedule's
+    own timezone), so ``"0 9 * * *"`` with ``tz=Timezone.parse("Asia/Kolkata")``
+    fires at 09:00 IST. When ``tz`` is omitted the cron is interpreted in
+    ``base_time``'s OWN zone — a tz-aware base carries the user's zone (e.g. a
+    reminder's local "now") and must not be silently reinterpreted in UTC; only a
+    naive/absent base falls back to UTC. ``base_time`` defaults to "now".
 
     Args:
-        cron_expr: Cron expression (e.g., "0 8 * * *" for daily at 8AM)
-        base_time: Base time to calculate from (defaults to current UTC time)
-        user_timezone: User's timezone for cron calculation (e.g., "America/New_York")
+        cron_expr: Cron expression (e.g. "0 8 * * *" for daily at 8 AM)
+        base_time: Base time to calculate from (defaults to now in UTC)
+        tz: Schedule timezone the cron is interpreted in (defaults to base's zone)
 
     Returns:
         Next scheduled datetime in UTC
 
     Raises:
-        CronError: If cron expression is invalid
+        CronError: If the cron expression is invalid
     """
     if not validate_cron_expression(cron_expr):
         raise CronError(f"Invalid cron expression: {cron_expr}")
 
-    log.set(cron_expr=cron_expr, user_timezone=user_timezone)
-    # Handle timezone-aware calculation
-    if user_timezone and user_timezone != "UTC":
-        try:
-            tz = parse_timezone(user_timezone)
-
-            # Get base time in user's timezone
-            if base_time is None:
-                base_time = datetime.now(tz)
-            elif base_time.tzinfo is None:
-                base_time = base_time.replace(tzinfo=UTC).astimezone(tz)
-            else:
-                base_time = base_time.astimezone(tz)
-
-            # Calculate next run in user's timezone
-            cron = croniter(cron_expr, base_time)
-            next_time = cron.get_next(datetime)
-
-            # Convert to UTC for storage
-            return next_time.astimezone(UTC)
-
-        except Exception as e:
-            log.debug(f"Timezone conversion failed, falling back to UTC: {e}")
-
-    # Default UTC calculation
     if base_time is None:
         base_time = datetime.now(UTC)
     elif base_time.tzinfo is None:
-        # Assume UTC if no timezone info
         base_time = base_time.replace(tzinfo=UTC)
 
+    # An explicit schedule tz wins; otherwise interpret the cron in the base
+    # time's own (now tz-aware) zone rather than forcing UTC.
+    zone = tz or Timezone.parse(base_time.tzinfo)
+    log.set(cron_expr=cron_expr, user_timezone=zone.value)
+
+    # Advance the cron over NAIVE local wall-clock, then localize the result to
+    # the zone. A tz-aware base makes croniter carry the base's current UTC
+    # offset forward, so a fire that lands in a different DST period (e.g. a
+    # summer "now" computing a winter fire) comes out an hour off. Stepping the
+    # bare wall-clock and re-localizing lets the zone apply the correct offset
+    # for the fire date (a fixed-offset zone stays DST-naive, by design).
+    base_local = base_time.astimezone(zone.tzinfo).replace(tzinfo=None)
+
     try:
-        cron = croniter(cron_expr, base_time)
-        next_time = cron.get_next(datetime)
-
-        # Ensure we return UTC timezone-aware datetime
-        if next_time.tzinfo is None:  # type: ignore
-            next_time = next_time.replace(tzinfo=UTC)  # type: ignore
-
-        return next_time  # type: ignore
+        cron = croniter(cron_expr, base_local)
+        next_local: datetime = cron.get_next(datetime)
+        return next_local.replace(tzinfo=zone.tzinfo).astimezone(UTC)
     except Exception as e:
         raise CronError(f"Failed to calculate next run time: {e!s}")
 
@@ -167,13 +119,13 @@ def calculate_next_occurrences(
 
     try:
         cron = croniter(cron_expr, base_time)
-        occurrences = []
+        occurrences: list[datetime] = []
 
         for _ in range(count):
-            next_time = cron.get_next(datetime)
-            if next_time.tzinfo is None:  # type: ignore
-                next_time = next_time.replace(tzinfo=UTC)  # type: ignore
-            occurrences.append(next_time)
+            next_time: datetime = cron.get_next(datetime)
+            if next_time.tzinfo is None:
+                next_time = next_time.replace(tzinfo=UTC)
+            occurrences.append(next_time.astimezone(UTC))
 
         return occurrences
     except Exception as e:

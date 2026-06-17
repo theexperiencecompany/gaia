@@ -127,6 +127,15 @@ if [[ -z "${JFS_META_URL:-}" ]]; then
     exit 0
 fi
 
+# Without R2 creds the mount can only fail; short-circuit to the ephemeral
+# fallback now instead of letting `juicefs mount` fail and burning the full
+# 45s wait_mounted window (a noticeable acquire stall in local/self-hosted).
+if [[ -z "${JFS_R2_KEY:-}" || -z "${JFS_R2_SECRET:-}" ]]; then
+    echo "WARN: JFS_R2_KEY/JFS_R2_SECRET not set — falling back to ephemeral /workspace" >&2
+    ensure_workspace_writable
+    exit 0
+fi
+
 # JuiceFS reads its S3-compatible credentials from these standard AWS vars.
 # Both are exported here only for the lifetime of THIS script + its child
 # juicefs daemon — they never leave the per-call env block the API set.
@@ -148,6 +157,21 @@ export META_PASSWORD="${META_PASSWORD:-}"
 # and cmdline stay locked down.
 JFS_LAUNCHER="/etc/gaia/jfs_launcher.py"
 
+# Poll until $1 is a real mountpoint, up to $2 seconds (default 45). JuiceFS's
+# own --background readiness probe gives up after ~10s, but a remote meta (Neon
+# / cloud Postgres) often needs longer while the daemon finishes mounting.
+# Trusting the mount command's exit code would drop a slow-but-successful mount
+# to the ephemeral fallback, leaving /workspace unshared from the host.
+wait_mounted() {
+    local secs="${2:-45}"
+    while [ "$secs" -gt 0 ]; do
+        mountpoint -q "$1" && return 0
+        sleep 1
+        secs=$((secs - 1))
+    done
+    return 1
+}
+
 mount_user_subdir() {
     if mountpoint -q "$JFS_MOUNT"; then
         return 0
@@ -166,7 +190,8 @@ mount_user_subdir() {
         --max-uploads=20 \
         --buffer-size=600 \
         --background \
-        "$JFS_META_URL" "$JFS_MOUNT" 2>&1
+        "$JFS_META_URL" "$JFS_MOUNT" 2>&1 || true
+    wait_mounted "$JFS_MOUNT" 45
 }
 
 mount_skills_subdir() {
@@ -183,7 +208,8 @@ mount_skills_subdir() {
         --cache-size=1024 \
         --buffer-size=300 \
         --background \
-        "$JFS_META_URL" "$JFS_SKILLS_MOUNT" 2>&1
+        "$JFS_META_URL" "$JFS_SKILLS_MOUNT" 2>&1 || true
+    wait_mounted "$JFS_SKILLS_MOUNT" 30
 }
 
 mount_system_subdir() {
@@ -202,7 +228,8 @@ mount_system_subdir() {
         --cache-size=1024 \
         --buffer-size=300 \
         --background \
-        "$JFS_META_URL" "$JFS_SYSTEM_MOUNT" 2>&1
+        "$JFS_META_URL" "$JFS_SYSTEM_MOUNT" 2>&1 || true
+    wait_mounted "$JFS_SYSTEM_MOUNT" 30
 }
 
 # The per-user subtrees ``/users/$USER_ID`` and ``/skills/$USER_ID`` are

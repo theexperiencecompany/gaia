@@ -38,7 +38,7 @@ def make_state(**overrides) -> State:
         "query": "Hello, how are you?",
         "messages": [],
         "current_datetime": datetime.now(UTC).isoformat(),
-        "mem0_user_id": str(uuid4()),
+        "memory_user_id": str(uuid4()),
         "memories": [],
         "memories_stored": False,
         "conversation_id": str(uuid4()),

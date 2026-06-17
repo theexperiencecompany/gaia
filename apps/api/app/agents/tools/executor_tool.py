@@ -7,7 +7,6 @@ run_executor_background.
 """
 
 import asyncio
-from datetime import datetime
 import json
 from typing import Annotated
 from uuid import uuid4
@@ -15,128 +14,35 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.core.background.executor_runner import (
-    run_executor_background,
+from app.agents.core.background.executor_queue import (
+    build_lock_value,
+    decode_raw_item,
+    enqueue_task,
+    parse_lock_value,
+    try_acquire_lock,
 )
-from app.agents.core.background.inbox import mark_executor_spawned
+from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.session import (
+    ExecutorRun,
+    RunKind,
+    mark_executor_spawned,
+)
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
-    EXECUTOR_BUSY_TTL,
     EXECUTOR_QUEUE_PREFIX,
     EXECUTOR_QUEUE_TTL,
 )
 from app.constants.general import CALL_EXECUTOR_NAME
+from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
+from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.decorators.rate_limiting import LangChainRateLimitException
 from shared.py.wide_events import log
 
 # Prevent GC of background tasks
 _executor_tasks: set[asyncio.Task[None]] = set()
-
-# Keys from configurable that are safe to serialize into queue items.
-# Filters out non-serializable LangGraph internals (e.g. Runtime objects).
-_CONFIGURABLE_SCALAR_KEYS = frozenset(
-    {
-        "thread_id",
-        "conversation_id",
-        "user_id",
-        "email",
-        "user_timezone",
-        "user_name",
-        "user_time",
-        "stream_id",
-        "provider",
-        "model_name",
-        "max_tokens",
-        "selected_tool",
-        "tool_category",
-        "subagent_id",
-        "vfs_session_id",
-        "user_message_id",
-        "active_todo_id",
-        "execution_mode",
-        "conversation_source",
-        "source_category",
-        # Workflow context must survive queueing: without it a queued workflow
-        # run loses its id and the delivery path silently downgrades the result
-        # from the completion notification to a plain conversation message.
-        "workflow_id",
-        "workflow_title",
-        "workflow_notify_on_completion",
-    }
-)
-
-
-def _build_lock_value(stream_id: str | None, task_id: str) -> str:
-    """Build 'stream_id:task_id' lock value for the executor busy key."""
-    return f"{stream_id or ''}:{task_id}"
-
-
-def _parse_lock_value(lock_value: str) -> tuple[str, str]:
-    """Parse 'stream_id:task_id' from the executor busy lock value."""
-    if ":" in lock_value:
-        stream_id, task_id = lock_value.split(":", 1)
-        return stream_id, task_id
-    return lock_value, ""
-
-
-async def _try_acquire_lock(
-    lock_key: str,
-    lock_value: str,
-) -> bool:
-    """Atomically acquire the executor lock via SET NX.
-
-    Returns True if the lock was acquired, False if already held.
-    Falls back to True (allow execution) if Redis is unavailable.
-    """
-    if not redis_cache.client:
-        return True
-    return bool(
-        await redis_cache.client.set(
-            lock_key,
-            lock_value,
-            ex=EXECUTOR_BUSY_TTL,
-            nx=True,
-        ),
-    )
-
-
-async def _enqueue_task(
-    queue_key: str,
-    task: str,
-    task_id: str,
-    configurable: dict,
-    conversation_id: str,
-    user_message_id: str | None,
-) -> None:
-    """Push a task to the executor queue for deferred execution."""
-    safe_configurable = {
-        k: v
-        for k, v in configurable.items()
-        if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, str | int | float | bool | None)
-    }
-    queue_item = json.dumps(
-        {
-            "task": task,
-            "task_id": task_id,
-            "configurable": safe_configurable,
-            "user_time_str": configurable.get("user_time", ""),
-            "conversation_id": conversation_id,
-            "user_message_id": user_message_id,
-        }
-    )
-    if redis_cache.client:
-        await redis_cache.client.rpush(queue_key, queue_item)
-        await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
-
-
-def _decode_raw_item(raw: bytes | memoryview | str) -> str:
-    """Decode a raw Redis list item to a string."""
-    if isinstance(raw, str):
-        return raw
-    return bytes(raw).decode()
 
 
 @tool
@@ -166,13 +72,12 @@ async def call_executor(
     conversation as a new bot message when it completes.
     """
     base_configurable = config.get("configurable", {})
-    # When binding to a specific todo, layer a shallow override on top of
-    # the inherited configurable so the executor sees the binding without
-    # mutating the comms agent's RunnableConfig.
+    # Shallow-copy so the executor's overrides (todo binding) never mutate the
+    # comms agent's live RunnableConfig. The model is inherited from the comms
+    # configurable (set by per-plan routing).
+    configurable = {**base_configurable}
     if active_todo_id:
-        configurable = {**base_configurable, "active_todo_id": active_todo_id}
-    else:
-        configurable = base_configurable
+        configurable["active_todo_id"] = active_todo_id
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:
@@ -232,12 +137,33 @@ async def _dispatch_executor(
     user_message_id = configurable.get("user_message_id")
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    lock_value = _build_lock_value(stream_id, task_id)
+    lock_value = build_lock_value(stream_id, task_id)
 
-    if not await _try_acquire_lock(lock_key, lock_value):
-        # Executor is busy — queue for later execution
+    if not await try_acquire_lock(lock_key, lock_value):
+        # The lock is held. Distinguish two cases by the holder's stream_id:
+        #   - SAME stream_id → the comms model called call_executor twice within
+        #     ONE turn. Queuing it would run the whole task a SECOND time
+        #     (observed: deep research executed twice for a single user message).
+        #     Reject it — the first dispatch already covers this turn.
+        #   - DIFFERENT stream_id → a genuinely new request arrived while the
+        #     executor is busy; queue it to run next.
+        held_value = await redis_cache.client.get(lock_key) if redis_cache.client else None
+        held_stream_id = parse_lock_value(str(held_value))[0] if held_value else ""
+        if stream_id and held_stream_id == stream_id:
+            log.warning(
+                "Duplicate call_executor in same turn — ignored, not queued",
+                task_id=task_id,
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+            )
+            return (
+                "That task is already running from this same message — not "
+                "starting it again. The results are on the way."
+            )
+
+        # Executor is busy with a different turn — queue for later execution
         queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
-        await _enqueue_task(
+        await enqueue_task(
             queue_key=queue_key,
             task=task,
             task_id=task_id,
@@ -260,21 +186,22 @@ async def _dispatch_executor(
     # warmup hit get_all_connected_tools() on every executor call and
     # dominated cold-start latency.
 
-    user_time_str = configurable.get("user_time", "")
-    user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
-
     if stream_id:
         mark_executor_spawned(stream_id)
 
+    run = ExecutorRun.from_configurable(
+        configurable,
+        stream_id=stream_id or "",
+        conversation_id=conversation_id,
+        kind=RunKind.LIVE,
+        task_id=task_id,
+        user_message_id=user_message_id,
+    )
     bg_task = asyncio.create_task(
         run_executor_background(
+            run=run,
             task=task,
             configurable=configurable,
-            user_time=user_time,
-            stream_id=stream_id or "",
-            conversation_id=conversation_id,
-            task_id=task_id,
-            user_message_id=user_message_id,
         ),
     )
     _executor_tasks.add(bg_task)
@@ -354,6 +281,15 @@ async def cancel_executor(
         if not cancelled:
             return "None of the specified task_ids matched any running or queued tasks."
 
+        # Tell the client an agent-initiated cancel happened so it can clear the
+        # stuck executor-pending loading state and finalize in-flight tool cards
+        # — it has no other way to learn of a cancel it didn't initiate.
+        await _broadcast_executor_cancelled(
+            user_id=configurable.get("user_id", ""),
+            conversation_id=conversation_id,
+            cancelled=cancelled,
+        )
+
         result = f"Cancelled: {', '.join(cancelled)}."
         if skipped_running:
             result += " Currently running task was not in the cancel list — still running."
@@ -363,6 +299,28 @@ async def cancel_executor(
         log.error("cancel_executor failed", error=str(e))
         await redis_cache.delete(lock_key)
         return f"Cancellation attempted but hit an error: {e}"
+
+
+async def _broadcast_executor_cancelled(
+    *,
+    user_id: str,
+    conversation_id: str,
+    cancelled: list[str],
+) -> None:
+    """Push the executor-cancelled control event to the user's clients."""
+    if not user_id:
+        return
+    try:
+        await websocket_manager.broadcast_to_user(
+            user_id,
+            {
+                "type": WS_EVENT_EXECUTOR_CANCELLED,
+                "conversation_id": conversation_id,
+                "cancelled": cancelled,
+            },
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort UI signal
+        log.warning("Failed to broadcast executor.cancelled", error=str(e))
 
 
 async def _cancel_running_task(
@@ -376,7 +334,7 @@ async def _cancel_running_task(
     if not lock_value:
         return []
 
-    active_stream_id, active_task_id = _parse_lock_value(lock_value)
+    active_stream_id, active_task_id = parse_lock_value(lock_value)
     should_cancel = cancel_all or active_task_id in task_ids
 
     if not should_cancel:
@@ -446,9 +404,9 @@ async def _remove_queued_by_ids(
             if item.get("task_id") in target_ids:
                 cancelled.append(item.get("task_id", "queued"))
             else:
-                keep.append(_decode_raw_item(raw_item))
+                keep.append(decode_raw_item(raw_item))
         except ValueError:
-            keep.append(_decode_raw_item(raw_item))
+            keep.append(decode_raw_item(raw_item))
 
     if cancelled:
         await redis_cache.client.delete(queue_key)

@@ -3,6 +3,11 @@ import type {
   IntegrationListStreamData,
 } from "@/features/integrations/types";
 import type {
+  MemoryDocument,
+  MemoryEntry,
+  MemoryEpisode,
+} from "@/features/memory/api/types";
+import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
   CalendarFetchData,
@@ -43,6 +48,47 @@ import type {
   TwitterUserData,
 } from "@/types/features/twitterTypes";
 import type { WeatherData } from "@/types/features/weatherTypes";
+
+// Discriminated union for all memory tool actions (keyed memory_data).
+// Mirrors the backend contract in apps/api/app/agents/tools/memory_tools.py.
+export type MemoryData =
+  | {
+      action: "add";
+      memories: MemoryEntry[];
+      folder: string;
+      outcome: "new" | "updated" | "extended" | "duplicate";
+      message: string;
+    }
+  | {
+      action: "search";
+      query: string;
+      folder: string | null;
+      memories: MemoryEntry[];
+      message: string;
+    }
+  | {
+      action: "update";
+      memories: MemoryEntry[];
+      message: string;
+    }
+  | {
+      action: "forget";
+      memory_id: string;
+      reason: string;
+      message: string;
+    }
+  | {
+      action: "journal";
+      query: string | null;
+      episodes: MemoryEpisode[];
+      message: string;
+    }
+  | {
+      action: "document";
+      document: MemoryDocument;
+      updated: boolean;
+      message: string;
+    };
 
 export interface MCPAppData {
   tool_call_id: string;
@@ -162,6 +208,7 @@ export const TOOL_REGISTRY = {
   rate_limit_data: null as unknown as RateLimitData,
   artifact_data: null as unknown as ArtifactData[],
   screenshot_data: null as unknown as ScreenshotData,
+  memory_data: null as unknown as MemoryData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
@@ -203,4 +250,5 @@ export const GROUPED_TOOLS = new Set<ToolName>([
   "email_compose_data",
   "email_sent_data",
   "artifact_data",
+  "memory_data",
 ]);

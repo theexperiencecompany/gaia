@@ -1,12 +1,10 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
-from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.helpers.agent_helpers import (
-    _extract_timezone_offset,
     build_agent_config,
     build_initial_state,
     execute_graph_silent,
@@ -55,63 +53,6 @@ FAKE_USER = {
     "email": "test@example.com",
     "name": "Test User",
 }
-
-
-def _make_user_time(offset_hours: int = 0) -> datetime:
-    tz = timezone(timedelta(hours=offset_hours))
-    return datetime(2025, 6, 1, 12, 0, 0, tzinfo=tz)
-
-
-# ---------------------------------------------------------------------------
-# _extract_timezone_offset
-# ---------------------------------------------------------------------------
-
-
-class TestExtractTimezoneOffset:
-    def test_utc(self):
-        dt = datetime(2025, 1, 1, tzinfo=UTC)
-        assert _extract_timezone_offset(dt) == "+00:00"
-
-    def test_positive_offset(self):
-        tz = timezone(timedelta(hours=5, minutes=30))
-        dt = datetime(2025, 1, 1, tzinfo=tz)
-        assert _extract_timezone_offset(dt) == "+05:30"
-
-    def test_negative_offset(self):
-        tz = timezone(timedelta(hours=-8))
-        dt = datetime(2025, 1, 1, tzinfo=tz)
-        assert _extract_timezone_offset(dt) == "-08:00"
-
-    def test_naive_datetime_returns_utc(self):
-        dt = datetime(2025, 1, 1)
-        assert _extract_timezone_offset(dt) == "+00:00"
-
-    def test_none_utcoffset_returns_utc(self):
-        """Datetime with tzinfo that returns None for utcoffset."""
-        from datetime import tzinfo as _tzinfo
-
-        class _NoneOffsetTZ(_tzinfo):
-            def utcoffset(self, dt):
-                return None
-
-            def tzname(self, dt):
-                return "NONE"
-
-            def dst(self, dt):
-                return None
-
-        dt = datetime(2025, 1, 1, tzinfo=_NoneOffsetTZ())
-        assert _extract_timezone_offset(dt) == "+00:00"
-
-    def test_zero_negative_offset(self):
-        tz = timezone(timedelta(hours=0))
-        dt = datetime(2025, 1, 1, tzinfo=tz)
-        assert _extract_timezone_offset(dt) == "+00:00"
-
-    def test_large_positive_offset(self):
-        tz = timezone(timedelta(hours=12, minutes=45))
-        dt = datetime(2025, 1, 1, tzinfo=tz)
-        assert _extract_timezone_offset(dt) == "+12:45"
 
 
 # ---------------------------------------------------------------------------
@@ -225,11 +166,9 @@ class TestBuildAgentConfig:
     def test_basic_config(self, mock_providers):
         mock_providers.get.return_value = None  # no posthog
 
-        user_time = _make_user_time(5)
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=user_time,
             agent_name="comms_agent",
         )
 
@@ -237,8 +176,36 @@ class TestBuildAgentConfig:
 
         assert config["configurable"]["thread_id"] == CONV_ID
         assert config["configurable"]["user_id"] == USER_ID
-        assert config["configurable"]["user_timezone"] == "+05:00"
+        # No stored home zone and no parent zone -> UTC.
+        assert config["configurable"]["user_timezone"] == "UTC"
         assert config["recursion_limit"] == AGENT_RECURSION_LIMIT
+
+    @patch("app.helpers.agent_helpers.providers")
+    def test_uses_home_profile_timezone(self, mock_providers):
+        """The agent operates in the user's stored home zone (IANA, DST-aware)."""
+        mock_providers.get.return_value = None
+
+        home_user = {**FAKE_USER, "timezone": "Asia/Kolkata"}
+        config = build_agent_config(
+            conversation_id=CONV_ID,
+            user=home_user,
+            agent_name="comms_agent",
+        )
+        assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
+
+    @patch("app.helpers.agent_helpers.providers")
+    def test_inherits_home_timezone_from_base_configurable(self, mock_providers):
+        """A child agent reconstructs a bare user dict, so it inherits the home
+        zone from the parent's configurable (user_timezone)."""
+        mock_providers.get.return_value = None
+
+        config = build_agent_config(
+            conversation_id=CONV_ID,
+            user=FAKE_USER,  # no timezone on the user dict
+            agent_name="executor",
+            base_configurable={"user_timezone": "Asia/Kolkata"},
+        )
+        assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
     @patch("app.helpers.agent_helpers.providers")
     def test_custom_thread_id(self, mock_providers):
@@ -247,7 +214,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="comms_agent",
             thread_id="custom-thread",
         )
@@ -265,7 +231,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="executor",
             user_model_config=model_cfg,
         )
@@ -288,7 +253,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="executor",
             base_configurable=base,
         )
@@ -303,7 +267,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="comms_agent",
         )
         assert len(config["callbacks"]) >= 1
@@ -316,7 +279,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="comms_agent",
             usage_metadata_callback=usage_cb,
         )
@@ -329,7 +291,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="comms_agent",
             selected_tool="search",
             tool_category="web",
@@ -344,7 +305,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="comms_agent",
             source="whatsapp",
         )
@@ -362,7 +322,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="comms_agent",
             source="web",
         )
@@ -377,7 +336,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="comms_agent",
         )
         # no source -> BG category, channel labelled "background" in metadata
@@ -395,7 +353,6 @@ class TestBuildAgentConfig:
         config = build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
-            user_time=_make_user_time(),
             agent_name="executor",
             base_configurable={"conversation_source": "telegram"},
         )
@@ -420,7 +377,7 @@ class TestBuildInitialState:
         state = build_initial_state(request, USER_ID, CONV_ID, [])
 
         assert state["query"] == "Hello"
-        assert state["mem0_user_id"] == USER_ID
+        assert state["memory_user_id"] == USER_ID
         assert state["conversation_id"] == CONV_ID
         assert state["messages"] == []
         assert "trigger_context" not in state

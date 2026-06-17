@@ -10,7 +10,6 @@ message emitted alongside the static prompt — not inside the static prompt.
 """
 
 import asyncio
-import re
 
 from langchain_core.messages import SystemMessage
 
@@ -23,8 +22,8 @@ from app.helpers.message_helpers import (
     DYNAMIC_CONTEXT_MARKER,
     _build_active_todo_banner,
 )
+from app.memory.engine import memory_engine
 from app.services.integration_instructions_service import get_instructions
-from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from shared.py.wide_events import log
 
@@ -156,7 +155,7 @@ async def create_agent_context_message(
 
     user_id = user_id or configurable.get("user_id")
     user_name = configurable.get("user_name")
-    user_time_str = configurable.get("user_time", "")
+    user_timezone = configurable.get("user_timezone")
     execution_mode = configurable.get("execution_mode") or "interactive"
     active_todo_id = configurable.get("active_todo_id")
 
@@ -176,18 +175,10 @@ async def create_agent_context_message(
 
     # Clock is NOT embedded here any more — it lives in a HumanMessage built
     # alongside by ``build_initial_messages`` so the system_instruction stays
-    # stable across minute ticks. Only the user's static timezone offset
+    # stable across minute ticks. Only the user's static home timezone
     # (byte-stable across turns) stays in system_instruction.
-    if user_time_str:
-        try:
-            tz_match = re.search(r"([+-]\d{2}:\d{2}|Z)$", user_time_str)
-            if tz_match:
-                tz_offset = tz_match.group(1)
-                if tz_offset == "Z":
-                    tz_offset = "+00:00"
-                parts.append(f"User Timezone Offset: {tz_offset}")
-        except Exception as e:
-            log.warning(f"Error parsing user_time: {e}")
+    if user_timezone:
+        parts.append(f"User Timezone: {user_timezone}")
 
     async def _fetch_memories() -> str:
         if memories_text is not None:
@@ -195,11 +186,11 @@ async def create_agent_context_message(
         if not (user_id and query):
             return ""
         try:
-            results = await memory_service.search_memories(query=query, user_id=user_id, limit=5)
-            if results and (memories := getattr(results, "memories", None)):
-                log.info(f"Added {len(memories)} memories to subagent context")
+            results = await memory_engine.recall(user_id, query, limit=5)
+            if results.memories:
+                log.info(f"Added {len(results.memories)} memories to subagent context")
                 return "\n\nBased on our previous conversations:\n" + "\n".join(
-                    f"- {mem.content}" for mem in memories
+                    f"- {mem.content}" for mem in results.memories
                 )
         except Exception as e:
             log.warning(f"Error retrieving memories for subagent: {e}")

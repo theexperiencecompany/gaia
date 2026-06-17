@@ -22,6 +22,7 @@ import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreat
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { useRouter } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { getUserHomeTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
@@ -37,9 +38,7 @@ import { useWorkflowsStore } from "../stores/workflowsStore";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { createDefaultTriggerConfig } from "../triggers/registry";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
-
 import { findTriggerSchema, getTriggerDisplayInfo } from "../triggers/utils";
-import { getBrowserTimezone } from "../utils/browserTimezone";
 
 interface WorkflowModalProps {
   isOpen: boolean;
@@ -306,7 +305,7 @@ export default function WorkflowModal({
           type: "schedule" as const,
           enabled: true,
           cron_expression: draftData.cron_expression || "0 9 * * *",
-          timezone: getBrowserTimezone(),
+          timezone: getUserHomeTimezone(),
         };
       } else if (
         draftData.trigger_type === "integration" &&
@@ -468,14 +467,14 @@ export default function WorkflowModal({
         if (onWorkflowSaved) onWorkflowSaved(createdWorkflow.id);
         await fetchWorkflows();
 
-        // In createAndSend mode, auto-execute the workflow in chat after
-        // creation. Fire selectWorkflow BEFORE closing — the parent gates the
-        // modal render on local state and unmounts us synchronously on close,
-        // which would kill any post-close effect.
+        // In createAndSend mode, selectWorkflow navigates to /c and unmounts
+        // this page (and modal). Closing here would push back to /workflows
+        // and clobber that navigation, so only close when staying on the page.
         if (createAndSend) {
           selectWorkflow(createdWorkflow, { autoSend: true });
+        } else {
+          handleClose();
         }
-        handleClose();
       } else {
         setCreationPhase("error");
       }
@@ -814,10 +813,10 @@ export default function WorkflowModal({
         trigger_type: existingWorkflow.trigger_config.type,
       });
 
-      // Fire selectWorkflow before closing — the parent may unmount us
-      // synchronously, which would drop any post-close effect.
+      // selectWorkflow navigates to /c, which unmounts this page (and modal).
+      // Do NOT close the modal here: the parent's close handler pushes back to
+      // /workflows, which would clobber the /c navigation in the same tick.
       selectWorkflow(existingWorkflow, { autoSend: true });
-      onOpenChange(false);
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
     }

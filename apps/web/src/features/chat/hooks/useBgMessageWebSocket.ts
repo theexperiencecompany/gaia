@@ -76,9 +76,16 @@ export function useBgMessageWebSocket() {
       replyToMessageData: message.replyToMessage ?? null,
     };
 
-    // Persist to IndexedDB (dbEventEmitter syncs to store automatically)
+    // Persist to IndexedDB (dbEventEmitter syncs to store automatically).
+    // When this final message corresponds to a queued executor placeholder
+    // (keyed by task_id, persisted by useExecutorStream), replace it atomically
+    // so the placeholder is removed from IndexedDB and not left as a duplicate.
     try {
-      await db.putMessage(iMessage);
+      if (message.task_id) {
+        await db.replaceMessage(message.task_id, iMessage);
+      } else {
+        await db.putMessage(iMessage);
+      }
     } catch (err) {
       console.error("[useBgMessageWebSocket] Failed to persist message:", err);
     }

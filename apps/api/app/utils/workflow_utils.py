@@ -127,37 +127,6 @@ def get_thread_id(config: RunnableConfig) -> str | None:
     return config.get("configurable", {}).get("thread_id")
 
 
-def get_user_time(config: RunnableConfig) -> datetime:
-    """Extract user_time from config or return current time (always timezone-aware UTC)."""
-    user_time_str = config.get("configurable", {}).get("user_time")
-    if user_time_str:
-        try:
-            parsed = datetime.fromisoformat(user_time_str.replace("Z", "+00:00"))
-            if parsed.tzinfo is not None:
-                return parsed.astimezone(UTC)
-            return parsed.replace(tzinfo=UTC)
-        except (ValueError, AttributeError):
-            pass
-    return datetime.now(UTC)
-
-
-def get_user_timezone(config: RunnableConfig) -> str:
-    """Extract user_timezone from config. Falls back to +00:00 (UTC).
-
-    Emits `timezone_source` on the wide event so timezone resolution is
-    always traceable. When the config carries no user_timezone we warn
-    loudly — this is the exact silent-UTC drift that causes scheduled
-    workflows to fire at the user's offset hours late.
-    """
-    tz = config.get("configurable", {}).get("user_timezone")
-    if tz:
-        log.set(timezone_source="agent_config", user_timezone=tz)
-        return tz
-    log.set(timezone_source="fallback_utc", user_timezone="+00:00")
-    log.warning("get_user_timezone: no user_timezone in config, falling back to +00:00")
-    return "+00:00"
-
-
 def can_create_directly(draft: FinalizedOutput) -> bool:
     """
     Check if workflow can be created directly without user confirmation.

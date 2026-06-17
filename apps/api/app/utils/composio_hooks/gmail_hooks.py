@@ -135,6 +135,26 @@ def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
     return schema
 
 
+@register_schema_modifier(toolkits=["gmail"])
+def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
+    """Strip ``user_id`` from every Gmail tool's agent-facing schema.
+
+    The mailbox is fixed by the connected account, so the Gmail ``userId`` must
+    always be ``"me"``. Exposing it baits the agent into passing the literal
+    address, which returns zero results; removing it forces Composio's default.
+    """
+    input_params = schema.input_parameters
+    if not isinstance(input_params, dict):
+        return schema
+    props = input_params.get("properties")
+    if isinstance(props, dict):
+        props.pop("user_id", None)
+    required = input_params.get("required")
+    if isinstance(required, list) and "user_id" in required:
+        required.remove("user_id")
+    return schema
+
+
 # ====================== BEFORE EXECUTE HOOKS ======================
 # These hooks send progress/streaming data to frontend before tool execution
 

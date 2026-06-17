@@ -1,49 +1,44 @@
 """Shared lifecycle for capturing background-executor tool events.
 
 The executor runs as a detached asyncio task (spawned by ``call_executor``).
-Its tool events, and those of any subagent it hands off to, are appended to a
-per-``stream_id`` collector by ``make_redis_stream_writer``.
+Its tool events, and those of any subagent it hands off to, are appended to
+the stream's ``StreamSession.tool_events`` by ``make_redis_stream_writer``.
 
 Both the live chat path and the silent path (workflows, background tasks)
-register that collector, wait for the executor, drain it into grouped
-``tool_data``, and tear it down. Centralizing it here keeps one implementation
-so chat and workflow runs render identically.
+register the session, wait for the executor, drain the collected events into
+grouped ``tool_data``, and tear it down. Centralizing it here keeps one
+implementation so chat and workflow runs render identically.
 """
 
 import asyncio
 from typing import Any
 
-from app.agents.core.background.inbox import (
-    deregister_bg_subagent_results,
-    deregister_executor_done_event,
-    deregister_executor_spawned,
-    deregister_pending_subagents,
-    deregister_tool_event_collector,
-    get_executor_done_event,
-    get_tool_event_collector,
-    register_executor_done_event,
-    register_tool_event_collector,
+from app.agents.core.background.session import (
+    RunKind,
+    create_session,
+    get_session,
+    teardown_session,
     was_executor_spawned,
 )
+from app.constants.agents import RETURNED_TO_FRONTEND_MARKER
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
 from app.models.chat_models import tool_fields
 from app.utils.stream_utils import (
     absorb_collector_event,
     apply_outputs_to_tool_data,
+    normalize_custom_event,
     reconstruct_subagent_groups,
 )
 from shared.py.wide_events import log
 
 
 def register_executor_capture(stream_id: str) -> asyncio.Event:
-    """Register the done-event and tool-event collector for a stream.
+    """Register the stream session that captures executor tool events.
 
     Must run before the comms agent executes so ``call_executor``'s background
-    task can append events to the collector. Returns the done-event.
+    task can append events to the session. Returns the done-event.
     """
-    done_event = register_executor_done_event(stream_id)
-    register_tool_event_collector(stream_id)
-    return done_event
+    return create_session(stream_id, RunKind.LIVE).done_event
 
 
 async def await_executor_done(stream_id: str) -> None:
@@ -54,33 +49,37 @@ async def await_executor_done(stream_id: str) -> None:
     """
     if not was_executor_spawned(stream_id):
         return
-    done_event = get_executor_done_event(stream_id)
-    if done_event is None:
+    session = get_session(stream_id)
+    if session is None:
         return
     log.info("Waiting for executor completion", stream_id=stream_id)
     try:
         async with asyncio.timeout(EXECUTOR_WAIT_TIMEOUT):
-            await done_event.wait()
+            await session.done_event.wait()
     except TimeoutError:
         log.warning("Timed out waiting for executor — draining anyway", stream_id=stream_id)
 
 
 def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
-    """Drain the executor tool-event collector into reconstructed tool_data.
+    """Drain the session's tool events into reconstructed tool_data.
 
-    Mirrors the comms-graph accumulation path: ``tool_calls_data`` outputs are
-    merged in, and subagent start/end pairs are grouped into ``subagent_group``
-    entries via ``reconstruct_subagent_groups``. Only ``tool_calls_data``
-    entries get their output backfilled — the message owns those, while
-    subagent groups carry their own outputs from the collector.
+    Non-destructive read. Mirrors the comms-graph accumulation path:
+    ``tool_calls_data`` outputs are merged in, and subagent start/end pairs are
+    grouped into ``subagent_group`` entries via ``reconstruct_subagent_groups``.
+    Only ``tool_calls_data`` entries get their output backfilled — the message
+    owns those, while subagent groups carry their own outputs from the session.
     """
-    collector = get_tool_event_collector(stream_id)
-    if not collector:
+    session = get_session(stream_id)
+    if session is None or not session.tool_events:
         return []
     accumulated: dict[str, Any] = {"tool_data": []}
     outputs: dict[str, str] = {}
-    for evt in collector:
-        absorb_collector_event(evt, accumulated, outputs)
+    for evt in session.tool_events:
+        # Hooks (e.g. GMAIL_FETCH_EMAILS) emit raw field payloads like
+        # {"email_fetch_data": [...]}; normalize them to {"tool_data": {...}}
+        # before absorbing, or absorb_collector_event drops them and the list
+        # card never persists onto the background-executor message.
+        absorb_collector_event(normalize_custom_event(evt), accumulated, outputs)
     apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
     return accumulated.get("tool_data", [])
@@ -89,11 +88,11 @@ def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
 def build_returned_to_frontend_note(stream_id: str) -> str:
     """Build a note telling comms which native cards already rendered this turn.
 
-    Sourced from the executor's emitted tool events (the same collector +
+    Sourced from the executor's emitted tool events (the same session +
     ``tool_fields`` source of truth as ``OPENUI_SUPPRESSED_TOOLS``), so it states
     what was RETURNED to the frontend — not a claim about DOM rendering.
 
-    MUST be called before the collector is torn down (and, for live streams,
+    MUST be called before the session is torn down (and, for live streams,
     before ``done_event`` is set, since the chat stream drains + tears down in
     parallel). Returns "" when nothing card-worthy was emitted.
     """
@@ -115,22 +114,38 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
 
     body = "\n".join(summary)
     return (
-        "[RETURNED_TO_FRONTEND]\n"
-        "The data below is ALREADY shown to the user as native cards this turn:\n"
+        f"{RETURNED_TO_FRONTEND_MARKER}\n"
+        "These native cards are already on the user's screen this turn:\n"
         f"{body}\n"
-        "Do NOT restate or list their contents, and do NOT emit OpenUI for them. "
-        'A brief conversational lead-in is fine (e.g. "here\'s your week 👇"), '
-        "but never enumerate the items the card already shows.\n"
+        "They visually render the RAW items, so don't re-type those items "
+        "row-by-row and don't re-emit them as OpenUI — that literal duplication "
+        "is the ONLY thing to avoid here.\n"
+        "The cards are visual aids, NOT your reply. You still owe the user the "
+        "ANSWER in your own voice — the substance the executor produced: what it "
+        "found, grouped and counted, the few items that actually matter (and "
+        'why), and the natural next step. This synthesis is never "card '
+        'contents"; suppressing it because a card exists is the worst failure '
+        "you can have.\n"
+        "Match the depth to the work: a quick outcome gets a line or two; a "
+        "large, comprehensive result (a full triage, a multi-item analysis) gets "
+        "a real structured rundown — never a one-liner. Replying just \"here's "
+        'the list 👇" with no substance, when the executor did real work, fails '
+        "the user. Point them to the card for the granular rows AFTER you've "
+        "actually delivered the gist.\n"
+        "CRITICAL EXCEPTION — LONG-FORM DELIVERABLE: if the executor's result is "
+        "itself a finished written piece (a research report, an article, an "
+        "analysis, a document), that is the ANSWER, not raw card rows. The cards "
+        "above were just the research/loading steps along the way. Deliver the "
+        "deliverable IN FULL per the long-form rule — every section, point, and "
+        "citation — and do NOT compress it to a 'here's the breakdown' summary. "
+        "This note never authorizes shrinking a report; it only stops you "
+        "re-typing rows a card already lists.\n"
     )
 
 
 def teardown_executor_capture(stream_id: str) -> None:
-    """Deregister all per-stream executor orchestration state.
+    """Drop the stream's session and everything it holds.
 
     Safe to call multiple times.
     """
-    deregister_executor_done_event(stream_id)
-    deregister_tool_event_collector(stream_id)
-    deregister_pending_subagents(stream_id)
-    deregister_executor_spawned(stream_id)
-    deregister_bg_subagent_results(stream_id)
+    teardown_session(stream_id)

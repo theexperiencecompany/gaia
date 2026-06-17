@@ -212,18 +212,6 @@ class SettingsValidator:
             )
         )
 
-        # Memory Services
-        self.register_group(
-            SettingsGroup(
-                name="MEM0 Memory Services",
-                keys=["MEM0_API_KEY", "MEM0_ORG_ID", "MEM0_PROJECT_ID"],
-                description="MEM0 AI memory services",
-                affected_features="Conversation memory and context preservation",
-                all_required=True,
-                docs_url="https://docs.mem0.ai/",
-            )
-        )
-
         # Email Services
         self.register_group(
             SettingsGroup(

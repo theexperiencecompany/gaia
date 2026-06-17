@@ -4,6 +4,46 @@ description: "Version history and changelog for the GAIA API backend, including 
 icon: "server"
 ---
 
+<Update label="Jun 14, 2026" description="API, Web, CLI">
+
+## [API v0.19.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.19.0)
+
+### Features
+- **Local Memory Engine**: Rebuilt memory from the ground up as a fully local engine, replacing the previous cloud memory provider. Recall makes no external calls on the read path, so it is faster and more private.
+- **Four Kinds of Memory**: GAIA now organizes what it learns into facts filed in folders, a dated journal of what happened over time, auto-maintained core documents about you, and an entity graph of the people, tools, and projects in your life. See the [memory guide](/guides/memory) for how each one works.
+- **Sharper Recall**: Hybrid semantic and keyword search with local reranking surfaces the right memory even when your request never names it directly.
+- **Memory Tools for the Agent**: GAIA can search your memory, journal, and past conversations, and add, update, or forget specific facts on request, each shown inline as a card in chat.
+- **Conflict-Aware Updates**: When new information replaces something GAIA already knew, it updates the fact and keeps a version history instead of piling up duplicates.
+
+</Update>
+
+<Update label="Jun 13, 2026" description="API, Web, Mobile, Bots, CLI">
+
+## [API v0.18.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.18.0)
+
+### Features
+- **Code Sandbox**: Agents now run code in an isolated sandbox environment, making data analysis, scripting, and file generation safer and more reliable.
+- **Self-Managing Agent Workspace**: GAIA maintains its own working files across a task, so multi-step work carries context from one step to the next.
+- **Notification Tools**: Agents can proactively send you notifications when something needs your attention.
+- **Agent-Generated Files**: GAIA can create files during a task and deliver them straight to you, including over Discord, Slack, Telegram, and WhatsApp.
+- **GAIA Self-Knowledge**: A dedicated subagent lets GAIA answer questions about its own features and how to use them.
+- **Per-Integration Custom Instructions**: Add your own instructions to any connected integration to tailor how GAIA uses it.
+- **Quick Actions and Community Workflows**: Refreshed quick actions plus a seeded set of community workflows to start from.
+
+### Bug Fixes
+- **Overdue Reminders**: Reminders that fell past due are now settled and re-armed correctly instead of being skipped.
+- **Disconnected Integrations**: Logged-in users are no longer shown a login prompt when an integration simply needs reconnecting.
+- **MCP Connections**: More resilient MCP sessions with transparent reconnects and instant OAuth.
+- **Web Research**: Prevented fabricated URLs in web search and improved deep research result quality.
+- **Workflows and Todos**: Fixes across workflow execution, recurrence, and tracked todos.
+- **Security**: Patched six high-confidence vulnerabilities found during a security audit.
+
+### Performance
+- **Lower Chat Cost**: Byte-stable prompt caching cut chat-stream input cost by roughly 46% with more accurate billing.
+- **Leaner Backend**: Reduced backend memory usage by dropping unused heavy dependencies.
+
+</Update>
+
 <Update label="Apr 5, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
 
 ## [API v0.17.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.17.0)

@@ -24,7 +24,7 @@ _PATCH_USERS = "app.agents.memory.email_processor.users_collection"
 _PATCH_SEARCH = "app.agents.memory.email_processor.search_messages"
 _PATCH_EMIT = "app.agents.memory.email_processor.emit_progress"
 _PATCH_PROCESS = "app.agents.memory.email_processor.process_email_content"
-_PATCH_STORE_EMAILS = "app.agents.memory.email_processor.store_emails_to_mem0"
+_PATCH_STORE_EMAILS = "app.agents.memory.email_processor.store_emails_to_memory"
 _PATCH_MARK_COMPLETE = "app.agents.memory.email_processor.mark_email_processing_complete"
 _PATCH_POST_ONBOARD = "app.agents.memory.email_processor.process_post_onboarding_personalization"
 _PATCH_EXTRACT_PROFILES = (
@@ -37,7 +37,7 @@ _PATCH_BUILD_URL = "app.agents.memory.email_processor.build_profile_url"
 _PATCH_CRAWL = "app.agents.memory.email_processor.crawl_profile_url"
 _PATCH_CRAWL_BATCH = "app.agents.memory.email_processor.crawl_profile_urls_batch"
 _PATCH_STORE_PROFILE = "app.agents.memory.email_processor.store_single_profile"
-_PATCH_MEMORY_SERVICE = "app.agents.memory.email_processor.memory_service"
+_PATCH_MEMORY_ENGINE = "app.agents.memory.email_processor.memory_engine"
 _PATCH_SEARCH_PARALLEL = "app.agents.memory.email_processor._search_platform_emails_parallel"
 
 
@@ -560,7 +560,7 @@ class TestDiscoverAndStoreLinkedProfiles:
             },
         },
     )
-    @patch(_PATCH_MEMORY_SERVICE)
+    @patch(_PATCH_MEMORY_ENGINE)
     @patch(_PATCH_CRAWL_BATCH, new_callable=AsyncMock)
     @patch(_PATCH_BUILD_URL)
     @patch(_PATCH_VALIDATE)
@@ -581,7 +581,7 @@ class TestDiscoverAndStoreLinkedProfiles:
                 "error": None,
             }
         ]
-        mock_memory.store_memory_batch = AsyncMock(return_value=True)
+        mock_memory.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
 
         content = "Check out my github: https://github.com/johndoe"
 
@@ -664,7 +664,7 @@ class TestDiscoverAndStoreLinkedProfiles:
             },
         },
     )
-    @patch(_PATCH_MEMORY_SERVICE)
+    @patch(_PATCH_MEMORY_ENGINE)
     @patch(_PATCH_CRAWL_BATCH, new_callable=AsyncMock)
     @patch(_PATCH_BUILD_URL, return_value="https://github.com/johndoe")
     @patch(_PATCH_VALIDATE, return_value=True)
@@ -683,7 +683,7 @@ class TestDiscoverAndStoreLinkedProfiles:
                 "error": "timeout",
             }
         ]
-        mock_memory.store_memory_batch = AsyncMock(return_value=True)
+        mock_memory.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
 
         content = "https://github.com/johndoe"
         count = await _discover_and_store_linked_profiles(USER_ID, content, "twitter")
@@ -704,11 +704,11 @@ class TestDiscoverAndStoreLinkedProfiles:
             },
         },
     )
-    @patch(_PATCH_MEMORY_SERVICE)
+    @patch(_PATCH_MEMORY_ENGINE)
     @patch(_PATCH_CRAWL_BATCH, new_callable=AsyncMock)
     @patch(_PATCH_BUILD_URL, return_value="https://github.com/johndoe")
     @patch(_PATCH_VALIDATE, return_value=True)
-    async def test_store_batch_failure_returns_zero(
+    async def test_zero_facts_extracted_returns_zero(
         self,
         mock_validate: MagicMock,
         mock_build: MagicMock,
@@ -723,7 +723,7 @@ class TestDiscoverAndStoreLinkedProfiles:
                 "error": None,
             }
         ]
-        mock_memory.store_memory_batch = AsyncMock(return_value=False)
+        mock_memory.retain = AsyncMock(return_value=MagicMock(facts_extracted=0))
 
         content = "https://github.com/johndoe"
         count = await _discover_and_store_linked_profiles(USER_ID, content, "twitter")

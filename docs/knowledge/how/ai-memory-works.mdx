@@ -21,7 +21,7 @@ The semantic memory stores facts and knowledge extracted from your interactions.
 
 The procedural memory captures patterns and preferences about how you work. "User typically creates tasks from emails containing action items." "User prefers to work on creative tasks before administrative tasks." These learned patterns guide the system's proactive behavior.
 
-GAIA implements this multi-layered memory using a combination of technologies. MongoDB stores the structured data - tasks, emails, calendar events, conversations. ChromaDB stores vector embeddings for semantic search. Mem0AI provides the intelligence layer that extracts facts, identifies patterns, and manages memory retrieval.
+GAIA implements this multi-layered memory using a combination of technologies. MongoDB stores the structured data - tasks, emails, calendar events, conversations. PostgreSQL holds the long-term memory store - facts, episodes, the knowledge graph, and the consolidated core documents - while ChromaDB stores vector embeddings for semantic search. GAIA's own memory engine provides the intelligence layer that extracts facts, identifies patterns, and manages memory retrieval.
 
 ## What Gets Remembered
 
@@ -117,7 +117,7 @@ Preference learning happens through observation. When you consistently do someth
 
 These preferences are stored as facts in semantic memory. "User prefers tasks to be created with high priority when emails mention deadlines." "User likes meeting agendas to include recent context." "User typically works on creative tasks in the morning." These facts guide the system's proactive behavior.
 
-GAIA uses Mem0AI for preference learning and storage. As you interact with GAIA, it continuously learns and updates its understanding of your preferences. These learned preferences make GAIA increasingly personalized to your specific work style.
+GAIA's memory engine handles preference learning and storage. As you interact with GAIA, it continuously learns and updates its understanding of your preferences. These learned preferences make GAIA increasingly personalized to your specific work style.
 
 ## Memory-Augmented Generation
 

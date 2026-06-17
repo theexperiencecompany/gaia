@@ -116,7 +116,8 @@
       }
     },
     "patchedDependencies": {
-      "dmg-builder": "patches/dmg-builder.patch"
+      "dmg-builder": "patches/dmg-builder.patch",
+      "sileo@0.1.4": "patches/sileo@0.1.4.patch"
     }
   }
 }

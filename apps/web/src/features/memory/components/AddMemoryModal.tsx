@@ -1,52 +1,40 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Textarea } from "@heroui/input";
-import { Cancel01Icon } from "@icons";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { Input, Textarea } from "@heroui/input";
+import {
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@heroui/modal";
+import { useEffect, useState, useTransition } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
+import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
 
-interface AddMemoryFormProps {
+interface AddMemoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onMemoryAdded: () => void;
 }
 
-const MAX_MEMORY_LENGTH = 500; // Set a reasonable character limit
-
-export default function AddMemoryForm({
+export function AddMemoryModal({
   isOpen,
   onClose,
   onMemoryAdded,
-}: AddMemoryFormProps) {
+}: AddMemoryModalProps) {
   const [content, setContent] = useState("");
+  const [categoryPath, setCategoryPath] = useState("");
   const [isPending, startTransition] = useTransition();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Focus the textarea when the form opens
-  useEffect(() => {
-    if (isOpen && textareaRef.current) {
-      // Small delay to ensure form is fully rendered
-      setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 50);
-    }
-  }, [isOpen]);
-
-  // Reset content when form is closed
   useEffect(() => {
     if (!isOpen) {
       setContent("");
+      setCategoryPath("");
     }
   }, [isOpen]);
-
-  const handleContentChange = (value: string) => {
-    // Limit input to maximum character count
-    if (value.length <= MAX_MEMORY_LENGTH) {
-      setContent(value);
-    }
-  };
 
   const handleSave = () => {
     if (!content.trim()) return;
@@ -55,95 +43,71 @@ export default function AddMemoryForm({
       try {
         const response = await memoryApi.createMemory({
           content: content.trim(),
+          category_path: categoryPath.trim() || undefined,
         });
-
         if (response.success) {
-          toast.success("Memory added successfully");
-          setContent("");
+          toast.success("Memory added");
           onMemoryAdded();
           onClose();
         } else {
           toast.error(response.message || "Failed to add memory");
         }
-      } catch (error) {
-        console.error("Error adding memory:", error);
+      } catch {
         toast.error("Failed to add memory");
       }
     });
   };
 
-  // Handle keyboard shortcuts
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Save on Ctrl+Enter or Cmd+Enter
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      if (content.trim()) {
-        handleSave();
-      }
-    }
-    // Close on Escape
-    else if (e.key === "Escape") {
-      onClose();
-    }
-  };
-
-  // If not open, don't render anything
-  if (!isOpen) return null;
-
   return (
-    <div className="relative mb-4 rounded-2xl border border-zinc-700 p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <Button
-          isIconOnly
-          size="sm"
-          variant="light"
-          onPress={onClose}
-          className="absolute top-2 right-2"
-        >
-          <Cancel01Icon className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="mt-6 flex flex-col gap-2">
-        <Textarea
-          ref={textareaRef}
-          placeholder="Enter a memory to store..."
-          value={content}
-          onValueChange={handleContentChange}
-          onKeyDown={handleKeyDown}
-          minRows={4}
-          maxRows={6}
-          label="Add New Memory"
-          description="GAIA will not add the memory if it is unable to extract valuable information from your text. Please add specific and meaningful information about yourself, your preferences, or important details you want GAIA to remember."
-          errorMessage={
-            content.length > MAX_MEMORY_LENGTH
-              ? `Content must be ${MAX_MEMORY_LENGTH} characters or less. Currently ${content.length} characters.`
-              : undefined
-          }
-          isInvalid={content.length > MAX_MEMORY_LENGTH}
-          classNames={{
-            input: "bg-zinc-800 text-sm",
-            inputWrapper: "bg-zinc-800 focus:bg-zinc-700/50",
-            description: "text-zinc-400 text-xs",
-          }}
-          autoFocus
-        />
-      </div>
-
-      <div className="mt-3 flex justify-end gap-2">
-        <Button size="sm" variant="flat" onPress={onClose}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          color="primary"
-          onPress={handleSave}
-          isDisabled={!content.trim()}
-          isLoading={isPending}
-        >
-          Save Memory
-        </Button>
-      </div>
-    </div>
+    <Modal isOpen={isOpen} onClose={onClose} size="lg">
+      <ModalContent>
+        <ModalHeader className="flex-col gap-1">
+          <span>Add memory</span>
+          <span className="text-xs font-normal text-zinc-500">
+            Tell GAIA something specific about yourself, your preferences, or
+            details worth remembering
+          </span>
+        </ModalHeader>
+        <ModalBody>
+          <Textarea
+            placeholder="e.g. I'm vegetarian and allergic to peanuts"
+            value={content}
+            onValueChange={setContent}
+            minRows={3}
+            maxRows={8}
+            isInvalid={content.length > MAX_MEMORY_LENGTH}
+            errorMessage={
+              content.length > MAX_MEMORY_LENGTH
+                ? `Keep it under ${MAX_MEMORY_LENGTH} characters`
+                : undefined
+            }
+            autoFocus
+          />
+          <Input
+            label="Folder"
+            labelPlacement="outside"
+            placeholder="e.g. food-preferences"
+            description="Optional. GAIA files it automatically when left blank."
+            value={categoryPath}
+            onValueChange={setCategoryPath}
+            size="sm"
+          />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="light" className="rounded-xl" onPress={onClose}>
+            Cancel
+          </Button>
+          <Button
+            color="primary"
+            className="rounded-xl"
+            onPress={handleSave}
+            isLoading={isPending}
+            isDisabled={!content.trim() || content.length > MAX_MEMORY_LENGTH}
+          >
+            Save memory
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }

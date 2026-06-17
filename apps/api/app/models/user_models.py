@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.utils.timezone import is_valid_timezone
+
 
 class OnboardingPhase(str, Enum):
     """Tracks the current phase of user onboarding"""
@@ -138,20 +140,13 @@ class OnboardingRequest(BaseModel):
     @classmethod
     def validate_timezone(cls, v):
         if v is not None and v.strip():
-            import pytz
-
             v = v.strip()
-            try:
-                # Validate that it's a valid IANA timezone identifier
-                pytz.timezone(v)
-                return v
-            except pytz.UnknownTimeZoneError:
-                # Allow UTC as a special case
-                if v.upper() == "UTC":
-                    return "UTC"
+            # Canonical validation: accepts IANA names, ±HH:MM offsets, and UTC.
+            if not is_valid_timezone(v):
                 raise ValueError(
                     f"Invalid timezone '{v}'. Use IANA timezone identifiers like 'Asia/Kolkata', 'America/New_York', 'UTC'"
                 )
+            return v
         return v
 
 

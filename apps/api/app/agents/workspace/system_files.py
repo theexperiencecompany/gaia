@@ -28,6 +28,7 @@ from app.agents.workspace.system_docs import (
     GAIA_TASKS_GUIDE_MD,
     INDEX_MD,
     INTEGRATIONS_GUIDE_MD,
+    MEMORY_GUIDE_MD,
     SESSIONS_GUIDE_MD,
     USER_TODOS_GUIDE_MD,
 )
@@ -51,6 +52,7 @@ _STATIC_DOCS: list[tuple[str, str]] = [
     ("integrations/GUIDE.md", INTEGRATIONS_GUIDE_MD),
     ("gaia-tasks/GUIDE.md", GAIA_TASKS_GUIDE_MD),
     ("todos/GUIDE.md", USER_TODOS_GUIDE_MD),
+    ("memory/GUIDE.md", MEMORY_GUIDE_MD),
 ]
 
 

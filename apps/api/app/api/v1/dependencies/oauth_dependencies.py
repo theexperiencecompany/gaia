@@ -1,29 +1,16 @@
 import asyncio
 from datetime import UTC, datetime
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.db.mongodb.collections import users_collection
+from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
 from shared.py.wide_events import log
 
 _TIMEZONE_BACKFILL_TASKS: set[asyncio.Task[Any]] = set()
-
-
-def _is_valid_iana_or_offset(tz: str) -> bool:
-    """Cheap validation: accept IANA names or ±HH:MM offsets; reject garbage."""
-    if not tz:
-        return False
-    if tz.startswith(("+", "-")) and len(tz) == 6 and tz[3] == ":":
-        return True
-    try:
-        ZoneInfo(tz)
-        return True
-    except (ZoneInfoNotFoundError, ValueError):
-        return False
 
 
 async def _backfill_user_timezone(user_id: str, tz: str) -> None:
@@ -152,20 +139,15 @@ def get_user_timezone(
         default="UTC", alias="x-timezone", description="User's timezone identifier"
     ),
 ) -> GET_USER_TZ_TYPE:
-    """
-    Get the current time in the user's timezone.
-    Uses the x-timezone header to determine the user's timezone.
+    """Current time in the request's ``x-timezone`` header zone (defaults to UTC).
 
-    Args:
-        x_timezone (str): The timezone identifier from the request header.
-    Returns:
-        datetime: The current time in the user's timezone.
+    Returns ``(canonical_timezone, now)``. Offset-aware and never raises on a
+    malformed header (falls back to UTC) via ``Timezone.parse``.
     """
-    user_tz = ZoneInfo(x_timezone)
-    now = datetime.now(user_tz)
-
-    log.debug(f"User timezone: {user_tz}, Current time: {now}")
-    return x_timezone, now
+    tz = Timezone.parse(x_timezone)
+    now = tz.now()
+    log.debug(f"User timezone: {tz.value}, Current time: {now}")
+    return tz.value, now
 
 
 async def get_user_timezone_from_preferences(
@@ -175,47 +157,51 @@ async def get_user_timezone_from_preferences(
     ),
 ) -> str:
     """
-    Resolve the user's timezone with three-tier priority:
+    Resolve the user's home timezone, healing a stale/junk stored "UTC".
 
-      1. `user.timezone` stored in Mongo (set during onboarding)
-      2. `x-timezone` request header (browser-reported IANA zone)
-      3. UTC (last resort)
+      1. A real (non-UTC) `user.timezone` stored in Mongo is authoritative.
+      2. Otherwise — stored value is empty OR a low-confidence "UTC" (often a
+         junk default that then sticks forever and silently runs everything in
+         UTC) — a valid non-UTC `x-timezone` header wins and is backfilled,
+         healing the stored value so header-less background paths (scheduled
+         workflows, notifications) converge to the user's real zone.
+      3. UTC as last resort, or a genuine stored "UTC" when there is no better
+         signal.
 
-    Emits the wide-event field `timezone_source` so every request makes
-    it visible which branch was used. When we fall through to the header,
-    fire-and-forget a backfill so the Mongo doc is populated for next time.
+    Emits the wide-event field `timezone_source` so every request makes it
+    visible which branch was used.
     """
     user_id = user.get("user_id")
 
     try:
-        stored_tz = (user.get("timezone") or "").strip()
-        if stored_tz:
-            log.set(timezone_source="user_profile", user_timezone=stored_tz)
-            return stored_tz
+        resolved = resolve_home_timezone(user.get("timezone"), x_timezone)
+        log.set(timezone_source=resolved.source.value, user_timezone=resolved.timezone.value)
 
-        header_tz = (x_timezone or "").strip()
-        if header_tz and header_tz.upper() != "UTC" and _is_valid_iana_or_offset(header_tz):
-            log.set(timezone_source="x_timezone_header", user_timezone=header_tz)
+        if resolved.source is TimezoneSource.X_TIMEZONE_HEADER:
             log.warning(
-                "user.timezone missing; using x-timezone header fallback",
+                "Healing user.timezone from x-timezone header",
                 user_id=user_id,
-                header_timezone=header_tz,
+                stored_timezone=(user.get("timezone") or "").strip() or None,
+                header_timezone=resolved.timezone.value,
             )
-            if user_id:
-                task = asyncio.create_task(_backfill_user_timezone(user_id, header_tz))
-                _TIMEZONE_BACKFILL_TASKS.add(task)
-                task.add_done_callback(_TIMEZONE_BACKFILL_TASKS.discard)
-            return header_tz
+        elif (
+            resolved.source is TimezoneSource.FALLBACK_UTC
+            and not (user.get("timezone") or "").strip()
+        ):
+            log.warning(
+                "user.timezone missing and no valid x-timezone header; falling back to UTC",
+                user_id=user_id,
+                header_value=(x_timezone or "").strip() or None,
+            )
 
-        log.set(timezone_source="fallback_utc", user_timezone="UTC")
-        log.warning(
-            "user.timezone missing and no valid x-timezone header; falling back to UTC",
-            user_id=user_id,
-            header_value=header_tz or None,
-        )
-        return "UTC"
+        if resolved.should_heal and user_id:
+            task = asyncio.create_task(_backfill_user_timezone(user_id, resolved.timezone.value))
+            _TIMEZONE_BACKFILL_TASKS.add(task)
+            task.add_done_callback(_TIMEZONE_BACKFILL_TASKS.discard)
+
+        return resolved.timezone.value
 
     except Exception as e:
         log.warning(f"Error resolving user timezone: {e}", user_id=user_id)
-        log.set(timezone_source="fallback_utc", user_timezone="UTC")
+        log.set(timezone_source=TimezoneSource.FALLBACK_UTC.value, user_timezone="UTC")
         return "UTC"

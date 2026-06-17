@@ -17,7 +17,6 @@ from app.models.chat_models import (
 from app.models.memory_models import (
     CreateMemoryRequest,
     MemoryEntry,
-    MemoryRelation,
     MemorySearchResult,
 )
 from app.models.message_models import (
@@ -346,48 +345,29 @@ class TestMemoryModels:
     def test_memory_entry_defaults(self):
         e = MemoryEntry(content="Test memory")
         assert e.id is None
-        assert e.user_id == ""
-        assert e.metadata == {}
-        assert e.categories == []
-        assert e.immutable is False
+        assert e.category_path == ""
+        assert e.is_latest is True
+        assert e.is_forgotten is False
         assert e.relevance_score is None
 
     def test_memory_entry_full(self):
         e = MemoryEntry(
             id="m1",
             content="User likes Python",
-            user_id="u1",
-            metadata={"source": "chat"},
-            categories=["preferences"],
+            category_path="preferences",
             relevance_score=0.95,
         )
         assert e.relevance_score == 0.95
-        assert e.categories == ["preferences"]
-
-    def test_memory_relation(self):
-        r = MemoryRelation(
-            source="alice",
-            source_type="person",
-            relationship="likes",
-            target="python",
-            target_type="language",
-        )
-        assert r.source == "alice"
-        assert r.relationship == "likes"
-
-    def test_memory_relation_missing_field(self):
-        with pytest.raises(ValidationError):
-            MemoryRelation(source="alice", relationship="likes")
+        assert e.category_path == "preferences"
 
     def test_memory_search_result_defaults(self):
         r = MemorySearchResult()
         assert r.memories == []
-        assert r.relations == []
         assert r.total_count == 0
 
     def test_create_memory_request(self):
         r = CreateMemoryRequest(content="Remember this")
-        assert r.metadata is None
+        assert r.category_path is None
 
     def test_create_memory_request_missing_content(self):
         with pytest.raises(ValidationError):

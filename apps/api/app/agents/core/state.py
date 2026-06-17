@@ -28,7 +28,7 @@ class State(DictLikeModel):
     intent: str | None = None
     messages: Annotated[list[AnyMessage], add_messages] = Field(default_factory=list)
     current_datetime: str | None = None
-    mem0_user_id: str | None = None
+    memory_user_id: str | None = None
     memories: list[str] = Field(default_factory=list)
     memories_stored: bool = False
     conversation_id: str | None = None

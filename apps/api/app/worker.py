@@ -9,6 +9,8 @@ from app.workers.config.worker_settings import WorkerSettings
 from app.workers.lifecycle import shutdown, startup
 from app.workers.metrics import instrument_task
 from app.workers.tasks import (
+    backfill_active_users,
+    backfill_user_memories,
     check_inactive_users,
     cleanup_expired_reminders,
     cleanup_stuck_personalization,
@@ -20,7 +22,6 @@ from app.workers.tasks import (
     process_workflow_generation_task,
     prune_inactive_sessions,
     regenerate_workflow_steps,
-    store_memories_batch,
     sweep_idle_sandboxes,
 )
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
@@ -42,8 +43,9 @@ _regenerate_workflow_steps = instrument_task(regenerate_workflow_steps)
 _generate_workflow_steps = instrument_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory)
 _process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
-_store_memories_batch = instrument_task(store_memories_batch)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
+_backfill_active_users = instrument_task(backfill_active_users)
+_backfill_user_memories = instrument_task(backfill_user_memories)
 _sweep_idle_sandboxes = instrument_task(sweep_idle_sandboxes)
 _prune_inactive_sessions = instrument_task(prune_inactive_sessions)
 _execute_tracked_todo = instrument_task(execute_tracked_todo)
@@ -61,11 +63,12 @@ WorkerSettings.functions = [
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
     _process_onboarding_intelligence_task,
-    _store_memories_batch,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
     _prune_inactive_sessions,
     _execute_tracked_todo,
+    _backfill_active_users,
+    _backfill_user_memories,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -107,6 +110,14 @@ WorkerSettings.cron_jobs = [
     # Recovery safety net: re-enqueue due scheduled tasks whose ARQ job was lost
     # (Redis eviction/flush). Idempotent via the deterministic _job_id.
     cron(_rescan_pending_scheduled_tasks, minute={0, 30}, second=0),
+    # Seed long-term memory for recently-active pre-launch users (capped per
+    # run; the marker makes it resume and pick up returning users).
+    cron(
+        _backfill_active_users,
+        hour=4,  # Daily at 04:00 UTC (low traffic)
+        minute=0,
+        second=0,
+    ),
 ]
 
 WorkerSettings.on_startup = startup

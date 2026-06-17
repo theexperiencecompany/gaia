@@ -10,9 +10,8 @@
  */
 
 import { z } from "zod";
-
+import { getUserHomeTimezone, isValidTimezone } from "@/lib/timezone";
 import type { Workflow } from "@/types/features/workflowTypes";
-import { getBrowserTimezone } from "../utils/browserTimezone";
 import { describeCron } from "../utils/cronUtils";
 
 // =============================================================================
@@ -30,7 +29,10 @@ const scheduleTriggerConfigSchema = z.object({
     .refine((value) => describeCron(value).isValid, {
       message: "Invalid cron expression",
     }),
-  timezone: z.string().min(1),
+  timezone: z
+    .string()
+    .min(1)
+    .refine((value) => isValidTimezone(value), { message: "Invalid timezone" }),
   next_run: z.string().optional(),
 });
 
@@ -94,7 +96,7 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
     type: "schedule",
     enabled: true,
     cron_expression: "0 9 * * *", // Daily at 9 AM
-    timezone: getBrowserTimezone(),
+    timezone: getUserHomeTimezone(),
   },
   notify_on_completion: true,
 });
