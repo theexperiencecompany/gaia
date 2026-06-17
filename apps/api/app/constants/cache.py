@@ -22,6 +22,10 @@ DEFAULT_CACHE_TTL = ONE_HOUR_TTL
 STATS_CACHE_TTL = THIRTY_MINUTES_TTL
 CUSTOM_INT_METADATA_TTL = ONE_HOUR_TTL
 SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
+# Subscription plan tier, cached for hot paths (rate limiting, per-request model
+# routing). Eventually consistent: a plan change takes effect within the TTL.
+SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
+SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
