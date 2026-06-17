@@ -3,6 +3,7 @@
 import { Avatar } from "@heroui/avatar";
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Skeleton } from "@heroui/skeleton";
 import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import {
@@ -21,7 +22,6 @@ import React, { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
-import { Skeleton } from "@/components/ui/skeleton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
