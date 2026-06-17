@@ -41,9 +41,18 @@ class DodoPaymentService:
         except Exception as e:
             log.error(f"Failed to instantiate dodo payments: {e}")
 
+    @staticmethod
+    def _plans_cache_key(active_only: bool) -> str:
+        return f"plans:{'active' if active_only else 'all'}"
+
+    async def invalidate_plans_cache(self) -> None:
+        """Drop cached plan lists so the next read reflects DB changes (e.g. after seeding)."""
+        for active_only in (True, False):
+            await redis_cache.delete(self._plans_cache_key(active_only))
+
     async def get_plans(self, active_only: bool = True) -> list[PlanResponse]:
         """Get subscription plans with caching."""
-        cache_key = f"plans:{'active' if active_only else 'all'}"
+        cache_key = self._plans_cache_key(active_only)
 
         # Try cache first
         cached = await redis_cache.get(cache_key)

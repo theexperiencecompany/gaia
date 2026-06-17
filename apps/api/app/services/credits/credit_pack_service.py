@@ -14,7 +14,6 @@ from app.config.settings import settings
 from app.db.mongodb.collections import credit_packs_collection, users_collection
 from app.services.credits import credit_wallet_service
 from app.services.payments.payment_service import payment_service
-from shared.py.wide_events import log
 
 
 async def list_packs() -> list[dict[str, Any]]:
@@ -58,31 +57,24 @@ async def create_topup_checkout(user_id: str, pack_key: str) -> dict[str, Any]:
     }
 
 
-async def grant_pack_from_payment(metadata: dict, dodo_payment_id: str) -> bool:
-    """Grant a purchased pack's credits to the wallet (idempotent on payment id).
+async def grant_pack_from_payment(
+    metadata: dict, dodo_payment_id: str, dodo_customer_id: str
+) -> bool:
+    """Grant a purchased pack's credits to the user's Dodo wallet (idempotent).
 
     Returns True if a pack grant was applied (i.e. this was a top-up payment).
     """
     user_id = metadata.get("user_id")
     pack_key = metadata.get("credit_pack_key")
-    if not user_id or not pack_key:
+    if not user_id or not pack_key or not dodo_customer_id:
         return False
     pack = await credit_packs_collection.find_one({"key": pack_key})
     if not pack:
         return False
-    granted = await credit_wallet_service.grant(
+    return await credit_wallet_service.grant(
         user_id,
+        dodo_customer_id,
         int(pack["credits"]),
-        reason=f"topup:{pack_key}",
+        reason=f"topup:{pack_key}:{dodo_payment_id}",
         dodo_payment_id=dodo_payment_id,
     )
-    if granted:
-        log.info(
-            "credit_topup_granted",
-            credit_event="credit_topup_granted",
-            user_id=user_id,
-            pack_key=pack_key,
-            credits=int(pack["credits"]),
-            dodo_payment_id=dodo_payment_id,
-        )
-    return granted

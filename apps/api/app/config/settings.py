@@ -313,6 +313,9 @@ class ProductionSettings(CommonSettings):
     # Payment Processing
     # ----------------------------------------------
     DODO_PAYMENTS_API_KEY: str
+    # Dodo Credit-Based Billing entitlement (the GAIA credit unit). Created by
+    # scripts/credits_setup.py; the top-up wallet (Pool 2) is read/debited here.
+    DODO_CREDIT_ENTITLEMENT_ID: str = ""
 
     # ----------------------------------------------
     # Monitoring & Analytics
@@ -482,6 +485,7 @@ class DevelopmentSettings(CommonSettings):
     # Payment Processing
     # ----------------------------------------------
     DODO_PAYMENTS_API_KEY: str | None = None
+    DODO_CREDIT_ENTITLEMENT_ID: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics

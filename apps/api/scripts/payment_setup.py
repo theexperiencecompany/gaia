@@ -75,6 +75,29 @@ from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 
 from app.config.settings import settings  # noqa: E402
 from app.models.payment_models import PlanDB  # noqa: E402
+from app.services.payments.payment_service import payment_service  # noqa: E402
+
+# Plan feature bullets. Kept short (one line per card) and transparent: tiers
+# differ on credit volume + per-tool limits, so that's what the bullets state.
+_FREE_FEATURES = [
+    "7,500 credits/month",
+    "100s of integrations",
+    "Limited workflows & files",
+    "Community support",
+]
+_PRO_FEATURES = [
+    "200,000 credits/month",
+    "Everything in Free",
+    "High limits on every tool",
+    "Top up credits anytime",
+    "Priority support",
+]
+_ENTERPRISE_FEATURES = [
+    "Everything in Max",
+    "SSO, SCIM & audit logs",
+    "Self-host or private cloud",
+    "Dedicated engineer & SLA",
+]
 
 
 async def cleanup_old_indexes(collection):
@@ -119,65 +142,46 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
         {
             "dodo_product_id": "",  # Free plan doesn't need Dodo product ID
             "name": "Free",
-            "description": "All tools & features included, start creating for free",
+            "description": "Everything you need to get started.",
             "amount": 0,
             "currency": "USD",
             "duration": "monthly",
             "max_users": 1,
-            "features": [
-                "Limited access to everything",
-                "Basic memory features",
-                "Standard support",
-            ],
+            "features": _FREE_FEATURES,
             "is_active": True,
         },
         {
             "dodo_product_id": monthly_product_id,  # Monthly plan
             "name": "Pro",
-            "description": "A boost of extra access, because you deserve it",
+            "description": "For getting real work off your plate.",
             "amount": 3000,  # $30.00 in cents
             "currency": "USD",
             "duration": "monthly",
             "max_users": 1,
-            "features": [
-                "Extended access to everything",
-                "Advanced memory features",
-                "Priority support",
-                "Private Discord access",
-            ],
+            "features": _PRO_FEATURES,
             "is_active": True,
         },
         {
             "dodo_product_id": yearly_product_id,  # Yearly plan
             "name": "Pro",
-            "description": "A boost of extra access, because you deserve it",
+            "description": "For getting real work off your plate.",
             "amount": 27000,  # $270.00 in cents (3 months free, 25% discount)
             "currency": "USD",
             "duration": "yearly",
             "max_users": 1,
-            "features": [
-                "Extended access to everything",
-                "Advanced memory features",
-                "Priority support",
-                "Private Discord access",
-            ],
+            "features": _PRO_FEATURES,
             "is_active": True,
         },
         {
             # Enterprise — lead capture only, no Dodo product.
             "dodo_product_id": "",
             "name": "Enterprise",
-            "description": "For teams ready to roll GAIA out to every employee.",
+            "description": "For teams that run on GAIA.",
             "amount": 0,  # Custom pricing, frontend shows 'Custom' label.
             "currency": "USD",
             "duration": "monthly",
             "max_users": 0,  # 0 == unlimited, contact sales
-            "features": [
-                "Self host or private cloud deployment",
-                "SSO, SCIM provisioning, audit logs",
-                "Custom integrations built for your stack",
-                "Dedicated solutions engineer and SLA",
-            ],
+            "features": _ENTERPRISE_FEATURES,
             "is_active": True,
         },
     ]
@@ -306,6 +310,7 @@ async def main():
 
     try:
         await setup_payment_plans(args.monthly_product_id, args.yearly_product_id)
+        await payment_service.invalidate_plans_cache()
         print("\n🎉 Payment setup completed successfully!")
     except Exception as e:
         print(f"\n💥 Setup failed with error: {e}")

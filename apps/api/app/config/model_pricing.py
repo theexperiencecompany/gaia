@@ -57,7 +57,14 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
                     cached_input_cost_per_1k=float(cached_input_cost),
                 )
 
-        # Fallback to default pricing
+        # No pricing entry for this model — fall back to defaults, but make it
+        # loud so we add accurate pricing instead of silently mis-charging.
+        log.warning(
+            "model_pricing_missing",
+            model=model_name,
+            input_cost_per_1k=DEFAULT_PRICING.input_cost_per_1k,
+            output_cost_per_1k=DEFAULT_PRICING.output_cost_per_1k,
+        )
         return DEFAULT_PRICING
 
     except Exception as e:

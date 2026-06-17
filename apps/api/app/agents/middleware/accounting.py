@@ -272,6 +272,12 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # Charge the unified credit pool for this call. Metering always runs;
         # blocking is enforced at the agent entry points. Never let a billing
         # failure break the agent run.
+        #
+        # IMPORTANT: this charge is fire-once per model call — do NOT wrap it in
+        # a retry. The Dodo ledger has no server-side idempotency (verified), so
+        # a retried charge would double-debit. If retries are ever needed, make
+        # the debit idempotent first (e.g. guard on a deterministic
+        # ``f"{thread_id}:{step_index}"`` key, like top-up grants do).
         if user_id and total_cost > 0:
             try:
                 plan = await self._resolve_plan(thread_id, str(user_id), configurable)

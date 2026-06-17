@@ -219,9 +219,12 @@ class PaymentWebhookService:
 
         log.info(f"Payment succeeded: {payment_data.payment_id}")
 
-        # If this was a top-up pack purchase, grant the credits (idempotent).
+        # If this was a top-up pack purchase, grant the credits to the buyer's
+        # Dodo credit wallet (idempotent on payment id).
         await credit_pack_service.grant_pack_from_payment(
-            payment_data.metadata or {}, payment_data.payment_id
+            payment_data.metadata or {},
+            payment_data.payment_id,
+            payment_data.customer.customer_id,
         )
 
         # Track payment success in PostHog
