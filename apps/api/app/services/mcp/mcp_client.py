@@ -34,8 +34,10 @@ from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
 from pydantic import AnyHttpUrl, AnyUrl
 
+from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, OAUTH_DISCOVERY_PREFIX
 from app.constants.mcp import (
+    COMPOSIO_MCP_HOST,
     GAIA_OAUTH_CLIENT_NAME,
     GAIA_OAUTH_LOGO_PATH,
     GAIA_OAUTH_PRIVACY_PATH,
@@ -387,6 +389,17 @@ class MCPClient:
                 f"[{integration_id}] _build_config: no auth required, connecting unauthenticated"
             )
             server_config["auth"] = None
+
+        # Composio's hosted MCP gateway authenticates the calling platform via an
+        # x-api-key header (GAIA's COMPOSIO_KEY), not per-user OAuth/bearer. Without
+        # it these servers reject the request with a bare 401. requires_auth stays
+        # False because there is no user credential — this is a platform key.
+        if (
+            mcp_config.server_url
+            and COMPOSIO_MCP_HOST in mcp_config.server_url
+            and settings.COMPOSIO_KEY
+        ):
+            server_config.setdefault("headers", {})["x-api-key"] = settings.COMPOSIO_KEY
 
         return {"mcpServers": {integration_id: server_config}}
 

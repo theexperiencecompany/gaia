@@ -4,6 +4,11 @@ MCP and Integration Constants.
 Centralized constants for MCP services.
 """
 
+# Host of Composio's hosted MCP gateway. These servers authenticate the calling
+# platform via an `x-api-key` header (GAIA's COMPOSIO_KEY) rather than per-user
+# OAuth/bearer, so requests without that header are rejected with a bare 401.
+COMPOSIO_MCP_HOST = "backend.composio.dev"
+
 YELP_MCP_SERVER_URL = "https://backend.composio.dev/v3/mcp/8e1efded-6b08-4346-a657-92d0b94399e5/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3"
 INSTACART_MCP_SERVER_URL = "https://backend.composio.dev/v3/mcp/6bb2556a-57ef-4daa-81ad-bd1e3f9e443d/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3"
 
