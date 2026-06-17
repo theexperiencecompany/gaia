@@ -1,12 +1,11 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import {
+  CheckmarkBadge01Icon,
   DateTimeIcon,
   GitForkIcon,
-  Home12Icon,
   PackageOpenIcon,
   UserCircle02Icon,
 } from "@icons";
@@ -122,20 +121,29 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
         <div className="mt-auto flex items-center justify-between pt-1">
           {integration.source === "platform" ? (
             <Tooltip
-              content="Built and maintained by GAIA"
+              content="Built and maintained by the GAIA team"
               size="sm"
               placement="top"
             >
-              <Chip
-                size="sm"
-                variant="flat"
-                color="primary"
-                startContent={
-                  <Home12Icon width={15} height={15} className="mr-1" />
-                }
-              >
-                Native
-              </Chip>
+              <div className="flex items-center gap-1.5">
+                <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-zinc-800 p-0.5">
+                  <Image
+                    src="/brand/gaia_logo.svg"
+                    alt="GAIA"
+                    width={100}
+                    height={100}
+                    className="object-contain"
+                  />
+                </div>
+                <span className="truncate text-xs text-zinc-400">
+                  GAIA Team
+                </span>
+                <CheckmarkBadge01Icon
+                  width={15}
+                  height={15}
+                  className="shrink-0 text-primary"
+                />
+              </div>
             </Tooltip>
           ) : (
             <div className="flex items-center gap-2">

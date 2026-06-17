@@ -11,6 +11,7 @@ import {
 } from "@icons";
 import { useMemo, useRef } from "react";
 import { ChevronDown } from "@/components/shared/icons";
+import { toTitleCase } from "@/features/chat/utils/chatUtils";
 import type {
   TodoProgressData,
   TodoProgressItem,
@@ -42,12 +43,6 @@ const STATUS_COLOR: Record<TodoProgressItem["status"], string> = {
   pending: "text-zinc-600",
   cancelled: "text-zinc-600",
 };
-
-function toTitleCase(str: string): string {
-  return str
-    .replace(/[-_]/g, " ")
-    .replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
-}
 
 function getProgressColor(
   pct: number,

@@ -5,9 +5,9 @@ import { Card, CardBody, CardHeader } from "@heroui/card";
 import { BreadcrumbItem, Breadcrumbs, ScrollShadow } from "@heroui/react";
 import { Spinner } from "@heroui/spinner";
 import {
+  CheckmarkBadge01Icon,
   DateTimeIcon,
   GitForkIcon,
-  Home12Icon,
   LayersIcon,
   PackageOpenIcon,
   UserCircle02Icon,
@@ -281,10 +281,25 @@ export function IntegrationDetailClient({
 
             {isNative ? (
               <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                <Home12Icon width={24} height={24} className="text-zinc-400" />
+                <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-zinc-800 p-0.5">
+                  <Image
+                    src="/brand/gaia_logo.svg"
+                    alt="GAIA"
+                    width={100}
+                    height={100}
+                    className="object-contain"
+                  />
+                </div>
                 <div>
-                  <div className="text-xs text-zinc-500">Type</div>
-                  <div className="text-sm text-zinc-300">Native</div>
+                  <div className="text-xs text-zinc-500">Created by</div>
+                  <div className="flex items-center gap-1 text-sm text-zinc-300">
+                    GAIA Team
+                    <CheckmarkBadge01Icon
+                      width={15}
+                      height={15}
+                      className="text-primary"
+                    />
+                  </div>
                 </div>
               </div>
             ) : (

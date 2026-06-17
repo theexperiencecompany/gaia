@@ -3,11 +3,14 @@
 import { Avatar } from "@heroui/avatar";
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import {
+  ConnectIcon,
   GlobalIcon,
   LinkSquareIcon,
   RemoveCircleIcon,
+  RepeatIcon,
   Share08Icon,
   Unlink04Icon,
   UserCircle02Icon,
@@ -340,11 +343,22 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             onClick={handleConnect}
             disabled={isConnecting}
           >
-            {isConnecting
-              ? "Connecting..."
-              : showRetry
-                ? "Retry Connection"
-                : "Connect"}
+            {isConnecting ? (
+              <>
+                <Spinner size="sm" color="default" />
+                Connecting...
+              </>
+            ) : showRetry ? (
+              <>
+                <RepeatIcon width={18} height={18} />
+                Retry Connection
+              </>
+            ) : (
+              <>
+                <ConnectIcon width={18} height={18} />
+                Connect
+              </>
+            )}
           </RaisedButton>
         ) : (
           <ButtonGroup variant="flat" className="w-full" fullWidth>

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
-import { formatToolName } from "@/features/chat/utils/chatUtils";
+import { formatToolName, toTitleCase } from "@/features/chat/utils/chatUtils";
 
 import type { Integration } from "../types";
 import { escapeRegExp } from "../utils/toolMentions";
@@ -52,7 +52,11 @@ export const useIntegrationTools = (
       const stripped = prefixRegex
         ? formatted.replace(prefixRegex, "").trim()
         : formatted;
-      return { name, label: stripped || formatted };
+      // Stripping a category prefix can leave a lowercase leading character
+      // (e.g. removing "Gmail" from "Gmailsearch" yields "search"), so
+      // re-apply Title Case to guarantee every word starts uppercase.
+      const label = toTitleCase(stripped || formatted);
+      return { name, label };
     });
 
     const mentionNames = Array.from(
