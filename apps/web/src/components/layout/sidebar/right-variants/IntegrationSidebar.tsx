@@ -252,10 +252,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     }
   };
 
-  // Dynamic text based on ownership
-  const deleteButtonText = isForkedIntegration
-    ? "Remove from GAIA"
-    : "Delete Integration";
+  // Dynamic text based on ownership (icon conveys the rest, keep it short)
+  const deleteButtonText = isForkedIntegration ? "Remove" : "Delete";
   const deleteDialogTitle = isForkedIntegration
     ? "Remove Integration"
     : "Delete Integration";
