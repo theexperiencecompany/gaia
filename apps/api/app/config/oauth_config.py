@@ -93,6 +93,7 @@ from app.config.oauth_content import (
     DEEPWIKI_CONTENT,
     GITHUB_CONTENT,
     GMAIL_CONTENT,
+    GOALS_CONTENT,
     GOOGLE_MAPS_CONTENT,
     GOOGLECALENDAR_CONTENT,
     GOOGLEDOCS_CONTENT,
@@ -110,8 +111,11 @@ from app.config.oauth_content import (
     PERPLEXITY_CONTENT,
     POSTHOG_CONTENT,
     REDDIT_CONTENT,
+    REMINDERS_CONTENT,
+    SKILLS_CONTENT,
     SLACK_CONTENT,
     TODOIST_CONTENT,
+    TODOS_CONTENT,
     TRELLO_CONTENT,
     TWITTER_CONTENT,
     YELP_CONTENT,
@@ -350,6 +354,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             ],
             memory_prompt=TODO_MEMORY_PROMPT,
         ),
+        content=TODOS_CONTENT,
     ),
     # Internal Reminders System (no OAuth required)
     OAuthIntegration(
@@ -376,6 +381,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=REMINDER_MEMORY_PROMPT,
         ),
+        content=REMINDERS_CONTENT,
     ),
     # Internal Goals System (no OAuth required)
     OAuthIntegration(
@@ -402,6 +408,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=GOALS_MEMORY_PROMPT,
         ),
+        content=GOALS_CONTENT,
     ),
     # Internal Skills System (no OAuth required)
     OAuthIntegration(
@@ -428,6 +435,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=SKILLS_MEMORY_PROMPT,
         ),
+        content=SKILLS_CONTENT,
     ),
     OAuthIntegration(
         id="gmail",
