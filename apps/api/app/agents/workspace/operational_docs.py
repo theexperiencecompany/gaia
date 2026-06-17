@@ -429,6 +429,7 @@ these.
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
 | "Notify / remind me on WhatsApp/Telegram/email" | see the notifications doc | `notifications` |
+| "Make / export a downloadable file (PDF, Word, slides, spreadsheet, CSV)" | `handoff("docgen", ...)` | docgen subagent |
 | "How do you work / how do I configure you?" | answer from this core + the doc | (this core) |
 
 Persist a preference only when it is DURABLE, not a one-off for this turn.

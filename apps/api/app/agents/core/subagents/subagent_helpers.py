@@ -16,7 +16,9 @@ from langchain_core.messages import SystemMessage
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
+from app.agents.workspace.skill_loader import target_to_subagent
 from app.config.oauth_config import get_integration_by_id
+from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.helpers.message_helpers import (
     BACKGROUND_EXECUTION_BANNER,
     DYNAMIC_CONTEXT_MARKER,
@@ -204,7 +206,7 @@ async def create_agent_context_message(
             block = skills_text or ""
         elif user_id:
             try:
-                agent_for_skills = subagent_id or "executor"
+                agent_for_skills = subagent_id or EXECUTOR_SUBAGENT_ID
                 text = await get_available_skills_text(user_id=user_id, agent_name=agent_for_skills)
                 if text:
                     log.info(f"Injected installable skills for {agent_for_skills}")
@@ -213,7 +215,11 @@ async def create_agent_context_message(
                 log.warning(f"Error injecting installable skills: {e}")
 
         if subagent_id:
-            integration_block = integration_skills_block(subagent_id)
+            # `subagent_id` carries the agent_name ("docgen_agent"), but
+            # skills_by_subagent is keyed by the subagent id ("docgen"). Map it the
+            # same way the loader builds those keys, or integration_skills_block
+            # silently finds nothing and the subagent runs with no skills.
+            integration_block = integration_skills_block(target_to_subagent(subagent_id))
             if integration_block:
                 block = f"{block}\n\n{integration_block}" if block else integration_block
 
