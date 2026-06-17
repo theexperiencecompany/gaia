@@ -56,7 +56,6 @@ const EXPECTED_GROUPS: Record<string, string[]> = {
     "TreeView",
   ],
   "Timeline & Notifications": ["Timeline", "AlertBanner", "Steps"],
-  Code: ["CodeDiff"],
   Documents: ["TextDocument"],
 };
 

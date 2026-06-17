@@ -328,20 +328,6 @@ export const OPENUI_SAMPLES: OpenUISample[] = [
   },
 
   // ---------------------------------------------------------------------------
-  // Code
-  // ---------------------------------------------------------------------------
-  {
-    name: "CodeDiff",
-    group: "Code",
-    code: `root = CodeDiff(
-  "utils.ts",
-  "export function add(a: number, b: number) {\\n  return a + b;\\n}",
-  "export function add(a: number, b: number): number {\\n  if (Number.isNaN(a) || Number.isNaN(b)) return 0;\\n  return a + b;\\n}",
-  "Harden the add helper"
-)`,
-  },
-
-  // ---------------------------------------------------------------------------
   // Documents
   // ---------------------------------------------------------------------------
   {

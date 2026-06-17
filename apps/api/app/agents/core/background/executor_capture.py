@@ -20,11 +20,13 @@ from app.agents.core.background.session import (
     teardown_session,
     was_executor_spawned,
 )
+from app.constants.agents import RETURNED_TO_FRONTEND_MARKER
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
 from app.models.chat_models import tool_fields
 from app.utils.stream_utils import (
     absorb_collector_event,
     apply_outputs_to_tool_data,
+    normalize_custom_event,
     reconstruct_subagent_groups,
 )
 from shared.py.wide_events import log
@@ -73,7 +75,11 @@ def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
     accumulated: dict[str, Any] = {"tool_data": []}
     outputs: dict[str, str] = {}
     for evt in session.tool_events:
-        absorb_collector_event(evt, accumulated, outputs)
+        # Hooks (e.g. GMAIL_FETCH_EMAILS) emit raw field payloads like
+        # {"email_fetch_data": [...]}; normalize them to {"tool_data": {...}}
+        # before absorbing, or absorb_collector_event drops them and the list
+        # card never persists onto the background-executor message.
+        absorb_collector_event(normalize_custom_event(evt), accumulated, outputs)
     apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
     return accumulated.get("tool_data", [])
@@ -108,12 +114,32 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
 
     body = "\n".join(summary)
     return (
-        "[RETURNED_TO_FRONTEND]\n"
-        "The data below is ALREADY shown to the user as native cards this turn:\n"
+        f"{RETURNED_TO_FRONTEND_MARKER}\n"
+        "These native cards are already on the user's screen this turn:\n"
         f"{body}\n"
-        "Do NOT restate or list their contents, and do NOT emit OpenUI for them. "
-        'A brief conversational lead-in is fine (e.g. "here\'s your week 👇"), '
-        "but never enumerate the items the card already shows.\n"
+        "They visually render the RAW items, so don't re-type those items "
+        "row-by-row and don't re-emit them as OpenUI — that literal duplication "
+        "is the ONLY thing to avoid here.\n"
+        "The cards are visual aids, NOT your reply. You still owe the user the "
+        "ANSWER in your own voice — the substance the executor produced: what it "
+        "found, grouped and counted, the few items that actually matter (and "
+        'why), and the natural next step. This synthesis is never "card '
+        'contents"; suppressing it because a card exists is the worst failure '
+        "you can have.\n"
+        "Match the depth to the work: a quick outcome gets a line or two; a "
+        "large, comprehensive result (a full triage, a multi-item analysis) gets "
+        "a real structured rundown — never a one-liner. Replying just \"here's "
+        'the list 👇" with no substance, when the executor did real work, fails '
+        "the user. Point them to the card for the granular rows AFTER you've "
+        "actually delivered the gist.\n"
+        "CRITICAL EXCEPTION — LONG-FORM DELIVERABLE: if the executor's result is "
+        "itself a finished written piece (a research report, an article, an "
+        "analysis, a document), that is the ANSWER, not raw card rows. The cards "
+        "above were just the research/loading steps along the way. Deliver the "
+        "deliverable IN FULL per the long-form rule — every section, point, and "
+        "citation — and do NOT compress it to a 'here's the breakdown' summary. "
+        "This note never authorizes shrinking a report; it only stops you "
+        "re-typing rows a card already lists.\n"
     )
 
 
