@@ -297,7 +297,14 @@ const config: KnipConfig = {
         "src/**/*.{ts,tsx}",
         "scripts/adhoc-sign.cjs",
       ],
-      ignoreDependencies: ["wait-on"],
+      ignoreDependencies: [
+        "wait-on",
+        // Workspace package bundled into out/ by electron-vite at build time, so
+        // it's not a runtime dependency electron-builder should pack into the
+        // asar (declaring it breaks packaging: libs/shared/ts is outside
+        // apps/desktop). Same handling as apps/web and apps/mobile.
+        "@gaia/shared",
+      ],
     },
 
     // ── Mobile App ───────────────────────────────────────────────────
