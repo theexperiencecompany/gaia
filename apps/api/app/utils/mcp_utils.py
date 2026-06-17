@@ -5,12 +5,9 @@ Contains helper functions for MCP client operations including
 PKCE generation, tool wrapping, and schema handling.
 """
 
-import base64
 from collections.abc import Awaitable, Callable, Iterable
 from functools import wraps
-import hashlib
 import inspect
-import secrets
 from typing import Any
 
 from langchain_core.tools import BaseTool
@@ -27,18 +24,6 @@ def canonical_tool_name_map(names: Iterable[str]) -> dict[str, str]:
     LLM call misses the strict bound-set membership check.
     """
     return {n.replace("-", "_"): n for n in names}
-
-
-def generate_pkce_pair() -> tuple[str, str]:
-    """
-    Generate PKCE code_verifier and code_challenge (S256).
-
-    Returns (code_verifier, code_challenge) tuple.
-    """
-    code_verifier = secrets.token_urlsafe(32)
-    digest = hashlib.sha256(code_verifier.encode()).digest()
-    code_challenge = base64.urlsafe_b64encode(digest).decode().rstrip("=")
-    return code_verifier, code_challenge
 
 
 _CONNECTION_ERROR_PATTERNS = (

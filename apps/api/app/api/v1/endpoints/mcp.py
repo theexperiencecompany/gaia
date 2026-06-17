@@ -156,11 +156,26 @@ async def mcp_oauth_callback(
             url=f"{frontend_url}/integrations?status=failed&error=invalid_state"
         )
 
+    client = await get_mcp_client(user_id=str(user_id))
+    redirect_uri = f"{get_api_base_url()}/api/v1/mcp/oauth/callback"
+
     # Handle OAuth error response from authorization server
     if error:
         log.warning(
             f"OAuth error for {integration_id}: {error} - {error_description or 'no description'}"
         )
+
+        # Some servers advertise scopes in their metadata that a dynamically
+        # registered client cannot request (e.g. agentmail's "user:org:read").
+        # Drop the rejected scope(s) and retry the authorization.
+        if error == "invalid_scope":
+            retry_url = await client.build_scope_retry_url(
+                integration_id, error_description, redirect_uri, redirect_path
+            )
+            if retry_url:
+                return RedirectResponse(url=retry_url)
+        await client.token_store.clear_excluded_scopes(integration_id)
+
         # Map common OAuth errors to user-friendly codes
         error_code = error
         if error == "server_error":
@@ -186,8 +201,6 @@ async def mcp_oauth_callback(
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error=missing_code"
         )
-
-    client = await get_mcp_client(user_id=str(user_id))
 
     # Resolve integration name for the frontend toast
     resolved = await IntegrationResolver.resolve(integration_id)
@@ -215,8 +228,10 @@ async def mcp_oauth_callback(
             integration_id=integration_id,
             code=code,
             state=state_token,
-            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+            redirect_uri=redirect_uri,
         )
+        # OAuth succeeded — clear any scope exclusions accumulated during retries.
+        await client.token_store.clear_excluded_scopes(integration_id)
 
         try:
             await delete_cache("api:get_available_tools:*")

@@ -11,8 +11,9 @@ from urllib.parse import urlparse
 
 import httpx
 
-from app.models.mcp_config import MCPConfig
+from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from mcp.shared.auth import OAuthToken
 from shared.py.wide_events import log
 
 
@@ -44,7 +45,7 @@ async def try_refresh_token(
     token_store: MCPTokenStore,
     integration_id: str,
     mcp_config: MCPConfig,
-    oauth_config: dict,
+    oauth_config: OAuthDiscovery,
 ) -> bool:
     """Attempt to refresh OAuth token using stored refresh_token."""
     log.set(
@@ -64,13 +65,7 @@ async def try_refresh_token(
         return False
 
     try:
-        token_endpoint = oauth_config.get("token_endpoint")
-        if not token_endpoint:
-            log.warning(
-                f"try_refresh_token: no token_endpoint in OAuth config for "
-                f"{integration_id} user={token_store.user_id}; refresh impossible"
-            )
-            return False
+        token_endpoint = str(oauth_config.as_metadata.token_endpoint)
 
         client_id, client_secret = resolve_client_credentials(mcp_config)
         if not client_id:
@@ -87,7 +82,7 @@ async def try_refresh_token(
             )
             return False
 
-        resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
+        resource = oauth_config.resource
 
         async with httpx.AsyncClient() as http_client:
             token_data = {
@@ -129,33 +124,24 @@ async def try_refresh_token(
                 )
                 return False
 
-            tokens = response.json()
-
-            access_token = tokens.get("access_token")
-            if not access_token:
-                log.warning(
-                    f"try_refresh_token: 200 OK but no access_token in body for "
-                    f"{integration_id} user={token_store.user_id} "
-                    f"(keys returned: {list(tokens.keys())})"
-                )
-                return False
+            token = OAuthToken.model_validate(response.json())
 
             expires_at = None
-            if tokens.get("expires_in"):
-                expires_at = datetime.now(UTC) + timedelta(seconds=tokens["expires_in"])
+            if token.expires_in:
+                expires_at = datetime.now(UTC) + timedelta(seconds=token.expires_in)
 
             await token_store.store_oauth_tokens(
                 integration_id=integration_id,
-                access_token=access_token,
-                refresh_token=tokens.get("refresh_token", refresh_token),
+                access_token=token.access_token,
+                refresh_token=token.refresh_token or refresh_token,
                 expires_at=expires_at,
             )
 
             log.info(
                 f"try_refresh_token: refreshed token for {integration_id} "
                 f"user={token_store.user_id} "
-                f"(new_access_token_length={len(access_token)}, "
-                f"refresh_token_rotated={('refresh_token' in tokens)}, "
+                f"(new_access_token_length={len(token.access_token)}, "
+                f"refresh_token_rotated={token.refresh_token is not None}, "
                 f"expires_at={expires_at})"
             )
             return True
@@ -173,12 +159,12 @@ async def revoke_tokens(
     token_store: MCPTokenStore,
     integration_id: str,
     mcp_config: MCPConfig,
-    oauth_config: dict,
+    oauth_config: OAuthDiscovery,
 ) -> None:
     """Revoke OAuth tokens per RFC 7009."""
-    revocation_endpoint = oauth_config.get("revocation_endpoint")
-    if not revocation_endpoint:
+    if not oauth_config.as_metadata.revocation_endpoint:
         return
+    revocation_endpoint = str(oauth_config.as_metadata.revocation_endpoint)
 
     client_id, client_secret = resolve_client_credentials(mcp_config)
     if not client_id:

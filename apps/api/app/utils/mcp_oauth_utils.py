@@ -19,17 +19,51 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+from mcp.client.auth.utils import (
+    build_oauth_authorization_server_metadata_discovery_urls,
+    build_protected_resource_metadata_discovery_urls,
+    create_oauth_metadata_request,
+    extract_field_from_www_auth,
+    extract_resource_metadata_from_www_auth,
+    extract_scope_from_www_auth,
+)
+from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
+from mcp.types import (
+    LATEST_PROTOCOL_VERSION,
+    ClientCapabilities,
+    Implementation,
+    InitializeRequestParams,
+    JSONRPCRequest,
+)
+from pydantic import AnyHttpUrl
 
 from shared.py.wide_events import log
 
 # Sent in the MCP-Protocol-Version header on OAuth discovery/token requests for
-# protocol version negotiation. See https://modelcontextprotocol.io/specification/versioning
-MCP_PROTOCOL_VERSION = "2025-11-25"
+# protocol version negotiation. Sourced from the SDK so it tracks the spec on
+# upgrade. See https://modelcontextprotocol.io/specification/versioning
+MCP_PROTOCOL_VERSION = LATEST_PROTOCOL_VERSION
 
 # Generous timeouts since TLS handshakes can take 2-5s on slow connections.
 OAUTH_PROBE_TIMEOUT = 10  # seconds - for initial server probe
 OAUTH_DISCOVERY_TIMEOUT = 15  # seconds - for metadata discovery
 OAUTH_TOKEN_TIMEOUT = 30  # seconds - for token operations
+
+# Minimal MCP `initialize` request used to probe a server's auth requirement.
+# Per the MCP Authorization spec the 401 + WWW-Authenticate challenge is returned
+# in response to an actual MCP request, so the probe POSTs this rather than
+# issuing a bare GET — a GET only opens the optional server->client SSE stream
+# and may be rejected (405/406) before auth is ever evaluated.
+_MCP_INITIALIZE_PROBE_REQUEST: dict[str, Any] = JSONRPCRequest(
+    jsonrpc="2.0",
+    id=1,
+    method="initialize",
+    params=InitializeRequestParams(
+        protocolVersion=MCP_PROTOCOL_VERSION,
+        capabilities=ClientCapabilities(),
+        clientInfo=Implementation(name="gaia", version="1.0"),
+    ).model_dump(by_alias=True, exclude_none=True, mode="json"),
+).model_dump(by_alias=True, exclude_none=True, mode="json")
 
 
 class OAuthSecurityError(Exception):
@@ -95,24 +129,40 @@ def is_localhost_url(url: str) -> bool:
         return False
 
 
-def validate_oauth_endpoints(oauth_config: dict, allow_localhost: bool = True) -> None:
-    """Validate that every OAuth endpoint in ``oauth_config`` uses HTTPS."""
-    endpoint_keys = [
-        "authorization_endpoint",
-        "token_endpoint",
-        "registration_endpoint",
-        "revocation_endpoint",
-        "introspection_endpoint",
-        "issuer",
-    ]
+def validate_oauth_endpoints(as_metadata: OAuthMetadata, allow_localhost: bool = True) -> None:
+    """Validate that every OAuth endpoint in ``as_metadata`` uses HTTPS."""
+    endpoints = {
+        "authorization_endpoint": as_metadata.authorization_endpoint,
+        "token_endpoint": as_metadata.token_endpoint,
+        "registration_endpoint": as_metadata.registration_endpoint,
+        "revocation_endpoint": as_metadata.revocation_endpoint,
+        "introspection_endpoint": as_metadata.introspection_endpoint,
+        "issuer": as_metadata.issuer,
+    }
 
-    for key in endpoint_keys:
-        url = oauth_config.get(key)
+    for key, url in endpoints.items():
         if url:
             try:
-                validate_https_url(url, allow_localhost=allow_localhost)
+                validate_https_url(str(url), allow_localhost=allow_localhost)
             except OAuthSecurityError as e:
                 raise OAuthSecurityError(f"Invalid {key}: {e}")
+
+
+def parse_rejected_scopes(error_description: str | None) -> set[str]:
+    """Extract the scope names an auth server rejected with ``invalid_scope``.
+
+    OAuth servers are inconsistent in how they report the offending scope, so we
+    prefer quoted tokens (e.g. ``... not allowed to request scope 'user:org:read'``)
+    and fall back to the single scope-like token following the word "scope".
+    Returns an empty set when nothing parseable is found.
+    """
+    if not error_description:
+        return set()
+    quoted = re.findall(r"['\"]([^'\"]+)['\"]", error_description)
+    if quoted:
+        return {s.strip() for s in quoted if s.strip()}
+    match = re.search(r"scopes?[:=\s]+([A-Za-z0-9_:./-]+)", error_description, re.IGNORECASE)
+    return {match.group(1)} if match else set()
 
 
 async def extract_auth_challenge(server_url: str) -> dict:
@@ -120,49 +170,52 @@ async def extract_auth_challenge(server_url: str) -> dict:
     Probe MCP server and parse full WWW-Authenticate challenge per MCP spec.
 
     Per MCP Authorization spec Phase 1:
-    - Server returns 401 with WWW-Authenticate header
+    - Client issues an MCP `initialize` POST to the server
+    - Server returns 401 with WWW-Authenticate header when auth is required
     - Header may contain: resource_metadata, scope, error, error_description
 
     Returns dict with extracted fields (empty dict if no 401 or parse fails).
     """
-    # Include MCP protocol version header per MCP spec
-    headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
+    # Per the MCP Authorization spec, the 401 + WWW-Authenticate challenge is
+    # returned in response to an MCP request (an `initialize` POST). A bare GET
+    # only opens the optional server->client SSE stream, which spec-compliant
+    # servers may reject with 405/406 before evaluating auth — making a GET probe
+    # miss the auth requirement entirely (e.g. granola returns 405 to a GET but
+    # 401 + resource_metadata to the initialize POST).
+    headers = {
+        "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+    }
     log.set(operation="extract_auth_challenge", server_url=server_url)
     start_time = time.perf_counter()
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(server_url, headers=headers, timeout=OAUTH_PROBE_TIMEOUT)
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.post(
+                server_url,
+                json=_MCP_INITIALIZE_PROBE_REQUEST,
+                headers=headers,
+                timeout=OAUTH_PROBE_TIMEOUT,
+            )
             elapsed_ms = (time.perf_counter() - start_time) * 1000
 
             if response.status_code == 401:
-                www_auth = response.headers.get("WWW-Authenticate", "")
-                result = {"raw": www_auth}
+                result: dict[str, str] = {"raw": response.headers.get("WWW-Authenticate", "")}
 
-                # Regex pattern handles escaped quotes within quoted values
-                # Matches: key="value" or key="value with \" escaped"
-                def extract_quoted_value(key: str, header: str) -> str | None:
-                    # Match key="..." handling escaped quotes
-                    pattern = rf'{key}="((?:[^"\\]|\\.)*)"'
-                    match = re.search(pattern, header)
-                    if match:
-                        # Unescape any escaped quotes
-                        return match.group(1).replace('\\"', '"')
-                    return None
-
-                rm_value = extract_quoted_value("resource_metadata", www_auth)
+                rm_value = extract_resource_metadata_from_www_auth(response)
                 if rm_value:
                     result["resource_metadata"] = rm_value
 
-                scope_value = extract_quoted_value("scope", www_auth)
+                scope_value = extract_scope_from_www_auth(response)
                 if scope_value:
                     result["scope"] = scope_value
 
-                error_value = extract_quoted_value("error", www_auth)
+                error_value = extract_field_from_www_auth(response, "error")
                 if error_value:
                     result["error"] = error_value
 
-                error_desc_value = extract_quoted_value("error_description", www_auth)
+                error_desc_value = extract_field_from_www_auth(response, "error_description")
                 if error_desc_value:
                     result["error_description"] = error_desc_value
 
@@ -205,14 +258,7 @@ async def find_protected_resource_metadata(server_url: str) -> str | None:
 
     Returns the URL that responds with valid JSON, or None.
     """
-    parsed = urlparse(server_url)
-    origin = f"{parsed.scheme}://{parsed.netloc}"
-    path = parsed.path.rstrip("/")
-
-    candidates = []
-    if path:
-        candidates.append(f"{origin}/.well-known/oauth-protected-resource{path}")
-    candidates.append(f"{origin}/.well-known/oauth-protected-resource")
+    candidates = build_protected_resource_metadata_discovery_urls(None, server_url)
 
     # Include MCP protocol version header per MCP spec
     headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
@@ -236,11 +282,11 @@ async def find_protected_resource_metadata(server_url: str) -> str | None:
     return None
 
 
-async def fetch_protected_resource_metadata(prm_url: str) -> dict:
+async def fetch_protected_resource_metadata(prm_url: str) -> ProtectedResourceMetadata:
     """
-    Fetch Protected Resource Metadata (RFC 9728).
+    Fetch and parse Protected Resource Metadata (RFC 9728).
 
-    Returns dict with 'authorization_servers', 'scopes_supported', etc.
+    Returns the validated :class:`ProtectedResourceMetadata` model.
     """
     # Include MCP protocol version header per MCP spec
     headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
@@ -251,10 +297,10 @@ async def fetch_protected_resource_metadata(prm_url: str) -> dict:
         response.raise_for_status()
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         log.info(f"[TIMING] Fetched PRM from {prm_url} in {elapsed_ms:.0f}ms")
-        return response.json()
+        return ProtectedResourceMetadata.model_validate(response.json())
 
 
-async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
+async def fetch_auth_server_metadata(auth_server_url: str) -> OAuthMetadata:
     """
     Fetch Authorization Server Metadata (RFC 8414).
 
@@ -271,35 +317,21 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
     """
     parsed = urlparse(auth_server_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
-    path = parsed.path.rstrip("/")
 
-    candidate_urls = []
+    candidate_urls = build_oauth_authorization_server_metadata_discovery_urls(
+        auth_server_url, auth_server_url
+    )
 
-    # For issuer URLs with path components, try all discovery variants per MCP spec:
-    # 1. OAuth 2.0 path insertion (RFC 8414 Section 3.1)
-    # 2. OpenID Connect path insertion (RFC 8414 Section 5)
-    # 3. OpenID Connect path appending (OIDC Discovery 1.0)
-    if path:
-        candidate_urls.append(f"{origin}/.well-known/oauth-authorization-server{path}")
-        candidate_urls.append(f"{origin}/.well-known/openid-configuration{path}")
-        candidate_urls.append(f"{auth_server_url.rstrip('/')}/.well-known/openid-configuration")
-
-    # For all URLs (with or without path), try standard root locations
-    candidate_urls.append(f"{origin}/.well-known/oauth-authorization-server")
-    candidate_urls.append(f"{origin}/.well-known/openid-configuration")
-
-    # Include MCP protocol version header per MCP spec
-    headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
     start_time = time.perf_counter()
 
     async with httpx.AsyncClient() as client:
         for url in candidate_urls:
             try:
-                response = await client.get(url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT)
+                response = await client.send(create_oauth_metadata_request(url))
                 if response.status_code == 200:
                     elapsed_ms = (time.perf_counter() - start_time) * 1000
                     log.info(f"[TIMING] Found auth server metadata at {url} in {elapsed_ms:.0f}ms")
-                    return response.json()
+                    return OAuthMetadata.model_validate(response.json())
             except Exception as e:
                 log.debug(f"Auth metadata not found at {url}: {e}")
 
@@ -319,13 +351,12 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
         "using MCP spec fallback URLs (origin-only, per spec)"
     )
 
-    return {
-        "authorization_endpoint": f"{origin}/authorize",
-        "token_endpoint": f"{origin}/token",
-        "registration_endpoint": f"{origin}/register",
-        "issuer": origin,
-        "fallback": True,  # Flag indicating these are fallback URLs, not discovered
-    }
+    return OAuthMetadata(
+        issuer=AnyHttpUrl(origin),
+        authorization_endpoint=AnyHttpUrl(f"{origin}/authorize"),
+        token_endpoint=AnyHttpUrl(f"{origin}/token"),
+        registration_endpoint=AnyHttpUrl(f"{origin}/register"),
+    )
 
 
 async def revoke_token(
@@ -508,32 +539,14 @@ def get_client_metadata_document_url(base_url: str) -> str:
     return f"{base_url.rstrip('/')}/api/v1/oauth/client-metadata.json"
 
 
-def validate_token_response(tokens: dict, integration_id: str) -> None:
-    """Validate an OAuth token response per OAuth 2.1 (access_token + Bearer token_type)."""
-    # access_token is REQUIRED
-    if not tokens.get("access_token"):
-        raise ValueError(f"Token response missing required 'access_token' for {integration_id}")
-
-    # token_type is REQUIRED and MUST be "Bearer" for MCP
-    token_type = tokens.get("token_type", "")
-    if not token_type:
-        raise ValueError(f"Token response missing required 'token_type' for {integration_id}")
-
-    if token_type.lower() != "bearer":
-        raise ValueError(
-            f"Unsupported token_type '{token_type}' for {integration_id}. "
-            "MCP requires Bearer tokens."
-        )
-
-
-def validate_pkce_support(oauth_config: dict, integration_id: str) -> None:
+def validate_pkce_support(as_metadata: OAuthMetadata, integration_id: str) -> None:
     """Validate S256 PKCE support per MCP spec.
 
     The MCP Authorization spec requires clients to refuse to proceed if the
     server doesn't advertise S256 PKCE. Raises ValueError if requirements
     aren't met.
     """
-    pkce_methods = oauth_config.get("code_challenge_methods_supported", [])
+    pkce_methods = as_metadata.code_challenge_methods_supported or []
 
     if not pkce_methods:
         raise ValueError(

@@ -1903,8 +1903,13 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         short_name="browserbase",
         managed_by="mcp",
         mcp_config=MCPConfig(
-            server_url="https://mcp.browserbase.com",
+            # Browserbase has no OAuth (no PRM/AS-metadata/DCR — /register 404s).
+            # It authenticates with the user's API key, so the frontend prompts
+            # for it via the bearer-token modal (auth_type="bearer") instead of
+            # attempting an OAuth flow.
+            server_url="https://mcp.browserbase.com/mcp",
             requires_auth=True,
+            auth_type="bearer",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,

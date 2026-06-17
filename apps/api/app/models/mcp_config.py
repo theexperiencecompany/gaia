@@ -2,7 +2,31 @@
 
 from typing import Literal
 
+from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from pydantic import BaseModel
+
+
+class OAuthDiscovery(BaseModel):
+    """Resolved OAuth discovery result for an MCP integration.
+
+    Wraps the RFC 8414 authorization server metadata (``as_metadata``) together
+    with the resource binding, the RFC 9728 Protected Resource Metadata (``prm``,
+    present only on the RFC 9728 path) and the WWW-Authenticate challenge scope
+    (``initial_scope``).
+    """
+
+    as_metadata: OAuthMetadata
+    resource: str
+    initial_scope: str | None = None
+    discovery_method: str
+    prm: ProtectedResourceMetadata | None = None
+
+    @property
+    def scopes_supported(self) -> list[str]:
+        """Scopes advertised by the resource (RFC 9728) or auth server (RFC 8414)."""
+        if self.prm and self.prm.scopes_supported:
+            return self.prm.scopes_supported
+        return self.as_metadata.scopes_supported or []
 
 
 class MCPConfig(BaseModel):

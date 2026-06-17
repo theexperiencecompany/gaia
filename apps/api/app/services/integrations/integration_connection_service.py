@@ -47,7 +47,11 @@ def build_integrations_config() -> IntegrationsConfigResponse:
 
         auth_type_literal: Literal["none", "oauth", "bearer"] | None = None
         if integration.mcp_config:
-            auth_type_literal = "oauth" if integration.mcp_config.requires_auth else "none"
+            # Honour an explicitly configured auth_type (e.g. "bearer" for
+            # API-key servers like Browserbase); otherwise derive from requires_auth.
+            auth_type_literal = integration.mcp_config.auth_type or (
+                "oauth" if integration.mcp_config.requires_auth else "none"
+            )
 
         integration_configs.append(
             IntegrationConfigItem(
@@ -63,6 +67,9 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 is_featured=integration.is_featured,
                 managed_by=integration.managed_by,
                 auth_type=auth_type_literal,
+                requires_auth=(
+                    integration.mcp_config.requires_auth if integration.mcp_config else False
+                ),
                 slug=integration.id,  # Platform integrations use ID as slug
             )
         )
