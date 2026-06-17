@@ -1,8 +1,12 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
-
-interface AuthCallbackData {
-  token: string;
-}
+import type {
+  DesktopPermissionPane,
+  DesktopPermissionStatus,
+  DesktopSettingsSnapshot,
+  DesktopShortcutUpdateResult,
+  DesktopToolRequest,
+  DesktopToolResult,
+} from "@gaia/shared/desktop-tools";
 
 declare global {
   interface Window {
@@ -13,10 +17,21 @@ declare global {
       isElectron: boolean;
       signalReady: () => void;
       openExternal: (url: string) => void;
-      onAuthCallback: (
-        callback: (data: AuthCallbackData) => void,
-      ) => () => void;
       onAuthRedirecting: (callback: () => void) => () => void;
+      executeDesktopTool: (
+        request: DesktopToolRequest,
+      ) => Promise<DesktopToolResult>;
+      getDesktopPermissions: () => Promise<DesktopPermissionStatus>;
+      openPermissionSettings: (pane: DesktopPermissionPane) => void;
+      requestDesktopPermission: (
+        pane: DesktopPermissionPane,
+      ) => Promise<DesktopPermissionStatus>;
+      relaunchDesktopApp: () => void;
+      getDesktopSettings: () => Promise<DesktopSettingsSnapshot>;
+      setPopupShortcut: (
+        accelerator: string,
+      ) => Promise<DesktopShortcutUpdateResult>;
+      setAppIcon: (id: string) => Promise<boolean>;
     };
   }
 }

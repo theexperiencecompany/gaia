@@ -1,9 +1,7 @@
-import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp02Icon, StopIcon } from "@icons";
+import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
-import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useComposerFiles } from "@/stores/composerStore";
 import { useIsMainResponseStreaming } from "@/stores/loadingStore";
@@ -21,7 +19,6 @@ export default function RightSide({
   selectedTool,
   setvoiceModeActive: _setvoiceModeActive,
 }: RightSideProps) {
-  const { stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent } = useCalendarEventSelection();
   const { uploadedFiles } = useComposerFiles();
@@ -83,19 +80,6 @@ export default function RightSide({
     );
   };
 
-  const handleButtonPress = () => {
-    if (isResponding) {
-      stopStream();
-    } else {
-      handleFormSubmit();
-    }
-  };
-
-  let buttonColor: "default" | "primary" = "default";
-  if (!isResponding && hasContent) {
-    buttonColor = "primary";
-  }
-
   return (
     <div className="ml-2 flex items-center gap-2">
       <Tooltip
@@ -104,27 +88,7 @@ export default function RightSide({
         color={isResponding ? "danger" : "primary"}
         showArrow
       >
-        <Button
-          isIconOnly
-          aria-label={isResponding ? "Stop generation" : "Send message"}
-          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`}
-          color={buttonColor}
-          disabled={!isResponding && !hasContent}
-          radius="full"
-          type="submit"
-          onPress={handleButtonPress}
-        >
-          {isResponding ? (
-            <StopIcon
-              color="lightgray"
-              width={20}
-              height={20}
-              fill="lightgray"
-            />
-          ) : (
-            <ArrowUp02Icon color={hasContent ? "black" : "gray"} />
-          )}
-        </Button>
+        <SendStopButton hasContent={hasContent} onSend={handleFormSubmit} />
       </Tooltip>
     </div>
   );

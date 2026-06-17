@@ -2,6 +2,7 @@
 
 import type React from "react";
 import AccountSettings from "@/features/settings/components/AccountSettings";
+import DesktopSettings from "@/features/settings/components/DesktopSettings";
 import { IntegrationInstructionsSettings } from "@/features/settings/components/IntegrationInstructionsSettings";
 import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
 import MemorySettings from "@/features/settings/components/MemorySettings";
@@ -43,5 +44,7 @@ export function SectionComponent({
       return <MemorySettings />;
     case "notifications":
       return <NotificationSettings />;
+    case "desktop":
+      return <DesktopSettings />;
   }
 }

@@ -1,6 +1,7 @@
 import {
   Brain02Icon,
   ChartLineData02Icon,
+  ComputerIcon,
   CreditCardIcon,
   DiscordIcon,
   Link04Icon,
@@ -78,7 +79,17 @@ export const settingsPageItems: SettingsMenuItem[] = [
     icon: Brain02Icon,
     href: "/settings/memory",
   },
+  // Only rendered inside the Electron app (filtered in SettingsSidebar).
+  {
+    key: "desktop",
+    label: "Desktop",
+    icon: ComputerIcon,
+    href: "/settings/desktop",
+  },
 ];
+
+/** Settings sections that only make sense inside the desktop app. */
+export const DESKTOP_ONLY_SETTINGS_KEYS = new Set(["desktop"]);
 
 export const socialMediaItems: SettingsMenuItem[] = [
   {
