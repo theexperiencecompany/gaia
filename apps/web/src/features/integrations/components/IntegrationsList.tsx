@@ -138,6 +138,13 @@ export const IntegrationsList: React.FC<{
   const { filteredIntegrations } = useIntegrationSearch(integrations);
 
   const handleConnect = async (integrationId: string) => {
+    const integration = integrations.find((i) => i.id === integrationId);
+    // API-key (bearer) integrations collect their key in the detail sidebar —
+    // open it instead of connecting directly (same as clicking the row).
+    if (integration?.authType === "bearer" && integration.requiresAuth) {
+      onIntegrationClick?.(integrationId);
+      return;
+    }
     try {
       await connectIntegration(integrationId);
     } catch (error) {

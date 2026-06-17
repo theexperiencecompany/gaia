@@ -14,6 +14,10 @@ import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
+import {
+  POST_CONNECT_POLL_INTERVAL_MS,
+  POST_CONNECT_POLL_MAX_ATTEMPTS,
+} from "@/features/integrations/constants/connect";
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
@@ -43,8 +47,9 @@ export default function IntegrationsPage() {
     refetch,
   } = useIntegrations();
 
-  // Pre-fetch tools on page load
-  const { tools: _prefetchedTools } = useToolsWithIntegrations();
+  // Pre-fetch tools on page load; also used to detect when a just-connected
+  // integration's tools have finished discovering in the background.
+  const { tools: toolsWithIntegrations } = useToolsWithIntegrations();
 
   // Right sidebar store
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
@@ -66,6 +71,15 @@ export default function IntegrationsPage() {
   const [pendingIntegrationId, setPendingIntegrationId] = useState<
     string | null
   >(null);
+  // Integration whose tools are still being discovered after a successful
+  // connect — drives bounded polling and the sidebar's "Setting up tools" state.
+  const [settlingIntegrationId, setSettlingIntegrationId] = useState<
+    string | null
+  >(null);
+  // Incremented on each poll so the effect re-runs every interval even when the
+  // refetched data is byte-identical (react-query structural sharing keeps the
+  // same `integrations` reference until tools actually land).
+  const [settleTick, setSettleTick] = useState(0);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [bearerModalOpen, setBearerModalOpen] = useState(false);
   const [bearerIntegrationId, setBearerIntegrationId] = useState("");
@@ -112,12 +126,14 @@ export default function IntegrationsPage() {
         onPublish={isCustomIntegration ? handlePublish : undefined}
         onUnpublish={isCustomIntegration ? handleUnpublish : undefined}
         category={selectedIntegration.name}
+        isSettling={settlingIntegrationId === selectedIntegration.id}
       />,
     );
   }, [
     selectedIntegrationId,
     integrations,
     isSidebarOpen,
+    settlingIntegrationId,
     setRightSidebarContent,
     connectIntegration,
     disconnectIntegration,
@@ -157,6 +173,11 @@ export default function IntegrationsPage() {
         }
         refetch();
         queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+        // Open the sidebar for the freshly-connected integration and poll until
+        // its tools finish discovering in the background (see the poller below).
+        setPendingIntegrationId(integrationId);
+        setSettleTick(0);
+        setSettlingIntegrationId(integrationId);
       } else if (status === "bearer_required") {
         // name should be in URL when redirected here
         const nameParam = params.get("name");
@@ -253,6 +274,44 @@ export default function IntegrationsPage() {
       setPendingIntegrationId(null);
     }
   }, [pendingIntegrationId, integrations, handleIntegrationClick]);
+
+  // The OAuth callback redirects as soon as tokens are stored; the MCP handshake
+  // and tools/list run in the background, so a connected integration's tools land
+  // a few seconds later. Poll until they appear (or give up) instead of forcing a
+  // page reload. Re-runs whenever a refetch updates `integrations`/tools data.
+  useEffect(() => {
+    if (!settlingIntegrationId) return;
+
+    const integration = integrations.find(
+      (i) => i.id === settlingIntegrationId,
+    );
+    const hasEndpointTools = toolsWithIntegrations.some(
+      (t) => t.category.toLowerCase() === settlingIntegrationId.toLowerCase(),
+    );
+    const hasTools = hasEndpointTools || (integration?.tools?.length ?? 0) > 0;
+
+    // Stop once the tools land, or after the attempt ceiling (covers a failed
+    // background connect). Note: keep polling even while the integration isn't
+    // in the list yet — the post-connect refetch may still be in flight.
+    if (hasTools || settleTick >= POST_CONNECT_POLL_MAX_ATTEMPTS) {
+      setSettlingIntegrationId(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      refetch();
+      queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+      setSettleTick((tick) => tick + 1);
+    }, POST_CONNECT_POLL_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [
+    settlingIntegrationId,
+    settleTick,
+    integrations,
+    toolsWithIntegrations,
+    refetch,
+    queryClient,
+  ]);
 
   // Handler for pressing Enter in search input
   const handleEnterSearch = useCallback(() => {
