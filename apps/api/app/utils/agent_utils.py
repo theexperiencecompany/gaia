@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 import json
+import re
 from typing import Any, TypedDict
 
 from langchain_core.messages import ToolCall
@@ -26,10 +27,11 @@ def strip_internal_agent_markers(text: str) -> str:
     reply. A weak model occasionally parrots them verbatim, so strip them
     deterministically as a hard backstop before delivery.
     """
-    cleaned = text
-    for marker in INTERNAL_AGENT_MARKERS:
-        cleaned = cleaned.replace(marker, "")
-    return cleaned.strip()
+    pattern = re.compile(
+        "|".join(re.escape(marker) for marker in INTERNAL_AGENT_MARKERS),
+        flags=re.IGNORECASE,
+    )
+    return pattern.sub("", text).strip()
 
 
 class IntegrationMetadata(TypedDict, total=False):

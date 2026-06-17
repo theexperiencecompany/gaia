@@ -152,8 +152,14 @@ def create_agent(
         provider's implicit prompt cache survive across turns instead of
         resetting on every tool retrieval.
         """
-        initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
+        # Skip unknown ids (a stale id in the append-only selected_tool_ids must
+        # not crash the model invocation) rather than indexing blindly.
+        initial_tools = [
+            tool_registry[id] for id in (initial_tool_ids or []) if id in tool_registry
+        ]
+        selected_tools = [
+            tool_registry[id] for id in state["selected_tool_ids"] if id in tool_registry
+        ]
         tools_to_bind: list[BaseTool] = []
         if retrieve_tools is not None:
             tools_to_bind.append(retrieve_tools)

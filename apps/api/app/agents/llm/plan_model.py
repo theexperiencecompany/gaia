@@ -25,7 +25,12 @@ async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
     if not user_id:
         return
 
-    plan = await payment_service.get_cached_plan_type(user_id)
+    try:
+        plan = await payment_service.get_cached_plan_type(user_id)
+    except Exception as e:
+        # A transient lookup failure must not fail the turn — keep the default model.
+        log.warning("plan_model lookup failed; keeping default model", error=str(e))
+        return
 
     if plan == PlanType.PRO:
         _pin_model(configurable, PRO_MODEL_PROVIDER, PRO_MODEL_NAME)

@@ -85,14 +85,14 @@ const GROUPS: Group[] = [
           toast.info("This stays until dismissed.", { duration: Infinity }),
       },
       {
-        label: "loading → success",
+        label: "loading to success",
         run: () => {
           const id = toast.loading("Connecting to Gmail…");
           setTimeout(() => toast.success("Connected to Gmail", { id }), 1500);
         },
       },
       {
-        label: "loading → error",
+        label: "loading to error",
         run: () => {
           const id = toast.loading("Saving workflow…");
           setTimeout(
