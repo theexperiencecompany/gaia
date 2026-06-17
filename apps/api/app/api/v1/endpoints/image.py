@@ -29,7 +29,6 @@ async def image(request: MessageRequest, _user: dict = Depends(get_current_user)
 
 
 @router.post("/image/text")
-@tiered_rate_limit("file_analysis", count_tokens=True)
 async def image_to_text(
     message: str = Form(...),
     file: UploadFile = File(...),

@@ -70,38 +70,13 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="AI compute for chat, workflows, voice, and tools",
         ),
     ),
-    # CORE COMMUNICATION
-    "chat_messages": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),  # Unchanged - good trial
-        pro=RateLimitConfig(day=3000, month=60000),  # +20% / +50%
-        info=FeatureInfo(title="Chat Messages", description="Send messages to AI assistants"),
-    ),
     # FILE OPERATIONS (Expensive - Storage & Processing)
-    "file_upload": TieredRateLimits(
-        free=RateLimitConfig(day=2, month=5),  # Keep restrictive
-        pro=RateLimitConfig(day=150, month=4500),  # +50%
-        info=FeatureInfo(title="File Upload", description="Upload and process files"),
-    ),
-    "file_analysis": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),  # Keep restrictive
-        pro=RateLimitConfig(day=150, month=4500),  # +50%
-        info=FeatureInfo(title="File Analysis", description="Analyze and process uploaded files"),
-    ),
     "audio_transcription": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),
         pro=RateLimitConfig(day=200, month=6000),
         info=FeatureInfo(
             title="Audio Transcription",
             description="Transcribe voice notes and audio clips to text",
-        ),
-    ),
-    "session_files": TieredRateLimits(
-        # Static-ish artifact fetches + tab-focus reconcile polling — generous.
-        free=RateLimitConfig(day=5000, month=100000),
-        pro=RateLimitConfig(day=50000, month=1000000),
-        info=FeatureInfo(
-            title="Session Files",
-            description="Fetch workspace artifacts and uploaded files",
         ),
     ),
     # SKILLS
@@ -138,11 +113,6 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         info=FeatureInfo(title="Document Generation", description="Generate documents and reports"),
     ),
     # WEB FEATURES (Moderate Cost)
-    "web_search": TieredRateLimits(
-        free=RateLimitConfig(day=10, month=50),  # Unchanged - good trial
-        pro=RateLimitConfig(day=450, month=13500),  # +50% (300→450, 9000→13500)
-        info=FeatureInfo(title="Web Search", description="Search the web for information"),
-    ),
     "webpage_fetch": TieredRateLimits(
         free=RateLimitConfig(day=3, month=10),  # Keep restrictive
         pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
@@ -165,32 +135,6 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Automated workflow executions triggered by integrations",
         ),
     ),
-    # PRODUCTIVITY TOOLS (Generous - Core Value)
-    "goal_tracking": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),  # Keep restrictive for trial
-        pro=RateLimitConfig(day=75, month=2250),  # +50% (50→75, 1500→2250)
-        info=FeatureInfo(title="Goal Tracking", description="Create and track personal goals"),
-    ),
-    "todo_operations": TieredRateLimits(
-        free=RateLimitConfig(day=50, month=1000),  # Good trial experience
-        pro=RateLimitConfig(day=1500, month=22500),  # +50% (1000→1500, 15000→22500)
-        info=FeatureInfo(
-            title="Todo Operations", description="Create, update, and manage todo items"
-        ),
-    ),
-    "calendar_management": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=50),  # Keep restrictive for trial
-        pro=RateLimitConfig(day=1500, month=22500),  # +50% (1000→1500, 15000→22500)
-        info=FeatureInfo(
-            title="Calendar Management",
-            description="Create, update, and manage calendar events",
-        ),
-    ),
-    "reminder_operations": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),  # Keep restrictive
-        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
-        info=FeatureInfo(title="Reminder Operations", description="Create and manage reminders"),
-    ),
     # COMMUNICATION
     "mail_actions": TieredRateLimits(
         free=RateLimitConfig(day=2, month=5),  # Keep very restrictive
@@ -198,17 +142,6 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         info=FeatureInfo(
             title="Mail Actions", description="Send emails and manage mail operations"
         ),
-    ),
-    # KNOWLEDGE MANAGEMENT
-    "notes": TieredRateLimits(
-        free=RateLimitConfig(day=30, month=200),  # Good trial
-        pro=RateLimitConfig(day=1500, month=45000),  # +50% (1000→1500, 30000→45000)
-        info=FeatureInfo(title="Notes Management", description="Create and manage notes"),
-    ),
-    "memory": TieredRateLimits(
-        free=RateLimitConfig(day=20, month=100),  # Good trial
-        pro=RateLimitConfig(day=750, month=22500),  # +50% (500→750, 15000→22500)
-        info=FeatureInfo(title="Memory Operations", description="Store and retrieve memories"),
     ),
     # Coding tools (persistent E2B workspace)
     "sandbox_creation": TieredRateLimits(
@@ -225,30 +158,6 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         info=FeatureInfo(
             title="Shell Execution",
             description="Run shell commands in the persistent coding sandbox",
-        ),
-    ),
-    "workspace_read": TieredRateLimits(
-        free=RateLimitConfig(day=500, month=15000),
-        pro=RateLimitConfig(day=20000, month=600000),
-        info=FeatureInfo(
-            title="Workspace Read",
-            description="Read files from the persistent coding workspace",
-        ),
-    ),
-    "workspace_write": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),
-        pro=RateLimitConfig(day=5000, month=150000),
-        info=FeatureInfo(
-            title="Workspace Write",
-            description="Write files to the persistent coding workspace",
-        ),
-    ),
-    "workspace_edit": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),
-        pro=RateLimitConfig(day=5000, month=150000),
-        info=FeatureInfo(
-            title="Workspace Edit",
-            description="Edit files in the persistent coding workspace",
         ),
     ),
     # CREATIVE TOOLS

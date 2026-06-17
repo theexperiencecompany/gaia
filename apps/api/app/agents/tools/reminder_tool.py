@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.decorators import with_doc, with_rate_limiting
+from app.decorators import with_doc
 from app.models.reminder_models import (
     AgentType,
     CreateReminderToolRequest,
@@ -37,7 +37,6 @@ def _apply_timezone_offset(dt: datetime, offset_str: str) -> datetime:
 
 
 @tool()
-@with_rate_limiting("reminder_operations")
 @with_doc(CREATE_REMINDER)
 async def create_reminder_tool(
     config: RunnableConfig,
@@ -121,7 +120,6 @@ async def create_reminder_tool(
 
 
 @tool(parse_docstring=True)
-@with_rate_limiting("reminder_operations")
 @with_doc(LIST_USER_REMINDERS)
 async def list_user_reminders_tool(
     config: RunnableConfig,
@@ -148,7 +146,6 @@ async def list_user_reminders_tool(
 
 # Define get_reminder_tool
 @tool(parse_docstring=True)
-@with_rate_limiting("reminder_operations")
 @with_doc(GET_REMINDER)
 async def get_reminder_tool(
     config: RunnableConfig,
@@ -172,7 +169,6 @@ async def get_reminder_tool(
 
 # Define delete_reminder_tool
 @tool(parse_docstring=True)
-@with_rate_limiting("reminder_operations")
 @with_doc(DELETE_REMINDER)
 async def delete_reminder_tool(
     config: RunnableConfig,
@@ -197,7 +193,6 @@ async def delete_reminder_tool(
 
 # Define update_reminder_tool
 @tool(parse_docstring=True)
-@with_rate_limiting("reminder_operations")
 @with_doc(UPDATE_REMINDER)
 async def update_reminder_tool(
     config: RunnableConfig,
@@ -262,7 +257,6 @@ async def update_reminder_tool(
 
 # Define search_reminders_tool
 @tool(parse_docstring=True)
-@with_rate_limiting("reminder_operations")
 @with_doc(SEARCH_REMINDERS)
 async def search_reminders_tool(
     config: RunnableConfig,

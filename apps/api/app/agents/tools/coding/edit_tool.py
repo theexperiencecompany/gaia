@@ -16,7 +16,7 @@ from app.agents.tools.coding._context import (
     sh_quote,
 )
 from app.agents.workspace.paths import MountRole
-from app.decorators import with_doc, with_rate_limiting
+from app.decorators import with_doc
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, fs_timer
 from app.templates.docstrings.coding_tools_docs import EDIT_TOOL
@@ -27,7 +27,6 @@ MAX_PATCH_BYTES = 2 * 1024 * 1024
 
 
 @tool
-@with_rate_limiting("workspace_edit")
 @with_doc(EDIT_TOOL)
 async def edit(
     config: RunnableConfig,

@@ -76,7 +76,6 @@ async def fetch_webpages(
 
 
 @tool
-@with_rate_limiting("web_search")
 @with_doc(WEB_SEARCH_TOOL)
 async def web_search_tool(
     query_text: Annotated[

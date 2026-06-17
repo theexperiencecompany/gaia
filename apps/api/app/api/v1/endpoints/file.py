@@ -14,7 +14,6 @@ from fastapi import (
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.mongodb.collections import conversations_collection
-from app.decorators import tiered_rate_limit
 from app.models.message_models import FileData
 from app.services.file_service import (
     delete_file_service,
@@ -28,7 +27,6 @@ router = APIRouter()
 
 
 @router.post("/upload", response_model=FileData, status_code=status.HTTP_201_CREATED)
-@tiered_rate_limit("file_upload")
 async def upload_file_endpoint(
     file: UploadFile = File(...),
     conversation_id: str | None = Form(default=None, pattern=SAFE_PATH_ID_PATTERN),

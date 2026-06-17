@@ -20,7 +20,6 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.decorators import tiered_rate_limit
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
 from shared.py.wide_events import ChatContext, log
@@ -79,7 +78,6 @@ async def _stream_from_redis(
 
 
 @router.post("/chat-stream")
-@tiered_rate_limit("chat_messages")
 async def chat_stream_endpoint(
     request: Request,
     body: MessageRequestWithHistory,

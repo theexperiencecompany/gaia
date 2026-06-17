@@ -18,7 +18,6 @@ from app.constants.memory import (
     MemoryDocType,
     MemorySourceType,
 )
-from app.decorators import tiered_rate_limit
 from app.memory.engine import memory_engine
 from app.models.memory_models import (
     CreateMemoryRequest,
@@ -214,7 +213,6 @@ async def get_memory_documents(
 
 
 @router.put("/documents/{doc_type}")
-@tiered_rate_limit("memory")
 async def update_memory_document(
     doc_type: MemoryDocType,
     request: UpdateDocumentRequest,
@@ -238,7 +236,6 @@ async def update_memory_document(
 
 
 @router.post("")
-@tiered_rate_limit("memory")
 async def create_memory(
     request: CreateMemoryRequest,
     user: Annotated[dict, Depends(get_current_user)],
@@ -310,7 +307,6 @@ async def get_memory_history(
     "/{memory_id}",
     responses={404: {"description": "Memory not found or already superseded"}},
 )
-@tiered_rate_limit("memory")
 async def update_memory(
     request: UpdateMemoryRequest,
     user: Annotated[dict, Depends(get_current_user)],
@@ -336,7 +332,6 @@ async def update_memory(
     "/{memory_id}",
     responses={404: {"description": "Memory not found"}},
 )
-@tiered_rate_limit("memory")
 async def delete_memory(
     user: Annotated[dict, Depends(get_current_user)],
     memory_id: str = Path(pattern=UUID_PATH_PATTERN),
@@ -358,7 +353,6 @@ async def delete_memory(
 
 
 @router.delete("")
-@tiered_rate_limit("memory")
 async def clear_all_memories(
     user: Annotated[dict, Depends(get_current_user)],
 ) -> DeleteMemoryResponse:

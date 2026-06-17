@@ -23,7 +23,7 @@ from app.agents.tools.coding._context import (
 )
 from app.agents.workspace.paths import WORKSPACE_ROOT
 from app.agents.workspace.system_files import system_file_body
-from app.decorators import with_doc, with_rate_limiting
+from app.decorators import with_doc
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
 from app.services.storage.juicefs import page_bounds, user_owns_regular_file
@@ -35,7 +35,6 @@ MAX_LIMIT = 10_000
 
 
 @tool
-@with_rate_limiting("workspace_read")
 @with_doc(READ_TOOL)
 async def read(
     config: RunnableConfig,

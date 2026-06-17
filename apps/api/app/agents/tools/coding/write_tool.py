@@ -24,7 +24,7 @@ from app.agents.workspace.paths import (
     is_inlineable_content_type,
     session_artifacts,
 )
-from app.decorators import with_doc, with_rate_limiting
+from app.decorators import with_doc
 from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import ArtifactInfo, FsOps, add_fs_bytes, fs_timer
@@ -35,7 +35,6 @@ MAX_CONTENT_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 @tool
-@with_rate_limiting("workspace_write")
 @with_doc(WRITE_TOOL)
 async def write(
     config: RunnableConfig,

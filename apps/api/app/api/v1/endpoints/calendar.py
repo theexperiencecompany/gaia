@@ -4,7 +4,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
-from app.decorators import tiered_rate_limit
 from app.models.calendar_models import (
     BatchEventCreateRequest,
     BatchEventDeleteRequest,
@@ -289,7 +288,6 @@ async def get_events_by_calendar(
 
 
 @router.post("/calendar/event", summary="Create a Calendar Event")
-@tiered_rate_limit("calendar_management")
 async def create_event(
     event: EventCreateRequest,
     current_user: dict = Depends(require_integration("calendar")),
@@ -331,7 +329,6 @@ async def get_calendar_preferences(
 
 
 @router.put("/calendar/preferences", summary="Update User Calendar Preferences")
-@tiered_rate_limit("calendar_management")
 async def update_calendar_preferences(
     preferences: CalendarPreferencesUpdateRequest,
     current_user: dict = Depends(require_integration("calendar")),
@@ -348,7 +345,6 @@ async def update_calendar_preferences(
 
 
 @router.delete("/calendar/event", summary="Delete a Calendar Event")
-@tiered_rate_limit("calendar_management")
 async def delete_event(
     event: EventDeleteRequest,
     current_user: dict = Depends(require_integration("calendar")),
@@ -369,7 +365,6 @@ async def delete_event(
 
 
 @router.put("/calendar/event", summary="Update a Calendar Event")
-@tiered_rate_limit("calendar_management")
 async def update_event(
     event: EventUpdateRequest,
     current_user: dict = Depends(require_integration("calendar")),
@@ -390,7 +385,6 @@ async def update_event(
 
 
 @router.post("/calendar/events/batch", summary="Create Multiple Calendar Events")
-@tiered_rate_limit("calendar_management")
 async def create_events_batch(
     batch_request: BatchEventCreateRequest,
     current_user: dict = Depends(require_integration("calendar")),
@@ -425,7 +419,6 @@ async def create_events_batch(
 
 
 @router.put("/calendar/events/batch", summary="Update Multiple Calendar Events")
-@tiered_rate_limit("calendar_management")
 async def update_events_batch(
     batch_request: BatchEventUpdateRequest,
     current_user: dict = Depends(require_integration("calendar")),
@@ -460,7 +453,6 @@ async def update_events_batch(
 
 
 @router.delete("/calendar/events/batch", summary="Delete Multiple Calendar Events")
-@tiered_rate_limit("calendar_management")
 async def delete_events_batch(
     batch_request: BatchEventDeleteRequest,
     current_user: dict = Depends(require_integration("calendar")),

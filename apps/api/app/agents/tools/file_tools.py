@@ -6,13 +6,12 @@ from langchain_core.tools import tool
 
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
-from app.decorators import with_doc, with_rate_limiting
+from app.decorators import with_doc
 from app.templates.docstrings.file_tool_docs import QUERY_FILE
 from shared.py.wide_events import log
 
 
 @tool
-@with_rate_limiting("file_analysis")
 @with_doc(QUERY_FILE)
 async def query_file(
     query: Annotated[

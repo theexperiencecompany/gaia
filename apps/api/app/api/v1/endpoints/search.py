@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.rate_limiter import limiter
-from app.decorators import tiered_rate_limit
 from app.models.search_models import MultiURLResponse, URLRequest, URLResponse
 from app.services.email_profile_service import fetch_email_profiles
 from app.services.search_service import search_messages
@@ -76,7 +75,6 @@ def extract_emails(text: str) -> list:
 
 
 @router.get("/search/email")
-@tiered_rate_limit("web_search")
 async def search_email_endpoint(query: str):
     """
     Search for official contact email addresses related to the given query.

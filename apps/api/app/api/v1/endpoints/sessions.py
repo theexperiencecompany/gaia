@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.mongodb.collections import conversations_collection
-from app.decorators import tiered_rate_limit
 from app.services.storage import (
     JuiceFSUnavailable,
     list_artifacts,
@@ -91,7 +90,6 @@ async def _resolve_file(
 
 
 @router.get("/{conv_id}/artifacts")
-@tiered_rate_limit("session_files")
 async def list_session_artifacts(
     conv_id: str, user: Annotated[dict, Depends(get_current_user)]
 ) -> JSONResponse:
@@ -113,7 +111,6 @@ async def list_session_artifacts(
         503: {"description": "Workspace storage offline"},
     },
 )
-@tiered_rate_limit("session_files")
 async def get_artifact_file(
     conv_id: str, path: str, user: Annotated[dict, Depends(get_current_user)]
 ) -> FileResponse:
@@ -125,7 +122,6 @@ async def get_artifact_file(
 
 
 @router.get("/{conv_id}/uploads")
-@tiered_rate_limit("session_files")
 async def list_uploads(
     conv_id: str, user: Annotated[dict, Depends(get_current_user)]
 ) -> JSONResponse:
@@ -147,7 +143,6 @@ async def list_uploads(
         503: {"description": "Workspace storage offline"},
     },
 )
-@tiered_rate_limit("session_files")
 async def get_upload_file(
     conv_id: str, path: str, user: Annotated[dict, Depends(get_current_user)]
 ) -> FileResponse:
@@ -167,7 +162,6 @@ async def get_upload_file(
         503: {"description": "Workspace storage offline"},
     },
 )
-@tiered_rate_limit("session_files")
 async def pin_artifact(
     conv_id: str,
     payload: PinRequest,

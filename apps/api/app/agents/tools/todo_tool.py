@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-from app.decorators import with_doc, with_rate_limiting
+from app.decorators import with_doc
 from app.models.todo_models import (
     Priority,
     ProjectCreate,
@@ -67,7 +67,6 @@ from shared.py.wide_events import log
 
 
 @tool
-@with_rate_limiting("todo_operations")
 @with_doc(CREATE_TODO)
 async def create_todo(
     config: RunnableConfig,

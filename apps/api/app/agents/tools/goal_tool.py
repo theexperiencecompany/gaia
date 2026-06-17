@@ -9,7 +9,7 @@ from langgraph.config import get_stream_writer
 from app.constants.cache import DEFAULT_CACHE_TTL
 from app.db.mongodb.collections import goals_collection
 from app.db.redis import delete_cache, get_cache, set_cache
-from app.decorators import with_doc, with_rate_limiting
+from app.decorators import with_doc
 from app.models.goals_models import GoalCreate, UpdateNodeRequest
 from app.services.goals_service import (
     delete_goal_service,
@@ -72,7 +72,6 @@ async def invalidate_goal_caches(user_id: str, goal_id: str | None = None) -> No
 
 
 @tool
-@with_rate_limiting("goal_tracking")
 @with_doc(CREATE_GOAL)
 async def create_goal(
     config: RunnableConfig,

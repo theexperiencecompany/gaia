@@ -5,10 +5,9 @@ Enforces daily and monthly rate limits based on user subscription plans.
 Automatically checks both time periods and rejects requests that exceed any limit.
 
 Usage:
-    @tiered_rate_limit("file_analysis", count_tokens=True)
-    async def analyze_file(user: dict = Depends(get_current_user)):
-        # Also validates token usage limits per request
-        return await analyze()
+    @tiered_rate_limit("generate_image")
+    async def make_image(user: dict = Depends(get_current_user)):
+        return await generate()
 """
 
 import asyncio

@@ -9,7 +9,6 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
-from app.decorators import tiered_rate_limit
 from app.models.reminder_models import (
     CreateReminderRequest,
     ReminderResponse,
@@ -24,7 +23,6 @@ router = APIRouter(prefix="/reminders", tags=["reminders"])
 
 
 @router.post("", response_model=ReminderResponse, status_code=http_status.HTTP_201_CREATED)
-@tiered_rate_limit("reminder_operations")
 async def create_reminder_endpoint(
     reminder_data: CreateReminderRequest,
     user: dict = Depends(get_current_user),
