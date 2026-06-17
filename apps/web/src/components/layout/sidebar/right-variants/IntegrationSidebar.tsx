@@ -362,7 +362,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   isConnecting ? undefined : <RedoIcon width={18} height={18} />
                 }
               >
-                Retry Connection
+                Retry
               </Button>
               {showDeleteButton ? (
                 <Button
@@ -417,7 +417,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               ) : showRetry ? (
                 <>
                   <RedoIcon width={18} height={18} />
-                  Retry Connection
+                  Retry
                 </>
               ) : (
                 <>
