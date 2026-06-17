@@ -369,7 +369,9 @@ async def _resolve_subagent(
 _background_subagent_tasks: set[asyncio.Task[None]] = set()
 
 
-async def _build_integration_metadata(is_custom: bool, integration_id: str) -> IntegrationMetadata | None:
+async def _build_integration_metadata(
+    is_custom: bool, integration_id: str
+) -> IntegrationMetadata | None:
     """Build display metadata for a resolved subagent integration."""
     if is_custom:
         integration = await _get_subagent_by_id(integration_id)
@@ -414,7 +416,9 @@ async def _run_blocking_handoff(
     """Run a handoff subagent synchronously, emitting lifecycle SSE events."""
     writer = get_stream_writer()
     sa_id = str(uuid4())
-    display, icon_url, tool_category = _resolve_display_metadata(metadata, agent_name, integration_id)
+    display, icon_url, tool_category = _resolve_display_metadata(
+        metadata, agent_name, integration_id
+    )
 
     # Propagate this subagent's UUID into config so nested spawned subagents
     # can reference it as parent_subagent_id.
