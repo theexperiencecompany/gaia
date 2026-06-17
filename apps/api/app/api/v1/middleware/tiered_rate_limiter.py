@@ -47,17 +47,22 @@ class RateLimitExceededException(HTTPException):
         feature: str,
         plan_required: str | None = None,
         reset_time: datetime | None = None,
+        title: str | None = None,
     ):
-        detail = {
-            "error": "rate_limit_exceeded",
-            "feature": feature,
-            "message": f"Rate limit exceeded for {feature}",
-        }
+        # The "feature cap" wall — deliberately distinct from the out-of-credits
+        # wall (CREDIT_LIMIT_MESSAGE). When upgrading unlocks more, it's framed
+        # as an upgrade nudge; otherwise as a temporary cap that resets.
+        label = title or feature
+        if plan_required:
+            message = (
+                f"You've reached your plan's limit for {label}. "
+                f"Upgrade to {plan_required.upper()} for more."
+            )
+        else:
+            message = f"You've reached your limit for {label}. It resets soon."
+        detail = {"error": "rate_limit_exceeded", "feature": feature, "message": message}
         if plan_required:
             detail["plan_required"] = plan_required
-            detail["message"] = (
-                f"{feature} is not available in your current plan. Upgrade to {plan_required.upper()} to access this feature."
-            )
         if reset_time:
             detail["reset_time"] = reset_time.isoformat()
 
@@ -101,10 +106,14 @@ class TieredRateLimiter:
             )
 
             if current_usage >= limit:
-                free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
-                is_plan_gated = getattr(free_limits, period.value) == 0
-                plan_required = "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
-                raise RateLimitExceededException(feature_key, plan_required, reset_time)
+                # On Free, frame any cap a paid plan would raise as an upgrade
+                # nudge (covers levers like image gen whose Free cap is >0).
+                pro_limit = getattr(get_limits_for_plan(feature_key, PlanType.PRO), period.value)
+                upgrade_helps = user_plan == PlanType.FREE and pro_limit > limit
+                plan_required = "pro" if upgrade_helps else None
+                raise RateLimitExceededException(
+                    feature_key, plan_required, reset_time, get_feature_info(feature_key)["title"]
+                )
 
         # Increment usage atomically
         for period in [RateLimitPeriod.DAY, RateLimitPeriod.MONTH]:
@@ -131,13 +140,16 @@ class TieredRateLimiter:
                         # Double-check limit hasn't been exceeded by concurrent requests
                         if current_val >= limit:
                             await pipe.unwatch()
-                            free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
-                            is_plan_gated = getattr(free_limits, period.value) == 0
-                            plan_required = (
-                                "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
+                            pro_limit = getattr(
+                                get_limits_for_plan(feature_key, PlanType.PRO), period.value
                             )
+                            upgrade_helps = user_plan == PlanType.FREE and pro_limit > limit
+                            plan_required = "pro" if upgrade_helps else None
                             raise RateLimitExceededException(
-                                feature_key, plan_required, get_reset_time(period)
+                                feature_key,
+                                plan_required,
+                                get_reset_time(period),
+                                get_feature_info(feature_key)["title"],
                             )
 
                         # Execute atomic increment
