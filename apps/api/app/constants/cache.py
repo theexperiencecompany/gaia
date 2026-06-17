@@ -22,6 +22,10 @@ DEFAULT_CACHE_TTL = ONE_HOUR_TTL
 STATS_CACHE_TTL = THIRTY_MINUTES_TTL
 CUSTOM_INT_METADATA_TTL = ONE_HOUR_TTL
 SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
+# Subscription plan tier, cached for hot paths (rate limiting, per-request model
+# routing). Eventually consistent: a plan change takes effect within the TTL.
+SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
+SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
@@ -73,6 +77,17 @@ STATE_KEY_PREFIX = "oauth_state"
 CONNECT_LINK_USED_PREFIX = "connect_link_used"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
+# Desktop tool bridge — request ownership keys + per-request result channels.
+# A request key expiring means the desktop never answered; the result endpoint
+# rejects late POSTs whose key is gone.
+DESKTOP_REQUEST_PREFIX = "desktop:request:"
+DESKTOP_RESULT_CHANNEL_PREFIX = "desktop:result:"
+# The ownership key's TTL is derived per-call from the awaiting tool's timeout
+# plus this grace, so the key always outlives the wait (a fixed TTL could be
+# outrun by a longer custom timeout, expiring mid-wait and dropping a valid
+# late result). The tool deletes the key as soon as it resolves, so this TTL
+# only bounds the orphaned-on-crash case.
+DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 EXECUTOR_QUEUE_PREFIX = "executor:queue:"

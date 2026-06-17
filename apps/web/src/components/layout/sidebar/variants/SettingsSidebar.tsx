@@ -3,11 +3,20 @@
 import { Button } from "@heroui/button";
 import { usePathname, useRouter } from "next/navigation";
 
-import { settingsPageItems } from "@/features/settings/config/settingsConfig";
+import {
+  DESKTOP_ONLY_SETTINGS_KEYS,
+  settingsPageItems,
+} from "@/features/settings/config/settingsConfig";
+import { useElectron } from "@/hooks/useElectron";
 
 export default function SettingsSidebar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { isElectron } = useElectron();
+
+  const visibleItems = settingsPageItems.filter(
+    (item) => isElectron || !DESKTOP_ONLY_SETTINGS_KEYS.has(item.key),
+  );
 
   const handleNavigation = (href: string) => {
     router.push(href);
@@ -16,7 +25,7 @@ export default function SettingsSidebar() {
   return (
     <div className="flex h-full max-w-[280px] flex-col border-t-1 border-zinc-800 pt-3">
       <nav className="flex-1 space-y-1">
-        {settingsPageItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = item.href ? pathname.endsWith(item.href) : false;
           const Icon = item.icon;
 

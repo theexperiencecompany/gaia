@@ -31,7 +31,13 @@ export default function ChatBubbleUser({
   onRetry,
   isRetrying,
   loading,
-}: ChatBubbleUserProps & { disableActions?: boolean }) {
+  hideAvatar = false,
+  fullWidth = false,
+}: ChatBubbleUserProps & {
+  disableActions?: boolean;
+  hideAvatar?: boolean;
+  fullWidth?: boolean;
+}) {
   const hasContent =
     !!text ||
     fileData.length > 0 ||
@@ -49,8 +55,7 @@ export default function ChatBubbleUser({
 
   // Determine styles based on emoji count
   let bubbleClassName = "imessage-bubble imessage-from-me";
-  let textClassName =
-    "flex max-w-[30vw] text-wrap whitespace-pre-wrap select-text";
+  let textClassName = `flex ${fullWidth ? "max-w-full" : "max-w-[30vw]"} text-wrap whitespace-pre-wrap select-text`;
 
   if (isEmojiOnly) {
     if (emojiCount === 1) {
@@ -132,24 +137,28 @@ export default function ChatBubbleUser({
             )}
           </div>
 
-          <div className="min-w-10">
-            <Avatar className="rounded-full bg-black">
-              <AvatarImage src={user?.profilePicture} alt="User Avatar" />
-              <AvatarFallback>
-                <Image
-                  src={"/images/avatars/default.webp"}
-                  width={35}
-                  height={35}
-                  alt="Default profile picture"
-                />
-              </AvatarFallback>
-            </Avatar>
-          </div>
+          {!hideAvatar && (
+            <div className="min-w-10">
+              <Avatar className="rounded-full bg-black">
+                <AvatarImage src={user?.profilePicture} alt="User Avatar" />
+                <AvatarFallback>
+                  <Image
+                    src={"/images/avatars/default.webp"}
+                    width={35}
+                    height={35}
+                    alt="Default profile picture"
+                  />
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          )}
         </div>
 
         {/* Actions row below bubble, aligned under content (not avatar) */}
         {!disableActions && (
-          <div className="flex flex-col items-end gap-1 pr-13 pb-1 opacity-0 transition-all group-hover:opacity-100">
+          <div
+            className={`flex flex-col items-end gap-1 ${hideAvatar ? "pr-1" : "pr-13"} pb-1 opacity-0 transition-all group-hover:opacity-100`}
+          >
             {date && (
               <span
                 className="flex flex-col text-xs text-zinc-400 select-text"

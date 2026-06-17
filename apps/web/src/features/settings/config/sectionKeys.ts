@@ -11,6 +11,7 @@ export const VALID_SECTIONS = [
   "instructions",
   "memory",
   "notifications",
+  "desktop",
 ] as const;
 
 export type SettingsSection = (typeof VALID_SECTIONS)[number];

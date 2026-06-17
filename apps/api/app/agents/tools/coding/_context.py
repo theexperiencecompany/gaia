@@ -47,8 +47,8 @@ def get_session_id(config: RunnableConfig) -> str | None:
 
     Prefer `vfs_session_id`: subagent_runner pins it to the *parent*
     conversation thread so artifacts written by one executor call are visible
-    to the next (`thread_id` is the ephemeral `executor_<conv>_<hex>` wrapper
-    and differs from the conversation_id that `ensure_session_dirs` and the
+    to the next (`thread_id` is the `executor_<conv>` wrapper and differs from
+    the conversation_id that `ensure_session_dirs` and the
     chat artifact forwarder key on — using it would split the session dir and
     drop every artifact event). May be None for non-chat invocations
     (workflows, background tasks)."""

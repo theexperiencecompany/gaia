@@ -20,6 +20,7 @@ from typing import Any
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.model_pricing import calculate_token_cost
 from app.config.settings import settings
+from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
@@ -28,16 +29,6 @@ from app.services.payments.payment_service import payment_service
 from app.services.storage import JuiceFSUnavailable, ensure_session_dirs
 from app.utils.chat_utils import create_conversation
 from shared.py.wide_events import log
-
-# Matches bot-emitted artifact references in three shapes — ``./artifacts/x``,
-# ``/artifacts/x``, and plain ``artifacts/x`` — so we can rewrite each to an
-# absolute backend URL. Allows quotes, parens or whitespace right before
-# (markdown image links, OpenUI string args, plain prose) but requires no
-# leading "word" character so we don't mangle ``myartifacts/``.
-_ARTIFACT_REF_RE = re.compile(
-    r"""(?P<lead>(?<![A-Za-z0-9_/])|(?<=['"`(\s]))(?P<prefix>\.\/|\/)?artifacts\/(?P<path>[A-Za-z0-9._\-/]+)""",
-    re.VERBOSE,
-)
 
 
 async def initialize_new_conversation(
@@ -103,7 +94,8 @@ def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
         lead = m.group("lead") or ""
         return f"{lead}{base}/{m.group('path')}"
 
-    return _ARTIFACT_REF_RE.sub(_sub, message)
+    message = WORKSPACE_ARTIFACT_RE.sub(lambda m: f"{base}/{m.group('path')}", message)
+    return ARTIFACT_REF_RE.sub(_sub, message)
 
 
 async def save_conversation_async(

@@ -22,11 +22,16 @@ from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore, SearchItem
 
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import (
+    DESKTOP_TOOL_CATEGORY,
+    DESKTOP_TOOL_SPACE,
+    get_tool_registry,
+)
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.db.chroma.public_integrations_store import search_public_integrations
+from app.models.chat_models import ConversationSource
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
@@ -252,6 +257,7 @@ def _build_search_tasks(
     user_namespaces: set[str],
     include_subagents: bool,
     limit: int,
+    include_desktop: bool = False,
 ) -> list[Awaitable[Union[list[SearchItem], list[dict[str, Any]]]]]:
     """Build list of search tasks to execute.
 
@@ -283,6 +289,12 @@ def _build_search_tasks(
     if tool_space != "general":
         log.info("Adding search for general namespace (limited to 5 for core tools)")
         search_tasks.append(store.asearch(("general",), query=query, limit=5))
+
+    # Desktop-executed tools are only discoverable for desktop-app sessions
+    # (include_desktop is derived from conversation_source upstream).
+    if include_desktop:
+        log.info("Adding search for desktop namespace")
+        search_tasks.append(store.asearch((DESKTOP_TOOL_SPACE,), query=query, limit=10))
 
     # Search subagents namespace
     if include_subagents:
@@ -537,6 +549,15 @@ def get_retrieve_tools_function(
         available_tool_names = tool_registry.get_tool_names()
         log.info(f"Registry has {len(available_tool_names)} available tools")
 
+        # Desktop tools only surface for desktop-app conversations, and only
+        # in the main agent context (subagents keep their own tool space).
+        conversation_source = ConversationSource.coerce(
+            config.get("configurable", {}).get("conversation_source")
+        )
+        desktop_enabled = (
+            conversation_source is ConversationSource.DESKTOP and tool_space == "general"
+        )
+
         # Get user_id from config (try configurable first, then metadata as fallback)
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
@@ -572,6 +593,13 @@ def get_retrieve_tools_function(
                         validated_tool_names.append(tool_name)
                     else:
                         unknown_tool_names.append(tool_name)
+                elif (
+                    not desktop_enabled
+                    and tool_registry.get_category_of_tool(tool_name) == DESKTOP_TOOL_CATEGORY
+                ):
+                    # Desktop tools must not bind outside desktop sessions —
+                    # the tools also re-check the source at execution time.
+                    unknown_tool_names.append(tool_name)
                 elif tool_name in available_tool_names_set or tool_name in mcp_tool_names_set:
                     validated_tool_names.append(tool_name)
                 elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
@@ -612,7 +640,13 @@ def get_retrieve_tools_function(
 
         # Build and execute search tasks
         search_tasks = _build_search_tasks(
-            store, query or "", tool_space, user_namespaces, include_subagents, limit
+            store,
+            query or "",
+            tool_space,
+            user_namespaces,
+            include_subagents,
+            limit,
+            include_desktop=desktop_enabled,
         )
 
         results = await asyncio.gather(*search_tasks, return_exceptions=True)

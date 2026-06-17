@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { Toaster } from "@/components/ui/Toaster";
 
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import QueryProvider from "@/layouts/QueryProvider";
@@ -16,6 +17,10 @@ import QueryProvider from "@/layouts/QueryProvider";
  * previews via useUrlMetadata) that depend on react-query. LazyMotion is added
  * for the same reason — real components animate via `motion/react-m`'s `<m.*>`,
  * which stay invisible (stuck at their `initial` props) without it.
+ *
+ * The (main)/(landing) provider layouts also own the app's Toaster, but /dev
+ * is a sibling segment — so we mount one here too, for the toast playground
+ * and any dev page that fires toasts.
  */
 export default function DevLayout({ children }: { children: ReactNode }) {
   if (process.env.NODE_ENV !== "development") {
@@ -24,6 +29,7 @@ export default function DevLayout({ children }: { children: ReactNode }) {
   return (
     <QueryProvider>
       <LazyMotionProvider>{children}</LazyMotionProvider>
+      <Toaster position="top-right" />
     </QueryProvider>
   );
 }

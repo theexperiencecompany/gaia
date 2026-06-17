@@ -12,6 +12,7 @@ import type {
   ToolDataEntry,
 } from "@/config/registries/toolRegistry";
 import { parseStreamData } from "@/features/chat/hooks/useStreamDataParser";
+import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import { toast } from "@/lib/toast";
 import { useChatStore } from "@/stores/chatStore";
@@ -467,6 +468,11 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
         return undefined;
       case "conversation_description":
         handleConversationDescriptionEvent(parsed.description);
+        return undefined;
+      case "desktop_tool_request":
+        // Fire-and-forget: the desktop executes while the stream stays live;
+        // the relay POSTs the result back to the awaiting backend tool.
+        void relayDesktopToolRequest(parsed.request);
         return undefined;
       case "unknown":
         Object.assign(streamingData, parsed.payload);

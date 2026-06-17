@@ -72,13 +72,12 @@ async def call_executor(
     conversation as a new bot message when it completes.
     """
     base_configurable = config.get("configurable", {})
-    # When binding to a specific todo, layer a shallow override on top of
-    # the inherited configurable so the executor sees the binding without
-    # mutating the comms agent's RunnableConfig.
+    # Shallow-copy so the executor's overrides (todo binding) never mutate the
+    # comms agent's live RunnableConfig. The model is inherited from the comms
+    # configurable (set by per-plan routing).
+    configurable = {**base_configurable}
     if active_todo_id:
-        configurable = {**base_configurable, "active_todo_id": active_todo_id}
-    else:
-        configurable = base_configurable
+        configurable["active_todo_id"] = active_todo_id
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:
@@ -141,7 +140,28 @@ async def _dispatch_executor(
     lock_value = build_lock_value(stream_id, task_id)
 
     if not await try_acquire_lock(lock_key, lock_value):
-        # Executor is busy — queue for later execution
+        # The lock is held. Distinguish two cases by the holder's stream_id:
+        #   - SAME stream_id → the comms model called call_executor twice within
+        #     ONE turn. Queuing it would run the whole task a SECOND time
+        #     (observed: deep research executed twice for a single user message).
+        #     Reject it — the first dispatch already covers this turn.
+        #   - DIFFERENT stream_id → a genuinely new request arrived while the
+        #     executor is busy; queue it to run next.
+        held_value = await redis_cache.client.get(lock_key) if redis_cache.client else None
+        held_stream_id = parse_lock_value(str(held_value))[0] if held_value else ""
+        if stream_id and held_stream_id == stream_id:
+            log.warning(
+                "Duplicate call_executor in same turn — ignored, not queued",
+                task_id=task_id,
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+            )
+            return (
+                "That task is already running from this same message — not "
+                "starting it again. The results are on the way."
+            )
+
+        # Executor is busy with a different turn — queue for later execution
         queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
         await enqueue_task(
             queue_key=queue_key,

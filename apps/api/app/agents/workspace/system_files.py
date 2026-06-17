@@ -20,7 +20,6 @@ from functools import lru_cache
 from typing import NamedTuple
 
 from app.agents.workspace.skill_loader import (
-    SKILL_BODY_FILENAME,
     BuiltinSkill,
     load_builtin_skills,
 )
@@ -32,9 +31,7 @@ from app.agents.workspace.system_docs import (
     SESSIONS_GUIDE_MD,
     USER_TODOS_GUIDE_MD,
 )
-
-# Subagent id for general (non-integration) builtin skills.
-_EXECUTOR_SUBAGENT = "executor"
+from app.constants.skills import EXECUTOR_SUBAGENT_ID, SKILL_BODY_FILENAME
 
 
 class SystemFile(NamedTuple):
@@ -58,7 +55,7 @@ _STATIC_DOCS: list[tuple[str, str]] = [
 
 def builtin_skill_root_rel(skill: BuiltinSkill) -> str:
     """``/workspace``-relative directory of a builtin skill — matches materialize_skills."""
-    if skill.subagent_id == _EXECUTOR_SUBAGENT:
+    if skill.subagent_id == EXECUTOR_SUBAGENT_ID:
         return f"skills/{skill.slug}"
     return f"integrations/{skill.subagent_id}/agent/skills/{skill.slug}"
 

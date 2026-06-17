@@ -229,11 +229,11 @@ cd apps/api && uv run pytest tests/test_openui_prompts.py -v
 
 ## 9. Async / External Data in Components
 
-Some components need async initialization (e.g., lazily fetching or computing data
-before the first paint). Use `useState` + `useEffect` pattern:
+Some components need async initialization (e.g., a component that lazy-loads a heavy
+library or fetches data before it can render). Use `useState` + `useEffect` pattern:
 
 ```typescript
-export function AsyncDataView(props: z.infer<typeof someSchema>) {
+export function AsyncComponentView(props: z.infer<typeof someSchema>) {
   const [data, setData] = React.useState<SomeType | null>(null);
 
   React.useEffect(() => {
@@ -265,12 +265,9 @@ To debug: open the browser console and look for `[openui] Parse error:` or
 
 ---
 
-## 11. Component Groups Reference
+## 11. Component Reference
 
-| Group              | Components                                                                                     |
-|---|---|
-| Layout & Data      | DataCard, ResultList, DataTable, ComparisonTable, StatusCard, ActionCard, TagGroup, FileTree, Accordion, TabsBlock, ProgressList, SelectableList, AvatarList, KbdBlock |
-| Analytics          | StatRow, BarChart, LineChart, AreaChart, PieChart, ScatterChart, RadarChart, GaugeChart       |
-| Content            | ImageBlock, ImageGallery, VideoBlock, AudioPlayer, MapBlock, CalendarMini, NumberTicker, Carousel, TreeView |
-| Timeline           | Timeline, AlertBanner, Steps                                                                   |
-| Layout (internal)  | Stack (used in :::openui code only, not LLM-visible as a standalone)                         |
+The authoritative list of registered components and their groups lives in
+`genericLibrary.tsx` (the registry) — do not duplicate it here, it drifts. The
+backend prompt copy is generated into `apps/api/app/agents/prompts/openui_prompts.py`.
+To see what exists, read `genericLibrary.tsx`.

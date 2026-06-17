@@ -135,7 +135,7 @@ async def create_todo(
     return JSONResponse(content=result)
 ```
 
-- Always set `response_model=` on the decorator; use correct status codes (`201` create, `204` delete, `404` not found).
+- Set `response_model=` when the handler returns `JSONResponse` (per step 3) so the schema is still documented. When a handler returns a Pydantic model directly, its return annotation already defines the schema — don't duplicate it with `response_model=` (SonarQube S8409). Use correct status codes (`201` create, `204` delete, `404` not found).
 - Never return raw dicts — always `JSONResponse` or a Pydantic response model.
 
 ## Service Layer

@@ -17,13 +17,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.agents.workspace.skill_loader import (
-    SKILL_BODY_FILENAME,
     BuiltinSkill,
     skills_by_subagent,
 )
 from app.agents.workspace.system_docs import (
     INTEGRATIONS_GUIDE_MD,
 )
+from app.constants.skills import EXECUTOR_SUBAGENT_ID, SKILL_BODY_FILENAME
 from app.services.storage._vfs_common import matches_text
 from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.wide_events import log
@@ -118,7 +118,7 @@ def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
 
     grouped = skills_by_subagent()
     for iid, skills in grouped.items():
-        if iid == "executor" or not skills:
+        if iid == EXECUTOR_SUBAGENT_ID or not skills:
             continue
         agent_dir = integrations_root / iid / "agent"
         skills_dir = agent_dir / "skills"
