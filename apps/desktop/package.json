@@ -19,6 +19,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@gaia/shared": "workspace:*",
     "electron-liquid-glass": "^1.1.1",
     "electron-updater": "^6.3.9",
     "v8-compile-cache": "^2.4.0",
@@ -29,7 +30,7 @@
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@types/node": "^24.3.0",
-    "electron": "39.8.10",
+    "electron": "^39.8.10",
     "electron-builder": "^25.1.8",
     "electron-vite": "^5.0.0",
     "typescript": "^5.9.3",

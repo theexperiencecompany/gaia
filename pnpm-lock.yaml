@@ -240,6 +240,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@gaia/shared':
+        specifier: workspace:*
+        version: link:../../libs/shared/ts
       electron-liquid-glass:
         specifier: ^1.1.1
         version: 1.1.1
@@ -266,7 +269,7 @@ importers:
         specifier: ^24.3.0
         version: 24.12.2
       electron:
-        specifier: 39.8.10
+        specifier: ^39.8.10
         version: 39.8.10
       electron-builder:
         specifier: ^25.1.8

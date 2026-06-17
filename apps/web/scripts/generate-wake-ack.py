@@ -10,13 +10,11 @@ Output: apps/web/public/audio/wake-ack.mp3 (served via WAKE_ACK_AUDIO_SRC in
 src/features/desktop-popup/constants.ts).
 """
 
-import json
 from pathlib import Path
 import sys
-import urllib.error
-import urllib.request
 
 from dotenv import dotenv_values
+import httpx
 from infisical_sdk import InfisicalSDKClient
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -50,19 +48,22 @@ def main() -> int:
     api_key = fetch_secret(client, env, "ELEVENLABS_API_KEY")
     voice_id = fetch_secret(client, env, "ELEVENLABS_VOICE_ID")
 
-    request = urllib.request.Request(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format={OUTPUT_FORMAT}",
-        data=json.dumps(
-            {"text": TEXT, "model_id": MODEL_ID, "voice_settings": VOICE_SETTINGS}
-        ).encode(),
-        headers={"xi-api-key": api_key, "Content-Type": "application/json"},
-    )
     try:
-        with urllib.request.urlopen(request) as response:
-            OUTPUT_PATH.write_bytes(response.read())
-    except urllib.error.HTTPError as error:
-        print(f"ElevenLabs request failed ({error.code}): {error.read().decode()[:300]}")
+        response = httpx.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+            params={"output_format": OUTPUT_FORMAT},
+            json={"text": TEXT, "model_id": MODEL_ID, "voice_settings": VOICE_SETTINGS},
+            headers={"xi-api-key": api_key},
+            timeout=60.0,
+        )
+        response.raise_for_status()
+    except httpx.HTTPStatusError as error:
+        print(
+            f"ElevenLabs request failed ({error.response.status_code}): {error.response.text[:300]}"
+        )
         return 1
+
+    OUTPUT_PATH.write_bytes(response.content)
 
     print(f"Wrote {OUTPUT_PATH} ({OUTPUT_PATH.stat().st_size} bytes)")
     return 0

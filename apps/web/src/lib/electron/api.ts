@@ -65,8 +65,8 @@ export function getElectronAPI(): ElectronAPI | null {
 }
 
 /** Header the backend reads to surface desktop-only tools. */
-export const CLIENT_TYPE_HEADER = "X-Client-Type";
-export const DESKTOP_CLIENT_TYPE = "desktop";
+const CLIENT_TYPE_HEADER = "X-Client-Type";
+const DESKTOP_CLIENT_TYPE = "desktop";
 
 /** `X-Client-Type: desktop` when running in the desktop app, else nothing. */
 export function desktopClientHeaders(): Record<string, string> {

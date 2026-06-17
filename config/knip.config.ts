@@ -289,7 +289,14 @@ const config: KnipConfig = {
 
     // ── Desktop App ──────────────────────────────────────────────────
     "apps/desktop": {
-      entry: ["electron.vite.config.ts", "src/**/*.{ts,tsx}"],
+      // adhoc-sign.cjs is the electron-builder `afterSign` hook
+      // (electron-builder.yml), invoked by the packager — not imported as a
+      // module, so knip can't trace it.
+      entry: [
+        "electron.vite.config.ts",
+        "src/**/*.{ts,tsx}",
+        "scripts/adhoc-sign.cjs",
+      ],
       ignoreDependencies: ["wait-on"],
     },
 
