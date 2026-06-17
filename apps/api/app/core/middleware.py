@@ -133,7 +133,7 @@ def get_allowed_origins() -> list[str]:
 
 
 def get_allowed_origin_regex() -> str | None:
-    """Regex of additional allowed origins (dev-only *.localhost tunnels)."""
+    """Regex of additional allowed origins (dev-only localhost on any port + *.localhost tunnels)."""
     if settings.ENV == "production":
         return None
-    return r"^https://[a-z0-9-]+\.localhost(?::\d+)?$"
+    return r"^https?://([a-z0-9-]+\.)?localhost(?::\d+)?$"
