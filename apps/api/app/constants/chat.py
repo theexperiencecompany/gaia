@@ -4,11 +4,13 @@ import re
 
 # Matches bot-emitted artifact references in three shapes — ``./artifacts/x``,
 # ``/artifacts/x``, and plain ``artifacts/x`` — so each can be rewritten to an
-# absolute backend URL. Allows a quote, paren or whitespace right before
-# (markdown image links, OpenUI string args, plain prose) but requires no
-# leading "word" character so ``myartifacts/`` is never mangled.
+# absolute backend URL. The reference must sit at the start of the string or
+# right after whitespace, a quote, or an opening paren (markdown image links,
+# OpenUI string args, plain prose). Anchoring on those delimiters — rather than
+# "any non-word char" — keeps ``myartifacts/`` AND query strings like
+# ``?file=artifacts/report.pdf`` from being mangled.
 ARTIFACT_REF_RE = re.compile(
-    r"""(?P<lead>(?<![A-Za-z0-9_/])|(?<=['"`(\s]))(?P<prefix>\.\/|\/)?artifacts\/(?P<path>[A-Za-z0-9._\-/]+)""",
+    r"""(?P<lead>^|[\s'"`(])(?P<prefix>\.\/|\/)?artifacts\/(?P<path>[A-Za-z0-9._\-/]+)""",
     re.VERBOSE,
 )
 

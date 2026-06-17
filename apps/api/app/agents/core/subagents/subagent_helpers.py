@@ -186,10 +186,12 @@ async def create_agent_context_message(
 
     # Session directory — stated so the agent never guesses a
     # `/workspace/sessions/<id>/` id when reporting or delivering artifacts (a
-    # wrong id lands files outside the session the artifact watcher scans). The
-    # executor pins `vfs_session_id` to the conversation thread and subagents
-    # inherit it (mirrors `get_session_id`, which the coding tools key on).
-    session_id = configurable.get("vfs_session_id") or configurable.get("thread_id")
+    # wrong id lands files outside the session the artifact watcher scans). Only
+    # `vfs_session_id` is trusted: the executor pins it to the conversation
+    # thread and subagents inherit it. We deliberately do NOT fall back to
+    # `thread_id` — that is the `executor_<conv>` wrapper, which would yield
+    # `/workspace/sessions/executor_<conv>/` and recreate the wrong-dir bug.
+    session_id = configurable.get("vfs_session_id")
     if session_id:
         parts.append(build_workspace_session_banner(session_id))
 

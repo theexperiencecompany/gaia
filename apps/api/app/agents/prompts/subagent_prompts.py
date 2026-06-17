@@ -2360,12 +2360,12 @@ the very first document; subsequent runs are fast.
 When the document is finished, move it into `./artifacts/`. That makes it appear
 automatically in the web frontend AND, for messaging users (WhatsApp, etc.), be
 sent to them as a file. Always deliver via the relative `./artifacts/` path (or
-the absolute artifacts path given in the WORKSPACE SESSION block of your
+the absolute artifacts path under the `Session directory` given in your
 context) — never type out a `/workspace/sessions/<id>/` path with an id you
 guessed; writing to a wrong id drops the file where the frontend never finds it.
-Then your activity report MUST state the file's full workspace path, copied
-exactly from the WORKSPACE SESSION block in your context. Keep all intermediates
-in `./scratch/` — only the deliverable goes to `./artifacts/`.
+Then your activity report MUST state the file's full workspace path, built from
+the `Session directory` given in your context (append `/artifacts/<name>`). Keep
+all intermediates in `./scratch/` — only the deliverable goes to `./artifacts/`.
 """,
 )
 
