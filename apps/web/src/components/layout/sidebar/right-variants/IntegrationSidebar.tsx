@@ -342,31 +342,70 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         </div>
         {/* Connect/Disconnect buttons */}
         {!isConnected ? (
-          // Warning colour for a retry (a previous connect didn't complete),
-          // primary blue for a first-time connect.
-          <RaisedButton
-            color={showRetry ? "#f5a524" : "#00bbff"}
-            className="font-medium text-black!"
-            onClick={handleConnect}
-            disabled={isConnecting}
-          >
-            {isConnecting ? (
-              <>
-                <Spinner size="sm" color="default" />
-                Connecting...
-              </>
-            ) : showRetry ? (
-              <>
-                <RedoIcon width={18} height={18} />
-                Retry Connection
-              </>
-            ) : (
-              <>
-                <ConnectIcon width={18} height={18} />
-                Connect
-              </>
-            )}
-          </RaisedButton>
+          showDeleteButton ? (
+            // Not-connected custom integration: Retry + Delete grouped together,
+            // like the connected-state actions.
+            <ButtonGroup variant="flat" className="w-full" fullWidth>
+              <Button
+                className="w-full"
+                color={showRetry ? "warning" : "primary"}
+                onPress={handleConnect}
+                isLoading={isConnecting}
+                isDisabled={isConnecting}
+                startContent={
+                  isConnecting ? undefined : showRetry ? (
+                    <RedoIcon width={18} height={18} />
+                  ) : (
+                    <ConnectIcon width={18} height={18} />
+                  )
+                }
+              >
+                {showRetry ? "Retry Connection" : "Connect"}
+              </Button>
+              <Button
+                className="w-full"
+                color="danger"
+                onPress={handleDelete}
+                isLoading={isDeleting}
+                isDisabled={isDeleting}
+                startContent={
+                  <RemoveCircleIcon
+                    width={18}
+                    height={18}
+                    className="outline-0!"
+                  />
+                }
+              >
+                {deleteButtonText}
+              </Button>
+            </ButtonGroup>
+          ) : (
+            // Warning colour for a retry (a previous connect didn't complete),
+            // primary blue for a first-time connect.
+            <RaisedButton
+              color={showRetry ? "#f5a524" : "#00bbff"}
+              className="font-medium text-black!"
+              onClick={handleConnect}
+              disabled={isConnecting}
+            >
+              {isConnecting ? (
+                <>
+                  <Spinner size="sm" color="default" />
+                  Connecting...
+                </>
+              ) : showRetry ? (
+                <>
+                  <RedoIcon width={18} height={18} />
+                  Retry Connection
+                </>
+              ) : (
+                <>
+                  <ConnectIcon width={18} height={18} />
+                  Connect
+                </>
+              )}
+            </RaisedButton>
+          )
         ) : (
           <ButtonGroup variant="flat" className="w-full" fullWidth>
             {onDisconnect && (
@@ -483,19 +522,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               </Tooltip>
             )}
           </ButtonGroup>
-        )}
-        {/* Delete/Remove button for non-connected custom integrations */}
-        {showDeleteButton && (
-          <Button
-            color="danger"
-            variant="light"
-            fullWidth
-            onPress={handleDelete}
-            isLoading={isDeleting}
-            isDisabled={isDeleting}
-          >
-            {deleteButtonText}
-          </Button>
         )}
         {isConnected && (
           <div className="mt-3">
