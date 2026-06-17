@@ -22,6 +22,8 @@ log.get() into the final emitted event. For worker tasks use wide_task().
 
 import contextlib
 import contextvars
+import functools
+import os
 import time
 from typing import Any, TypedDict
 import uuid
@@ -35,6 +37,32 @@ _LEVEL_ORDER: dict[str, int] = {
     "ERROR": 3,
     "CRITICAL": 4,
 }
+
+# Loki/Promtail labels every backend log line with service="gaia-backend"
+# (see infra/docker/observability/promtail-config.yaml). The in-event `service`
+# field must match that label so `{service="gaia-backend"} | json` and
+# `... | json | service="gaia-backend"` agree.
+_SERVICE_NAME = "gaia-backend"
+
+
+@functools.lru_cache(maxsize=1)
+def env_context() -> dict[str, str]:
+    """Environment characteristics stamped onto every emitted wide event.
+
+    Single source of truth for the HTTP middleware and every background
+    ``log_context`` / ``wide_task`` boundary, so a wide event emitted outside
+    an HTTP request carries the same ``env`` / ``service`` / ``commit`` fields
+    as one emitted inside it. Resolved once and cached.
+
+    ``commit`` reads GIT_COMMIT_SHA (or COMMIT_SHA), set in the Docker image /
+    CI, and falls back to "local" during development.
+    """
+    return {
+        "env": os.getenv("ENV", "production"),
+        "service": _SERVICE_NAME,
+        "commit": os.getenv("GIT_COMMIT_SHA", os.getenv("COMMIT_SHA", "local"))[:8],
+    }
+
 
 _wide_event: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
     "wide_event", default=None
@@ -430,23 +458,30 @@ log = WideEventLogger()
 
 
 @contextlib.asynccontextmanager
-async def wide_task(task_name: str, *, trace_id: str | None = None, **initial_context: Any):
-    """
-    Context manager for wide event logging in ARQ worker tasks.
+async def _wide_event_boundary(
+    task_name: str,
+    *,
+    event_name: str,
+    logger_name: str,
+    trace_id: str | None = None,
+    **initial_context: Any,
+):
+    """Bind a fresh wide event for non-request work and flush one canonical line.
 
-    Worker tasks are not HTTP requests so there is no middleware to call
-    reset()/get(). Use this context manager to wrap each task function.
+    Shared core for ``wide_task`` and ``log_context``. Mirrors the HTTP
+    middleware: it resets the ContextVar accumulator, stamps env/service/commit
+    and the initial context, then on exit (success or exception) emits exactly
+    one structured JSON event so every ``log.set()`` field reaches Loki.
 
-    Usage:
-        async def process_reminder(ctx: dict, reminder_id: str) -> str:
-            async with wide_task("process_reminder", reminder_id=reminder_id):
-                log.set(job_id=ctx.get("job_id"))
-                await reminder_scheduler.process_task_execution(reminder_id)
+    ``event_name`` is the log message dashboards filter on; ``logger_name`` is
+    the ``logger`` field. Keeping these explicit lets worker rollups stay on
+    ``message = "worker_task"`` while ad-hoc background work uses its own name.
     """
     log.reset()
     if trace_id:
         log.set(trace_id=trace_id)
         _trace_id.set(trace_id)
+    log.set(**env_context())
     log.set(task=task_name, **initial_context)
     start = time.monotonic()
     try:
@@ -466,7 +501,54 @@ async def wide_task(task_name: str, *, trace_id: str | None = None, **initial_co
         level = log.get_max_level()
         log.set(final_level=level)
         event = log.get()
-        _loguru.bind(logger_name="WORKER", **event).log(level, "worker_task")
+        _loguru.bind(logger_name=logger_name, **event).log(level, event_name)
+
+
+def wide_task(task_name: str, *, trace_id: str | None = None, **initial_context: Any):
+    """
+    Context manager for wide event logging in ARQ worker tasks.
+
+    Worker tasks are not HTTP requests so there is no middleware to call
+    reset()/get(). Use this context manager to wrap each task function.
+
+    Usage:
+        async def process_reminder(ctx: dict, reminder_id: str) -> str:
+            async with wide_task("process_reminder", reminder_id=reminder_id):
+                log.set(job_id=ctx.get("job_id"))
+                await reminder_scheduler.process_task_execution(reminder_id)
+    """
+    return _wide_event_boundary(
+        task_name,
+        event_name="worker_task",
+        logger_name="WORKER",
+        trace_id=trace_id,
+        **initial_context,
+    )
+
+
+def log_context(operation: str, *, trace_id: str | None = None, **initial_context: Any):
+    """
+    Context manager that establishes a wide event boundary for background work.
+
+    Code that runs outside an HTTP request — fire-and-forget asyncio tasks,
+    post-OAuth background connects, callbacks — has no logging middleware to
+    bind/flush the wide event accumulator, so every ``log.set()`` field is
+    silently discarded. Wrap that work in ``log_context`` and the accumulated
+    fields are emitted as one canonical ``background_task`` JSON line on exit
+    (success or exception), exactly like the HTTP middleware does per request.
+
+    Usage:
+        async def _bg_connect_after_oauth() -> None:
+            async with log_context("mcp_background_connect", integration_id=iid):
+                await self.connect(iid)  # its log.set(mcp_connect=...) now emits
+    """
+    return _wide_event_boundary(
+        operation,
+        event_name="background_task",
+        logger_name="BG",
+        trace_id=trace_id,
+        **initial_context,
+    )
 
 
 def get_trace_id() -> str:
@@ -477,6 +559,8 @@ def get_trace_id() -> str:
 __all__ = [
     "log",
     "wide_task",
+    "log_context",
+    "env_context",
     "WideEventLogger",
     "WideEventFields",
     "UserContext",
