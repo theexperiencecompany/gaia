@@ -62,7 +62,8 @@ def target_to_subagent(agent_name: str) -> str:
         return EXECUTOR_SUBAGENT_ID
     resolved = resolve_subagent_id(agent_name)
     if resolved is None:
-        log.warning(f"skill_loader: skill target {agent_name!r} matches no subagent agent_name")
+        log.set(skill_target=agent_name, component="skill_loader")
+        log.warning("skill target matches no subagent agent_name")
         return agent_name
     return resolved
 

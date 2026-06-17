@@ -10,7 +10,7 @@ This module provides functionality to:
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.agents.core.subagents.registry import get_subagent_by_id
+from app.agents.core.subagents.registry import get_subagent_by_id, resolve_subagent_id
 from app.config.oauth_config import get_toolkit_to_integration_map
 from app.utils.agent_utils import parse_subagent_id
 from shared.py.wide_events import log
@@ -154,7 +154,11 @@ class WorkflowContextExtractor:
                 if tool_name == "handoff":
                     clean_id, _ = parse_subagent_id(tool_args.get("subagent_id", ""))
                     sa = get_subagent_by_id(clean_id)
-                    current_agent = sa.id if sa else clean_id
+                    # `get_subagent_by_id` resolves id/short_name only; if the
+                    # handoff arg carried an `agent_name` ("docgen_agent"), fall back
+                    # to the registry's agent_name -> id map so steps are attributed
+                    # to the canonical subagent id rather than a raw name.
+                    current_agent = sa.id if sa else (resolve_subagent_id(clean_id) or clean_id)
                     if current_agent:
                         integrations.add(current_agent)
                     continue
