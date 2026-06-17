@@ -9,9 +9,11 @@ A charge consumes Pool 1 first and overflows into Pool 2. Per-turn totals are
 recorded so an errored turn can be refunded (a cancelled turn is not).
 """
 
+from datetime import UTC, datetime
 import math
 
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
+from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.constants.credits import ACTION_CREDIT_COSTS, CREDIT_VALUE_USD
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
@@ -19,6 +21,8 @@ from app.services.credits import credit_wallet_service
 from shared.py.wide_events import log
 
 _TURN_TTL_SECONDS = 2 * 60 * 60
+# Token-metered LLM work is bucketed under one feature in the spend breakdown.
+CHAT_SPEND_FEATURE = "chat"
 
 
 def usd_to_credits(cost_usd: float) -> int:
@@ -28,6 +32,29 @@ def usd_to_credits(cost_usd: float) -> int:
 
 def _turn_key(thread_id: str, pool: str) -> str:
     return f"credits_turn:{pool}:{thread_id}"
+
+
+def _spend_key(user_id: str, period: RateLimitPeriod) -> str:
+    return f"credit_spend:{user_id}:{period.value}:{get_time_window_key(period)}"
+
+
+async def _record_spend(user_id: str, feature: str, amount: int) -> None:
+    """Accumulate credits spent per feature (for the usage breakdown), per period."""
+    if not (redis_cache.redis and feature and amount > 0):
+        return
+    for period in (RateLimitPeriod.DAY, RateLimitPeriod.MONTH):
+        key = _spend_key(user_id, period)
+        await redis_cache.redis.hincrby(key, feature, amount)
+        ttl = int((get_reset_time(period) - datetime.now(UTC)).total_seconds())
+        await redis_cache.redis.expire(key, max(ttl, 60))
+
+
+async def get_spend_breakdown(user_id: str, period: RateLimitPeriod) -> dict[str, int]:
+    """Credits spent per feature this period, e.g. {'chat': 3200, 'web_search': 800}."""
+    if not redis_cache.redis:
+        return {}
+    data = await redis_cache.redis.hgetall(_spend_key(user_id, period))
+    return {k: int(v) for k, v in data.items()}
 
 
 async def get_balance(user_id: str, plan: PlanType) -> dict[str, int]:
@@ -51,6 +78,7 @@ async def charge(
     *,
     reason: str,
     thread_id: str | None = None,
+    feature: str = CHAT_SPEND_FEATURE,
 ) -> tuple[int, int]:
     """Charge ``amount`` credits: plan allotment first, top-up wallet for overflow.
 
@@ -71,6 +99,7 @@ async def charge(
                 key = _turn_key(thread_id, pool)
                 await redis_cache.redis.incrby(key, value)
                 await redis_cache.redis.expire(key, _TURN_TTL_SECONDS)
+    await _record_spend(user_id, feature, from_allotment + from_topup)
     return (from_allotment, from_topup)
 
 
@@ -91,7 +120,7 @@ async def charge_action(config: dict, action: str) -> None:
     plan = PlanType(configurable.get("plan_type") or PlanType.FREE.value)
     thread_id = str(configurable.get("thread_id") or configurable.get("stream_id") or "unknown")
     from_allotment, from_topup = await charge(
-        str(user_id), plan, amount, reason=f"action:{action}", thread_id=thread_id
+        str(user_id), plan, amount, reason=f"action:{action}", thread_id=thread_id, feature=action
     )
     log.info(
         "credits_charged",

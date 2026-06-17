@@ -31,6 +31,14 @@ from shared.py.wide_events import log
 router = APIRouter(prefix="/usage", tags=["usage"])
 usage_service = UsageService()
 
+# Friendly titles for the credits-by-feature breakdown.
+_SPEND_TITLES = {
+    "chat": "Chat",
+    "web_search": "Web search",
+    "image_generation": "Image generation",
+    "deep_research": "Deep research",
+}
+
 
 @router.get("/summary")
 async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str, Any]:
@@ -81,11 +89,25 @@ async def get_credit_balance(user: dict = Depends(get_current_user)) -> dict[str
             tiered_limiter._get_redis_key(user_id, CREDITS_FEATURE_KEY, period)
         )
         used = int(raw) if raw else 0
+        spend = await credit_service.get_spend_breakdown(user_id, period)
+        breakdown = sorted(
+            (
+                {
+                    "key": key,
+                    "title": _SPEND_TITLES.get(key, key.replace("_", " ").title()),
+                    "credits": credits,
+                }
+                for key, credits in spend.items()
+            ),
+            key=lambda row: row["credits"],
+            reverse=True,
+        )
         periods[period.value] = {
             "used": used,
             "limit": limit,
             "remaining": max(0, limit - used),
             "reset_time": get_reset_time(period).isoformat(),
+            "breakdown": breakdown,
         }
 
     return {

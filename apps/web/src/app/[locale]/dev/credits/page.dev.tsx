@@ -21,12 +21,23 @@ const balance: CreditBalance = {
       limit: 15_000,
       remaining: 12_900,
       reset_time: inDays(1),
+      breakdown: [
+        { key: "chat", title: "Chat", credits: 1_400 },
+        { key: "web_search", title: "Web search", credits: 500 },
+        { key: "image_generation", title: "Image generation", credits: 200 },
+      ],
     },
     month: {
       used: 41_580,
       limit: 200_000,
       remaining: 158_420,
       reset_time: inDays(12),
+      breakdown: [
+        { key: "chat", title: "Chat", credits: 28_400 },
+        { key: "deep_research", title: "Deep research", credits: 8_000 },
+        { key: "web_search", title: "Web search", credits: 3_180 },
+        { key: "image_generation", title: "Image generation", credits: 2_000 },
+      ],
     },
   },
   topup_grants: [{ remaining: 42_300, expires_at: inDays(330) }],

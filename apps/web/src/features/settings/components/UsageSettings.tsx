@@ -12,29 +12,18 @@ import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 
-import { useUsageSummary } from "../hooks/useUsage";
+import { useCreditBalance } from "../hooks/useUsage";
 import { CreditBalanceHero } from "./CreditBalanceHero";
 import { UsageCatalogModal } from "./UsageCatalogModal";
 
 export default function UsageSettings() {
-  const [selectedPeriod, setSelectedPeriod] = useState("day");
+  const [selectedPeriod, setSelectedPeriod] = useState<"day" | "month">("day");
   const [catalogOpen, setCatalogOpen] = useState(false);
   const openPricingModal = usePricingModalStore((s) => s.openModal);
-  const { data: summary, isLoading: summaryLoading } = useUsageSummary();
-  const periodLabel =
-    selectedPeriod === "day"
-      ? "daily"
-      : selectedPeriod === "month"
-        ? "monthly"
-        : `${selectedPeriod}ly`;
+  const { data: balance, isLoading } = useCreditBalance();
+  const periodLabel = selectedPeriod === "day" ? "today" : "this month";
 
-  const getProgressColor = (percentage: number) => {
-    if (percentage >= 90) return "danger";
-    if (percentage >= 70) return "warning";
-    return "success";
-  };
-
-  if (summaryLoading) {
+  if (isLoading) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
         <Spinner />
@@ -42,17 +31,10 @@ export default function UsageSettings() {
     );
   }
 
-  // Get features for the selected period. The unified "credits" pool is shown
-  // in the balance hero, so exclude it from the per-feature list.
-  const featuresWithPeriod = summary
-    ? Object.entries(summary.features).filter(
-        ([key, feature]) =>
-          key !== "credits" &&
-          feature.periods[selectedPeriod as keyof typeof feature.periods],
-      )
-    : [];
-
-  const isPaid = summary?.plan_type === "pro" || summary?.plan_type === "max";
+  // Credits spent per feature this period (the unified balance is in the hero).
+  const breakdown = balance?.periods[selectedPeriod]?.breakdown ?? [];
+  const maxCredits = Math.max(1, ...breakdown.map((row) => row.credits));
+  const isPaid = balance?.plan_type === "pro" || balance?.plan_type === "max";
 
   return (
     <SettingsPage>
@@ -88,11 +70,11 @@ export default function UsageSettings() {
           color={isPaid ? "primary" : "default"}
           className="font-medium capitalize"
         >
-          {summary?.plan_type || "free"} plan
+          {balance?.plan_type || "free"} plan
         </Chip>
         <Tabs
           selectedKey={selectedPeriod}
-          onSelectionChange={(key) => setSelectedPeriod(key as string)}
+          onSelectionChange={(key) => setSelectedPeriod(key as "day" | "month")}
           size="sm"
         >
           <Tab key="day" title="Daily" />
@@ -100,48 +82,35 @@ export default function UsageSettings() {
         </Tabs>
       </div>
 
-      <SettingsSection title="Usage">
-        {featuresWithPeriod.length === 0 ? (
+      <SettingsSection title="Where your credits went">
+        {breakdown.length === 0 ? (
           <div className="flex flex-col items-center px-4 py-8 text-center">
             <ChartIcon className="mx-auto h-10 w-10 text-zinc-600" />
             <h3 className="mt-3 text-base font-medium text-white">
-              No limits configured
+              No usage {periodLabel}
             </h3>
             <p className="mt-1 text-sm text-zinc-500">
-              No {periodLabel} limits are configured for your{" "}
-              {summary?.plan_type?.toUpperCase()} plan.
+              Once you use GAIA, you'll see which features spent your credits.
             </p>
           </div>
         ) : (
-          featuresWithPeriod.map(([key, feature]) => {
-            const periodData =
-              feature.periods[selectedPeriod as keyof typeof feature.periods];
-            if (!periodData) return null;
-
-            return (
-              <SettingsRow
-                key={key}
-                label={feature.title}
-                description={feature.description}
-                stacked
-              >
-                <div className="flex items-center gap-3">
-                  <Progress
-                    value={periodData.percentage}
-                    color={getProgressColor(periodData.percentage)}
-                    className="flex-1"
-                  />
-                  <span
-                    className="shrink-0 text-xs text-zinc-500"
-                    suppressHydrationWarning
-                  >
-                    {periodData.used.toLocaleString()} /{" "}
-                    {periodData.limit.toLocaleString()}
-                  </span>
-                </div>
-              </SettingsRow>
-            );
-          })
+          breakdown.map((row) => (
+            <SettingsRow key={row.key} label={row.title} stacked>
+              <div className="flex items-center gap-3">
+                <Progress
+                  value={(row.credits / maxCredits) * 100}
+                  color="primary"
+                  className="flex-1"
+                />
+                <span
+                  className="shrink-0 text-xs text-zinc-500"
+                  suppressHydrationWarning
+                >
+                  {row.credits.toLocaleString()} credits
+                </span>
+              </div>
+            </SettingsRow>
+          ))
         )}
       </SettingsSection>
 

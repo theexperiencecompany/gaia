@@ -15,11 +15,18 @@ export interface UsageHistoryEntry {
   features: Record<string, Pick<FeatureUsage, "title" | "periods">>;
 }
 
+export interface CreditSpend {
+  key: string;
+  title: string;
+  credits: number;
+}
+
 export interface CreditPeriod {
   used: number;
   limit: number;
   remaining: number;
   reset_time: string;
+  breakdown: CreditSpend[];
 }
 
 export interface CreditGrant {
