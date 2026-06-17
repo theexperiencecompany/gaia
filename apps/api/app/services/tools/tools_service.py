@@ -243,7 +243,6 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
     if not user_id:
         return []
 
-    mcp_store = get_mcp_tools_store()
     tool_infos: list[ToolInfo] = []
     seen_tool_names: set[str] = set()
 
@@ -266,6 +265,9 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
                     "integration_id": 1,
                     "name": "$integration.name",
                     "icon_url": "$integration.icon_url",
+                    # The $lookup already has the tools — carry them through so we
+                    # don't re-query Mongo once per integration.
+                    "tools": "$integration.tools",
                 }
             },
         ]
@@ -277,7 +279,7 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
             icon_url = mcp_integration.get("icon_url")
             display_name = mcp_integration.get("name")
 
-            integration_tools = await mcp_store.get_tools(integration_id)
+            integration_tools = mcp_integration.get("tools")
             if not integration_tools:
                 continue
 
