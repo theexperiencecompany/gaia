@@ -39,7 +39,7 @@ export default function WorkflowShowcaseSection() {
             sidebarTitle="Workflows"
             contentSections={CONTENT_SECTIONS}
           />
-          <div className="flex justify-end">
+          <div className="flex justify-center sm:justify-end">
             <Link href="/use-cases">
               <RaisedButton className="rounded-xl text-black!" color="#00bbff">
                 View Community Workflows

@@ -235,7 +235,7 @@ export default function WorkflowDemoAnimation() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3, ease: wfEase }}
                 style={{ backgroundColor: "#111111" }}
-                className="mx-auto flex h-[calc(75%)] w-full max-w-xl flex-col rounded-3xl my-4 scale-120"
+                className="mx-auto flex h-[calc(75%)] w-full max-w-xl flex-col rounded-3xl my-4 sm:scale-110 lg:scale-120"
               >
                 {/* Scrollable messages area */}
                 <div className="flex flex-1 flex-col items-end justify-end gap-4 overflow-y-auto p-5">

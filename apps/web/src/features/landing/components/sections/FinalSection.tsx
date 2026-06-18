@@ -151,7 +151,7 @@ export default function FinalSection({
   }, []);
 
   return (
-    <div className="relative m-0! flex min-h-svh w-full flex-col items-center justify-center gap-4 overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
+    <div className="relative m-0! flex min-h-svh w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 py-6 sm:px-6 sm:py-8">
       {shouldPreloadOthers && (
         <div
           aria-hidden="true"
@@ -182,7 +182,7 @@ export default function FinalSection({
       {previousTime && (
         <div
           key={`prev-${previousTime}`}
-          className="absolute bottom-0 left-0 right-0 z-0"
+          className="absolute inset-0 z-0"
         >
           <ProgressiveImage
             webpSrc={SWISS_KID_WALLPAPERS[previousTime].webp}
@@ -197,7 +197,7 @@ export default function FinalSection({
 
       <m.div
         key={timeOfDay}
-        className="absolute bottom-0 left-0 right-0 z-0"
+        className="absolute inset-0 z-0"
         initial={previousTime ? { clipPath: "circle(0% at 100% 50%)" } : false}
         animate={{ clipPath: "circle(150% at 100% 50%)" }}
         transition={{ duration: 0.5, ease: [0.65, 0, 0.35, 1] }}
@@ -223,7 +223,7 @@ export default function FinalSection({
           <TextSoftBlurIn
             text="Stop doing everything yourself."
             as="h2"
-            className="z-10 max-w-[12ch] text-balance px-2 text-center text-[clamp(1.75rem,8.3vw,5rem)] leading-[1.05] font-serif font-normal tracking-tight text-white sm:text-5xl sm:leading-[1.08] md:text-8xl max-[760px]:text-[clamp(1.7rem,8vw,2.8rem)]"
+            className="z-10 px-2 text-center text-[clamp(2.8rem,8.3vw,5rem)] leading-[1.05] font-serif font-normal tracking-tight text-white md:text-6xl"
             gradient={
               isDark || timeOfDay === "morning"
                 ? "linear-gradient(to bottom, #ffffff, #dbdbdb)"
@@ -240,14 +240,14 @@ export default function FinalSection({
             btnColor={isDark ? "#00bbff" : "#000000"}
             classname={
               isDark
-                ? "w-full sm:w-auto text-black! text-sm sm:text-lg h-9 sm:h-12 px-4 rounded-2xl hover:scale-105"
-                : "w-full sm:w-auto text-white! text-sm sm:text-lg h-9 sm:h-12 px-4 rounded-2xl hover:scale-105"
+                ? "w-full sm:w-auto text-black! text-sm sm:text-lg h-9 sm:h-12 px-4 rounded-xl hover:scale-105"
+                : "w-full sm:w-auto text-white! text-sm sm:text-lg h-9 sm:h-12 px-4 rounded-xl hover:scale-105"
             }
             text="Try GAIA Free"
           />
           <GetStartedButton
             btnColor="#ffffff"
-            classname="w-full sm:w-auto text-sm sm:text-lg h-9 sm:h-12 px-4 rounded-2xl hover:scale-105"
+            classname="w-full sm:w-auto text-sm sm:text-lg h-9 sm:h-12 px-4 rounded-xl hover:scale-105"
             text="Explore"
             href="/use-cases"
           />

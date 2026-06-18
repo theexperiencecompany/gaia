@@ -59,7 +59,7 @@ function DownloadSectionLayout({
   };
 
   return (
-    <section className="relative z-10 w-full max-w-5xl py-16">
+    <section className="relative z-10 w-full max-w-5xl px-4 sm:px-6 py-16">
       <div className="grid grid-cols-1 items-center gap-8 md:grid-cols-2">
         {/* Image */}
         <div

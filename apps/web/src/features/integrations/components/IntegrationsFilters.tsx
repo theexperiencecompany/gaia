@@ -123,7 +123,7 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
 
   return (
     <div className="mb-8 space-y-4">
-      <div className="flex items-center gap-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
         <div className="flex-1 min-w-0 overflow-x-auto">
           <Tabs
             selectedKey={category}
@@ -136,7 +136,7 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
           </Tabs>
         </div>
 
-        <div className="flex shrink-0 justify-center">
+        <div className="flex shrink-0 items-center gap-3">
           <Select
             selectedKeys={[sort]}
             onSelectionChange={(keys) => {
@@ -150,16 +150,16 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
               <SelectItem key={option.key}>{option.label}</SelectItem>
             ))}
           </Select>
-        </div>
 
-        <Input
-          className="shrink-0 w-72 min-w-64"
-          type="search"
-          placeholder="Search integrations..."
-          value={search}
-          onValueChange={handleSearchChange}
-          startContent={<SearchIcon className="text-zinc-400" />}
-        />
+          <Input
+            className="flex-1 sm:w-72 sm:flex-none min-w-0"
+            type="search"
+            placeholder="Search integrations..."
+            value={search}
+            onValueChange={handleSearchChange}
+            startContent={<SearchIcon className="text-zinc-400" />}
+          />
+        </div>
       </div>
     </div>
   );

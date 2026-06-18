@@ -117,8 +117,8 @@ export default function OpenSource() {
         </div>
 
         {/* Contributors Section */}
-        <div className="flex flex-col items-center gap-3 pt-4 sm:gap-4 sm:pt-6">
-          <h3 className="text-center text-base font-medium text-zinc-300 sm:text-lg">
+        <div className="flex w-full flex-col items-center gap-3 pt-4 sm:gap-4 sm:pt-6">
+          <h3 className="w-full text-center text-base font-medium text-zinc-300 sm:text-lg">
             Built by engineers who use it every day
           </h3>
           {isLoading ? (

@@ -15,7 +15,10 @@ const Agentation =
       )
     : null;
 
+const AGENTATION_ENDPOINT =
+  process.env.NEXT_PUBLIC_AGENTATION_ENDPOINT ?? "http://localhost:4747";
+
 export function AgentationProvider() {
   if (!Agentation) return null;
-  return <Agentation />;
+  return <Agentation endpoint={AGENTATION_ENDPOINT} />;
 }
