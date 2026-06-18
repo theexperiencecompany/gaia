@@ -22,6 +22,8 @@ from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
     OPENROUTER_BASE_URL,
+    OPENROUTER_DEFAULT_EXTRA_BODY,
+    OPENROUTER_MAX_OUTPUT_TOKENS,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
@@ -121,20 +123,29 @@ def init_openrouter_llm():
         temperature=0.1,
         streaming=True,
         stream_usage=True,
-        max_tokens=512000,  # Full output ceiling of MiniMax M3 (the Pro-tier OpenRouter model)
+        # Output cap; must stay well under the model's shared input+output context
+        # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
+        max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
         api_key=settings.OPENROUTER_API_KEY,
         base_url=OPENROUTER_BASE_URL,
         default_headers={
+            # App attribution → OpenRouter rankings/analytics. HTTP-Referer is
+            # required; title + categories are optional.
+            # https://openrouter.ai/docs/app-attribution
             "HTTP-Referer": settings.FRONTEND_URL,
-            "X-Title": "GAIA",
+            "X-OpenRouter-Title": "GAIA",
+            "X-OpenRouter-Categories": "personal-agent,general-chat",
         },
-        extra_body={
-            "reasoning": {
-                "effort": "medium",  # Enable reasoning for thinking models (Grok, Claude 3.7+, DeepSeek R1)
-            }
-        },
+        # Reasoning on by default; provider auto-routed. Overridden per request via
+        # the configurable `extra_body` (e.g. plan routing pins the MiniMax provider).
+        extra_body=OPENROUTER_DEFAULT_EXTRA_BODY,
     ).configurable_fields(
         model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
+        extra_body=ConfigurableField(
+            id="extra_body",
+            name="Extra body",
+            description="OpenRouter request extras (reasoning + provider routing)",
+        ),
     )
 
 

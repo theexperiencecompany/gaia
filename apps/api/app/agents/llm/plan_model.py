@@ -5,6 +5,7 @@ by subscription plan. Set on the comms configurable; executor/subagents inherit 
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL_NAME,
+    PAID_MODEL_EXTRA_BODY,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
 )
@@ -38,5 +39,8 @@ async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
         _pin_model(configurable, DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME)
     else:
         _pin_model(configurable, PAID_MODEL_PROVIDER, PAID_MODEL_NAME)
+        # Force the first-party MiniMax provider on OpenRouter so paid turns never
+        # land on a throttled reseller (e.g. Parasail) from the shared pool.
+        configurable["extra_body"] = PAID_MODEL_EXTRA_BODY
 
     log.set(plan_model={"plan": plan.value, "model": configurable["model"]})
