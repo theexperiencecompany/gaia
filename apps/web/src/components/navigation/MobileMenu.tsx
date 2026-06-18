@@ -13,14 +13,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  auth,
-  company,
-  connect,
-  main,
-  product,
-  resources,
-} from "@/config/appConfig";
+import { auth, company, connect, product, resources } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 
 export default function MobileMenu() {
@@ -41,32 +34,7 @@ export default function MobileMenu() {
           <SheetTitle>
             <VisuallyHidden.Root>Menu</VisuallyHidden.Root>
           </SheetTitle>
-          <SheetDescription className="flex flex-col gap-1 pb-20! pt-3 px-6">
-            {/* Main navigation links */}
-            {main.map((link) =>
-              link.external ? (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
-                  onClick={() => setSheetOpen(false)}
-                >
-                  {link.label}
-                </a>
-              ) : (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="py-1.5 text-zinc-200 transition-colors hover:text-white"
-                  onClick={() => setSheetOpen(false)}
-                >
-                  {link.label}
-                </Link>
-              ),
-            )}
-
+          <SheetDescription className="flex flex-col gap-1 pb-20! pt-8 px-6">
             {/* Product Section */}
             <div className="mt-6 flex flex-col gap-0.5">
               <p className="mb-2 text-xs tracking-wide text-zinc-500 uppercase">
@@ -106,6 +74,36 @@ export default function MobileMenu() {
                   </Link>
                 );
               })}
+            </div>
+
+            {/* General — top-level nav links mirroring desktop navbar */}
+            <div className="mt-6 flex flex-col gap-0.5">
+              <p className="mb-2 text-xs tracking-wide text-zinc-500 uppercase">
+                General
+              </p>
+              <Link
+                href="/pricing"
+                className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                onClick={() => setSheetOpen(false)}
+              >
+                Pricing
+              </Link>
+              <Link
+                href="/about"
+                className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                onClick={() => setSheetOpen(false)}
+              >
+                About
+              </Link>
+              <a
+                href="https://docs.heygaia.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                onClick={() => setSheetOpen(false)}
+              >
+                Docs
+              </a>
             </div>
 
             {/* Resources Section */}
