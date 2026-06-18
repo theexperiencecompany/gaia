@@ -187,65 +187,86 @@ async def classify(client: httpx.AsyncClient, url: str) -> tuple[str, str]:
     return "broken", f"{code} {ct.split(';')[0] or 'no-ct'}"
 
 
+def _build_update(
+    repl: Replacement, requires_auth: bool, auth_type: str | None
+) -> dict[str, object]:
+    """Build the $set document for a replacement, including any metadata refresh."""
+    update: dict[str, object] = {
+        SERVER_URL_FIELD: repl.url,
+        "mcp_config.requires_auth": requires_auth,
+        "mcp_config.auth_type": auth_type,
+    }
+    if repl.name:
+        update["name"] = repl.name
+    if repl.description:
+        update["description"] = repl.description
+    if repl.icon_url:
+        update["icon_url"] = repl.icon_url
+    return update
+
+
+async def _apply_replacement(
+    client: httpx.AsyncClient, old_url: str, repl: Replacement, apply: bool
+) -> tuple[int, int]:
+    """Repoint one broken URL after verifying the target is reachable. Returns (updated, skipped)."""
+    docs = await integrations_collection.find(
+        {SERVER_URL_FIELD: old_url}, {"name": 1, "_id": 0}
+    ).to_list(None)
+    if not docs:
+        return 0, 0
+    names = ", ".join(d["name"] for d in docs)
+    verdict, note = await classify(client, repl.url)
+    print(f"• {names}\n    {old_url}\n    -> {repl.url}\n    verdict: {verdict} ({note})")
+
+    if verdict not in _AUTH_FIELDS:
+        print("    -> SKIP: replacement not reachable; leaving record untouched.\n")
+        return 0, len(docs)
+
+    requires_auth, auth_type = _AUTH_FIELDS[verdict]
+    update = _build_update(repl, requires_auth, auth_type)
+    extras = [k for k in ("name", "description", "icon_url") if k in update]
+    if extras:
+        print(f"    also updating: {', '.join(extras)}")
+
+    if apply:
+        await integrations_collection.update_many({SERVER_URL_FIELD: old_url}, {"$set": update})
+        print("    -> UPDATED\n")
+    else:
+        print("    -> would update (dry-run)\n")
+    return len(docs), 0
+
+
+async def _apply_removal(old_url: str, apply: bool) -> int:
+    """Unpublish the public integrations at a dead URL. Returns the count."""
+    docs = await integrations_collection.find(
+        {SERVER_URL_FIELD: old_url, "is_public": True}, {"name": 1, "_id": 0}
+    ).to_list(None)
+    if not docs:
+        return 0
+    names = ", ".join(d["name"] for d in docs)
+    print(f"• {names}  (dead upstream)\n    {old_url}")
+    if apply:
+        await integrations_collection.update_many(
+            {SERVER_URL_FIELD: old_url}, {"$set": {"is_public": False}}
+        )
+        print("    -> UNPUBLISHED\n")
+    else:
+        print("    -> would unpublish (dry-run)\n")
+    return len(docs)
+
+
 async def phase_url_fixes(client: httpx.AsyncClient, apply: bool) -> tuple[int, int, int]:
     """Apply curated URL replacements and removals. Returns (updated, skipped, removed)."""
     print("== Phase 1: URL fixes ==")
     updated = skipped = removed = 0
 
     for old_url, repl in REPLACEMENTS.items():
-        docs = await integrations_collection.find(
-            {SERVER_URL_FIELD: old_url}, {"name": 1, "_id": 0}
-        ).to_list(None)
-        if not docs:
-            continue
-        names = ", ".join(d["name"] for d in docs)
-        verdict, note = await classify(client, repl.url)
-        print(f"• {names}\n    {old_url}\n    -> {repl.url}\n    verdict: {verdict} ({note})")
-
-        if verdict not in _AUTH_FIELDS:
-            print("    -> SKIP: replacement not reachable; leaving record untouched.\n")
-            skipped += len(docs)
-            continue
-
-        requires_auth, auth_type = _AUTH_FIELDS[verdict]
-        update: dict[str, object] = {
-            SERVER_URL_FIELD: repl.url,
-            "mcp_config.requires_auth": requires_auth,
-            "mcp_config.auth_type": auth_type,
-        }
-        if repl.name:
-            update["name"] = repl.name
-        if repl.description:
-            update["description"] = repl.description
-        if repl.icon_url:
-            update["icon_url"] = repl.icon_url
-        extras = [k for k in ("name", "description", "icon_url") if k in update]
-        if extras:
-            print(f"    also updating: {', '.join(extras)}")
-
-        if apply:
-            await integrations_collection.update_many({SERVER_URL_FIELD: old_url}, {"$set": update})
-            print("    -> UPDATED\n")
-        else:
-            print("    -> would update (dry-run)\n")
-        updated += len(docs)
+        u, s = await _apply_replacement(client, old_url, repl, apply)
+        updated += u
+        skipped += s
 
     for old_url in URL_REMOVALS:
-        docs = await integrations_collection.find(
-            {SERVER_URL_FIELD: old_url, "is_public": True}, {"name": 1, "_id": 0}
-        ).to_list(None)
-        if not docs:
-            continue
-        names = ", ".join(d["name"] for d in docs)
-        print(f"• {names}  (dead upstream)\n    {old_url}")
-        if apply:
-            await integrations_collection.update_many(
-                {SERVER_URL_FIELD: old_url}, {"$set": {"is_public": False}}
-            )
-            print("    -> UNPUBLISHED\n")
-        else:
-            print("    -> would unpublish (dry-run)\n")
-        removed += len(docs)
+        removed += await _apply_removal(old_url, apply)
 
     return updated, skipped, removed
 

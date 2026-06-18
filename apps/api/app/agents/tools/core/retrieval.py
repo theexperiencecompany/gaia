@@ -184,6 +184,31 @@ class RetrieveToolsResult(TypedDict):
     response: list[str]
 
 
+async def _resolve_connected_subagents(user_id: str) -> dict[str, str | None]:
+    """Map connected integration id -> display name. Platform/internal names come
+    from the in-memory registry; custom MCP names from the cached user-integration
+    list (one read), avoiding an uncached per-MCP lookup on this hot path."""
+    status = await get_all_integrations_status(user_id)
+    connected: dict[str, str | None] = {}
+    custom_connected_ids: list[str] = []
+    for integration_id, is_connected in status.items():
+        if not is_connected:
+            continue
+        platform = get_subagent_by_id(integration_id)
+        if platform:
+            connected[platform.id] = platform.name
+        else:
+            custom_connected_ids.append(integration_id)
+
+    if custom_connected_ids:
+        user_ints = await get_user_integrations(user_id)
+        names = {r.integration_id: r.integration.name for r in user_ints.integrations}
+        for cid in custom_connected_ids:
+            connected[cid] = names.get(cid)
+
+    return connected
+
+
 async def _get_user_context(
     user_id: str | None,
     tool_space: str,
@@ -226,30 +251,7 @@ async def _get_user_context(
         user_namespaces |= set(await get_user_available_tool_namespaces(user_id))
 
         if include_subagents:
-            # Inject the user's connected subagents keyed by canonical integration
-            # id + display name, so each renders as `subagent:<id> (<name>)` and
-            # dedupes against search hits (never as a URL-derived namespace).
-            # Platform/internal names come free from the in-memory registry; custom
-            # MCP names come from the already-cached user-integration list — one
-            # cache read, invalidated alongside the rest of the user's integration
-            # caches, instead of an uncached per-MCP lookup on this hot path.
-            status = await get_all_integrations_status(user_id)
-            custom_connected_ids: list[str] = []
-            for integration_id, is_connected in status.items():
-                if not is_connected:
-                    continue
-                platform = get_subagent_by_id(integration_id)
-                if platform:
-                    connected_integrations[platform.id] = platform.name
-                else:
-                    custom_connected_ids.append(integration_id)
-
-            if custom_connected_ids:
-                user_ints = await get_user_integrations(user_id)
-                names = {r.integration_id: r.integration.name for r in user_ints.integrations}
-                for cid in custom_connected_ids:
-                    connected_integrations[cid] = names.get(cid)
-
+            connected_integrations = await _resolve_connected_subagents(user_id)
             log.info(f"User {user_id} connected subagents: {set(connected_integrations)}")
 
         log.info(f"User {user_id} namespaces: {user_namespaces}")

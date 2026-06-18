@@ -87,6 +87,16 @@ Pre-model hooks in `app/agents/core/nodes/`:
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
 - Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit.
 
+### Docstrings & Comments
+
+Default to **less**. The code is the documentation — docstrings and comments exist only where the code cannot speak for itself. AI-generated over-documentation (restating the signature in prose, narrating every line, "textbook" docstrings on trivial helpers) is a defect, not thoroughness. Strip it.
+
+- **Docstrings** belong on public API surface — exported services, route handlers, shared utilities, and functions whose behavior is genuinely non-obvious. Skip them on private/internal helpers, obvious wrappers, and anything whose name + signature already says everything.
+- **One line** is the default. A summary sentence is enough. Add an `Args:`/`Returns:`/`Raises:` body only when a parameter, return value, or failure mode is non-obvious — never to mechanically mirror the signature. Document *why* and the non-obvious *what*, never the obvious what.
+- **Never** document params/returns/raises that don't exist or no longer match the signature. A stale or hallucinated docstring is worse than none.
+- **Comments** explain non-obvious decisions — a tricky invariant, a workaround and its cause, a "why this and not the obvious thing." A comment that restates what the line plainly does is noise; delete it. Never leave commented-out code (ruff `ERA` will reject it).
+- When editing AI-generated code, treat trimming its redundant docstrings/comments as part of the change, not a separate cleanup.
+
 ### Tooling and the autofix hook
 
 After every `.py` edit, a PostToolUse hook runs `uvx ruff format` then `uvx ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
