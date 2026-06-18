@@ -69,10 +69,8 @@ const IntegrationRow: React.FC<{
         {(isAvailable || isCreated) && !isConnected && (
           <Button
             variant="flat"
+            size="sm"
             color={isCreated ? "warning" : "primary"}
-            className={
-              isCreated ? "text-sm text-warning" : "text-sm text-primary"
-            }
             startContent={
               isCreated ? <RedoIcon width={16} height={16} /> : undefined
             }
