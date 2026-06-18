@@ -10,7 +10,7 @@ import type { FileData } from "@/types/shared/fileTypes";
 
 // Optimistic message for new conversations (before conversation ID is assigned)
 // These are stored in Zustand only to avoid IndexedDB pollution if not cleared properly
-interface OptimisticMessage {
+export interface OptimisticMessage {
   id: string; // Temporary optimistic ID
   conversationId: string | null; // null for new conversations, set for existing ones
   content: string;

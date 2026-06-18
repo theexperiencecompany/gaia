@@ -6,7 +6,7 @@ import {
   getRelevantThinkingMessage,
 } from "@/utils/playfulThinking";
 
-interface ToolInfo {
+export interface ToolInfo {
   toolName?: string;
   toolCategory?: string;
   integrationName?: string;

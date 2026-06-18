@@ -208,6 +208,10 @@ export interface StreamToolOutput {
   subagent_id?: string;
 }
 
+import {
+  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
+  type DesktopToolRequest,
+} from "../desktop-tools";
 import type { TodoProgressSnapshot } from "./types";
 export type { TodoProgressSnapshot };
 
@@ -256,6 +260,7 @@ export type ChatStreamEvent =
   | { type: "follow_up_actions"; actions: string[] }
   | { type: "subagent_start"; payload: SubagentStartPayload }
   | { type: "subagent_end"; payload: SubagentEndPayload }
+  | { type: "desktop_tool_request"; request: DesktopToolRequest }
   | { type: "token_usage" }
   | { type: "unknown"; payload: JsonObject };
 
@@ -416,6 +421,24 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
           duration_ms:
             typeof e.duration_ms === "number" ? e.duration_ms : undefined,
           token_count: typeof e.token_count === "number" ? e.token_count : null,
+        },
+      });
+    }
+  }
+
+  if (isObject(payload.desktop_tool_request)) {
+    const r = payload.desktop_tool_request;
+    if (typeof r.request_id === "string" && typeof r.tool === "string") {
+      events.push({
+        type: "desktop_tool_request",
+        request: {
+          request_id: r.request_id,
+          tool: r.tool,
+          params: isObject(r.params) ? r.params : {},
+          timeout_ms:
+            typeof r.timeout_ms === "number"
+              ? r.timeout_ms
+              : DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
         },
       });
     }

@@ -5,8 +5,6 @@ Lives here (rather than in handoff_tools.py) so those modules import from it,
 avoiding a cyclic dependency.
 """
 
-import uuid
-
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
@@ -276,19 +274,15 @@ async def prepare_executor_execution(
     user_id = configurable.get("user_id")
     thread_id = configurable.get("thread_id", "")
 
-    # Fresh executor thread per call_executor invocation. Architecturally the
-    # comms agent owns the conversation thread; the executor is a subroutine
-    # invoked with a task description + the last user message. Giving it its
-    # own ephemeral thread keeps its context small and prevents stale tool
-    # observations from one task bleeding into the next. If a later user turn
-    # needs prior context, comms passes it explicitly in the new task
-    # description.
-    call_scope = uuid.uuid4().hex[:12]
-    executor_thread_id = f"executor_{thread_id}_{call_scope}"
+    # Deterministic executor thread, derived purely from the conversation
+    # thread so it can be reconstructed from the conversation id alone. The
+    # executor (and the subagents it spawns, whose threads are derived from
+    # this one) retains its history across call_executor invocations within
+    # the same conversation.
+    executor_thread_id = f"executor_{thread_id}"
 
-    # VFS session stays pinned to the PARENT conversation thread so files
-    # written by one executor call are visible to the next — the ephemeral
-    # thread only scopes agent reasoning, not persisted artefacts.
+    # VFS session stays pinned to the conversation thread so files written by
+    # one executor call are visible to the next.
     vfs_session_id = configurable.get("vfs_session_id") or thread_id
 
     # Load executor graph

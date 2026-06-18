@@ -18,8 +18,10 @@
   ],
   "scripts": {
     "extract-icons": "tsx scripts/extract-icon-paths.ts",
+    "sync-wake-word-runtime": "node scripts/sync-wake-word-runtime.mjs",
     "extract-blog": "node scripts/extract-blog-data.mjs",
-    "prebuild": "npm run extract-icons && npm run extract-blog",
+    "prebuild": "npm run extract-icons && npm run extract-blog && npm run sync-wake-word-runtime",
+    "predev": "npm run sync-wake-word-runtime",
     "dev": "nx next:dev --turbopack",
     "dev:webpack": "nx next:dev",
     "build": "nx next:build",

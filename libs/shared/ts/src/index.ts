@@ -12,6 +12,7 @@ export * from "./api";
 export * from "./bots";
 export * from "./chat";
 export * from "./cli";
+export * from "./desktop-tools";
 export * from "./hooks";
 export * from "./todos";
 export * from "./tool-utils";
