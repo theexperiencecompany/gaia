@@ -742,14 +742,34 @@ class TestUpdateUserIntegrationStatus:
 # ---------------------------------------------------------------------------
 
 
+def _user_integrations_cursor(docs: list[dict]) -> MagicMock:
+    """Mock the ``user_integrations_collection.find().sort().to_list()`` chain."""
+    cursor = MagicMock()
+    cursor.sort = MagicMock(return_value=cursor)
+    cursor.to_list = AsyncMock(return_value=docs)
+    return cursor
+
+
+def _async_find_cursor(docs: list[dict]) -> MagicMock:
+    """Mock a ``collection.find(...)`` result iterated with ``async for``."""
+
+    async def aiter_docs(*args, **kwargs):
+        for doc in docs:
+            yield doc
+
+    cursor = MagicMock()
+    cursor.__aiter__ = aiter_docs
+    return cursor
+
+
 @pytest.mark.unit
 class TestGetUserIntegrations:
-    @patch(
-        "app.services.integrations.user_integrations.get_integration_details",
-        new_callable=AsyncMock,
-    )
+    @patch("app.services.integrations.user_integrations.users_collection")
+    @patch("app.services.integrations.user_integrations.integrations_collection")
     @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_returns_hydrated_integrations(self, mock_collection, mock_get_details):
+    async def test_returns_hydrated_integrations(
+        self, mock_user_int_col, mock_int_col, mock_users_col
+    ):
         now = datetime.now(UTC)
         docs = [
             {
@@ -761,29 +781,11 @@ class TestGetUserIntegrations:
             },
         ]
 
-        # Create async iterable mock for cursor
-        mock_cursor = MagicMock()
-        mock_cursor.sort = MagicMock(return_value=mock_cursor)
-        mock_cursor.__aiter__ = MagicMock(return_value=iter(docs).__iter__())
-
-        async def aiter_docs(*args, **kwargs):
-            for doc in docs:
-                yield doc
-
-        mock_cursor.__aiter__ = aiter_docs
-        mock_collection.find = MagicMock(return_value=mock_cursor)
-
-        mock_response = IntegrationResponse(
-            integration_id="github",
-            name="GitHub",
-            description="GitHub integration",
-            category="developer",
-            managed_by="mcp",
-            source="platform",
-            is_featured=True,
-            display_priority=10,
-        )
-        mock_get_details.return_value = mock_response
+        mock_user_int_col.find = MagicMock(return_value=_user_integrations_cursor(docs))
+        # github is a platform integration resolved from the in-memory catalog,
+        # so no stored integration doc and no creator lookups are needed.
+        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
 
         result = await get_user_integrations(USER_ID)
 
@@ -793,12 +795,12 @@ class TestGetUserIntegrations:
         assert result.integrations[0].status == "connected"
         assert result.integrations[0].integration.name == "GitHub"
 
-    @patch(
-        "app.services.integrations.user_integrations.get_integration_details",
-        new_callable=AsyncMock,
-    )
+    @patch("app.services.integrations.user_integrations.users_collection")
+    @patch("app.services.integrations.user_integrations.integrations_collection")
     @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_skips_integration_with_no_details(self, mock_collection, mock_get_details):
+    async def test_skips_integration_with_no_details(
+        self, mock_user_int_col, mock_int_col, mock_users_col
+    ):
         now = datetime.now(UTC)
         docs = [
             {
@@ -809,55 +811,39 @@ class TestGetUserIntegrations:
             },
         ]
 
-        async def aiter_docs(*args, **kwargs):
-            for doc in docs:
-                yield doc
-
-        mock_cursor = MagicMock()
-        mock_cursor.sort = MagicMock(return_value=mock_cursor)
-        mock_cursor.__aiter__ = aiter_docs
-        mock_collection.find = MagicMock(return_value=mock_cursor)
-        mock_get_details.return_value = None
+        mock_user_int_col.find = MagicMock(return_value=_user_integrations_cursor(docs))
+        # Not in the catalog and no stored doc → _build_integration_response returns None.
+        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
 
         result = await get_user_integrations(USER_ID)
 
         assert result.total == 0
         assert result.integrations == []
 
-    @patch(
-        "app.services.integrations.user_integrations.get_integration_details",
-        new_callable=AsyncMock,
-    )
+    @patch("app.services.integrations.user_integrations.users_collection")
+    @patch("app.services.integrations.user_integrations.integrations_collection")
     @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_handles_parse_error_gracefully(self, mock_collection, mock_get_details):
+    async def test_handles_parse_error_gracefully(
+        self, mock_user_int_col, mock_int_col, mock_users_col
+    ):
         """If UserIntegration(**doc) raises, that entry is skipped."""
         bad_doc = {"user_id": USER_ID}  # Missing required fields
 
-        async def aiter_docs(*args, **kwargs):
-            yield bad_doc
-
-        mock_cursor = MagicMock()
-        mock_cursor.sort = MagicMock(return_value=mock_cursor)
-        mock_cursor.__aiter__ = aiter_docs
-        mock_collection.find = MagicMock(return_value=mock_cursor)
+        mock_user_int_col.find = MagicMock(return_value=_user_integrations_cursor([bad_doc]))
+        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
 
         result = await get_user_integrations(USER_ID)
         assert result.total == 0
 
-    @patch(
-        "app.services.integrations.user_integrations.get_integration_details",
-        new_callable=AsyncMock,
-    )
+    @patch("app.services.integrations.user_integrations.users_collection")
+    @patch("app.services.integrations.user_integrations.integrations_collection")
     @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_empty_workspace(self, mock_collection, mock_get_details):
-        async def aiter_empty(*args, **kwargs):
-            return
-            yield  # noqa
-
-        mock_cursor = MagicMock()
-        mock_cursor.sort = MagicMock(return_value=mock_cursor)
-        mock_cursor.__aiter__ = aiter_empty
-        mock_collection.find = MagicMock(return_value=mock_cursor)
+    async def test_empty_workspace(self, mock_user_int_col, mock_int_col, mock_users_col):
+        mock_user_int_col.find = MagicMock(return_value=_user_integrations_cursor([]))
+        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
 
         result = await get_user_integrations(USER_ID)
         assert result.total == 0

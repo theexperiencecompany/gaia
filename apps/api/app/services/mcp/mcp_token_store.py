@@ -16,12 +16,14 @@ from app.config.settings import settings
 from app.constants.cache import (
     OAUTH_DISCOVERY_PREFIX,
     OAUTH_DISCOVERY_TTL,
+    OAUTH_EXCLUDED_SCOPES_PREFIX,
     OAUTH_STATE_PREFIX,
     OAUTH_STATE_TTL,
 )
 from app.db.postgresql import get_db_session
 from app.db.redis import get_and_delete_cache, get_cache, set_cache
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
+from app.models.mcp_config import OAuthDiscovery
 from app.utils.mcp_oauth_utils import introspect_token as do_introspect
 from shared.py.wide_events import log
 
@@ -96,14 +98,11 @@ class MCPTokenStore:
             )
             return None
 
-        # Check if token is expired
-        # Note: token_expires_at is stored as naive UTC in PostgreSQL TIMESTAMP WITHOUT TIME ZONE
-        # We compare with naive UTC for consistency
-        if cred.token_expires_at:
-            now_utc = datetime.now(UTC).replace(tzinfo=None)
-            if cred.token_expires_at < now_utc:
-                log.warning(f"OAuth token expired for {integration_id}")
-                return None
+        # token_expires_at is a timezone-aware column (DateTime(timezone=True)),
+        # so compare against timezone-aware UTC.
+        if cred.token_expires_at and cred.token_expires_at < datetime.now(UTC):
+            log.warning(f"OAuth token expired for {integration_id}")
+            return None
 
         log.debug(f"[{integration_id}] Returning decrypted OAuth token")
         return self._decrypt(cred.access_token)
@@ -132,11 +131,7 @@ class MCPTokenStore:
         if cred.token_expires_at:
             from datetime import timedelta
 
-            # Use naive UTC for comparison with stored naive timestamps
-            expiry_threshold = (datetime.now(UTC) + timedelta(seconds=threshold_seconds)).replace(
-                tzinfo=None
-            )
-            return cred.token_expires_at < expiry_threshold
+            return cred.token_expires_at < datetime.now(UTC) + timedelta(seconds=threshold_seconds)
 
         # No expires_at stored — treat tokens older than 1 hour as stale
         # so we proactively refresh them rather than discovering they're
@@ -145,18 +140,14 @@ class MCPTokenStore:
         if cred.connected_at:
             from datetime import timedelta
 
-            age_threshold = (datetime.now(UTC) - timedelta(seconds=max_age_seconds)).replace(
-                tzinfo=None
-            )
-            return cred.connected_at < age_threshold
+            return cred.connected_at < datetime.now(UTC) - timedelta(seconds=max_age_seconds)
 
         return False
 
     async def store_bearer_token(self, integration_id: str, token: str) -> None:
         """Store encrypted bearer token."""
         encrypted = self._encrypt(token)
-        # Use naive UTC datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE column
-        now = datetime.now(UTC).replace(tzinfo=None)
+        now = datetime.now(UTC)
 
         async with get_db_session() as session:
             # Query within this session
@@ -197,10 +188,7 @@ class MCPTokenStore:
         """Store encrypted OAuth tokens."""
         encrypted_access = self._encrypt(access_token)
         encrypted_refresh = self._encrypt(refresh_token) if refresh_token else None
-        # Use naive UTC datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE column
-        now = datetime.now(UTC).replace(tzinfo=None)
-        # Also strip timezone from expires_at if provided
-        naive_expires_at = expires_at.replace(tzinfo=None) if expires_at else None
+        now = datetime.now(UTC)
 
         async with get_db_session() as session:
             # Query within this session
@@ -215,7 +203,7 @@ class MCPTokenStore:
             if cred:
                 cred.access_token = encrypted_access
                 cred.refresh_token = encrypted_refresh
-                cred.token_expires_at = naive_expires_at
+                cred.token_expires_at = expires_at
                 # Set status to connected so get_oauth_token() can retrieve it
                 cred.status = MCPCredentialStatus.CONNECTED
                 cred.connected_at = now
@@ -227,7 +215,7 @@ class MCPTokenStore:
                     auth_type=MCPAuthType.OAUTH,
                     access_token=encrypted_access,
                     refresh_token=encrypted_refresh,
-                    token_expires_at=naive_expires_at,
+                    token_expires_at=expires_at,
                     status=MCPCredentialStatus.CONNECTED,  # Required for get_oauth_token() to work
                     connected_at=now,
                 )
@@ -395,7 +383,7 @@ class MCPTokenStore:
             await session.commit()
             log.info(f"Stored DCR client for {integration_id}")
 
-    async def store_oauth_discovery(self, integration_id: str, discovery: dict) -> None:
+    async def store_oauth_discovery(self, integration_id: str, discovery: OAuthDiscovery) -> None:
         """
         Cache OAuth discovery data in Redis.
 
@@ -410,17 +398,15 @@ class MCPTokenStore:
         TTL: 24 hours (OAuth metadata changes infrequently)
         """
         cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
-        # Pass dict directly - set_cache handles serialization
-        await set_cache(cache_key, discovery, ttl=OAUTH_DISCOVERY_TTL)
+        await set_cache(cache_key, discovery.model_dump(mode="json"), ttl=OAUTH_DISCOVERY_TTL)
         log.info(f"Cached OAuth discovery for {integration_id}")
 
-    async def get_oauth_discovery(self, integration_id: str) -> dict | None:
+    async def get_oauth_discovery(self, integration_id: str) -> OAuthDiscovery | None:
         """Get cached OAuth discovery data from Redis."""
         cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
-        # get_cache already deserializes via TypeAdapter, returning dict directly
         cached = await get_cache(cache_key)
         if cached and isinstance(cached, dict):
-            return cached
+            return OAuthDiscovery.model_validate(cached)
         return None
 
     async def store_oauth_nonce(self, integration_id: str, nonce: str) -> None:
@@ -445,6 +431,29 @@ class MCPTokenStore:
         cache_key = f"mcp_oauth_nonce:{self.user_id}:{integration_id}"
         return await get_and_delete_cache(cache_key)
 
+    async def get_excluded_scopes(self, integration_id: str) -> set[str]:
+        """
+        Get scopes the auth server rejected with `invalid_scope`.
+
+        Accumulated within a single OAuth flow (TTL-bounded) so each
+        re-authorization retry drops the offending scope(s) and converges.
+        """
+        cache_key = f"{OAUTH_EXCLUDED_SCOPES_PREFIX}:{self.user_id}:{integration_id}"
+        cached = await get_cache(cache_key)
+        return set(cached) if cached else set()
+
+    async def add_excluded_scopes(self, integration_id: str, scopes: set[str]) -> set[str]:
+        """Add rejected scopes to the exclusion set; returns the merged set."""
+        merged = await self.get_excluded_scopes(integration_id) | scopes
+        cache_key = f"{OAUTH_EXCLUDED_SCOPES_PREFIX}:{self.user_id}:{integration_id}"
+        await set_cache(cache_key, sorted(merged), ttl=OAUTH_STATE_TTL)
+        return merged
+
+    async def clear_excluded_scopes(self, integration_id: str) -> None:
+        """Clear the exclusion set after a successful or abandoned OAuth flow."""
+        cache_key = f"{OAUTH_EXCLUDED_SCOPES_PREFIX}:{self.user_id}:{integration_id}"
+        await get_and_delete_cache(cache_key)
+
     async def introspect_token(
         self,
         integration_id: str,
@@ -456,11 +465,11 @@ class MCPTokenStore:
 
         Returns introspection response with 'active' field, or None if failed.
         """
-        oauth_config = await self.get_oauth_discovery(integration_id)
-        if not oauth_config:
+        discovery = await self.get_oauth_discovery(integration_id)
+        if not discovery:
             return None
 
-        introspection_endpoint = oauth_config.get("introspection_endpoint")
+        introspection_endpoint = discovery.as_metadata.introspection_endpoint
         if not introspection_endpoint:
             return None
 
@@ -469,7 +478,7 @@ class MCPTokenStore:
             return None
 
         return await do_introspect(
-            introspection_endpoint=introspection_endpoint,
+            introspection_endpoint=str(introspection_endpoint),
             token=access_token,
             token_type_hint="access_token",  # nosec B106 - OAuth token type hint, not a password
             client_id=client_id,

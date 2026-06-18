@@ -29,13 +29,15 @@ from app.agents.tools.core.registry import (
 )
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.models.chat_models import ConversationSource
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
+from app.services.integrations.user_integrations import get_user_integrations
 from app.services.mcp.mcp_client import get_mcp_client
+from app.services.oauth.oauth_service import get_all_integrations_status
 from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
@@ -182,11 +184,36 @@ class RetrieveToolsResult(TypedDict):
     response: list[str]
 
 
+async def _resolve_connected_subagents(user_id: str) -> dict[str, str | None]:
+    """Map connected integration id -> display name. Platform/internal names come
+    from the in-memory registry; custom MCP names from the cached user-integration
+    list (one read), avoiding an uncached per-MCP lookup on this hot path."""
+    status = await get_all_integrations_status(user_id)
+    connected: dict[str, str | None] = {}
+    custom_connected_ids: list[str] = []
+    for integration_id, is_connected in status.items():
+        if not is_connected:
+            continue
+        platform = get_subagent_by_id(integration_id)
+        if platform:
+            connected[platform.id] = platform.name
+        else:
+            custom_connected_ids.append(integration_id)
+
+    if custom_connected_ids:
+        user_ints = await get_user_integrations(user_id)
+        names = {r.integration_id: r.integration.name for r in user_ints.integrations}
+        for cid in custom_connected_ids:
+            connected[cid] = names.get(cid)
+
+    return connected
+
+
 async def _get_user_context(
     user_id: str | None,
     tool_space: str,
     include_subagents: bool = True,
-) -> tuple[set[str], set[str], set[str]]:
+) -> tuple[set[str], dict[str, str | None], set[str]]:
     """Get user's available namespaces and connected integrations.
 
     When include_subagents is False, skips computing subagent-related data
@@ -194,6 +221,7 @@ async def _get_user_context(
 
     Returns:
         Tuple of (user_namespaces, connected_integrations, internal_subagents)
+        where connected_integrations maps canonical integration id -> display name.
     """
     # Seed namespaces:
     # - "general" is always available (core tools).
@@ -206,7 +234,7 @@ async def _get_user_context(
     if _is_platform_tool_space(tool_space):
         user_namespaces.add(tool_space)
 
-    connected_integrations: set[str] = set()
+    connected_integrations: dict[str, str | None] = {}
     internal_subagents: set[str] = set()
 
     # Only compute subagent data when subagents are included
@@ -219,29 +247,12 @@ async def _get_user_context(
     try:
         # Union (not assign) so platform seeds survive cache contents.
         # Custom MCP namespaces only enter via the cache lookup, which is
-        # the user-scoped source of truth.
+        # the user-scoped source of truth — these still gate tool search.
         user_namespaces |= set(await get_user_available_tool_namespaces(user_id))
 
         if include_subagents:
-            raw_connected = user_namespaces - {"general", "subagents"}
-
-            # raw_connected contains tool namespaces (e.g. "github_delegated"),
-            # not subagent ids. Map each namespace back to its subagent via
-            # config.tool_space, falling back to treating it as a custom/public
-            # MCP integration when no OAuth integration matches.
-            tool_space_to_subagent_id = {sa.config.tool_space: sa.id for sa in all_subagents()}
-
-            connected_integrations = set()
-            for namespace in raw_connected:
-                subagent_id = tool_space_to_subagent_id.get(namespace)
-                if subagent_id:
-                    connected_integrations.add(subagent_id)
-                elif get_integration_by_id(namespace) is None:
-                    # Custom/public MCP integration — not in OAuth config and
-                    # no subagent claims this namespace; surface it directly.
-                    connected_integrations.add(namespace)
-
-            log.info(f"User {user_id} connected subagents: {connected_integrations}")
+            connected_integrations = await _resolve_connected_subagents(user_id)
+            log.info(f"User {user_id} connected subagents: {set(connected_integrations)}")
 
         log.info(f"User {user_id} namespaces: {user_namespaces}")
     except Exception as e:
@@ -464,7 +475,7 @@ def _deduplicate_and_sort(
 def _inject_available_subagents(
     discovered_tools: list[str],
     internal_subagents: set[str],
-    connected_integrations: set[str],
+    connected_integrations: dict[str, str | None],
     include_subagents: bool,
 ) -> list[str]:
     """Inject available subagents that user has access to."""
@@ -483,24 +494,23 @@ def _inject_available_subagents(
             canonical_id = tail.split(" ", 1)[0]
             seen_ids.add(canonical_id)
 
-    def _add_subagent(integration_id: str) -> None:
+    def _add_subagent(integration_id: str, name: str | None) -> None:
         if integration_id in seen_ids:
             return
-        sa = get_subagent_by_id(integration_id)
-        name = sa.name if sa else None
         subagent_key = (
             f"subagent:{integration_id} ({name})" if name else f"subagent:{integration_id}"
         )
         result.append(subagent_key)
         seen_ids.add(integration_id)
 
-    # Add internal subagents (always available)
+    # Add internal subagents (always available) — names come from the registry.
     for integration_id in internal_subagents:
-        _add_subagent(integration_id)
+        sa = get_subagent_by_id(integration_id)
+        _add_subagent(integration_id, sa.name if sa else None)
 
-    # Add connected integration subagents
-    for integration_id in connected_integrations:
-        _add_subagent(integration_id)
+    # Add connected integration subagents — names resolved in _get_user_context.
+    for integration_id, name in connected_integrations.items():
+        _add_subagent(integration_id, name)
 
     return result
 

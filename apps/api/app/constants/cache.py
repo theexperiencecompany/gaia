@@ -61,7 +61,10 @@ CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
 HANDOFF_METADATA_CACHE_PREFIX = "handoff_metadata"
 SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
-OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery"
+OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
+# v2: discovery is now cached as the OAuthDiscovery model (model_dump) rather
+# than the old ad-hoc dict; bump busts stale dict-shaped entries.
+OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery_v2"
 OAUTH_STATUS_KEY = "OAUTH_STATUS"
 MCP_TOOLS_CACHE_KEY = "mcp:tools:all"
 GLOBAL_TOOLS_CACHE_KEY = "tools:global"

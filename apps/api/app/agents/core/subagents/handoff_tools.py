@@ -17,7 +17,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore, PutOp
 
@@ -213,6 +213,7 @@ async def index_custom_mcp_as_subagent(
     name: str,
     description: str,
     server_url: str | None = None,
+    tools: list[BaseTool] | None = None,
 ) -> None:
     """
     Index a custom MCP as a subagent for handoff discovery.
@@ -226,13 +227,21 @@ async def index_custom_mcp_as_subagent(
         name: Display name of the integration
         description: Description of what the integration does
         server_url: MCP server URL for namespace derivation
+        tools: The MCP's tools — their names/summaries are embedded so the
+            subagent ranks for what it can actually do (e.g. a "get_meetings"
+            tool surfaces on a "meetings" query) instead of generic boilerplate.
     """
-    rich_description = (
-        f"{name}. Custom MCP integration. "
-        f"{description}. "
-        f"Use cases: data fetching, automation, API access, external services. "
-        f"Examples: fetch data, scrape, query, automate"
-    )
+    parts = [f"{name}."]
+    if description:
+        parts.append(f"{description}.")
+    if tools:
+        summaries = []
+        for t in tools:
+            first_line = (t.description or "").strip().splitlines()
+            summary = first_line[0][:120] if first_line else ""
+            summaries.append(f"{t.name}: {summary}" if summary else t.name)
+        parts.append(f"Available tools: {'; '.join(summaries)}.")
+    rich_description = " ".join(parts)
 
     tool_namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
 
@@ -250,7 +259,9 @@ async def index_custom_mcp_as_subagent(
     )
 
     await store.abatch([put_op])
-    log.info(f"Indexed custom MCP {name} ({integration_id}) as subagent")
+    log.info(
+        f"Indexed custom MCP {name} ({integration_id}) as subagent with {len(tools or [])} tools"
+    )
 
 
 async def _resolve_subagent(

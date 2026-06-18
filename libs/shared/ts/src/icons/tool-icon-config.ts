@@ -356,6 +356,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#60a5fa",
     isImage: false,
   },
+  manual: {
+    icon: "BookOpen01Icon",
+    bgColor: "bg-amber-500/20 backdrop-blur",
+    iconColor: "text-amber-400",
+    bgColorRaw: "rgba(245, 158, 11, 0.2)",
+    iconColorRaw: "#fbbf24",
+    isImage: false,
+  },
   documents: {
     icon: "FileEmpty02Icon",
     bgColor: "bg-orange-500/20 backdrop-blur",

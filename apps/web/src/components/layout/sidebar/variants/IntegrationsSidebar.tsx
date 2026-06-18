@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tooltip } from "@heroui/tooltip";
-import { CursorAddSelectionIcon, InternetIcon } from "@icons";
+import { InternetIcon, PuzzleIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -187,7 +187,7 @@ export default function IntegrationsSidebar() {
       <Tooltip
         content={
           <span className="flex items-center gap-2">
-            Create Custom Integration
+            Create Integration
             <Kbd className="text-[10px]">C</Kbd>
           </span>
         }
@@ -198,13 +198,11 @@ export default function IntegrationsSidebar() {
           color="primary"
           size="sm"
           variant="flat"
-          startContent={
-            <CursorAddSelectionIcon className="h-4 w-4 outline-0" />
-          }
+          startContent={<PuzzleIcon className="h-4 w-4 outline-0" />}
           onPress={openIntegrationModal}
           data-keyboard-shortcut="create-integration"
         >
-          Create Custom Integration
+          Create Integration
         </Button>
       </Tooltip>
 

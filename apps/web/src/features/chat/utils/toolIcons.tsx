@@ -13,6 +13,7 @@ import {
   AlarmClockIcon,
   AppStoreIcon,
   BodyPartMuscleIcon,
+  BookOpen01Icon,
   Brain02Icon,
   Camera01Icon,
   CheckListIcon,
@@ -86,12 +87,13 @@ const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   ClipboardIcon,
   AlarmClockIcon,
   AppStoreIcon,
+  BookOpen01Icon,
   Camera01Icon,
   ComputerIcon,
   Copy01Icon,
   Globe02Icon,
-  WindowsNewIcon,
   PuzzleIcon,
+  WindowsNewIcon,
   FileEmpty02Icon,
   SourceCodeCircleIcon,
   Brain02Icon,
@@ -152,11 +154,11 @@ const AutoInvertIcon: React.FC<{
   className?: string;
 }> = ({ src, alt, size, width, height, className }) => {
   // const { shouldInvert } = useIconColorDetection(src);
-  const imgWidth = width || size || 20;
-  const imgHeight = height || size || 20;
-  // rounded-md matches the wrapper's rounded-lg so the integration logo's
-  // own background can't spill past the rounded tile corners.
-  const imgClassName = `${className} aspect-square rounded-md object-contain`;
+  const displayWidth = width || size || 20;
+  const displayHeight = height || size || 20;
+  // Border radius scales with the icon size (percentage radius) so small icons
+  // aren't disproportionately rounded. object-contain keeps the logo intact.
+  const imgClassName = `${className ?? ""} aspect-square rounded-[18%] object-contain`;
 
   // Use regular img tag for SVG URLs to avoid Next.js Image optimization issues
   const isSvg = src.toLowerCase().endsWith(".svg");
@@ -165,23 +167,25 @@ const AutoInvertIcon: React.FC<{
       // biome-ignore lint/performance/noImgElement: Using img for SVG to avoid Next.js Image optimization issues with SVG
       <img
         alt={alt}
-        width={imgWidth}
-        height={imgHeight}
+        width={displayWidth}
+        height={displayHeight}
         className={imgClassName}
         src={src}
       />
     );
   }
 
+  // Render the raster at a higher intrinsic resolution and constrain the
+  // displayed box, so logos stay crisp on hi-dpi screens (Next optimizes down).
   return (
     <Image
       alt={alt}
-      width={imgWidth}
-      height={imgHeight}
+      width={displayWidth * 3}
+      height={displayHeight * 3}
       className={imgClassName}
+      style={{ width: displayWidth, height: displayHeight }}
       src={src}
     />
-    //  ${shouldInvert ? "invert" : ""} commented out temporarily
   );
 };
 

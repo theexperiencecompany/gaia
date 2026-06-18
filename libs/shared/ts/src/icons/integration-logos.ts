@@ -11,10 +11,10 @@
  * mobile reads it via {@link getMobileIntegrationLogoUrl}.
  */
 export const INTEGRATION_LOGO_FILES: Record<string, string> = {
-  gmail: "gmail.svg",
+  gmail: "gmail.webp",
   googledocs: "googledocs.webp",
   googlesheets: "googlesheets.webp",
-  search: "google.svg",
+  search: "google.webp",
   weather: "weather.webp",
   notion: "notion.webp",
   twitter: "twitter.webp",
@@ -26,12 +26,12 @@ export const INTEGRATION_LOGO_FILES: Record<string, string> = {
   linear: "linear.svg",
   slack: "slack.svg",
   hubspot: "hubspot.svg",
-  googletasks: "googletasks.svg",
+  googletasks: "googletasks.webp",
   todoist: "todoist.svg",
   microsoft_teams: "microsoft_teams.svg",
-  googlemeet: "googlemeet.svg",
+  googlemeet: "googlemeet.webp",
   zoom: "zoom.svg",
-  google_maps: "google_maps.svg",
+  google_maps: "google_maps.webp",
   asana: "asana.svg",
   trello: "trello.svg",
   instagram: "instagram.svg",
@@ -44,6 +44,7 @@ export const INTEGRATION_LOGO_FILES: Record<string, string> = {
   vercel: "vercel.svg",
   perplexity: "perplexity.png",
   figma: "figma.svg",
+  posthog: "posthog.svg",
 };
 
 /**
@@ -54,7 +55,6 @@ export const INTEGRATION_LOGO_FILES: Record<string, string> = {
 export const INTEGRATION_LOGO_EXTERNAL_URLS: Record<string, string> = {
   browserbase:
     "https://www.google.com/s2/favicons?domain=browserbase.com&sz=128",
-  posthog: "https://www.google.com/s2/favicons?domain=posthog.com&sz=128",
   agentmail:
     "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://agentmail.to&size=256",
 };

@@ -3,43 +3,106 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from bson import ObjectId
+
 from app.agents.tools.core.registry import get_tool_registry
+from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL
-from app.db.mongodb.collections import user_integrations_collection
+from app.db.mongodb.collections import (
+    integrations_collection,
+    user_integrations_collection,
+    users_collection,
+)
 from app.db.utils import serialize_document
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
+    IntegrationResponse,
     IntegrationTool,
     UserIntegration,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
 )
-from app.services.integrations.marketplace import get_integration_details
+from app.services.integrations.marketplace import (
+    assemble_integration_response,
+    get_integration_details,
+)
 from shared.py.wide_events import log
+
+
+def _build_integration_response(
+    integration_id: str, doc: dict | None, creators: dict[str, dict]
+) -> IntegrationResponse | None:
+    """Build an IntegrationResponse from prefetched data — no per-item DB queries.
+
+    The batch-prefetched counterpart to get_integration_details: platform metadata
+    from the in-memory catalog, custom metadata + stored MCP tools from ``doc``,
+    creator from the prefetched ``creators`` map. Shares the assembly step with
+    get_integration_details via assemble_integration_response.
+    """
+    created_by = doc.get("created_by") if doc else None
+    creator_doc = creators.get(created_by) if created_by else None
+    return assemble_integration_response(
+        get_integration_by_id(integration_id),
+        doc,
+        doc.get("tools") if doc else None,
+        creator_doc,
+    )
 
 
 async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     """Get all integrations a user has added to their workspace."""
-    user_integrations = []
+    docs = (
+        await user_integrations_collection.find({"user_id": user_id})
+        .sort("created_at", -1)
+        .to_list(None)
+    )
 
-    cursor = user_integrations_collection.find({"user_id": user_id}).sort("created_at", -1)
-
-    async for doc in cursor:
+    parsed: list[UserIntegration] = []
+    for doc in docs:
         try:
-            user_int = UserIntegration(**doc)
-            integration = await get_integration_details(user_int.integration_id)
-            if integration:
-                user_integrations.append(
-                    UserIntegrationResponse(
-                        integration_id=user_int.integration_id,
-                        status=user_int.status,
-                        created_at=user_int.created_at,
-                        connected_at=user_int.connected_at,
-                        integration=integration,
-                    )
-                )
+            parsed.append(UserIntegration(**doc))
         except Exception as e:
             log.warning(f"Failed to parse user integration: {e}")
+
+    ids = [ui.integration_id for ui in parsed]
+
+    # One query for every integration's stored doc (custom metadata + stored MCP
+    # tools). Platform metadata comes from the in-memory catalog, so there are no
+    # per-integration DB round trips.
+    int_docs: dict[str, dict] = {}
+    if ids:
+        async for doc in integrations_collection.find({"integration_id": {"$in": ids}}):
+            int_docs[doc["integration_id"]] = doc
+
+    # One query for all creators referenced by the user's custom integrations.
+    creator_oids = [
+        ObjectId(doc["created_by"])
+        for doc in int_docs.values()
+        if doc.get("created_by") and ObjectId.is_valid(doc["created_by"])
+    ]
+    creators: dict[str, dict] = {}
+    if creator_oids:
+        async for creator in users_collection.find(
+            {"_id": {"$in": creator_oids}}, {"name": 1, "picture": 1}
+        ):
+            creators[str(creator["_id"])] = creator
+
+    user_integrations: list[UserIntegrationResponse] = []
+    for ui in parsed:
+        integration = _build_integration_response(
+            ui.integration_id, int_docs.get(ui.integration_id), creators
+        )
+        if not integration:
+            continue
+        user_integrations.append(
+            UserIntegrationResponse(
+                integration_id=ui.integration_id,
+                status=ui.status,
+                created_at=ui.created_at,
+                connected_at=ui.connected_at,
+                integration=integration,
+            )
+        )
 
     return UserIntegrationsListResponse(
         integrations=user_integrations,

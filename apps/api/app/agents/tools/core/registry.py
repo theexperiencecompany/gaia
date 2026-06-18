@@ -121,12 +121,17 @@ class ToolCategory:
         require_integration: bool = False,
         integration_name: str | None = None,
         is_delegated: bool = False,
+        internal: bool = False,
     ):
         self.name = name
         self.space = space
         self.require_integration = require_integration
         self.integration_name = integration_name
         self.is_delegated = is_delegated
+        # Internal categories hold agent-only plumbing tools (sandbox, control
+        # flow, instruction loading) that must never surface in the user-facing
+        # tool/slash-command listings, but stay available to the executor.
+        self.internal = internal
         self.tools: list[Tool] = []
 
     def add_tool(self, tool: BaseTool, is_core: bool = False, name: str | None = None):
@@ -176,6 +181,7 @@ class ToolRegistry:
         require_integration: bool = False,
         integration_name: str | None = None,
         is_delegated: bool = False,
+        internal: bool = False,
     ):
         """Helper to create and register a category."""
         replacing = name in self._categories
@@ -186,6 +192,7 @@ class ToolRegistry:
             require_integration=require_integration,
             integration_name=integration_name,
             is_delegated=is_delegated,
+            internal=internal,
         )
         if core_tools:
             category.add_tools(core_tools, is_core=True)
@@ -289,7 +296,7 @@ class ToolRegistry:
 
         # General tools - directly accessible by executor
         self._add_category("workflows", tools=workflow_tool.tools)
-        self._add_category("control", tools=[finish_task_tool.finish_task])
+        self._add_category("control", tools=[finish_task_tool.finish_task], internal=True)
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("manual", tools=[*manual_tool.tools])
         self._add_category("memory", tools=memory_tools.tools)
@@ -297,14 +304,16 @@ class ToolRegistry:
         self._add_category(
             "integration_instructions",
             tools=[*integration_instructions_tools.tools],
+            internal=True,
         )
         from app.agents.tools import coding
 
+        # Sandbox coding tools (bash/read/write/edit) are agent-only plumbing.
+        self._add_category("development", tools=[*coding.tools], internal=True)
         self._add_category(
-            "development",
-            tools=[*coding.tools, flowchart_tool.create_flowchart],
+            "creative",
+            tools=[image_tool.generate_image, flowchart_tool.create_flowchart],
         )
-        self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])
         self._add_category("context", tools=[context_tool.gather_context])
         # Desktop-executed tools live in their own space so discovery can be
