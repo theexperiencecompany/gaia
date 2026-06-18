@@ -16,14 +16,16 @@ from app.db.mongodb.collections import (
 from app.db.utils import serialize_document
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
-    Integration,
     IntegrationResponse,
     IntegrationTool,
     UserIntegration,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
 )
-from app.services.integrations.marketplace import get_integration_details
+from app.services.integrations.marketplace import (
+    assemble_integration_response,
+    get_integration_details,
+)
 from shared.py.wide_events import log
 
 
@@ -32,35 +34,19 @@ def _build_integration_response(
 ) -> IntegrationResponse | None:
     """Build an IntegrationResponse from prefetched data — no per-item DB queries.
 
-    Mirrors get_integration_details: platform metadata from the in-memory catalog,
-    custom metadata + stored MCP tools from ``doc``, creator from ``creators``.
+    The batch-prefetched counterpart to get_integration_details: platform metadata
+    from the in-memory catalog, custom metadata + stored MCP tools from ``doc``,
+    creator from the prefetched ``creators`` map. Shares the assembly step with
+    get_integration_details via assemble_integration_response.
     """
-    platform_integration = get_integration_by_id(integration_id)
-    if platform_integration:
-        response = IntegrationResponse.from_oauth_integration(platform_integration)
-    elif doc:
-        try:
-            response = IntegrationResponse.from_integration(Integration(**doc))
-        except Exception as e:
-            log.error(f"Failed to parse integration {integration_id}: {e}")
-            return None
-    else:
-        return None
-
-    stored_tools = doc.get("tools") if doc else None
-    if stored_tools and not response.tools:
-        response.tools = [
-            IntegrationTool(name=t["name"], description=t.get("description")) for t in stored_tools
-        ]
-
-    if response.created_by and response.created_by in creators:
-        creator_doc = creators[response.created_by]
-        response.creator = {
-            "name": creator_doc.get("name"),
-            "picture": creator_doc.get("picture"),
-        }
-
-    return response
+    created_by = doc.get("created_by") if doc else None
+    creator_doc = creators.get(created_by) if created_by else None
+    return assemble_integration_response(
+        get_integration_by_id(integration_id),
+        doc,
+        doc.get("tools") if doc else None,
+        creator_doc,
+    )
 
 
 async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
