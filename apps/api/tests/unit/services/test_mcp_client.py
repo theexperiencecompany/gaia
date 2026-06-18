@@ -14,10 +14,11 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.tools import BaseTool
+from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 import pytest
 
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
-from app.models.mcp_config import MCPConfig
+from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
     DCRNotSupportedException,
@@ -49,6 +50,37 @@ def _make_mcp_config(**overrides: Any) -> MCPConfig:
     defaults: dict[str, Any] = {"server_url": SERVER_URL, "requires_auth": False}
     defaults.update(overrides)
     return MCPConfig(**defaults)
+
+
+def _make_oauth_metadata(**overrides: Any) -> OAuthMetadata:
+    """Build a valid RFC 8414 OAuthMetadata with HTTPS endpoints + PKCE support."""
+    defaults: dict[str, Any] = {
+        "issuer": "https://auth.example.com",
+        "authorization_endpoint": "https://auth.example.com/authorize",
+        "token_endpoint": "https://auth.example.com/token",
+        "code_challenge_methods_supported": ["S256"],
+    }
+    defaults.update(overrides)
+    return OAuthMetadata.model_validate(defaults)
+
+
+def _make_oauth_discovery(
+    metadata_overrides: dict[str, Any] | None = None, **overrides: Any
+) -> OAuthDiscovery:
+    """Build an OAuthDiscovery (SDK-model based) for tests.
+
+    ``metadata_overrides`` tweak the wrapped ``as_metadata`` (e.g. drop the
+    authorization_endpoint); ``overrides`` tweak the OAuthDiscovery fields
+    (resource, initial_scope, discovery_method, prm).
+    """
+    as_metadata = _make_oauth_metadata(**(metadata_overrides or {}))
+    defaults: dict[str, Any] = {
+        "as_metadata": as_metadata,
+        "resource": SERVER_URL,
+        "discovery_method": "rfc9728_prm",
+    }
+    defaults.update(overrides)
+    return OAuthDiscovery(**defaults)
 
 
 def _make_credential(**overrides: Any) -> MCPCredential:
@@ -880,7 +912,7 @@ class TestMCPTokenStoreGetOAuthToken:
 
     async def test_returns_none_when_expired(self):
         store = MCPTokenStore(user_id=USER_ID)
-        past = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
+        past = datetime.now(UTC) - timedelta(hours=1)
         cred = _make_credential(token_expires_at=past)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.get_oauth_token(INTEGRATION_ID)
@@ -905,7 +937,7 @@ class TestMCPTokenStoreGetOAuthToken:
 class TestMCPTokenStoreIsTokenExpiringSoon:
     async def test_true_when_expiring_soon(self):
         store = MCPTokenStore(user_id=USER_ID)
-        soon = datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=60)
+        soon = datetime.now(UTC) + timedelta(seconds=60)
         cred = _make_credential(token_expires_at=soon)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.is_token_expiring_soon(INTEGRATION_ID, threshold_seconds=300)
@@ -913,7 +945,7 @@ class TestMCPTokenStoreIsTokenExpiringSoon:
 
     async def test_false_when_not_expiring_soon(self):
         store = MCPTokenStore(user_id=USER_ID)
-        far_future = datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=2)
+        far_future = datetime.now(UTC) + timedelta(hours=2)
         cred = _make_credential(token_expires_at=far_future)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.is_token_expiring_soon(INTEGRATION_ID)
@@ -928,7 +960,7 @@ class TestMCPTokenStoreIsTokenExpiringSoon:
     async def test_stale_token_without_expiry(self):
         """Token issued >1 hour ago with no expires_at should be treated as expiring."""
         store = MCPTokenStore(user_id=USER_ID)
-        old = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=2)
+        old = datetime.now(UTC) - timedelta(hours=2)
         cred = _make_credential(token_expires_at=None, connected_at=old)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.is_token_expiring_soon(INTEGRATION_ID)
@@ -937,7 +969,7 @@ class TestMCPTokenStoreIsTokenExpiringSoon:
     async def test_fresh_token_without_expiry(self):
         """Token issued <1 hour ago with no expires_at should NOT be treated as expiring."""
         store = MCPTokenStore(user_id=USER_ID)
-        recent = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=5)
+        recent = datetime.now(UTC) - timedelta(minutes=5)
         cred = _make_credential(token_expires_at=None, connected_at=recent)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.is_token_expiring_soon(INTEGRATION_ID)
@@ -1154,7 +1186,7 @@ class TestMCPTokenStoreDCRClient:
 class TestMCPTokenStoreOAuthDiscovery:
     async def test_store_and_get_discovery(self):
         store = MCPTokenStore(user_id=USER_ID)
-        discovery = {"authorization_endpoint": "https://auth.example.com/authorize"}
+        discovery = _make_oauth_discovery()
         cached: dict[str, Any] = {}
 
         async def fake_set(key: str, data: Any, ttl: int = 0) -> None:
@@ -1215,7 +1247,9 @@ class TestMCPTokenStoreIntrospect:
     async def test_introspect_success(self):
         store = MCPTokenStore(user_id=USER_ID)
         store.get_oauth_discovery = AsyncMock(
-            return_value={"introspection_endpoint": "https://auth.example.com/introspect"}
+            return_value=_make_oauth_discovery(
+                metadata_overrides={"introspection_endpoint": "https://auth.example.com/introspect"}
+            )
         )
         store.get_oauth_token = AsyncMock(return_value="access_tok")
         with patch(
@@ -1234,14 +1268,17 @@ class TestMCPTokenStoreIntrospect:
 
     async def test_introspect_no_endpoint(self):
         store = MCPTokenStore(user_id=USER_ID)
-        store.get_oauth_discovery = AsyncMock(return_value={"token_endpoint": "x"})
+        # Discovery with no introspection_endpoint advertised.
+        store.get_oauth_discovery = AsyncMock(return_value=_make_oauth_discovery())
         result = await store.introspect_token(INTEGRATION_ID)
         assert result is None
 
     async def test_introspect_no_token(self):
         store = MCPTokenStore(user_id=USER_ID)
         store.get_oauth_discovery = AsyncMock(
-            return_value={"introspection_endpoint": "https://e.com/introspect"}
+            return_value=_make_oauth_discovery(
+                metadata_overrides={"introspection_endpoint": "https://e.com/introspect"}
+            )
         )
         store.get_oauth_token = AsyncMock(return_value=None)
         result = await store.introspect_token(INTEGRATION_ID)
@@ -1311,10 +1348,7 @@ class TestTryRefreshToken:
         token_store.store_oauth_tokens = AsyncMock()
 
         mcp_config = _make_mcp_config(client_id="cid", client_secret="csec", requires_auth=True)
-        oauth_config = {
-            "token_endpoint": "https://auth.example.com/token",
-            "resource": SERVER_URL,
-        }
+        oauth_config = _make_oauth_discovery()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -1348,13 +1382,10 @@ class TestTryRefreshToken:
         )
         assert result is False
 
-    async def test_no_token_endpoint(self):
-        token_store = AsyncMock(spec=MCPTokenStore)
-        token_store.user_id = USER_ID
-        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
-
-        result = await try_refresh_token(token_store, INTEGRATION_ID, _make_mcp_config(), {})
-        assert result is False
+    # test_no_token_endpoint was deleted: token_endpoint is a required field on
+    # the SDK OAuthMetadata/OAuthDiscovery model, so a discovery result without a
+    # token_endpoint can no longer be constructed. The "missing token endpoint"
+    # case is now structurally impossible and enforced by the model, not this code.
 
     async def test_no_client_id(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1366,7 +1397,7 @@ class TestTryRefreshToken:
             token_store,
             INTEGRATION_ID,
             _make_mcp_config(),
-            {"token_endpoint": "https://auth.example.com/token"},
+            _make_oauth_discovery(),
         )
         assert result is False
 
@@ -1377,7 +1408,7 @@ class TestTryRefreshToken:
         token_store.get_dcr_client = AsyncMock(return_value=None)
 
         mcp_config = _make_mcp_config(client_id="cid")
-        oauth_config = {"token_endpoint": "https://auth.example.com/token"}
+        oauth_config = _make_oauth_discovery()
 
         mock_response = MagicMock()
         mock_response.status_code = 400
@@ -1402,7 +1433,7 @@ class TestTryRefreshToken:
         token_store.get_dcr_client = AsyncMock(return_value=None)
 
         mcp_config = _make_mcp_config(client_id="cid")
-        oauth_config = {"token_endpoint": "https://auth.example.com/token"}
+        oauth_config = _make_oauth_discovery()
 
         with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
             mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
@@ -1421,10 +1452,7 @@ class TestTryRefreshToken:
         token_store.store_oauth_tokens = AsyncMock()
 
         mcp_config = _make_mcp_config()
-        oauth_config = {
-            "token_endpoint": "https://auth.example.com/token",
-            "resource": SERVER_URL,
-        }
+        oauth_config = _make_oauth_discovery()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -1443,18 +1471,21 @@ class TestTryRefreshToken:
 
         assert result is True
 
-    async def test_refresh_returns_empty_access_token(self):
+    async def test_refresh_returns_false_on_empty_access_token(self):
+        # A 200 with an empty access_token must be rejected, not stored as a blank
+        # credential (OAuthToken itself permits access_token="").
         token_store = AsyncMock(spec=MCPTokenStore)
         token_store.user_id = USER_ID
-        token_store.get_refresh_token = AsyncMock(return_value="ref")
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_dcr_client = AsyncMock(return_value=None)
+        token_store.store_oauth_tokens = AsyncMock()
 
-        mcp_config = _make_mcp_config(client_id="cid")
-        oauth_config = {"token_endpoint": "https://auth.example.com/token"}
+        mcp_config = _make_mcp_config(client_id="cid", requires_auth=True)
+        oauth_config = _make_oauth_discovery()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"access_token": ""}
+        mock_response.json.return_value = {"access_token": "", "expires_in": 3600}
 
         with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
             mock_client = AsyncMock()
@@ -1463,7 +1494,9 @@ class TestTryRefreshToken:
             mock_http.return_value.__aexit__ = AsyncMock()
 
             result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
+
         assert result is False
+        token_store.store_oauth_tokens.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -1475,7 +1508,9 @@ class TestRevokeTokens:
         token_store.get_dcr_client = AsyncMock(return_value=None)
 
         mcp_config = _make_mcp_config(client_id="cid")
-        oauth_config = {"revocation_endpoint": "https://auth.example.com/revoke"}
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
+        )
 
         with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
             mock_client = AsyncMock()
@@ -1489,7 +1524,10 @@ class TestRevokeTokens:
 
     async def test_skips_when_no_endpoint(self):
         token_store = AsyncMock(spec=MCPTokenStore)
-        await revoke_tokens(token_store, INTEGRATION_ID, _make_mcp_config(), {})
+        # Discovery with no revocation_endpoint advertised.
+        await revoke_tokens(
+            token_store, INTEGRATION_ID, _make_mcp_config(), _make_oauth_discovery()
+        )
         token_store.get_refresh_token.assert_not_awaited()
 
     async def test_handles_revocation_error(self):
@@ -1499,7 +1537,9 @@ class TestRevokeTokens:
         token_store.get_dcr_client = AsyncMock(return_value=None)
 
         mcp_config = _make_mcp_config(client_id="cid")
-        oauth_config = {"revocation_endpoint": "https://auth.example.com/revoke"}
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
+        )
 
         with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
             mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network"))
@@ -1518,7 +1558,7 @@ class TestRevokeTokens:
 class TestDiscoverOAuthConfig:
     async def test_returns_cached(self):
         token_store = AsyncMock(spec=MCPTokenStore)
-        cached = {"authorization_endpoint": "https://auth.com/authorize"}
+        cached = _make_oauth_discovery()
         token_store.get_oauth_discovery = AsyncMock(return_value=cached)
 
         result = await discover_oauth_config(
@@ -1531,6 +1571,7 @@ class TestDiscoverOAuthConfig:
         token_store.get_oauth_discovery = AsyncMock(return_value=None)
 
         metadata = {
+            "issuer": "https://auth.com",
             "authorization_endpoint": "https://auth.com/authorize",
             "token_endpoint": "https://auth.com/token",
         }
@@ -1538,7 +1579,9 @@ class TestDiscoverOAuthConfig:
 
         with patch("app.services.mcp.oauth_discovery.validate_oauth_endpoints"):
             result = await discover_oauth_config(token_store, INTEGRATION_ID, config)
-        assert result == metadata
+        assert result.discovery_method == "preconfigured"
+        assert str(result.as_metadata.authorization_endpoint) == "https://auth.com/authorize"
+        assert str(result.as_metadata.token_endpoint) == "https://auth.com/token"
 
     async def test_discovery_via_prm(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1564,11 +1607,13 @@ class TestDiscoverOAuthConfig:
             patch(
                 "app.services.mcp.oauth_discovery.fetch_protected_resource_metadata",
                 new_callable=AsyncMock,
-                return_value={
-                    "resource": SERVER_URL,
-                    "authorization_servers": ["https://auth.example.com"],
-                    "scopes_supported": ["read", "write"],
-                },
+                return_value=ProtectedResourceMetadata.model_validate(
+                    {
+                        "resource": SERVER_URL,
+                        "authorization_servers": ["https://auth.example.com"],
+                        "scopes_supported": ["read", "write"],
+                    }
+                ),
             ),
             patch(
                 "app.services.mcp.oauth_discovery.select_authorization_server",
@@ -1578,19 +1623,18 @@ class TestDiscoverOAuthConfig:
             patch(
                 "app.services.mcp.oauth_discovery.fetch_auth_server_metadata",
                 new_callable=AsyncMock,
-                return_value={
-                    "authorization_endpoint": "https://auth.example.com/authorize",
-                    "token_endpoint": "https://auth.example.com/token",
-                    "registration_endpoint": "https://auth.example.com/register",
-                    "code_challenge_methods_supported": ["S256"],
-                },
+                return_value=_make_oauth_metadata(
+                    registration_endpoint="https://auth.example.com/register",
+                ),
             ),
             patch("app.services.mcp.oauth_discovery.validate_https_url"),
             patch("app.services.mcp.oauth_discovery.validate_oauth_endpoints"),
         ):
             result = await discover_oauth_config(token_store, INTEGRATION_ID, mcp_config)
-        assert result["discovery_method"] == "rfc9728_prm"
-        assert result["authorization_endpoint"] == "https://auth.example.com/authorize"
+        assert result.discovery_method == "rfc9728_prm"
+        assert (
+            str(result.as_metadata.authorization_endpoint) == "https://auth.example.com/authorize"
+        )
         token_store.store_oauth_discovery.assert_awaited_once()
 
     async def test_fallback_to_direct_oauth(self):
@@ -1614,16 +1658,18 @@ class TestDiscoverOAuthConfig:
             patch(
                 "app.services.mcp.oauth_discovery.fetch_auth_server_metadata",
                 new_callable=AsyncMock,
-                return_value={
-                    "authorization_endpoint": "https://srv.example.com/authorize",
-                    "token_endpoint": "https://srv.example.com/token",
-                },
+                return_value=_make_oauth_metadata(
+                    issuer="https://srv.example.com",
+                    authorization_endpoint="https://srv.example.com/authorize",
+                    token_endpoint="https://srv.example.com/token",
+                ),
             ),
             patch("app.services.mcp.oauth_discovery.validate_https_url"),
             patch("app.services.mcp.oauth_discovery.validate_oauth_endpoints"),
         ):
             result = await discover_oauth_config(token_store, INTEGRATION_ID, mcp_config)
-        assert result["discovery_method"] == "direct_oauth"
+        assert result.discovery_method == "direct_oauth"
+        assert str(result.as_metadata.authorization_endpoint) == "https://srv.example.com/authorize"
 
     async def test_raises_when_all_discovery_fails(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1678,10 +1724,12 @@ class TestDiscoverOAuthConfig:
             patch(
                 "app.services.mcp.oauth_discovery.fetch_protected_resource_metadata",
                 new_callable=AsyncMock,
-                return_value={
-                    "resource": SERVER_URL,
-                    "authorization_servers": ["https://auth.example.com"],
-                },
+                return_value=ProtectedResourceMetadata.model_validate(
+                    {
+                        "resource": SERVER_URL,
+                        "authorization_servers": ["https://auth.example.com"],
+                    }
+                ),
             ),
             patch(
                 "app.services.mcp.oauth_discovery.select_authorization_server",
@@ -1691,10 +1739,7 @@ class TestDiscoverOAuthConfig:
             patch(
                 "app.services.mcp.oauth_discovery.fetch_auth_server_metadata",
                 new_callable=AsyncMock,
-                return_value={
-                    "authorization_endpoint": "https://auth.example.com/authorize",
-                    "token_endpoint": "https://auth.example.com/token",
-                },
+                return_value=_make_oauth_metadata(),
             ),
             patch("app.services.mcp.oauth_discovery.validate_https_url"),
             patch("app.services.mcp.oauth_discovery.validate_oauth_endpoints"),
@@ -1704,7 +1749,7 @@ class TestDiscoverOAuthConfig:
             )
             # extract_auth_challenge should NOT be called because challenge_data was provided
             mock_extract.assert_not_awaited()
-            assert result["initial_scope"] == "read"
+            assert result.initial_scope == "read"
 
 
 @pytest.mark.unit
@@ -2060,20 +2105,28 @@ class TestMCPClientRegisterClient:
         client = MCPClient(user_id=USER_ID)
         client.token_store.store_dcr_client = AsyncMock()
 
+        as_metadata = _make_oauth_metadata(
+            registration_endpoint="https://auth.example.com/register"
+        )
+
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"client_id": "new_client_id"}
+        # Response must validate as OAuthClientInformationFull (redirect_uris required).
+        mock_response.json.return_value = {
+            "client_id": "new_client_id",
+            "redirect_uris": ["https://myapp.com/callback"],
+        }
         mock_response.raise_for_status = MagicMock()
 
         with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
             mock_http_client = AsyncMock()
-            mock_http_client.post = AsyncMock(return_value=mock_response)
+            mock_http_client.send = AsyncMock(return_value=mock_response)
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http_client)
             mock_http.return_value.__aexit__ = AsyncMock()
 
             result = await client._register_client(
                 INTEGRATION_ID,
-                "https://auth.example.com/register",
+                as_metadata,
                 "https://myapp.com/callback",
             )
 
@@ -2082,12 +2135,15 @@ class TestMCPClientRegisterClient:
 
     async def test_dcr_not_supported_403(self):
         client = MCPClient(user_id=USER_ID)
+        as_metadata = _make_oauth_metadata(
+            registration_endpoint="https://auth.example.com/register"
+        )
 
         mock_response = MagicMock()
         mock_response.status_code = 403
 
         mock_http_client = AsyncMock()
-        mock_http_client.post = AsyncMock(return_value=mock_response)
+        mock_http_client.send = AsyncMock(return_value=mock_response)
 
         with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
             mock_cm = AsyncMock()
@@ -2097,18 +2153,21 @@ class TestMCPClientRegisterClient:
             with pytest.raises(DCRNotSupportedException):
                 await client._register_client(
                     INTEGRATION_ID,
-                    "https://auth.example.com/register",
+                    as_metadata,
                     "https://myapp.com/callback",
                 )
 
     async def test_dcr_not_supported_404(self):
         client = MCPClient(user_id=USER_ID)
+        as_metadata = _make_oauth_metadata(
+            registration_endpoint="https://auth.example.com/register"
+        )
 
         mock_response = MagicMock()
         mock_response.status_code = 404
 
         mock_http_client = AsyncMock()
-        mock_http_client.post = AsyncMock(return_value=mock_response)
+        mock_http_client.send = AsyncMock(return_value=mock_response)
 
         with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
             mock_cm = AsyncMock()
@@ -2118,18 +2177,21 @@ class TestMCPClientRegisterClient:
             with pytest.raises(DCRNotSupportedException):
                 await client._register_client(
                     INTEGRATION_ID,
-                    "https://auth.example.com/register",
+                    as_metadata,
                     "https://myapp.com/callback",
                 )
 
     async def test_dcr_not_supported_405(self):
         client = MCPClient(user_id=USER_ID)
+        as_metadata = _make_oauth_metadata(
+            registration_endpoint="https://auth.example.com/register"
+        )
 
         mock_response = MagicMock()
         mock_response.status_code = 405
 
         mock_http_client = AsyncMock()
-        mock_http_client.post = AsyncMock(return_value=mock_response)
+        mock_http_client.send = AsyncMock(return_value=mock_response)
 
         with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
             mock_cm = AsyncMock()
@@ -2139,12 +2201,15 @@ class TestMCPClientRegisterClient:
             with pytest.raises(DCRNotSupportedException):
                 await client._register_client(
                     INTEGRATION_ID,
-                    "https://auth.example.com/register",
+                    as_metadata,
                     "https://myapp.com/callback",
                 )
 
     async def test_dcr_other_error(self):
         client = MCPClient(user_id=USER_ID)
+        as_metadata = _make_oauth_metadata(
+            registration_endpoint="https://auth.example.com/register"
+        )
 
         with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
             mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
@@ -2153,7 +2218,7 @@ class TestMCPClientRegisterClient:
             with pytest.raises(ValueError, match="Dynamic Client Registration failed"):
                 await client._register_client(
                     INTEGRATION_ID,
-                    "https://auth.example.com/register",
+                    as_metadata,
                     "https://myapp.com/callback",
                 )
 
@@ -2460,7 +2525,9 @@ class TestMCPClientSafeCloseClient:
 class TestMCPClientRevokeTokens:
     async def test_revokes_when_oauth_config_exists(self):
         client = MCPClient(user_id=USER_ID)
-        oauth_config = {"revocation_endpoint": "https://auth.example.com/revoke"}
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
+        )
         client.token_store.get_oauth_discovery = AsyncMock(return_value=oauth_config)
 
         resolved = MagicMock()
@@ -2506,8 +2573,10 @@ class TestMCPClientGetSessionForServer:
     async def test_returns_session(self):
         client = MCPClient(user_id=USER_ID)
         mock_base = MagicMock()
+        # Production unwraps mcp_use's wrapper to the underlying official SDK
+        # ClientSession: client.get_session(id).connector.client_session.
         mock_session = MagicMock()
-        mock_base.get_session = MagicMock(return_value=mock_session)
+        mock_base.get_session.return_value.connector.client_session = mock_session
         client._clients[INTEGRATION_ID] = mock_base
         client._tools[INTEGRATION_ID] = [_mock_tool()]
 
@@ -2563,17 +2632,10 @@ class TestMCPClientListResourceTemplatesOnServer:
         await client.list_resource_templates_on_server(SERVER_URL, cursor="page2")
         mock_session.list_resource_templates.assert_awaited_once_with(cursor="page2")
 
-    async def test_list_templates_without_model_dump(self):
-        client = MCPClient(user_id=USER_ID)
-        mock_session = AsyncMock()
-
-        # dict() fallback requires the result to be iterable like a dict
-        mock_session.list_resource_templates = AsyncMock(return_value={"resourceTemplates": []})
-        client._get_session_for_server = AsyncMock(return_value=mock_session)
-
-        result = await client.list_resource_templates_on_server(SERVER_URL)
-        assert isinstance(result, dict)
-        assert result["resourceTemplates"] == []
+    # test_list_templates_without_model_dump was deleted: _get_session_for_server
+    # now returns the underlying official SDK ClientSession, whose list ops always
+    # return typed *Result models with .model_dump(). The bare-dict fallback this
+    # test exercised was removed in the SDK migration, so the path no longer exists.
 
 
 # ===========================================================================
@@ -2591,12 +2653,9 @@ class TestMCPClientBuildOauthAuthUrl:
             requires_auth=True, client_id="my_client", oauth_scopes=["read"]
         )
 
-        oauth_config = {
-            "authorization_endpoint": "https://auth.example.com/authorize",
-            "token_endpoint": "https://auth.example.com/token",
-            "code_challenge_methods_supported": ["S256"],
-            "scopes_supported": ["read", "write"],
-        }
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={"scopes_supported": ["read", "write"]}
+        )
 
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
@@ -2642,9 +2701,9 @@ class TestMCPClientBuildOauthAuthUrl:
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True)
 
-        oauth_config = {
-            "authorization_endpoint": "https://auth.example.com/authorize",
-        }
+        # No registration_endpoint => DCR fallback unavailable, so client_id
+        # cannot be obtained from any source.
+        oauth_config = _make_oauth_discovery()
 
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
@@ -2667,10 +2726,7 @@ class TestMCPClientBuildOauthAuthUrl:
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True)
 
-        oauth_config = {
-            "authorization_endpoint": "https://auth.example.com/authorize",
-            "code_challenge_methods_supported": ["S256"],
-        }
+        oauth_config = _make_oauth_discovery()
 
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
@@ -2696,35 +2752,11 @@ class TestMCPClientBuildOauthAuthUrl:
 
         assert "client_id=dcr_id" in url
 
-    async def test_raises_when_no_auth_endpoint(self):
-        client = MCPClient(user_id=USER_ID)
-
-        resolved = MagicMock()
-        resolved.mcp_config = _make_mcp_config(requires_auth=True, client_id="cid")
-
-        oauth_config = {
-            "code_challenge_methods_supported": ["S256"],
-        }
-
-        with (
-            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
-            patch.object(
-                client,
-                "_discover_oauth_config",
-                new_callable=AsyncMock,
-                return_value=oauth_config,
-            ),
-            patch("app.services.mcp.mcp_client.validate_pkce_support"),
-            patch(
-                "app.services.mcp.mcp_client.PKCEParameters.generate",
-                return_value=MagicMock(code_verifier="v", code_challenge="c"),
-            ),
-        ):
-            mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client.token_store.create_oauth_state = AsyncMock(return_value="state")
-
-            with pytest.raises(ValueError, match="No authorization_endpoint"):
-                await client.build_oauth_auth_url(INTEGRATION_ID, "https://callback.com")
+    # test_raises_when_no_auth_endpoint was deleted: authorization_endpoint is a
+    # required field on the SDK OAuthMetadata model, so a discovery result lacking
+    # it can no longer be constructed. The "missing authorization_endpoint" guard
+    # was removed from build_oauth_auth_url; the constraint is now enforced by the
+    # model at discovery time.
 
     async def test_adds_nonce_for_openid_scope(self):
         client = MCPClient(user_id=USER_ID)
@@ -2736,10 +2768,7 @@ class TestMCPClientBuildOauthAuthUrl:
             oauth_scopes=["openid", "profile"],
         )
 
-        oauth_config = {
-            "authorization_endpoint": "https://auth.example.com/authorize",
-            "code_challenge_methods_supported": ["S256"],
-        }
+        oauth_config = _make_oauth_discovery()
 
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
@@ -2774,11 +2803,9 @@ class TestMCPClientBuildOauthAuthUrl:
             oauth_scopes=["read"],
         )
 
-        oauth_config = {
-            "authorization_endpoint": "https://auth.example.com/authorize",
-            "code_challenge_methods_supported": ["S256"],
-            "scopes_supported": ["read", "offline_access"],
-        }
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={"scopes_supported": ["read", "offline_access"]}
+        )
 
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
@@ -2829,27 +2856,10 @@ class TestMCPClientHandleOauthCallback:
                     INTEGRATION_ID, "code", "state", "https://callback.com"
                 )
 
-    async def test_raises_when_no_token_endpoint(self):
-        client = MCPClient(user_id=USER_ID)
-        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
-
-        resolved = MagicMock()
-        resolved.mcp_config = _make_mcp_config(requires_auth=True)
-
-        with (
-            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
-            patch.object(
-                client,
-                "_discover_oauth_config",
-                new_callable=AsyncMock,
-                return_value={},
-            ),
-        ):
-            mock_resolver.resolve = AsyncMock(return_value=resolved)
-            with pytest.raises(ValueError, match="No token_endpoint"):
-                await client.handle_oauth_callback(
-                    INTEGRATION_ID, "code", "state", "https://callback.com"
-                )
+    # test_raises_when_no_token_endpoint was deleted: token_endpoint is a required
+    # field on the SDK OAuthMetadata model, so a discovery result without it can no
+    # longer be constructed. The "No token_endpoint" guard was removed from
+    # handle_oauth_callback; the constraint is now enforced by the model.
 
     async def test_raises_when_no_client_id_for_exchange(self):
         client = MCPClient(user_id=USER_ID)
@@ -2864,9 +2874,7 @@ class TestMCPClientHandleOauthCallback:
                 client,
                 "_discover_oauth_config",
                 new_callable=AsyncMock,
-                return_value={
-                    "token_endpoint": "https://auth.example.com/token",
-                },
+                return_value=_make_oauth_discovery(),
             ),
             patch("app.services.mcp.mcp_client.validate_https_url"),
         ):
@@ -2905,9 +2913,7 @@ class TestMCPClientHandleOauthCallback:
                 client,
                 "_discover_oauth_config",
                 new_callable=AsyncMock,
-                return_value={
-                    "token_endpoint": "https://auth.example.com/token",
-                },
+                return_value=_make_oauth_discovery(),
             ),
             patch("app.services.mcp.mcp_client.validate_https_url"),
             patch(

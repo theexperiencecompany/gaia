@@ -126,6 +126,15 @@ async def try_refresh_token(
 
             token = OAuthToken.model_validate(response.json())
 
+            # A 200 with an empty access_token is not a usable refresh — treat it
+            # as a failure rather than storing a blank credential.
+            if not token.access_token:
+                log.warning(
+                    f"try_refresh_token: token endpoint returned an empty "
+                    f"access_token for {integration_id} user={token_store.user_id}"
+                )
+                return False
+
             expires_at = None
             if token.expires_in:
                 expires_at = datetime.now(UTC) + timedelta(seconds=token.expires_in)

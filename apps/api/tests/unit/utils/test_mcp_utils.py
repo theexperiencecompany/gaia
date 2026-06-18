@@ -164,7 +164,9 @@ class TestWrapToolWithNullFilter:
         assert "bug in the MCP server" in result
 
     async def test_timeout_error_message(self) -> None:
-        original = AsyncMock(side_effect=Exception("Request timeout after 30s"))
+        # Timeouts are matched by exception TYPE (not a "timeout" substring in an
+        # arbitrary tool error), so a real TimeoutError gets the timed-out message.
+        original = AsyncMock(side_effect=TimeoutError("Request timeout after 30s"))
         tool = _make_tool(arun=original)
 
         wrapped = wrap_tool_with_null_filter(tool)
@@ -172,6 +174,18 @@ class TestWrapToolWithNullFilter:
 
         assert "timed out" in result
         assert "try again" in result.lower()
+
+    async def test_timeout_substring_in_generic_error_not_rebranded(self) -> None:
+        # A non-timeout exception that merely contains the word "timeout" must NOT
+        # be rebranded as an MCP server timeout.
+        original = AsyncMock(side_effect=Exception("Request timeout after 30s"))
+        tool = _make_tool(arun=original)
+
+        wrapped = wrap_tool_with_null_filter(tool)
+        result = await wrapped._arun()
+
+        assert "timed out" not in result
+        assert "MCP tool error" in result
 
     async def test_generic_error_returns_mcp_tool_error(self) -> None:
         original = AsyncMock(side_effect=Exception("Something completely unexpected"))

@@ -14,7 +14,11 @@ Tests cover:
 - parse_oauth_error_response: JSON, non-JSON, parse error
 - get_client_metadata_document_url: URL construction
 - introspect_token: success, failure, timeout
-- select_authorization_server: single, multiple, preferred
+- select_authorization_server: single, multiple
+
+The OAuth discovery functions take official ``mcp`` SDK models
+(``OAuthMetadata`` / ``ProtectedResourceMetadata``) rather than plain dicts,
+so the helpers below build those models with sane HTTPS defaults.
 """
 
 import base64
@@ -23,6 +27,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+from mcp.shared.auth import OAuthMetadata
 import pytest
 
 from app.utils.mcp_oauth_utils import (
@@ -48,6 +53,21 @@ from app.utils.mcp_oauth_utils import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _make_as_metadata(**overrides: Any) -> OAuthMetadata:
+    """Build an ``OAuthMetadata`` with valid HTTPS defaults.
+
+    Pass ``None`` for a field to explicitly drop an optional endpoint, or any
+    value (e.g. an HTTP URL) to override a default for a specific test.
+    """
+    fields: dict[str, Any] = {
+        "issuer": "https://auth.example.com",
+        "authorization_endpoint": "https://auth.example.com/authorize",
+        "token_endpoint": "https://auth.example.com/token",
+    }
+    fields.update(overrides)
+    return OAuthMetadata.model_validate({k: v for k, v in fields.items() if v is not None})
 
 
 def _make_response(
@@ -182,48 +202,38 @@ class TestValidateOauthEndpoints:
     """Tests for validate_oauth_endpoints — validates all endpoint URLs."""
 
     def test_all_https_endpoints_valid(self) -> None:
-        config = {
-            "authorization_endpoint": "https://auth.example.com/authorize",
-            "token_endpoint": "https://auth.example.com/token",
-            "registration_endpoint": "https://auth.example.com/register",
-        }
+        metadata = _make_as_metadata(
+            registration_endpoint="https://auth.example.com/register",
+        )
         # Should not raise
-        validate_oauth_endpoints(config)
+        validate_oauth_endpoints(metadata)
 
     def test_one_http_endpoint_raises(self) -> None:
-        config = {
-            "authorization_endpoint": "https://auth.example.com/authorize",
-            "token_endpoint": "http://auth.example.com/token",  # HTTP!
-        }
+        metadata = _make_as_metadata(token_endpoint="http://auth.example.com/token")  # HTTP!
         with pytest.raises(OAuthSecurityError, match="Invalid token_endpoint"):
-            validate_oauth_endpoints(config)
+            validate_oauth_endpoints(metadata)
 
-    def test_missing_endpoints_are_skipped(self) -> None:
-        config = {
-            "authorization_endpoint": "https://auth.example.com/authorize",
-            # Other endpoints are absent — should not raise
-        }
-        validate_oauth_endpoints(config)
-
-    def test_empty_config_no_error(self) -> None:
-        validate_oauth_endpoints({})
+    def test_missing_optional_endpoints_are_skipped(self) -> None:
+        # Only the three required endpoints set; optional ones (registration,
+        # revocation, introspection) are absent — should not raise.
+        metadata = _make_as_metadata()
+        validate_oauth_endpoints(metadata)
 
     def test_localhost_endpoints_allowed_by_default(self) -> None:
-        config = {
-            "authorization_endpoint": "http://localhost:8080/authorize",
-            "token_endpoint": "http://127.0.0.1:3000/token",
-        }
-        validate_oauth_endpoints(config)
+        metadata = _make_as_metadata(
+            issuer="http://localhost:8080",
+            authorization_endpoint="http://localhost:8080/authorize",
+            token_endpoint="http://127.0.0.1:3000/token",
+        )
+        validate_oauth_endpoints(metadata)
 
     def test_localhost_disallowed_when_flag_false(self) -> None:
-        config = {
-            "token_endpoint": "http://localhost:8080/token",
-        }
+        metadata = _make_as_metadata(token_endpoint="http://localhost:8080/token")
         with pytest.raises(OAuthSecurityError, match="Invalid token_endpoint"):
-            validate_oauth_endpoints(config, allow_localhost=False)
+            validate_oauth_endpoints(metadata, allow_localhost=False)
 
-    def test_all_known_endpoint_keys_validated(self) -> None:
-        """Ensure all six endpoint keys defined in the function are checked."""
+    def test_each_endpoint_field_validated(self) -> None:
+        """An HTTP URL in any validated endpoint field is rejected by name."""
         for key in [
             "authorization_endpoint",
             "token_endpoint",
@@ -232,9 +242,9 @@ class TestValidateOauthEndpoints:
             "introspection_endpoint",
             "issuer",
         ]:
-            config = {key: "http://evil.com/steal"}
+            metadata = _make_as_metadata(**{key: "http://evil.com/steal"})
             with pytest.raises(OAuthSecurityError, match=f"Invalid {key}"):
-                validate_oauth_endpoints(config)
+                validate_oauth_endpoints(metadata)
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +267,7 @@ class TestExtractAuthChallenge:
         }
 
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -280,7 +290,7 @@ class TestExtractAuthChallenge:
         }
 
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -296,7 +306,7 @@ class TestExtractAuthChallenge:
         mock_response.headers = {}
 
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -310,7 +320,7 @@ class TestExtractAuthChallenge:
         mock_response.status_code = 200
 
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -321,7 +331,7 @@ class TestExtractAuthChallenge:
 
     async def test_timeout_returns_empty_dict(self) -> None:
         mock_client = AsyncMock()
-        mock_client.get.side_effect = httpx.TimeoutException("read timed out")
+        mock_client.post.side_effect = httpx.TimeoutException("read timed out")
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -332,7 +342,7 @@ class TestExtractAuthChallenge:
 
     async def test_connect_error_reraises(self) -> None:
         mock_client = AsyncMock()
-        mock_client.get.side_effect = httpx.ConnectError("Connection refused")
+        mock_client.post.side_effect = httpx.ConnectError("Connection refused")
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -342,7 +352,7 @@ class TestExtractAuthChallenge:
 
     async def test_generic_exception_returns_empty_dict(self) -> None:
         mock_client = AsyncMock()
-        mock_client.get.side_effect = RuntimeError("unexpected")
+        mock_client.post.side_effect = RuntimeError("unexpected")
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -488,92 +498,104 @@ class TestFindProtectedResourceMetadata:
 
 @pytest.mark.unit
 class TestFetchAuthServerMetadata:
-    """Tests for fetch_auth_server_metadata — RFC 8414 discovery with fallback."""
+    """Tests for fetch_auth_server_metadata — RFC 8414 discovery with fallback.
+
+    Discovery now issues ``client.send(create_oauth_metadata_request(url))`` and
+    returns a validated :class:`OAuthMetadata` model. On total failure it returns
+    an origin-only fallback model rather than a dict with a ``fallback`` flag.
+    """
+
+    @staticmethod
+    def _send_returning(handler: Any) -> AsyncMock:
+        """Build a mock httpx client whose ``send`` delegates to ``handler``.
+
+        ``handler`` receives the ``httpx.Request`` and returns a mock response.
+        """
+
+        async def mock_send(request: httpx.Request, **kwargs: Any) -> MagicMock:
+            return handler(request)
+
+        mock_client = AsyncMock()
+        mock_client.send = mock_send
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        return mock_client
 
     async def test_found_via_oauth_discovery(self) -> None:
-        """First candidate URL returns 200."""
+        """First candidate URL returns 200 with valid metadata."""
         metadata = {
             "issuer": "https://auth.example.com",
             "authorization_endpoint": "https://auth.example.com/authorize",
             "token_endpoint": "https://auth.example.com/token",
         }
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = metadata
 
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        def handler(request: httpx.Request) -> MagicMock:
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = metadata
+            return resp
+
+        mock_client = self._send_returning(handler)
 
         with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://auth.example.com")
 
-        assert result["issuer"] == "https://auth.example.com"
-        assert "fallback" not in result
+        assert str(result.issuer) == "https://auth.example.com/"
+        assert str(result.token_endpoint) == "https://auth.example.com/token"
 
     async def test_found_via_oidc_discovery(self) -> None:
         """OAuth URL 404s, OIDC URL returns 200."""
-        call_count = 0
         oidc_metadata = {
             "issuer": "https://auth.example.com",
             "authorization_endpoint": "https://auth.example.com/authorize",
+            "token_endpoint": "https://auth.example.com/token",
         }
 
-        async def mock_get(url: str, **kwargs: Any) -> MagicMock:
-            nonlocal call_count
-            call_count += 1
+        def handler(request: httpx.Request) -> MagicMock:
             resp = MagicMock()
-            if "openid-configuration" in url:
+            if "openid-configuration" in str(request.url):
                 resp.status_code = 200
                 resp.json.return_value = oidc_metadata
             else:
                 resp.status_code = 404
             return resp
 
-        mock_client = AsyncMock()
-        mock_client.get = mock_get
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client = self._send_returning(handler)
 
         with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://auth.example.com")
 
-        assert result["issuer"] == "https://auth.example.com"
+        assert str(result.issuer) == "https://auth.example.com/"
 
-    async def test_all_fail_returns_fallback(self) -> None:
-        """All discovery URLs fail — returns fallback URLs."""
-        mock_response = MagicMock()
-        mock_response.status_code = 404
+    async def test_all_fail_returns_origin_fallback(self) -> None:
+        """All discovery URLs 404 — returns origin-based fallback model."""
 
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        def handler(request: httpx.Request) -> MagicMock:
+            resp = MagicMock()
+            resp.status_code = 404
+            return resp
+
+        mock_client = self._send_returning(handler)
 
         with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://auth.example.com")
 
-        assert result["fallback"] is True
-        assert result["authorization_endpoint"] == "https://auth.example.com/authorize"
-        assert result["token_endpoint"] == "https://auth.example.com/token"
-        assert result["registration_endpoint"] == "https://auth.example.com/register"
-        assert result["issuer"] == "https://auth.example.com"
+        assert str(result.issuer) == "https://auth.example.com/"
+        assert str(result.authorization_endpoint) == "https://auth.example.com/authorize"
+        assert str(result.token_endpoint) == "https://auth.example.com/token"
+        assert str(result.registration_endpoint) == "https://auth.example.com/register"
 
     async def test_path_in_url_generates_path_aware_candidates(self) -> None:
         """Auth server URL with path generates path-aware discovery URLs."""
         urls_tried: list[str] = []
 
-        async def mock_get(url: str, **kwargs: Any) -> MagicMock:
-            urls_tried.append(url)
+        def handler(request: httpx.Request) -> MagicMock:
+            urls_tried.append(str(request.url))
             resp = MagicMock()
             resp.status_code = 404
             return resp
 
-        mock_client = AsyncMock()
-        mock_client.get = mock_get
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client = self._send_returning(handler)
 
         with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
             await fetch_auth_server_metadata("https://auth.example.com/tenant1")
@@ -588,7 +610,7 @@ class TestFetchAuthServerMetadata:
         """Network errors on one candidate don't prevent trying the next."""
         call_count = 0
 
-        async def mock_get(url: str, **kwargs: Any) -> MagicMock:
+        def handler(request: httpx.Request) -> MagicMock:
             nonlocal call_count
             call_count += 1
             if call_count <= 1:
@@ -597,33 +619,30 @@ class TestFetchAuthServerMetadata:
             resp.status_code = 404
             return resp
 
-        mock_client = AsyncMock()
-        mock_client.get = mock_get
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client = self._send_returning(handler)
 
         with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://auth.example.com")
 
-        # Should still return fallback (all failed)
-        assert result["fallback"] is True
+        # All candidates failed -> origin fallback model still returned.
+        assert str(result.token_endpoint) == "https://auth.example.com/token"
 
     async def test_fallback_uses_origin_only(self) -> None:
         """Fallback URLs use origin (no path), per MCP spec 2025-03-26."""
-        mock_response = MagicMock()
-        mock_response.status_code = 404
 
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        def handler(request: httpx.Request) -> MagicMock:
+            resp = MagicMock()
+            resp.status_code = 404
+            return resp
+
+        mock_client = self._send_returning(handler)
 
         with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://server.smithery.ai/excalidraw")
 
         # Fallback should use origin only, NOT include /excalidraw
-        assert result["token_endpoint"] == "https://server.smithery.ai/token"
-        assert result["authorization_endpoint"] == "https://server.smithery.ai/authorize"
+        assert str(result.token_endpoint) == "https://server.smithery.ai/token"
+        assert str(result.authorization_endpoint) == "https://server.smithery.ai/authorize"
 
 
 # ---------------------------------------------------------------------------
@@ -996,38 +1015,39 @@ class TestValidatePkceSupport:
     """Tests for validate_pkce_support — MCP PKCE requirement checking."""
 
     def test_s256_present_passes(self) -> None:
-        config = {"code_challenge_methods_supported": ["S256"]}
+        metadata = _make_as_metadata(code_challenge_methods_supported=["S256"])
         # Should not raise
-        validate_pkce_support(config, "test-integration")
+        validate_pkce_support(metadata, "test-integration")
 
     def test_s256_among_multiple_passes(self) -> None:
-        config = {"code_challenge_methods_supported": ["plain", "S256"]}
-        validate_pkce_support(config, "test-integration")
+        metadata = _make_as_metadata(code_challenge_methods_supported=["plain", "S256"])
+        validate_pkce_support(metadata, "test-integration")
 
     def test_empty_list_raises(self) -> None:
-        config: dict[str, object] = {"code_challenge_methods_supported": []}
+        metadata = _make_as_metadata(code_challenge_methods_supported=[])
         with pytest.raises(ValueError, match="does not advertise PKCE support"):
-            validate_pkce_support(config, "test-integration")
+            validate_pkce_support(metadata, "test-integration")
 
-    def test_missing_key_raises(self) -> None:
-        config: dict[str, object] = {}
+    def test_missing_field_raises(self) -> None:
+        # code_challenge_methods_supported absent -> defaults to None on the model.
+        metadata = _make_as_metadata()
         with pytest.raises(ValueError, match="does not advertise PKCE support"):
-            validate_pkce_support(config, "test-integration")
+            validate_pkce_support(metadata, "test-integration")
 
     def test_only_plain_raises_insecure(self) -> None:
-        config = {"code_challenge_methods_supported": ["plain"]}
+        metadata = _make_as_metadata(code_challenge_methods_supported=["plain"])
         with pytest.raises(ValueError, match="insecure"):
-            validate_pkce_support(config, "test-integration")
+            validate_pkce_support(metadata, "test-integration")
 
     def test_unsupported_method_without_plain_raises(self) -> None:
-        config = {"code_challenge_methods_supported": ["custom_method"]}
+        metadata = _make_as_metadata(code_challenge_methods_supported=["custom_method"])
         with pytest.raises(ValueError, match="does not support S256"):
-            validate_pkce_support(config, "test-integration")
+            validate_pkce_support(metadata, "test-integration")
 
     def test_none_value_raises(self) -> None:
-        config = {"code_challenge_methods_supported": None}
+        metadata = _make_as_metadata(code_challenge_methods_supported=None)
         with pytest.raises(ValueError, match="does not advertise PKCE support"):
-            validate_pkce_support(config, "test-integration")
+            validate_pkce_support(metadata, "test-integration")
 
 
 # ---------------------------------------------------------------------------
@@ -1127,21 +1147,7 @@ class TestSelectAuthorizationServer:
         with pytest.raises(OAuthDiscoveryError, match="No authorization servers"):
             await select_authorization_server([])
 
-    async def test_preferred_server_selected(self) -> None:
-        servers = ["https://auth1.example.com", "https://auth2.example.com"]
-        result = await select_authorization_server(
-            servers, preferred_server="https://auth2.example.com"
-        )
-        assert result == "https://auth2.example.com"
-
-    async def test_preferred_not_in_list_uses_first(self) -> None:
-        servers = ["https://auth1.example.com", "https://auth2.example.com"]
-        result = await select_authorization_server(
-            servers, preferred_server="https://unknown.example.com"
-        )
-        assert result == "https://auth1.example.com"
-
-    async def test_multiple_servers_no_preference_uses_first(self) -> None:
+    async def test_multiple_servers_uses_first(self) -> None:
         servers = ["https://first.example.com", "https://second.example.com"]
         result = await select_authorization_server(servers)
         assert result == "https://first.example.com"
@@ -1177,8 +1183,8 @@ class TestFetchProtectedResourceMetadata:
                 "https://mcp.example.com/.well-known/oauth-protected-resource"
             )
 
-        assert result["resource"] == "https://mcp.example.com"
-        assert "authorization_servers" in result
+        assert str(result.resource) == "https://mcp.example.com/"
+        assert [str(s) for s in result.authorization_servers] == ["https://auth.example.com/"]
 
     async def test_http_error_raises(self) -> None:
         mock_response = MagicMock()
@@ -1202,7 +1208,10 @@ class TestFetchProtectedResourceMetadata:
     async def test_includes_mcp_protocol_version_header(self) -> None:
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"resource": "test"}
+        mock_response.json.return_value = {
+            "resource": "https://example.com",
+            "authorization_servers": ["https://auth.example.com"],
+        }
         mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
