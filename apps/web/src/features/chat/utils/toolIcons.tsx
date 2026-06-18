@@ -12,6 +12,7 @@
 import {
   AlarmClockIcon,
   BodyPartMuscleIcon,
+  BookOpen01Icon,
   Brain02Icon,
   CheckListIcon,
   CheckmarkCircle02Icon,
@@ -79,6 +80,7 @@ const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   CheckmarkCircle02Icon,
   ClipboardIcon,
   AlarmClockIcon,
+  BookOpen01Icon,
   PuzzleIcon,
   FileEmpty02Icon,
   SourceCodeCircleIcon,
