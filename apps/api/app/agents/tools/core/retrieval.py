@@ -29,13 +29,13 @@ from app.agents.tools.core.registry import (
 )
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.models.chat_models import ConversationSource
-from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
+from app.services.integrations.user_integrations import get_user_integrations
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth.oauth_service import get_all_integrations_status
 from app.utils.mcp_utils import canonical_tool_name_map
@@ -226,21 +226,29 @@ async def _get_user_context(
         user_namespaces |= set(await get_user_available_tool_namespaces(user_id))
 
         if include_subagents:
-            # Key connected subagents by their canonical integration id (the same
-            # id used to index the subagent) with the display name, so a custom
-            # MCP renders as `subagent:<id> (<name>)` and dedupes against search
-            # hits — never as its URL-derived namespace.
+            # Inject the user's connected subagents keyed by canonical integration
+            # id + display name, so each renders as `subagent:<id> (<name>)` and
+            # dedupes against search hits (never as a URL-derived namespace).
+            # Platform/internal names come free from the in-memory registry; custom
+            # MCP names come from the already-cached user-integration list — one
+            # cache read, invalidated alongside the rest of the user's integration
+            # caches, instead of an uncached per-MCP lookup on this hot path.
             status = await get_all_integrations_status(user_id)
+            custom_connected_ids: list[str] = []
             for integration_id, is_connected in status.items():
                 if not is_connected:
                     continue
                 platform = get_subagent_by_id(integration_id)
                 if platform:
                     connected_integrations[platform.id] = platform.name
-                elif get_integration_by_id(integration_id) is None:
-                    # Custom MCP — resolve its display name for the LLM-facing key.
-                    resolved = await IntegrationResolver.resolve(integration_id)
-                    connected_integrations[integration_id] = resolved.name if resolved else None
+                else:
+                    custom_connected_ids.append(integration_id)
+
+            if custom_connected_ids:
+                user_ints = await get_user_integrations(user_id)
+                names = {r.integration_id: r.integration.name for r in user_ints.integrations}
+                for cid in custom_connected_ids:
+                    connected_integrations[cid] = names.get(cid)
 
             log.info(f"User {user_id} connected subagents: {set(connected_integrations)}")
 
