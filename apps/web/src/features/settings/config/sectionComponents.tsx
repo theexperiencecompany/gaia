@@ -12,6 +12,7 @@ import ProfileCardSettings from "@/features/settings/components/ProfileCardSetti
 import type { ModalAction } from "@/features/settings/components/SettingsMenu";
 import { SubscriptionSettings } from "@/features/settings/components/SubscriptionSettings";
 import UsageSettings from "@/features/settings/components/UsageSettings";
+import VoiceSettings from "@/features/settings/components/VoiceSettings";
 import type { SettingsSection } from "./sectionKeys";
 
 interface SectionComponentProps {
@@ -38,6 +39,8 @@ export function SectionComponent({
       return <UsageSettings />;
     case "preferences":
       return <PreferencesSettings setModalAction={setModalAction} />;
+    case "voice":
+      return <VoiceSettings />;
     case "instructions":
       return <IntegrationInstructionsSettings />;
     case "memory":

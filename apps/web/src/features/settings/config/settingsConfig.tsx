@@ -9,6 +9,7 @@ import {
   NoteEditIcon,
   NotificationIcon,
   UserCircleIcon,
+  VoiceIdIcon,
   WhatsappIcon,
 } from "@icons";
 import { PostageStampIcon } from "@/components/shared/icons";
@@ -66,6 +67,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Preferences",
     icon: MessageMultiple02Icon,
     href: "/settings/preferences",
+  },
+  {
+    key: "voice",
+    label: "Voices",
+    icon: VoiceIdIcon,
+    href: "/settings/voice",
   },
   {
     key: "instructions",

@@ -35,12 +35,14 @@ from app.agents.core.background.executor_queue import (
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.result_delivery import deliver_result, persist_cancelled_run
-from app.agents.core.background.session import ExecutorRun, signal_executor_done
+from app.agents.core.background.session import ExecutorRun, get_session, signal_executor_done
 from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
+from app.constants.executor import VOICE_TTS_KEY
 from app.core.stream_manager import StreamManager
+from app.utils.agent_utils import format_sse_data
 from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
@@ -163,7 +165,27 @@ async def _deliver_terminal_outcome(
                 stream_id=run.stream_id,
             )
     elif result_text:
-        await deliver_result(run, result_text, result_type, returned_note)
+        notification_text = await deliver_result(run, result_text, result_type, returned_note)
+        await _publish_voice_tts(run.stream_id, notification_text)
+
+
+async def _publish_voice_tts(stream_id: str, notification_text: str | None) -> None:
+    """Speak the narrated answer on a voice-mode stream.
+
+    Voice mode pushes the comms-narrated answer back through the SSE channel so
+    the voice agent speaks it. The frontend still renders it from the WebSocket
+    push delivered by ``deliver_result``, so this is TTS-only (never forwarded to
+    the UI). Only live streams are ever marked voice mode, so queued/workflow
+    runs never reach here with ``session.voice_mode`` set.
+    """
+    if not notification_text:
+        return
+    session = get_session(stream_id)
+    if session is not None and session.voice_mode:
+        await StreamManager.publish_chunk(
+            stream_id,
+            format_sse_data({VOICE_TTS_KEY: notification_text}),
+        )
 
 
 async def _close_queued_stream(run: ExecutorRun, was_cancelled: bool) -> None:

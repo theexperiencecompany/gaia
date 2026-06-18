@@ -7,6 +7,7 @@ export const VALID_SECTIONS = [
   "subscription",
   "usage",
   "preferences",
+  "voice",
   "instructions",
   "memory",
   "notifications",

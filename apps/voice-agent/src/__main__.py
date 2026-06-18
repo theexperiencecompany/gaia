@@ -3,8 +3,13 @@
 import sys
 
 
-def main():
-    """Main entrypoint for voice-agent CLI."""
+def main() -> None:
+    """Dispatch the voice-agent CLI commands.
+
+    Imports are deferred per command (the sanctioned inline-import exception for
+    this CLI dispatcher) so ``download-files`` does not require Infisical secrets.
+    Errors are left to propagate so failures surface with a full traceback.
+    """
     if len(sys.argv) < 2:
         print("Usage: python -m src <command>")
         print("Commands: start, download-files")
@@ -12,21 +17,16 @@ def main():
 
     command = sys.argv[1]
 
-    try:
-        if command == "download-files":
-            from src.worker import download_files
+    if command == "start":
+        from src.agent import start_worker
 
-            download_files()
-        elif command == "start":
-            from src.worker import start_worker
+        start_worker()
+    elif command == "download-files":
+        from src.agent import download_files
 
-            start_worker()
-        else:
-            print(f"Unknown command: {command}")
-            sys.exit(1)
-
-    except Exception as e:
-        print(f"Error executing command '{command}': {e}")
+        download_files()
+    else:
+        print(f"Unknown command: {command}")
         sys.exit(1)
 
 

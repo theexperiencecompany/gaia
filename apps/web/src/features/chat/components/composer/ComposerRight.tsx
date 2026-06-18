@@ -1,5 +1,7 @@
+import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
+import { AudioWave01Icon } from "@icons";
 import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -11,13 +13,16 @@ interface RightSideProps {
   searchbarText: string | null | undefined;
   selectedTool?: string | null;
   setvoiceModeActive: () => void;
+  /** Hover intent on the voice button — prefetches the session token. */
+  onVoiceModeHover?: () => void;
 }
 
 export default function RightSide({
   handleFormSubmit,
   searchbarText,
   selectedTool,
-  setvoiceModeActive: _setvoiceModeActive,
+  setvoiceModeActive,
+  onVoiceModeHover,
 }: RightSideProps) {
   const { selectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent } = useCalendarEventSelection();
@@ -82,6 +87,21 @@ export default function RightSide({
 
   return (
     <div className="ml-2 flex items-center gap-2">
+      <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
+        <Button
+          isIconOnly
+          aria-label="Voice Mode"
+          className="h-9 min-h-9 w-9 max-w-9 min-w-9"
+          color="default"
+          radius="full"
+          type="button"
+          onMouseEnter={onVoiceModeHover}
+          onPress={() => setvoiceModeActive()}
+        >
+          <AudioWave01Icon className="text-zinc-400" />
+        </Button>
+      </Tooltip>
+
       <Tooltip
         content={getTooltipContent()}
         placement="right"

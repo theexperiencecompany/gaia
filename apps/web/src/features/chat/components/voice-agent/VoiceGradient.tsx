@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { SPECTRUM_BINS } from "./useVoiceSpectrum";
+import { useCallback, useEffect, useRef } from "react";
+import { SPECTRUM_BINS } from "./hooks/useVoiceSpectrum";
 
 export type VoiceMode = "user" | "gaia";
 
 interface VoiceGradientProps {
   mode: VoiceMode;
   spectrum: Float32Array;
+  /**
+   * Freeze the draw loop (e.g. mic muted, wave already settled flat). The
+   * last frame stays on the canvas; the raf stops so the GPU goes idle.
+   * The shader clock is rebased on resume so cloud drift doesn't jump.
+   */
+  paused?: boolean;
 }
 
 /* ─── Vertex shader: full-screen quad with UVs in [0..1] ────────────────── */
@@ -71,9 +77,6 @@ float vnoise(vec2 p) {
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 float fbm(vec2 p) {
-  /* 3 octaves is enough for the visual texture we need — 4 octaves was
-     ~33% more fragment work for sub-pixel detail nobody sees through
-     the heavy gaussian/blur passes. */
   float v = 0.0;
   float a = 0.5;
   for (int i = 0; i < 4; i++) {
@@ -252,9 +255,7 @@ void main() {
     color += col * mask * 0.6 * smoothstep(0.04, 0.30, h);
   }
 
-  /* Foreground — sharper, brightest body. ampMul (declared above) scales
-     user-mode wave height down ~15% so the brighter white palette doesn't
-     read as visually taller than GAIA's blue. */
+  /* Foreground — sharper, brightest body. */
   /* Cached centre-x wave height — reused by body fill, radial glow,
      chromatic tip and bloom passes to avoid 3+ redundant fragment ops
      per pixel. */
@@ -459,203 +460,311 @@ function linkProgram(
   return program;
 }
 
-export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+/**
+ * Compile vert + frag and link a program. Returns null on first failure;
+ * caller may invoke a second time to retry from scratch (fresh shaders,
+ * fresh program). Used by the init path so a silently-failed StrictMode
+ * relink gets one more attempt before we permanently give up. Logs each
+ * failure via console.warn (first attempt) or console.error (final).
+ */
+function buildProgram(
+  gl: WebGL2RenderingContext,
+  fragSrc: string,
+  label: string,
+): WebGLProgram | null {
+  try {
+    const vert = compileShader(gl, gl.VERTEX_SHADER, VERT);
+    const frag = compileShader(gl, gl.FRAGMENT_SHADER, fragSrc);
+    const program = linkProgram(gl, vert, frag);
+    gl.deleteShader(vert);
+    gl.deleteShader(frag);
+    return program;
+  } catch (e) {
+    console.warn(`[VoiceGradient] ${label} build failed:`, e);
+    return null;
+  }
+}
+
+export function VoiceGradient({
+  mode,
+  spectrum,
+  paused = false,
+}: Readonly<VoiceGradientProps>) {
   const modeRef = useRef<VoiceMode>(mode);
   const fadeRef = useRef(mode === "gaia" ? 1 : 0);
+  // Spectrum is mutated in place by useVoiceSpectrum, so its identity is
+  // stable. Stash in a ref so the draw loop always reads the latest values
+  // without re-running init.
+  const spectrumRef = useRef(spectrum);
+  spectrumRef.current = spectrum;
+
+  // The draw loop polls pausedRef each frame and parks itself when true;
+  // resumeRef (installed by initGL) restarts it on unpause.
+  const pausedRef = useRef(paused);
+  const resumeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const gl = canvas.getContext("webgl2", {
-      premultipliedAlpha: false,
-      antialias: false,
-      preserveDrawingBuffer: false,
-    });
-    if (!gl) {
-      console.warn("[VoiceGradient] WebGL2 not supported");
-      return;
+    pausedRef.current = paused;
+    if (!paused) resumeRef.current?.();
+  }, [paused]);
+
+  // Use a ref callback (not useEffect) to manage the WebGL lifecycle. Ref
+  // callbacks fire on REAL DOM attach/detach — they completely bypass React
+  // 18 StrictMode's effect double-invocation, which was tearing down the
+  // GL context between two synthetic mount cycles and leaving the second
+  // mount with a context in an error state (shader compile returning null
+  // infolog). With this pattern, init runs exactly once when the canvas
+  // attaches and cleanup runs exactly once when it detaches.
+  const cleanupRef = useRef<(() => void) | null>(null);
+  const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
+    if (canvas) {
+      // Defer GL init to the next macrotask. React 18 StrictMode's
+      // doubleInvokeEffectsInDEV fires the ref callback three times
+      // synchronously: (canvas) → (null) → (canvas). Without the defer,
+      // the second (canvas) call gets a GL context that was partially
+      // cleaned up by the (null) call, causing shader compile to return
+      // a null info log and the gradient to show a blank canvas.
+      let cancelled = false;
+      const timerId = setTimeout(() => {
+        if (!cancelled && canvas.isConnected) {
+          cleanupRef.current =
+            initGL(
+              canvas,
+              spectrumRef,
+              modeRef,
+              fadeRef,
+              pausedRef,
+              resumeRef,
+            ) ?? null;
+        }
+      }, 0);
+      cleanupRef.current = () => {
+        cancelled = true;
+        clearTimeout(timerId);
+      };
+    } else {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
     }
-
-    let waveProgram: WebGLProgram;
-    let blitProgram: WebGLProgram;
-    let vbo: WebGLBuffer | null = null;
-    try {
-      const vert = compileShader(gl, gl.VERTEX_SHADER, VERT);
-      const wfrag = compileShader(gl, gl.FRAGMENT_SHADER, FRAG);
-      const bfrag = compileShader(gl, gl.FRAGMENT_SHADER, BLIT_FRAG);
-      waveProgram = linkProgram(gl, vert, wfrag);
-      blitProgram = linkProgram(gl, vert, bfrag);
-      gl.deleteShader(vert);
-      gl.deleteShader(wfrag);
-      gl.deleteShader(bfrag);
-    } catch (e) {
-      console.error("[VoiceGradient] shader build failed", e);
-      return;
-    }
-
-    vbo = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
-      gl.STATIC_DRAW,
-    );
-    /* Each program needs its own aPos binding because attribute locations
-       are program-specific. */
-    const bindAttribFor = (prog: WebGLProgram) => {
-      const loc = gl.getAttribLocation(prog, "aPos");
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    };
-    bindAttribFor(waveProgram);
-    bindAttribFor(blitProgram);
-
-    const uSpectrum = gl.getUniformLocation(waveProgram, "uSpectrum");
-    const uTime = gl.getUniformLocation(waveProgram, "uTime");
-    const uResolution = gl.getUniformLocation(waveProgram, "uResolution");
-    const uMode = gl.getUniformLocation(waveProgram, "uMode");
-    const uBlitTex = gl.getUniformLocation(blitProgram, "uTex");
-
-    /* ─── Offscreen framebuffer: heavy wave shader renders into a
-         half-resolution colour texture, then the trivial blit shader
-         upsamples it to the canvas with bilinear filtering. The wave is
-         volumetric/blurred so the 2× upscale is invisible, and the
-         fragment-shader workload drops ~75%. */
-    const fbo = gl.createFramebuffer();
-    const fboTex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, fboTex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    gl.framebufferTexture2D(
-      gl.FRAMEBUFFER,
-      gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D,
-      fboTex,
-      0,
-    );
-    /* If the FBO is incomplete (driver quirk, unsupported format combo, etc.)
-       we fall back to rendering the wave shader directly to the canvas. The
-       bloom skirt is then baked into the same pass — no half-res blit. */
-    const fboReady =
-      gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-    if (!fboReady) {
-      console.warn(
-        "[VoiceGradient] FBO incomplete, falling back to direct render",
-      );
-    }
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-    /* Scale factor for the offscreen render relative to the canvas. 0.7
-       keeps ~half the fragment work while avoiding the half-res edge
-       shimmer that 0.5 produced on the sharp wave silhouette. */
-    const RENDER_SCALE = 0.7;
-    let fboW = 0;
-    let fboH = 0;
-
-    const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      canvas.width = Math.floor(w * dpr);
-      canvas.height = Math.floor(h * dpr);
-      fboW = Math.max(2, Math.floor(canvas.width * RENDER_SCALE));
-      fboH = Math.max(2, Math.floor(canvas.height * RENDER_SCALE));
-      gl.bindTexture(gl.TEXTURE_2D, fboTex);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        fboW,
-        fboH,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        null,
-      );
-    };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas);
-
-    const start = performance.now();
-    let raf = 0;
-
-    const draw = (now: number) => {
-      const t = now - start;
-
-      const target = modeRef.current === "gaia" ? 1 : 0;
-      fadeRef.current += (target - fadeRef.current) * 0.06;
-
-      if (fboReady) {
-        /* Pass 1 — render wave into the half-res FBO. */
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-        gl.viewport(0, 0, fboW, fboH);
-        // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
-        gl.useProgram(waveProgram);
-        bindAttribFor(waveProgram);
-        gl.uniform1fv(uSpectrum, spectrum);
-        gl.uniform1f(uTime, t);
-        gl.uniform2f(uResolution, fboW, fboH);
-        gl.uniform1f(uMode, fadeRef.current);
-        gl.clearColor(0, 0, 0, 1);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-        /* Pass 2 — blit FBO texture to canvas at full resolution with
-           bilinear upsampling (the GPU handles the interpolation for free). */
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
-        gl.useProgram(blitProgram);
-        bindAttribFor(blitProgram);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, fboTex);
-        gl.uniform1i(uBlitTex, 0);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-      } else {
-        /* Fallback path — render the wave shader directly to the canvas at
-           full resolution. Costs more fragment work but avoids the FBO. */
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
-        gl.useProgram(waveProgram);
-        bindAttribFor(waveProgram);
-        gl.uniform1fv(uSpectrum, spectrum);
-        gl.uniform1f(uTime, t);
-        gl.uniform2f(uResolution, canvas.width, canvas.height);
-        gl.uniform1f(uMode, fadeRef.current);
-        gl.clearColor(0, 0, 0, 1);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-      }
-
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      if (vbo) gl.deleteBuffer(vbo);
-      if (fbo) gl.deleteFramebuffer(fbo);
-      if (fboTex) gl.deleteTexture(fboTex);
-      gl.deleteProgram(waveProgram);
-      gl.deleteProgram(blitProgram);
-    };
-  }, [spectrum]);
+  }, []);
 
   return (
     <canvas
-      ref={canvasRef}
+      ref={canvasRefCallback}
       className="pointer-events-none absolute inset-0 h-full w-full"
     />
   );
+}
+
+function initGL(
+  canvas: HTMLCanvasElement,
+  spectrumRef: React.RefObject<Float32Array>,
+  modeRef: React.RefObject<VoiceMode>,
+  fadeRef: React.RefObject<number>,
+  pausedRef: React.RefObject<boolean>,
+  resumeRef: React.MutableRefObject<(() => void) | null>,
+): (() => void) | null {
+  const gl = canvas.getContext("webgl2", {
+    premultipliedAlpha: false,
+    antialias: false,
+    preserveDrawingBuffer: false,
+  });
+  if (!gl) {
+    console.warn("[VoiceGradient] WebGL2 not supported");
+    return null;
+  }
+
+  // Build wave + blit programs. If either silently fails (StrictMode
+  // double-init or Turbopack HMR race), retry once with fresh shaders;
+  // log permanent failure clearly so dev users see what went wrong rather
+  // than staring at a blank canvas.
+  let waveProgram = buildProgram(gl, FRAG, "wave program");
+  waveProgram ??= buildProgram(gl, FRAG, "wave program retry");
+  let blitProgram = buildProgram(gl, BLIT_FRAG, "blit program");
+  blitProgram ??= buildProgram(gl, BLIT_FRAG, "blit program retry");
+  if (!waveProgram || !blitProgram) {
+    console.error(
+      "[VoiceGradient] permanent shader/program failure — gradient will not render",
+    );
+    if (waveProgram) gl.deleteProgram(waveProgram);
+    if (blitProgram) gl.deleteProgram(blitProgram);
+    return null;
+  }
+
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+    gl.STATIC_DRAW,
+  );
+  const bindAttribFor = (prog: WebGLProgram) => {
+    const loc = gl.getAttribLocation(prog, "aPos");
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  };
+  bindAttribFor(waveProgram);
+  bindAttribFor(blitProgram);
+
+  const uSpectrum = gl.getUniformLocation(waveProgram, "uSpectrum");
+  const uTime = gl.getUniformLocation(waveProgram, "uTime");
+  const uResolution = gl.getUniformLocation(waveProgram, "uResolution");
+  const uMode = gl.getUniformLocation(waveProgram, "uMode");
+  const uBlitTex = gl.getUniformLocation(blitProgram, "uTex");
+
+  // Offscreen framebuffer for the half-res wave pass; we blit to canvas
+  // with bilinear filtering. If the driver rejects the FBO we fall back
+  // to a direct full-res render.
+  const fbo = gl.createFramebuffer();
+  const fboTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, fboTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  // Allocate texture storage BEFORE attaching to the FBO so the FBO is
+  // complete on the first checkFramebufferStatus call.
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    2,
+    2,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    null,
+  );
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(
+    gl.FRAMEBUFFER,
+    gl.COLOR_ATTACHMENT0,
+    gl.TEXTURE_2D,
+    fboTex,
+    0,
+  );
+  const fboReady =
+    gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  if (!fboReady) {
+    console.warn(
+      "[VoiceGradient] FBO incomplete, falling back to direct render",
+    );
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  const RENDER_SCALE = 0.7;
+  let fboW = 0;
+  let fboH = 0;
+
+  const resize = () => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    fboW = Math.max(2, Math.floor(canvas.width * RENDER_SCALE));
+    fboH = Math.max(2, Math.floor(canvas.height * RENDER_SCALE));
+    gl.bindTexture(gl.TEXTURE_2D, fboTex);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      fboW,
+      fboH,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
+  };
+  resize();
+  const ro = new ResizeObserver(resize);
+  ro.observe(canvas);
+
+  let start = performance.now();
+  let raf = 0;
+  let rafActive = false;
+  let pausedAt = 0;
+
+  const draw = (now: number) => {
+    const t = now - start;
+    const target = modeRef.current === "gaia" ? 1 : 0;
+    fadeRef.current += (target - fadeRef.current) * 0.06;
+
+    if (fboReady) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.viewport(0, 0, fboW, fboH);
+      // biome-ignore lint/correctness/useHookAtTopLevel: WebGL call, not a React hook
+      gl.useProgram(waveProgram);
+      bindAttribFor(waveProgram);
+      gl.uniform1fv(uSpectrum, spectrumRef.current);
+      gl.uniform1f(uTime, t);
+      gl.uniform2f(uResolution, fboW, fboH);
+      gl.uniform1f(uMode, fadeRef.current);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      // biome-ignore lint/correctness/useHookAtTopLevel: WebGL call, not a React hook
+      gl.useProgram(blitProgram);
+      bindAttribFor(blitProgram);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, fboTex);
+      gl.uniform1i(uBlitTex, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      // biome-ignore lint/correctness/useHookAtTopLevel: WebGL call, not a React hook
+      gl.useProgram(waveProgram);
+      bindAttribFor(waveProgram);
+      gl.uniform1fv(uSpectrum, spectrumRef.current);
+      gl.uniform1f(uTime, t);
+      gl.uniform2f(uResolution, canvas.width, canvas.height);
+      gl.uniform1f(uMode, fadeRef.current);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    if (pausedRef.current) {
+      // Park AFTER painting so the settled frame (not a blank canvas) stays
+      // on screen. resumeRef restarts the loop.
+      rafActive = false;
+      pausedAt = now;
+      return;
+    }
+    raf = requestAnimationFrame(draw);
+  };
+  raf = requestAnimationFrame(draw);
+  rafActive = true;
+
+  resumeRef.current = () => {
+    if (rafActive) return;
+    // Rebase the shader clock so uTime-driven drift (clouds, caustics)
+    // continues from where it froze instead of jumping forward.
+    start += performance.now() - pausedAt;
+    rafActive = true;
+    raf = requestAnimationFrame(draw);
+  };
+
+  return () => {
+    cancelAnimationFrame(raf);
+    rafActive = false;
+    resumeRef.current = null;
+    ro.disconnect();
+    if (vbo) gl.deleteBuffer(vbo);
+    if (fbo) gl.deleteFramebuffer(fbo);
+    if (fboTex) gl.deleteTexture(fboTex);
+    gl.deleteProgram(waveProgram);
+    gl.deleteProgram(blitProgram);
+    // Do NOT call WEBGL_lose_context.loseContext() here — it permanently
+    // destroys the GL context on the canvas.
+  };
 }

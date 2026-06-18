@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import * as m from "motion/react-m";
 
+import { useVoiceSession } from "@/features/chat/components/voice-agent/VoiceSessionContext";
 import { useAppendToInput } from "@/stores/composerStore";
 
 interface FollowUpActionsProps {
@@ -13,11 +14,20 @@ export default function FollowUpActions({
   loading,
 }: FollowUpActionsProps) {
   const appendToInput = useAppendToInput();
+  const voiceSession = useVoiceSession();
+
   const handleActionClick = async (action: string) => {
     if (loading) return;
 
     try {
-      appendToInput(action);
+      if (voiceSession) {
+        // No composer in voice mode — send the suggestion to the agent as a
+        // new user turn (renders the user bubble + streams/speaks the reply
+        // exactly like a spoken message).
+        await voiceSession.sendUserTurn(action);
+      } else {
+        appendToInput(action);
+      }
     } catch (error) {
       console.error("Failed to handle follow-up action:", error);
     }

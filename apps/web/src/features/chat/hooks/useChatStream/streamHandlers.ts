@@ -13,6 +13,7 @@ import type {
 } from "@/config/registries/toolRegistry";
 import { parseStreamData } from "@/features/chat/hooks/useStreamDataParser";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
+import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import { toast } from "@/lib/toast";
 import { useChatStore } from "@/stores/chatStore";
 import { useLoadingStore } from "@/stores/loadingStore";
@@ -60,30 +61,6 @@ function formatStreamError(error: unknown, eventData: string): string {
   });
   const errorMessage = error instanceof Error ? error.message : "Unknown error";
   return `Error processing stream data: ${errorMessage}`;
-}
-
-// Pull the loading-indicator hints out of a tool_data event's payload (returns null if none).
-function readToolDataLoadingHints(data: unknown): {
-  message: string;
-  toolName?: string;
-  toolCategory?: string;
-  integrationName?: string;
-  iconUrl?: string;
-  showCategory: boolean;
-} | null {
-  if (typeof data !== "object" || data === null) return null;
-  const d = data as Record<string, unknown>;
-  if (typeof d.message !== "string" || d.message.length === 0) return null;
-  return {
-    message: d.message,
-    toolName: typeof d.tool_name === "string" ? d.tool_name : undefined,
-    toolCategory:
-      typeof d.tool_category === "string" ? d.tool_category : undefined,
-    integrationName:
-      typeof d.integration_name === "string" ? d.integration_name : undefined,
-    iconUrl: typeof d.icon_url === "string" ? d.icon_url : undefined,
-    showCategory: (d.show_category as boolean) ?? true,
-  };
 }
 
 export const createStreamHandlers = (deps: StreamHandlerDeps) => {

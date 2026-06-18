@@ -53,6 +53,8 @@ interface MainSearchbarProps {
   hasMessages: boolean;
   conversationId?: string;
   voiceModeActive: () => void;
+  /** Hover intent on the voice button — used to prefetch the session token. */
+  onVoiceModeHover?: () => void;
 }
 
 const Composer: React.FC<MainSearchbarProps> = ({
@@ -65,6 +67,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   hasMessages,
   conversationId,
   voiceModeActive,
+  onVoiceModeHover,
 }) => {
   const router = useRouter();
   const [currentHeight, setCurrentHeight] = useState<number>(24);
@@ -498,6 +501,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
           onToggleSlashCommandDropdown={handleToggleSlashCommandDropdown}
           isSlashCommandDropdownOpen={isSlashCommandDropdownOpen}
           voiceModeActive={voiceModeActive}
+          onVoiceModeHover={onVoiceModeHover}
         />
       </div>
       <FileUpload

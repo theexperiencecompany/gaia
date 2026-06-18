@@ -5,6 +5,7 @@ import * as m from "motion/react-m";
 import nextDynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import {
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -107,6 +108,82 @@ function CompactReveal({
   );
 }
 
+/**
+ * One message bubble, memoized so it only re-renders when its own message
+ * (referentially stable for idle messages — see useConversation's conversion
+ * cache + the dedup ref-preservation) or its grouping flags change. Without
+ * this, every bubble in the thread re-rendered on every streaming token,
+ * re-parsing its markdown each time — the dominant streaming cost. getMessageProps
+ * runs inside, so its new-object-per-call doesn't break the memo.
+ *
+ * In `compact` mode (assistant popup) the bubble drops its avatar, goes
+ * full-width, suppresses actions/follow-ups, and plays a one-time entrance
+ * via CompactReveal.
+ */
+const ChatMessageItem = memo(function ChatMessageItem({
+  message,
+  options,
+  isFollowedByBot,
+  isPrecededByBot,
+  suppressForBusy,
+  compact,
+  bubbleKey,
+}: {
+  message: MessageType;
+  options: Parameters<typeof getMessageProps>[2];
+  isFollowedByBot: boolean;
+  isPrecededByBot: boolean;
+  suppressForBusy: boolean;
+  compact: boolean;
+  bubbleKey: string;
+}) {
+  let messageProps: ChatBubbleBotProps | ChatBubbleUserProps | null = null;
+  if (message.type === "bot") {
+    messageProps = getMessageProps(message, "bot", options);
+  } else if (message.type === "user") {
+    messageProps = getMessageProps(message, "user", options);
+  }
+  if (!messageProps) return null;
+
+  let bubble: ReactNode;
+  if (
+    message.type === "bot" &&
+    !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
+  ) {
+    const botProps = messageProps as ChatBubbleBotProps;
+    bubble = (
+      <ChatBubbleBot
+        {...botProps}
+        disableActions={compact || isFollowedByBot || suppressForBusy}
+        follow_up_actions={
+          compact || isFollowedByBot || suppressForBusy
+            ? undefined
+            : botProps.follow_up_actions
+        }
+        date={isFollowedByBot ? undefined : botProps.date}
+        isGroupedWithNext={isFollowedByBot}
+        isGroupedWithPrev={isPrecededByBot}
+        hideAvatar={compact}
+      />
+    );
+  } else {
+    bubble = (
+      <ChatBubbleUser
+        {...messageProps}
+        hideAvatar={compact}
+        fullWidth={compact}
+        disableActions={compact}
+      />
+    );
+  }
+
+  return compact ? (
+    <CompactReveal bubbleKey={bubbleKey}>{bubble}</CompactReveal>
+  ) : (
+    bubble
+  );
+});
+
 export default function ChatRenderer({
   convoMessages: propConvoMessages,
   compact = false,
@@ -167,31 +244,46 @@ export default function ChatRenderer({
   const isWelcomeConversation =
     conversation?.is_onboarding_conversation === true;
 
-  // Handle retry callback
-  const handleRetry = useCallback(
-    (msgId: string) => {
-      if (!convoIdParam) return;
-      retryMessage(convoIdParam, msgId);
-    },
-    [convoIdParam, retryMessage],
-  );
+  // Handle retry callback. `retryMessage` gets a new identity on most renders
+  // (its deps chain up to an unstable `sendMessage`), so we read it through a
+  // ref to keep `handleRetry` — and therefore messagePropsOptions and the whole
+  // memoized message list — stable across streaming tokens.
+  const retryMessageRef = useRef(retryMessage);
+  retryMessageRef.current = retryMessage;
+  const handleRetry = useCallback((msgId: string) => {
+    // Use the store's active conversation id, NOT the route param. New
+    // conversations rewrite the URL via history.replaceState, which does not
+    // update Next's useParams — so convoIdParam stays undefined until a reload,
+    // which is why retry previously only worked after reloading. activeConversationId
+    // is always current. Reading it via getState keeps this callback dep-free.
+    const conversationId = useChatStore.getState().activeConversationId;
+    if (!conversationId) return;
+    retryMessageRef.current(conversationId, msgId);
+  }, []);
 
-  // Create options object for getMessageProps
+  // Create options object for getMessageProps. Depend on the primitive
+  // conversation fields, not the conversation object — the conversation list
+  // gets a new object reference on every streaming token (its preview/timestamp
+  // updates), which would otherwise make this options object change every token
+  // and defeat the per-message memoization downstream.
+  const isSystemGenerated = conversation?.is_system_generated;
+  const systemPurpose = conversation?.system_purpose ?? undefined;
   const messagePropsOptions = useMemo(
     () => ({
-      conversation: conversation
-        ? {
-            is_system_generated: conversation.is_system_generated,
-            system_purpose: conversation.system_purpose ?? undefined,
-          }
-        : undefined,
+      conversation:
+        isSystemGenerated !== undefined || systemPurpose !== undefined
+          ? {
+              is_system_generated: isSystemGenerated,
+              system_purpose: systemPurpose,
+            }
+          : undefined,
       setImageData,
       setOpenGeneratedImage,
       setOpenMemoryModal,
       onRetry: handleRetry,
       isRetrying,
     }),
-    [conversation, handleRetry, isRetrying],
+    [isSystemGenerated, systemPurpose, handleRetry, isRetrying],
   );
 
   // Filter out empty message pairs
@@ -219,6 +311,11 @@ export default function ChatRenderer({
         return message;
       }
 
+      // Track whether anything was actually deduplicated — if not, we return the
+      // original message object so its reference stays stable across streaming
+      // ticks (otherwise every tool-bearing bubble re-renders on every token).
+      let changed = false;
+
       // Filter out tool calls that have already been shown in previous messages
       const deduplicatedToolData = message.tool_data
         .map((entry) => {
@@ -240,6 +337,10 @@ export default function ChatRenderer({
             return true;
           });
 
+          // Nothing removed for this entry — keep the original reference.
+          if (filteredCalls.length === toolCallsArray.length) return entry;
+          changed = true;
+
           // If all calls were filtered out, return null to remove this entry
           if (filteredCalls.length === 0) return null;
 
@@ -250,6 +351,9 @@ export default function ChatRenderer({
           };
         })
         .filter((entry) => entry !== null);
+
+      // No duplicates removed anywhere — preserve the original message reference.
+      if (!changed) return message;
 
       return {
         ...message,
@@ -356,20 +460,6 @@ export default function ChatRenderer({
       {isWelcomeConversation && <WelcomeChat />}
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
-          let messageProps: ChatBubbleBotProps | ChatBubbleUserProps | null =
-            null;
-
-          if (message.type === "bot")
-            messageProps = getMessageProps(message, "bot", messagePropsOptions);
-          else if (message.type === "user")
-            messageProps = getMessageProps(
-              message,
-              "user",
-              messagePropsOptions,
-            );
-
-          if (!messageProps) return null;
-
           // Consecutive bot bubble grouping (iMessage-style):
           // - Only the LAST bot message in a consecutive group shows the avatar
           // - No actions/timestamps/follow-ups on non-last messages
@@ -383,55 +473,17 @@ export default function ChatRenderer({
           const suppressForBusy =
             index === lastRenderedIndex && isConversationBusy;
 
-          if (
-            message.type === "bot" &&
-            !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
-          ) {
-            const botBubble = (
-              <ChatBubbleBot
-                key={message.message_id || index}
-                {...getMessageProps(message, "bot", messagePropsOptions)}
-                disableActions={compact || isFollowedByBot || suppressForBusy}
-                follow_up_actions={
-                  compact || isFollowedByBot || suppressForBusy
-                    ? undefined
-                    : messageProps.follow_up_actions
-                }
-                date={isFollowedByBot ? undefined : messageProps.date}
-                isGroupedWithNext={isFollowedByBot}
-                isGroupedWithPrev={isPrecededByBot}
-                hideAvatar={compact}
-              />
-            );
-            return compact ? (
-              <CompactReveal
-                key={message.message_id || index}
-                bubbleKey={String(message.message_id || index)}
-              >
-                {botBubble}
-              </CompactReveal>
-            ) : (
-              botBubble
-            );
-          }
-          const userBubble = (
-            <ChatBubbleUser
+          return (
+            <ChatMessageItem
               key={message.message_id || index}
-              {...messageProps}
-              hideAvatar={compact}
-              fullWidth={compact}
-              disableActions={compact}
-            />
-          );
-          return compact ? (
-            <CompactReveal
-              key={message.message_id || index}
+              message={message}
+              options={messagePropsOptions}
+              isFollowedByBot={isFollowedByBot}
+              isPrecededByBot={isPrecededByBot}
+              suppressForBusy={suppressForBusy}
+              compact={compact}
               bubbleKey={String(message.message_id || index)}
-            >
-              {userBubble}
-            </CompactReveal>
-          ) : (
-            userBubble
+            />
           );
         },
       )}

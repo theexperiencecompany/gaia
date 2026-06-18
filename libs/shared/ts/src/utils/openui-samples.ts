@@ -12,7 +12,6 @@ export interface OpenUISample {
     | "Analytics"
     | "Content"
     | "Timeline & Notifications"
-    | "Code"
     | "Documents";
   code: string;
 }
@@ -21,59 +20,6 @@ export const OPENUI_SAMPLES: OpenUISample[] = [
   // ---------------------------------------------------------------------------
   // Layout & Data
   // ---------------------------------------------------------------------------
-  {
-    name: "DataCard",
-    group: "Layout & Data",
-    code: `root = DataCard("Server metrics", [
-  {"label": "Region", "value": "us-east-1"},
-  {"label": "Instance", "value": "m7g.large"},
-  {"label": "Uptime", "value": "14d 3h"},
-  {"label": "Status", "value": "healthy"}
-])`,
-  },
-  {
-    name: "ResultList",
-    group: "Layout & Data",
-    code: `root = ResultList([
-  {"title": "Design review for onboarding", "subtitle": "Due Friday", "body": "Focus on the empty state.", "badge": "design"},
-  {"title": "Ship v2.1 release notes", "subtitle": "Draft ready", "url": "https://example.com/notes"},
-  {"title": "Sync with platform team"}
-], "Upcoming work")`,
-  },
-  {
-    name: "ComparisonTable",
-    group: "Layout & Data",
-    code: `root = ComparisonTable("Starter", "Pro", [
-  {"label": "Seats", "left": "3", "right": "Unlimited"},
-  {"label": "SSO", "left": "no", "right": "yes", "highlight": true},
-  {"label": "Audit log", "left": "no", "right": "yes"},
-  {"label": "Priority support", "left": "no", "right": "yes"}
-], "Plan comparison")`,
-  },
-  {
-    name: "StatusCard",
-    group: "Layout & Data",
-    code: `root = StatusCard("Deployment pipeline", "success", "All 12 services deployed", "Finished in 4m 37s")`,
-  },
-  {
-    name: "ActionCard",
-    group: "Layout & Data",
-    code: `root = ActionCard("Finish setting up GAIA", "One more step and you're ready to go.", [
-  {"label": "Connect Gmail", "type": "continue_conversation", "value": "Connect my Gmail account"},
-  {"label": "Connect Calendar", "type": "continue_conversation", "value": "Connect my Google Calendar"}
-])`,
-  },
-  {
-    name: "TagGroup",
-    group: "Layout & Data",
-    code: `root = TagGroup([
-  {"label": "design", "color": "primary"},
-  {"label": "urgent", "color": "danger"},
-  {"label": "review", "color": "warning"},
-  {"label": "approved", "color": "success"},
-  {"label": "draft"}
-], "Labels")`,
-  },
   {
     name: "FileTree",
     group: "Layout & Data",
@@ -104,53 +50,10 @@ export const OPENUI_SAMPLES: OpenUISample[] = [
   {"label": "Deploy", "content": "Push to main and the CI pipeline handles the rest."}
 ])`,
   },
-  {
-    name: "ProgressList",
-    group: "Layout & Data",
-    code: `root = ProgressList([
-  {"label": "CPU", "value": 42, "color": "primary"},
-  {"label": "Memory", "value": 78, "color": "warning"},
-  {"label": "Disk", "value": 91, "color": "danger"},
-  {"label": "Network", "value": 15, "color": "success"}
-], "System usage")`,
-  },
-  {
-    name: "SelectableList",
-    group: "Layout & Data",
-    code: `root = SelectableList([
-  {"label": "Breakfast meeting", "description": "9:00 AM tomorrow", "value": "breakfast", "badge": "work"},
-  {"label": "Gym", "description": "6:00 PM today", "value": "gym", "badge": "personal"},
-  {"label": "Weekly review", "description": "Friday 4:00 PM", "value": "review"}
-], "Pick an event", "Select which one to edit")`,
-  },
-  {
-    name: "AvatarList",
-    group: "Layout & Data",
-    code: `root = AvatarList([
-  {"name": "Dhruv Maradiya", "role": "Founder", "initials": "DM", "color": "#00bbff"},
-  {"name": "Aria Chen", "role": "Designer", "initials": "AC", "color": "#f472b6"},
-  {"name": "Sam Park", "role": "Engineer", "initials": "SP", "color": "#34d399"}
-], "Team")`,
-  },
-  {
-    name: "KbdBlock",
-    group: "Layout & Data",
-    code: `root = KbdBlock([
-  {"keys": ["⌘", "K"], "description": "Open command palette"},
-  {"keys": ["⌘", "⇧", "P"], "description": "Switch project"},
-  {"keys": ["⌘", "/"], "description": "Toggle comment"},
-  {"keys": ["esc"], "description": "Close overlay"}
-], "Shortcuts")`,
-  },
 
   // ---------------------------------------------------------------------------
   // Analytics
   // ---------------------------------------------------------------------------
-  {
-    name: "StatRow",
-    group: "Analytics",
-    code: `root = StatRow("Monthly revenue", 48200, "USD", "up", "+12% vs last month")`,
-  },
   {
     name: "BarChart",
     group: "Analytics",
@@ -231,11 +134,6 @@ export const OPENUI_SAMPLES: OpenUISample[] = [
   // Content
   // ---------------------------------------------------------------------------
   {
-    name: "ImageBlock",
-    group: "Content",
-    code: `root = ImageBlock("https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800", "Mountain lake at sunrise", "Lake Braies, Italian Dolomites")`,
-  },
-  {
     name: "ImageGallery",
     group: "Content",
     code: `root = ImageGallery([
@@ -261,15 +159,6 @@ export const OPENUI_SAMPLES: OpenUISample[] = [
     code: `root = MapBlock(46.6955, 11.8788, "Lake Braies, Italy", 13)`,
   },
   {
-    name: "CalendarMini",
-    group: "Content",
-    code: `root = CalendarMini([
-  {"date": "2026-04-18", "label": "Design review", "color": "success"},
-  {"date": "2026-04-22", "label": "Launch prep", "color": "warning"},
-  {"date": "2026-04-28", "label": "Cycle close", "color": "danger"}
-], "April")`,
-  },
-  {
     name: "NumberTicker",
     group: "Content",
     code: `root = NumberTicker(12847, "Active users today", "users")`,
@@ -282,20 +171,6 @@ export const OPENUI_SAMPLES: OpenUISample[] = [
   {"title": "Workflows", "body": "Turn recurring tasks into triggers.", "image": "https://images.unsplash.com/photo-1470770841072-f978cf4d019e?w=800"},
   {"title": "Voice-first", "body": "Talk to GAIA naturally.", "image": "https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800"}
 ])`,
-  },
-  {
-    name: "TreeView",
-    group: "Content",
-    code: `root = TreeView([
-  {"id": "1", "label": "Projects", "children": [
-    {"id": "1a", "label": "GAIA", "description": "Personal AI", "children": [
-      {"id": "1a1", "label": "Web"},
-      {"id": "1a2", "label": "Mobile"}
-    ]},
-    {"id": "1b", "label": "Internal tools"}
-  ]},
-  {"id": "2", "label": "Docs"}
-], "Workspace")`,
   },
 
   // ---------------------------------------------------------------------------
@@ -310,11 +185,6 @@ export const OPENUI_SAMPLES: OpenUISample[] = [
   {"time": "11:45", "title": "Reconciliation failed", "description": "Mismatch on line 3", "status": "error"},
   {"time": "12:10", "title": "Retry scheduled", "status": "warning"}
 ], "Billing activity")`,
-  },
-  {
-    name: "AlertBanner",
-    group: "Timeline & Notifications",
-    code: `root = AlertBanner("warning", "API rate limit approaching", "You've used 82% of your hourly budget. Requests will be throttled at 100%.")`,
   },
   {
     name: "Steps",

@@ -50,6 +50,9 @@ from app.utils.output_limiter import truncate_head_tail
 from shared.py.logging import get_contextual_logger
 from shared.py.wide_events import log
 
+MAX_TIMEOUT_SECONDS = 600
+DEFAULT_TIMEOUT_SECONDS = 120
+MAX_COMMAND_LENGTH = 16_000
 _metrics_log = get_contextual_logger("app.agents.tools.coding.bash_tool.metrics")
 
 # Bucketed bash exit code counter. The buckets (string labels) are part of the
@@ -98,7 +101,7 @@ def _record_bash_exit_code(code: int | None, *, timed_out: bool) -> None:
     try:
         _BASH_EXIT_CODE_TOTAL.labels(exit_code=_bucket_exit_code(code, timed_out=timed_out)).inc()
     except Exception as e:  # noqa: BLE001
-        _metrics_log.warning(
+        log.warning(
             "[metrics] bash exit_code inc failed",
             error_type=type(e).__name__,
         )

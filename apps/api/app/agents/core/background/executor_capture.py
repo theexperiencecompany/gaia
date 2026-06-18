@@ -32,16 +32,25 @@ from app.utils.stream_utils import (
 from shared.py.wide_events import log
 
 
-def register_executor_capture(stream_id: str) -> asyncio.Event:
+def register_executor_capture(stream_id: str, voice_mode: bool = False) -> asyncio.Event:
     """Register the stream session that captures executor tool events.
 
     Must run before the comms agent executes so ``call_executor``'s background
-    task can append events to the session. Returns the done-event.
+    task can append events to the session. ``voice_mode`` marks the stream so the
+    executor's finalize step publishes a TTS-only ``voice_tts`` frame with its
+    narrated answer for the voice agent to speak. Returns the done-event.
     """
-    return create_session(stream_id, RunKind.LIVE).done_event
+    session = create_session(stream_id, RunKind.LIVE)
+    session.voice_mode = voice_mode
+    return session.done_event
 
 
-async def await_executor_done(stream_id: str) -> None:
+# The timeout cannot move to callers: this function owns the graceful
+# catch-and-drain semantics (log + return so collected events still flush).
+async def await_executor_done(
+    stream_id: str,
+    timeout: float = EXECUTOR_WAIT_TIMEOUT,  # NOSONAR python:S7483
+) -> None:
     """Block until the background executor for this stream signals completion.
 
     No-op when no executor was spawned for the stream. On timeout, logs and
@@ -54,7 +63,7 @@ async def await_executor_done(stream_id: str) -> None:
         return
     log.info("Waiting for executor completion", stream_id=stream_id)
     try:
-        async with asyncio.timeout(EXECUTOR_WAIT_TIMEOUT):
+        async with asyncio.timeout(timeout):
             await session.done_event.wait()
     except TimeoutError:
         log.warning("Timed out waiting for executor — draining anyway", stream_id=stream_id)
