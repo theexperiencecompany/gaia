@@ -29,5 +29,5 @@ export function AgentationProvider() {
   ) {
     return null;
   }
-  return <Agentation endpoint={AGENTATION_ENDPOINT}/>;
+  return <Agentation endpoint={AGENTATION_ENDPOINT} />;
 }

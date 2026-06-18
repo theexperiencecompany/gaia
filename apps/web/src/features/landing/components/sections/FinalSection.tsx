@@ -180,10 +180,7 @@ export default function FinalSection({
       </div>
 
       {previousTime && (
-        <div
-          key={`prev-${previousTime}`}
-          className="absolute inset-0 z-0"
-        >
+        <div key={`prev-${previousTime}`} className="absolute inset-0 z-0">
           <ProgressiveImage
             webpSrc={SWISS_KID_WALLPAPERS[previousTime].webp}
             pngSrc={SWISS_KID_WALLPAPERS[previousTime].png}
