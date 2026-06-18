@@ -20,7 +20,6 @@ Features:
 
 import asyncio
 import base64
-from datetime import UTC, datetime, timedelta
 import json as _json
 import re
 import secrets
@@ -79,6 +78,7 @@ from app.utils.mcp_oauth_utils import (
     OAuthSecurityError,
     get_client_metadata_document_url,
     is_localhost_url,
+    oauth_token_expiry,
     parse_oauth_error_response,
     parse_rejected_scopes,
     validate_https_url,
@@ -89,9 +89,12 @@ from app.utils.mcp_utils import (
     wrap_tools_with_null_filter,
 )
 from mcp.client.auth.oauth2 import PKCEParameters
-from mcp.client.auth.utils import create_client_registration_request, get_client_metadata_scopes
+from mcp.client.auth.utils import (
+    create_client_registration_request,
+    get_client_metadata_scopes,
+    handle_registration_response,
+)
 from mcp.shared.auth import (
-    OAuthClientInformationFull,
     OAuthClientMetadata,
     OAuthMetadata,
     OAuthToken,
@@ -1202,15 +1205,19 @@ class MCPClient:
             async with httpx.AsyncClient() as http_client:
                 response = await http_client.send(request)
 
-                # Check for DCR not supported (403/404/405)
+                # Check for DCR not supported (403/404/405) before the SDK parser,
+                # which would otherwise raise a generic OAuthRegistrationError and
+                # lose the "pre-registration required" signal the caller acts on.
                 if response.status_code in (403, 404, 405):
                     raise DCRNotSupportedException(
                         f"DCR not supported at {registration_endpoint} "
                         f"(status {response.status_code}). Pre-registration required."
                     )
 
-                response.raise_for_status()
-                client_info = OAuthClientInformationFull.model_validate(response.json())
+                # Parse + validate the RFC 7591 response via the SDK, symmetric with
+                # create_client_registration_request above — keeps DCR handling
+                # spec-aligned in one place instead of hand-rolling status/body checks.
+                client_info = await handle_registration_response(response)
                 await self.token_store.store_dcr_client(
                     integration_id, client_info.model_dump(mode="json", exclude_none=True)
                 )
@@ -1394,10 +1401,7 @@ class MCPClient:
             else:
                 log.warning(f"OIDC nonce stored but no id_token in response for {integration_id}")
 
-        # Calculate expiry time if provided
-        expires_at = None
-        if token.expires_in:
-            expires_at = datetime.now(UTC) + timedelta(seconds=token.expires_in)
+        expires_at = oauth_token_expiry(token.expires_in)
 
         # Handle refresh token rotation (new refresh_token may be issued)
         new_refresh_token = token.refresh_token

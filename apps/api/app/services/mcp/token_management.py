@@ -5,7 +5,6 @@ Handles token refresh, revocation, and client credential resolution.
 """
 
 import base64
-from datetime import UTC, datetime, timedelta
 import os
 from urllib.parse import urlparse
 
@@ -13,6 +12,7 @@ import httpx
 
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.utils.mcp_oauth_utils import oauth_token_expiry
 from mcp.shared.auth import OAuthToken
 from shared.py.wide_events import log
 
@@ -135,9 +135,7 @@ async def try_refresh_token(
                 )
                 return False
 
-            expires_at = None
-            if token.expires_in:
-                expires_at = datetime.now(UTC) + timedelta(seconds=token.expires_in)
+            expires_at = oauth_token_expiry(token.expires_in)
 
             await token_store.store_oauth_tokens(
                 integration_id=integration_id,

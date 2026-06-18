@@ -11,6 +11,7 @@ Contains functions for OAuth discovery per MCP specification:
 """
 
 import base64
+from datetime import UTC, datetime, timedelta
 import ipaddress
 import json
 import re
@@ -67,6 +68,17 @@ _MCP_INITIALIZE_PROBE_REQUEST: dict[str, Any] = JSONRPCRequest(
         clientInfo=Implementation(name="gaia", version="1.0"),
     ).model_dump(by_alias=True, exclude_none=True, mode="json"),
 ).model_dump(by_alias=True, exclude_none=True, mode="json")
+
+
+def oauth_token_expiry(expires_in: int | None) -> datetime | None:
+    """Absolute tz-aware UTC expiry for an OAuth token's ``expires_in`` seconds.
+
+    Single source of truth for token-expiry so the callback and refresh paths
+    can't drift. Returns None when the server omits ``expires_in``.
+    """
+    if not expires_in:
+        return None
+    return datetime.now(UTC) + timedelta(seconds=expires_in)
 
 
 class OAuthSecurityError(Exception):

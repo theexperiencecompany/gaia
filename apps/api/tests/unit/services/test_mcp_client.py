@@ -2111,12 +2111,16 @@ class TestMCPClientRegisterClient:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        # Response must validate as OAuthClientInformationFull (redirect_uris required).
-        mock_response.json.return_value = {
-            "client_id": "new_client_id",
-            "redirect_uris": ["https://myapp.com/callback"],
-        }
-        mock_response.raise_for_status = MagicMock()
+        # handle_registration_response reads the body via aread() and validates it
+        # as OAuthClientInformationFull (redirect_uris required).
+        mock_response.aread = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "client_id": "new_client_id",
+                    "redirect_uris": ["https://myapp.com/callback"],
+                }
+            ).encode()
+        )
 
         with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
             mock_http_client = AsyncMock()
