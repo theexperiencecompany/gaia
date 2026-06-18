@@ -66,8 +66,8 @@ COPY pyproject.toml uv.lock ./
 COPY libs ./libs
 COPY apps/voice-agent/pyproject.toml ./apps/voice-agent/
 
-# setuptools needs write access to libs/ to create gaia_shared.egg-info
-RUN chown -R appuser:appuser /app/libs
+RUN mkdir -p /app/apps/voice-agent/logs \
+    && chown -R appuser:appuser /app/libs /app/apps/voice-agent
 
 USER appuser
 
@@ -78,9 +78,15 @@ ENV PYTHONUNBUFFERED=1 \
 # Copy app source (root-owned, readable by appuser)
 COPY apps/voice-agent/src/ ./apps/voice-agent/src/
 
+# Entrypoint: reads Docker Swarm secrets into env vars before exec-ing the
+# process (same script as the API image; its JuiceFS section self-skips here
+# because the juicefs binary and R2 env vars are absent).
+COPY --chmod=0755 scripts/docker-entrypoint.sh /entrypoint.sh
+
 WORKDIR /app/apps/voice-agent
 
 # Download model files (into /home/appuser/.cache/huggingface)
 RUN uv run --frozen python -m src download-files
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uv", "run", "--frozen", "python", "-m", "src", "start"]

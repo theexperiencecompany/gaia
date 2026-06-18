@@ -15,6 +15,174 @@ from app.models.oauth_models import (
     IntegrationHowItWorksStep,
 )
 
+TODOS_CONTENT = IntegrationContent(
+    use_cases=[
+        "Capture todos by just describing them — GAIA adds due dates, labels, and projects for you",
+        "Get a clean rundown of everything due today with a single question",
+        "Bulk-create, update, or clear out tasks in one plain English instruction",
+        "Break a big task into subtasks by describing the steps you need to take",
+        "Search across all your tasks by keyword, project, or priority instantly",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Todos is built into GAIA",
+            body="No connection or OAuth needed — Todos is one of GAIA's native productivity features and is ready the moment you start chatting.",
+        ),
+        IntegrationHowItWorksStep(
+            title="Manage your tasks in plain English",
+            body='Say "add a task to finish the deck by Friday under the Marketing project" or "what do I have due today?". GAIA creates, organises, and updates your todos for you.',
+        ),
+        IntegrationHowItWorksStep(
+            title="GAIA keeps your task list working for you",
+            body="Pair Todos with other integrations — GAIA can turn an email into a task, add action items from meeting notes, and surface what to focus on each day.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Do I need to connect anything to use Todos?",
+            answer="No. Todos is a native GAIA feature — there's no account to link and no OAuth flow. It's available out of the box.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA organise tasks into projects and labels?",
+            answer="Yes. GAIA can group tasks by project, apply labels, set priorities, and add due dates — just describe how you want them organised.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA break a task into subtasks?",
+            answer="Yes. Describe a larger piece of work and GAIA can split it into subtasks under a parent task to make it easier to track.",
+        ),
+        IntegrationFAQ(
+            question="How is Todos different from Google Tasks or Todoist?",
+            answer="Todos lives natively in your GAIA account with no setup. Connect Google Tasks or Todoist instead if you already manage tasks in those tools and want GAIA to sync with them.",
+        ),
+    ],
+)
+
+REMINDERS_CONTENT = IntegrationContent(
+    use_cases=[
+        'Set a reminder by just saying "remind me to call the dentist at 3 PM"',
+        'Get a quick ping after a delay — "ping me in 20 minutes to check the oven"',
+        "Schedule recurring reminders like a daily standup nudge or a weekly review",
+        "Get a time-based alert before something important so nothing slips",
+        "List, reschedule, or cancel your upcoming reminders with a plain English command",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Reminders is built into GAIA",
+            body="No connection or OAuth needed — Reminders is a native GAIA feature and works the moment you ask for one.",
+        ),
+        IntegrationHowItWorksStep(
+            title="Just tell GAIA when to remind you",
+            body='Say "remind me to send the invoice tomorrow at 9 AM" or "set a timer for 25 minutes". GAIA schedules the notification to fire at exactly the right time.',
+        ),
+        IntegrationHowItWorksStep(
+            title="GAIA pings you when it matters",
+            body="Reminders fire as notifications at their scheduled time — for one-off nudges, recurring routines, or timers — so you can stay heads-down without watching the clock.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Do I need to connect anything to use Reminders?",
+            answer="No. Reminders is a native GAIA feature with no account to link and no OAuth flow. It's ready to use immediately.",
+        ),
+        IntegrationFAQ(
+            question="How is a reminder different from a todo?",
+            answer="A reminder is a time-based notification that fires at a scheduled moment — like an alarm or ping. A todo is a task on a list that you complete. Use reminders for 'ping me at 3 PM' and todos for 'things I need to get done'.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA set recurring reminders?",
+            answer="Yes. Ask for a daily, weekly, or custom recurring reminder and GAIA will schedule it to fire on that cadence.",
+        ),
+        IntegrationFAQ(
+            question="Can I cancel or reschedule a reminder?",
+            answer="Yes. Ask GAIA to list your reminders, then reschedule or cancel any of them with a plain English instruction.",
+        ),
+    ],
+)
+
+GOALS_CONTENT = IntegrationContent(
+    use_cases=[
+        "Set a long-term goal and have GAIA generate an actionable roadmap to reach it",
+        "Track progress toward your goals and see what's on track or falling behind",
+        "Break a big ambition into milestones and concrete next steps",
+        "Get a snapshot of where every goal stands with a single question",
+        "Update or re-plan a goal's roadmap as your priorities change",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Goals is built into GAIA",
+            body="No connection or OAuth needed — Goals is a native GAIA feature for long-term planning, available from the start.",
+        ),
+        IntegrationHowItWorksStep(
+            title="Describe what you want to achieve",
+            body='Say "I want to launch a side project in 3 months" or "help me get to 1,000 newsletter subscribers". GAIA turns it into a goal with a structured roadmap.',
+        ),
+        IntegrationHowItWorksStep(
+            title="GAIA helps you make steady progress",
+            body="GAIA tracks your milestones, shows progress over time, and helps you adjust the plan — keeping long-term goals from getting lost in day-to-day work.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Do I need to connect anything to use Goals?",
+            answer="No. Goals is a native GAIA feature with no account to link and no OAuth flow. It's ready out of the box.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA generate a roadmap for my goal?",
+            answer="Yes. Describe the outcome you want and GAIA breaks it into milestones and next steps, creating an actionable roadmap you can track against.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA track my progress over time?",
+            answer="Yes. GAIA records progress on each goal and milestone, so you can ask how you're tracking and see what needs attention.",
+        ),
+        IntegrationFAQ(
+            question="How are Goals different from Todos?",
+            answer="Goals are long-term outcomes with roadmaps and milestones. Todos are individual tasks. GAIA can turn a goal's milestones into todos to keep day-to-day work aligned with the bigger picture.",
+        ),
+    ],
+)
+
+SKILLS_CONTENT = IntegrationContent(
+    use_cases=[
+        "Install an agent skill from a GitHub repository to extend what GAIA can do",
+        "Create a custom skill inline by describing a procedure you want GAIA to follow",
+        "List, enable, or disable the skills installed in your GAIA",
+        "Teach GAIA a repeatable workflow once and reuse it across conversations",
+        "Uninstall or update skills as your needs change",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Skills is built into GAIA",
+            body="No connection or OAuth needed — Skills is a native GAIA feature for installing and managing agent capabilities.",
+        ),
+        IntegrationHowItWorksStep(
+            title="Add or create a skill in plain English",
+            body='Say "install the skill from this GitHub repo" or "create a skill that drafts a weekly update from my completed tasks". GAIA installs or authors the skill for you.',
+        ),
+        IntegrationHowItWorksStep(
+            title="GAIA gains new capabilities on demand",
+            body="Once installed, a skill becomes part of GAIA's toolkit — you can enable, disable, or remove skills any time to shape exactly how your assistant behaves.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Do I need to connect anything to use Skills?",
+            answer="No. Skills is a native GAIA feature with no account to link and no OAuth flow. It's available immediately.",
+        ),
+        IntegrationFAQ(
+            question="Where do skills come from?",
+            answer="You can install skills from a GitHub repository or create custom skills inline by describing the procedure you want GAIA to follow.",
+        ),
+        IntegrationFAQ(
+            question="Can I turn skills on and off?",
+            answer="Yes. You can list your installed skills and enable, disable, or uninstall any of them with a plain English instruction.",
+        ),
+        IntegrationFAQ(
+            question="What can a skill actually do?",
+            answer="A skill packages a reusable procedure or capability that GAIA can apply across conversations — from a repeatable workflow you define to a published skill that adds new behaviour.",
+        ),
+    ],
+)
+
 GOOGLECALENDAR_CONTENT = IntegrationContent(
     use_cases=[
         "Schedule meetings by describing your availability in plain English — GAIA books the slot instantly",

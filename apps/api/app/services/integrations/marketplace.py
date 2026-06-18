@@ -12,6 +12,7 @@ from app.models.integration_models import (
     IntegrationTool,
     MarketplaceResponse,
 )
+from app.models.oauth_models import OAuthIntegration
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from shared.py.wide_events import log
@@ -86,6 +87,44 @@ async def get_all_integrations(
     )
 
 
+def assemble_integration_response(
+    platform_integration: OAuthIntegration | None,
+    custom_doc: dict | None,
+    stored_tools: list[dict] | None,
+    creator_doc: dict | None,
+) -> IntegrationResponse | None:
+    """Assemble an IntegrationResponse from already-resolved pieces.
+
+    Shared by the single-fetch (get_integration_details) and batch-prefetched
+    (get_user_integrations) paths so the two can't drift. Platform metadata comes
+    from the catalog ``OAuthIntegration``; custom metadata from the stored doc;
+    stored MCP tools and creator info are overlaid when present.
+    """
+    if platform_integration:
+        response = IntegrationResponse.from_oauth_integration(platform_integration)
+    elif custom_doc:
+        try:
+            response = IntegrationResponse.from_integration(Integration(**custom_doc))
+        except Exception as e:
+            log.error(f"Failed to parse integration: {e}")
+            return None
+    else:
+        return None
+
+    if stored_tools and not response.tools:
+        response.tools = [
+            IntegrationTool(name=t["name"], description=t.get("description")) for t in stored_tools
+        ]
+
+    if creator_doc:
+        response.creator = {
+            "name": creator_doc.get("name"),
+            "picture": creator_doc.get("picture"),
+        }
+
+    return response
+
+
 async def get_integration_details(integration_id: str) -> IntegrationResponse | None:
     """Get single integration details by ID."""
     log.set(integration={"provider": integration_id, "action": "get_integration_details"})
@@ -96,36 +135,18 @@ async def get_integration_details(integration_id: str) -> IntegrationResponse | 
     if not resolved:
         return None
 
-    if resolved.platform_integration:
-        response = IntegrationResponse.from_oauth_integration(resolved.platform_integration)
-    elif resolved.custom_doc:
+    # Creator lives only on custom integration docs; platform entries have none.
+    creator_doc = None
+    created_by = resolved.custom_doc.get("created_by") if resolved.custom_doc else None
+    if created_by:
         try:
-            integration = Integration(**resolved.custom_doc)
-            response = IntegrationResponse.from_integration(integration)
-        except Exception as e:
-            log.error(f"Failed to parse integration {integration_id}: {e}")
-            return None
-    else:
-        return None
-
-    if stored_tools and not response.tools:
-        response.tools = [
-            IntegrationTool(name=t["name"], description=t.get("description")) for t in stored_tools
-        ]
-
-    if response.created_by:
-        try:
-            creator_oid = ObjectId(response.created_by)
             creator_doc = await users_collection.find_one(
-                {"_id": creator_oid},
+                {"_id": ObjectId(created_by)},
                 {"name": 1, "picture": 1},
             )
-            if creator_doc:
-                response.creator = {
-                    "name": creator_doc.get("name"),
-                    "picture": creator_doc.get("picture"),
-                }
         except Exception as e:
-            log.debug(f"Failed to fetch creator info for {response.created_by}: {e}")
+            log.debug(f"Failed to fetch creator info for {created_by}: {e}")
 
-    return response
+    return assemble_integration_response(
+        resolved.platform_integration, resolved.custom_doc, stored_tools, creator_doc
+    )

@@ -2,7 +2,6 @@ import { useLocalParticipantPermissions } from "@livekit/components-react";
 import { Track } from "livekit-client";
 
 const trackSourceToProtocol = (source: Track.Source) => {
-  // NOTE: this mapping avoids importing the protocol package as that leads to a significant bundle size increase
   switch (source) {
     case Track.Source.Microphone:
       return 2;

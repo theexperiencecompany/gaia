@@ -26,21 +26,29 @@ from app.models.payment_models import PlanType
 
 
 class RateLimitPeriod(str, Enum):
+    """Time window a limit applies to."""
+
     DAY = "day"
     MONTH = "month"
 
 
 class RateLimitConfig(BaseModel):
+    """Allowed request counts per day and per month (0 = no limit for that period)."""
+
     day: int = 0
     month: int = 0
 
 
 class FeatureInfo(BaseModel):
+    """User-facing title and description for a rate-limited feature."""
+
     title: str
     description: str
 
 
 class TieredRateLimits(BaseModel):
+    """Per-plan rate limit configs for one feature."""
+
     free: RateLimitConfig = RateLimitConfig()
     pro: RateLimitConfig = RateLimitConfig()
     info: FeatureInfo
@@ -53,6 +61,17 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         free=RateLimitConfig(day=200, month=5000),  # Unchanged - good trial
         pro=RateLimitConfig(day=3000, month=60000),  # +20% / +50%
         info=FeatureInfo(title="Chat Messages", description="Send messages to AI assistants"),
+    ),
+    # VOICE (Very Expensive - LiveKit + STT + TTS per session)
+    "voice_mode": TieredRateLimits(
+        free=RateLimitConfig(day=0, month=0),  # Paid-only: no free usage
+        # Counted per /token mint (session start), so heavy daily use plus
+        # reconnects must fit comfortably.
+        pro=RateLimitConfig(day=200, month=3000),
+        info=FeatureInfo(
+            title="Voice Mode",
+            description="Real-time voice conversations with GAIA",
+        ),
     ),
     # FILE OPERATIONS (Expensive - Storage & Processing)
     "file_upload": TieredRateLimits(

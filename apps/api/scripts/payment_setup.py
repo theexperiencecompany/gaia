@@ -126,6 +126,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "max_users": 1,
             "features": [
                 "Limited access to everything",
+                "Standard AI model",
                 "Basic memory features",
                 "Standard support",
             ],
@@ -141,6 +142,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "max_users": 1,
             "features": [
                 "Extended access to everything",
+                "More powerful AI model",
                 "Advanced memory features",
                 "Priority support",
                 "Private Discord access",
@@ -157,6 +159,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "max_users": 1,
             "features": [
                 "Extended access to everything",
+                "More powerful AI model",
                 "Advanced memory features",
                 "Priority support",
                 "Private Discord access",

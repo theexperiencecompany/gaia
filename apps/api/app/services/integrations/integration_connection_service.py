@@ -47,7 +47,11 @@ def build_integrations_config() -> IntegrationsConfigResponse:
 
         auth_type_literal: Literal["none", "oauth", "bearer"] | None = None
         if integration.mcp_config:
-            auth_type_literal = "oauth" if integration.mcp_config.requires_auth else "none"
+            # Honour an explicitly configured auth_type (e.g. "bearer" for
+            # API-key servers like Browserbase); otherwise derive from requires_auth.
+            auth_type_literal = integration.mcp_config.auth_type or (
+                "oauth" if integration.mcp_config.requires_auth else "none"
+            )
 
         integration_configs.append(
             IntegrationConfigItem(
@@ -63,10 +67,95 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 is_featured=integration.is_featured,
                 managed_by=integration.managed_by,
                 auth_type=auth_type_literal,
+                requires_auth=(
+                    integration.mcp_config.requires_auth if integration.mcp_config else False
+                ),
                 slug=integration.id,  # Platform integrations use ID as slug
             )
         )
     return IntegrationsConfigResponse(integrations=integration_configs)
+
+
+async def _redirect_to_oauth(
+    mcp_client: Any,
+    integration_id: str,
+    integration_name: str,
+    redirect_path: str,
+    challenge_data: dict | None = None,
+) -> ConnectIntegrationResponse:
+    """Build the provider OAuth URL and wrap it in a redirect response."""
+    auth_url = await mcp_client.build_oauth_auth_url(
+        integration_id=integration_id,
+        redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+        redirect_path=redirect_path,
+        challenge_data=challenge_data,
+    )
+    log.set(
+        integration={
+            "provider": integration_name,
+            "action": "connect_mcp",
+            "status": "redirect",
+            "auth_type": "oauth",
+        }
+    )
+    return ConnectIntegrationResponse(
+        status="redirect",
+        integration_id=integration_id,
+        name=integration_name,
+        redirect_url=auth_url,
+        message="OAuth authentication required",
+    )
+
+
+async def _handle_auth_required(
+    user_id: str,
+    integration_id: str,
+    integration_name: str,
+    redirect_path: str,
+    *,
+    is_platform: bool,
+    detected_auth_type: str | None,
+    probe_result: dict | None,
+    mcp_client: Any,
+) -> ConnectIntegrationResponse:
+    """Bearer servers return bearer_required (frontend collects a key); everything
+    else gets the OAuth redirect."""
+    if not is_platform:
+        await update_user_integration_status(user_id, integration_id, "created")
+
+    if detected_auth_type == "bearer":
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            name=integration_name,
+            error="bearer_required",
+            message="This integration requires an API key.",
+        )
+
+    return await _redirect_to_oauth(
+        mcp_client, integration_id, integration_name, redirect_path, challenge_data=probe_result
+    )
+
+
+async def _handle_connect_failure(
+    user_id: str,
+    integration_id: str,
+    integration_name: str,
+    is_platform: bool,
+    error: Exception,
+) -> ConnectIntegrationResponse:
+    """Surface a connection failure as a structured error, never a 500."""
+    if not is_platform:
+        await update_user_integration_status(user_id, integration_id, "created")
+    log.warning(f"MCP connection failed for {integration_id}: {error}")
+    log.set(integration={"provider": integration_name, "action": "connect_mcp", "status": "error"})
+    return ConnectIntegrationResponse(
+        status="error",
+        integration_id=integration_id,
+        name=integration_name,
+        error=str(error),
+        message="Connection failed",
+    )
 
 
 async def connect_mcp_integration(
@@ -95,57 +184,43 @@ async def connect_mcp_integration(
         probe_result = await mcp_client.probe_connection(server_url)
 
     # Check if probe detected auth requirement
+    detected_auth_type: str | None = None
     if probe_result and not requires_auth and probe_result.get("requires_auth"):
-        auth_type = probe_result.get("auth_type", "oauth")
+        detected_auth_type = probe_result.get("auth_type", "oauth")
         await mcp_client.update_integration_auth_status(
-            integration_id, requires_auth=True, auth_type=auth_type
+            integration_id, requires_auth=True, auth_type=detected_auth_type
         )
         requires_auth = True
 
     if requires_auth:
-        if not is_platform:
-            await update_user_integration_status(user_id, integration_id, "created")
-
-        auth_url = await mcp_client.build_oauth_auth_url(
-            integration_id=integration_id,
-            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
-            redirect_path=redirect_path,
-            challenge_data=probe_result,
-        )
-
-        return ConnectIntegrationResponse(
-            status="redirect",
-            integration_id=integration_id,
-            name=integration_name,
-            redirect_url=auth_url,
-            message="OAuth authentication required",
+        return await _handle_auth_required(
+            user_id,
+            integration_id,
+            integration_name,
+            redirect_path,
+            is_platform=is_platform,
+            detected_auth_type=detected_auth_type,
+            probe_result=probe_result,
+            mcp_client=mcp_client,
         )
 
     try:
         tools = await mcp_client.connect(integration_id)
     except OAuthAuthenticationError:
-        if not is_platform:
-            await update_user_integration_status(user_id, integration_id, "created")
-
-        auth_url = await mcp_client.build_oauth_auth_url(
-            integration_id=integration_id,
-            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
-            redirect_path=redirect_path,
+        # mcp-use only learned auth was needed at connect time — route to OAuth.
+        return await _handle_auth_required(
+            user_id,
+            integration_id,
+            integration_name,
+            redirect_path,
+            is_platform=is_platform,
+            detected_auth_type=None,
+            probe_result=None,
+            mcp_client=mcp_client,
         )
-        log.set(
-            integration={
-                "provider": integration_name,
-                "action": "connect_mcp",
-                "status": "redirect",
-                "auth_type": "oauth",
-            }
-        )
-        return ConnectIntegrationResponse(
-            status="redirect",
-            integration_id=integration_id,
-            name=integration_name,
-            redirect_url=auth_url,
-            message="OAuth authentication required",
+    except Exception as e:
+        return await _handle_connect_failure(
+            user_id, integration_id, integration_name, is_platform, e
         )
 
     tools_count = len(tools) if tools else 0

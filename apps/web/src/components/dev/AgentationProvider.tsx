@@ -20,5 +20,14 @@ const AGENTATION_ENDPOINT =
 
 export function AgentationProvider() {
   if (!Agentation) return null;
-  return <Agentation endpoint={AGENTATION_ENDPOINT} />;
+  // The annotation overlay is a browser-side dev tool — inside the
+  // Electron shell (especially the compact assistant popup) it only
+  // obstructs the UI.
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.userAgent.includes("Electron")
+  ) {
+    return null;
+  }
+  return <Agentation endpoint={AGENTATION_ENDPOINT}/>;
 }

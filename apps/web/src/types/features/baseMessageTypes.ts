@@ -42,6 +42,10 @@ export interface UserMessageData extends BaseMessageData {
   file?: File | null | string;
   filename?: string;
 
+  // True while the message is still streaming in — the voice transcript grows
+  // word-by-word as the user speaks. Drives the user bubble's blur-in animation.
+  loading?: boolean;
+
   // Retry callbacks
   onRetry?: () => void;
   isRetrying?: boolean;

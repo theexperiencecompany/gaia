@@ -4,6 +4,7 @@ import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useComposerUI } from "@/stores/composerStore";
 
 interface SelectedToolIndicatorProps {
@@ -32,6 +33,13 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   onRemove,
 }) => {
   const { isSlashCommandDropdownOpen } = useComposerUI();
+  const { integrations } = useIntegrations();
+
+  // Custom integrations aren't in the static icon config, so their logo lives on
+  // the integration's iconUrl. Resolve it from the category (integration id) so
+  // both the composer and the persisted user bubble render the same icon.
+  const resolvedIconUrl =
+    iconUrl ?? integrations.find((i) => i.id === toolCategory)?.iconUrl ?? null;
 
   const onRemoveRef = useRef(onRemove);
   onRemoveRef.current = onRemove;
@@ -75,7 +83,7 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
               {
                 size: 17,
               },
-              iconUrl,
+              resolvedIconUrl,
             )}
           </div>
           <span className="text-sm font-light text-zinc-200">

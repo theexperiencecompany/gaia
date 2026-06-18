@@ -1,7 +1,5 @@
 import type React from "react";
 
-import Composer from "@/features/chat/components/composer/Composer";
-
 import { ChatSection } from "@/features/chat/components/interface/sections/ChatSection";
 
 interface ChatWithMessagesProps {
@@ -14,19 +12,12 @@ interface ChatWithMessagesProps {
     onDragLeave: (e: React.DragEvent<HTMLElement>) => void;
     onDrop: (e: React.DragEvent<HTMLElement>) => void;
   };
-  composerProps: {
-    inputRef: React.RefObject<HTMLTextAreaElement | null>;
-    scrollToBottom: () => void;
-    fileUploadRef: React.RefObject<{
-      openFileUploadModal: () => void;
-      handleDroppedFiles: (files: File[]) => void;
-    } | null>;
-    droppedFiles: File[];
-    onDroppedFilesProcessed: () => void;
-    hasMessages: boolean;
-    conversationId?: string;
-    voiceModeActive: () => void;
-  };
+  /**
+   * Bottom-bar slot. In text mode this is the `<Composer/>`; in voice mode
+   * it's the voice control bar container. The layout, scroll wiring, and
+   * drag-and-drop survive across mode flips.
+   */
+  bottomBar: React.ReactNode;
 }
 
 export const ChatWithMessages: React.FC<ChatWithMessagesProps> = ({
@@ -34,7 +25,7 @@ export const ChatWithMessages: React.FC<ChatWithMessagesProps> = ({
   contentRef,
   chatRef,
   dragHandlers,
-  composerProps,
+  bottomBar,
 }) => {
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -48,10 +39,8 @@ export const ChatWithMessages: React.FC<ChatWithMessagesProps> = ({
           <ChatSection chatRef={chatRef} />
         </div>
       </div>
-      {/* Fixed composer at bottom */}
-      <div className="shrink-0 pb-2">
-        <Composer {...composerProps} />
-      </div>
+      {/* Fixed bottom slot (composer in text mode, voice bar in voice mode) */}
+      <div className="shrink-0 pb-2">{bottomBar}</div>
     </div>
   );
 };

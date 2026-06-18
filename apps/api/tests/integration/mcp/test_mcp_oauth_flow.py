@@ -14,9 +14,11 @@ from urllib.parse import parse_qs, urlparse
 
 from cryptography.fernet import Fernet
 import httpx
+from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
+from pydantic import ValidationError
 import pytest
 
-from app.models.mcp_config import MCPConfig
+from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -34,9 +36,7 @@ from app.utils.mcp_oauth_utils import (
     validate_https_url,
     validate_oauth_endpoints,
     validate_pkce_support,
-    validate_token_response,
 )
-from app.utils.mcp_utils import generate_pkce_pair
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,26 +73,75 @@ def _make_mock_session(scalar_return=None) -> AsyncMock:
     return session
 
 
-def _oauth_discovery_dict(
+def _make_as_metadata(
     auth_endpoint: str = "https://auth.example.com/authorize",
     token_endpoint: str = "https://auth.example.com/token",
-    registration_endpoint: str = "https://auth.example.com/register",
-    revocation_endpoint: str = "https://auth.example.com/revoke",
-    introspection_endpoint: str = "https://auth.example.com/introspect",
-) -> dict:
-    """Build a standard OAuth discovery dict for tests."""
-    return {
-        "authorization_endpoint": auth_endpoint,
-        "token_endpoint": token_endpoint,
-        "registration_endpoint": registration_endpoint,
-        "revocation_endpoint": revocation_endpoint,
-        "introspection_endpoint": introspection_endpoint,
-        "issuer": "https://auth.example.com",
-        "code_challenge_methods_supported": ["S256"],
-        "scopes_supported": ["read", "write"],
-        "resource": "https://mcp.example.com",
-        "discovery_method": "rfc9728_prm",
-    }
+    registration_endpoint: str | None = "https://auth.example.com/register",
+    revocation_endpoint: str | None = "https://auth.example.com/revoke",
+    introspection_endpoint: str | None = "https://auth.example.com/introspect",
+    issuer: str = "https://auth.example.com",
+    code_challenge_methods_supported: list[str] | None = None,
+    scopes_supported: list[str] | None = None,
+    client_id_metadata_document_supported: bool = False,
+) -> OAuthMetadata:
+    """Build an RFC 8414 OAuthMetadata model for tests."""
+    return OAuthMetadata.model_validate(
+        {
+            "issuer": issuer,
+            "authorization_endpoint": auth_endpoint,
+            "token_endpoint": token_endpoint,
+            "registration_endpoint": registration_endpoint,
+            "revocation_endpoint": revocation_endpoint,
+            "introspection_endpoint": introspection_endpoint,
+            "code_challenge_methods_supported": (
+                ["S256"]
+                if code_challenge_methods_supported is None
+                else code_challenge_methods_supported
+            ),
+            "scopes_supported": (
+                ["read", "write"] if scopes_supported is None else scopes_supported
+            ),
+            "client_id_metadata_document_supported": client_id_metadata_document_supported,
+        }
+    )
+
+
+def _make_prm(
+    resource: str = "https://mcp.example.com",
+    authorization_servers: list[str] | None = None,
+    scopes_supported: list[str] | None = None,
+) -> ProtectedResourceMetadata:
+    """Build an RFC 9728 ProtectedResourceMetadata model for tests."""
+    return ProtectedResourceMetadata.model_validate(
+        {
+            "resource": resource,
+            "authorization_servers": (
+                ["https://auth.example.com"]
+                if authorization_servers is None
+                else authorization_servers
+            ),
+            "scopes_supported": (
+                ["read", "write"] if scopes_supported is None else scopes_supported
+            ),
+        }
+    )
+
+
+def _make_oauth_discovery(
+    resource: str = "https://mcp.example.com",
+    discovery_method: str = "rfc9728_prm",
+    initial_scope: str | None = None,
+    prm: ProtectedResourceMetadata | None = None,
+    **as_metadata_overrides,
+) -> OAuthDiscovery:
+    """Build a resolved OAuthDiscovery model for tests."""
+    return OAuthDiscovery(
+        as_metadata=_make_as_metadata(**as_metadata_overrides),
+        resource=resource,
+        initial_scope=initial_scope,
+        discovery_method=discovery_method,
+        prm=prm,
+    )
 
 
 def _make_mcp_config(**overrides) -> MCPConfig:
@@ -141,18 +190,8 @@ class TestOAuthDiscovery:
         token_store.get_oauth_discovery = AsyncMock(return_value=None)
         token_store.store_oauth_discovery = AsyncMock()
 
-        prm_response = {
-            "resource": "https://mcp.example.com",
-            "authorization_servers": ["https://auth.example.com"],
-            "scopes_supported": ["read", "write"],
-        }
-        auth_metadata = {
-            "authorization_endpoint": "https://auth.example.com/authorize",
-            "token_endpoint": "https://auth.example.com/token",
-            "registration_endpoint": "https://auth.example.com/register",
-            "code_challenge_methods_supported": ["S256"],
-            "issuer": "https://auth.example.com",
-        }
+        prm = _make_prm()
+        auth_metadata = _make_as_metadata()
 
         with (
             patch(
@@ -167,11 +206,11 @@ class TestOAuthDiscovery:
             ),
             patch(
                 "app.services.mcp.oauth_discovery.fetch_protected_resource_metadata",
-                new=AsyncMock(return_value=prm_response),
+                new=AsyncMock(return_value=prm),
             ),
             patch(
                 "app.services.mcp.oauth_discovery.select_authorization_server",
-                new=AsyncMock(return_value="https://auth.example.com"),
+                new=MagicMock(return_value="https://auth.example.com"),
             ),
             patch(
                 "app.services.mcp.oauth_discovery.fetch_auth_server_metadata",
@@ -183,17 +222,23 @@ class TestOAuthDiscovery:
         ):
             result = await discover_oauth_config(token_store, integration_id, mcp_config)
 
-        assert result["authorization_endpoint"] == "https://auth.example.com/authorize"
-        assert result["token_endpoint"] == "https://auth.example.com/token"
-        assert result["discovery_method"] == "rfc9728_prm"
-        assert result["resource"] == "https://mcp.example.com"
+        assert isinstance(result, OAuthDiscovery)
+        assert (
+            str(result.as_metadata.authorization_endpoint) == "https://auth.example.com/authorize"
+        )
+        assert str(result.as_metadata.token_endpoint) == "https://auth.example.com/token"
+        assert result.discovery_method == "rfc9728_prm"
+        # Production binds the resource from the PRM model: resource=str(prm.resource).
+        # AnyHttpUrl normalizes a bare authority to a trailing slash.
+        assert result.resource == str(prm.resource) == "https://mcp.example.com/"
+        assert result.prm is prm
         # Stored to cache
         token_store.store_oauth_discovery.assert_awaited_once()
 
     async def test_discover_returns_cached_when_available(self):
         """discover_oauth_config returns cached data without any HTTP calls."""
         token_store = _make_token_store()
-        cached = _oauth_discovery_dict()
+        cached = _make_oauth_discovery()
         token_store.get_oauth_discovery = AsyncMock(return_value=cached)
         token_store.store_oauth_discovery = AsyncMock()
 
@@ -213,11 +258,14 @@ class TestOAuthDiscovery:
 
         mcp_config = _make_mcp_config()
 
-        direct_metadata = {
-            "authorization_endpoint": "https://mcp.example.com/authorize",
-            "token_endpoint": "https://mcp.example.com/token",
-            "code_challenge_methods_supported": ["S256"],
-        }
+        direct_metadata = _make_as_metadata(
+            auth_endpoint="https://mcp.example.com/authorize",
+            token_endpoint="https://mcp.example.com/token",
+            issuer="https://mcp.example.com",
+            registration_endpoint=None,
+            revocation_endpoint=None,
+            introspection_endpoint=None,
+        )
 
         with (
             patch(
@@ -238,8 +286,9 @@ class TestOAuthDiscovery:
         ):
             result = await discover_oauth_config(token_store, "direct-int", mcp_config)
 
-        assert result["discovery_method"] == "direct_oauth"
-        assert result["authorization_endpoint"] == "https://mcp.example.com/authorize"
+        assert isinstance(result, OAuthDiscovery)
+        assert result.discovery_method == "direct_oauth"
+        assert str(result.as_metadata.authorization_endpoint) == "https://mcp.example.com/authorize"
 
     async def test_discover_raises_when_all_methods_fail(self):
         """When both PRM and direct discovery fail, OAuthDiscoveryError is raised."""
@@ -280,8 +329,7 @@ class TestAuthorizationURLGeneration:
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
 
-        oauth_config = _oauth_discovery_dict()
-        oauth_config["client_id_metadata_document_supported"] = False
+        oauth_config = _make_oauth_discovery()
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(client_id="my-client-id")
@@ -324,9 +372,7 @@ class TestAuthorizationURLGeneration:
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
 
-        oauth_config = _oauth_discovery_dict()
-        oauth_config["scopes_supported"] = ["read", "write", "offline_access"]
-        oauth_config["client_id_metadata_document_supported"] = False
+        oauth_config = _make_oauth_discovery(scopes_supported=["read", "write", "offline_access"])
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(client_id="cid", oauth_scopes=["read"])
@@ -359,9 +405,7 @@ class TestAuthorizationURLGeneration:
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
 
-        oauth_config = _oauth_discovery_dict()
-        oauth_config["code_challenge_methods_supported"] = []  # No PKCE
-        oauth_config["client_id_metadata_document_supported"] = False
+        oauth_config = _make_oauth_discovery(code_challenge_methods_supported=[])  # No PKCE
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(client_id="cid")
@@ -388,8 +432,7 @@ class TestAuthorizationURLGeneration:
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
 
-        oauth_config = _oauth_discovery_dict()
-        oauth_config["client_id_metadata_document_supported"] = False
+        oauth_config = _make_oauth_discovery()
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(client_id="cid", oauth_scopes=["openid", "profile"])
@@ -449,8 +492,7 @@ class TestTokenExchange:
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config()
 
-        oauth_config = _oauth_discovery_dict()
-        oauth_config["client_id_metadata_document_supported"] = False
+        oauth_config = _make_oauth_discovery()
 
         token_response = {
             "access_token": "new-access-token",
@@ -535,8 +577,7 @@ class TestTokenExchange:
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config()
 
-        oauth_config = _oauth_discovery_dict()
-        oauth_config["client_id_metadata_document_supported"] = False
+        oauth_config = _make_oauth_discovery()
 
         error_response = httpx.Response(
             status_code=400,
@@ -571,7 +612,14 @@ class TestTokenExchange:
                 )
 
     async def test_token_exchange_validates_token_type(self):
-        """Token response with non-Bearer type raises ValueError."""
+        """Token response with non-Bearer type is rejected by OAuthToken validation.
+
+        Production parses the token response via OAuthToken.model_validate, whose
+        token_type is Literal["Bearer"]. A non-Bearer type (e.g. MAC) fails SDK
+        validation and surfaces as a pydantic ValidationError out of
+        handle_oauth_callback — the OAuth 2.1 "reject unsupported token_type"
+        contract now enforced by the SDK model rather than hand-rolled code.
+        """
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
         client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
@@ -581,8 +629,7 @@ class TestTokenExchange:
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config()
 
-        oauth_config = _oauth_discovery_dict()
-        oauth_config["client_id_metadata_document_supported"] = False
+        oauth_config = _make_oauth_discovery()
 
         bad_token_response = httpx.Response(
             status_code=200,
@@ -610,7 +657,7 @@ class TestTokenExchange:
             mock_http_instance.__aexit__ = AsyncMock(return_value=False)
             mock_http_cls.return_value = mock_http_instance
 
-            with pytest.raises(ValueError, match="Unsupported token_type"):
+            with pytest.raises(ValidationError, match="token_type"):
                 await client.handle_oauth_callback(
                     integration_id="mac-int",
                     code="code",
@@ -638,7 +685,7 @@ class TestTokenRefresh:
         token_store.store_oauth_tokens = AsyncMock()
 
         mcp_config = _make_mcp_config()
-        oauth_config = _oauth_discovery_dict()
+        oauth_config = _make_oauth_discovery()
 
         refresh_response = httpx.Response(
             status_code=200,
@@ -672,7 +719,7 @@ class TestTokenRefresh:
         token_store.get_refresh_token = AsyncMock(return_value=None)
 
         mcp_config = _make_mcp_config()
-        oauth_config = _oauth_discovery_dict()
+        oauth_config = _make_oauth_discovery()
 
         result = await try_refresh_token(token_store, "no-refresh-int", mcp_config, oauth_config)
 
@@ -685,7 +732,7 @@ class TestTokenRefresh:
         token_store.get_dcr_client = AsyncMock(return_value={"client_id": "cid"})
 
         mcp_config = _make_mcp_config()
-        oauth_config = _oauth_discovery_dict()
+        oauth_config = _make_oauth_discovery()
 
         error_response = httpx.Response(
             status_code=400,
@@ -711,7 +758,7 @@ class TestTokenRefresh:
 
         # No client_id anywhere
         mcp_config = _make_mcp_config(client_id=None)
-        oauth_config = _oauth_discovery_dict()
+        oauth_config = _make_oauth_discovery()
 
         result = await try_refresh_token(token_store, "no-cid-int", mcp_config, oauth_config)
 
@@ -735,7 +782,7 @@ class TestTokenRevocation:
         token_store.get_dcr_client = AsyncMock(return_value={"client_id": "cid"})
 
         mcp_config = _make_mcp_config()
-        oauth_config = _oauth_discovery_dict()
+        oauth_config = _make_oauth_discovery()
 
         revoke_response = httpx.Response(status_code=200)
 
@@ -758,8 +805,8 @@ class TestTokenRevocation:
         """When no revocation_endpoint in config, revoke_tokens is a no-op."""
         token_store = _make_token_store()
         mcp_config = _make_mcp_config()
-        oauth_config = _oauth_discovery_dict(revocation_endpoint="")
-        del oauth_config["revocation_endpoint"]
+        oauth_config = _make_oauth_discovery(revocation_endpoint=None)
+        assert oauth_config.as_metadata.revocation_endpoint is None
 
         # Should not raise or call any HTTP
         await revoke_tokens(token_store, "no-revoke-int", mcp_config, oauth_config)
@@ -772,7 +819,7 @@ class TestTokenRevocation:
         token_store.get_dcr_client = AsyncMock(return_value=None)
 
         mcp_config = _make_mcp_config()
-        oauth_config = _oauth_discovery_dict()
+        oauth_config = _make_oauth_discovery()
 
         with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
             mock_instance = AsyncMock()
@@ -985,35 +1032,22 @@ class TestErrorHandling:
     def test_validate_pkce_rejects_no_support(self):
         """validate_pkce_support raises when no methods advertised."""
         with pytest.raises(ValueError, match="PKCE support"):
-            validate_pkce_support({"code_challenge_methods_supported": []}, "test-int")
+            validate_pkce_support(
+                _make_as_metadata(code_challenge_methods_supported=[]), "test-int"
+            )
 
     def test_validate_pkce_rejects_plain_only(self):
         """validate_pkce_support raises when only plain is supported."""
         with pytest.raises(ValueError, match="insecure"):
-            validate_pkce_support({"code_challenge_methods_supported": ["plain"]}, "test-int")
+            validate_pkce_support(
+                _make_as_metadata(code_challenge_methods_supported=["plain"]), "test-int"
+            )
 
     def test_validate_pkce_accepts_s256(self):
         """validate_pkce_support succeeds when S256 is supported."""
-        validate_pkce_support({"code_challenge_methods_supported": ["S256"]}, "test-int")
-
-    def test_validate_token_response_rejects_missing_access_token(self):
-        """validate_token_response raises when access_token is missing."""
-        with pytest.raises(ValueError, match="access_token"):
-            validate_token_response({}, "test-int")
-
-    def test_validate_token_response_rejects_missing_token_type(self):
-        """validate_token_response raises when token_type is missing."""
-        with pytest.raises(ValueError, match="token_type"):
-            validate_token_response({"access_token": "at"}, "test-int")
-
-    def test_validate_token_response_rejects_non_bearer(self):
-        """validate_token_response raises for non-Bearer token type."""
-        with pytest.raises(ValueError, match="Unsupported token_type"):
-            validate_token_response({"access_token": "at", "token_type": "MAC"}, "test-int")
-
-    def test_validate_token_response_accepts_bearer(self):
-        """validate_token_response succeeds with valid Bearer response."""
-        validate_token_response({"access_token": "at", "token_type": "Bearer"}, "test-int")
+        validate_pkce_support(
+            _make_as_metadata(code_challenge_methods_supported=["S256"]), "test-int"
+        )
 
     def test_parse_oauth_error_response_extracts_fields(self):
         """parse_oauth_error_response extracts error info from JSON responses."""
@@ -1033,12 +1067,15 @@ class TestErrorHandling:
 
     def test_validate_oauth_endpoints_rejects_http_endpoints(self):
         """validate_oauth_endpoints rejects HTTP endpoints on non-localhost."""
-        config = {
-            "authorization_endpoint": "http://remote.example.com/authorize",
-            "token_endpoint": "https://auth.example.com/token",
-        }
+        as_metadata = _make_as_metadata(
+            auth_endpoint="http://remote.example.com/authorize",
+            token_endpoint="https://auth.example.com/token",
+            registration_endpoint=None,
+            revocation_endpoint=None,
+            introspection_endpoint=None,
+        )
         with pytest.raises(OAuthSecurityError):
-            validate_oauth_endpoints(config, allow_localhost=False)
+            validate_oauth_endpoints(as_metadata, allow_localhost=False)
 
     async def test_connection_failure_propagates_error(self):
         """When MCP connection fails, the error propagates up (not swallowed)."""
@@ -1223,46 +1260,6 @@ class TestConcurrentConnectionIsolation:
         call_keys = [call[0][0] for call in mock_set_cache.call_args_list]
         assert any("user-a" in key for key in call_keys)
         assert any("user-b" in key for key in call_keys)
-
-
-# ---------------------------------------------------------------------------
-# PKCE Utility Tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestPKCEGeneration:
-    """Test PKCE code_verifier/code_challenge generation."""
-
-    def test_pkce_pair_produces_valid_values(self):
-        """generate_pkce_pair returns a verifier and S256 challenge."""
-        verifier, challenge = generate_pkce_pair()
-
-        assert isinstance(verifier, str)
-        assert isinstance(challenge, str)
-        assert len(verifier) > 20
-        assert len(challenge) > 20
-        # Challenge should be base64url without padding
-        assert "=" not in challenge
-
-    def test_pkce_pairs_are_unique(self):
-        """Each call produces different verifier/challenge pairs."""
-        pair_1 = generate_pkce_pair()
-        pair_2 = generate_pkce_pair()
-
-        assert pair_1[0] != pair_2[0]
-        assert pair_1[1] != pair_2[1]
-
-    def test_pkce_challenge_is_s256_of_verifier(self):
-        """The code_challenge is the base64url(SHA256(code_verifier))."""
-        import base64
-        import hashlib
-
-        verifier, challenge = generate_pkce_pair()
-        digest = hashlib.sha256(verifier.encode()).digest()
-        expected = base64.urlsafe_b64encode(digest).decode().rstrip("=")
-
-        assert challenge == expected
 
 
 # ---------------------------------------------------------------------------

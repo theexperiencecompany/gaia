@@ -92,8 +92,8 @@ completed — especially when they are away from the app or the event is time-se
 - More than 1-2 times per session unless the user explicitly requests it
 
 —CHANNEL SELECTION—
-- Omit `channels` to send on ALL user-enabled channels automatically (recommended default)
-- Pass specific channel names ("whatsapp", "telegram", "discord", "slack", "inapp") to target specific channels
+- If the user named specific channels ("text me on whatsapp", "ping me on slack"), pass EXACTLY those channel names ("whatsapp", "telegram", "discord", "slack", "inapp"). Honor what they asked for.
+- Only when the user did NOT specify a channel: omit `channels` to send on all enabled channels.
 - Use get_notification_preferences first if you need to know what channels are available
 
 —WORKFLOW RUNS—

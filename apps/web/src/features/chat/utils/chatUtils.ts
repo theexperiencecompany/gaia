@@ -11,3 +11,13 @@ export const formatToolName = (toolName: string): string => {
     .replace(/\s+tool$/i, "") // Remove "Tool" suffix (case insensitive)
     .trim(); // Trim whitespace
 };
+
+/**
+ * Capitalize the first letter of each word, preserving the rest of the casing.
+ * Treats underscores and dashes as word separators.
+ */
+export const toTitleCase = (str: string): string => {
+  return str
+    .replace(/[-_]/g, " ")
+    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+};

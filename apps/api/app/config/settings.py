@@ -258,6 +258,11 @@ class ProductionSettings(CommonSettings):
     ELEVENLABS_TTS_MODEL: str
     GAIA_BACKEND_URL: str
     ELEVENLABS_VOICE_ID: str
+    # URL the SHARED voice agent should use to reach THIS backend, embedded
+    # per-room in the LiveKit participant metadata. Unset (default) keeps the
+    # agent on its boot-time GAIA_BACKEND_URL — set it in multi-backend
+    # deployments like staging previews (one agent, many preview APIs).
+    VOICE_AGENT_BACKEND_URL: str | None = None
 
     # ----------------------------------------------
     # Webhook Secrets & Security
@@ -443,6 +448,7 @@ class DevelopmentSettings(CommonSettings):
     ELEVENLABS_TTS_MODEL: str | None = None
     GAIA_BACKEND_URL: str | None = "http://host.docker.internal:8000"
     ELEVENLABS_VOICE_ID: str | None = None
+    VOICE_AGENT_BACKEND_URL: str | None = None
 
     # ----------------------------------------------
     # Content Management

@@ -11,13 +11,28 @@
  * @module server
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { app, BrowserWindow } from "electron";
+import {
+  app,
+  BrowserWindow,
+  type UtilityProcess,
+  utilityProcess,
+} from "electron";
+import {
+  DEV_SERVER_ORIGIN,
+  getWindowRoute,
+  isProductionServer,
+} from "./server-config";
+
+/** Milliseconds to wait for the server to report ready before proceeding. */
+const SERVER_STARTUP_TIMEOUT_MS = 15_000;
+
+/** Grace period after SIGTERM before the server is force-killed (SIGKILL). */
+const SERVER_KILL_TIMEOUT_MS = 3_000;
 
 /** Handle to the running Next.js child process. */
-let serverProcess: ChildProcess | null = null;
+let serverProcess: UtilityProcess | null = null;
 
 /**
  * Actual port the server is listening on, confirmed from stdout.
@@ -81,9 +96,7 @@ async function findAvailablePort(): Promise<number> {
  * @returns URL string like `http://localhost:5174` (prod) or `http://localhost:3000` (dev).
  */
 export function getServerUrl(): string {
-  if (!app.isPackaged && process.env.NODE_ENV !== "production") {
-    return "http://localhost:3000";
-  }
+  if (!isProductionServer()) return DEV_SERVER_ORIGIN;
   return `http://localhost:${serverPort}`;
 }
 
@@ -118,7 +131,12 @@ export async function startNextServer(): Promise<void> {
     console.log(`Starting Next.js server on port ${chosenPort}...`);
     console.log(`Server path: ${serverPath}`);
 
-    serverProcess = spawn("node", [serverPath], {
+    // utilityProcess runs server.js on Electron's bundled Node inside a
+    // proper helper process: no reliance on PATH `node` (absent in
+    // Finder-launched apps) and no bouncing "exec" Dock icon, which spawning
+    // process.execPath with ELECTRON_RUN_AS_NODE causes on macOS.
+    serverProcess = utilityProcess.fork(serverPath, [], {
+      serviceName: "GAIA Next.js server",
       env: {
         ...process.env,
         PORT: String(chosenPort),
@@ -126,7 +144,7 @@ export async function startNextServer(): Promise<void> {
         NODE_ENV: "production",
       },
       cwd: resourcesPath,
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: "pipe",
     });
 
     let resolved = false;
@@ -168,15 +186,7 @@ export async function startNextServer(): Promise<void> {
       console.error("[Next.js Error]", data.toString());
     });
 
-    serverProcess.on("error", (error) => {
-      console.error("Failed to start Next.js server:", error);
-      if (!resolved) {
-        resolved = true;
-        reject(error);
-      }
-    });
-
-    serverProcess.on("close", (code) => {
+    serverProcess.on("exit", (code) => {
       if (!resolved) {
         // Exited before printing "Ready" — genuine startup failure.
         console.error(`Next.js server exited during startup with code ${code}`);
@@ -213,10 +223,14 @@ export async function startNextServer(): Promise<void> {
         .then(() => {
           restartAttempts = 0;
           const newUrl = getServerUrl();
+          // Re-navigate each window to ITS OWN route. A blanket reload to
+          // /desktop-login would send the wake-word listener and the popup
+          // islands to the wrong page, silently breaking them until restart.
           for (const win of BrowserWindow.getAllWindows()) {
-            if (!win.isDestroyed()) {
-              win.loadURL(`${newUrl}/desktop-login`).catch(console.error);
-            }
+            if (win.isDestroyed()) continue;
+            const route = getWindowRoute(win);
+            if (!route) continue; // splash / untracked windows keep their page
+            win.loadURL(`${newUrl}${route}`).catch(console.error);
           }
         })
         .catch((err) => {
@@ -240,15 +254,15 @@ export async function startNextServer(): Promise<void> {
           reject(new Error("Server startup timed out without binding a port"));
         }
       }
-    }, 15000);
+    }, SERVER_STARTUP_TIMEOUT_MS);
   });
 }
 
 /**
  * Stop the Next.js server and wait for the process to exit.
  *
- * Sends SIGTERM first. If the process has not exited within
- * 3 seconds it is force-killed with SIGKILL on all platforms.
+ * `UtilityProcess.kill()` sends SIGTERM. If the process has not exited
+ * within 3 seconds it is force-killed with SIGKILL via its pid.
  */
 export async function stopNextServer(): Promise<void> {
   if (!serverProcess) return;
@@ -257,22 +271,22 @@ export async function stopNextServer(): Promise<void> {
   console.log("Stopping Next.js server...");
 
   return new Promise((resolve) => {
-    const proc = serverProcess as ChildProcess;
+    const proc = serverProcess as UtilityProcess;
     serverProcess = null;
 
     const killTimeout = setTimeout(() => {
       try {
-        proc.kill("SIGKILL");
+        if (proc.pid) process.kill(proc.pid, "SIGKILL");
       } catch {
         // Process already exited
       }
-    }, 3000);
+    }, SERVER_KILL_TIMEOUT_MS);
 
     proc.once("exit", () => {
       clearTimeout(killTimeout);
       resolve();
     });
 
-    proc.kill("SIGTERM");
+    proc.kill();
   });
 }

@@ -12,6 +12,7 @@ on completion, even if the client disconnects mid-stream.
 
 import asyncio
 import contextlib
+from datetime import UTC, datetime
 import json
 from typing import Any
 from uuid import uuid4
@@ -25,6 +26,7 @@ from app.agents.core.background.executor_capture import (
     register_executor_capture,
     teardown_executor_capture,
 )
+from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
 from app.models.message_models import MessageRequestWithHistory
@@ -95,6 +97,7 @@ class _StreamState:
         "todo_progress_accumulated",
         "tool_data",
         "tool_outputs",
+        "turn_completed_at",
         "usage_metadata",
         "user_message_id",
     )
@@ -112,6 +115,10 @@ class _StreamState:
         self.saved: bool = False
         self.user_message_id: str = str(uuid4())
         self.bot_message_id: str = str(uuid4())
+        # When comms finished — stamped before any voice-mode executor wait so
+        # the saved user/comms messages keep timestamps EARLIER than a delegated
+        # executor's answer (saved mid-wait). The frontend sorts by createdAt.
+        self.turn_completed_at: datetime | None = None
 
 
 async def _run_chat_stream(
@@ -131,8 +138,9 @@ async def _run_chat_stream(
     # Register the executor-done event + tool-event collector before the comms
     # agent runs, so ``call_executor``'s background task can append events while
     # the stream stays open. Drained into the comms ack's tool_data once the
-    # executor finishes; torn down in ``_finalize_stream``.
-    register_executor_capture(stream_id)
+    # executor finishes; torn down in ``_finalize_stream``. Voice-mode streams
+    # are marked so the executor publishes a ``voice_tts`` frame to speak.
+    register_executor_capture(stream_id, voice_mode=body.voice_mode)
 
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
@@ -177,12 +185,15 @@ async def _run_chat_stream(
         )
         state.usage_metadata = usage_callback.usage_metadata or {}
         _log_usage_summary(state)
+        # Stamp turn completion BEFORE any executor wait so the user/comms
+        # messages sort ahead of a delegated executor's mid-wait answer.
+        state.turn_completed_at = datetime.now(UTC)
 
         # Early save: persist the comms ack immediately after the streaming loop
         # so its array position is correct even if a concurrent stream finishes
         # while we wait for the executor below.
         await _persist_turn(stream_id, body, user, conversation_id, state)
-        await _attach_executor_tool_data(stream_id, user, conversation_id, state)
+        await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
 
         await _finalize_description(description_task, stream_id)
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
@@ -464,12 +475,14 @@ async def _persist_turn(
         metadata=state.usage_metadata,
         user_message_id=state.user_message_id,
         bot_message_id=state.bot_message_id,
+        bot_timestamp=state.turn_completed_at,
     )
     state.saved = True
 
 
 async def _attach_executor_tool_data(
     stream_id: str,
+    body: MessageRequestWithHistory,
     user: dict,
     conversation_id: str,
     state: _StreamState,
@@ -487,8 +500,13 @@ async def _attach_executor_tool_data(
     owner of the executor tool_data drain (the executor's own finalize
     self-persists only for queued/workflow runs), so attaching here cannot
     duplicate cards.
+
+    Voice-mode turns cap the wait much lower: the user is in a live audio
+    session, and on timeout the narrated answer still reaches them via the
+    WebSocket push (the voice agent just won't speak it).
     """
-    await await_executor_done(stream_id)
+    timeout = VOICE_EXECUTOR_RESULT_TIMEOUT_S if body.voice_mode else EXECUTOR_WAIT_TIMEOUT
+    await await_executor_done(stream_id, timeout=timeout)
     executor_td = drain_executor_tool_data(stream_id)
     if not executor_td:
         return
@@ -532,7 +550,7 @@ async def _finalize_stream(
             # pushed onto the saved message. Attach them here as a backstop.
             # Gated on ``not state.saved`` so this never double-attaches with the
             # happy/cancel path, which always runs the attach itself.
-            await _attach_executor_tool_data(stream_id, user, conversation_id, state)
+            await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         except Exception as save_err:  # noqa: BLE001 — best-effort fallback save
             log.error(f"Fallback save failed for stream {stream_id}: {save_err}")
 

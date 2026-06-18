@@ -1,19 +1,31 @@
 /**
  * Splash Window Module
  *
- * Creates and manages the fullscreen splash screen shown
- * immediately on app launch while the Next.js server and
- * main window initialise in the background.
+ * Creates and manages the splash screen shown immediately on app
+ * launch while the Next.js server and main window initialise in
+ * the background.
  *
- * The splash uses `show: true` so it appears instantly —
- * no waiting for `dom-ready` or any other event. On macOS it
- * also enables the `under-window` vibrancy effect.
+ * The splash is a compact, centered, normal-sized window — not
+ * fullscreen. It uses `show: true` so it appears instantly — no
+ * waiting for `dom-ready` or any other event. On macOS it renders
+ * native liquid glass (macOS 26+) with an `under-window` vibrancy
+ * fallback on older versions.
  *
  * @module windows/splash
  */
 
 import { join } from "node:path";
-import { app, BrowserWindow, screen } from "electron";
+import { app, BrowserWindow } from "electron";
+import { applyLiquidGlass, supportsLiquidGlass } from "./glass";
+
+/** Splash window width, in px — a normal window, not fullscreen. */
+const SPLASH_WIDTH = 560;
+
+/** Splash window height, in px. */
+const SPLASH_HEIGHT = 400;
+
+/** Corner radius of the splash card — must match splash.html. */
+const SPLASH_CORNER_RADIUS = 28;
 
 /** Reference to the current splash window (if any). */
 let splashWindow: BrowserWindow | null = null;
@@ -25,35 +37,41 @@ let splashWindow: BrowserWindow | null = null;
  * startup flow — no blocking code should run before it.
  *
  * The window is frameless, transparent, non-resizable, and
- * sized to fill the primary display's work area.
+ * centered on the primary display at a fixed compact size.
  */
 export function createSplashWindow(): void {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
+  const useLiquidGlass = supportsLiquidGlass();
 
   splashWindow = new BrowserWindow({
-    width,
-    height,
-    x: 0,
-    y: 0,
+    width: SPLASH_WIDTH,
+    height: SPLASH_HEIGHT,
+    center: true,
     frame: false,
     transparent: true,
     resizable: false,
-    movable: false,
+    movable: true,
     minimizable: true,
     maximizable: false,
     alwaysOnTop: false,
     skipTaskbar: false,
     focusable: true,
     show: true,
-    hasShadow: false,
-    vibrancy: process.platform === "darwin" ? "under-window" : undefined,
+    hasShadow: true,
+    // Native liquid glass replaces vibrancy on macOS 26+ (see glass.ts).
+    vibrancy:
+      process.platform === "darwin" && !useLiquidGlass
+        ? "under-window"
+        : undefined,
     visualEffectState: "active",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
+
+  if (useLiquidGlass) {
+    applyLiquidGlass(splashWindow, { cornerRadius: SPLASH_CORNER_RADIUS });
+  }
 
   const splashPath = app.isPackaged
     ? join(process.resourcesPath, "splash.html")

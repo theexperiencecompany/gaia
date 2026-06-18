@@ -80,8 +80,6 @@ def test_instructions_contains_all_component_names():
         # Timeline
         "Timeline",
         "Steps",
-        # Code
-        "CodeDiff",
         # Documents
         "TextDocument",
     ]

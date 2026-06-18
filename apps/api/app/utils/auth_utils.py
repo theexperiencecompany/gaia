@@ -9,6 +9,32 @@ from shared.py.wide_events import log
 # T is the return type of the wrapped function
 
 
+def build_user_context(
+    user_data: dict[str, Any], *, auth_provider: str, **extra: Any
+) -> dict[str, Any]:
+    """Build the canonical ``request.state.user`` dict from a Mongo user doc.
+
+    Every auth path (WorkOS session, agent token, bots) MUST construct the user
+    context through this one function. The full doc is spread so downstream
+    consumers — chiefly the agent's dynamic context, which reads ``timezone`` and
+    ``onboarding`` (custom instructions, preferences, writing style) — always see
+    the same fields. Hand-picking a subset is what caused voice mode and the bots
+    to silently drop the user's system instructions; defining the shape here once
+    means a new auth path physically can't reintroduce that drift.
+
+    ``_id`` is replaced by a string ``user_id``. ``extra`` carries path-specific
+    flags (e.g. ``impersonated=True``, ``bot_authenticated=True``).
+    """
+    context = {
+        "auth_provider": auth_provider,
+        **user_data,
+        "user_id": str(user_data.get("_id")),
+        **extra,
+    }
+    context.pop("_id", None)
+    return context
+
+
 async def authenticate_workos_session(
     session_token: str, workos_client: AsyncWorkOSClient | None = None
 ) -> tuple[dict[str, Any], str | None]:
@@ -95,13 +121,7 @@ async def authenticate_workos_session(
                 return {}, new_session
 
             # Prepare user info for return
-            user_info = {
-                "auth_provider": "workos",
-                **user_data,
-                "user_id": str(user_data.get("_id")),
-            }
-
-            user_info.pop("_id", None)
+            user_info = build_user_context(user_data, auth_provider="workos")
             return user_info, new_session
 
         except Exception as e:

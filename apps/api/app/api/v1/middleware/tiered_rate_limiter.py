@@ -23,6 +23,7 @@ from app.config.rate_limits import (
     FEATURE_LIMITS,
     RateLimitPeriod,
     get_feature_info,
+    get_feature_limits,
     get_limits_for_plan,
     get_reset_time,
     get_time_window_key,
@@ -42,6 +43,8 @@ from shared.py.wide_events import log
 
 
 class RateLimitExceededException(HTTPException):
+    """429 carrying the feature, required plan (when gated), and reset time."""
+
     def __init__(
         self,
         feature: str,
@@ -65,6 +68,8 @@ class RateLimitExceededException(HTTPException):
 
 
 class TieredRateLimiter:
+    """Redis-backed per-user, per-feature counters across daily/monthly windows."""
+
     def __init__(self):
         self.redis = redis_cache
 
@@ -83,8 +88,23 @@ class TieredRateLimiter:
         user_plan: PlanType,
         credits_used: float = 0.0,
     ) -> dict[str, UsageInfo]:
+        """Enforce all limits for a feature, then atomically count this use.
+
+        Raises ``RateLimitExceededException`` when any window is exhausted or
+        the user's plan has no access to the feature at all.
+        """
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}
+
+        # Plan gate: a plan with NO limits at all (day and month both 0) has no
+        # access to the feature — the per-period loop below skips 0 limits, so
+        # without this check a fully-zeroed plan would be unlimited instead of
+        # blocked. plan_required is set when a paid plan does have access.
+        if current_limits.day <= 0 and current_limits.month <= 0:
+            paid_limits = get_feature_limits(feature_key).pro
+            paid_has_access = paid_limits.day > 0 or paid_limits.month > 0
+            plan_required = "pro" if (user_plan == PlanType.FREE and paid_has_access) else None
+            raise RateLimitExceededException(feature_key, plan_required)
 
         for period in [RateLimitPeriod.DAY, RateLimitPeriod.MONTH]:
             limit = getattr(current_limits, period.value)
@@ -272,6 +292,7 @@ def tiered_rate_limit(feature_key: str):
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs):
+            """Resolve the user, enforce the feature's limits, then run the endpoint."""
             # Extract request and user from dependencies
             user = None
 

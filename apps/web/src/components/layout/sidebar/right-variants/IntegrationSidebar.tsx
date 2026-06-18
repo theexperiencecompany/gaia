@@ -3,10 +3,14 @@
 import { Avatar } from "@heroui/avatar";
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Skeleton } from "@heroui/skeleton";
+import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import {
+  ConnectIcon,
   GlobalIcon,
   LinkSquareIcon,
+  RedoIcon,
   RemoveCircleIcon,
   Share08Icon,
   Unlink04Icon,
@@ -28,6 +32,36 @@ import type { Integration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
 import { useUserStore } from "@/stores/userStore";
 
+// Confirmation copy for the disconnect/remove action. Custom integrations are
+// deleted (own) or removed from the workspace (forked); native integrations are
+// disconnected (revoke access) or removed when not yet connected.
+function getDisconnectDialogMessage(
+  name: string,
+  isCustom: boolean,
+  isOwnIntegration: boolean,
+  isConnected: boolean,
+): string {
+  if (isCustom) {
+    return isOwnIntegration
+      ? `Remove ${name}? This permanently deletes the integration and its tools, and can't be undone.`
+      : `Remove ${name} from your workspace? You can add it again from the marketplace later.`;
+  }
+  return isConnected
+    ? `Are you sure you want to disconnect ${name}? This will revoke access and you'll need to reconnect to use this integration again.`
+    : `Remove ${name} from your workspace? You can add it again anytime.`;
+}
+
+// Placeholder chip widths shown while a just-connected integration's tools are
+// still being discovered in the background. Distinct values double as React keys.
+const SETTLING_SKELETON_WIDTHS = [
+  "w-24",
+  "w-20",
+  "w-28",
+  "w-16",
+  "w-32",
+  "w-14",
+];
+
 interface IntegrationSidebarProps {
   integration: Integration;
   onConnect: (
@@ -38,6 +72,8 @@ interface IntegrationSidebarProps {
   onPublish?: (integrationId: string) => Promise<void>;
   onUnpublish?: (integrationId: string) => Promise<void>;
   category?: string;
+  /** True while a just-finished connect is still discovering tools in the background. */
+  isSettling?: boolean;
 }
 
 export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
@@ -48,6 +84,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   onPublish,
   onUnpublish,
   category,
+  isSettling = false,
 }) => {
   const isConnected = integration.status === "connected";
   const showRetry = integration.status === "created";
@@ -98,6 +135,22 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
   const useIconOnly = buttonCount >= 3;
 
+  // For custom integrations "Disconnect" actually removes them — deleting the
+  // integration outright if you created it, or removing it from your workspace
+  // if you added it from the marketplace. Word the action honestly per case.
+  const isCustom = integration.source === "custom";
+  // A not-yet-connected (created) integration is "removed" from the workspace,
+  // not "disconnected" — there's no active access to revoke.
+  const disconnectLabel = isCustom || !isConnected ? "Remove" : "Disconnect";
+  const disconnectDialogTitle =
+    isCustom || !isConnected ? "Remove Integration" : "Disconnect Integration";
+  const disconnectDialogMessage = getDisconnectDialogMessage(
+    integration.name,
+    isCustom,
+    isOwnIntegration,
+    isConnected,
+  );
+
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;
 
@@ -109,10 +162,15 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
     setIsConnecting(true);
     try {
-      await onConnect(integration.id);
+      const result = await onConnect(integration.id);
+      // On an OAuth redirect the browser is navigating away — keep the button in
+      // its loading state instead of flashing back to idle for a split second.
+      if (result?.status === "redirecting") {
+        return;
+      }
+      setIsConnecting(false);
     } catch {
       // Error toast is handled in the hook
-    } finally {
       setIsConnecting(false);
     }
   };
@@ -145,7 +203,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   };
 
   const handleDisconnect = () => {
-    if (!isConnected || !onDisconnect) return;
+    // Allow removing a not-yet-connected (created) integration from the
+    // workspace too, not just disconnecting a connected one.
+    if (!onDisconnect) return;
     setShowDisconnectDialog(true);
   };
 
@@ -210,10 +270,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     }
   };
 
-  // Dynamic text based on ownership
-  const deleteButtonText = isForkedIntegration
-    ? "Remove from GAIA"
-    : "Delete Integration";
+  // Dynamic text based on ownership (icon conveys the rest, keep it short)
+  const deleteButtonText = isForkedIntegration ? "Remove" : "Delete";
   const deleteDialogTitle = isForkedIntegration
     ? "Remove Integration"
     : "Delete Integration";
@@ -221,6 +279,93 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     ? `Are you sure you want to remove ${integration.name} from your GAIA? You can add it again from the marketplace.`
     : `Are you sure you want to delete ${integration.name}? This action cannot be undone.`;
   const deleteDialogConfirmText = isForkedIntegration ? "Remove" : "Delete";
+
+  const disconnectIcon = isCustom ? (
+    <RemoveCircleIcon width={18} height={18} className="outline-0!" />
+  ) : (
+    <Unlink04Icon width={18} height={18} className="outline-0!" />
+  );
+
+  let connectButtonContent: React.ReactNode;
+  if (isConnecting) {
+    connectButtonContent = (
+      <>
+        <Spinner size="sm" color="default" />
+        Connecting...
+      </>
+    );
+  } else if (showRetry) {
+    connectButtonContent = (
+      <>
+        <RedoIcon width={18} height={18} />
+        Retry
+      </>
+    );
+  } else {
+    connectButtonContent = (
+      <>
+        <ConnectIcon width={18} height={18} />
+        Connect
+      </>
+    );
+  }
+
+  // Not-connected (created) integration: Retry + a way to remove it (delete for
+  // custom, remove for native) when those actions exist; otherwise a single
+  // Connect/Retry button. Warning colour signals a retry, blue a first connect.
+  const notConnectedAction =
+    showRetry && (showDeleteButton || onDisconnect) ? (
+      <ButtonGroup variant="flat" className="w-full" fullWidth>
+        <Button
+          className="w-full"
+          color="warning"
+          onPress={handleConnect}
+          isLoading={isConnecting}
+          isDisabled={isConnecting}
+          startContent={
+            isConnecting ? undefined : <RedoIcon width={18} height={18} />
+          }
+        >
+          Retry
+        </Button>
+        {showDeleteButton ? (
+          <Button
+            className="w-full"
+            color="danger"
+            onPress={handleDelete}
+            isLoading={isDeleting}
+            isDisabled={isDeleting}
+            startContent={
+              <RemoveCircleIcon width={18} height={18} className="outline-0!" />
+            }
+          >
+            {deleteButtonText}
+          </Button>
+        ) : (
+          <Button
+            className="w-full"
+            color="danger"
+            onPress={handleDisconnect}
+            isLoading={isDisconnecting}
+            isDisabled={isDisconnecting}
+            startContent={
+              <RemoveCircleIcon width={18} height={18} className="outline-0!" />
+            }
+          >
+            {disconnectLabel}
+          </Button>
+        )}
+      </ButtonGroup>
+    ) : (
+      <RaisedButton
+        color={showRetry ? "#f5a524" : "#00bbff"}
+        className="font-medium text-black!"
+        onClick={handleConnect}
+        disabled={isConnecting}
+      >
+        {connectButtonContent}
+      </RaisedButton>
+    );
 
   return (
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
@@ -305,22 +450,11 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         </div>
         {/* Connect/Disconnect buttons */}
         {!isConnected ? (
-          <RaisedButton
-            color="#00bbff"
-            className="font-medium text-black!"
-            onClick={handleConnect}
-            disabled={isConnecting}
-          >
-            {isConnecting
-              ? "Connecting..."
-              : showRetry
-                ? "Retry Connection"
-                : "Connect"}
-          </RaisedButton>
+          notConnectedAction
         ) : (
           <ButtonGroup variant="flat" className="w-full" fullWidth>
             {onDisconnect && (
-              <Tooltip content="Disconnect this integration">
+              <Tooltip content={`${disconnectLabel} this integration`}>
                 <Button
                   isIconOnly={useIconOnly}
                   className="w-full"
@@ -328,18 +462,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   onPress={handleDisconnect}
                   isLoading={isDisconnecting}
                   isDisabled={isDisconnecting}
-                  aria-label="Disconnect"
-                  startContent={
-                    !isDisconnecting ? (
-                      <Unlink04Icon
-                        width={18}
-                        height={18}
-                        className="outline-0!"
-                      />
-                    ) : undefined
-                  }
+                  aria-label={disconnectLabel}
+                  startContent={isDisconnecting ? undefined : disconnectIcon}
                 >
-                  {!useIconOnly && "Disconnect"}
+                  {!useIconOnly && disconnectLabel}
                 </Button>
               </Tooltip>
             )}
@@ -428,19 +554,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             )}
           </ButtonGroup>
         )}
-        {/* Delete/Remove button for non-connected custom integrations */}
-        {showDeleteButton && (
-          <Button
-            color="danger"
-            variant="light"
-            fullWidth
-            onPress={handleDelete}
-            isLoading={isDeleting}
-            isDisabled={isDeleting}
-          >
-            {deleteButtonText}
-          </Button>
-        )}
         {isConnected && (
           <div className="mt-3">
             <IntegrationInstructionsEditor
@@ -452,6 +565,11 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         {integrationTools.length > 0 && (
           <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">
             Available tools ({integrationTools.length})
+          </h2>
+        )}
+        {isSettling && isConnected && integrationTools.length === 0 && (
+          <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">
+            Setting up tools
           </h2>
         )}
       </SidebarHeader>
@@ -474,6 +592,15 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             </div>
           </div>
         )}
+        {isSettling && isConnected && integrationTools.length === 0 && (
+          <div className="flex-1 min-h-0 overflow-y-auto pb-2">
+            <div className="flex flex-wrap gap-2 content-start">
+              {SETTLING_SKELETON_WIDTHS.map((width) => (
+                <Skeleton key={width} className={`h-7 ${width} rounded-full`} />
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="shrink-0 pb-4">
           <IntegrationRelatedWorkflows integrationId={integration.id} />
@@ -482,9 +609,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
       <ConfirmationDialog
         isOpen={showDisconnectDialog}
-        title="Disconnect Integration"
-        message={`Are you sure you want to disconnect ${integration.name}? This will revoke access and you'll need to reconnect to use this integration again.`}
-        confirmText="Disconnect"
+        title={disconnectDialogTitle}
+        message={disconnectDialogMessage}
+        confirmText={disconnectLabel}
         cancelText="Cancel"
         variant="destructive"
         isLoading={isDisconnecting}

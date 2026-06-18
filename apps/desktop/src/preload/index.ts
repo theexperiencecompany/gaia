@@ -14,12 +14,16 @@
  */
 
 import { electronAPI } from "@electron-toolkit/preload";
+import type {
+  DesktopPermissionPane,
+  DesktopPermissionStatus,
+  DesktopSettingsSnapshot,
+  DesktopShortcutUpdateResult,
+  DesktopToolRequest,
+  DesktopToolResult,
+} from "@gaia/shared/desktop-tools";
 import { contextBridge, ipcRenderer } from "electron";
-
-/** Data payload sent by the main process on a successful OAuth callback. */
-interface AuthCallbackData {
-  token: string;
-}
+import { IPC } from "../ipc-channels";
 
 /**
  * GAIA renderer API.
@@ -35,14 +39,14 @@ const api = {
    * @returns `"darwin"`, `"win32"`, `"linux"`, etc.
    */
   getPlatform: (): Promise<NodeJS.Platform> =>
-    ipcRenderer.invoke("get-platform"),
+    ipcRenderer.invoke(IPC.getPlatform),
 
   /**
    * Get the app's semantic version string (from `package.json`).
    *
    * @returns e.g. `"1.2.3"`
    */
-  getVersion: (): Promise<string> => ipcRenderer.invoke("get-version"),
+  getVersion: (): Promise<string> => ipcRenderer.invoke(IPC.getVersion),
 
   /** `true` when running inside the Electron shell. */
   isElectron: true,
@@ -53,7 +57,7 @@ const api = {
    *
    * Triggers the splash → main window transition.
    */
-  signalReady: (): void => ipcRenderer.send("window-ready"),
+  signalReady: (): void => ipcRenderer.send(IPC.windowReady),
 
   /**
    * Open a URL in the user's default system browser.
@@ -63,27 +67,7 @@ const api = {
    *
    * @param url - An `https://` or `http://` URL to open.
    */
-  openExternal: (url: string): void => ipcRenderer.send("open-external", url),
-
-  /**
-   * Subscribe to auth-callback events from the main process.
-   *
-   * The main process fires `auth-callback` after successfully
-   * handling a `gaia://auth/callback` deep link.
-   *
-   * @param callback - Handler invoked with the auth data.
-   * @returns A cleanup function that removes the listener.
-   */
-  onAuthCallback: (
-    callback: (data: AuthCallbackData) => void,
-  ): (() => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: AuthCallbackData,
-    ) => callback(data);
-    ipcRenderer.on("auth-callback", handler);
-    return () => ipcRenderer.removeListener("auth-callback", handler);
-  },
+  openExternal: (url: string): void => ipcRenderer.send(IPC.openExternal, url),
 
   /**
    * Subscribe to auth-redirecting events from the main process.
@@ -97,9 +81,126 @@ const api = {
    */
   onAuthRedirecting: (callback: () => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent) => callback();
-    ipcRenderer.on("auth-redirecting", handler);
-    return () => ipcRenderer.removeListener("auth-redirecting", handler);
+    ipcRenderer.on(IPC.authRedirecting, handler);
+    return () => ipcRenderer.removeListener(IPC.authRedirecting, handler);
   },
+
+  /**
+   * Notify the main process that the wake word ("Hey GAIA") was
+   * detected. Sent by the hidden `/wake-listener` renderer; the main
+   * process responds by showing the assistant popup.
+   */
+  notifyWakeWord: (): void => ipcRenderer.send(IPC.wakeWordDetected),
+
+  /**
+   * Ask the main process to dismiss the assistant popup (after the
+   * renderer's exit animation is triggered via `popup-deactivate`).
+   */
+  dismissPopup: (): void => ipcRenderer.send(IPC.popupDismiss),
+
+  /**
+   * Resize the assistant popup window to fit its content (Siri-style:
+   * composer pill alone, expanding when the conversation appears).
+   *
+   * @param height - Desired window height in px (clamped by main).
+   */
+  resizePopup: (height: number): void =>
+    ipcRenderer.send(IPC.popupResize, height),
+
+  /**
+   * Subscribe to popup activation events.
+   *
+   * Fired when the assistant popup is shown so the renderer can play
+   * its entrance animation. The payload carries how it was summoned
+   * ("wake-word" | "shortcut") — the acknowledgment sound is scoped to
+   * voice activations.
+   *
+   * @param callback - Handler invoked with the activation payload.
+   * @returns A cleanup function that removes the listener.
+   */
+  onPopupActivate: (
+    callback: (data: { trigger: "wake-word" | "shortcut" }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { trigger: "wake-word" | "shortcut" },
+    ) => callback(data);
+    ipcRenderer.on(IPC.popupActivate, handler);
+    return () => ipcRenderer.removeListener(IPC.popupActivate, handler);
+  },
+
+  /**
+   * Subscribe to popup deactivation events.
+   *
+   * Fired just before the popup window fades out so the renderer can
+   * play its exit animation.
+   *
+   * @param callback - Handler invoked on deactivation.
+   * @returns A cleanup function that removes the listener.
+   */
+  onPopupDeactivate: (callback: () => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent) => callback();
+    ipcRenderer.on(IPC.popupDeactivate, handler);
+    return () => ipcRenderer.removeListener(IPC.popupDeactivate, handler);
+  },
+
+  /**
+   * Execute a backend-requested desktop tool action (screenshot, clipboard,
+   * open app/URL, list windows) in the main process and return its result.
+   *
+   * @param request - The `desktop_tool_request` frame from the chat stream.
+   */
+  executeDesktopTool: (
+    request: DesktopToolRequest,
+  ): Promise<DesktopToolResult> =>
+    ipcRenderer.invoke(IPC.desktopToolExecute, request),
+
+  /**
+   * Report the current microphone / screen-recording permission status.
+   */
+  getDesktopPermissions: (): Promise<DesktopPermissionStatus> =>
+    ipcRenderer.invoke(IPC.desktopToolPermissions),
+
+  /**
+   * Open the macOS System Settings privacy pane for a permission, since
+   * Screen Recording cannot be prompted for programmatically.
+   *
+   * @param pane - Which privacy pane to open.
+   */
+  openPermissionSettings: (pane: DesktopPermissionPane): void =>
+    ipcRenderer.send(IPC.desktopToolOpenPermissionSettings, pane),
+
+  /**
+   * Trigger the OS permission flow for a pane (real prompt where one
+   * exists, Settings deep link otherwise) and return the updated status.
+   */
+  requestDesktopPermission: (
+    pane: DesktopPermissionPane,
+  ): Promise<DesktopPermissionStatus> =>
+    ipcRenderer.invoke(IPC.desktopToolRequestPermission, pane),
+
+  /**
+   * Relaunch the app. Needed after granting Screen Recording — macOS only
+   * applies that permission to a freshly launched process.
+   */
+  relaunchDesktopApp: (): void => ipcRenderer.send(IPC.desktopAppRelaunch),
+
+  /** Current desktop settings plus the available app-icon options. */
+  getDesktopSettings: (): Promise<DesktopSettingsSnapshot> =>
+    ipcRenderer.invoke(IPC.desktopSettingsGet),
+
+  /**
+   * Re-bind the popup global shortcut. Returns the shortcut actually
+   * registered after the call (the old one on failure).
+   */
+  setPopupShortcut: (
+    accelerator: string,
+  ): Promise<DesktopShortcutUpdateResult> =>
+    ipcRenderer.invoke(IPC.desktopSettingsSetShortcut, accelerator),
+
+  /** Switch the dock icon (Arc-style) and persist the choice. */
+  setAppIcon: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC.desktopSettingsSetIcon, id),
 };
 
 /*

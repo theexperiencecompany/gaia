@@ -19,7 +19,10 @@ from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
-from app.agents.workspace.paths import safe_upload_filename
+from app.agents.workspace.paths import (
+    safe_upload_filename,
+    session_dir,
+)
 from app.config.oauth_config import get_integration_by_id
 from app.db.mongodb.collections import (
     conversations_collection,
@@ -218,6 +221,18 @@ BACKGROUND_EXECUTION_BANNER = (
     "the active todo's canvas (Context section) and stop.\n"
     "   - Your output is consumed by the system, not a human. Be terse and action-only."
 )
+
+
+def build_workspace_session_banner(session_id: str) -> str:
+    """State the absolute path of the agent's own session directory.
+
+    The agent never otherwise learns its conversation/session id, so a prompt
+    that asks it to report an absolute ``/workspace/sessions/<id>/...`` path
+    forces it to guess — and a weak model fabricates one, writing the
+    deliverable outside the session the artifact watcher scans, where it is
+    silently lost. Stating the real path removes the guess.
+    """
+    return f"Session directory: {session_dir(session_id)}"
 
 
 def _format_active_todo_banner(todo: dict) -> str:

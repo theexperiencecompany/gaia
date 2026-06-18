@@ -110,7 +110,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
             <div className="shrink-0">
               {getToolCategoryIcon(
                 match.tool.category,
-                {},
+                { showBackground: false, size: 24 },
                 categoryDisplayMap[match.tool.category]?.iconUrl,
               )}
             </div>
@@ -611,7 +611,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                     ) : (
                       getToolCategoryIcon(
                         category,
-                        {},
+                        { showBackground: false, size: 16 },
                         categoryDisplayMap[category]?.iconUrl,
                       )
                     )}

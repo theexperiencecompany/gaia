@@ -24,6 +24,7 @@ from app.constants.cache import TEN_MINUTES_TTL
 from app.db.redis import get_cache, set_cache
 from app.services.bot_token_service import verify_bot_session_token
 from app.services.platform_link_service import PlatformLinkService
+from app.utils.auth_utils import build_user_context
 
 
 class BotAuthMiddleware(BaseHTTPMiddleware):
@@ -121,14 +122,9 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         if not user_data:
             return None
 
-        user_info = {
-            "user_id": str(user_data.get("_id")),
-            "email": user_data.get("email"),
-            "name": user_data.get("name"),
-            "picture": user_data.get("picture"),
-            "auth_provider": f"bot:{platform}",
-            "bot_authenticated": True,
-        }
+        user_info = build_user_context(
+            user_data, auth_provider=f"bot:{platform}", bot_authenticated=True
+        )
 
         await set_cache(cache_key, user_info, ttl=TEN_MINUTES_TTL)
         return user_info
@@ -161,14 +157,9 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
             if str(user_data.get("_id")) != user_id:
                 return None
 
-            user_info = {
-                "user_id": str(user_data.get("_id")),
-                "email": user_data.get("email"),
-                "name": user_data.get("name"),
-                "picture": user_data.get("picture"),
-                "auth_provider": f"bot:{platform}",
-                "bot_authenticated": True,
-            }
+            user_info = build_user_context(
+                user_data, auth_provider=f"bot:{platform}", bot_authenticated=True
+            )
 
             await set_cache(cache_key, user_info, ttl=TEN_MINUTES_TTL)
             return user_info
