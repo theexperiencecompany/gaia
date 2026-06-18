@@ -109,13 +109,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
     [selectedMode],
   );
 
-  // Look up the icon URL for the selected tool's integration
-  const selectedToolIconUrl = useMemo(() => {
-    if (!selectedToolCategory) return null;
-    const integration = integrations.find((i) => i.id === selectedToolCategory);
-    return integration?.iconUrl ?? null;
-  }, [selectedToolCategory, integrations]);
-
   // Set up input focus callback for reply-to-message functionality
   useEffect(() => {
     setInputFocusCallback(() => {
@@ -445,7 +438,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
           <SelectedToolIndicator
             toolName={selectedTool}
             toolCategory={selectedToolCategory}
-            iconUrl={selectedToolIconUrl}
             onRemove={handleRemoveSelectedTool}
           />
           <SelectedWorkflowIndicator
