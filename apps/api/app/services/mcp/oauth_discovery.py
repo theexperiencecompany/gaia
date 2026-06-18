@@ -6,7 +6,8 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 - RFC 8414 Authorization Server Metadata discovery
 """
 
-from app.models.mcp_config import MCPConfig
+from app.constants.mcp import COMPOSIO_MCP_HOST
+from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.mcp_oauth_utils import (
     OAuthDiscoveryError,
@@ -19,6 +20,7 @@ from app.utils.mcp_oauth_utils import (
     validate_https_url,
     validate_oauth_endpoints,
 )
+from mcp.shared.auth import OAuthMetadata
 from shared.py.wide_events import log
 
 
@@ -27,15 +29,20 @@ async def discover_oauth_config(
     integration_id: str,
     mcp_config: MCPConfig,
     challenge_data: dict | None = None,
-) -> dict:
+) -> OAuthDiscovery:
     """Full MCP OAuth discovery flow per specification."""
     cached = await token_store.get_oauth_discovery(integration_id)
     if cached:
         return cached
 
     if mcp_config.oauth_metadata:
-        validate_oauth_endpoints(mcp_config.oauth_metadata)
-        return mcp_config.oauth_metadata
+        as_metadata = OAuthMetadata.model_validate(mcp_config.oauth_metadata)
+        validate_oauth_endpoints(as_metadata)
+        return OAuthDiscovery(
+            as_metadata=as_metadata,
+            resource=mcp_config.server_url.rstrip("/"),
+            discovery_method="preconfigured",
+        )
 
     server_url = mcp_config.server_url.rstrip("/")
 
@@ -62,40 +69,23 @@ async def discover_oauth_config(
     except Exception as e:
         prm_error = str(e)
 
-    if prm and prm.get("authorization_servers"):
-        preferred_server = None
-        if mcp_config.oauth_metadata:
-            preferred_server = mcp_config.oauth_metadata.get("preferred_auth_server")
-
-        auth_server_url = await select_authorization_server(
-            prm["authorization_servers"],
-            preferred_server=preferred_server,
+    if prm and prm.authorization_servers:
+        auth_server_url = select_authorization_server(
+            [str(s) for s in prm.authorization_servers],
         )
 
-        auth_metadata = await fetch_auth_server_metadata(auth_server_url)
+        as_metadata = await fetch_auth_server_metadata(auth_server_url)
 
-        discovery = {
-            "resource": prm.get("resource", server_url),
-            "scopes_supported": prm.get("scopes_supported", []),
-            "initial_scope": initial_scope,
-            "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
-            "token_endpoint": auth_metadata.get("token_endpoint"),
-            "registration_endpoint": auth_metadata.get("registration_endpoint"),
-            "revocation_endpoint": auth_metadata.get("revocation_endpoint"),
-            "introspection_endpoint": auth_metadata.get("introspection_endpoint"),
-            "issuer": auth_metadata.get("issuer"),
-            "code_challenge_methods_supported": auth_metadata.get(
-                "code_challenge_methods_supported", []
-            ),
-            "client_id_metadata_document_supported": auth_metadata.get(
-                "client_id_metadata_document_supported", False
-            ),
-            "discovery_method": "rfc9728_prm",
-            "authorization_servers": prm.get("authorization_servers", []),
-        }
+        discovery = OAuthDiscovery(
+            as_metadata=as_metadata,
+            resource=str(prm.resource),
+            initial_scope=initial_scope,
+            discovery_method="rfc9728_prm",
+            prm=prm,
+        )
 
         try:
-            validate_oauth_endpoints(discovery)
+            validate_oauth_endpoints(as_metadata)
         except OAuthSecurityError as e:
             log.warning(f"OAuth endpoint security warning: {e}")
 
@@ -104,29 +94,17 @@ async def discover_oauth_config(
 
     # Fallback: Direct OAuth Discovery (RFC 8414)
     try:
-        auth_metadata = await fetch_auth_server_metadata(server_url)
+        as_metadata = await fetch_auth_server_metadata(server_url)
 
-        discovery = {
-            "resource": server_url,
-            "scopes_supported": auth_metadata.get("scopes_supported", []),
-            "initial_scope": initial_scope,
-            "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
-            "token_endpoint": auth_metadata.get("token_endpoint"),
-            "registration_endpoint": auth_metadata.get("registration_endpoint"),
-            "revocation_endpoint": auth_metadata.get("revocation_endpoint"),
-            "introspection_endpoint": auth_metadata.get("introspection_endpoint"),
-            "issuer": auth_metadata.get("issuer"),
-            "code_challenge_methods_supported": auth_metadata.get(
-                "code_challenge_methods_supported", []
-            ),
-            "client_id_metadata_document_supported": auth_metadata.get(
-                "client_id_metadata_document_supported", False
-            ),
-            "discovery_method": "direct_oauth",
-        }
+        discovery = OAuthDiscovery(
+            as_metadata=as_metadata,
+            resource=server_url,
+            initial_scope=initial_scope,
+            discovery_method="direct_oauth",
+        )
 
         try:
-            validate_oauth_endpoints(discovery)
+            validate_oauth_endpoints(as_metadata)
         except OAuthSecurityError as e:
             log.warning(f"OAuth endpoint security warning: {e}")
 
@@ -146,14 +124,27 @@ async def probe_mcp_connection(server_url: str) -> dict:
     try:
         challenge = await extract_auth_challenge(server_url)
 
-        if challenge.get("raw"):
-            return {
-                "requires_auth": True,
-                "auth_type": "oauth",
-                "oauth_challenge": challenge,
-            }
+        # Empty dict => the probe got a non-401 response: no auth required.
+        if not challenge:
+            return {"requires_auth": False, "auth_type": "none"}
 
-        return {"requires_auth": False, "auth_type": "none"}
+        # Composio's hosted gateways always 401 a probe (no platform x-api-key is
+        # sent during probing) but need no *user* auth — the key is injected at
+        # connect time. Treat them as no-auth so we don't prompt the user.
+        if COMPOSIO_MCP_HOST in server_url:
+            return {"requires_auth": False, "auth_type": "none"}
+
+        # A 401 was returned. It's OAuth when the server gives a parseable
+        # challenge (WWW-Authenticate header, resource_metadata, or scope);
+        # otherwise it's a bare 401 = bearer / API-key auth the user must supply.
+        is_oauth = bool(
+            challenge.get("raw") or challenge.get("resource_metadata") or challenge.get("scope")
+        )
+        return {
+            "requires_auth": True,
+            "auth_type": "oauth" if is_oauth else "bearer",
+            "oauth_challenge": challenge,
+        }
 
     except Exception as e:
         return {

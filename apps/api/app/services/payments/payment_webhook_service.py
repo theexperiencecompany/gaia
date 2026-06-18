@@ -25,6 +25,7 @@ from app.services.analytics_service import (
     track_payment_event,
     track_subscription_event,
 )
+from app.services.payments.payment_service import payment_service
 from app.utils.email_utils import send_pro_subscription_email
 from shared.py.wide_events import log
 
@@ -185,6 +186,10 @@ class PaymentWebhookService:
 
             result = await handler(event)
             log.info(f"Webhook processed: {event.type} - {result.status}")
+
+            # Bust the cached plan tier so a plan change applies immediately.
+            if result.subscription_id:
+                await payment_service.invalidate_plan_cache_by_dodo_id(result.subscription_id)
 
             # Store webhook as processed after successful handler execution
             await self._mark_webhook_as_processed(webhook_id, event.type.value, result)

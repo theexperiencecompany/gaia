@@ -4,10 +4,21 @@ import type { IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
+// Stable MessageType per stored message. The store preserves idle IMessage
+// references across streaming ticks (only the streaming message is replaced —
+// see chatStore.addOrUpdateMessage), so caching the conversion by that ref keeps
+// idle messages referentially stable and remaps only the streaming one. That
+// stability is what lets the message list memoize and skip re-rendering every
+// bubble on every token.
+const conversionCache = new WeakMap<IMessage, MessageType>();
+
 const mapStoredMessageToConversationMessage = (
   message: IMessage,
 ): MessageType => {
-  return {
+  const cached = conversionCache.get(message);
+  if (cached) return cached;
+
+  const mapped = {
     type: message.role === "user" ? "user" : "bot",
     response: message.content,
     message_id: message.messageId ?? message.id,
@@ -29,6 +40,9 @@ const mapStoredMessageToConversationMessage = (
     isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
     replyToMessage: message.replyToMessageData ?? undefined,
   } as MessageType;
+
+  conversionCache.set(message, mapped);
+  return mapped;
 };
 
 export const useConversation = () => {
@@ -47,19 +61,8 @@ export const useConversation = () => {
       ? (messagesByConversation[activeConversationId] ?? [])
       : [];
 
-    // Convert IndexedDB messages to MessageType
+    // Convert IndexedDB messages to MessageType (cached per stored message ref).
     const messages = dbMessages.map(mapStoredMessageToConversationMessage);
-
-    console.log(
-      "[useConversation] activeConversationId:",
-      activeConversationId,
-      "dbMessages:",
-      dbMessages.length,
-      "optimisticMessage:",
-      !!optimisticMessage,
-      "optimisticConvoId:",
-      optimisticMessage?.conversationId,
-    );
 
     // Only add optimistic message for NEW conversations (no activeConversationId)
     // For existing conversations, messages are already in IndexedDB with optimistic flag

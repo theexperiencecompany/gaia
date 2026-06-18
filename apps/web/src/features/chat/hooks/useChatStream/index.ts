@@ -237,7 +237,11 @@ export const useChatStream = () => {
       await chatApi.fetchChatStream(
         inputText,
         [...refs.current.convoMessages, ...currentMessages],
-        conversationId ?? undefined,
+        // The resolved id (option ?? store-active ?? in-flight new id).
+        // Passing the raw option meant surfaces without a /c/[id] URL
+        // (the desktop popup) sent null and forked a NEW conversation
+        // on every message.
+        effectiveConversationId ?? undefined,
         handleStreamEvent,
         handleStreamClose,
         handleStreamError,

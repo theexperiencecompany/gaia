@@ -1,10 +1,12 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import type { Selection } from "@heroui/react";
+import { Add01Icon } from "@icons";
 import type React from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { useRouter } from "@/i18n/navigation";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
 import type { Integration } from "../types";
@@ -102,6 +104,13 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   const { integrations, connectIntegration } = useIntegrations();
 
   const { isExpanded, setExpanded } = useIntegrationsAccordion();
+  const router = useRouter();
+
+  // Only the user's own integrations — connected, or created (added, not yet
+  // authenticated). The full catalog lives on the integrations page.
+  const myIntegrations = integrations.filter(
+    (i) => i.status === "connected" || i.status === "created",
+  );
 
   // Convert boolean to Selection for NextUI Accordion
   const selectedKeys = isExpanded ? new Set(["integrations"]) : new Set([]);
@@ -148,7 +157,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
       >
         <AccordionItem
           key="integrations"
-          textValue={`Integrations ${connectedCount} of ${integrations.length} connected`}
+          textValue={`Integrations ${connectedCount} of ${myIntegrations.length} connected`}
           title={
             <div className="flex items-center gap-3 pt-1">
               <div className="min-w-0 flex-1">
@@ -157,7 +166,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
                     Integrations
                   </span>
                   <span className="text-xs font-light text-zinc-400">
-                    {connectedCount}/{integrations.length}
+                    {connectedCount}/{myIntegrations.length}
                   </span>
                 </div>
               </div>
@@ -166,7 +175,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
         >
           <div onClick={(e) => e.stopPropagation()}>
             <div className="grid grid-cols-2 gap-2 pl-1">
-              {integrations
+              {myIntegrations
                 .toSorted((a, b) => {
                   // Connected first, then alphabetically
                   const aOrder = statusOrder[a.status] ?? 99;
@@ -184,6 +193,21 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
                   />
                 ))}
             </div>
+
+            <Button
+              fullWidth
+              size="sm"
+              variant="flat"
+              radius="lg"
+              className="mt-2 text-xs text-zinc-400"
+              startContent={<Add01Icon width={15} height={15} />}
+              onPress={() => {
+                router.push("/integrations");
+                onClose?.();
+              }}
+            >
+              Connect more integrations
+            </Button>
           </div>
         </AccordionItem>
       </Accordion>

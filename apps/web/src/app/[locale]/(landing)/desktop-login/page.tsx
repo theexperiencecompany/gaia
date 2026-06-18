@@ -1,11 +1,12 @@
 "use client";
 
+import { Spinner } from "@heroui/spinner";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
-import Spinner from "@/components/ui/spinner";
+import { authApi } from "@/features/auth/api/authApi";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import {
   getTimeOfDay,
@@ -39,6 +40,27 @@ export default function DesktopLoginPage() {
     }, 1000);
 
     return () => clearTimeout(timeout);
+  }, [isElectron, router]);
+
+  // Already signed in? The wos_session cookie persists across launches,
+  // so skip the login screen entirely when the session is still valid.
+  useEffect(() => {
+    if (!isElectron) return;
+    let cancelled = false;
+    authApi
+      .fetchUserInfo()
+      .then(() => {
+        if (!cancelled) {
+          setStatus("redirecting");
+          router.replace("/c");
+        }
+      })
+      .catch(() => {
+        // No valid session — stay on the login screen.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isElectron, router]);
 
   // Listen for the main process signalling it's about to navigate to /c
@@ -109,8 +131,8 @@ export default function DesktopLoginPage() {
 
           {status === "opened" && (
             <div className="flex flex-col items-center gap-4 py-4">
-              <Spinner variant="simple" />
-              <p className="text-center text-zinc-400">
+              <Spinner color="primary" />
+              <p className="text-center text-sm text-zinc-400">
                 Opening your browser...
               </p>
             </div>
@@ -118,19 +140,19 @@ export default function DesktopLoginPage() {
 
           {status === "waiting" && (
             <div className="flex flex-col items-center gap-4 py-4">
-              <Spinner variant="simple" />
+              <Spinner color="primary" />
               <div className="text-center">
                 <p className="font-medium text-white">
                   Complete login in your browser
                 </p>
-                <p className="mt-1 text-sm text-white">
+                <p className="mt-1 text-sm text-zinc-400">
                   You&apos;ll be redirected back automatically
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setStatus("ready")}
-                className="mt-2 text-sm text-white underline-offset-4 hover:text-zinc-200 hover:underline"
+                className="mt-2 text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-300 hover:underline"
               >
                 Try again
               </button>
@@ -139,7 +161,7 @@ export default function DesktopLoginPage() {
 
           {status === "redirecting" && (
             <div className="flex flex-col items-center gap-4 py-4">
-              <Spinner variant="simple" />
+              <Spinner color="primary" />
               <div className="text-center">
                 <p className="font-medium text-white">Signing you in…</p>
                 <p className="mt-1 text-sm text-zinc-400">Taking you to GAIA</p>

@@ -52,6 +52,8 @@ interface MainSearchbarProps {
   hasMessages: boolean;
   conversationId?: string;
   voiceModeActive: () => void;
+  /** Hover intent on the voice button — used to prefetch the session token. */
+  onVoiceModeHover?: () => void;
 }
 
 const Composer: React.FC<MainSearchbarProps> = ({
@@ -64,6 +66,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   hasMessages,
   conversationId,
   voiceModeActive,
+  onVoiceModeHover,
 }) => {
   const router = useRouter();
   const [currentHeight, setCurrentHeight] = useState<number>(24);
@@ -106,13 +109,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
     () => Array.from(selectedMode)[0],
     [selectedMode],
   );
-
-  // Look up the icon URL for the selected tool's integration
-  const selectedToolIconUrl = useMemo(() => {
-    if (!selectedToolCategory) return null;
-    const integration = integrations.find((i) => i.id === selectedToolCategory);
-    return integration?.iconUrl ?? null;
-  }, [selectedToolCategory, integrations]);
 
   // Set up input focus callback for reply-to-message functionality
   useEffect(() => {
@@ -449,7 +445,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
           <SelectedToolIndicator
             toolName={selectedTool}
             toolCategory={selectedToolCategory}
-            iconUrl={selectedToolIconUrl}
             onRemove={handleRemoveSelectedTool}
           />
           <SelectedWorkflowIndicator
@@ -502,6 +497,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
           onToggleSlashCommandDropdown={handleToggleSlashCommandDropdown}
           isSlashCommandDropdownOpen={isSlashCommandDropdownOpen}
           voiceModeActive={voiceModeActive}
+          onVoiceModeHover={onVoiceModeHover}
         />
       </div>
       <FileUpload

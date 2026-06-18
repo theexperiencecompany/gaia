@@ -450,6 +450,7 @@ export const RedditIcon: React.FC<IconProps> = (props) => (
   </svg>
 );
 
+/** Solid postage stamp — Profile Card icon in settings. */
 export const PostageStampIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"

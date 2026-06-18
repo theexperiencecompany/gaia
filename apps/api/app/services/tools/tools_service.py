@@ -78,6 +78,8 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
     _categories = tool_registry.get_all_category_objects(ignore_categories=["delegation"])
 
     for category, category_obj in _categories.items():
+        if category_obj.internal:
+            continue
         if category_obj.integration_name:
             seen_integrations.add(category_obj.integration_name)
         for tool in category_obj.tools:
@@ -207,7 +209,7 @@ async def get_tools_by_category(category: str) -> ToolsCategoryResponse:
     tool_registry = await get_tool_registry()
     category_obj = tool_registry.get_category(category)
 
-    if not category_obj:
+    if not category_obj or category_obj.internal:
         return ToolsCategoryResponse(category=category, tools=[], count=0)
 
     tool_infos = []
@@ -228,6 +230,8 @@ async def get_tool_categories() -> dict[str, int]:
     all_categories = tool_registry.get_all_category_objects()
 
     for category_name, category_obj in all_categories.items():
+        if category_obj.internal:
+            continue
         category_counts[category_name] = len(category_obj.tools)
 
     return category_counts
@@ -243,7 +247,6 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
     if not user_id:
         return []
 
-    mcp_store = get_mcp_tools_store()
     tool_infos: list[ToolInfo] = []
     seen_tool_names: set[str] = set()
 
@@ -266,6 +269,9 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
                     "integration_id": 1,
                     "name": "$integration.name",
                     "icon_url": "$integration.icon_url",
+                    # The $lookup already has the tools — carry them through so we
+                    # don't re-query Mongo once per integration.
+                    "tools": "$integration.tools",
                 }
             },
         ]
@@ -277,7 +283,7 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
             icon_url = mcp_integration.get("icon_url")
             display_name = mcp_integration.get("name")
 
-            integration_tools = await mcp_store.get_tools(integration_id)
+            integration_tools = mcp_integration.get("tools")
             if not integration_tools:
                 continue
 

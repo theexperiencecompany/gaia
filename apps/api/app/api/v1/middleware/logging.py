@@ -16,27 +16,15 @@ event at the middleware level — no per-file boilerplate required.
 import asyncio
 from functools import wraps
 from http import HTTPStatus
-import os
 import time
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config.loggers import request_logger
-from app.config.settings import settings
-from shared.py.wide_events import log as wide_log
+from shared.py.wide_events import env_context, log as wide_log
 
 _LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
-
-# Resolved once at startup — appears on every single wide event.
-# This lets LogQL filter: | json | env="production" | commit="abc1234"
-_ENV_CONTEXT: dict[str, str] = {
-    "env": settings.ENV,
-    "service": "gaia-api",
-    # Set GIT_COMMIT_SHA (or COMMIT_SHA) in your Docker image / CI to get a
-    # real commit hash. Falls back to "local" during development.
-    "commit": (os.getenv("GIT_COMMIT_SHA", os.getenv("COMMIT_SHA", "local"))[:8]),
-}
 
 
 def log_function_call(func):
@@ -177,7 +165,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 else request.headers.get("x-forwarded-for", "unknown")
             )
             context = {
-                **_ENV_CONTEXT,
+                **env_context(),
                 **wide_event_context,
                 "method": request.method,
                 "path": request.url.path,
@@ -214,7 +202,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         context = {
             # --- Environment characteristics (on every event) ---
-            **_ENV_CONTEXT,
+            **env_context(),
             # --- Business context accumulated by handlers/services ---
             # Spread before HTTP fields so authoritative HTTP values always win.
             **wide_event_context,

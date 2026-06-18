@@ -8,6 +8,9 @@
 /* HeroUI */
 @source "../../../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
 
+/* Streamdown — markdown renderer; scan its dist so Tailwind emits the utilities its components use */
+@source "../../../../../node_modules/streamdown/dist/*.js";
+
 @custom-variant dark (&:is(.dark *));
 @plugin "./hero.ts";
 @plugin "tailwindcss-animate";

@@ -13,7 +13,7 @@ from workos import AsyncWorkOSClient
 from app.api.v1.middleware.agent_auth import verify_agent_token
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
-from app.utils.auth_utils import authenticate_workos_session
+from app.utils.auth_utils import authenticate_workos_session, build_user_context
 from shared.py.wide_events import log
 
 
@@ -130,14 +130,14 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 else:
                     user_data = await users_collection.find_one({"_id": user_id})
                 if user_data:
-                    request.state.user = {
-                        "user_id": str(user_data.get("_id")),
-                        "email": user_data.get("email"),
-                        "name": user_data.get("name"),
-                        "picture": user_data.get("picture"),
-                        "auth_provider": "workos",
-                        "impersonated": True,
-                    }
+                    # Same shape as the WorkOS session path — the shared builder
+                    # spreads the full doc so the agent token carries timezone +
+                    # onboarding (custom instructions, preferences, writing style).
+                    # Hand-picking fields here dropped them, so voice mode lost the
+                    # user's system instructions.
+                    request.state.user = build_user_context(
+                        user_data, auth_provider="workos", impersonated=True
+                    )
                     request.state.authenticated = True
 
         response = await call_next(request)

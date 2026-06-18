@@ -50,6 +50,9 @@ class StreamSession:
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     pending_subagents: int = 0
     subagent_results: list[dict[str, str]] = field(default_factory=list)
+    # Voice-mode streams: the executor's finalize step publishes a TTS-only
+    # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
+    voice_mode: bool = False
 
 
 @dataclass(frozen=True)

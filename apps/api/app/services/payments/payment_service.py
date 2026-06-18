@@ -10,6 +10,10 @@ from dodopayments import DodoPayments
 from fastapi import HTTPException
 
 from app.config.settings import settings
+from app.constants.cache import (
+    SUBSCRIPTION_PLAN_CACHE_PREFIX,
+    SUBSCRIPTION_PLAN_CACHE_TTL,
+)
 from app.db.mongodb.collections import (
     plans_collection,
     subscriptions_collection,
@@ -237,6 +241,27 @@ class DodoPaymentService:
             plan_type=PlanType.PRO,
             status=SubscriptionStatus(subscription["status"]),
         )
+
+    async def get_cached_plan_type(self, user_id: str) -> PlanType:
+        """Plan tier, Redis-cached for hot paths; eventually consistent within the TTL."""
+        cache_key = f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{user_id}"
+        cached = await redis_cache.get(cache_key)
+        if isinstance(cached, dict) and cached.get("plan_type"):
+            return PlanType(cached["plan_type"])
+
+        plan = (await self.get_user_subscription_status(user_id)).plan_type or PlanType.FREE
+        await redis_cache.set(cache_key, {"plan_type": plan.value}, ttl=SUBSCRIPTION_PLAN_CACHE_TTL)
+        return plan
+
+    async def invalidate_plan_cache_by_dodo_id(self, dodo_subscription_id: str) -> None:
+        """Drop the cached plan tier after a subscription change (applies immediately)."""
+        if not dodo_subscription_id:
+            return
+        sub = await subscriptions_collection.find_one(
+            {"dodo_subscription_id": dodo_subscription_id}, {"user_id": 1}
+        )
+        if sub and sub.get("user_id"):
+            await redis_cache.delete(f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{sub['user_id']}")
 
 
 payment_service = DodoPaymentService()
