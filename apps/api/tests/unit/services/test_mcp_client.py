@@ -2610,8 +2610,10 @@ class TestMCPClientBuildOauthAuthUrl:
                 "app.services.mcp.mcp_client.validate_pkce_support",
             ),
             patch(
-                "app.services.mcp.mcp_client.generate_pkce_pair",
-                return_value=("verifier_123", "challenge_456"),
+                "app.services.mcp.mcp_client.PKCEParameters.generate",
+                return_value=MagicMock(
+                    code_verifier="verifier_123", code_challenge="challenge_456"
+                ),
             ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
@@ -2682,8 +2684,8 @@ class TestMCPClientBuildOauthAuthUrl:
                 "app.services.mcp.mcp_client.validate_pkce_support",
             ),
             patch(
-                "app.services.mcp.mcp_client.generate_pkce_pair",
-                return_value=("v", "c"),
+                "app.services.mcp.mcp_client.PKCEParameters.generate",
+                return_value=MagicMock(code_verifier="v", code_challenge="c"),
             ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
@@ -2714,8 +2716,8 @@ class TestMCPClientBuildOauthAuthUrl:
             ),
             patch("app.services.mcp.mcp_client.validate_pkce_support"),
             patch(
-                "app.services.mcp.mcp_client.generate_pkce_pair",
-                return_value=("v", "c"),
+                "app.services.mcp.mcp_client.PKCEParameters.generate",
+                return_value=MagicMock(code_verifier="v", code_challenge="c"),
             ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
@@ -2749,8 +2751,8 @@ class TestMCPClientBuildOauthAuthUrl:
             ),
             patch("app.services.mcp.mcp_client.validate_pkce_support"),
             patch(
-                "app.services.mcp.mcp_client.generate_pkce_pair",
-                return_value=("v", "c"),
+                "app.services.mcp.mcp_client.PKCEParameters.generate",
+                return_value=MagicMock(code_verifier="v", code_challenge="c"),
             ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
@@ -2788,8 +2790,8 @@ class TestMCPClientBuildOauthAuthUrl:
             ),
             patch("app.services.mcp.mcp_client.validate_pkce_support"),
             patch(
-                "app.services.mcp.mcp_client.generate_pkce_pair",
-                return_value=("v", "c"),
+                "app.services.mcp.mcp_client.PKCEParameters.generate",
+                return_value=MagicMock(code_verifier="v", code_challenge="c"),
             ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)

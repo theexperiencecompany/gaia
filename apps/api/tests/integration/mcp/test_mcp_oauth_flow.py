@@ -34,9 +34,7 @@ from app.utils.mcp_oauth_utils import (
     validate_https_url,
     validate_oauth_endpoints,
     validate_pkce_support,
-    validate_token_response,
 )
-from app.utils.mcp_utils import generate_pkce_pair
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -996,25 +994,6 @@ class TestErrorHandling:
         """validate_pkce_support succeeds when S256 is supported."""
         validate_pkce_support({"code_challenge_methods_supported": ["S256"]}, "test-int")
 
-    def test_validate_token_response_rejects_missing_access_token(self):
-        """validate_token_response raises when access_token is missing."""
-        with pytest.raises(ValueError, match="access_token"):
-            validate_token_response({}, "test-int")
-
-    def test_validate_token_response_rejects_missing_token_type(self):
-        """validate_token_response raises when token_type is missing."""
-        with pytest.raises(ValueError, match="token_type"):
-            validate_token_response({"access_token": "at"}, "test-int")
-
-    def test_validate_token_response_rejects_non_bearer(self):
-        """validate_token_response raises for non-Bearer token type."""
-        with pytest.raises(ValueError, match="Unsupported token_type"):
-            validate_token_response({"access_token": "at", "token_type": "MAC"}, "test-int")
-
-    def test_validate_token_response_accepts_bearer(self):
-        """validate_token_response succeeds with valid Bearer response."""
-        validate_token_response({"access_token": "at", "token_type": "Bearer"}, "test-int")
-
     def test_parse_oauth_error_response_extracts_fields(self):
         """parse_oauth_error_response extracts error info from JSON responses."""
         mock_response = MagicMock()
@@ -1223,46 +1202,6 @@ class TestConcurrentConnectionIsolation:
         call_keys = [call[0][0] for call in mock_set_cache.call_args_list]
         assert any("user-a" in key for key in call_keys)
         assert any("user-b" in key for key in call_keys)
-
-
-# ---------------------------------------------------------------------------
-# PKCE Utility Tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestPKCEGeneration:
-    """Test PKCE code_verifier/code_challenge generation."""
-
-    def test_pkce_pair_produces_valid_values(self):
-        """generate_pkce_pair returns a verifier and S256 challenge."""
-        verifier, challenge = generate_pkce_pair()
-
-        assert isinstance(verifier, str)
-        assert isinstance(challenge, str)
-        assert len(verifier) > 20
-        assert len(challenge) > 20
-        # Challenge should be base64url without padding
-        assert "=" not in challenge
-
-    def test_pkce_pairs_are_unique(self):
-        """Each call produces different verifier/challenge pairs."""
-        pair_1 = generate_pkce_pair()
-        pair_2 = generate_pkce_pair()
-
-        assert pair_1[0] != pair_2[0]
-        assert pair_1[1] != pair_2[1]
-
-    def test_pkce_challenge_is_s256_of_verifier(self):
-        """The code_challenge is the base64url(SHA256(code_verifier))."""
-        import base64
-        import hashlib
-
-        verifier, challenge = generate_pkce_pair()
-        digest = hashlib.sha256(verifier.encode()).digest()
-        expected = base64.urlsafe_b64encode(digest).decode().rstrip("=")
-
-        assert challenge == expected
 
 
 # ---------------------------------------------------------------------------

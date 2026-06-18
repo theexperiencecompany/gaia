@@ -165,7 +165,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       const result = await onConnect(integration.id);
       // On an OAuth redirect the browser is navigating away — keep the button in
       // its loading state instead of flashing back to idle for a split second.
-      if (result?.status === "redirecting" || result?.status === "redirect") {
+      if (result?.status === "redirecting") {
         return;
       }
       setIsConnecting(false);

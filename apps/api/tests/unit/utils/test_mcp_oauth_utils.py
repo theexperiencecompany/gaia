@@ -43,7 +43,6 @@ from app.utils.mcp_oauth_utils import (
     validate_jwt_issuer,
     validate_oauth_endpoints,
     validate_pkce_support,
-    validate_token_response,
 )
 
 # ---------------------------------------------------------------------------
@@ -985,63 +984,6 @@ class TestParseOauthErrorResponse:
 
         assert result["error"] == "unknown_error"
         assert result["error_description"] is None
-
-
-# ---------------------------------------------------------------------------
-# validate_token_response
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestValidateTokenResponse:
-    """Tests for validate_token_response — OAuth 2.1 token response validation."""
-
-    def test_valid_response(self) -> None:
-        tokens = {
-            "access_token": "eyJhbGciOi...",
-            "token_type": "Bearer",
-            "expires_in": 3600,
-        }
-        # Should not raise
-        validate_token_response(tokens, "test-integration")
-
-    def test_bearer_case_insensitive(self) -> None:
-        tokens = {
-            "access_token": "eyJhbGciOi...",
-            "token_type": "bearer",
-        }
-        # lowercase "bearer" should be accepted
-        validate_token_response(tokens, "test-integration")
-
-    def test_missing_access_token_raises(self) -> None:
-        tokens = {"token_type": "Bearer"}
-        with pytest.raises(ValueError, match="missing required 'access_token'"):
-            validate_token_response(tokens, "test-integration")
-
-    def test_empty_access_token_raises(self) -> None:
-        tokens = {"access_token": "", "token_type": "Bearer"}
-        with pytest.raises(ValueError, match="missing required 'access_token'"):
-            validate_token_response(tokens, "test-integration")
-
-    def test_missing_token_type_raises(self) -> None:
-        tokens = {"access_token": "eyJhbGciOi..."}
-        with pytest.raises(ValueError, match="missing required 'token_type'"):
-            validate_token_response(tokens, "test-integration")
-
-    def test_empty_token_type_raises(self) -> None:
-        tokens = {"access_token": "eyJhbGciOi...", "token_type": ""}
-        with pytest.raises(ValueError, match="missing required 'token_type'"):
-            validate_token_response(tokens, "test-integration")
-
-    def test_wrong_token_type_raises(self) -> None:
-        tokens = {"access_token": "token123", "token_type": "MAC"}
-        with pytest.raises(ValueError, match="Unsupported token_type 'MAC'"):
-            validate_token_response(tokens, "test-integration")
-
-    def test_none_access_token_raises(self) -> None:
-        tokens = {"access_token": None, "token_type": "Bearer"}
-        with pytest.raises(ValueError, match="missing required 'access_token'"):
-            validate_token_response(tokens, "test-integration")
 
 
 # ---------------------------------------------------------------------------
