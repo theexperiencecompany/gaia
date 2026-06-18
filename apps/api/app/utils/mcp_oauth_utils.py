@@ -632,7 +632,7 @@ def validate_jwt_issuer(
         return True
 
 
-async def select_authorization_server(servers: list[str]) -> str:
+def select_authorization_server(servers: list[str]) -> str:
     """Select an authorization server.
 
     Per MCP spec, Protected Resource Metadata may list multiple

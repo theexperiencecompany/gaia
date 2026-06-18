@@ -511,12 +511,8 @@ class TestFetchAuthServerMetadata:
 
         ``handler`` receives the ``httpx.Request`` and returns a mock response.
         """
-
-        async def mock_send(request: httpx.Request, **kwargs: Any) -> MagicMock:
-            return handler(request)
-
         mock_client = AsyncMock()
-        mock_client.send = mock_send
+        mock_client.send = AsyncMock(side_effect=lambda request, **kwargs: handler(request))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         return mock_client
@@ -1139,17 +1135,17 @@ class TestGetClientMetadataDocumentUrl:
 class TestSelectAuthorizationServer:
     """Tests for select_authorization_server — MCP server selection."""
 
-    async def test_single_server_returned(self) -> None:
-        result = await select_authorization_server(["https://auth.example.com"])
+    def test_single_server_returned(self) -> None:
+        result = select_authorization_server(["https://auth.example.com"])
         assert result == "https://auth.example.com"
 
-    async def test_empty_list_raises(self) -> None:
+    def test_empty_list_raises(self) -> None:
         with pytest.raises(OAuthDiscoveryError, match="No authorization servers"):
-            await select_authorization_server([])
+            select_authorization_server([])
 
-    async def test_multiple_servers_uses_first(self) -> None:
+    def test_multiple_servers_uses_first(self) -> None:
         servers = ["https://first.example.com", "https://second.example.com"]
-        result = await select_authorization_server(servers)
+        result = select_authorization_server(servers)
         assert result == "https://first.example.com"
 
 

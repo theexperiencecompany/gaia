@@ -70,7 +70,7 @@ async def discover_oauth_config(
         prm_error = str(e)
 
     if prm and prm.authorization_servers:
-        auth_server_url = await select_authorization_server(
+        auth_server_url = select_authorization_server(
             [str(s) for s in prm.authorization_servers],
         )
 

@@ -1617,7 +1617,7 @@ class TestDiscoverOAuthConfig:
             ),
             patch(
                 "app.services.mcp.oauth_discovery.select_authorization_server",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 return_value="https://auth.example.com",
             ),
             patch(
@@ -1733,7 +1733,7 @@ class TestDiscoverOAuthConfig:
             ),
             patch(
                 "app.services.mcp.oauth_discovery.select_authorization_server",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 return_value="https://auth.example.com",
             ),
             patch(

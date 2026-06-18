@@ -67,6 +67,10 @@ class Replacement:
     icon_url: str | None = None
 
 
+# MongoDB dotted path to a custom integration's MCP endpoint URL.
+SERVER_URL_FIELD = "mcp_config.server_url"
+
+
 def _favicon(domain: str) -> str:
     return f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
 
@@ -190,7 +194,7 @@ async def phase_url_fixes(client: httpx.AsyncClient, apply: bool) -> tuple[int, 
 
     for old_url, repl in REPLACEMENTS.items():
         docs = await integrations_collection.find(
-            {"mcp_config.server_url": old_url}, {"name": 1, "_id": 0}
+            {SERVER_URL_FIELD: old_url}, {"name": 1, "_id": 0}
         ).to_list(None)
         if not docs:
             continue
@@ -205,7 +209,7 @@ async def phase_url_fixes(client: httpx.AsyncClient, apply: bool) -> tuple[int, 
 
         requires_auth, auth_type = _AUTH_FIELDS[verdict]
         update: dict[str, object] = {
-            "mcp_config.server_url": repl.url,
+            SERVER_URL_FIELD: repl.url,
             "mcp_config.requires_auth": requires_auth,
             "mcp_config.auth_type": auth_type,
         }
@@ -220,9 +224,7 @@ async def phase_url_fixes(client: httpx.AsyncClient, apply: bool) -> tuple[int, 
             print(f"    also updating: {', '.join(extras)}")
 
         if apply:
-            await integrations_collection.update_many(
-                {"mcp_config.server_url": old_url}, {"$set": update}
-            )
+            await integrations_collection.update_many({SERVER_URL_FIELD: old_url}, {"$set": update})
             print("    -> UPDATED\n")
         else:
             print("    -> would update (dry-run)\n")
@@ -230,7 +232,7 @@ async def phase_url_fixes(client: httpx.AsyncClient, apply: bool) -> tuple[int, 
 
     for old_url in URL_REMOVALS:
         docs = await integrations_collection.find(
-            {"mcp_config.server_url": old_url, "is_public": True}, {"name": 1, "_id": 0}
+            {SERVER_URL_FIELD: old_url, "is_public": True}, {"name": 1, "_id": 0}
         ).to_list(None)
         if not docs:
             continue
@@ -238,7 +240,7 @@ async def phase_url_fixes(client: httpx.AsyncClient, apply: bool) -> tuple[int, 
         print(f"• {names}  (dead upstream)\n    {old_url}")
         if apply:
             await integrations_collection.update_many(
-                {"mcp_config.server_url": old_url}, {"$set": {"is_public": False}}
+                {SERVER_URL_FIELD: old_url}, {"$set": {"is_public": False}}
             )
             print("    -> UNPUBLISHED\n")
         else:
@@ -263,7 +265,7 @@ async def phase_auth_reconcile(client: httpx.AsyncClient, apply: bool) -> tuple[
     """
     print("== Phase 2: Auth reconcile ==")
     docs = await integrations_collection.find(
-        {"source": "custom", "is_public": True, "mcp_config.server_url": {"$exists": True}},
+        {"source": "custom", "is_public": True, SERVER_URL_FIELD: {"$exists": True}},
         {"integration_id": 1, "name": 1, "mcp_config": 1, "_id": 0},
     ).to_list(None)
 

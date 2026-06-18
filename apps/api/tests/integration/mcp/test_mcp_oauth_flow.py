@@ -210,7 +210,7 @@ class TestOAuthDiscovery:
             ),
             patch(
                 "app.services.mcp.oauth_discovery.select_authorization_server",
-                new=AsyncMock(return_value="https://auth.example.com"),
+                new=MagicMock(return_value="https://auth.example.com"),
             ),
             patch(
                 "app.services.mcp.oauth_discovery.fetch_auth_server_metadata",
