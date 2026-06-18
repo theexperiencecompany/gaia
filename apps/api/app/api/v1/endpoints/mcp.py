@@ -168,13 +168,21 @@ async def mcp_oauth_callback(
         # Some servers advertise scopes in their metadata that a dynamically
         # registered client cannot request (e.g. agentmail's "user:org:read").
         # Drop the rejected scope(s) and retry the authorization.
+        # Best-effort recovery — a Redis/discovery failure here must not turn the
+        # error response into a 500. Fall through to the normal error redirect.
         if error == "invalid_scope":
-            retry_url = await client.build_scope_retry_url(
-                integration_id, error_description, redirect_uri, redirect_path
-            )
-            if retry_url:
-                return RedirectResponse(url=retry_url)
-        await client.token_store.clear_excluded_scopes(integration_id)
+            try:
+                retry_url = await client.build_scope_retry_url(
+                    integration_id, error_description, redirect_uri, redirect_path
+                )
+                if retry_url:
+                    return RedirectResponse(url=retry_url)
+            except Exception as retry_err:
+                log.warning(f"Scope retry URL build failed for {integration_id}: {retry_err}")
+        try:
+            await client.token_store.clear_excluded_scopes(integration_id)
+        except Exception as clear_err:
+            log.warning(f"Failed to clear excluded scopes for {integration_id}: {clear_err}")
 
         # Map common OAuth errors to user-friendly codes
         error_code = error
@@ -231,7 +239,15 @@ async def mcp_oauth_callback(
             redirect_uri=redirect_uri,
         )
         # OAuth succeeded — clear any scope exclusions accumulated during retries.
-        await client.token_store.clear_excluded_scopes(integration_id)
+        # Best-effort: a Redis hiccup must not turn a successful connect into an
+        # error redirect (a stale exclusion entry expires on its own).
+        try:
+            await client.token_store.clear_excluded_scopes(integration_id)
+        except Exception as clear_err:
+            log.warning(
+                f"Failed to clear excluded scopes after OAuth success for "
+                f"{integration_id}: {clear_err}"
+            )
 
         try:
             await delete_cache("api:get_available_tools:*")

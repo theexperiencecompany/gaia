@@ -209,7 +209,7 @@ async def get_tools_by_category(category: str) -> ToolsCategoryResponse:
     tool_registry = await get_tool_registry()
     category_obj = tool_registry.get_category(category)
 
-    if not category_obj:
+    if not category_obj or category_obj.internal:
         return ToolsCategoryResponse(category=category, tools=[], count=0)
 
     tool_infos = []

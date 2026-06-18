@@ -49,6 +49,9 @@ OAUTH_PROBE_TIMEOUT = 10  # seconds - for initial server probe
 OAUTH_DISCOVERY_TIMEOUT = 15  # seconds - for metadata discovery
 OAUTH_TOKEN_TIMEOUT = 30  # seconds - for token operations
 
+_CONTENT_TYPE_JSON = "application/json"
+_ACCEPT_JSON_SSE = f"{_CONTENT_TYPE_JSON}, text/event-stream"
+
 # Minimal MCP `initialize` request used to probe a server's auth requirement.
 # Per the MCP Authorization spec the 401 + WWW-Authenticate challenge is returned
 # in response to an actual MCP request, so the probe POSTs this rather than
@@ -161,7 +164,7 @@ def parse_rejected_scopes(error_description: str | None) -> set[str]:
     quoted = re.findall(r"['\"]([^'\"]+)['\"]", error_description)
     if quoted:
         return {s.strip() for s in quoted if s.strip()}
-    match = re.search(r"scopes?[:=\s]+([A-Za-z0-9_:./-]+)", error_description, re.IGNORECASE)
+    match = re.search(r"scopes?[:=\s]+([a-z0-9_:./-]+)", error_description, re.IGNORECASE)
     return {match.group(1)} if match else set()
 
 
@@ -184,8 +187,8 @@ async def extract_auth_challenge(server_url: str) -> dict:
     # 401 + resource_metadata to the initialize POST).
     headers = {
         "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
-        "Accept": "application/json, text/event-stream",
-        "Content-Type": "application/json",
+        "Accept": _ACCEPT_JSON_SSE,
+        "Content-Type": _CONTENT_TYPE_JSON,
     }
     log.set(operation="extract_auth_challenge", server_url=server_url)
     start_time = time.perf_counter()
@@ -453,7 +456,7 @@ async def introspect_token(
 
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
+        "Accept": _CONTENT_TYPE_JSON,
         "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
     }
 
@@ -508,7 +511,7 @@ def parse_oauth_error_response(response: Any) -> dict:
     content_type = response.headers.get("content-type", "")
 
     try:
-        if "application/json" in content_type:
+        if _CONTENT_TYPE_JSON in content_type:
             data = response.json()
             result["error"] = data.get("error", "unknown_error")
             result["error_description"] = data.get("error_description")
@@ -617,11 +620,8 @@ def validate_jwt_issuer(
         return True
 
 
-async def select_authorization_server(
-    servers: list[str],
-    preferred_server: str | None = None,
-) -> str:
-    """Select an authorization server, preferring ``preferred_server`` if present.
+async def select_authorization_server(servers: list[str]) -> str:
+    """Select an authorization server.
 
     Per MCP spec, Protected Resource Metadata may list multiple
     authorization_servers; defaults to the first.
@@ -632,11 +632,5 @@ async def select_authorization_server(
     if len(servers) == 1:
         return servers[0]
 
-    # Check for preferred server
-    if preferred_server and preferred_server in servers:
-        log.info(f"Using preferred authorization server: {preferred_server}")
-        return preferred_server
-
-    # Default to first server
     log.info(f"Multiple auth servers available ({len(servers)}), using first: {servers[0]}")
     return servers[0]

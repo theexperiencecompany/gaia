@@ -100,10 +100,9 @@ class MCPTokenStore:
 
         # token_expires_at is a timezone-aware column (DateTime(timezone=True)),
         # so compare against timezone-aware UTC.
-        if cred.token_expires_at:
-            if cred.token_expires_at < datetime.now(UTC):
-                log.warning(f"OAuth token expired for {integration_id}")
-                return None
+        if cred.token_expires_at and cred.token_expires_at < datetime.now(UTC):
+            log.warning(f"OAuth token expired for {integration_id}")
+            return None
 
         log.debug(f"[{integration_id}] Returning decrypted OAuth token")
         return self._decrypt(cred.access_token)

@@ -32,6 +32,25 @@ import type { Integration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
 import { useUserStore } from "@/stores/userStore";
 
+// Confirmation copy for the disconnect/remove action. Custom integrations are
+// deleted (own) or removed from the workspace (forked); native integrations are
+// disconnected (revoke access) or removed when not yet connected.
+function getDisconnectDialogMessage(
+  name: string,
+  isCustom: boolean,
+  isOwnIntegration: boolean,
+  isConnected: boolean,
+): string {
+  if (isCustom) {
+    return isOwnIntegration
+      ? `Remove ${name}? This permanently deletes the integration and its tools, and can't be undone.`
+      : `Remove ${name} from your workspace? You can add it again from the marketplace later.`;
+  }
+  return isConnected
+    ? `Are you sure you want to disconnect ${name}? This will revoke access and you'll need to reconnect to use this integration again.`
+    : `Remove ${name} from your workspace? You can add it again anytime.`;
+}
+
 // Placeholder chip widths shown while a just-connected integration's tools are
 // still being discovered in the background. Distinct values double as React keys.
 const SETTLING_SKELETON_WIDTHS = [
@@ -125,13 +144,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const disconnectLabel = isCustom || !isConnected ? "Remove" : "Disconnect";
   const disconnectDialogTitle =
     isCustom || !isConnected ? "Remove Integration" : "Disconnect Integration";
-  const disconnectDialogMessage = isCustom
-    ? isOwnIntegration
-      ? `Remove ${integration.name}? This permanently deletes the integration and its tools, and can't be undone.`
-      : `Remove ${integration.name} from your workspace? You can add it again from the marketplace later.`
-    : isConnected
-      ? `Are you sure you want to disconnect ${integration.name}? This will revoke access and you'll need to reconnect to use this integration again.`
-      : `Remove ${integration.name} from your workspace? You can add it again anytime.`;
+  const disconnectDialogMessage = getDisconnectDialogMessage(
+    integration.name,
+    isCustom,
+    isOwnIntegration,
+    isConnected,
+  );
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;
@@ -262,6 +280,93 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     : `Are you sure you want to delete ${integration.name}? This action cannot be undone.`;
   const deleteDialogConfirmText = isForkedIntegration ? "Remove" : "Delete";
 
+  const disconnectIcon = isCustom ? (
+    <RemoveCircleIcon width={18} height={18} className="outline-0!" />
+  ) : (
+    <Unlink04Icon width={18} height={18} className="outline-0!" />
+  );
+
+  let connectButtonContent: React.ReactNode;
+  if (isConnecting) {
+    connectButtonContent = (
+      <>
+        <Spinner size="sm" color="default" />
+        Connecting...
+      </>
+    );
+  } else if (showRetry) {
+    connectButtonContent = (
+      <>
+        <RedoIcon width={18} height={18} />
+        Retry
+      </>
+    );
+  } else {
+    connectButtonContent = (
+      <>
+        <ConnectIcon width={18} height={18} />
+        Connect
+      </>
+    );
+  }
+
+  // Not-connected (created) integration: Retry + a way to remove it (delete for
+  // custom, remove for native) when those actions exist; otherwise a single
+  // Connect/Retry button. Warning colour signals a retry, blue a first connect.
+  const notConnectedAction =
+    showRetry && (showDeleteButton || onDisconnect) ? (
+      <ButtonGroup variant="flat" className="w-full" fullWidth>
+        <Button
+          className="w-full"
+          color="warning"
+          onPress={handleConnect}
+          isLoading={isConnecting}
+          isDisabled={isConnecting}
+          startContent={
+            isConnecting ? undefined : <RedoIcon width={18} height={18} />
+          }
+        >
+          Retry
+        </Button>
+        {showDeleteButton ? (
+          <Button
+            className="w-full"
+            color="danger"
+            onPress={handleDelete}
+            isLoading={isDeleting}
+            isDisabled={isDeleting}
+            startContent={
+              <RemoveCircleIcon width={18} height={18} className="outline-0!" />
+            }
+          >
+            {deleteButtonText}
+          </Button>
+        ) : (
+          <Button
+            className="w-full"
+            color="danger"
+            onPress={handleDisconnect}
+            isLoading={isDisconnecting}
+            isDisabled={isDisconnecting}
+            startContent={
+              <RemoveCircleIcon width={18} height={18} className="outline-0!" />
+            }
+          >
+            {disconnectLabel}
+          </Button>
+        )}
+      </ButtonGroup>
+    ) : (
+      <RaisedButton
+        color={showRetry ? "#f5a524" : "#00bbff"}
+        className="font-medium text-black!"
+        onClick={handleConnect}
+        disabled={isConnecting}
+      >
+        {connectButtonContent}
+      </RaisedButton>
+    );
+
   return (
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
       <SidebarHeader>
@@ -345,86 +450,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         </div>
         {/* Connect/Disconnect buttons */}
         {!isConnected ? (
-          showRetry && (showDeleteButton || onDisconnect) ? (
-            // Not-connected (created) integration: Retry + a way to remove it,
-            // grouped like the connected-state actions. Custom integrations are
-            // deleted; native ones are removed from the workspace.
-            <ButtonGroup variant="flat" className="w-full" fullWidth>
-              <Button
-                className="w-full"
-                color="warning"
-                onPress={handleConnect}
-                isLoading={isConnecting}
-                isDisabled={isConnecting}
-                startContent={
-                  isConnecting ? undefined : <RedoIcon width={18} height={18} />
-                }
-              >
-                Retry
-              </Button>
-              {showDeleteButton ? (
-                <Button
-                  className="w-full"
-                  color="danger"
-                  onPress={handleDelete}
-                  isLoading={isDeleting}
-                  isDisabled={isDeleting}
-                  startContent={
-                    <RemoveCircleIcon
-                      width={18}
-                      height={18}
-                      className="outline-0!"
-                    />
-                  }
-                >
-                  {deleteButtonText}
-                </Button>
-              ) : (
-                <Button
-                  className="w-full"
-                  color="danger"
-                  onPress={handleDisconnect}
-                  isLoading={isDisconnecting}
-                  isDisabled={isDisconnecting}
-                  startContent={
-                    <RemoveCircleIcon
-                      width={18}
-                      height={18}
-                      className="outline-0!"
-                    />
-                  }
-                >
-                  {disconnectLabel}
-                </Button>
-              )}
-            </ButtonGroup>
-          ) : (
-            // Warning colour for a retry (a previous connect didn't complete),
-            // primary blue for a first-time connect.
-            <RaisedButton
-              color={showRetry ? "#f5a524" : "#00bbff"}
-              className="font-medium text-black!"
-              onClick={handleConnect}
-              disabled={isConnecting}
-            >
-              {isConnecting ? (
-                <>
-                  <Spinner size="sm" color="default" />
-                  Connecting...
-                </>
-              ) : showRetry ? (
-                <>
-                  <RedoIcon width={18} height={18} />
-                  Retry
-                </>
-              ) : (
-                <>
-                  <ConnectIcon width={18} height={18} />
-                  Connect
-                </>
-              )}
-            </RaisedButton>
-          )
+          notConnectedAction
         ) : (
           <ButtonGroup variant="flat" className="w-full" fullWidth>
             {onDisconnect && (
@@ -437,21 +463,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   isLoading={isDisconnecting}
                   isDisabled={isDisconnecting}
                   aria-label={disconnectLabel}
-                  startContent={
-                    isDisconnecting ? undefined : isCustom ? (
-                      <RemoveCircleIcon
-                        width={18}
-                        height={18}
-                        className="outline-0!"
-                      />
-                    ) : (
-                      <Unlink04Icon
-                        width={18}
-                        height={18}
-                        className="outline-0!"
-                      />
-                    )
-                  }
+                  startContent={isDisconnecting ? undefined : disconnectIcon}
                 >
                   {!useIconOnly && disconnectLabel}
                 </Button>

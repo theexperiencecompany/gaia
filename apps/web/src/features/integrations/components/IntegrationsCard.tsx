@@ -157,7 +157,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
       >
         <AccordionItem
           key="integrations"
-          textValue={`Integrations ${connectedCount} of ${integrations.length} connected`}
+          textValue={`Integrations ${connectedCount} of ${myIntegrations.length} connected`}
           title={
             <div className="flex items-center gap-3 pt-1">
               <div className="min-w-0 flex-1">
