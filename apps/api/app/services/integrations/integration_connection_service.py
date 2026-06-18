@@ -167,6 +167,28 @@ async def connect_mcp_integration(
             redirect_url=auth_url,
             message="OAuth authentication required",
         )
+    except Exception as e:
+        # A genuine connection failure (server down, wrong path, transport
+        # mismatch) is an expected, user-facing outcome — surface it as a
+        # structured error so the frontend shows "Retry", never a 500. Mirrors
+        # the error handling already in _connect_without_auth / _connect_with_bearer_token.
+        if not is_platform:
+            await update_user_integration_status(user_id, integration_id, "created")
+        log.warning(f"MCP connection failed for {integration_id}: {e}")
+        log.set(
+            integration={
+                "provider": integration_name,
+                "action": "connect_mcp",
+                "status": "error",
+            }
+        )
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            name=integration_name,
+            error=str(e),
+            message="Connection failed",
+        )
 
     tools_count = len(tools) if tools else 0
     await invalidate_mcp_status_cache(user_id)
