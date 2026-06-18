@@ -78,6 +78,8 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
     _categories = tool_registry.get_all_category_objects(ignore_categories=["delegation"])
 
     for category, category_obj in _categories.items():
+        if category_obj.internal:
+            continue
         if category_obj.integration_name:
             seen_integrations.add(category_obj.integration_name)
         for tool in category_obj.tools:
@@ -228,6 +230,8 @@ async def get_tool_categories() -> dict[str, int]:
     all_categories = tool_registry.get_all_category_objects()
 
     for category_name, category_obj in all_categories.items():
+        if category_obj.internal:
+            continue
         category_counts[category_name] = len(category_obj.tools)
 
     return category_counts
