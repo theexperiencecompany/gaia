@@ -938,6 +938,7 @@ class MCPClient:
                         name=resolved_name,
                         description=resolved_description or "",
                         server_url=server_url,
+                        tools=tools,
                     )
                     log.info(
                         f"Indexed custom MCP {integration_id} ({resolved_name}) "
