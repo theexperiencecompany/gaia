@@ -4,6 +4,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
+import { useEffect } from "react";
 import { TextMorph } from "torph/react";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -29,9 +30,7 @@ export default function RightSide({
   const { selectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent } = useCalendarEventSelection();
   const { uploadedFiles } = useComposerFiles();
-  // Only the INITIAL response phase locks the composer (send → main_response_complete).
-  // Once the agent has acknowledged the task, the composer unlocks so the user
-  // can queue the next message while a background executor keeps running.
+  // True only during the comms agent's initial response (send → main_response_complete).
   const isResponding = useIsMainResponseStreaming();
   const streamingConversationId = useChatStore(
     (state) => state.streamingConversationId,
@@ -51,17 +50,21 @@ export default function RightSide({
     hasSelectedCalendarEvent ||
     hasFiles;
 
-  // The "held" window: the active conversation's stream is still open but the
-  // initial response already finished (so the composer is unlocked). A send here
-  // is held in the queue until the stream closes — surface that as a Queue button.
-  const isHeldWindow =
-    !isResponding &&
-    streamingConversationId != null &&
-    streamingConversationId === activeConversationId;
-  const showQueue = isHeldWindow && hasContent;
+  // A stream is open for the active conversation across BOTH phases of a turn: the
+  // initial response (isResponding) and the held window after it (stream still open
+  // while a background executor runs). Any send during this whole window is held in
+  // the queue by streamFunction, so the button must reflect that the entire time —
+  // not just after the initial response finishes.
+  const isStreaming =
+    isResponding ||
+    (streamingConversationId != null &&
+      streamingConversationId === activeConversationId);
+  // Typed content during a stream is always queued; an empty composer offers Stop.
+  const showQueue = isStreaming && hasContent;
+  const showStop = isStreaming && !hasContent;
 
   const getTooltipContent = () => {
-    if (isResponding) return "Stop generation";
+    if (showStop) return "Stop generation";
 
     if (showQueue) {
       return (
@@ -112,7 +115,13 @@ export default function RightSide({
   };
 
   const handleButtonPress = () => {
-    if (isResponding) {
+    console.log("[QUEUE] button press →", showStop ? "STOP" : "SUBMIT", {
+      showStop,
+      showQueue,
+      hasContent,
+      isStreaming,
+    });
+    if (showStop) {
       stopStream();
     } else {
       handleFormSubmit();
@@ -120,14 +129,37 @@ export default function RightSide({
   };
 
   let buttonColor: "default" | "primary" = "default";
-  if (!isResponding && hasContent) {
+  if (!showStop && hasContent) {
     buttonColor = "primary";
   }
 
-  const mode = isResponding ? "stop" : showQueue ? "queue" : "send";
+  const mode = showStop ? "stop" : showQueue ? "queue" : "send";
+
+  // [QUEUE] debug: trace every button-mode transition + the flags that drove it.
+  useEffect(() => {
+    console.log(`[QUEUE] button mode = ${mode.toUpperCase()}`, {
+      isResponding,
+      streamingConversationId,
+      activeConversationId,
+      isStreaming,
+      hasContent,
+      showQueue,
+      showStop,
+    });
+  }, [
+    mode,
+    isResponding,
+    streamingConversationId,
+    activeConversationId,
+    isStreaming,
+    hasContent,
+    showQueue,
+    showStop,
+  ]);
+
   // Icons inherit `currentColor`, so the button's text color (transitioned via
   // transition-colors) animates the icon color on every state change.
-  const contentColor = isResponding
+  const contentColor = showStop
     ? "text-zinc-300"
     : hasContent
       ? "text-black"
@@ -138,13 +170,13 @@ export default function RightSide({
       <Tooltip
         content={getTooltipContent()}
         placement="right"
-        color={isResponding ? "danger" : "primary"}
+        color={showStop ? "danger" : "primary"}
         showArrow
       >
         <Button
           isIconOnly={!showQueue}
           aria-label={
-            isResponding
+            showStop
               ? "Stop generation"
               : showQueue
                 ? "Queue message"
@@ -153,10 +185,10 @@ export default function RightSide({
           className={`h-9 min-h-9 transition-all duration-300 ${contentColor} ${
             showQueue
               ? "gap-1.5 rounded-xl px-3"
-              : `w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`
+              : `w-9 max-w-9 min-w-9 ${showStop ? "cursor-pointer" : ""}`
           }`}
           color={buttonColor}
-          disabled={!isResponding && !hasContent}
+          disabled={!isStreaming && !hasContent}
           radius="full"
           type="submit"
           onPress={handleButtonPress}

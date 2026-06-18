@@ -26,7 +26,6 @@ import {
   useComposerUI,
   useInputText,
 } from "@/stores/composerStore";
-import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import type { FileData } from "@/types/shared/fileTypes";
@@ -103,7 +102,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   const sendMessage = useSendMessage();
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
-  const isMainResponseStreaming = useIsMainResponseStreaming();
   const currentMode = useMemo(
     () => Array.from(selectedMode)[0],
     [selectedMode],
@@ -199,6 +197,11 @@ const Composer: React.FC<MainSearchbarProps> = ({
       conversation_id: conversationId,
     });
 
+    console.log("[QUEUE] handleFormSubmit → sendMessage", {
+      hasText: !!inputText,
+      conversationId,
+    });
+
     sendMessage(inputText, {
       files: uploadedFileData,
       selectedTool: selectedTool ?? null,
@@ -222,10 +225,11 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (
     event,
   ) => {
-    // Block Enter only during the initial response (send → main_response_complete).
-    // After that, Enter submits and the message is queued behind the running
-    // background executor (see useChatStream's pending-stream queue).
-    if (event.key === "Enter" && !event.shiftKey && !isMainResponseStreaming) {
+    // Enter always submits. If a stream is still open (initial response OR a
+    // background executor still running), the send is held in the queue rather
+    // than starting a new turn (see useChatStream's pending-stream queue).
+    if (event.key === "Enter" && !event.shiftKey) {
+      console.log("[QUEUE] Enter pressed → handleFormSubmit");
       event.preventDefault();
       handleFormSubmit();
     }

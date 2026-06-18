@@ -322,6 +322,9 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
   };
 
   const handleMainResponseComplete = () => {
+    console.log(
+      "[QUEUE] main_response_complete → isMainResponseStreaming=false (stream stays open for executor)",
+    );
     setIsLoading(false);
     // The comms agent has finished its initial response ("on it"), so unlock the
     // composer — the user can now queue while any background executor runs.

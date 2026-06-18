@@ -111,6 +111,15 @@ export const useSendMessage = () => {
       const willQueue = streamState.isStreaming();
       const optimisticStatus = willQueue ? "queued" : "sending";
 
+      console.log("[QUEUE] useSendMessage decision", {
+        willQueue,
+        optimisticStatus,
+        conversationId,
+        streamStateIsStreaming: streamState.isStreaming(),
+        streamingConvId: streamState.getStreamingConversationId(),
+        branch: conversationId ? "existing-conversation" : "new-conversation",
+      });
+
       try {
         const userMessage: MessageType = {
           type: "user",
