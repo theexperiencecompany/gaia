@@ -582,9 +582,15 @@ class TestFetchInboxSummary:
 
         mock_proxy.side_effect = side_effect
 
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._write_session_file_sync"
-        ) as write_mock:
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools._write_session_file_sync"
+            ) as write_mock,
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.get_config",
+                return_value={"configurable": {"vfs_session_id": "test"}},
+            ),
+        ):
             write_mock.return_value = (
                 tmp_path / "fake.jsonl",
                 "/workspace/sessions/test/fake.jsonl",
@@ -602,7 +608,7 @@ class TestFetchInboxSummary:
                     body_processing="raw",
                 ),
                 execute_request=MagicMock(),
-                auth_credentials={**AUTH_CREDS, "vfs_session_id": "test"},
+                auth_credentials=AUTH_CREDS,
             )
 
         assert "offloaded_to" in result
@@ -612,7 +618,7 @@ class TestFetchInboxSummary:
         assert "jq" in result["hint"]
 
     def test_offload_skipped_when_no_conversation_id(self, mock_proxy):
-        """If auth_credentials has no vfs_session_id/thread_id, return inline."""
+        """If the run config has no vfs_session_id/thread_id, return inline."""
         tools = _register_and_get_tools()
 
         list_resp = {"messages": [{"id": "m1"}]}
@@ -637,15 +643,19 @@ class TestFetchInboxSummary:
 
         mock_proxy.side_effect = side_effect
 
-        result = tools["FETCH_INBOX_SUMMARY"](
-            request=FetchInboxSummaryInput(
-                timeframe="today",
-                per_page=10,
-                body_processing="none",
-            ),
-            execute_request=MagicMock(),
-            auth_credentials=AUTH_CREDS,  # no vfs_session_id
-        )
+        with patch(
+            "app.services.composio.custom_tools.gmail_tools.get_config",
+            return_value={"configurable": {}},  # no vfs_session_id / thread_id
+        ):
+            result = tools["FETCH_INBOX_SUMMARY"](
+                request=FetchInboxSummaryInput(
+                    timeframe="today",
+                    per_page=10,
+                    body_processing="none",
+                ),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
 
         # Inline returned (not offloaded, no digest).
         assert "offloaded_to" not in result

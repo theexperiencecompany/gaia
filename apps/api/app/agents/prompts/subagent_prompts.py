@@ -183,7 +183,7 @@ normalization that strips signatures / disclaimers / unsubscribe footers
 / utm tracking (quoted replies are kept). When the aggregate response is
 large it is automatically offloaded to a JSONL file you can mine with
 `bash`/`jq`/`grep` — use `jq` to filter (e.g.
-`jq '.messages[] | select(.from | contains("github")) | .subject'`),
+`jq 'select(.from | contains("github")) | .subject'`),
 don't re-fetch the same window. Default fields are metadata + snippet;
 add "body" to fields when full content is needed.
 

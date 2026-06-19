@@ -12,6 +12,8 @@ from typing import Any
 import uuid
 
 from composio import Composio
+from langchain_core.runnables import RunnableConfig
+from langgraph.config import get_config
 from pydantic import BaseModel, Field
 
 from app.agents.templates.mail_templates import build_message_view
@@ -30,7 +32,7 @@ from app.services.composio.custom_tools.gmail_constants import (
 )
 from app.services.composio.proxy_client import proxy_request_sync
 from app.services.contact_service import build_contact_index
-from app.utils.timezone import Timezone
+from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
 
 # =============================================================================
@@ -63,18 +65,31 @@ def _gmail_proxy(
     )
 
 
-def _conversation_id(auth_credentials: dict[str, Any]) -> str | None:
-    """Pull a vfs_session_id / thread_id out of auth_credentials for offload.
+def _current_config() -> RunnableConfig:
+    """The active LangGraph run config, or an empty config outside a run.
 
-    Composio's custom tool infrastructure surfaces runnable metadata through
-    the auth_credentials dict. We mirror the same convention used by
-    ``extract_user_id_from_params`` in ``composio_hooks/user_id_hooks.py``.
+    Custom tools execute synchronously inside the LangGraph tool node, so the
+    run's ``configurable`` (home timezone, session id) is reachable through
+    ``get_config()`` — the same way ``linear_tool`` / ``calendar_tool`` read it.
+    Outside a runnable context (e.g. unit tests) it returns an empty config so
+    callers fall back to their UTC / no-offload defaults instead of raising.
     """
-    return (
-        auth_credentials.get("vfs_session_id")
-        or auth_credentials.get("thread_id")
-        or auth_credentials.get("conversation_id")
-    )
+    try:
+        return get_config()
+    except RuntimeError:
+        return {}
+
+
+def _conversation_id(config: RunnableConfig) -> str | None:
+    """Pull the session id (vfs_session_id / thread_id) from the run config.
+
+    The session id lives in the LangGraph ``configurable``, not in the Composio
+    ``auth_credentials`` dict (which only carries OAuth state plus the injected
+    ``user_id``). Mirrors the conversation-id resolution in the compaction /
+    summarization middleware.
+    """
+    configurable = config.get("configurable") or {}
+    return configurable.get("vfs_session_id") or configurable.get("thread_id")
 
 
 def _write_session_file_sync(
@@ -106,23 +121,6 @@ def _write_session_file_sync(
 # =============================================================================
 # FETCH_INBOX_SUMMARY — timeframe resolution
 # =============================================================================
-
-
-def _resolve_user_timezone(auth_credentials: dict[str, Any]) -> Timezone:
-    """Resolve the user's home timezone from auth_credentials metadata.
-
-    Falls back to UTC with a warning. The custom tool infrastructure doesn't
-    pass the full LangGraph config, so we extract the timezone the
-    integrations system already attached to the credentials.
-    """
-    raw = auth_credentials.get("user_timezone") or auth_credentials.get("timezone")
-    tz = Timezone.parse(raw) if raw else Timezone.utc()
-    if tz.is_utc and raw is None:
-        log.warning(
-            "GMAIL_FETCH_INBOX_SUMMARY: no user_timezone in auth_credentials; "
-            "using UTC for timeframe resolution"
-        )
-    return tz
 
 
 def _timeframe_clause(timeframe: str, tz: Timezone) -> str:
@@ -390,10 +388,10 @@ def _format_partial_result(messages: list[dict[str, Any]], *, reason: str) -> di
 def _summarize(
     user_id: str,
     request: FetchInboxSummaryInput,
-    auth_credentials: dict[str, Any],
 ) -> dict[str, Any]:
     """Top-level orchestrator: resolve → paginate → offload-or-inline."""
-    tz = _resolve_user_timezone(auth_credentials)
+    config = _current_config()
+    tz = home_timezone_from_config(config)
     combined_query, default_max = _resolve_timeframe(request.timeframe, request.query, tz)
     cap = _effective_max(request, default_max)
 
@@ -408,7 +406,7 @@ def _summarize(
     if len(serialized) <= INLINE_LIMIT_CHARS:
         return _format_inline_result(all_messages, truncated=truncated)
 
-    conversation_id = _conversation_id(auth_credentials)
+    conversation_id = _conversation_id(config)
     if conversation_id is None:
         log.warning(
             "GMAIL_FETCH_INBOX_SUMMARY: no conversation_id for offload; "
@@ -769,14 +767,15 @@ def register_gmail_custom_tools(composio: Composio):
 
         Supports a ``timeframe`` convenience enum (``today``, ``7d``,
         ``this_week``, etc.) which is resolved to Gmail's after:/before:
-        operators in the user's home timezone.
+        operators in the user's home timezone (read from the run's
+        LangGraph ``configurable``).
 
         When the aggregate response is too large to inline, the tool
         writes a JSONL file to the user's session workspace and returns
         a digest + path. The agent then uses ``bash``/``jq``/``grep`` to
         mine it (the standard GAIA offload pattern).
         """
-        return _summarize(_user_id(auth_credentials), request, auth_credentials)
+        return _summarize(_user_id(auth_credentials), request)
 
     return [
         "GMAIL_MARK_AS_READ",

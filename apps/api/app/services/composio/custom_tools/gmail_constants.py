@@ -14,7 +14,7 @@ GMAIL_MAX_PAGE_SIZE = 500
 # Absolute ceiling on total messages aggregated by a single tool call.
 # Two pages at the Gmail per-page cap is the hard upper bound, anything
 # higher can't be reached without more pages and would change semantics.
-MAX_ABSOLUTE_MESSAGES = 1000
+MAX_ABSOLUTE_MESSAGES = 2 * GMAIL_MAX_PAGE_SIZE
 
 # Default per-timeframe message cap. Tuned to Gmail's per-page cap (500)
 # and the GAIA compaction threshold (~8KB inline).
