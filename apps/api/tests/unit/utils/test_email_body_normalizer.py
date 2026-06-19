@@ -166,9 +166,7 @@ class TestHtmlToText:
 
     def test_drops_script_and_style(self) -> None:
         html = (
-            "<p>Visible text.</p>"
-            "<script>alert('xss')</script>"
-            "<style>body { color: red; }</style>"
+            "<p>Visible text.</p><script>alert('xss')</script><style>body { color: red; }</style>"
         )
         result = html_to_text(html)
         assert "Visible text" in result
@@ -270,11 +268,7 @@ class TestNormalizeEndToEnd:
         assert "-- " not in result
 
     def test_idempotent(self) -> None:
-        body = (
-            "Hello there.\n\n-- \nSignature\n"
-            "DISCLAIMER: Confidential.\n\n"
-            "Some content here.\n"
-        )
+        body = "Hello there.\n\n-- \nSignature\nDISCLAIMER: Confidential.\n\nSome content here.\n"
         once = normalize_email_body(body)
         twice = normalize_email_body(once)
         assert once == twice
