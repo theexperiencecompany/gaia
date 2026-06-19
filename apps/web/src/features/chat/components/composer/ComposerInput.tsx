@@ -10,7 +10,6 @@ import {
   type SlashCommandMatch,
   useSlashCommands,
 } from "@/features/chat/hooks/useSlashCommands";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
 import SlashCommandDropdown from "./SlashCommandDropdown";
 
@@ -50,12 +49,6 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
   ) => {
     const { detectSlashCommand, getSlashCommandSuggestions } =
       useSlashCommands();
-    const { integrations } = useIntegrations();
-
-    // Get valid integration IDs (platform + user's custom)
-    const validIntegrationIds = React.useMemo(() => {
-      return new Set(integrations.map((i) => i.id.toLowerCase()));
-    }, [integrations]);
     const [slashCommandState, setSlashCommandState] = useState({
       isActive: false,
       matches: [] as SlashCommandMatch[],
@@ -106,10 +99,11 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
                 width: rect.width, // Match the composer width
               };
 
-              // Get unique categories from matches, filtered to user's integrations
+              // Every tool category (integrations plus non-integration ones like
+              // Skills, Notifications, etc.) becomes a top-level tab.
               const uniqueCategories = Array.from(
                 new Set(allMatches.map((match) => match.tool.category)),
-              ).filter((cat) => validIntegrationIds.has(cat.toLowerCase()));
+              );
               const categories = ["all", ...uniqueCategories.toSorted()];
 
               setSlashCommandState({
@@ -146,10 +140,11 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
               composerContainer?.getBoundingClientRect() ||
               textarea.getBoundingClientRect();
 
-            // Get unique categories from matches, filtered to user's integrations
+            // Every tool category (integrations plus non-integration ones like
+            // Skills, Notifications, etc.) becomes a top-level tab.
             const uniqueCategories = Array.from(
               new Set(detection.matches.map((match) => match.tool.category)),
-            ).filter((cat) => validIntegrationIds.has(cat.toLowerCase()));
+            );
             const categories = ["all", ...uniqueCategories.toSorted()];
 
             setSlashCommandState({

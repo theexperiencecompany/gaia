@@ -78,7 +78,7 @@
       "options": {
         "commands": [
           "nx build web --skip-nx-cache",
-          "bash ./scripts/prepare-next-server.sh",
+          "node ./scripts/prepare-next-server.mjs",
           "pnpm dist:mac"
         ],
         "cwd": "{projectRoot}",
@@ -110,7 +110,7 @@
       "options": {
         "commands": [
           "nx build web --skip-nx-cache",
-          "bash ./scripts/prepare-next-server.sh",
+          "node ./scripts/prepare-next-server.mjs",
           "pnpm dist:linux"
         ],
         "parallel": false,

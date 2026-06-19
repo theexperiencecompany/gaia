@@ -11,5 +11,11 @@ DEFAULT_MAX_TOKENS = 1_000_000
 DEFAULT_MODEL_NAME = "gemini-3.1-flash-lite"
 # Direct Gemini API model
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
-DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.1-fast"
+DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+# Per-plan model policy (hardcoded; not user-selectable). Free accounts run the
+# default Gemini model above; every paid (non-free) plan runs a more capable
+# model via OpenRouter.
+PAID_MODEL_PROVIDER = "openrouter"
+PAID_MODEL_NAME = "minimax/minimax-m3"

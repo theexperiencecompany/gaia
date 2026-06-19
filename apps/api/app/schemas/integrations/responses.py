@@ -42,6 +42,7 @@ class IntegrationConfigItem(CamelModel):
     is_featured: bool
     managed_by: Literal["self", "composio", "mcp", "internal"]
     auth_type: Literal["none", "oauth", "bearer"] | None = None
+    requires_auth: bool = False
     source: Literal["platform"] = "platform"
     slug: str  # For platform integrations, this is the same as id
 

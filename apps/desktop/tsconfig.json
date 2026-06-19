@@ -8,7 +8,9 @@
     "outDir": "./out",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@gaia/shared": ["../../libs/shared/ts/src/index.ts"],
+      "@gaia/shared/*": ["../../libs/shared/ts/src/*"]
     }
   },
   "include": ["src/**/*", "electron.vite.config.ts"],

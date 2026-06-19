@@ -201,6 +201,7 @@ async def add_public_integration(
             status=connect_result.status,
             redirect_url=connect_result.redirect_url,
             tools_count=connect_result.tools_count,
+            error=connect_result.error,
             message=connect_result.message or "Integration added successfully",
         )
 

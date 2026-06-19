@@ -7,12 +7,15 @@
  * 1. Register the `gaia://` protocol (must happen before `app.ready`)
  * 2. Acquire single-instance lock
  * 3. On `app.ready`:
- *    a. Show splash screen **immediately**
+ *    a. Show splash screen **immediately** (with the persisted Dock icon)
  *    b. Register IPC handlers, session fixes, auto-updater
  *    c. Start the Next.js server **and** create the main window
  *       **in parallel** (neither blocks the other)
  * 4. When the renderer signals `window-ready`, swap splash → main
- * 5. Fallback timeout ensures the main window appears even if the
+ * 5. Only then create the hidden background surfaces (assistant popup,
+ *    wake-word listener) — two extra renderers competing with the main
+ *    window during boot would keep the splash up longer
+ * 6. Fallback timeout ensures the main window appears even if the
  *    renderer never signals
  *
  * @module index
@@ -22,20 +25,31 @@
 import "v8-compile-cache";
 
 import { electronApp, optimizer } from "@electron-toolkit/utils";
-import { app, BrowserWindow } from "electron";
+import { app, globalShortcut } from "electron";
+import { applyPersistedAppIcon } from "./app-icon";
 import { checkForUpdatesAfterDelay, setupAutoUpdater } from "./auto-updater";
 import { handleDeepLink } from "./deep-link";
 import { registerIpcHandlers } from "./ipc";
+import { registerPopupShortcut } from "./popup-shortcut";
 import { registerLinuxDevProtocol, registerProtocol } from "./protocol";
 import { startNextServer, stopNextServer } from "./server";
 import { fixSessionCookies } from "./session";
 import {
+  createAssistantPopup,
+  destroyAssistantPopup,
+} from "./windows/assistant-popup";
+import {
   createMainWindow,
   getMainWindow,
+  isMainWindowShown,
   setPendingDeepLink,
   showMainWindow,
 } from "./windows/main";
 import { createSplashWindow, isSplashAlive } from "./windows/splash";
+import {
+  createWakeListenerWindow,
+  destroyWakeListenerWindow,
+} from "./windows/wake-listener";
 
 // ---------------------------------------------------------------------------
 // Pre-ready setup (must run before app.ready)
@@ -56,6 +70,35 @@ registerLinuxDevProtocol();
 
 /** Whether the embedded Next.js server has finished starting. */
 let serverStarted = false;
+
+/** Whether the hidden background surfaces have been created. */
+let backgroundSurfacesCreated = false;
+
+/** Grace period before the splash is force-swapped if the renderer never
+ * signals ready (covers server start + page load + hydration). */
+const FALLBACK_SHOW_TIMEOUT_MS = 10_000;
+
+/**
+ * Create the hidden background surfaces (assistant popup + wake-word
+ * listener). Deferred until the main window is on screen: each is a
+ * full renderer process loading its own app route, and spinning them
+ * up during boot competes with the main window for CPU and server
+ * time — directly extending how long the splash stays visible.
+ */
+function createBackgroundSurfaces(): void {
+  if (backgroundSurfacesCreated) return;
+
+  try {
+    createAssistantPopup(() => serverStarted);
+    createWakeListenerWindow(() => serverStarted).catch(console.error);
+    // Mark created only after construction succeeds — otherwise a synchronous
+    // failure would latch the flag and leave the popup permanently absent,
+    // turning the global shortcut into a silent no-op for the whole session.
+    backgroundSurfacesCreated = true;
+  } catch (err) {
+    console.error("[Main] Failed to create background surfaces:", err);
+  }
+}
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -99,8 +142,11 @@ if (!gotTheLock) {
 
     electronApp.setAppUserModelId("io.heygaia.desktop");
 
-    // STEP 1 — Splash screen (first thing the user sees)
+    // STEP 1 — Splash screen (first thing the user sees), with the
+    // persisted custom Dock icon applied before anything else renders
+    // so the Dock is correct from the very first frame.
     createSplashWindow();
+    applyPersistedAppIcon();
 
     // STEP 2 — Non-blocking setup
     if (isProduction) {
@@ -115,6 +161,7 @@ if (!gotTheLock) {
     registerIpcHandlers(() => {
       const pendingUrl = showMainWindow();
       if (pendingUrl) handleDeepLink(pendingUrl, getMainWindow());
+      createBackgroundSurfaces();
     });
 
     fixSessionCookies();
@@ -134,6 +181,10 @@ if (!gotTheLock) {
 
     createMainWindow(() => serverStarted).catch(console.error);
 
+    // The shortcut is safe to register before the popup windows exist —
+    // toggling is a guarded no-op until createBackgroundSurfaces() runs.
+    registerPopupShortcut();
+
     // STEP 4 — Fallback timeout (10 s covers server + load + hydration)
     setTimeout(() => {
       if (isSplashAlive()) {
@@ -141,13 +192,24 @@ if (!gotTheLock) {
         const pendingUrl = showMainWindow();
         if (pendingUrl) handleDeepLink(pendingUrl, getMainWindow());
       }
-    }, 10000);
+      createBackgroundSurfaces();
+    }, FALLBACK_SHOW_TIMEOUT_MS);
 
-    // macOS: re-create window when dock icon is clicked
+    // macOS: Dock icon clicked. The hidden background surfaces (popup,
+    // wake listener) always exist, so "no windows left" never happens —
+    // act on the main window itself: refocus it when shown, re-create it
+    // when closed, and leave it alone while it is still booting behind
+    // the splash.
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createMainWindow(() => serverStarted).catch(console.error);
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        if (!isMainWindowShown()) return;
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        return;
       }
+      createMainWindow(() => serverStarted).catch(console.error);
     });
 
     // Check for deep link in launch args (Windows/Linux cold start)
@@ -166,7 +228,13 @@ if (!gotTheLock) {
     if (process.platform !== "darwin") app.quit();
   });
 
+  app.on("will-quit", () => {
+    globalShortcut.unregisterAll();
+  });
+
   app.on("before-quit", () => {
+    destroyAssistantPopup();
+    destroyWakeListenerWindow();
     stopNextServer().catch(console.error);
   });
 }

@@ -14,7 +14,6 @@ import {
   CardHeaderView,
   CarouselView,
   CheckboxView,
-  CodeDiffView,
   CopyableContentView,
   FileTreeView,
   GaugeChartView,
@@ -979,22 +978,6 @@ NEXT_PUBLIC_GAIA_URL=https://api.heygaia.io`}
               },
               { title: "Invite a teammate", status: "pending" },
             ]}
-          />
-        </Section>
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Code                                                              */}
-        {/* ---------------------------------------------------------------- */}
-
-        <Section title="CodeDiff">
-          <CodeDiffView
-            filename="greet.ts"
-            oldCode={`function greet(name: string) {
-  return "Hello " + name;
-}`}
-            newCode={`function greet(name: string): string {
-  return \`Hello, \${name}!\`;
-}`}
           />
         </Section>
 

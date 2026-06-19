@@ -16,11 +16,14 @@ from langchain_core.messages import SystemMessage
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
+from app.agents.workspace.skill_loader import target_to_subagent
 from app.config.oauth_config import get_integration_by_id
+from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.helpers.message_helpers import (
     BACKGROUND_EXECUTION_BANNER,
     DYNAMIC_CONTEXT_MARKER,
     _build_active_todo_banner,
+    build_workspace_session_banner,
 )
 from app.memory.engine import memory_engine
 from app.services.integration_instructions_service import get_instructions
@@ -170,6 +173,7 @@ async def create_agent_context_message(
         if banner:
             parts.append(banner)
 
+    # User identity.
     if user_name:
         parts.append(f"User Name: {user_name}")
 
@@ -179,6 +183,17 @@ async def create_agent_context_message(
     # (byte-stable across turns) stays in system_instruction.
     if user_timezone:
         parts.append(f"User Timezone: {user_timezone}")
+
+    # Session directory — stated so the agent never guesses a
+    # `/workspace/sessions/<id>/` id when reporting or delivering artifacts (a
+    # wrong id lands files outside the session the artifact watcher scans). Only
+    # `vfs_session_id` is trusted: the executor pins it to the conversation
+    # thread and subagents inherit it. We deliberately do NOT fall back to
+    # `thread_id` — that is the `executor_<conv>` wrapper, which would yield
+    # `/workspace/sessions/executor_<conv>/` and recreate the wrong-dir bug.
+    session_id = configurable.get("vfs_session_id")
+    if session_id:
+        parts.append(build_workspace_session_banner(session_id))
 
     async def _fetch_memories() -> str:
         if memories_text is not None:
@@ -204,7 +219,7 @@ async def create_agent_context_message(
             block = skills_text or ""
         elif user_id:
             try:
-                agent_for_skills = subagent_id or "executor"
+                agent_for_skills = subagent_id or EXECUTOR_SUBAGENT_ID
                 text = await get_available_skills_text(user_id=user_id, agent_name=agent_for_skills)
                 if text:
                     log.info(f"Injected installable skills for {agent_for_skills}")
@@ -213,7 +228,11 @@ async def create_agent_context_message(
                 log.warning(f"Error injecting installable skills: {e}")
 
         if subagent_id:
-            integration_block = integration_skills_block(subagent_id)
+            # `subagent_id` carries the agent_name ("docgen_agent"), but
+            # skills_by_subagent is keyed by the subagent id ("docgen"). Map it the
+            # same way the loader builds those keys, or integration_skills_block
+            # silently finds nothing and the subagent runs with no skills.
+            integration_block = integration_skills_block(target_to_subagent(subagent_id))
             if integration_block:
                 block = f"{block}\n\n{integration_block}" if block else integration_block
 

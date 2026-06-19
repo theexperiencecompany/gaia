@@ -39,6 +39,13 @@ scrape_configs:
     static_configs:
       - targets: ["arq_worker:9100"]
 
+  # livekit-agents worker metrics (lk_agents_active_job_count, worker load,
+  # job/process gauges). The service is scaled to 0 by default, so this target
+  # simply reports down until the voice agent is scaled up.
+  - job_name: voice_agent
+    static_configs:
+      - targets: ["voice-agent-worker:9102"]
+
   # node_exporter — single replica on the overlay network. Scrapes go through
   # overlay DNS (`node_exporter:9100`) so the exporter never binds to the host.
   # If we ever scale to multiple swarm nodes, switch this back to

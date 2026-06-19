@@ -1,14 +1,27 @@
 appId: io.heygaia.desktop
 productName: GAIA
 copyright: Copyright © 2024 The Experience Company
-electronVersion: 33.2.1
+# Must match the electron devDependency in package.json. In a pnpm hoisted
+# monorepo electron-builder's auto-detection is unreliable (it has resolved a
+# stale 33.2.1 from cached metadata even with 39.8.10 installed), so pin the
+# packaged runtime explicitly. Bump both together on every Electron upgrade.
+electronVersion: 39.8.10
 # In pnpm hoisted monorepos, electron-builder's dependency reinstall step can
 # mutate workspace node_modules during packaging and break artifact generation.
 npmRebuild: false
 
+# Strip Chromium locale packs (~45MB) — the UI is web-rendered and ships its
+# own i18n; only Electron-native menus would use these.
+electronLanguages:
+  - en
+
 directories:
   output: release/${version}
   buildResources: resources
+
+# Ad-hoc signs macOS builds when real signing is disabled — an unsigned
+# bundle seal gets the app killed by RunningBoard on macOS 26 (see script).
+afterSign: scripts/adhoc-sign.cjs
 
 files:
   - out/**/*
@@ -40,6 +53,11 @@ extraResources:
   # Window icon accessible at runtime via process.resourcesPath
   - from: resources/icons/256x256.png
     to: icons/256x256.png
+  # Default dock icon + the switchable Arc-style icon set (settings page)
+  - from: resources/icons/512x512.png
+    to: icons/512x512.png
+  - from: resources/app-icons
+    to: app-icons
 
 mac:
   category: public.app-category.productivity
@@ -65,8 +83,16 @@ mac:
       - CFBundleURLName: "GAIA Protocol"
         CFBundleURLSchemes:
           - gaia
+    NSMicrophoneUsageDescription: 'GAIA listens for the "Hey GAIA" wake word so you can talk to your assistant hands-free.'
+    NSAppleEventsUsageDescription: "GAIA opens apps and lists your windows when you ask it to use your computer."
 
 dmg:
+  # Bands-gradient brand wallpaper; background@2x.png alongside it is
+  # picked up automatically for a retina TIFF.
+  background: resources/dmg/background.png
+  window:
+    width: 540
+    height: 380
   iconSize: 100
   contents:
     - x: 130

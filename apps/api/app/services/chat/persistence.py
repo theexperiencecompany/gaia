@@ -20,6 +20,7 @@ from typing import Any
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.model_pricing import calculate_token_cost
 from app.config.settings import settings
+from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
@@ -28,16 +29,6 @@ from app.services.payments.payment_service import payment_service
 from app.services.storage import JuiceFSUnavailable, ensure_session_dirs
 from app.utils.chat_utils import create_conversation
 from shared.py.wide_events import log
-
-# Matches bot-emitted artifact references in three shapes — ``./artifacts/x``,
-# ``/artifacts/x``, and plain ``artifacts/x`` — so we can rewrite each to an
-# absolute backend URL. Allows quotes, parens or whitespace right before
-# (markdown image links, OpenUI string args, plain prose) but requires no
-# leading "word" character so we don't mangle ``myartifacts/``.
-_ARTIFACT_REF_RE = re.compile(
-    r"""(?P<lead>(?<![A-Za-z0-9_/])|(?<=['"`(\s]))(?P<prefix>\.\/|\/)?artifacts\/(?P<path>[A-Za-z0-9._\-/]+)""",
-    re.VERBOSE,
-)
 
 
 async def initialize_new_conversation(
@@ -103,7 +94,8 @@ def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
         lead = m.group("lead") or ""
         return f"{lead}{base}/{m.group('path')}"
 
-    return _ARTIFACT_REF_RE.sub(_sub, message)
+    message = WORKSPACE_ARTIFACT_RE.sub(lambda m: f"{base}/{m.group('path')}", message)
+    return ARTIFACT_REF_RE.sub(_sub, message)
 
 
 async def save_conversation_async(
@@ -115,11 +107,17 @@ async def save_conversation_async(
     metadata: dict[str, Any],
     user_message_id: str,
     bot_message_id: str,
+    bot_timestamp: datetime | None = None,
 ) -> None:
     """Persist the finished turn to Mongo and bill token usage.
 
     Bakes absolute artifact URLs into the saved bot message so the chat renders
     correctly even when the user's browser holds a stale frontend chunk.
+
+    ``bot_timestamp`` lets the caller stamp the turn at comms-completion time
+    rather than now() — needed in voice mode, where finalize is deferred until a
+    delegated executor finishes, so the user/comms messages must still sort ahead
+    of the executor's answer (saved mid-wait).
     """
     user_id = user.get("user_id")
 
@@ -129,7 +127,7 @@ async def save_conversation_async(
         except Exception as e:  # noqa: BLE001 — billing failure must not block save
             log.error(f"Failed to process token usage: {e}")
 
-    bot_timestamp = datetime.now(UTC)
+    bot_timestamp = bot_timestamp or datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
     user_content = (

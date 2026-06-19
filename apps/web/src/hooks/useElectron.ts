@@ -1,42 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getElectronAPI } from "@/lib/electron/api";
 
-/**
- * Auth callback data from deep link
- */
-interface AuthCallbackData {
-  token: string;
-}
-
-/**
- * Type definition for the Electron API exposed via preload
- */
-interface ElectronAPI {
-  getPlatform: () => Promise<NodeJS.Platform>;
-  getVersion: () => Promise<string>;
-  isElectron: boolean;
-  signalReady: () => void;
-  openExternal: (url: string) => void;
-  onAuthCallback: (callback: (data: AuthCallbackData) => void) => () => void;
-  onAuthRedirecting: (callback: () => void) => () => void;
-}
-
-/**
- * Type guard to check if window.api exists and is the Electron API
- */
-function hasElectronAPI(
-  window: Window,
-): window is Window & { api: ElectronAPI } {
-  return (
-    typeof window !== "undefined" &&
-    "api" in window &&
-    typeof window.api === "object" &&
-    window.api !== null &&
-    "isElectron" in window.api &&
-    window.api.isElectron === true
-  );
-}
+const noopCleanup = () => {
+  // No-op cleanup: no listener was registered outside the desktop app.
+};
 
 /**
  * Hook to check if the app is running inside Electron
@@ -46,10 +15,7 @@ function useIsElectron(): boolean {
   const [isElectron, setIsElectron] = useState(false);
 
   useEffect(() => {
-    // Check if running in Electron by looking for window.api
-    const electronDetected =
-      typeof window !== "undefined" && hasElectronAPI(window);
-    setIsElectron(electronDetected);
+    setIsElectron(getElectronAPI() !== null);
   }, []);
 
   return isElectron;
@@ -67,54 +33,33 @@ export function useElectron() {
    * This closes the splash screen and shows the main window
    */
   const signalReady = useCallback(() => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      window.api.signalReady();
-    }
+    getElectronAPI()?.signalReady();
   }, []);
 
   /**
    * Get the current platform (darwin, win32, linux)
    */
-  const getPlatform = useCallback(async (): Promise<NodeJS.Platform | null> => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      return window.api.getPlatform();
-    }
-    return null;
-  }, []);
+  const getPlatform = useCallback(
+    async (): Promise<NodeJS.Platform | null> =>
+      getElectronAPI()?.getPlatform() ?? null,
+    [],
+  );
 
   /**
    * Get the app version
    */
-  const getVersion = useCallback(async (): Promise<string | null> => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      return window.api.getVersion();
-    }
-    return null;
-  }, []);
+  const getVersion = useCallback(
+    async (): Promise<string | null> => getElectronAPI()?.getVersion() ?? null,
+    [],
+  );
 
   /**
    * Open a URL in the system's default browser
    * Used for OAuth flows to open login in external browser
    */
   const openExternal = useCallback((url: string) => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      window.api.openExternal(url);
-    }
+    getElectronAPI()?.openExternal(url);
   }, []);
-
-  /**
-   * Register a callback for auth deep link events
-   * Returns a cleanup function to remove the listener
-   */
-  const onAuthCallback = useCallback(
-    (callback: (data: AuthCallbackData) => void): (() => void) => {
-      if (typeof window !== "undefined" && hasElectronAPI(window)) {
-        return window.api.onAuthCallback(callback);
-      }
-      return () => {}; // No-op cleanup if not in Electron
-    },
-    [],
-  );
 
   /**
    * Register a callback for auth-redirecting events
@@ -122,12 +67,53 @@ export function useElectron() {
    * Returns a cleanup function to remove the listener
    */
   const onAuthRedirecting = useCallback(
-    (callback: () => void): (() => void) => {
-      if (typeof window !== "undefined" && hasElectronAPI(window)) {
-        return window.api.onAuthRedirecting(callback);
-      }
-      return () => {}; // No-op cleanup if not in Electron
-    },
+    (callback: () => void): (() => void) =>
+      getElectronAPI()?.onAuthRedirecting(callback) ?? noopCleanup,
+    [],
+  );
+
+  /**
+   * Notify the main process that the wake word was detected
+   * Sent by the hidden wake-listener window; shows the assistant popup
+   */
+  const notifyWakeWord = useCallback(() => {
+    getElectronAPI()?.notifyWakeWord();
+  }, []);
+
+  /**
+   * Ask the main process to dismiss the assistant popup
+   */
+  const dismissPopup = useCallback(() => {
+    getElectronAPI()?.dismissPopup();
+  }, []);
+
+  /**
+   * Resize the assistant popup window to fit its content
+   */
+  const resizePopup = useCallback((height: number) => {
+    getElectronAPI()?.resizePopup(height);
+  }, []);
+
+  /**
+   * Register a callback for assistant popup activation events
+   * Returns a cleanup function to remove the listener
+   */
+  const onPopupActivate = useCallback(
+    (
+      callback: (data: { trigger: "wake-word" | "shortcut" }) => void,
+    ): (() => void) =>
+      getElectronAPI()?.onPopupActivate(callback) ?? noopCleanup,
+    [],
+  );
+
+  /**
+   * Register a callback for assistant popup deactivation events
+   * Fired just before the popup window hides, for exit animations
+   * Returns a cleanup function to remove the listener
+   */
+  const onPopupDeactivate = useCallback(
+    (callback: () => void): (() => void) =>
+      getElectronAPI()?.onPopupDeactivate(callback) ?? noopCleanup,
     [],
   );
 
@@ -137,7 +123,11 @@ export function useElectron() {
     getPlatform,
     getVersion,
     openExternal,
-    onAuthCallback,
     onAuthRedirecting,
+    notifyWakeWord,
+    dismissPopup,
+    resizePopup,
+    onPopupActivate,
+    onPopupDeactivate,
   };
 }

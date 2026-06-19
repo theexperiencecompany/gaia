@@ -7,9 +7,7 @@ Makes missing config obvious with actionable logs.
 
 from typing import Any
 
-from shared.py.logging import get_contextual_logger
-
-logger = get_contextual_logger("config")
+from shared.py.wide_events import log
 
 
 class SettingsGroup:
@@ -104,7 +102,7 @@ class SettingsValidator:
             if group.affected_features:
                 warning_msg += f"\n  → Affected: {group.affected_features}"
 
-            logger.warning(warning_msg)
+            log.warning(warning_msg)
 
 
 __all__ = [

@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  ArrowRight02Icon,
-  CursorAddSelectionIcon,
-  PackageOpenIcon,
-} from "@icons";
+import { ArrowRight02Icon, PackageOpenIcon, PuzzleIcon } from "@icons";
 import { PromoBanner } from "@/components/shared/PromoBanner";
 
 interface MarketplaceBannerProps {
@@ -21,7 +17,7 @@ export function MarketplaceBanner({
       description="Discover community integrations or publish your own for others to use."
       secondaryAction={{
         label: "Create Custom Integration",
-        icon: <CursorAddSelectionIcon className="h-4 w-4" />,
+        icon: <PuzzleIcon className="h-4 w-4" />,
         onPress: onCreateCustomIntegration,
       }}
       primaryAction={{

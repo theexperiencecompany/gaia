@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import { getProgress, PROGRESS_TOTAL_STEPS } from "../state/derive";
 import type { OnboardingState, Stage } from "../state/types";
+import { DevSkipOnboarding } from "./DevSkipOnboarding";
 import { OnboardingProgress } from "./OnboardingProgress";
 
 const TOP_BLUR_CONFIG: BlurLayer[] = [
@@ -146,6 +147,8 @@ export function OnboardingShell({
           {composer}
         </div>
       )}
+
+      <DevSkipOnboarding />
     </div>
   );
 }

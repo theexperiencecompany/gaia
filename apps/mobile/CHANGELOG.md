@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.5.0...mobile-v0.6.0) (2026-06-12)
+
+
+### Features
+
+* **api:** add notification agent tools ([#662](https://github.com/theexperiencecompany/gaia/issues/662)) ([82ca761](https://github.com/theexperiencecompany/gaia/commit/82ca761b59df444dcfc5dca5c250e945621f2420))
+* deliver agent-generated files to bot users + docgen skill migration ([#734](https://github.com/theexperiencecompany/gaia/issues/734)) ([b71c062](https://github.com/theexperiencecompany/gaia/commit/b71c062054c62e6809651081c858d9bb9b484928))
+* **mobile:** expo-av migration, perf, sidebar refactor, auth + UX fixes ([#679](https://github.com/theexperiencecompany/gaia/issues/679)) ([3950431](https://github.com/theexperiencecompany/gaia/commit/3950431f061d1cd9891b922f724960dc1acea247))
+* **mobile:** upgrade heroui-native to 1.0.1 and lift shared chat types ([9790182](https://github.com/theexperiencecompany/gaia/commit/9790182ff6944a1921a47111272b26c0e5b76b4f))
+* Redesign chat UI, remove clutter, and enhance performance ([#678](https://github.com/theexperiencecompany/gaia/issues/678)) ([af70ebf](https://github.com/theexperiencecompany/gaia/commit/af70ebfdccc2e85230e6cb84c4ca3270b048d381))
+* **wake-word:** cross-platform 'Hey GAIA' on-device detection ([#689](https://github.com/theexperiencecompany/gaia/issues/689)) ([413a39b](https://github.com/theexperiencecompany/gaia/commit/413a39b03db2fd63c6d296a3e9ecbe23f7dd9d32))
+
+
+### Bug Fixes
+
+* **api,mobile:** migrate ValueError to AppError, improve Reddit logging, fix contact dedup, update EAS project ([eafd0a8](https://github.com/theexperiencecompany/gaia/commit/eafd0a8ef0b97ef90a479790c9ce7def393429f9))
+* **mobile:** disable New Architecture on Android to fix expo-av crash ([b7f788d](https://github.com/theexperiencecompany/gaia/commit/b7f788df2245abbd4627e9c75f15571d10bb5659))
+
 ## [0.5.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.4.0...mobile-v0.5.0) (2026-04-05)
 
 

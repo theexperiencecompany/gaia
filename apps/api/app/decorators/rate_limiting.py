@@ -5,7 +5,6 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
 import inspect
-import json
 from typing import Any
 
 from fastapi import HTTPException
@@ -15,7 +14,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     tiered_limiter,
 )
-from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.services.payments.payment_service import payment_service
@@ -78,9 +76,7 @@ def with_rate_limiting(
                     log.debug(f"Bypassing rate limiting for system operation: {actual_feature_key}")
                 else:
                     try:
-                        # Get cached subscription or fetch new one
-                        subscription = await _get_cached_subscription(user_id)
-                        user_plan = subscription.plan_type or PlanType.FREE
+                        user_plan = await payment_service.get_cached_plan_type(user_id)
 
                         # Apply rate limiting with atomic operations
                         usage_info = await tiered_limiter.check_and_increment(
@@ -295,55 +291,12 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
 
     Raises RateLimitExceededException when the limit is exceeded.
     """
-    subscription = await _get_cached_subscription(user_id)
-    user_plan = subscription.plan_type or PlanType.FREE
+    user_plan = await payment_service.get_cached_plan_type(user_id)
     return await tiered_limiter.check_and_increment(
         user_id=user_id,
         feature_key=feature_key,
         user_plan=user_plan,
     )
-
-
-async def _get_cached_subscription(user_id: str):
-    """Get subscription with Redis caching to reduce duplicate lookups."""
-    cache_key = f"subscription:{user_id}"
-
-    # Try cache first
-    try:
-        cached = await redis_cache.get(cache_key)
-        if cached:
-            log.debug(f"Using cached subscription for user {user_id}")
-            # Parse cached subscription data
-            data = json.loads(cached)
-            from types import SimpleNamespace
-
-            cached_subscription = SimpleNamespace(**data)
-            cached_subscription.plan_type = PlanType(data.get("plan_type", "free"))
-            return cached_subscription
-    except Exception as e:
-        log.debug(f"Cache lookup failed for user {user_id}: {e!s}")
-
-    # Fetch and cache
-    subscription = await payment_service.get_user_subscription_status(user_id)
-
-    # Cache for 5 minutes
-    try:
-        cache_data = {
-            "plan_type": (
-                subscription.plan_type.value
-                if subscription.plan_type and hasattr(subscription.plan_type, "value")
-                else str(subscription.plan_type)
-                if subscription.plan_type
-                else None
-            ),
-            "expires_at": None,  # This field is not available in UserSubscriptionStatus
-        }
-        await redis_cache.set(cache_key, cache_data, 300)
-        log.debug(f"Cached subscription for user {user_id}")
-    except Exception as e:
-        log.debug(f"Cache write failed for user {user_id}: {e!s}")
-
-    return subscription
 
 
 def set_user_context(user_id: str, initiator: str = "frontend", **kwargs):

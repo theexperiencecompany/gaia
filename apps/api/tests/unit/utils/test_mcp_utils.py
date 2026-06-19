@@ -1,14 +1,11 @@
 """Unit tests for app.utils.mcp_utils module.
 
 Tests cover:
-- generate_pkce_pair: PKCE code_verifier/code_challenge generation
 - wrap_tool_with_null_filter: null filtering, auth re-raise, connection error callback,
   user-friendly error messages
 - wrap_tools_with_null_filter: batch wrapping
 """
 
-import base64
-import hashlib
 from unittest.mock import AsyncMock, MagicMock
 
 from langchain_core.tools import BaseTool
@@ -16,7 +13,6 @@ import pytest
 
 from app.utils.mcp_utils import (
     _CONNECTION_ERROR_PATTERNS,
-    generate_pkce_pair,
     wrap_tool_with_null_filter,
     wrap_tools_with_null_filter,
 )
@@ -32,38 +28,6 @@ def _make_tool(name: str = "test_tool", arun: AsyncMock | None = None) -> BaseTo
     tool.name = name
     tool._arun = arun or AsyncMock(return_value="ok")
     return tool
-
-
-# ---------------------------------------------------------------------------
-# generate_pkce_pair
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestGeneratePkcePair:
-    """Tests for generate_pkce_pair — returns (code_verifier, code_challenge)."""
-
-    def test_returns_tuple_of_two_strings(self) -> None:
-        verifier, challenge = generate_pkce_pair()
-        assert isinstance(verifier, str)
-        assert isinstance(challenge, str)
-
-    def test_challenge_is_s256_of_verifier(self) -> None:
-        verifier, challenge = generate_pkce_pair()
-        digest = hashlib.sha256(verifier.encode()).digest()
-        expected = base64.urlsafe_b64encode(digest).decode().rstrip("=")
-        assert challenge == expected
-
-    def test_successive_calls_produce_different_pairs(self) -> None:
-        pair_a = generate_pkce_pair()
-        pair_b = generate_pkce_pair()
-        assert pair_a[0] != pair_b[0]
-        assert pair_a[1] != pair_b[1]
-
-    def test_verifier_is_url_safe(self) -> None:
-        verifier, _ = generate_pkce_pair()
-        # url-safe base64 uses only [A-Za-z0-9_-]
-        assert all(c.isalnum() or c in ("_", "-") for c in verifier)
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +164,9 @@ class TestWrapToolWithNullFilter:
         assert "bug in the MCP server" in result
 
     async def test_timeout_error_message(self) -> None:
-        original = AsyncMock(side_effect=Exception("Request timeout after 30s"))
+        # Timeouts are matched by exception TYPE (not a "timeout" substring in an
+        # arbitrary tool error), so a real TimeoutError gets the timed-out message.
+        original = AsyncMock(side_effect=TimeoutError("Request timeout after 30s"))
         tool = _make_tool(arun=original)
 
         wrapped = wrap_tool_with_null_filter(tool)
@@ -208,6 +174,18 @@ class TestWrapToolWithNullFilter:
 
         assert "timed out" in result
         assert "try again" in result.lower()
+
+    async def test_timeout_substring_in_generic_error_not_rebranded(self) -> None:
+        # A non-timeout exception that merely contains the word "timeout" must NOT
+        # be rebranded as an MCP server timeout.
+        original = AsyncMock(side_effect=Exception("Request timeout after 30s"))
+        tool = _make_tool(arun=original)
+
+        wrapped = wrap_tool_with_null_filter(tool)
+        result = await wrapped._arun()
+
+        assert "timed out" not in result
+        assert "MCP tool error" in result
 
     async def test_generic_error_returns_mcp_tool_error(self) -> None:
         original = AsyncMock(side_effect=Exception("Something completely unexpected"))

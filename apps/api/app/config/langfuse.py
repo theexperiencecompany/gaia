@@ -14,6 +14,7 @@ import os
 
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
+from opentelemetry.sdk.trace import TracerProvider
 
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
@@ -63,11 +64,22 @@ def init_langfuse() -> Langfuse:
     # for Resource attributes; the kwarg additionally tags per-span context.
     # Both are set deliberately.
     os.environ["LANGFUSE_TRACING_ENVIRONMENT"] = settings.ENV
+    # Isolated TracerProvider (langfuse's official "Option C" for coexisting with
+    # Sentry). Sentry's OTel integration claims the GLOBAL TracerProvider first;
+    # if we let langfuse fall back to it, langfuse rides Sentry's provider and
+    # per-trace attributes set by the LangChain callback — session_id, user_id —
+    # never land (confirmed: prod had Sentry on → 0 traces with session/user; dev
+    # had Sentry off → session/user present). Handing langfuse its own provider
+    # keeps its tracing independent of Sentry's sampling/propagation so those
+    # attributes attach. Trade-off: spans whose parent lives only in Sentry's
+    # provider may look orphaned. Environment still tags per-span via the kwarg +
+    # LANGFUSE_TRACING_ENVIRONMENT above.
     client = Langfuse(
         public_key=settings.LANGFUSE_PUBLIC_KEY,
         secret_key=settings.LANGFUSE_SECRET_KEY,
         host=settings.LANGFUSE_HOST,
         environment=settings.ENV,
+        tracer_provider=TracerProvider(),
     )
     try:
         if client.auth_check():

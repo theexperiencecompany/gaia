@@ -16,6 +16,10 @@ PROJECT_NAME = "{{ config_root | basename }}"
 description = "Run voice agent worker"
 run = "uv run python -m src start"
 
+[tasks.download-files]
+description = "Download plugin model files (turn detector) into the local cache"
+run = "uv run python -m src download-files"
+
 [tasks.lint]
 description = "Run ruff linter"
 run = "uvx ruff check src/"

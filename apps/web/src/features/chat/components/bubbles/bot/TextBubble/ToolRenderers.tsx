@@ -55,6 +55,7 @@ import RedditCommentSection from "../RedditCommentSection";
 import RedditCreatedSection from "../RedditCreatedSection";
 import RedditPostSection from "../RedditPostSection";
 import RedditSearchSection from "../RedditSearchSection";
+import ScreenshotSection from "../ScreenshotSection";
 import SendNotificationSection from "../SendNotificationSection";
 import SupportTicketSection from "../SupportTicketSection";
 import TodoSection from "../TodoSection";
@@ -130,6 +131,14 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   // Weather
   weather_data: (data, index) => (
     <WeatherCard key={`tool-weather-${index}`} weatherData={data} />
+  ),
+
+  // Desktop
+  screenshot_data: (data, index) => (
+    <ScreenshotSection
+      key={`tool-screenshot-${index}`}
+      screenshot_data={data}
+    />
   ),
 
   // Email

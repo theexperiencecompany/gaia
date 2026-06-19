@@ -349,7 +349,7 @@ function GmailInput({ onGmailSkip }: { onGmailSkip: () => void }) {
             />
           ) : (
             <Image
-              src="/images/icons/gmail.svg"
+              src="/images/icons/gmail.webp"
               alt=""
               className="-rotate-12"
               width={16}
