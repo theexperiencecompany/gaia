@@ -70,6 +70,54 @@ function bucketToolData(
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
+// Merge consecutive reasoning steps into one. A single continuous thought can
+// arrive as several adjacent reasoning entries (e.g. when an interleaved tool
+// call between them was nested into a subagent group and dropped from this
+// level), which would otherwise render as several separate "Thinking" rows for
+// one block. Only truly adjacent reasoning is merged — a real tool call between
+// two thoughts still separates them, preserving chronological order.
+function coalesceReasoning(calls: ToolCallEntry[]): ToolCallEntry[] {
+  const out: ToolCallEntry[] = [];
+  for (const tc of calls) {
+    const prev = out[out.length - 1];
+    if (tc.reasoning != null && prev?.reasoning != null) {
+      out[out.length - 1] = {
+        ...prev,
+        reasoning: prev.reasoning + tc.reasoning,
+      };
+      continue;
+    }
+    out.push(tc);
+  }
+  return out;
+}
+
+// Same coalescing for the root-level timeline, where reasoning steps are
+// `kind: "tool"` items carrying a `reasoning` field.
+function coalesceTimelineReasoning(timeline: TimelineItem[]): TimelineItem[] {
+  const out: TimelineItem[] = [];
+  for (const item of timeline) {
+    const prev = out[out.length - 1];
+    if (
+      item.kind === "tool" &&
+      item.data.reasoning != null &&
+      prev?.kind === "tool" &&
+      prev.data.reasoning != null
+    ) {
+      out[out.length - 1] = {
+        kind: "tool",
+        data: {
+          ...prev.data,
+          reasoning: prev.data.reasoning + item.data.reasoning,
+        },
+      };
+      continue;
+    }
+    out.push(item);
+  }
+  return out;
+}
+
 function extractTaskFromInputs(
   inputs: ToolCallEntry["inputs"],
 ): string | undefined {
@@ -107,6 +155,7 @@ function collectAllSubagentToolCallIds(
 function deepEnrichGroup(g: SubagentGroupData): EnrichedSubagentGroup {
   return {
     ...g,
+    tool_calls: coalesceReasoning(g.tool_calls),
     nested_subagents: g.nested_subagents.map(deepEnrichGroup),
   };
 }
@@ -378,7 +427,7 @@ export const useSubagentSynthesis = (
     }
 
     return {
-      timeline,
+      timeline: coalesceTimelineReasoning(timeline),
       processedTools: [...groupedEntries, ...individual],
     };
   }, [tool_data]);

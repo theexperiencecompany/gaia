@@ -20,6 +20,7 @@ from typing import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore, SearchItem
+from pydantic import Field
 
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.tools.core.registry import (
@@ -553,7 +554,12 @@ def get_retrieve_tools_function(
         store: Annotated[BaseStore, InjectedStore],
         config: RunnableConfig,
         query: str | None = None,
-        exact_tool_names: list[str] | None = None,
+        # Non-nullable array on purpose. A `list[str] | None` annotation emits an
+        # `anyOf: [{array}, {null}]` JSON schema, and MiniMax M3 cannot populate an
+        # array wrapped in that nullable union: it sends `exact_tool_names: []`
+        # however many names it intends to bind. A plain array schema fixes it, and
+        # "no exact tools" is an empty list, not null, so nothing is lost.
+        exact_tool_names: list[str] = Field(default_factory=list),
     ) -> RetrieveToolsResult:
         log.info(
             "retrieve_tools called",

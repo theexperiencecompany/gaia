@@ -484,6 +484,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#2dd4bf",
     isImage: false,
   },
+  cancel_executor: {
+    icon: "CancelCircleHalfDotIcon",
+    bgColor: "bg-red-500/20 backdrop-blur",
+    iconColor: "text-red-400",
+    bgColorRaw: "rgba(239, 68, 68, 0.2)",
+    iconColorRaw: "#f87171",
+    isImage: false,
+  },
   filesystem: {
     icon: "FolderFileStorageIcon",
     bgColor: "bg-fuchsia-500/20 backdrop-blur",

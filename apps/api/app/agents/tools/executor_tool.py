@@ -44,6 +44,46 @@ from shared.py.wide_events import log
 # Prevent GC of background tasks
 _executor_tasks: set[asyncio.Task[None]] = set()
 
+# A "stop X, do Y" redirect makes the comms model emit cancel_executor and
+# call_executor in ONE turn. The tool node runs both concurrently, so
+# call_executor can reach the busy lock before cancel_executor releases it and
+# would wrongly queue Y behind the task being killed — which renders Y as a
+# separate queued tool card instead of streaming live into the same turn. These
+# bound a short wait for the in-flight cancel to free the lock so Y runs live.
+# DETECT is how long we look for evidence a cancel is happening (if none, the
+# holder is a genuinely busy different turn and we queue immediately); WAIT caps
+# the total wait once a cancel is seen.
+REDIRECT_CANCEL_DETECT_S = 0.4
+REDIRECT_CANCEL_WAIT_S = 1.5
+REDIRECT_CANCEL_POLL_S = 0.05
+
+
+async def _acquire_lock_through_redirect(
+    lock_key: str,
+    lock_value: str,
+    held_stream_id: str,
+) -> bool:
+    """Take the busy lock once an in-flight cancel of its current holder frees it.
+
+    Returns True if the lock was acquired for a live run, False if the holder is
+    not being cancelled (a genuinely busy different turn — queue instead) or it
+    did not release within the wait budget.
+    """
+    if not held_stream_id:
+        return False
+    waited = 0.0
+    saw_cancel = False
+    while waited < REDIRECT_CANCEL_WAIT_S:
+        if not saw_cancel:
+            saw_cancel = await StreamManager.is_cancelled(held_stream_id)
+        if saw_cancel and await try_acquire_lock(lock_key, lock_value):
+            return True
+        if not saw_cancel and waited >= REDIRECT_CANCEL_DETECT_S:
+            return False
+        await asyncio.sleep(REDIRECT_CANCEL_POLL_S)
+        waited += REDIRECT_CANCEL_POLL_S
+    return False
+
 
 @tool
 async def call_executor(
@@ -161,26 +201,38 @@ async def _dispatch_executor(
                 "starting it again. The results are on the way."
             )
 
-        # Executor is busy with a different turn — queue for later execution
-        queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
-        await enqueue_task(
-            queue_key=queue_key,
-            task=task,
-            task_id=task_id,
-            configurable=configurable,
-            conversation_id=conversation_id,
-            user_message_id=user_message_id,
-        )
-        log.info(
-            "Executor busy — task queued",
-            task_id=task_id,
-            conversation_id=conversation_id,
-        )
-        return (
-            "I'm already working on a task for this conversation. "
-            f"Your request has been queued (task_id: {task_id}) "
-            "and I'll handle it right after."
-        )
+        # A same-turn redirect (cancel_executor + call_executor together) races
+        # the cancel: the holder is being killed THIS turn, so wait for that
+        # cancel to free the lock and run live instead of queuing behind it — the
+        # redirect then streams into the same turn's card, not a separate queued
+        # one. Only waits when a cancel is actually in flight (see helper).
+        if await _acquire_lock_through_redirect(lock_key, lock_value, held_stream_id):
+            log.info(
+                "Acquired executor lock after redirect cancel — running live",
+                task_id=task_id,
+                conversation_id=conversation_id,
+            )
+        else:
+            # Executor is busy with a different turn — queue for later execution
+            queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
+            await enqueue_task(
+                queue_key=queue_key,
+                task=task,
+                task_id=task_id,
+                configurable=configurable,
+                conversation_id=conversation_id,
+                user_message_id=user_message_id,
+            )
+            log.info(
+                "Executor busy — task queued",
+                task_id=task_id,
+                conversation_id=conversation_id,
+            )
+            return (
+                "I'm already working on a task for this conversation. "
+                f"Your request has been queued (task_id: {task_id}) "
+                "and I'll handle it right after."
+            )
 
     # MCP tools load lazily inside each subagent's first use — the old eager
     # warmup hit get_all_connected_tools() on every executor call and

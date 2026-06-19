@@ -160,7 +160,6 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "read": "Reading a file",
     "write": "Writing a file",
     "edit": "Editing a file",
-    "cancel_executor": "Cancelling the task",
 }
 
 # Tokens that carry no meaning in a user-facing label. "TOOL"/"TOOLS" are the

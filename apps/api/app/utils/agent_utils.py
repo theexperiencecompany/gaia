@@ -187,6 +187,7 @@ async def format_tool_call_entry(
     special_tools = {
         "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
         "call_executor": ("executor", "Delegating to executor", False),
+        "cancel_executor": ("cancel_executor", "Cancelling the task", False),
         "handoff": ("handoff", None, False),  # message will be set from args
         "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
         "wait_for_subagents": ("wait_for_subagents", "Wait for subagents", False),
