@@ -28,16 +28,18 @@ PAID_MODEL_NAME = "minimax/minimax-m3"
 # of the window), so 64k of output leaves ample headroom for the prompt.
 OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
 
-# Reasoning config shared by all OpenRouter (thinking) models.
+# Default reasoning effort for OpenRouter thinking models (executor + subagents),
+# passed to ChatOpenRouter's native `reasoning` field.
 OPENROUTER_REASONING = {"effort": "medium"}
-# Default OpenRouter request body: reasoning on, provider auto-routed by OpenRouter.
-OPENROUTER_DEFAULT_EXTRA_BODY = {"reasoning": OPENROUTER_REASONING}
 # Pin the paid model to the first-party "minimax" provider on OpenRouter. Without
-# this, OpenRouter load-balances minimax/minimax-m3 across resellers (Parasail,
-# Together, Morph, …) whose shared non-BYOK pools get rate-limited upstream (429).
-# `only` forces the first-party lane and disables fallback to those resellers.
+# this, OpenRouter may load-balance minimax/minimax-m3 across resellers (Parasail,
+# Together, etc.) whose shared non-BYOK pools get rate-limited upstream (429). `only`
+# forces the first-party lane. Passed via ChatOpenRouter's `model_kwargs` (the
+# OpenRouter `provider` routing param) and inherited by child agents via
+# agent_helpers._inherit_from_parent_configurable so subagents stay on the same lane.
 PAID_MODEL_PROVIDER_SLUG = "minimax"
-PAID_MODEL_EXTRA_BODY = {
-    "reasoning": OPENROUTER_REASONING,
-    "provider": {"only": [PAID_MODEL_PROVIDER_SLUG]},
-}
+PAID_MODEL_MODEL_KWARGS = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
+# Comms-specific reasoning: "low" instead of the executor's "medium". At "medium",
+# MiniMax M3 tends to re-decide `call_executor` each turn and loop; comms is mostly
+# routing/ack work, so reasoning is most useful for the executor's tool selection.
+COMMS_REASONING = {"effort": "low"}

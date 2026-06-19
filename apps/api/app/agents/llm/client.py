@@ -15,15 +15,15 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from langchain_openrouter import ChatOpenRouter
 from typing_extensions import TypedDict
 
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
-    OPENROUTER_BASE_URL,
-    OPENROUTER_DEFAULT_EXTRA_BODY,
     OPENROUTER_MAX_OUTPUT_TOKENS,
+    OPENROUTER_REASONING,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
@@ -117,8 +117,16 @@ def init_gemini_llm():
     warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
 )
 def init_openrouter_llm():
-    """Initialize OpenRouter LLM for Grok and other models with reasoning support."""
-    return ChatOpenAI(
+    """Initialize the OpenRouter LLM (MiniMax M3, Grok, etc.).
+
+    Uses ChatOpenRouter (langchain-openrouter), not ChatOpenAI, because it parses
+    OpenRouter's `reasoning`/`reasoning_details` fields into standard reasoning
+    content blocks — ChatOpenAI silently drops them. That is what lets us surface
+    the model's thinking. Reasoning effort is the native `reasoning` field; provider
+    routing (the first-party MiniMax pin) rides `model_kwargs` (OpenRouter's
+    `provider` request param). Both are per-request configurable.
+    """
+    return ChatOpenRouter(
         model=PROVIDER_MODELS["openrouter"],
         temperature=0.1,
         streaming=True,
@@ -127,24 +135,24 @@ def init_openrouter_llm():
         # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
         max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
         api_key=settings.OPENROUTER_API_KEY,
-        base_url=OPENROUTER_BASE_URL,
-        default_headers={
-            # App attribution → OpenRouter rankings/analytics. HTTP-Referer is
-            # required; title + categories are optional.
-            # https://openrouter.ai/docs/app-attribution
-            "HTTP-Referer": settings.FRONTEND_URL,
-            "X-OpenRouter-Title": "GAIA",
-            "X-OpenRouter-Categories": "personal-agent,general-chat",
-        },
-        # Reasoning on by default; provider auto-routed. Overridden per request via
-        # the configurable `extra_body` (e.g. plan routing pins the MiniMax provider).
-        extra_body=OPENROUTER_DEFAULT_EXTRA_BODY,
+        # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
+        # these as dedicated params (NOT `default_headers`, which it forwards to
+        # send_async and crashes on). https://openrouter.ai/docs/app-attribution
+        app_url=settings.FRONTEND_URL,
+        app_title="GAIA",
+        app_categories=["personal-agent", "general-chat"],
+        reasoning=OPENROUTER_REASONING,
     ).configurable_fields(
         model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
-        extra_body=ConfigurableField(
-            id="extra_body",
-            name="Extra body",
-            description="OpenRouter request extras (reasoning + provider routing)",
+        reasoning=ConfigurableField(
+            id="reasoning",
+            name="Reasoning",
+            description="OpenRouter reasoning effort (per-agent thinking budget)",
+        ),
+        model_kwargs=ConfigurableField(
+            id="model_kwargs",
+            name="Model kwargs",
+            description="Extra OpenRouter request params (e.g. provider routing pin)",
         ),
     )
 

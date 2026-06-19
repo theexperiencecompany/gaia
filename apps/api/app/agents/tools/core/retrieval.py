@@ -97,6 +97,10 @@ def _is_platform_tool_space(tool_space: str) -> bool:
 _RETRIEVE_TOOLS_BASE_DOC = """\
 Discover and load tools for execution. Supports two modes: discovery and binding.
 
+REQUIRED: pass exactly ONE of `query` (to discover by intent) or `exact_tool_names`
+(to bind known names). Calling with NEITHER argument is invalid and errors out. If
+you are looking for a capability, pass query="what you want to do".
+
 —DISCOVERY MODE (query)
 Semantic search that returns tool names matching your intent. Tools are NOT loaded yet.
 
@@ -119,6 +123,12 @@ Step 2: retrieve_tools(exact_tool_names=["TOOL_A"]) → bind for execution
 Step 3: Call the tool directly
 
 Shortcut: If you already know the exact tool name, skip Step 1 and go straight to binding.
+
+IF DISCOVERY RETURNS A SUBAGENT (a name starting with "subagent:"): SKIP Step 2
+entirely. Subagents are NOT bound. Go straight to handoff(subagent_id="gmail",
+task="..."). Do NOT call retrieve_tools again to "bind" it, and never call
+retrieve_tools with an empty exact_tool_names. Trying to bind a subagent is the
+single most common mistake here: there is no bind step for a subagent.
 
 —EFFICIENCY RULES (follow these strictly)
 - Do not call retrieve_tools more than twice for a single task unless the first discovery returned completely irrelevant results
@@ -173,8 +183,12 @@ _RETRIEVE_TOOLS_SUBAGENT_SECTION = """
 —SUBAGENT TOOLS
 Discovery may also return subagent tools alongside regular tools.
 - Subagent tool format: "subagent:gmail", "subagent:fb9dfd7e05f8"
-- Subagent tools require delegation via the `handoff` tool
-- They cannot be executed directly"""
+- To USE a subagent, call handoff(subagent_id="gmail", task="...") directly.
+- Do NOT pass subagent names back to retrieve_tools, and do NOT try to "bind" them
+  with exact_tool_names. Subagents are never bound, only handed off to; there is no
+  binding step, handoff works immediately on the subagent id (the part after
+  "subagent:").
+- They cannot be executed directly as tools."""
 
 
 class RetrieveToolsResult(TypedDict):
@@ -551,8 +565,20 @@ def get_retrieve_tools_function(
             or config.get("metadata", {}).get("user_id"),
         )
         if not query and not exact_tool_names:
-            raise ValueError(
-                "Either 'query' (for discovery) or 'exact_tool_names' (for binding) is required."
+            # A no-usable-argument call (commonly retrieve_tools(exact_tool_names=[]),
+            # an empty list) must NOT crash the run — that aborts the whole executor
+            # turn over a recoverable model slip. Return a corrective hint so the
+            # caller self-corrects on its next step instead.
+            return RetrieveToolsResult(
+                tools_to_bind=[],
+                response=[
+                    "retrieve_tools received no usable argument (an empty "
+                    "exact_tool_names counts as none). Next step: pass "
+                    "query='what you want to do' to discover, or "
+                    "exact_tool_names=['TOOL_NAME'] to bind a known tool. To use a "
+                    "subagent (a 'subagent:' result), do NOT call retrieve_tools "
+                    "again; call handoff(subagent_id='gmail', task='...') directly."
+                ],
             )
 
         tool_registry = await get_tool_registry()

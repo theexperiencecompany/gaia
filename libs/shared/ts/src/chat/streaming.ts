@@ -256,6 +256,7 @@ export type ChatStreamEvent =
     }
   | { type: "tool_data"; entry: StreamToolDataEntry }
   | { type: "tool_output"; output: StreamToolOutput }
+  | { type: "reasoning"; content: string; subagent_id?: string }
   | { type: "todo_progress"; snapshot: TodoProgressSnapshot }
   | { type: "follow_up_actions"; actions: string[] }
   | { type: "subagent_start"; payload: SubagentStartPayload }
@@ -377,6 +378,20 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
               ? payload.tool_output.subagent_id
               : undefined,
         },
+      });
+    }
+  }
+
+  if (isObject(payload.reasoning)) {
+    const content = payload.reasoning.content;
+    if (typeof content === "string" && content.length > 0) {
+      events.push({
+        type: "reasoning",
+        content,
+        subagent_id:
+          typeof payload.reasoning.subagent_id === "string"
+            ? payload.reasoning.subagent_id
+            : undefined,
       });
     }
   }

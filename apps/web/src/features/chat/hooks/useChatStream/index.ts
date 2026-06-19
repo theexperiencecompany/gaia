@@ -14,6 +14,7 @@ import type { MessageType } from "@/types/features/convoTypes";
 import fetchDate from "@/utils/date/dateUtils";
 import { useLoadingText } from "../useLoadingText";
 import { createConversationInitHandlers } from "./conversationInit";
+import { hasExecutorDelegation } from "./executorDelegation";
 import { createIMessage, createMessageHelpers } from "./messageBuilder";
 import { createPersistenceHelpers } from "./persistence";
 import { createStreamHandlers } from "./streamHandlers";
@@ -334,10 +335,9 @@ export const useChatStream = () => {
       // A turn that delegated to a background executor (tool_category "executor")
       // delivers its real answer later via a `conversation.new_message` event.
       // Keep the turn visually "in progress" until that arrives.
-      const delegatedToExecutor =
-        refs.current.botMessage?.tool_data?.some(
-          (e) => (e as { tool_category?: string }).tool_category === "executor",
-        ) ?? false;
+      const delegatedToExecutor = hasExecutorDelegation(
+        refs.current.botMessage?.tool_data,
+      );
 
       const conversationId = resolveConversationId();
 

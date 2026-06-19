@@ -10,7 +10,7 @@ import type {
 } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { SubagentRow, ToolCallRow } from "./SubagentRow";
+import { StepRow, SubagentRow } from "./SubagentRow";
 
 /**
  * Unified timeline item — either a regular tool call or a subagent invocation.
@@ -73,14 +73,20 @@ export default function UnifiedToolThread({
 
   // Total tool count (root-level + all nested subagent tool calls)
   const totalToolCount = useMemo(() => {
+    // Thinking steps (entries carrying `reasoning`) are not tools — exclude them
+    // from the "Used N tools" count.
     const countSubagent = (sg: EnrichedSubagentGroup): number => {
-      let n = sg.tool_calls.length;
+      let n = sg.tool_calls.filter((tc) => tc.reasoning == null).length;
       for (const nested of sg.nested_subagents) n += countSubagent(nested);
       return n;
     };
     let count = 0;
     for (const item of timeline) {
-      count += item.kind === "tool" ? 1 : countSubagent(item.data);
+      if (item.kind === "tool") {
+        if (item.data.reasoning == null) count += 1;
+      } else {
+        count += countSubagent(item.data);
+      }
     }
     return count;
   }, [timeline]);
@@ -91,6 +97,8 @@ export default function UnifiedToolThread({
     const uniqueIcons: { category: string; iconUrl?: string }[] = [];
 
     for (const item of timeline) {
+      // Thinking steps have no tool icon — keep them out of the stacked icons.
+      if (item.kind === "tool" && item.data.reasoning != null) continue;
       const cat =
         item.kind === "tool"
           ? item.data.tool_category || "general"
@@ -189,7 +197,7 @@ export default function UnifiedToolThread({
 
               if (item.kind === "tool") {
                 return (
-                  <ToolCallRow
+                  <StepRow
                     key={`tc-${item.data.tool_call_id || idx}`}
                     call={item.data}
                     isLast={isLast}

@@ -87,6 +87,9 @@ async def _execute_executor(
     Tool events stream to the session's collector via make_redis_stream_writer
     so the terminal path can persist the executor's tool_data. Never raises —
     errors come back as ("...", "error").
+
+    The executor inherits the comms agent's model/provider/reasoning from
+    ``configurable`` (free -> Gemini, paid -> MiniMax M3), so no override here.
     """
     try:
         ctx, error = await prepare_executor_execution(

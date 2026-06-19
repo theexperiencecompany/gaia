@@ -47,6 +47,32 @@ def _capture_finish_task_content(chunk: ToolMessage, current_message: str) -> st
     return current_message
 
 
+def _extract_reasoning_delta(chunk: AIMessageChunk) -> str:
+    """Pull this chunk's reasoning ("thinking") text, model-agnostic.
+
+    ChatOpenRouter surfaces reasoning as standard ``reasoning`` content blocks;
+    other providers (DeepSeek-style) put it in ``additional_kwargs.reasoning_content``.
+    Returns "" when the chunk carries no thinking (e.g. non-reasoning models), so
+    the caller emits nothing for them.
+    """
+    parts: list[str] = []
+    for block in getattr(chunk, "content_blocks", None) or []:
+        block_type = block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
+        if block_type == "reasoning":
+            text = (
+                block.get("reasoning")
+                if isinstance(block, dict)
+                else getattr(block, "reasoning", "")
+            )
+            if text:
+                parts.append(text)
+    if not parts:
+        fallback = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content")
+        if fallback:
+            parts.append(fallback if isinstance(fallback, str) else str(fallback))
+    return "".join(parts)
+
+
 class SubagentExecutionContext:
     """Container for all data needed to execute a subagent."""
 
@@ -218,6 +244,18 @@ async def execute_subagent_stream(
                 content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
                 if content:
                     complete_message += content
+
+                # Stream the model's thinking interleaved with tool events, so the
+                # UI can show what it reasoned about between each step. Carries the
+                # subagent_id so the client nests it in the right step (same routing
+                # as tool_data/tool_output). Empty for non-reasoning models.
+                if stream_writer:
+                    reasoning_delta = _extract_reasoning_delta(chunk)
+                    if reasoning_delta:
+                        reasoning_event: dict = {"content": reasoning_delta}
+                        if subagent_id:
+                            reasoning_event["subagent_id"] = subagent_id
+                        stream_writer({"reasoning": reasoning_event})
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
