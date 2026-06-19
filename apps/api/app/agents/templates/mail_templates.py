@@ -416,6 +416,70 @@ def draft_template(draft_data: dict[str, Any]) -> dict[str, Any]:
 
 
 # Process tool responses
+def build_message_view(
+    raw: dict[str, Any],
+    fields: Any = None,
+    body_processing: str = "none",
+) -> dict[str, Any]:
+    """Project a raw Gmail API message to only the requested fields.
+
+    Single source of truth for per-message field selection. Used by
+    ``process_list_messages_response`` (minimal field set, raw body) and by
+    ``GMAIL_FETCH_INBOX_SUMMARY`` (caller-supplied fields + body processing
+    mode).
+
+    Args:
+        raw: Raw Gmail API message object (the same shape consumed by
+            ``minimal_message_template`` and ``detailed_message_template``).
+        fields: List of fields to include. ``None`` or an empty list means
+            "all fields" (parity with ``detailed_message_template``). Pass a
+            non-empty list to constrain the output.
+        body_processing: One of ``"normalize"``, ``"raw"``, ``"none"``.
+            ``"normalize"`` runs ``normalize_email_body`` over the body,
+            which strips signatures / disclaimers / unsubscribe footers /
+            utm tracking chains (quoted replies are kept). ``"raw"`` keeps
+            the untouched body. ``"none"`` drops the body entirely,
+            regardless of whether ``"body"`` is listed in ``fields``.
+    """
+    # Reuse the existing detailed template as the base — it already produces
+    # the full set of fields. We project to `fields` afterwards so the
+    # caller's selection is honored uniformly.
+    view = detailed_message_template(raw)
+
+    # Body processing. "none" drops the body entirely; "normalize" cleans it;
+    # "raw" leaves it untouched.
+    if body_processing == "none":
+        view.pop("body", None)
+    elif body_processing == "normalize" and view.get("body"):
+        from app.utils.email_body_normalizer import normalize_email_body
+
+        view["body"] = normalize_email_body(view["body"])
+
+    # `None` or an empty list both mean "all fields" (the documented contract).
+    if not fields:
+        return view
+
+    return {key: view[key] for key in fields if key in view}
+
+
+# Fields surfaced per message in a list response: metadata plus the raw body
+# text, matching the historical minimal_message_template output. Deliberately
+# excludes the HTML `content` blob and `cc` to keep the LLM payload small.
+_LIST_VIEW_FIELDS = [
+    "id",
+    "threadId",
+    "from",
+    "to",
+    "subject",
+    "snippet",
+    "time",
+    "isRead",
+    "hasAttachment",
+    "body",
+    "labels",
+]
+
+
 def process_list_messages_response(response: dict[str, Any]) -> dict[str, Any]:
     """Process the response from list_gmail_messages tool to minimize data."""
     processed_response = {
@@ -425,7 +489,8 @@ def process_list_messages_response(response: dict[str, Any]) -> dict[str, Any]:
 
     if "messages" in response:
         processed_response["messages"] = [
-            minimal_message_template(msg, short_body=False) for msg in response.get("messages", [])
+            build_message_view(msg, fields=_LIST_VIEW_FIELDS, body_processing="raw")
+            for msg in response.get("messages", [])
         ]
 
     if "error" in response:

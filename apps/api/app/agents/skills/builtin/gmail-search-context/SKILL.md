@@ -69,6 +69,21 @@ result = spawn_subagent(
 )
 ```
 
+## Inbox scan shortcut — GMAIL_FETCH_INBOX_SUMMARY
+
+For "show me today's mail" / "what came in this week" / "unread from last 7 days" — use `GMAIL_FETCH_INBOX_SUMMARY` instead of `GMAIL_FETCH_EMAILS` + manual pagination.
+
+```
+result = GMAIL_FETCH_INBOX_SUMMARY(timeframe="today", query="is:unread")
+# → up to 100 messages for today, paginated server-side.
+# → When aggregate > 60KB, the tool writes a JSONL file to the session
+#   workspace and returns a digest + path. Use bash/jq/grep to mine it:
+#     jq -r 'select(.from | contains("github")) | .subject' <path>
+#     grep -i 'invoice' <path>
+```
+
+`timeframe` accepts: `today`, `yesterday`, `tomorrow`, `this_week`, `last_week`, `next_week`, `1d`, `3d`, `5d`, `7d`, `1w`, `2w`, `1m`, `3m`, `6m`, `1y`. The query parameter is ANDed with the timeframe. Pass `fields=["body"]` (or remove from default) to control which fields appear; `body_processing="raw"` skips the boilerplate stripping.
+
 **Fetch ALL emails for a specific day:**
 
 Use `after:YYYY/MM/DD before:YYYY/MM/DD+1`. Parent orchestrates pagination — spawn a subagent per page, each returning a digest + token. Parent spawns the next only when a token is returned:

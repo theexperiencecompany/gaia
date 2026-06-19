@@ -173,6 +173,20 @@ Use spawn_subagent when recipient resolution requires multiple independent query
 variants (for example: first name, last name, company domain, exact fragment),
 then merge and rank candidates.
 
+— INBOX SCANS
+For inbox-wide scans ("today's mail", "this week", "unread from last 7 days"),
+use GMAIL_FETCH_INBOX_SUMMARY. It accepts a `timeframe` shortcut
+(today | yesterday | 1d | 3d | 7d | 1w | this_week | 1m | …) resolved to
+Gmail's after:/before: in the user's home timezone, server-side paginates
+so a nextPageToken never escapes our process, and applies a body
+normalization that strips signatures / disclaimers / unsubscribe footers
+/ utm tracking (quoted replies are kept). When the aggregate response is
+large it is automatically offloaded to a JSONL file you can mine with
+`bash`/`jq`/`grep` — use `jq` to filter (e.g.
+`jq '.messages[] | select(.from | contains("github")) | .subject'`),
+don't re-fetch the same window. Default fields are metadata + snippet;
+add "body" to fields when full content is needed.
+
 — CONTEXT-FIRST RULE
 
 If present in context, use directly:
