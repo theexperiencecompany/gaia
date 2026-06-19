@@ -21,7 +21,26 @@ const expandTransition = {
 
 // ── Top-level tool call row ─────────────────────────────────────────────────
 
-export function ToolCallRow({
+// A `read` of a markdown file returns line-numbered text (`    12\t# Heading`),
+// whose number+tab prefix stops the content from parsing as markdown. For the
+// display card, strip that prefix so skill files (SKILL.md) and other .md reads
+// render as real markdown. The agent still receives the numbered version.
+const MARKDOWN_READ_PATH = /\.(md|markdown|mdx)$/i;
+function displayToolOutput(call: ToolCallEntry): unknown {
+  const { output, inputs } = call;
+  if (call.tool_name === "read" && typeof output === "string") {
+    const path =
+      inputs && typeof inputs === "object"
+        ? String((inputs as { path?: unknown }).path ?? "")
+        : "";
+    if (MARKDOWN_READ_PATH.test(path)) {
+      return output.replace(/^ *\d+\t/gm, "");
+    }
+  }
+  return output;
+}
+
+function ToolCallRow({
   call,
   isLast,
   getIconUrl,
@@ -141,7 +160,7 @@ export function ToolCallRow({
                     <span className="text-zinc-500 font-medium mb-1">
                       Output
                     </span>
-                    <CompactMarkdown content={call.output} />
+                    <CompactMarkdown content={displayToolOutput(call)} />
                   </div>
                 )}
               </div>

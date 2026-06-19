@@ -1,26 +1,76 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
+import type { Components } from "streamdown";
+import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { formatJsonLikeString, normalizeValue } from "@/utils/jsonFormatters";
 
 interface CompactMarkdownProps {
   content: unknown;
 }
 
+// Compact heading/list/spacing scale for the tool-output card. Everything else
+// (GFM, tables, syntax-highlighted code, links, math) comes from the canonical
+// MarkdownRenderer, so there's ONE markdown pipeline instead of two. These
+// overrides win over MarkdownRenderer's chat-bubble defaults because Tailwind
+// Typography styles via zero-specificity :where(), and the merged `components`
+// map applies ours last.
+const COMPACT_COMPONENTS: Components = {
+  h1: ({ ...props }) => (
+    <h1
+      className="mt-2 mb-1 text-base font-semibold text-zinc-100 first:mt-0"
+      {...props}
+    />
+  ),
+  h2: ({ ...props }) => (
+    <h2
+      className="mt-2 mb-1 text-sm font-semibold text-zinc-200 first:mt-0"
+      {...props}
+    />
+  ),
+  h3: ({ ...props }) => (
+    <h3
+      className="mt-1.5 mb-0.5 text-[13px] font-semibold text-zinc-200 first:mt-0"
+      {...props}
+    />
+  ),
+  h4: ({ ...props }) => (
+    <h4
+      className="mt-1.5 mb-0.5 text-xs font-semibold text-zinc-300 first:mt-0"
+      {...props}
+    />
+  ),
+  h5: ({ ...props }) => (
+    <h5
+      className="mt-1.5 mb-0.5 text-[11px] font-semibold text-zinc-400 first:mt-0"
+      {...props}
+    />
+  ),
+  h6: ({ ...props }) => (
+    <h6
+      className="mt-1.5 mb-0.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500 first:mt-0"
+      {...props}
+    />
+  ),
+  p: ({ ...props }) => <p className="mb-1 last:mb-0" {...props} />,
+  ul: ({ ...props }) => (
+    <ul className="my-1 list-disc space-y-0.5 pl-4" {...props} />
+  ),
+  ol: ({ ...props }) => (
+    <ol className="my-1 list-decimal space-y-0.5 pl-4" {...props} />
+  ),
+  li: ({ ...props }) => <li className="leading-snug" {...props} />,
+};
+
 /**
- * Compact display for structured data and markdown content.
- * Accepts any value and automatically formats it appropriately:
- * - Objects/Arrays: Pretty-printed JSON
- * - Strings that look like JSON: Formatted with indentation (even if truncated)
- * - Other strings: Markdown rendering
+ * Compact display for structured data and markdown content in tool-output cards.
+ * - Objects/Arrays or JSON-like strings: pretty-printed in a <pre>.
+ * - Other strings: markdown via the shared MarkdownRenderer, scaled compact.
  */
 export function CompactMarkdown({ content }: CompactMarkdownProps) {
   const { data, isStructured } = normalizeValue(content);
 
-  // For structured data, render as preformatted text
+  // Structured data isn't markdown — keep the pretty-printed JSON view.
   if (isStructured) {
-    // If data is already a string (e.g., truncated JSON), format it
-    // Otherwise, pretty-print the object/array
     const displayText =
       typeof data === "string"
         ? formatJsonLikeString(data)
@@ -33,56 +83,14 @@ export function CompactMarkdown({ content }: CompactMarkdownProps) {
     );
   }
 
-  // For text content, use react-markdown
-  const textContent = String(data);
-
   return (
-    <div className="bg-zinc-900/50 rounded-xl p-3 max-h-60 overflow-y-auto text-xs text-zinc-400 leading-relaxed w-fit max-w-prose">
-      <ReactMarkdown
-        components={{
-          p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline font-normal"
-            >
-              {children}
-            </a>
-          ),
-          strong: ({ children }) => (
-            <strong className="font-semibold">{children}</strong>
-          ),
-          em: ({ children }) => <em>{children}</em>,
-          code: ({ children }) => (
-            <code className="bg-zinc-800 px-1 py-0.5 rounded text-[11px]">
-              {children}
-            </code>
-          ),
-          pre: ({ children }) => (
-            <pre className="bg-zinc-800 rounded p-2 my-1 overflow-x-auto text-[11px] whitespace-pre-wrap">
-              {children}
-            </pre>
-          ),
-          ul: ({ children }) => <ul className="list-disc pl-4">{children}</ul>,
-          ol: ({ children }) => (
-            <ol className="list-decimal pl-4">{children}</ol>
-          ),
-          li: ({ children }) => <li>{children}</li>,
-          h1: ({ children }) => (
-            <h1 className="font-semibold mb-1">{children}</h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="font-semibold mb-1">{children}</h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="font-medium mb-1">{children}</h3>
-          ),
-        }}
-      >
-        {textContent}
-      </ReactMarkdown>
+    <div className="bg-zinc-900/50 rounded-xl p-3 max-h-60 overflow-y-auto w-fit max-w-prose">
+      <MarkdownRenderer
+        content={String(data)}
+        className="text-xs text-zinc-400 leading-relaxed"
+        hideCodeToolbar
+        components={COMPACT_COMPONENTS}
+      />
     </div>
   );
 }
