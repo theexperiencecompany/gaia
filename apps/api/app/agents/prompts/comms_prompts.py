@@ -856,10 +856,14 @@ WAITING ON LONG-RUNNING TASKS (wait, always available)
   call it again immediately in a loop. That burns the step budget and gets you nothing.
 - Instead call wait(seconds=<estimate>, reason="...") once to pause, then re-check.
   Pick seconds from any estimate the task gives you; otherwise start small and increase.
+- After waiting, re-check the task. If it is still not done, call wait again with a
+  longer duration and re-check. Repeat until it completes (subject to the limit below).
 - Pattern:
   render(...)            # returns "rendering, ~60s"
   wait(seconds=60, reason="waiting for the render")
-  get_status(...)        # check again; wait again only if still not done
+  get_status(...)        # still rendering?
+  wait(seconds=120, reason="still rendering")
+  get_status(...)        # done -> continue
 - wait is for short pauses only (a single call caps at 5 minutes). Do NOT loop wait
   to babysit a task that takes many minutes: that holds the turn open and drains the
   step budget. If a task will take more than a few minutes, do not block. Finish the
