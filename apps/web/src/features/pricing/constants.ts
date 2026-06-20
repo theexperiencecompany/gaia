@@ -8,7 +8,7 @@ export const MONTHS_PER_YEAR = 12;
 export const CENTS_PER_DOLLAR = 100;
 
 /** Discount every paid annual plan carries versus paying monthly. */
-export const ANNUAL_DISCOUNT_RATE = 0.25;
+const ANNUAL_DISCOUNT_RATE = 0.25;
 
 /**
  * Fraction of the monthly list price an annual plan actually charges
