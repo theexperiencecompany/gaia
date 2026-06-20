@@ -79,8 +79,13 @@ export function PricingCard({
   hasActiveSubscription,
   isPro = false,
 }: PricingCardProps) {
-  const { perMonthDollars, priceSubLine, showSavings, monthsFree } =
-    getPriceDisplay(price, originalPrice, durationIsMonth);
+  const {
+    perMonthDollars,
+    yearlyTotalDollars,
+    priceSubLine,
+    showSavings,
+    monthsFree,
+  } = getPriceDisplay(price, originalPrice, durationIsMonth);
 
   const {
     createSubscriptionAndRedirect,
@@ -216,6 +221,14 @@ export function PricingCard({
           >
             {priceSubLine}
           </TextMorph>
+          {!!yearlyTotalDollars && (
+            <>
+              <span aria-hidden className="size-1 rounded-full bg-zinc-600" />
+              <span className="text-sm font-normal text-zinc-400">
+                ${yearlyTotalDollars.toLocaleString()}
+              </span>
+            </>
+          )}
           {showSavings && (
             <Chip color="success" size="sm" variant="flat">
               {monthsFree} months free
@@ -262,7 +275,7 @@ export function PricingCard({
       {/* Features — flex-1 so both cards fill remaining height equally */}
       <div className="flex flex-1 flex-col gap-2.5 px-6 py-5">
         {!!featuresHeading && (
-          <span className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <span className="mb-1 text-sm font-medium text-zinc-500">
             {featuresHeading}
           </span>
         )}

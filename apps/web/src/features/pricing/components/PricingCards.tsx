@@ -113,12 +113,23 @@ export function PricingCards({
     return a.amount - b.amount;
   });
 
+  // Size the whole block (cards + Enterprise bar) so each tier keeps the width
+  // it would have in a 3-column layout: a 2-tier lineup uses a 2-column grid in
+  // a ~2xl block, a 3-tier lineup the full 5xl. The Enterprise bar is w-full, so
+  // it always spans the exact width of the cards above it.
+  const tierCount = sortedPlans.length;
+  const blockWidthClass =
+    tierCount >= 3 ? "max-w-5xl" : tierCount === 2 ? "max-w-2xl" : "max-w-sm";
+  const gridColsClass =
+    tierCount >= 3
+      ? "sm:grid-cols-3"
+      : tierCount === 2
+        ? "sm:grid-cols-2"
+        : "sm:grid-cols-1";
+
   return (
-    <div className="flex w-full max-w-5xl flex-col gap-3">
-      {/* Each tier keeps the width it would have in a 3-column layout
-          ((100% - 2 gaps) / 3); the columns are centered as a group so a
-          2-tier lineup stays centered instead of stretching or left-aligning. */}
-      <div className="grid grid-cols-1 items-stretch justify-center gap-3 sm:grid-flow-col sm:auto-cols-[calc((100%-1.5rem)/3)] sm:grid-cols-none">
+    <div className={`mx-auto flex w-full flex-col gap-3 ${blockWidthClass}`}>
+      <div className={`grid grid-cols-1 items-stretch gap-3 ${gridColsClass}`}>
         {sortedPlans.map((plan: Plan, index: number) => {
           const isPro = plan.name.toLowerCase().includes("pro");
           // Free leads its list with "Includes:"; each paid tier builds on the
