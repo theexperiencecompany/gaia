@@ -1,6 +1,6 @@
 """ChromaDB cleanup utilities for integration lifecycle management."""
 
-from app.constants.cache import SUBAGENT_CACHE_PREFIX
+from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX, SUBAGENT_CACHE_PREFIX
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import delete_tools_by_namespace
 from app.db.redis import delete_cache
@@ -51,10 +51,12 @@ async def cleanup_integration_chroma_data(
     except Exception as e:
         log.warning(f"Failed to delete tools for namespace '{namespace}': {e}")
 
-    # 3. Invalidate caches
+    # 3. Invalidate caches: namespace hash + the per-integration name caches
+    # (subagent_info and handoff_name both embed the display name).
     try:
         await delete_cache(f"chroma:indexed:{namespace}")
         await delete_cache(f"{SUBAGENT_CACHE_PREFIX}:{integration_id}")
+        await delete_cache(f"{HANDOFF_NAME_CACHE_PREFIX}:{integration_id}")
         results["cache"] = True
     except Exception as e:
         log.warning(f"Failed to invalidate cache for namespace '{namespace}': {e}")

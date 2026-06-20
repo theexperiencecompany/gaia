@@ -7,12 +7,13 @@ from bson import ObjectId
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import get_integration_by_id
-from app.constants.cache import ONE_DAY_TTL
+from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
     users_collection,
 )
+from app.db.redis import delete_cache
 from app.db.utils import serialize_document
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
@@ -142,7 +143,54 @@ async def get_connected_integration_ids(user_id: str) -> set[str]:
     }
 
 
-@CacheInvalidator(key_patterns=["tools:user:{user_id}:*", "tool_namespaces:{user_id}"])
+@Cacheable(key_pattern="tools:user:{user_id}:connected_named", ttl=ONE_DAY_TTL)
+async def get_connected_integrations_named(user_id: str) -> list[dict[str, str]]:
+    """Connected integration ids paired with their display name (platform + custom).
+
+    Platform names resolve from the in-memory OAuth config; custom MCP names (whose
+    ids are UUIDs and are absent from that config) come from a single batched
+    catalog query rather than degrading to a bare id. Used to render the
+    agent-facing connected-integrations manifest. Cached and invalidated on the
+    same ``tools:user:{user_id}:*`` family as the other per-user integration
+    caches, so connect/disconnect is reflected immediately.
+    """
+    connected = sorted(await get_connected_integration_ids(user_id))
+    if not connected:
+        return []
+
+    names: dict[str, str] = {}
+    unresolved: list[str] = []
+    for iid in connected:
+        integration = get_integration_by_id(iid)
+        if integration:
+            names[iid] = integration.name
+        else:
+            unresolved.append(iid)
+
+    if unresolved:
+        async for doc in integrations_collection.find(
+            {"integration_id": {"$in": unresolved}}, {"integration_id": 1, "name": 1}
+        ):
+            if name := doc.get("name"):
+                names[str(doc["integration_id"])] = name
+
+    return [{"id": iid, "name": names.get(iid, iid)} for iid in connected]
+
+
+async def invalidate_user_integration_caches(user_id: str) -> None:
+    """Bust every cache derived from this user's integration set.
+
+    The imperative twin of the ``@CacheInvalidator(USER_INTEGRATION_CACHE_PATTERNS)``
+    on the canonical mutators, for paths that change a user's integrations without
+    going through them (e.g. direct ``user_integrations_collection`` writes). Uses
+    the SAME pattern list so no caller can bust a partial set and let one cache
+    (e.g. OAUTH_STATUS) drift out of sync with the others.
+    """
+    for pattern in USER_INTEGRATION_CACHE_PATTERNS:
+        await delete_cache(pattern.format(user_id=user_id))
+
+
+@CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)
 async def add_user_integration(
     user_id: str,
     integration_id: str,
@@ -184,7 +232,7 @@ async def add_user_integration(
     return user_integration
 
 
-@CacheInvalidator(key_patterns=["tools:user:{user_id}:*", "tool_namespaces:{user_id}"])
+@CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)
 async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     """Remove an integration from user's workspace."""
     log.set(integration={"provider": integration_id, "action": "remove_user_integration"})
