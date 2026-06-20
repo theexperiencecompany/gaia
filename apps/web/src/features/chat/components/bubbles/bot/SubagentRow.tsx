@@ -29,11 +29,13 @@ const MARKDOWN_READ_PATH = /\.(md|markdown|mdx)$/i;
 function displayToolOutput(call: ToolCallEntry): unknown {
   const { output, inputs } = call;
   if (call.tool_name === "read" && typeof output === "string") {
-    const path =
+    const rawPath =
       inputs && typeof inputs === "object"
-        ? String((inputs as { path?: unknown }).path ?? "")
-        : "";
-    if (MARKDOWN_READ_PATH.test(path)) {
+        ? (inputs as { path?: unknown }).path
+        : undefined;
+    // Only a string path can be a markdown filename; anything else (objects,
+    // numbers) must not be coerced — `String({})` would yield "[object Object]".
+    if (typeof rawPath === "string" && MARKDOWN_READ_PATH.test(rawPath)) {
       return output.replace(/^ *\d+\t/gm, "");
     }
   }

@@ -229,6 +229,24 @@ class CreateReminderToolRequest(BaseModel):
                 raise ValueError("Timezone offset must be in (+|-)HH:MM format")
         return v
 
+    @staticmethod
+    def _parse_local_datetime(
+        raw: str, offset: str | None, home_tz: Timezone, field_name: str
+    ) -> datetime:
+        """Parse an absolute clock time, localizing to ``offset`` or the home zone.
+
+        A value carrying its own offset is converted to that zone; a naive value
+        is stamped with the explicit offset if given, else the user's home zone.
+        """
+        try:
+            dt = datetime.fromisoformat(raw.replace(" ", "T"))
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid {field_name} format: {raw}. Use YYYY-MM-DD HH:MM:SS format. Error: {e}"
+            )
+        tzinfo = Timezone.parse(offset).tzinfo if offset else home_tz.tzinfo
+        return dt.astimezone(tzinfo) if dt.tzinfo is not None else dt.replace(tzinfo=tzinfo)
+
     def to_create_reminder_request(self) -> "CreateReminderRequest":
         """Convert to CreateReminderRequest with proper datetime handling.
 
@@ -244,37 +262,15 @@ class CreateReminderToolRequest(BaseModel):
             # simply now + delay, independent of any zone.
             processed_scheduled_at = datetime.now(UTC) + timedelta(seconds=self.delay_seconds)
         elif self.scheduled_at:
-            try:
-                dt = datetime.fromisoformat(self.scheduled_at.replace(" ", "T"))
-                tzinfo = (
-                    Timezone.parse(self.timezone_offset).tzinfo
-                    if self.timezone_offset
-                    else home_tz.tzinfo
-                )
-                processed_scheduled_at = (
-                    dt.astimezone(tzinfo) if dt.tzinfo is not None else dt.replace(tzinfo=tzinfo)
-                )
-            except ValueError as e:
-                raise ValueError(
-                    f"Invalid scheduled_at format: {self.scheduled_at}. Use YYYY-MM-DD HH:MM:SS format. Error: {e}"
-                )
+            processed_scheduled_at = self._parse_local_datetime(
+                self.scheduled_at, self.timezone_offset, home_tz, "scheduled_at"
+            )
 
         processed_stop_after = None
         if self.stop_after:
-            try:
-                dt = datetime.fromisoformat(self.stop_after.replace(" ", "T"))
-                tzinfo = (
-                    Timezone.parse(self.stop_after_timezone_offset).tzinfo
-                    if self.stop_after_timezone_offset
-                    else home_tz.tzinfo
-                )
-                processed_stop_after = (
-                    dt.astimezone(tzinfo) if dt.tzinfo is not None else dt.replace(tzinfo=tzinfo)
-                )
-            except ValueError as e:
-                raise ValueError(
-                    f"Invalid stop_after format: {self.stop_after}. Use YYYY-MM-DD HH:MM:SS format. Error: {e}"
-                )
+            processed_stop_after = self._parse_local_datetime(
+                self.stop_after, self.stop_after_timezone_offset, home_tz, "stop_after"
+            )
 
         # Recurrence wall-clock zone: an explicitly stated offset wins, else the
         # user's home zone (None only if the agent config had no zone -> UTC).

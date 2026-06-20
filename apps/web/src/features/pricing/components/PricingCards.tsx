@@ -118,14 +118,15 @@ export function PricingCards({
   // a ~2xl block, a 3-tier lineup the full 5xl. The Enterprise bar is w-full, so
   // it always spans the exact width of the cards above it.
   const tierCount = sortedPlans.length;
-  const blockWidthClass =
-    tierCount >= 3 ? "max-w-5xl" : tierCount === 2 ? "max-w-2xl" : "max-w-sm";
-  const gridColsClass =
-    tierCount >= 3
-      ? "sm:grid-cols-3"
-      : tierCount === 2
-        ? "sm:grid-cols-2"
-        : "sm:grid-cols-1";
+  let blockWidthClass = "max-w-sm";
+  let gridColsClass = "sm:grid-cols-1";
+  if (tierCount >= 3) {
+    blockWidthClass = "max-w-5xl";
+    gridColsClass = "sm:grid-cols-3";
+  } else if (tierCount === 2) {
+    blockWidthClass = "max-w-2xl";
+    gridColsClass = "sm:grid-cols-2";
+  }
 
   return (
     <div className={`mx-auto flex w-full flex-col gap-3 ${blockWidthClass}`}>

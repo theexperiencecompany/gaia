@@ -39,8 +39,8 @@ export function useWebSocketConnection() {
       return () => {
         wsManager.disconnect();
       };
-    } else {
     }
+    // No signed-in user: nothing to connect, so no cleanup either.
     return undefined;
   }, [user?.email]);
 

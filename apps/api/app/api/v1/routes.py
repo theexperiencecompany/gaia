@@ -50,7 +50,7 @@ router = APIRouter()
 
 router.include_router(voice.router, tags=["Voice"])
 router.include_router(chat.router, tags=["Chat"])
-router.include_router(desktop.router, tags=["Desktop"])
+router.include_router(desktop.router)
 router.include_router(conversations.router, tags=["Conversations"])
 router.include_router(sessions.router)
 router.include_router(feedback.router, tags=["Feedback"])

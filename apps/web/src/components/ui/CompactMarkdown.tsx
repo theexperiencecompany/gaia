@@ -15,41 +15,53 @@ interface CompactMarkdownProps {
 // Typography styles via zero-specificity :where(), and the merged `components`
 // map applies ours last.
 const COMPACT_COMPONENTS: Components = {
-  h1: ({ ...props }) => (
+  h1: ({ children, ...props }) => (
     <h1
       className="mt-2 mb-1 text-base font-semibold text-zinc-100 first:mt-0"
       {...props}
-    />
+    >
+      {children}
+    </h1>
   ),
-  h2: ({ ...props }) => (
+  h2: ({ children, ...props }) => (
     <h2
       className="mt-2 mb-1 text-sm font-semibold text-zinc-200 first:mt-0"
       {...props}
-    />
+    >
+      {children}
+    </h2>
   ),
-  h3: ({ ...props }) => (
+  h3: ({ children, ...props }) => (
     <h3
       className="mt-1.5 mb-0.5 text-[13px] font-semibold text-zinc-200 first:mt-0"
       {...props}
-    />
+    >
+      {children}
+    </h3>
   ),
-  h4: ({ ...props }) => (
+  h4: ({ children, ...props }) => (
     <h4
       className="mt-1.5 mb-0.5 text-xs font-semibold text-zinc-300 first:mt-0"
       {...props}
-    />
+    >
+      {children}
+    </h4>
   ),
-  h5: ({ ...props }) => (
+  h5: ({ children, ...props }) => (
     <h5
       className="mt-1.5 mb-0.5 text-[11px] font-semibold text-zinc-400 first:mt-0"
       {...props}
-    />
+    >
+      {children}
+    </h5>
   ),
-  h6: ({ ...props }) => (
+  h6: ({ children, ...props }) => (
     <h6
       className="mt-1.5 mb-0.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500 first:mt-0"
       {...props}
-    />
+    >
+      {children}
+    </h6>
   ),
   p: ({ ...props }) => <p className="mb-1 last:mb-0" {...props} />,
   ul: ({ ...props }) => (

@@ -41,7 +41,7 @@ export function SkillEditorModal({
   onSaved,
   targets,
   skill,
-}: SkillEditorModalProps) {
+}: Readonly<SkillEditorModalProps>) {
   const isEdit = skill !== null;
 
   const [mode, setMode] = useState<"write" | "import">("write");

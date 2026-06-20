@@ -5,6 +5,8 @@ Provides REST API for installing, creating, listing, and managing
 installable agent skills (Agent Skills open standard).
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
 from app.agents.core.subagents.registry import get_subagent_by_id
@@ -71,9 +73,9 @@ async def _validate_target(user_id: str, target: str) -> None:
         )
 
 
-@router.get("/targets", response_model=SkillTargetsResponse)
+@router.get("/targets")
 async def list_skill_targets_endpoint(
-    user_id: str = Depends(_get_user_id),
+    user_id: Annotated[str, Depends(_get_user_id)],
 ) -> SkillTargetsResponse:
     """List the targets a skill can run in: the executor plus the user's
     connected integration subagents."""
@@ -83,9 +85,9 @@ async def list_skill_targets_endpoint(
     return SkillTargetsResponse(targets=targets)
 
 
-@router.get("/builtin", response_model=BuiltinSkillsResponse)
+@router.get("/builtin")
 async def list_builtin_skills_endpoint(
-    user_id: str = Depends(_get_user_id),
+    user_id: Annotated[str, Depends(_get_user_id)],
 ) -> BuiltinSkillsResponse:
     """List the read-only built-in skills shipped with GAIA, grouped by the
     agent they run in. Each carries a `connected` flag so the UI can deactivate
@@ -102,17 +104,19 @@ async def list_builtin_skills_endpoint(
             return True
         return subagent_id in connected_ids
 
+    def _group_label(subagent_id: str) -> str:
+        if subagent_id == EXECUTOR_SUBAGENT_ID:
+            return EXECUTOR_TARGET_LABEL
+        subagent = get_subagent_by_id(subagent_id)
+        return subagent.name if subagent else subagent_id
+
     skills = [
         BuiltinSkillInfo(
             slug=s.slug,
             name=s.name,
             description=s.description,
             target=s.target,
-            group_label=(
-                EXECUTOR_TARGET_LABEL
-                if s.subagent_id == EXECUTOR_SUBAGENT_ID
-                else (sa.name if (sa := get_subagent_by_id(s.subagent_id)) else s.subagent_id)
-            ),
+            group_label=_group_label(s.subagent_id),
             icon=s.subagent_id,
             connected=_is_available(s.subagent_id),
             body=s.body,
@@ -275,12 +279,12 @@ async def create_inline_skill_endpoint(
         ) from e
 
 
-@router.put("/{skill_id}", response_model=Skill)
+@router.put("/{skill_id}")
 @tiered_rate_limit("skill_operations")
 async def update_skill_endpoint(
     skill_id: str,
     request: SkillUpdateRequest,
-    user_id: str = Depends(_get_user_id),
+    user_id: Annotated[str, Depends(_get_user_id)],
 ) -> Skill:
     """Edit an existing skill's description, instructions, and/or target.
 

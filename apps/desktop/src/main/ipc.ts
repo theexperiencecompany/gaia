@@ -61,10 +61,11 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
     onWindowReady();
   });
 
-  ipcMain.on(IPC.openExternal, (_event, url: string) => {
+  ipcMain.on(IPC.openExternal, (_event, url: unknown) => {
+    if (typeof url !== "string") return;
     console.log("[Main] Opening external URL:", url);
     if (url.startsWith("https://") || url.startsWith("http://")) {
-      shell.openExternal(url);
+      void shell.openExternal(url);
     }
   });
 

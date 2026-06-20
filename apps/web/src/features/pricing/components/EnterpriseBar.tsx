@@ -11,7 +11,7 @@ interface EnterpriseBarProps {
   ctaHref: string;
 }
 
-export function EnterpriseBar({ plan, ctaHref }: EnterpriseBarProps) {
+export function EnterpriseBar({ plan, ctaHref }: Readonly<EnterpriseBarProps>) {
   const router = useRouter();
 
   return (

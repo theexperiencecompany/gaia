@@ -20,7 +20,7 @@ interface SkillImportFormProps {
 export function SkillImportForm({
   targets,
   onInstalled,
-}: SkillImportFormProps) {
+}: Readonly<SkillImportFormProps>) {
   const [target, setTarget] = useState(EXECUTOR_TARGET);
   const [repoUrl, setRepoUrl] = useState("");
   const [discovering, setDiscovering] = useState(false);

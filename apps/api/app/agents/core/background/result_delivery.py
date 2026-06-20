@@ -190,25 +190,14 @@ async def _narrate_and_deliver(
     is_ws_path = not run.workflow_id and not is_bot_platform(conversation_source)
 
     if not is_ws_path:
-        # Follow-ups are a best-effort enhancement. A failure in this second LLM
-        # call must not abort delivery — the outer deliver_result handler turns any
-        # exception into (None, None) and drops the result, so guard it here and
-        # ship the message without suggestions instead.
-        try:
-            follow_up_actions = await _build_follow_up_actions(
-                msg_type=result_type,
-                notification_text=notification_text,
-                user_msg_content=user_msg_content,
-                user_id=user_id,
-            )
-        except Exception as e:  # noqa: BLE001 — follow-ups are best-effort
-            log.error(
-                "deliver_result: failed to generate follow-up actions",
-                error=str(e),
-                conversation_id=run.conversation_id,
-                message_id=bot_message.message_id,
-            )
-            follow_up_actions = []
+        follow_up_actions = await _safe_inline_follow_ups(
+            result_type=result_type,
+            notification_text=notification_text,
+            user_msg_content=user_msg_content,
+            user_id=user_id,
+            conversation_id=run.conversation_id,
+            message_id=bot_message.message_id,
+        )
         if follow_up_actions:
             bot_message.follow_up_actions = follow_up_actions
 
@@ -289,6 +278,39 @@ async def _narrate_and_deliver(
         delivered=delivered,
     )
     return notification_text, bot_message.message_id
+
+
+async def _safe_inline_follow_ups(
+    *,
+    result_type: str,
+    notification_text: str,
+    user_msg_content: str,
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+) -> list[str]:
+    """Build follow-up actions for the single-send path, swallowing failures.
+
+    Follow-ups are a best-effort enhancement. A failure in this second LLM call
+    must not abort delivery — the outer deliver_result handler turns any exception
+    into (None, None) and drops the result, so guard it here and ship the message
+    without suggestions instead.
+    """
+    try:
+        return await _build_follow_up_actions(
+            msg_type=result_type,
+            notification_text=notification_text,
+            user_msg_content=user_msg_content,
+            user_id=user_id,
+        )
+    except Exception as e:  # noqa: BLE001 — follow-ups are best-effort
+        log.error(
+            "deliver_result: failed to generate follow-up actions",
+            error=str(e),
+            conversation_id=conversation_id,
+            message_id=message_id,
+        )
+        return []
 
 
 async def _build_follow_up_actions(

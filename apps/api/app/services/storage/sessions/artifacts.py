@@ -63,32 +63,42 @@ def _list_files(base: Path) -> list[ArtifactInfo]:
     out: list[ArtifactInfo] = []
     stack = [str(base)]
     while stack:
-        try:
-            with os.scandir(stack.pop()) as it:
-                for entry in it:
-                    try:
-                        if entry.is_symlink():
-                            continue
-                        if entry.is_dir(follow_symlinks=False):
-                            stack.append(entry.path)
-                            continue
-                        if not entry.is_file(follow_symlinks=False):
-                            continue
-                        st = entry.stat()
-                    except OSError:
-                        continue
-                    out.append(
-                        ArtifactInfo(
-                            path=os.path.relpath(entry.path, base),
-                            size_bytes=st.st_size,
-                            mtime=st.st_mtime,
-                            content_type=detect_content_type(entry.name),
-                        )
-                    )
-        except OSError:
-            continue
+        _scan_one_dir(stack.pop(), base, stack, out)
     out.sort(key=lambda a: a.path)
     return out
+
+
+def _scan_one_dir(dir_path: str, base: Path, stack: list[str], out: list[ArtifactInfo]) -> None:
+    """Scan a single directory: queue subdirs onto ``stack``, append files to ``out``.
+
+    Symlinks are skipped and never followed into directories, so the walk can't be
+    redirected outside ``base``. Per-entry and per-directory errors are swallowed so
+    a racing or hostile entry can't 500 the whole listing.
+    """
+    try:
+        with os.scandir(dir_path) as it:
+            for entry in it:
+                try:
+                    if entry.is_symlink():
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(entry.path)
+                        continue
+                    if not entry.is_file(follow_symlinks=False):
+                        continue
+                    st = entry.stat()
+                except OSError:
+                    continue
+                out.append(
+                    ArtifactInfo(
+                        path=os.path.relpath(entry.path, base),
+                        size_bytes=st.st_size,
+                        mtime=st.st_mtime,
+                        content_type=detect_content_type(entry.name),
+                    )
+                )
+    except OSError:
+        return
 
 
 async def list_artifacts(user_id: str, conv_id: str) -> list[ArtifactInfo]:

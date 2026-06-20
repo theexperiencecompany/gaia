@@ -24,7 +24,7 @@ export function WhatsNewRecentReleases({
   releases,
   currentIndex,
   onSelect,
-}: WhatsNewRecentReleasesProps) {
+}: Readonly<WhatsNewRecentReleasesProps>) {
   // `releases` is ordered most-recent-first, so the first N are the latest and
   // each item's position in the slice equals its index in the full list.
   const recent = releases.slice(0, RECENT_COUNT);

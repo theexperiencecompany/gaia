@@ -49,12 +49,10 @@ function getPriceDisplay(
   // Savings vs paying monthly (originalPrice = 12× the monthly rate).
   const savePercent =
     originalPrice && price ? Math.round((1 - price / originalPrice) * 100) : 0;
-  const priceSubLine =
-    price === 0
-      ? "Free forever"
-      : yearlyTotalDollars
-        ? "Billed yearly"
-        : "Billed monthly";
+  let priceSubLine: string;
+  if (price === 0) priceSubLine = "Free forever";
+  else if (yearlyTotalDollars) priceSubLine = "Billed yearly";
+  else priceSubLine = "Billed monthly";
   return {
     perMonthDollars,
     yearlyTotalDollars,
@@ -158,6 +156,35 @@ export function PricingCard({
   // A signed-in user with no active paid subscription is on the Free plan.
   const isOnFreePlan = !!user && !hasActiveSubscription;
 
+  const renderCta = () => {
+    if (!isFree) {
+      return (
+        <RaisedButton
+          className="w-full text-black!"
+          color="#00bbff"
+          onClick={handleGetStarted}
+          disabled={
+            isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
+          }
+        >
+          {getButtonText()}
+        </RaisedButton>
+      );
+    }
+    if (isOnFreePlan) {
+      return (
+        <Button isDisabled className="w-full" variant="flat">
+          Current Plan
+        </Button>
+      );
+    }
+    return (
+      <Button className="w-full" variant="flat" onPress={handleGetStarted}>
+        Start for Free
+      </Button>
+    );
+  };
+
   return (
     <div
       className={[
@@ -244,32 +271,7 @@ export function PricingCard({
             <p className="text-sm text-red-400">{paymentError}</p>
           </div>
         )}
-        {isFree ? (
-          isOnFreePlan ? (
-            <Button isDisabled className="w-full" variant="flat">
-              Current Plan
-            </Button>
-          ) : (
-            <Button
-              className="w-full"
-              variant="flat"
-              onPress={handleGetStarted}
-            >
-              Start for Free
-            </Button>
-          )
-        ) : (
-          <RaisedButton
-            className="w-full text-black!"
-            color="#00bbff"
-            onClick={handleGetStarted}
-            disabled={
-              isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
-            }
-          >
-            {getButtonText()}
-          </RaisedButton>
-        )}
+        {renderCta()}
       </div>
 
       {/* Features — flex-1 so both cards fill remaining height equally */}

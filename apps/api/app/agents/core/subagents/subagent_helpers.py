@@ -138,9 +138,12 @@ async def create_agent_context_message(
 ) -> SystemMessage:
     """Build the dynamic-context system message for executor/subagent runs.
 
-    Carries everything that varies per request: user name, current time,
-    memories, installable skills, and (for subagents) provider metadata. This
-    is the message `manage_system_prompts_node` keeps only the latest of.
+    Carries everything that varies per request: user name, static home
+    timezone, memories, installable skills, and (for subagents) provider
+    metadata. Current time is NOT here — it lives in a HumanMessage built by
+    ``build_initial_messages`` so this system message stays byte-stable across
+    minute ticks. This is the message `manage_system_prompts_node` keeps only
+    the latest of.
 
     Args:
         configurable: The config["configurable"] dict from RunnableConfig.

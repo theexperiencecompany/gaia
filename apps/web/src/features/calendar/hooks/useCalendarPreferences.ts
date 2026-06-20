@@ -40,10 +40,9 @@ export const useCalendarPreferences = (
       const currentStore = useCalendarStore.getState().selectedCalendars;
 
       if (query.data && query.data.length > 0) {
-        // Always sync from backend when available
+        // Always sync from backend when available; skip if the store already matches.
         if (JSON.stringify(currentStore) !== JSON.stringify(query.data)) {
           setSelectedCalendars(query.data);
-        } else {
         }
       } else if (query.data && query.data.length === 0) {
         console.warn(

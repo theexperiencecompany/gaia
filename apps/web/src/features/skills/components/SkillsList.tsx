@@ -36,7 +36,7 @@ export function SkillsList({
   onEdit,
   onToggle,
   onDelete,
-}: SkillsListProps) {
+}: Readonly<SkillsListProps>) {
   const isSearching = query.trim().length > 0;
   const visible = isSearching
     ? skills.filter((s) => skillMatchesQuery(s.name, s.description, query))
@@ -134,10 +134,10 @@ export function SkillsList({
 function EmptyState({
   searching,
   onCreate,
-}: {
+}: Readonly<{
   searching: boolean;
   onCreate: () => void;
-}) {
+}>) {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl bg-zinc-900/60 px-6 py-14 text-center">
       <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-zinc-800">

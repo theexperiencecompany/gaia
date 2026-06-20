@@ -23,7 +23,7 @@ interface Group {
   skills: BuiltinSkillInfo[];
 }
 
-export function BuiltinSkillsList({ query }: BuiltinSkillsListProps) {
+export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
   const [skills, setSkills] = useState<BuiltinSkillInfo[] | null>(null);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<BuiltinSkillInfo | null>(null);

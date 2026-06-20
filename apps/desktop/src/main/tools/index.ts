@@ -20,14 +20,19 @@ import { captureScreenshot } from "./screenshot";
 export async function dispatchDesktopTool(
   request: DesktopToolRequest,
 ): Promise<DesktopToolResult> {
+  // request arrives from the wire — read identity defensively so a malformed
+  // frame still yields a serializable result instead of throwing past it.
+  const requestId =
+    typeof request?.request_id === "string" ? request.request_id : "";
+  const toolName = typeof request?.tool === "string" ? request.tool : "unknown";
   try {
     const data = await executeAction(request);
-    return { request_id: request.request_id, ok: true, data, error: null };
+    return { request_id: requestId, ok: true, data, error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[Main] Desktop tool '${request.tool}' failed:`, message);
+    console.error(`[Main] Desktop tool '${toolName}' failed:`, message);
     return {
-      request_id: request.request_id,
+      request_id: requestId,
       ok: false,
       data: null,
       error: message,

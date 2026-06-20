@@ -26,7 +26,7 @@ export function SkillTargetIcon({
   value,
   icon,
   size = 16,
-}: SkillTargetIconProps) {
+}: Readonly<SkillTargetIconProps>) {
   if (value === EXECUTOR_TARGET || icon === EXECUTOR_TARGET) {
     return (
       <AiMagicIcon

@@ -70,12 +70,12 @@ function ToastControls({
   action,
   showDismiss,
   state,
-}: {
+}: Readonly<{
   idRef: IdRef;
   action?: { label: string; onClick: () => void };
   showDismiss: boolean;
   state: ToastState;
-}) {
+}>) {
   const twoUp = !!action && showDismiss;
   return (
     <div className={twoUp ? "mt-2 grid grid-cols-2 gap-2" : "mt-2"}>
