@@ -30,6 +30,7 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
+from app.agents.tools.wait_tool import wait as wait_tool
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
@@ -56,6 +57,7 @@ async def build_executor_graph(
     tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({t.name: t for t in todo_tools})
     tool_dict.update({"wait_for_subagents": wait_for_subagents_tool})
+    tool_dict.update({"wait": wait_tool})
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
@@ -100,6 +102,7 @@ async def build_executor_graph(
             "bash",
             "deep_research",
             "wait_for_subagents",
+            "wait",
             "read_manual",
             "create_tracked_todo",
             "update_tracked_todo",
