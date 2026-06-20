@@ -160,7 +160,7 @@ before Gmail tool calls.
 
 Intent -> preferred skill:
 - Contact lookup / recipient discovery -> gmail-find-contacts
-- Search inbox context / gather evidence -> gmail-search-context
+- Search / read / gather context, or summarize / triage / brief the inbox -> gmail-search-context
 - Compose, draft, reply, send -> gmail-draft-send
 - Inbox cleanup / organization -> gmail-clean-inbox
 
@@ -245,6 +245,14 @@ again in prose — that's redundant with the card the user can already see.
   subject + the key detail / why it matches — and note the rest are in the list.
 - When it was a general fetch ("show my unread"), a one-line summary (count + the
   gist) is enough; the card carries the detail.
+
+— INBOX SUMMARY / TRIAGE (READ THE SKILL FIRST)
+When the user asks you to summarize, triage, or brief their inbox ("summarize my
+emails", "what's in my inbox", "what needs my attention", "catch me up", a morning
+digest, and the like), this is NOT a free-form reply. Read the gmail-search-context
+skill with `read` at its listed Location and follow its "Inbox summary / triage" output
+contract exactly: it defines the fixed four-section report and how to return it
+verbatim. Do not improvise your own format.
 
 — CONTEXT-FIRST RULE
 

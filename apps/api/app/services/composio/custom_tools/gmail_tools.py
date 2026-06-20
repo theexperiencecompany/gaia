@@ -7,6 +7,7 @@ The proxy attaches the user's OAuth token server-side; tools only need
 
 import datetime
 import json
+import math
 import re
 from typing import Any
 import uuid
@@ -21,12 +22,16 @@ from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import FetchInboxSummaryInput
 from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
+    CHUNK_TARGET_BYTES,
+    CHUNK_TARGET_MESSAGES,
     GMAIL_API_BASE,
     GMAIL_TOOLKIT,
     INLINE_LIMIT_CHARS,
     MAX_ABSOLUTE_MESSAGES,
+    MAX_READ_SUBAGENTS,
     OFFLOAD_DIR,
     OFFLOAD_FILE_PREFIX,
+    OFFLOAD_MIN_MESSAGES,
     OFFLOAD_PREVIEW_SIZE,
     TIMEFRAME_DEFAULT_MAX,
 )
@@ -339,6 +344,55 @@ def _offload_path() -> str:
     return f"{OFFLOAD_DIR}/{OFFLOAD_FILE_PREFIX}{ts}_{uuid.uuid4().hex[:8]}.jsonl"
 
 
+def _human_size(num_bytes: int) -> str:
+    """Format a byte count as a short human-readable string (KB/MB)."""
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    if num_bytes < 1024 * 1024:
+        return f"{num_bytes / 1024:.0f} KB"
+    return f"{num_bytes / (1024 * 1024):.1f} MB"
+
+
+def _build_read_plan(total_messages: int, file_size_bytes: int) -> dict[str, Any]:
+    """Split the offloaded JSONL into contiguous line-range chunks for parallel
+    subagent reads.
+
+    The file is one message per line, so a chunk maps directly to a
+    ``read(offset, limit)`` call. Chunk count is the larger of the by-message
+    and by-byte estimates (so both "many small" and "few huge" inboxes split
+    sensibly), capped at MAX_READ_SUBAGENTS.
+    """
+    if total_messages <= 0:
+        return {"total_lines": 0, "recommended_subagents": 0, "chunks": []}
+
+    by_messages = math.ceil(total_messages / CHUNK_TARGET_MESSAGES)
+    by_bytes = math.ceil(file_size_bytes / CHUNK_TARGET_BYTES) if file_size_bytes else 1
+    num_chunks = min(MAX_READ_SUBAGENTS, max(1, by_messages, by_bytes))
+
+    base, remainder = divmod(total_messages, num_chunks)
+    chunks: list[dict[str, Any]] = []
+    start = 1
+    for index in range(num_chunks):
+        count = base + (1 if index < remainder else 0)
+        if count == 0:
+            break
+        chunks.append(
+            {
+                "part": len(chunks) + 1,
+                "start_line": start,
+                "line_count": count,
+                "read": {"offset": start, "limit": count},
+            }
+        )
+        start += count
+
+    return {
+        "total_lines": total_messages,
+        "recommended_subagents": len(chunks),
+        "chunks": chunks,
+    }
+
+
 def _format_offload_result(
     messages: list[dict[str, Any]],
     *,
@@ -347,25 +401,34 @@ def _format_offload_result(
     conversation_id: str,
     field_count: int,
 ) -> dict[str, Any]:
-    """Write the messages to a session JSONL file and return the digest."""
+    """Write the messages to a session JSONL file and return a digest plus a
+    read-plan the subagent can fan out across parallel readers."""
     rel_path = _offload_path()
     body = "\n".join(json.dumps(m, default=str) for m in messages)
+    file_size_bytes = len(body.encode("utf-8"))
     _, sandbox_path = _write_session_file_sync(
         user_id=user_id,
         conversation_id=conversation_id,
         relative_path=rel_path,
         content=body,
     )
+    read_plan = _build_read_plan(len(messages), file_size_bytes)
     return {
-        "fetched_count": len(messages),
+        "total_messages": len(messages),
         "truncated": truncated,
         "offloaded_to": sandbox_path,
-        "inline_preview": messages[:OFFLOAD_PREVIEW_SIZE],
+        "file_size_bytes": file_size_bytes,
+        "file_size_human": _human_size(file_size_bytes),
         "field_count": field_count,
+        "inline_preview": messages[:OFFLOAD_PREVIEW_SIZE],
+        "read_plan": read_plan,
         "hint": (
-            f"Wrote {len(messages)} messages to {sandbox_path} (JSONL). Examples:\n"
-            f"  jq -r 'select(.from | contains(\"github\")) | .subject' {sandbox_path}\n"
-            f"  grep -i 'invoice' {sandbox_path}"
+            f"{len(messages)} messages ({_human_size(file_size_bytes)}) written to "
+            f"{sandbox_path} (JSONL, one message per line). Too large to read inline. "
+            f"Spawn {read_plan['recommended_subagents']} subagent(s) to read the line "
+            f"ranges in read_plan.chunks in parallel (read offset/limit), each "
+            f"triaging its slice, then merge. Or mine directly, e.g. "
+            f"jq -r 'select(.from | contains(\"github\")) | .subject' {sandbox_path}"
         ),
     }
 
@@ -408,7 +471,9 @@ def _summarize(
         return _format_partial_result(exc.partial_messages, reason=exc.reason)
 
     serialized = json.dumps({"messages": all_messages}, default=str)
-    if len(serialized) <= INLINE_LIMIT_CHARS:
+    over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
+    over_message_limit = len(all_messages) > OFFLOAD_MIN_MESSAGES
+    if not over_char_limit and not over_message_limit:
         return _format_inline_result(all_messages, truncated=truncated)
 
     conversation_id = _conversation_id(config)

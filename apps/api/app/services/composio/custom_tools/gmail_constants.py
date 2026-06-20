@@ -48,5 +48,18 @@ OFFLOAD_DIR = "gmail"
 OFFLOAD_FILE_PREFIX = "inbox_summary_"
 OFFLOAD_PREVIEW_SIZE = 10
 
+# Above this many aggregated messages we always offload to a JSONL file and
+# return a read-plan, even when the serialized payload fits under
+# INLINE_LIMIT_CHARS. Keeps large metadata-only scans out of the context window.
+OFFLOAD_MIN_MESSAGES = 50
+
+# Read-plan chunking: how an offloaded JSONL is split for parallel subagent
+# reads. The file is one message per line, so a chunk is a contiguous line
+# range a single subagent reads with `read(offset, limit)`. Chunk count is the
+# max of the by-message and by-byte estimates, capped at MAX_READ_SUBAGENTS.
+CHUNK_TARGET_MESSAGES = 25
+CHUNK_TARGET_BYTES = 50_000
+MAX_READ_SUBAGENTS = 4
+
 # How many days a "d"/"w"/"m"/"y" relative timeframe spans.
 _DAYS_PER_UNIT: dict[str, int] = {"d": 1, "w": 7, "m": 30, "y": 365}
