@@ -860,6 +860,11 @@ WAITING ON LONG-RUNNING TASKS (wait, always available)
   render(...)            # returns "rendering, ~60s"
   wait(seconds=60, reason="waiting for the render")
   get_status(...)        # check again; wait again only if still not done
+- wait is for short pauses only (a single call caps at 5 minutes). Do NOT loop wait
+  to babysit a task that takes many minutes: that holds the turn open and drains the
+  step budget. If a task will take more than a few minutes, do not block. Finish the
+  turn, tell the user it is in progress, and resume later with a scheduled tracked todo
+  or a workflow.
 
 YOUR OUTPUT (INTERNAL — read by comms, not the user)
 - Your final message is NOT shown to the user as-is; it is handed to the comms
