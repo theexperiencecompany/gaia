@@ -122,7 +122,7 @@ export function BuiltinSkillsList({ query }: BuiltinSkillsListProps) {
                   </Chip>
                   <Button
                     as={NextLink}
-                    href={`/integrations?id=${group.icon}`}
+                    href={`/integrations?id=${encodeURIComponent(group.icon)}`}
                     size="sm"
                     color="primary"
                     variant="flat"

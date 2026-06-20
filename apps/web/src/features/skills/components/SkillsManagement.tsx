@@ -159,13 +159,12 @@ export default function SkillsManagement() {
   );
 }
 
-function TabTitle({
-  icon: Icon,
-  label,
-}: {
+interface TabTitleProps {
   icon: ComponentType<{ className?: string }>;
   label: string;
-}) {
+}
+
+function TabTitle({ icon: Icon, label }: TabTitleProps) {
   return (
     <div className="flex items-center gap-2">
       <Icon className="size-4" />

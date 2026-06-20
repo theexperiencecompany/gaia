@@ -74,7 +74,7 @@ async def _validate_target(user_id: str, target: str) -> None:
 @router.get("/targets", response_model=SkillTargetsResponse)
 async def list_skill_targets_endpoint(
     user_id: str = Depends(_get_user_id),
-):
+) -> SkillTargetsResponse:
     """List the targets a skill can run in: the executor plus the user's
     connected integration subagents."""
     log.set(operation="list_skill_targets")
@@ -86,7 +86,7 @@ async def list_skill_targets_endpoint(
 @router.get("/builtin", response_model=BuiltinSkillsResponse)
 async def list_builtin_skills_endpoint(
     user_id: str = Depends(_get_user_id),
-):
+) -> BuiltinSkillsResponse:
     """List the read-only built-in skills shipped with GAIA, grouped by the
     agent they run in. Each carries a `connected` flag so the UI can deactivate
     skills whose owning integration the user hasn't connected."""
@@ -281,7 +281,7 @@ async def update_skill_endpoint(
     skill_id: str,
     request: SkillUpdateRequest,
     user_id: str = Depends(_get_user_id),
-):
+) -> Skill:
     """Edit an existing skill's description, instructions, and/or target.
 
     The skill name is immutable. Only the fields present in the request body are

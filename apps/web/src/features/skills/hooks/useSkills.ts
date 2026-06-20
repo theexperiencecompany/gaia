@@ -31,6 +31,9 @@ export function useSkills(): UseSkillsResult {
       ]);
       setSkills(list.skills);
       setTargets(targetsResponse.targets);
+    } catch {
+      // listSkills isn't silent, so the API interceptor already surfaces a
+      // toast; swallow here so the mount effect can't reject unhandled.
     } finally {
       setLoading(false);
     }

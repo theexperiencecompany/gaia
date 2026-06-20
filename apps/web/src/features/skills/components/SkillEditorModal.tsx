@@ -79,9 +79,11 @@ export function SkillEditorModal({
     return undefined;
   }, [description]);
 
+  // Name is immutable while editing, so its validity can't block a save
+  // (legacy skills may predate stricter name rules).
+  const nameValid = isEdit || (name.length > 0 && !nameError);
   const isValid =
-    name.length > 0 &&
-    !nameError &&
+    nameValid &&
     description.trim().length > 0 &&
     !descriptionError &&
     instructions.trim().length > 0;

@@ -25,8 +25,12 @@ export function SkillImportForm({
   const [repoUrl, setRepoUrl] = useState("");
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<DiscoveredSkill[] | null>(null);
+  const [discoverError, setDiscoverError] = useState(false);
   const [installingPath, setInstallingPath] = useState<string | null>(null);
   const [installingAll, setInstallingAll] = useState(false);
+
+  // No install (single or "Add all") may overlap another.
+  const installBusy = installingAll || installingPath !== null;
 
   const repoError = useMemo(() => {
     const repo = repoUrl.trim();
@@ -42,22 +46,29 @@ export function SkillImportForm({
     if (!repo) return;
     setDiscovering(true);
     setDiscovered(null);
+    setDiscoverError(false);
     try {
       const result = await skillsApi.discoverSkills(repo);
       setDiscovered(result.skills);
       if (result.skills.length === 0)
         toast.info("No skills found in that repo");
     } catch {
-      setDiscovered([]);
+      setDiscoverError(true);
     } finally {
       setDiscovering(false);
     }
   };
 
   const handleInstall = async (skill: DiscoveredSkill) => {
+    if (installBusy) return;
     setInstallingPath(skill.path);
     try {
-      await skillsApi.installFromGithub(skill.repo_url, skill.name, target);
+      await skillsApi.installFromGithub(
+        skill.repo_url,
+        skill.name,
+        skill.path,
+        target,
+      );
       toast.success(`Installed "${skill.name}"`);
       onInstalled();
     } catch {
@@ -68,13 +79,18 @@ export function SkillImportForm({
   };
 
   const handleInstallAll = async () => {
-    if (!discovered?.length) return;
+    if (installBusy || !discovered?.length) return;
     setInstallingAll(true);
     let installed = 0;
     // Sequential to stay friendly to GitHub rate limits and keep order stable.
     for (const skill of discovered) {
       try {
-        await skillsApi.installFromGithub(skill.repo_url, skill.name, target);
+        await skillsApi.installFromGithub(
+          skill.repo_url,
+          skill.name,
+          skill.path,
+          target,
+        );
         installed += 1;
       } catch {
         // Skip ones that fail (e.g. already installed); keep going.
@@ -137,6 +153,7 @@ export function SkillImportForm({
               variant="flat"
               className="rounded-xl"
               isLoading={installingAll}
+              isDisabled={installBusy && !installingAll}
               startContent={
                 installingAll ? undefined : <PlusSignIcon className="size-4" />
               }
@@ -163,6 +180,7 @@ export function SkillImportForm({
                   variant="flat"
                   className="rounded-xl"
                   isLoading={installingPath === skill.path}
+                  isDisabled={installBusy && installingPath !== skill.path}
                   startContent={
                     installingPath === skill.path ? undefined : (
                       <PlusSignIcon className="size-4" />
@@ -177,11 +195,19 @@ export function SkillImportForm({
           </div>
         </>
       )}
-      {discovered !== null && discovered.length === 0 && !discovering && (
+      {discoverError && (
         <p className="text-center text-xs text-zinc-500">
-          No skills found in that repository.
+          Couldn't reach that repository. Check the name and try again.
         </p>
       )}
+      {!discoverError &&
+        discovered !== null &&
+        discovered.length === 0 &&
+        !discovering && (
+          <p className="text-center text-xs text-zinc-500">
+            No skills found in that repository.
+          </p>
+        )}
     </div>
   );
 }

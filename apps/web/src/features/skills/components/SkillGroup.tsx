@@ -43,6 +43,7 @@ export function SkillGroup({
           type="button"
           onClick={toggle}
           aria-label={`${open ? "Collapse" : "Expand"} ${label}`}
+          aria-expanded={open}
           className="absolute inset-0 cursor-pointer"
         />
         <div

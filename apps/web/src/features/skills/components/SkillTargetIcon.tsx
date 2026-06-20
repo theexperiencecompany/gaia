@@ -46,14 +46,10 @@ export function SkillTargetIcon({
     );
   }
 
-  return (
-    <>
-      {getToolCategoryIcon(icon, {
-        size,
-        width: size,
-        height: size,
-        showBackground: false,
-      })}
-    </>
-  );
+  return getToolCategoryIcon(icon, {
+    size,
+    width: size,
+    height: size,
+    showBackground: false,
+  });
 }

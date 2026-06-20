@@ -14,6 +14,7 @@ both the per-agent user skills cache and the composed skills text cache.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from pymongo import ReturnDocument
@@ -289,7 +290,7 @@ async def disable_skill(user_id: str, skill_id: str) -> bool:
 
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
-async def update_skill(user_id: str, skill_id: str, fields: dict) -> Skill | None:
+async def update_skill(user_id: str, skill_id: str, fields: dict[str, Any]) -> Skill | None:
     """Patch metadata fields on an existing skill and return the updated record.
 
     Always stamps ``updated_at``. Scoped to ``{_id, user_id}`` so a user can only

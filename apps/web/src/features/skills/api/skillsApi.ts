@@ -67,15 +67,18 @@ export const skillsApi = {
     );
   },
 
-  /** Install a skill from a GitHub repo by name (auto-discovers its path). */
+  /** Install a skill from a GitHub repo using its exact discovered path
+   * (avoids picking the wrong skill when a repo has duplicate names). */
   installFromGithub: async (
     repoUrl: string,
     skillName: string,
+    skillPath: string,
     target?: string,
   ): Promise<Skill> => {
     const params = new URLSearchParams({
       repo_url: repoUrl,
       skill_name: skillName,
+      skill_path: skillPath,
     });
     if (target) params.set("target", target);
     return await apiService.post<Skill>(
