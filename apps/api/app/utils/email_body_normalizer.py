@@ -90,8 +90,6 @@ _INVISIBLE_RE = re.compile("[" + re.escape(_INVISIBLE_CHARS) + "]")
 
 # Multiple blank lines → one
 _MULTI_BLANK_RE = re.compile(r"\n{3,}")
-# Trailing whitespace on each line
-_TRAILING_WS_RE = re.compile(r"[ \t]+$", re.MULTILINE)
 
 # An actual HTML tag: ``<tag ...>`` / ``</tag>`` / ``<tag/>``. The tag name must
 # follow ``<`` (or ``</``) immediately, so prose like ``a < b > c`` or ``<3``
@@ -180,7 +178,10 @@ def _clean_url(match: re.Match[str]) -> str:
 def collapse_whitespace(body: str) -> str:
     """Collapse multiple blank lines, strip trailing whitespace, drop invisible chars."""
     body = _INVISIBLE_RE.sub("", body)
-    body = _TRAILING_WS_RE.sub("", body)
+    # Strip trailing spaces/tabs per line with plain string ops. A `[ \t]+$`
+    # regex is polynomial (O(n^2)) on long all-whitespace lines (Sonar S5852);
+    # rstrip per line is linear and equivalent.
+    body = "\n".join(line.rstrip(" \t") for line in body.split("\n"))
     body = _MULTI_BLANK_RE.sub("\n\n", body)
     return body.strip()
 
