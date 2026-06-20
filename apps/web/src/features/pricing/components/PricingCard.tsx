@@ -12,6 +12,7 @@ import { useUser } from "@/features/auth/hooks/useUser";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
+import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
 
 interface PricingCardProps {
@@ -38,10 +39,12 @@ function getPriceDisplay(
   const isPaidTier = price > 0;
   const perMonthDollars =
     !durationIsMonth && isPaidTier
-      ? Math.round(price / 12 / 100)
-      : Math.round(price / 100);
+      ? Math.round(price / MONTHS_PER_YEAR / CENTS_PER_DOLLAR)
+      : Math.round(price / CENTS_PER_DOLLAR);
   const yearlyTotalDollars =
-    !durationIsMonth && isPaidTier ? Math.round(price / 100) : null;
+    !durationIsMonth && isPaidTier
+      ? Math.round(price / CENTS_PER_DOLLAR)
+      : null;
   // Savings vs paying monthly (originalPrice = 12× the monthly rate).
   const savePercent =
     originalPrice && price ? Math.round((1 - price / originalPrice) * 100) : 0;
@@ -57,7 +60,7 @@ function getPriceDisplay(
     priceSubLine,
     showSavings: !!yearlyTotalDollars && savePercent > 0,
     // 25% off a year = pay for 9 months, get 12 → 3 months free.
-    monthsFree: Math.round((savePercent / 100) * 12),
+    monthsFree: Math.round((savePercent / 100) * MONTHS_PER_YEAR),
   };
 }
 

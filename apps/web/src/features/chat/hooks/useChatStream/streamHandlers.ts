@@ -4,6 +4,7 @@ import {
   parseChatStreamEvent,
   type SubagentEndPayload,
   type SubagentStartPayload,
+  TOOL_CALLS_DATA_TOOL_NAME,
   upsertTodoProgressToolData,
 } from "@shared/chat";
 import {
@@ -138,7 +139,10 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
 
     // Route tool_calls_data entries into the matching subagent group by event's own subagent_id.
-    if (toolData.subagent_id && toolData.tool_name === "tool_calls_data") {
+    if (
+      toolData.subagent_id &&
+      toolData.tool_name === TOOL_CALLS_DATA_TOOL_NAME
+    ) {
       const updatedToolData = updateSubagentInToolData(
         existingToolData,
         toolData.subagent_id,
@@ -156,7 +160,7 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
     // Root-level tool_data entry — append and (only for tool_calls_data) surface
     // the loading indicator.
     updateBotMessage({ tool_data: [...existingToolData, toolData] });
-    if (toolData.tool_name === "tool_calls_data") {
+    if (toolData.tool_name === TOOL_CALLS_DATA_TOOL_NAME) {
       applyToolDataLoadingHints(toolData.data);
     }
     persistIfReady();
@@ -192,7 +196,7 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
     // step list) so it flows through the root timeline like a tool call.
     const last = existingToolData[existingToolData.length - 1];
     const lastSteps =
-      last?.tool_name === "tool_calls_data" && Array.isArray(last.data)
+      last?.tool_name === TOOL_CALLS_DATA_TOOL_NAME && Array.isArray(last.data)
         ? (last.data as ToolCallEntry[])
         : undefined;
     const trailing = lastSteps?.[lastSteps.length - 1];
@@ -205,7 +209,7 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
       updateBotMessage({ tool_data: merged });
     } else {
       const entry: ToolDataEntry = {
-        tool_name: "tool_calls_data",
+        tool_name: TOOL_CALLS_DATA_TOOL_NAME,
         tool_category: REASONING_CATEGORY,
         data: [makeReasoningStep(content)],
         timestamp: new Date().toISOString(),

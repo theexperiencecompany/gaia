@@ -4,6 +4,7 @@ import { Skeleton } from "@heroui/skeleton";
 import { useUser } from "@/features/auth/hooks/useUser";
 
 import type { Plan } from "../api/pricingApi";
+import { ANNUAL_PRICE_RETENTION } from "../constants";
 import { usePricing } from "../hooks/usePricing";
 import { convertToUSDCents } from "../utils/currencyConverter";
 import { EnterpriseBar } from "./EnterpriseBar";
@@ -112,19 +113,26 @@ export function PricingCards({
     return a.amount - b.amount;
   });
 
+  // Match the column count to the number of priced tiers so the row stays
+  // centered (2 tiers → 2 columns, 3 tiers → 3 columns) instead of leaving an
+  // empty trailing column.
+  const gridColsClass =
+    sortedPlans.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2";
+
   return (
     <div className="flex w-full max-w-5xl flex-col gap-3">
-      <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3">
+      <div className={`grid grid-cols-1 items-stretch gap-3 ${gridColsClass}`}>
         {sortedPlans.map((plan: Plan) => {
           const isPro = plan.name.toLowerCase().includes("pro");
           // Convert any currency to USD cents for display
           const priceInUSDCents = convertToUSDCents(plan.amount, plan.currency);
 
-          // Every paid annual plan carries the same 25% discount, so the
-          // pre-discount price (what 12 monthly payments would cost) is price / 0.75.
+          // Every paid annual plan carries the same discount, so the pre-discount
+          // price (what 12 monthly payments would cost) is the annual price
+          // divided by the retained fraction.
           const originalPriceInUSDCents =
             !durationIsMonth && plan.amount > 0
-              ? Math.round(priceInUSDCents / 0.75)
+              ? Math.round(priceInUSDCents / ANNUAL_PRICE_RETENTION)
               : undefined;
 
           // Determine if this is the user's current plan (only when authenticated)

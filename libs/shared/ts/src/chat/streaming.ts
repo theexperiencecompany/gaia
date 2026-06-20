@@ -202,6 +202,12 @@ export interface StreamToolDataEntry {
   subagent_id?: string;
 }
 
+/**
+ * tool_name marking a streamed tool-call-progress entry. These render via the
+ * unified tool thread (not the per-tool renderers) and carry reasoning deltas.
+ */
+export const TOOL_CALLS_DATA_TOOL_NAME = "tool_calls_data";
+
 export interface StreamToolOutput {
   tool_call_id: string;
   output: string;
@@ -571,7 +577,7 @@ export function upsertTodoProgressToolData<T extends StreamToolDataEntry>(
 export function extractToolProgressMessage(
   entry: StreamToolDataEntry,
 ): string | null {
-  if (entry.tool_name !== "tool_calls_data") return null;
+  if (entry.tool_name !== TOOL_CALLS_DATA_TOOL_NAME) return null;
   if (!isObject(entry.data)) return null;
   return typeof entry.data.message === "string" ? entry.data.message : null;
 }

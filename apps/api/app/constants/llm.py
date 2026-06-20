@@ -8,9 +8,10 @@ SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
 DEFAULT_MAX_TOKENS = 1_000_000
-DEFAULT_MODEL_NAME = "gemini-3.1-flash-lite"
-# Direct Gemini API model
+# Direct Gemini API model name.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
+# Default model for free / unspecified configs — always the Gemini model above.
+DEFAULT_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
 # Per-plan model policy (hardcoded; not user-selectable). Free accounts run the

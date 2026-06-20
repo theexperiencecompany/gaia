@@ -39,13 +39,14 @@ export default function SendStopButton({
     }
   };
 
-  // Icons inherit `currentColor`, so the button's text color (transitioned)
-  // animates the icon color on every state change.
-  const contentColor = showStop
-    ? "text-zinc-300"
+  // One source of truth for the button's look per state: the HeroUI background
+  // (`color`) and the icon color (icons inherit `currentColor`, transitioned)
+  // are decided in a single branch so they can never drift apart.
+  const { bg, contentColor } = showStop
+    ? ({ bg: "default", contentColor: "text-zinc-300" } as const)
     : hasContent
-      ? "text-black"
-      : "text-zinc-500";
+      ? ({ bg: "primary", contentColor: "text-black" } as const)
+      : ({ bg: "default", contentColor: "text-zinc-500" } as const);
 
   return (
     <Button
@@ -62,7 +63,7 @@ export default function SendStopButton({
           ? "h-9 min-h-9 gap-1.5 rounded-xl px-3"
           : `${className} ${showStop ? "cursor-pointer" : ""}`
       }`}
-      color={!showStop && hasContent ? "primary" : "default"}
+      color={bg}
       disabled={!isStreaming && !hasContent}
       radius="full"
       type="submit"

@@ -1,3 +1,4 @@
+import { TOOL_CALLS_DATA_TOOL_NAME } from "@shared/chat";
 import React from "react";
 
 import {
@@ -32,7 +33,7 @@ function bucketToolData(
   tool_data?.forEach((entry) => {
     const toolName = entry.tool_name;
 
-    if (toolName === "tool_calls_data") {
+    if (toolName === TOOL_CALLS_DATA_TOOL_NAME) {
       // tool_calls_data is rendered via UnifiedToolThread, not via TOOL_RENDERERS.
       const calls = Array.isArray(entry.data)
         ? (entry.data as ToolCallEntry[])
