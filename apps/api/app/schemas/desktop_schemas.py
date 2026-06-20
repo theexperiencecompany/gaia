@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Generous cap (~16 MB of base64) for the screenshot image fields. A 1568px
 # long-edge PNG is well under this; the bound only rejects abusive payloads
@@ -29,6 +29,20 @@ class DesktopToolResultRequest(BaseModel):
                 if isinstance(blob, str) and len(blob) > MAX_RESULT_IMAGE_B64_CHARS:
                     raise ValueError(f"'{key}' exceeds the maximum allowed size")
         return value
+
+    @model_validator(mode="after")
+    def _enforce_result_contract(self) -> "DesktopToolResultRequest":
+        """Reject ambiguous payloads so the bridge contract stays unambiguous.
+
+        Success carries data and no error; failure carries an error and no data.
+        """
+        if self.ok and self.error:
+            raise ValueError("'error' must be omitted when ok is true")
+        if not self.ok and not self.error:
+            raise ValueError("'error' is required when ok is false")
+        if not self.ok and self.data is not None:
+            raise ValueError("'data' must be omitted when ok is false")
+        return self
 
 
 class DesktopToolResultResponse(BaseModel):

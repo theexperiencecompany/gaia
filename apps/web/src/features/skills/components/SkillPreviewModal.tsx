@@ -31,7 +31,10 @@ interface SkillPreviewModalProps {
 }
 
 /** Read-only preview of a skill's SKILL.md — shared by Your Skills and Built-in. */
-export function SkillPreviewModal({ skill, onClose }: SkillPreviewModalProps) {
+export function SkillPreviewModal({
+  skill,
+  onClose,
+}: Readonly<SkillPreviewModalProps>) {
   return (
     <Modal
       isOpen={skill !== null}

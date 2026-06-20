@@ -86,7 +86,7 @@ function appendReasoningStep(
   steps: ToolCallEntry[],
   content: string,
 ): ToolCallEntry[] {
-  const last = steps[steps.length - 1];
+  const last = steps.at(-1);
   if (last?.reasoning != null) {
     return [
       ...steps.slice(0, -1),

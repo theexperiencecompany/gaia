@@ -35,11 +35,9 @@ export function useComposerSendMode(hasContent: boolean) {
       streamingConversationId === activeConversationId);
   const showQueue = isStreaming && hasContent;
   const showStop = isStreaming && !hasContent;
-  const mode: ComposerSendMode = showStop
-    ? "stop"
-    : showQueue
-      ? "queue"
-      : "send";
+  let mode: ComposerSendMode = "send";
+  if (showStop) mode = "stop";
+  else if (showQueue) mode = "queue";
 
   return { isStreaming, showQueue, showStop, mode };
 }

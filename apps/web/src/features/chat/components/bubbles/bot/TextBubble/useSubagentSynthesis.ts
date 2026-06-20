@@ -80,7 +80,7 @@ function bucketToolData(
 function coalesceReasoning(calls: ToolCallEntry[]): ToolCallEntry[] {
   const out: ToolCallEntry[] = [];
   for (const tc of calls) {
-    const prev = out[out.length - 1];
+    const prev = out.at(-1);
     if (tc.reasoning != null && prev?.reasoning != null) {
       out[out.length - 1] = {
         ...prev,
@@ -98,7 +98,7 @@ function coalesceReasoning(calls: ToolCallEntry[]): ToolCallEntry[] {
 function coalesceTimelineReasoning(timeline: TimelineItem[]): TimelineItem[] {
   const out: TimelineItem[] = [];
   for (const item of timeline) {
-    const prev = out[out.length - 1];
+    const prev = out.at(-1);
     if (
       item.kind === "tool" &&
       item.data.reasoning != null &&

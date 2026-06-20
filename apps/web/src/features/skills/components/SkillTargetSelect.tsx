@@ -15,7 +15,7 @@ export function SkillTargetSelect({
   targets,
   value,
   onChange,
-}: SkillTargetSelectProps) {
+}: Readonly<SkillTargetSelectProps>) {
   return (
     <Select
       label="Runs in"

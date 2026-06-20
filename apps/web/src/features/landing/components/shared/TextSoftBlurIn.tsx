@@ -43,11 +43,15 @@ function splitText(text: string, splitBy: "char" | "word"): string[] {
   return Array.from(text);
 }
 
+// Each char carries its global index (`gid`) so the render can key on a stable
+// identity instead of the per-word map index (noArrayIndexKey / Sonar S6479).
+type CharCell = { ch: string; gid: number };
+
 function groupIntoWords(
   chars: string[],
-): { chars: string[]; start: number; isSpace: boolean }[] {
-  const groups: { chars: string[]; start: number; isSpace: boolean }[] = [];
-  let word: string[] = [];
+): { chars: CharCell[]; start: number; isSpace: boolean }[] {
+  const groups: { chars: CharCell[]; start: number; isSpace: boolean }[] = [];
+  let word: CharCell[] = [];
   let wordStart = 0;
 
   for (let i = 0; i < chars.length; i++) {
@@ -57,10 +61,10 @@ function groupIntoWords(
         groups.push({ chars: word, start: wordStart, isSpace: false });
         word = [];
       }
-      groups.push({ chars: [ch], start: i, isSpace: true });
+      groups.push({ chars: [{ ch, gid: i }], start: i, isSpace: true });
     } else {
       if (word.length === 0) wordStart = i;
-      word.push(ch);
+      word.push({ ch, gid: i });
     }
   }
   if (word.length > 0) {
@@ -96,33 +100,27 @@ function TextInner({
   buildCharStyle,
   innerRef,
   baseId,
-}: {
+}: Readonly<{
   parts: string[];
   splitBy: "char" | "word";
   gradient?: string;
   buildCharStyle: (idx: number) => CSSProperties;
   innerRef?: React.RefObject<HTMLSpanElement | null>;
   baseId?: string;
-}) {
+}>) {
   if (splitBy === "char") {
     return (
       <span ref={innerRef} aria-hidden="true" style={gradientCss(gradient)}>
-        {groupIntoWords(parts).map(({ chars, start, isSpace }, gIdx) => (
+        {groupIntoWords(parts).map(({ chars, start, isSpace }) => (
           <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: static grouping, stable index
-            key={gIdx}
+            key={start}
             style={{
               display: isSpace ? "inline" : "inline-block",
               ...(gradient && !isSpace ? GRADIENT_INHERIT : null),
             }}
           >
-            {chars.map((ch, i) => (
-              <span
-                // biome-ignore lint/suspicious/noArrayIndexKey: stable position
-                key={i}
-                className="sbi-anim"
-                style={buildCharStyle(start + i)}
-              >
+            {chars.map(({ ch, gid }) => (
+              <span key={gid} className="sbi-anim" style={buildCharStyle(gid)}>
                 {ch}
               </span>
             ))}

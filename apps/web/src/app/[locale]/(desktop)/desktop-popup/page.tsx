@@ -1,5 +1,6 @@
 "use client";
 
+import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import { AssistantPopup } from "@/features/desktop-popup";
 import { useTransparentPopupChrome } from "@/features/desktop-popup/hooks/useTransparentPopupChrome";
 
@@ -11,5 +12,9 @@ import { useTransparentPopupChrome } from "@/features/desktop-popup/hooks/useTra
 export default function DesktopPopupPage() {
   useTransparentPopupChrome();
 
-  return <AssistantPopup />;
+  return (
+    <ErrorBoundary>
+      <AssistantPopup />
+    </ErrorBoundary>
+  );
 }

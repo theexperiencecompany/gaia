@@ -46,8 +46,9 @@ class TestTriggerConfigCalculateNextRun:
 
     def test_default_timezone_is_none_sentinel(self) -> None:
         # Default changed from "UTC" to None so create/update can distinguish a
-        # user-chosen zone from an unset one.
-        assert _schedule().timezone is None
+        # user-chosen zone from an unset one. Omit timezone to exercise the model
+        # default (not _schedule(), which passes timezone=None explicitly).
+        assert TriggerConfig(type=TriggerType.SCHEDULE).timezone is None
 
     def test_non_schedule_trigger_returns_none(self) -> None:
         assert TriggerConfig(type=TriggerType.MANUAL).calculate_next_run(base_time=BASE) is None

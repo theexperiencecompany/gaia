@@ -11,22 +11,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.schemas.desktop_schemas import DesktopToolResultRequest, DesktopToolResultResponse
-from app.services.desktop.bridge import (
-    DesktopRequestForbidden,
-    DesktopRequestNotFound,
-    relay_desktop_result,
-)
+from app.services.desktop.bridge import relay_desktop_result
 from shared.py.wide_events import log
 
-router = APIRouter()
+router = APIRouter(prefix="/desktop", tags=["desktop"])
 
 
-@router.post("/desktop/tool-result")
+@router.post("/tool-result")
 async def desktop_tool_result(
     payload: DesktopToolResultRequest,
     user: Annotated[dict, Depends(get_current_user)],
 ) -> DesktopToolResultResponse:
-    """Accept a desktop tool result and relay it to the awaiting agent tool."""
+    """Accept a desktop tool result and relay it to the awaiting agent tool.
+
+    ``relay_desktop_result`` raises :class:`DesktopRequestNotFound` (410) or
+    :class:`DesktopRequestForbidden` (403) — both ``AppError`` subclasses that the
+    global handler maps to the right status — so late/duplicate or cross-user
+    deliveries can't double-resolve a request.
+    """
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
@@ -36,25 +38,13 @@ async def desktop_tool_result(
         desktop_tool={"request_id": payload.request_id, "ok": payload.ok},
     )
 
-    try:
-        await relay_desktop_result(
-            request_id=payload.request_id,
-            user_id=user_id,
-            ok=payload.ok,
-            data=payload.data,
-            error=payload.error,
-        )
-    except DesktopRequestNotFound as exc:
-        # Expired or already answered — reject so late/duplicate deliveries
-        # can't double-resolve a request.
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail="Desktop tool request expired or already resolved",
-        ) from exc
-    except DesktopRequestForbidden as exc:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Desktop tool request belongs to another user",
-        ) from exc
+    await relay_desktop_result(
+        request_id=payload.request_id,
+        user_id=user_id,
+        ok=payload.ok,
+        data=payload.data,
+        error=payload.error,
+    )
 
+    log.set(desktop_tool={"relayed": True})
     return DesktopToolResultResponse(success=True)

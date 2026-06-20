@@ -54,6 +54,7 @@ tool_fields = [
     "workflow_draft",
     "workflow_created",
     "artifact_data",
+    "screenshot_data",
     "mcp_app",
 ]
 

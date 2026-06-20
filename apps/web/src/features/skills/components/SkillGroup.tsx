@@ -31,7 +31,7 @@ export function SkillGroup({
   defaultOpen = true,
   trailing,
   children,
-}: SkillGroupProps) {
+}: Readonly<SkillGroupProps>) {
   const [open, setOpen] = useState(defaultOpen);
   const toggle = () => setOpen((v) => !v);
 

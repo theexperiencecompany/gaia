@@ -1,6 +1,11 @@
 import { ComputerIcon } from "@icons";
+import Image from "next/image";
 import type React from "react";
 import type { ScreenshotData } from "@/types/features/desktopToolTypes";
+
+/** Fallback intrinsic size when the capture omits its dimensions. */
+const FALLBACK_WIDTH = 1280;
+const FALLBACK_HEIGHT = 720;
 
 interface ScreenshotSectionProps {
   screenshot_data: ScreenshotData;
@@ -19,13 +24,13 @@ const ScreenshotSection: React.FC<ScreenshotSectionProps> = ({
         <span className="text-sm text-zinc-400">Looked at your screen</span>
       </div>
       {/* Raw data URL from the local capture — next/image can't optimize it. */}
-      {/* biome-ignore lint/performance/noImgElement: data-URL screenshot */}
-      <img
+      <Image
         src={screenshot_data.thumbnail}
         alt="Screenshot of your screen"
-        width={screenshot_data.width}
-        height={screenshot_data.height}
+        width={screenshot_data.width ?? FALLBACK_WIDTH}
+        height={screenshot_data.height ?? FALLBACK_HEIGHT}
         className="w-full rounded-xl"
+        unoptimized
       />
     </div>
   );

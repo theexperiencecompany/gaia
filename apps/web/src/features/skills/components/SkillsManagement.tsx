@@ -164,7 +164,7 @@ interface TabTitleProps {
   label: string;
 }
 
-function TabTitle({ icon: Icon, label }: TabTitleProps) {
+function TabTitle({ icon: Icon, label }: Readonly<TabTitleProps>) {
   return (
     <div className="flex items-center gap-2">
       <Icon className="size-4" />

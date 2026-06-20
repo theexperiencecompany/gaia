@@ -73,7 +73,10 @@ async def _acquire_lock_through_redirect(
         return False
     waited = 0.0
     saw_cancel = False
-    while waited < REDIRECT_CANCEL_WAIT_S:
+    # Polls Redis state (try_acquire_lock / is_cancelled) freed by cancel_executor,
+    # which may run in a different uvicorn worker — an asyncio.Event can't observe
+    # that cross-process release, so polling is the correct mechanism here.
+    while waited < REDIRECT_CANCEL_WAIT_S:  # NOSONAR python:S7484
         if not saw_cancel:
             saw_cancel = await StreamManager.is_cancelled(held_stream_id)
         # Try the lock on every poll, not only after a cancel is observed:
@@ -193,7 +196,7 @@ async def _dispatch_executor(
         #   - DIFFERENT stream_id → a genuinely new request arrived while the
         #     executor is busy; queue it to run next.
         held_value = await redis_cache.client.get(lock_key) if redis_cache.client else None
-        held_stream_id = parse_lock_value(str(held_value))[0] if held_value else ""
+        held_stream_id = parse_lock_value(decode_raw_item(held_value))[0] if held_value else ""
         if stream_id and held_stream_id == stream_id:
             log.warning(
                 "Duplicate call_executor in same turn — ignored, not queued",

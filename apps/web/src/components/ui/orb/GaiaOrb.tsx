@@ -220,6 +220,12 @@ function createOrbRenderer(
   const fs = compile(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
   if (!vs || !fs) return null;
   const program = gl.createProgram();
+  if (!program) {
+    console.error("[GaiaOrb] Program creation failed");
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    return null;
+  }
   gl.attachShader(program, vs);
   gl.attachShader(program, fs);
   gl.linkProgram(program);
@@ -230,8 +236,10 @@ function createOrbRenderer(
     );
     return null;
   }
-  // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
-  gl.useProgram(program);
+  // Aliased so the callee isn't a `use*`-named member, which Biome's
+  // useHookAtTopLevel rule would otherwise mistake for a React hook.
+  const activateProgram = gl.useProgram.bind(gl);
+  activateProgram(program);
 
   const uniforms = {
     resolution: gl.getUniformLocation(program, "u_resolution"),

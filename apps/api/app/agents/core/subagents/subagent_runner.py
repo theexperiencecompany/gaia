@@ -166,6 +166,55 @@ async def build_initial_messages(
     ]
 
 
+def _process_messages_payload(
+    payload: tuple,
+    complete_message: str,
+    stream_writer: StreamWriterCallable | None,
+    subagent_id: str | None,
+) -> str:
+    """Handle one "messages"-mode stream event, returning the updated message.
+
+    Accumulates AI content, streams reasoning deltas, and emits tool_output for
+    ToolMessages — all gated on a non-silent payload and an available writer.
+    """
+    chunk, metadata = payload
+    if metadata.get("silent"):
+        return complete_message
+
+    # Accumulate AI response content
+    if chunk and isinstance(chunk, AIMessageChunk):
+        content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
+        if content:
+            complete_message += content
+
+        # Stream the model's thinking interleaved with tool events, so the
+        # UI can show what it reasoned about between each step. Carries the
+        # subagent_id so the client nests it in the right step (same routing
+        # as tool_data/tool_output). Empty for non-reasoning models.
+        if stream_writer:
+            reasoning_delta = _extract_reasoning_delta(chunk)
+            if reasoning_delta:
+                reasoning_event: dict = {"content": reasoning_delta}
+                if subagent_id:
+                    reasoning_event["subagent_id"] = subagent_id
+                stream_writer({"reasoning": reasoning_event})
+
+    # Emit tool_output when ToolMessage arrives
+    elif chunk and isinstance(chunk, ToolMessage):
+        content_str = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+        complete_message = _capture_finish_task_content(chunk, complete_message)
+        if stream_writer:
+            tool_output_data: dict = {
+                "tool_call_id": chunk.tool_call_id,
+                "output": content_str,
+            }
+            if subagent_id:
+                tool_output_data["subagent_id"] = subagent_id
+            stream_writer({"tool_output": tool_output_data})
+
+    return complete_message
+
+
 async def execute_subagent_stream(
     ctx: SubagentExecutionContext,
     stream_writer: StreamWriterCallable | None = None,
@@ -235,42 +284,9 @@ async def execute_subagent_stream(
             continue
 
         if stream_mode == "messages":
-            chunk, metadata = payload
-            if metadata.get("silent"):
-                continue
-
-            # Accumulate AI response content
-            if chunk and isinstance(chunk, AIMessageChunk):
-                content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-                if content:
-                    complete_message += content
-
-                # Stream the model's thinking interleaved with tool events, so the
-                # UI can show what it reasoned about between each step. Carries the
-                # subagent_id so the client nests it in the right step (same routing
-                # as tool_data/tool_output). Empty for non-reasoning models.
-                if stream_writer:
-                    reasoning_delta = _extract_reasoning_delta(chunk)
-                    if reasoning_delta:
-                        reasoning_event: dict = {"content": reasoning_delta}
-                        if subagent_id:
-                            reasoning_event["subagent_id"] = subagent_id
-                        stream_writer({"reasoning": reasoning_event})
-
-            # Emit tool_output when ToolMessage arrives
-            elif chunk and isinstance(chunk, ToolMessage):
-                content_str = (
-                    chunk.content if isinstance(chunk.content, str) else str(chunk.content)
-                )
-                complete_message = _capture_finish_task_content(chunk, complete_message)
-                if stream_writer:
-                    tool_output_data: dict = {
-                        "tool_call_id": chunk.tool_call_id,
-                        "output": content_str,
-                    }
-                    if subagent_id:
-                        tool_output_data["subagent_id"] = subagent_id
-                    stream_writer({"tool_output": tool_output_data})
+            complete_message = _process_messages_payload(
+                payload, complete_message, stream_writer, subagent_id
+            )
             continue
 
         if stream_mode == "custom":

@@ -109,7 +109,7 @@ class TestTimezoneParse:
 @pytest.mark.unit
 class TestTimezoneTryParse:
     @pytest.mark.parametrize("blank", [None, "", "   "])
-    def test_blank_returns_none(self, blank) -> None:
+    def test_blank_returns_none(self, blank: str | None) -> None:
         assert Timezone.try_parse(blank) is None
 
     @pytest.mark.parametrize("garbage", ["Not/A_Zone", "CEST", "+0530"])
@@ -193,7 +193,7 @@ class TestIsValidTimezone:
         assert is_valid_timezone(ok) is True
 
     @pytest.mark.parametrize("bad", [None, "", "   ", "Not/A_Zone", "+0530", "CEST"])
-    def test_invalid(self, bad) -> None:
+    def test_invalid(self, bad: str | None) -> None:
         assert is_valid_timezone(bad) is False
 
 

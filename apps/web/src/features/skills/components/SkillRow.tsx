@@ -31,7 +31,7 @@ export function SkillRow({
   onEdit,
   onToggle,
   onDelete,
-}: SkillRowProps) {
+}: Readonly<SkillRowProps>) {
   const isScoped = skill.target !== EXECUTOR_TARGET;
 
   return (
