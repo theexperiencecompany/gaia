@@ -494,21 +494,44 @@ def _inject_available_subagents(
     connected_integrations: dict[str, str | None],
     include_subagents: bool,
 ) -> list[str]:
-    """Inject available subagents that user has access to."""
+    """Inject available subagents that user has access to.
+
+    Every subagent entry is rendered as ``subagent:<id> (Name)`` whenever a name
+    is known, so the model can tell what ``subagent:<uuid>`` actually is. Names
+    come from the connected-integrations map first, then the in-memory registry.
+    Semantic-search hits often arrive unnamed (a ``subagent:`` key from a tool
+    namespace, or a store that didn't return the value); they get upgraded here
+    and deduped by canonical id so the named and unnamed forms collapse to one.
+    """
     if not include_subagents:
         return discovered_tools
 
-    result = list(discovered_tools)
+    def _resolve_name(integration_id: str) -> str | None:
+        if connected_integrations.get(integration_id):
+            return connected_integrations[integration_id]
+        sa = get_subagent_by_id(integration_id)
+        return sa.name if sa else None
 
-    # Dedupe by canonical integration id rather than rendered subagent_key
-    # ("subagent:gmail" vs "subagent:gmail (Gmail)" must collapse). Seed
-    # seen_ids with ids parsed out of any pre-existing entries.
+    result: list[str] = []
     seen_ids: set[str] = set()
+
+    # Pass 1: keep discovered tools in order; upgrade unnamed subagent hits to
+    # carry a name when we can resolve one, and dedupe subagents by canonical id.
     for entry in discovered_tools:
-        if entry.startswith("subagent:"):
-            tail = entry[len("subagent:") :]
-            canonical_id = tail.split(" ", 1)[0]
-            seen_ids.add(canonical_id)
+        if not entry.startswith("subagent:"):
+            result.append(entry)
+            continue
+        tail = entry[len("subagent:") :]
+        canonical_id = tail.split(" ", 1)[0]
+        if canonical_id in seen_ids:
+            continue
+        seen_ids.add(canonical_id)
+        already_named = "(" in tail
+        if already_named:
+            result.append(entry)
+        else:
+            name = _resolve_name(canonical_id)
+            result.append(f"subagent:{canonical_id} ({name})" if name else entry)
 
     def _add_subagent(integration_id: str, name: str | None) -> None:
         if integration_id in seen_ids:
