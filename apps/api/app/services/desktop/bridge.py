@@ -126,10 +126,15 @@ async def request_desktop_action(
 
         return outcome
     finally:
-        # Best-effort cleanup: a failure here must never mask the real outcome
-        # (the request key also carries a TTL, so it expires regardless).
+        # Best-effort cleanup in independent guards: a failure here must never
+        # mask the real outcome, and a failed key-delete must not skip the
+        # pubsub teardown (the request key also carries a TTL, so it expires
+        # regardless).
         try:
             await redis_cache.delete(request_key)
+        except Exception:  # nosec B110 - cleanup must not mask the outcome
+            pass
+        try:
             await pubsub.unsubscribe(result_channel)
             await pubsub.aclose()
         except Exception:  # nosec B110 - cleanup must not mask the outcome
