@@ -99,8 +99,9 @@ _RETRIEVE_TOOLS_BASE_DOC = """\
 Discover and load tools for execution. Supports two modes: discovery and binding.
 
 REQUIRED: pass exactly ONE of `query` (to discover by intent) or `exact_tool_names`
-(to bind known names). Calling with NEITHER argument is invalid and errors out. If
-you are looking for a capability, pass query="what you want to do".
+(to bind known names). Calling with NEITHER argument is invalid and returns corrective
+guidance instead of binding anything. If you are looking for a capability, pass
+query="what you want to do".
 
 —DISCOVERY MODE (query)
 Semantic search that returns tool names matching your intent. Tools are NOT loaded yet.
@@ -623,16 +624,16 @@ def get_retrieve_tools_function(
 
             validated_tool_names: list[str] = []
             unknown_tool_names: list[str] = []
+            requested_subagents: list[str] = []
             for tool_name in exact_tool_names:
                 if tool_name.startswith("subagent:"):
-                    # Subagents are invoked via the `handoff` tool, not bound
-                    # here — the docstring tells the LLM this and select_tools
-                    # filters subagent:* out before binding. We accept the
-                    # key when subagents are enabled so it appears in the
-                    # response (purely informational); membership validation
-                    # happens at handoff time where it actually matters.
+                    # Subagents are handed off to, never bound. When subagents are
+                    # available here we surface corrective guidance in the response
+                    # instead of echoing the name back as if it bound — that made a
+                    # model slip look like a successful bind and relied on downstream
+                    # filtering. When subagents aren't available, it's just unknown.
                     if include_subagents:
-                        validated_tool_names.append(tool_name)
+                        requested_subagents.append(tool_name)
                     else:
                         unknown_tool_names.append(tool_name)
                 elif (
@@ -668,9 +669,20 @@ def get_retrieve_tools_function(
                 )
             )
 
+            # Bind the valid tools regardless; a co-requested subagent doesn't void
+            # them. Append corrective guidance for any subagent name so the model
+            # learns to hand off instead of seeing it echoed back as a bind.
+            response = list(validated_tool_names)
+            if requested_subagents:
+                response.append(
+                    "Subagents are not bound with retrieve_tools. Call "
+                    "handoff(subagent_id='<id>', task='...') directly, using the "
+                    "part after 'subagent:'."
+                )
+
             return RetrieveToolsResult(
                 tools_to_bind=validated_tool_names,
-                response=validated_tool_names,
+                response=response,
             )
 
         # Get user context (skips subagent computation when include_subagents=False)

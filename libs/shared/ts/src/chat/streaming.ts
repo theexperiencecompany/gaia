@@ -388,20 +388,9 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     }
   }
 
-  if (isObject(payload.reasoning)) {
-    const content = payload.reasoning.content;
-    if (typeof content === "string" && content.length > 0) {
-      events.push({
-        type: "reasoning",
-        content,
-        subagent_id:
-          typeof payload.reasoning.subagent_id === "string"
-            ? payload.reasoning.subagent_id
-            : undefined,
-      });
-    }
-  }
-
+  // Emit subagent_start before reasoning: when one payload carries both, the
+  // reasoning handler routes by subagent_id into the group, which must already
+  // exist or that first delta is dropped.
   if (isObject(payload.subagent_start)) {
     const s = payload.subagent_start;
     if (
@@ -428,6 +417,20 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
               ? s.parent_subagent_id
               : undefined,
         },
+      });
+    }
+  }
+
+  if (isObject(payload.reasoning)) {
+    const content = payload.reasoning.content;
+    if (typeof content === "string" && content.length > 0) {
+      events.push({
+        type: "reasoning",
+        content,
+        subagent_id:
+          typeof payload.reasoning.subagent_id === "string"
+            ? payload.reasoning.subagent_id
+            : undefined,
       });
     }
   }

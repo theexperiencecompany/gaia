@@ -76,7 +76,11 @@ export default function UnifiedToolThread({
     // Thinking steps (entries carrying `reasoning`) are not tools — exclude them
     // from the "Used N tools" count.
     const countSubagent = (sg: EnrichedSubagentGroup): number => {
-      let n = sg.tool_calls.filter((tc) => tc.reasoning == null).length;
+      // spawn_subagent steps are hidden by SubagentRow (they render as nested
+      // rows), so exclude them here too or the total overcounts what's shown.
+      let n = sg.tool_calls.filter(
+        (tc) => tc.reasoning == null && tc.tool_name !== "spawn_subagent",
+      ).length;
       for (const nested of sg.nested_subagents) n += countSubagent(nested);
       return n;
     };

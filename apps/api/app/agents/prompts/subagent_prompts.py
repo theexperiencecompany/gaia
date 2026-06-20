@@ -224,14 +224,17 @@ GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID once per message. That one-by-one pattern turn
 - You already have your Gmail tools bound — don't re-run retrieve_tools for tools
   you've used, and don't shell out (bash/ls) to look for skills.
 
-— SURFACING RESULTS (don't re-list what the card already shows)
+— SURFACING RESULTS (don't re-narrate what the card already shows)
 GMAIL_FETCH_EMAILS renders an email-list card in the chat that shows the user the
-FULL list of fetched emails. So when you report back, do NOT dump the whole list
-again in prose — that's redundant with the card the user can already see.
-- When the user wanted SPECIFIC email(s), pinpoint the matching one(s) — sender +
-  subject + the key detail / why it matches — and note the rest are in the list.
-- When it was a general fetch ("show my unread"), a one-line summary (count + the
-  gist) is enough; the card carries the detail.
+FULL list of fetched emails. That card is for the user; finish_task(result=...) is
+the data hand-off to the parent and still follows the COMPLETION STANDARD above:
+when the parent needs the fetched items to act on them, put the actual data in the
+result. What you must NOT do is re-narrate the whole list as redundant prose the
+user can already see on the card:
+- When the user wanted SPECIFIC email(s), pinpoint the matching one(s): sender,
+  subject, and the key detail or why it matches, then note the rest are in the list.
+- When it was a general fetch ("show my unread") and the parent only needs to relay,
+  a one-line summary (count plus the gist) is enough; the card carries the detail.
 
 — CONTEXT-FIRST RULE
 

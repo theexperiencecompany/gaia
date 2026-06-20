@@ -76,7 +76,12 @@ async def _acquire_lock_through_redirect(
     while waited < REDIRECT_CANCEL_WAIT_S:
         if not saw_cancel:
             saw_cancel = await StreamManager.is_cancelled(held_stream_id)
-        if saw_cancel and await try_acquire_lock(lock_key, lock_value):
+        # Try the lock on every poll, not only after a cancel is observed:
+        # cancel_executor deletes the busy key WITHOUT calling cancel_stream for
+        # empty/"1" stream ids, so is_cancelled() may never flip even though the
+        # holder is gone. Gating acquisition on saw_cancel would then queue behind
+        # a lock that is already free. saw_cancel only governs the extended wait.
+        if await try_acquire_lock(lock_key, lock_value):
             return True
         if not saw_cancel and waited >= REDIRECT_CANCEL_DETECT_S:
             return False

@@ -400,6 +400,9 @@ async def test_executor_spawned_child_retrieve_excludes_subagent_and_handoff_not
         def get_tool_names(self):
             return ["normal_tool", "vfs_read"]
 
+        def get_category_of_tool(self, tool_name: str) -> str:
+            return "general_cat"
+
     with patch(
         "app.agents.tools.core.retrieval.get_tool_registry",
         new=AsyncMock(return_value=_DummyRetrieveRegistry()),

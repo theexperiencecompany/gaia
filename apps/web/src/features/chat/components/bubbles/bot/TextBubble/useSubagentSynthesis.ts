@@ -403,7 +403,15 @@ function buildSyntheticTimeline(toolCalls: ToolCallEntry[]): TimelineItem[] {
     }
   }
 
-  return timeline;
+  // Synthetic groups are built by pushing raw tool calls, so their adjacent
+  // reasoning fragments aren't merged yet. Enrich them the same way the backend
+  // path does (buildBackendTimeline via deepEnrichGroup) so fallback timelines
+  // don't render split Thinking rows.
+  return timeline.map((item) =>
+    item.kind === "subagent"
+      ? { kind: "subagent" as const, data: deepEnrichGroup(item.data) }
+      : item,
+  );
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────

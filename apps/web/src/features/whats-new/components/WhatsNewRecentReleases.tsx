@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 import type { Release } from "../types";
 import { formatReleaseDate } from "../utils/formatReleaseDate";
 
@@ -44,9 +45,10 @@ export function WhatsNewRecentReleases({
               onClick={() => onSelect(index)}
               aria-label={`View release: ${release.title}`}
               aria-current={isActive ? "true" : undefined}
-              className={`group/thumb flex min-w-0 cursor-pointer flex-col gap-2 rounded-xl p-2 text-left transition-colors hover:bg-zinc-800 ${
-                isActive ? "bg-zinc-800/60" : ""
-              }`}
+              className={cn(
+                "group/thumb flex min-w-0 cursor-pointer flex-col gap-2 rounded-xl p-2 text-left transition-colors hover:bg-zinc-800",
+                isActive && "bg-zinc-800/60",
+              )}
             >
               <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-zinc-800">
                 <Image

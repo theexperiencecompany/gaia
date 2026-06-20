@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Any
 
@@ -63,7 +64,7 @@ async def send_email(
     subject: str,
     body: str,
     thread_id: str | None = None,
-    extra_recipients: list[str] = [],
+    extra_recipients: list[str] | None = None,
     cc_list: list[str] | None = None,
     bcc_list: list[str] | None = None,
     attachments: list[UploadFile] | None = None,
@@ -94,7 +95,7 @@ async def send_email(
         # consistently.
         parameters: dict[str, Any] = {
             "recipient_email": to,
-            "extra_recipients": extra_recipients,
+            "extra_recipients": extra_recipients or [],
             body_param: body,
             "subject": subject,
         }
@@ -109,7 +110,7 @@ async def send_email(
         if bcc_list:
             parameters["bcc"] = bcc_list
         if attachments:
-            parameters["attachments"] = _process_attachments(attachments)
+            parameters["attachments"] = await asyncio.to_thread(_process_attachments, attachments)
 
         log.info(
             f"Using {tool_name} to {'reply to thread ' + (thread_id or '') if is_reply else 'send new email to ' + to}"

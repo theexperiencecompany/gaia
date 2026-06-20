@@ -259,7 +259,9 @@ export const useChatStream = () => {
       // moment it leaves the queue.
       const queuedUserId = pending[2]?.optimisticUserId;
       if (queuedUserId) {
-        db.updateMessageStatus(queuedUserId, "sending");
+        db.updateMessageStatus(queuedUserId, "sending").catch((error) => {
+          console.error("Failed to flip queued message to sending:", error);
+        });
       }
       // The queued send deferred its loading trigger to here (see useSendMessage):
       // now that it's actually starting, it takes over the loading indicator.
