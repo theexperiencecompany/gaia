@@ -18,6 +18,12 @@ FINISH_TASK_NAME = "finish_task"
 # generated in the executor path rather than the current turn.
 CALL_EXECUTOR_NAME = "call_executor"
 
+# Agent self-pause ("wait" tool). MAX_WAIT_SECONDS is an upper safety bound on a
+# single pause (the agent picks the actual duration per task); the poll interval
+# is how often we re-check for stream cancellation while paused.
+MAX_WAIT_SECONDS = 300
+WAIT_POLL_INTERVAL_SECONDS = 1.0
+
 MAX_EMAILS_PER_PLATFORM = 20
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9
 PROFILE_EXTRACTION_LLM_PROVIDER = "gemini"
