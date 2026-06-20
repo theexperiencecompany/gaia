@@ -19,7 +19,13 @@ from app.agents.skills.parser import (
     parse_skill_md,
     validate_skill_content,
 )
-from app.agents.skills.registry import get_skill, install_skill, uninstall_skill
+from app.agents.skills.registry import (
+    get_skill,
+    get_skill_by_name,
+    install_skill,
+    uninstall_skill,
+    update_skill,
+)
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
 from app.services.storage import (
     JuiceFSUnavailable,
@@ -348,6 +354,78 @@ async def install_from_inline(
 
     log.info(f"[skills] Created inline skill '{name}' (target={target})")
     return installed
+
+
+async def update_skill_inline(
+    user_id: str,
+    skill_id: str,
+    *,
+    description: str | None = None,
+    instructions: str | None = None,
+    target: str | None = None,
+) -> Skill | None:
+    """Edit an existing skill's description, instructions (body), and/or target.
+
+    Only provided fields change; the rest are preserved. The skill ``name`` is
+    immutable (it keys the VFS directory), so the storage path never moves. The
+    VFS SKILL.md is rewritten only when the body actually changes; description
+    and target are metadata and live only in MongoDB.
+
+    Returns the updated skill, or None if it does not exist for this user.
+
+    Raises:
+        ValueError: If the new values are invalid, or retargeting would collide
+            with an existing skill of the same name on that target.
+    """
+    skill = await get_skill(user_id, skill_id)
+    if not skill:
+        return None
+
+    new_description = description if description is not None else skill.description
+    new_target = target if target is not None else skill.target
+    new_body = instructions if instructions is not None else (skill.body_content or "")
+
+    # Round-trip through the SKILL.md generator/parser so the same validation
+    # that guards creation guards edits (name format, required fields, length).
+    skill_md_content = generate_skill_md(
+        name=skill.name,
+        description=new_description,
+        instructions=new_body,
+        target=new_target,
+        metadata=skill.metadata or None,
+    )
+    errors = validate_skill_content(skill_md_content)
+    if errors:
+        raise ValueError(f"Invalid skill: {'; '.join(errors)}")
+    metadata, body = parse_skill_md(skill_md_content)
+
+    # Retargeting must respect the (user_id, name, target) uniqueness invariant.
+    if metadata.target != skill.target:
+        clash = await get_skill_by_name(user_id, skill.name, metadata.target)
+        if clash and clash.id != skill.id:
+            raise ValueError(
+                f"A skill named '{skill.name}' already targets '{metadata.target}'. "
+                "Rename or remove it first."
+            )
+
+    # Persist the body to VFS only when it changed — description/target are
+    # metadata-only and never touch the filesystem.
+    if body != (skill.body_content or ""):
+        await ensure_user_skills_dir(user_id)
+        await write_skill_file(user_id, skill.name, "SKILL.md", body)
+
+    updated = await update_skill(
+        user_id,
+        skill_id,
+        {
+            "description": metadata.description,
+            "target": metadata.target,
+            "body_content": body,
+        },
+    )
+
+    log.info(f"[skills] Updated inline skill '{skill.name}' (target={metadata.target})")
+    return updated
 
 
 async def uninstall_skill_full(user_id: str, skill_id: str) -> bool:
