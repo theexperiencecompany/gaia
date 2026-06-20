@@ -119,8 +119,14 @@ export function PricingCards({
           ((100% - 2 gaps) / 3); the columns are centered as a group so a
           2-tier lineup stays centered instead of stretching or left-aligning. */}
       <div className="grid grid-cols-1 items-stretch justify-center gap-3 sm:grid-flow-col sm:auto-cols-[calc((100%-1.5rem)/3)] sm:grid-cols-none">
-        {sortedPlans.map((plan: Plan) => {
+        {sortedPlans.map((plan: Plan, index: number) => {
           const isPro = plan.name.toLowerCase().includes("pro");
+          // Free leads its list with "Includes:"; each paid tier builds on the
+          // one before it ("Everything in Free, plus").
+          const featuresHeading =
+            index === 0
+              ? "Includes:"
+              : `Everything in ${sortedPlans[index - 1].name}, plus`;
           // Convert any currency to USD cents for display
           const priceInUSDCents = convertToUSDCents(plan.amount, plan.currency);
 
@@ -153,6 +159,7 @@ export function PricingCards({
               planId={plan.dodo_product_id} // Use dodo_product_id instead of id
               durationIsMonth={durationIsMonth}
               features={plan.features}
+              featuresHeading={featuresHeading}
               description={plan.description} // Pass the description from backend
               price={priceInUSDCents} // Always in USD cents
               originalPrice={originalPriceInUSDCents}

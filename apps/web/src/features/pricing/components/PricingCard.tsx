@@ -21,6 +21,7 @@ interface PricingCardProps {
   originalPrice?: number;
   description?: string;
   features?: string[];
+  featuresHeading?: string;
   durationIsMonth: boolean;
   className?: string;
   planId?: string;
@@ -52,7 +53,7 @@ function getPriceDisplay(
     price === 0
       ? "Free forever"
       : yearlyTotalDollars
-        ? `Billed $${yearlyTotalDollars.toLocaleString()} a year`
+        ? "Billed yearly"
         : "Billed monthly";
   return {
     perMonthDollars,
@@ -70,6 +71,7 @@ export function PricingCard({
   originalPrice,
   description,
   features,
+  featuresHeading,
   durationIsMonth,
   className,
   planId,
@@ -259,6 +261,11 @@ export function PricingCard({
 
       {/* Features — flex-1 so both cards fill remaining height equally */}
       <div className="flex flex-1 flex-col gap-2.5 px-6 py-5">
+        {!!featuresHeading && (
+          <span className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+            {featuresHeading}
+          </span>
+        )}
         {!!features &&
           features.map((feature) => (
             <div

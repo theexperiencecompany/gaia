@@ -28,8 +28,8 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
   }, []);
 
   return (
-    <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[35vh]">
-      <div className="fixed inset-0 top-0 z-0 h-[90vh] w-full">
+    <div className="relative flex min-h-screen w-screen flex-col items-center justify-center pt-[35vh]">
+      <div className="absolute inset-0 top-0 z-0 h-[90vh] w-full">
         <Image
           src={wallpapers.pricing.png}
           alt="GAIA Pricing page Wallpaper"
@@ -56,7 +56,6 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
           <Tabs
             selectedKey={isYearly ? "yearly" : "monthly"}
             onSelectionChange={(key) => setIsYearly(key === "yearly")}
-            color="primary"
             radius="full"
             size="lg"
             aria-label="Billing period"
@@ -67,7 +66,7 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
               title={
                 <div className="flex items-center gap-2">
                   Yearly
-                  <Chip color="warning" size="sm" variant="solid">
+                  <Chip color="primary" size="sm" variant="solid">
                     Save 25%
                   </Chip>
                 </div>

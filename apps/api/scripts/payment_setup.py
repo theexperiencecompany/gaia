@@ -119,7 +119,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
         {
             "dodo_product_id": "",  # Free plan doesn't need Dodo product ID
             "name": "Free",
-            "description": "All tools & features included, start creating for free",
+            "description": "Everything you need to get started.",
             "amount": 0,
             "currency": "USD",
             "duration": "monthly",
@@ -135,13 +135,12 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
         {
             "dodo_product_id": monthly_product_id,  # Monthly plan
             "name": "Pro",
-            "description": "A boost of extra access, because you deserve it",
+            "description": "More power for your busiest days.",
             "amount": 3000,  # $30.00 in cents
             "currency": "USD",
             "duration": "monthly",
             "max_users": 1,
             "features": [
-                "Everything in Free",
                 "Higher usage limits",
                 "More powerful models",
                 "Priority support",
@@ -152,13 +151,12 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
         {
             "dodo_product_id": yearly_product_id,  # Yearly plan
             "name": "Pro",
-            "description": "A boost of extra access, because you deserve it",
+            "description": "More power for your busiest days.",
             "amount": 27000,  # $270.00 in cents (3 months free, 25% discount)
             "currency": "USD",
             "duration": "yearly",
             "max_users": 1,
             "features": [
-                "Everything in Free",
                 "Higher usage limits",
                 "More powerful models",
                 "Priority support",
