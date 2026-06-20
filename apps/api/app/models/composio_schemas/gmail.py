@@ -4,9 +4,11 @@ Gmail trigger payload and tool output models.
 Reference: node_modules/@composio/core/generated/gmail.ts
 """
 
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 
 # =============================================================================
 # Trigger Payloads
@@ -54,22 +56,6 @@ TimeframeLiteral = Literal[
     "1y",
 ]
 
-MessageFieldLiteral = Literal[
-    "id",
-    "threadId",
-    "from",
-    "to",
-    "cc",
-    "bcc",
-    "subject",
-    "snippet",
-    "body",
-    "time",
-    "isRead",
-    "hasAttachment",
-    "labels",
-]
-
 BodyProcessingLiteral = Literal["normalize", "raw", "none"]
 
 
@@ -89,26 +75,25 @@ class FetchInboxSummaryInput(BaseModel):
         description="Raw Gmail search query (ANDed with the timeframe clause).",
     )
     fields: list[MessageFieldLiteral] = Field(
-        default_factory=lambda: cast(
-            list[MessageFieldLiteral],
-            [
-                "id",
-                "threadId",
-                "from",
-                "to",
-                "subject",
-                "snippet",
-                "time",
-                "isRead",
-                "hasAttachment",
-                "labels",
-            ],
-        ),
+        default_factory=lambda: list(DEFAULT_SUMMARY_FIELDS),
         description=(
             "Which fields per message. Defaults to metadata + snippet. "
             "Add 'body' for the processed body. Empty list = all fields."
         ),
     )
+
+    @field_validator("fields", mode="before")
+    @classmethod
+    def _coerce_none_fields(
+        cls, value: list[MessageFieldLiteral] | None
+    ) -> list[MessageFieldLiteral]:
+        # Tool wrappers pass omitted args as explicit None; treat that the same
+        # as omission and fall back to the curated default field set. An empty
+        # list is preserved (it carries the "all fields" meaning downstream).
+        if value is None:
+            return list(DEFAULT_SUMMARY_FIELDS)
+        return value
+
     body_processing: BodyProcessingLiteral = Field(
         default="normalize",
         description=(

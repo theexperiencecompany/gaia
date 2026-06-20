@@ -320,6 +320,13 @@ def _aggregate_pages(
             if not page_token:
                 break
     except Exception as exc:
+        if not all_messages:
+            # Nothing was fetched before the error — this is a total failure
+            # (e.g. an expired/missing Gmail connection rejected the very first
+            # request), not a partial result. Let it propagate so the tool
+            # reports `successful: false` instead of masking it as an empty
+            # inbox.
+            raise
         log.warning(f"GMAIL_FETCH_INBOX_SUMMARY: pagination aborted mid-loop: {exc}")
         raise _PartialResult(reason=str(exc), partial_messages=all_messages) from exc
 

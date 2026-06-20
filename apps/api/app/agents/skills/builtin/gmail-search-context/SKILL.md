@@ -86,29 +86,12 @@ result = GMAIL_FETCH_INBOX_SUMMARY(timeframe="today", query="is:unread")
 
 **Fetch ALL emails for a specific day:**
 
-Use `after:YYYY/MM/DD before:YYYY/MM/DD+1`. Parent orchestrates pagination — spawn a subagent per page, each returning a digest + token. Parent spawns the next only when a token is returned:
+A single day is just a timeframe scan — use `GMAIL_FETCH_INBOX_SUMMARY` with an `after:/before:` date-range query. It paginates server-side in one call (and offloads to JSONL when the result is large), so no per-page subagent orchestration is needed:
 
-```
-# Page 1
-result_1 = spawn_subagent(
-  task="""
-    Call GMAIL_FETCH_EMAILS(query="after:2025/01/15 before:2025/01/16", max_results=30)
-    Summarize all emails: sender, subject, date, key points, action items.
-    digest: <summary>, next_page_token: <token or null>
-  """
-)
-
-# Page 2 — only if token returned
-if result_1.next_page_token:
-  result_2 = spawn_subagent(
-    task="""
-      Call GMAIL_FETCH_EMAILS(query="after:2025/01/15 before:2025/01/16", max_results=30, page_token="<token>")
-      Same summarization instructions.
-      digest: <summary>, next_page_token: <token or null>
-    """
-  )
-
-# Repeat until next_page_token is null. Parent synthesizes all digests.
+```python
+result = GMAIL_FETCH_INBOX_SUMMARY(query="after:2025/01/15 before:2025/01/16")
+# → every message for that day, paginated server-side. If the tool offloaded
+#   the aggregate to a JSONL file, mine it with bash/jq/grep.
 ```
 
 ## Step 3: Progressive Search

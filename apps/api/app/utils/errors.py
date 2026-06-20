@@ -32,6 +32,12 @@ class AppError(Exception):
     status_code: int = 500
     meta: dict[str, Any] = field(default_factory=dict)
 
+    def __str__(self) -> str:
+        # The dataclass-generated __init__ never populates Exception.args, so
+        # the default Exception.__str__ would return "". Surface the message so
+        # f-string logging and any str(exc) callers see a meaningful error.
+        return self.message
+
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {"message": self.message}
         if self.why:
