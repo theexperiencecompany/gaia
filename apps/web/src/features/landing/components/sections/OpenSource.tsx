@@ -32,13 +32,14 @@ const LazyContributors = lazy(() =>
     }) => (
       <AvatarGroup
         isBordered
-        max={contributors.length}
-        renderCount={() => (
-          <p className="ms-2 text-small font-medium text-foreground">
-            +{totalCount - contributors.length} others
+        max={8}
+        renderCount={(count) => (
+          <p className="ms-2 text-small font-medium text-foreground text-nowrap">
+            +{count} others
           </p>
         )}
-        total={contributors.length}
+        total={totalCount}
+        classNames={{ base: "flex-wrap justify-center max-w-xs sm:max-w-none" }}
       >
         {contributors.map((contributor) => (
           <Avatar
@@ -116,8 +117,8 @@ export default function OpenSource() {
         </div>
 
         {/* Contributors Section */}
-        <div className="flex flex-col items-center gap-3 pt-4 sm:gap-4 sm:pt-6">
-          <h3 className="text-center text-base font-medium text-zinc-300 sm:text-lg">
+        <div className="flex w-full flex-col items-center gap-3 pt-4 sm:gap-4 sm:pt-6">
+          <h3 className="w-full text-center text-base font-medium text-zinc-300 sm:text-lg">
             Built by engineers who use it every day
           </h3>
           {isLoading ? (

@@ -19,11 +19,6 @@ export const createConversationInitHandlers = (
     conversationId: string,
     description: string | null,
   ) => {
-    console.log(
-      "[useChatStream] handleConversationCreation:",
-      conversationId,
-      description,
-    );
     // Check if conversation already exists in store
     const existing = useChatStore
       .getState()
@@ -86,13 +81,6 @@ export const createConversationInitHandlers = (
       user_message_id,
       stream_id,
     } = data;
-
-    console.log(
-      "[useChatStream] handleNewConversation:",
-      conversation_id,
-      "desc:",
-      conversation_description,
-    );
     refs.current.newConversation.id = conversation_id;
     refs.current.newConversation.description = conversation_description;
 

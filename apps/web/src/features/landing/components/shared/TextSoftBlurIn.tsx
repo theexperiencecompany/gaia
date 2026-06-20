@@ -43,6 +43,32 @@ function splitText(text: string, splitBy: "char" | "word"): string[] {
   return Array.from(text);
 }
 
+function groupIntoWords(
+  chars: string[],
+): { chars: string[]; start: number; isSpace: boolean }[] {
+  const groups: { chars: string[]; start: number; isSpace: boolean }[] = [];
+  let word: string[] = [];
+  let wordStart = 0;
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (ch === " ") {
+      if (word.length > 0) {
+        groups.push({ chars: word, start: wordStart, isSpace: false });
+        word = [];
+      }
+      groups.push({ chars: [ch], start: i, isSpace: true });
+    } else {
+      if (word.length === 0) wordStart = i;
+      word.push(ch);
+    }
+  }
+  if (word.length > 0) {
+    groups.push({ chars: word, start: wordStart, isSpace: false });
+  }
+  return groups;
+}
+
 function gradientCss(gradient?: string): CSSProperties | undefined {
   return gradient
     ? {
@@ -53,6 +79,78 @@ function gradientCss(gradient?: string): CSSProperties | undefined {
         color: "transparent",
       }
     : undefined;
+}
+
+const GRADIENT_INHERIT: CSSProperties = {
+  backgroundImage: "inherit",
+  WebkitBackgroundClip: "inherit",
+  WebkitTextFillColor: "inherit",
+  backgroundClip: "inherit",
+};
+
+/** Shared inner renderer for both immediate and scroll-triggered text variants. */
+function TextInner({
+  parts,
+  splitBy,
+  gradient,
+  buildCharStyle,
+  innerRef,
+  baseId,
+}: {
+  parts: string[];
+  splitBy: "char" | "word";
+  gradient?: string;
+  buildCharStyle: (idx: number) => CSSProperties;
+  innerRef?: React.RefObject<HTMLSpanElement | null>;
+  baseId?: string;
+}) {
+  if (splitBy === "char") {
+    return (
+      <span ref={innerRef} aria-hidden="true" style={gradientCss(gradient)}>
+        {groupIntoWords(parts).map(({ chars, start, isSpace }, gIdx) => (
+          <span
+            // biome-ignore lint/suspicious/noArrayIndexKey: static grouping, stable index
+            key={gIdx}
+            style={{
+              display: isSpace ? "inline" : "inline-block",
+              ...(gradient && !isSpace ? GRADIENT_INHERIT : null),
+            }}
+          >
+            {chars.map((ch, i) => (
+              <span
+                // biome-ignore lint/suspicious/noArrayIndexKey: stable position
+                key={i}
+                className="sbi-anim"
+                style={buildCharStyle(start + i)}
+              >
+                {ch}
+              </span>
+            ))}
+          </span>
+        ))}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      ref={innerRef}
+      aria-hidden="true"
+      className="inline-block"
+      style={gradientCss(gradient)}
+    >
+      {parts.map((part, i) => (
+        <span
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable id + index
+          key={baseId ? `${baseId}-${i}` : i}
+          className="sbi-anim"
+          style={buildCharStyle(i)}
+        >
+          {part}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 /**
@@ -75,51 +173,31 @@ function TextSoftBlurInImmediate({
 }: TextSoftBlurInProps) {
   const parts = splitText(text, splitBy);
 
-  const inner: ReactNode = (
-    <span
-      aria-hidden="true"
-      className="inline-block"
-      style={gradientCss(gradient)}
-    >
-      {parts.map((part, i) => {
-        const delay = startDelay + i * charStagger;
-        const charStyle: AnimStyle = {
-          display: "inline-block",
-          whiteSpace: "pre",
-          paddingBlock: "0.12em",
-          marginBlock: "-0.12em",
-          paddingInline: "0.05em",
-          marginInline: "-0.05em",
-          animation: `gaia-soft-blur-in ${duration}s ${EASE} ${delay}s both`,
-          "--sbi-blur": `${blur}px`,
-          "--sbi-y": `${yOffset}px`,
-          ...(gradient
-            ? {
-                backgroundImage: "inherit",
-                WebkitBackgroundClip: "inherit",
-                WebkitTextFillColor: "inherit",
-                backgroundClip: "inherit",
-              }
-            : null),
-        };
-        return (
-          <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: text is static, index is stable
-            key={i} // NOSONAR S6479: static text split — index is the stable identity, list never reorders
-            className="sbi-anim"
-            style={charStyle}
-          >
-            {part}
-          </span>
-        );
-      })}
-    </span>
-  );
+  const buildCharStyle = (globalIdx: number): AnimStyle => {
+    const delay = startDelay + globalIdx * charStagger;
+    return {
+      display: "inline-block",
+      whiteSpace: "pre",
+      paddingBlock: "0.12em",
+      marginBlock: "-0.12em",
+      paddingInline: "0.05em",
+      marginInline: "-0.05em",
+      animation: `gaia-soft-blur-in ${duration}s ${EASE} ${delay}s both`,
+      "--sbi-blur": `${blur}px`,
+      "--sbi-y": `${yOffset}px`,
+      ...(gradient ? GRADIENT_INHERIT : null),
+    };
+  };
 
   return createElement(
     as,
     { className: cn(className), "aria-label": text },
-    inner,
+    <TextInner
+      parts={parts}
+      splitBy={splitBy}
+      gradient={gradient}
+      buildCharStyle={buildCharStyle}
+    />,
   );
 }
 
@@ -184,54 +262,35 @@ function TextSoftBlurInOnScroll({
     return () => window.clearTimeout(id);
   }, [isVisible, totalAnimMs]);
 
-  const inner: ReactNode = (
-    <span
-      ref={ref}
-      aria-hidden="true"
-      className="inline-block"
-      style={gradientCss(gradient)}
-    >
-      {parts.map((part, i) => {
-        const delay = startDelay + i * charStagger;
-        const charStyle: CSSProperties = {
-          display: "inline-block",
-          whiteSpace: "pre",
-          paddingBlock: "0.12em",
-          marginBlock: "-0.12em",
-          paddingInline: "0.05em",
-          marginInline: "-0.05em",
-          opacity: isVisible ? 1 : 0,
-          filter: isVisible ? "blur(0px)" : `blur(${blur}px)`,
-          transform: isVisible ? "none" : `translateY(${yOffset}px)`,
-          transition: `opacity ${duration}s ${EASE} ${delay}s, filter ${duration}s ${EASE} ${delay}s, transform ${duration}s ${EASE} ${delay}s`,
-          willChange: animDone ? "auto" : "opacity, filter, transform",
-          ...(gradient
-            ? {
-                backgroundImage: "inherit",
-                WebkitBackgroundClip: "inherit",
-                WebkitTextFillColor: "inherit",
-                backgroundClip: "inherit",
-              }
-            : null),
-        };
-        return (
-          <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: stable id + index
-            key={`${baseId}-${i}`}
-            className="sbi-anim"
-            style={charStyle}
-          >
-            {part}
-          </span>
-        );
-      })}
-    </span>
-  );
+  const buildCharStyle = (globalIdx: number): CSSProperties => {
+    const delay = startDelay + globalIdx * charStagger;
+    return {
+      display: "inline-block",
+      whiteSpace: "pre",
+      paddingBlock: "0.12em",
+      marginBlock: "-0.12em",
+      paddingInline: "0.05em",
+      marginInline: "-0.05em",
+      opacity: isVisible ? 1 : 0,
+      filter: isVisible ? "blur(0px)" : `blur(${blur}px)`,
+      transform: isVisible ? "none" : `translateY(${yOffset}px)`,
+      transition: `opacity ${duration}s ${EASE} ${delay}s, filter ${duration}s ${EASE} ${delay}s, transform ${duration}s ${EASE} ${delay}s`,
+      willChange: animDone ? "auto" : "opacity, filter, transform",
+      ...(gradient ? GRADIENT_INHERIT : null),
+    };
+  };
 
   return createElement(
     as,
     { className: cn(className), "aria-label": text },
-    inner,
+    <TextInner
+      parts={parts}
+      splitBy={splitBy}
+      gradient={gradient}
+      buildCharStyle={buildCharStyle}
+      innerRef={ref}
+      baseId={baseId}
+    />,
   );
 }
 

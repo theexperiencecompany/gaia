@@ -6,10 +6,7 @@ export default function EmailComposeSection({
 }: {
   email_compose_data: EmailComposeData[];
 }) {
-  const handleEmailSent = () => {
-    // Optional: Add any post-send logic here
-    console.log("Email sent from chat bubble");
-  };
+  const handleEmailSent = () => {};
 
   return (
     <div className="mt-3 w-full space-y-3">

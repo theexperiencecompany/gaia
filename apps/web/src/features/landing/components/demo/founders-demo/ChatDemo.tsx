@@ -98,7 +98,7 @@ export default function ChatDemo({
   return (
     <div
       ref={ref}
-      className="flex h-full flex-col overflow-hidden rounded-3xl bg-zinc-900 p-5 text-left"
+      className="flex h-full flex-col overflow-hidden rounded-3xl bg-zinc-900 p-3 sm:p-5 text-left"
       style={{ minHeight }}
     >
       <div

@@ -24,9 +24,9 @@ export function FAQAccordion() {
         }}
       /> */}
 
-      <div className="relative z-[1] w-screen max-w-7xl px-0 py-4 sm:p-8">
+      <div className="relative z-1 w-full max-w-7xl px-0 py-4 sm:p-8">
         <div className="mb-10 flex w-full flex-col items-start justify-center gap-3">
-          <span className="font-serif text-7xl font-medium">
+          <span className="font-serif text-4xl sm:text-5xl lg:text-7xl font-medium">
             Frequently asked questions
           </span>
         </div>
@@ -44,9 +44,9 @@ export function FAQAccordion() {
               title={item.question}
               classNames={{
                 heading: "font-normal",
-                title: "text-2xl",
+                title: "text-lg sm:text-2xl",
                 content:
-                  "text-xl max-w-[60%] text-foreground-500 font-light mb-6",
+                  "text-base sm:text-xl max-w-full sm:max-w-[60%] text-foreground-500 font-light mb-6",
               }}
             >
               <span className="select-text">{item.answer}</span>

@@ -28,7 +28,7 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
   }, []);
 
   return (
-    <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[35vh]">
+    <div className="flex min-h-screen w-full flex-col items-center justify-center pt-24 sm:pt-[30vh] lg:pt-[35vh]">
       <div className="fixed inset-0 top-0 z-0 h-[90vh] w-full">
         <Image
           src={wallpapers.pricing.png}
@@ -41,12 +41,12 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background via-background to-transparent" />
       </div>
 
-      <div className="relative z-1 flex flex-col items-center gap-2">
+      <div className="relative z-1 flex w-full flex-col items-center gap-2 px-4 sm:px-6 lg:px-8">
         <div className="flex w-full flex-col items-center justify-center gap-3 text-white">
-          <h1 className="font-serif text-7xl font-normal">
+          <h1 className="font-serif text-3xl sm:text-5xl lg:text-7xl font-normal text-center">
             $1 a day to never do busywork again.
           </h1>
-          <span className="max-w-2xl text-center text-xl font-light text-zinc-100">
+          <span className="max-w-2xl text-center text-base sm:text-xl font-light text-zinc-100">
             The cheapest hire you'll ever make, whether you're running a company
             or just trying to get through your week.
           </span>

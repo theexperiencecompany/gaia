@@ -102,11 +102,6 @@ export const useCalendarStore = create<CalendarStore>()(
         setCalendars: (calendars) => set({ calendars }, false, "setCalendars"),
 
         setSelectedCalendars: (selectedCalendars) => {
-          console.log(
-            "[Calendar Store] setSelectedCalendars called with:",
-            selectedCalendars.length,
-            "calendars",
-          );
           return set(
             {
               selectedCalendars,

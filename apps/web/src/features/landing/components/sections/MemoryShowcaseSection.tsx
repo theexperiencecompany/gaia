@@ -49,7 +49,7 @@ export default function MemoryShowcaseSection() {
           {BENTO_CARDS.map(({ title, description, Visual }) => (
             <div
               key={title}
-              className="flex flex-col gap-4 rounded-2xl bg-zinc-800 p-4 text-left"
+              className="flex flex-col gap-3 overflow-hidden rounded-2xl bg-zinc-800 p-3 sm:gap-4 sm:p-4 text-left"
             >
               <div className="flex-1">
                 <Visual />

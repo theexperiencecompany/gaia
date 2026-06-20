@@ -61,8 +61,8 @@ export default function DemoTriggerTabs({
 
   return (
     <div className="space-y-2.5">
-      <div className="flex items-start gap-3">
-        <div className="mt-2.5 flex min-w-26 items-center gap-1.5 text-sm font-medium text-zinc-400">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-400 sm:mt-2.5 sm:min-w-26 sm:text-sm">
           <span className="text-nowrap">When to Run</span>
         </div>
 
@@ -140,7 +140,7 @@ export default function DemoTriggerTabs({
                       showBackground: false,
                     })}
                   </div>
-                  <div className="flex flex-col">
+                  <div className="flex min-w-0 flex-col">
                     <span className="text-sm text-zinc-200">
                       {trigger.name}
                     </span>
