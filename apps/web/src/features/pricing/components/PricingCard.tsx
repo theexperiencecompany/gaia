@@ -1,40 +1,68 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tick02Icon } from "@icons";
-import Image from "next/image";
+import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
-import type React from "react";
 import { useEffect } from "react";
+import { TextMorph } from "torph/react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
+import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
-
-interface Feature {
-  text: string;
-  icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-}
 
 interface PricingCardProps {
   title: string;
   price: number;
   originalPrice?: number;
   description?: string;
-  featurestitle?: React.ReactNode;
-  features?: (string | Feature)[];
+  features?: string[];
+  featuresHeading?: string;
   durationIsMonth: boolean;
   className?: string;
   planId?: string;
   isCurrentPlan?: boolean;
   hasActiveSubscription?: boolean;
   isPro?: boolean;
-  isEnterprise?: boolean;
-  priceLabel?: string; // override price display (e.g. "Custom")
-  ctaLabel?: string;
-  ctaHref?: string; // overrides dodo flow when provided
+}
+
+// Derives every price figure shown on a card from the raw cents + billing
+// period, so the component body stays declarative.
+function getPriceDisplay(
+  price: number,
+  originalPrice: number | undefined,
+  durationIsMonth: boolean,
+) {
+  const isPaidTier = price > 0;
+  const perMonthDollars =
+    !durationIsMonth && isPaidTier
+      ? Math.round(price / MONTHS_PER_YEAR / CENTS_PER_DOLLAR)
+      : Math.round(price / CENTS_PER_DOLLAR);
+  const yearlyTotalDollars =
+    !durationIsMonth && isPaidTier
+      ? Math.round(price / CENTS_PER_DOLLAR)
+      : null;
+  // Savings vs paying monthly (originalPrice = 12× the monthly rate).
+  const savePercent =
+    originalPrice && price ? Math.round((1 - price / originalPrice) * 100) : 0;
+  const priceSubLine =
+    price === 0
+      ? "Free forever"
+      : yearlyTotalDollars
+        ? "Billed yearly"
+        : "Billed monthly";
+  return {
+    perMonthDollars,
+    yearlyTotalDollars,
+    priceSubLine,
+    showSavings: !!yearlyTotalDollars && savePercent > 0,
+    // 25% off a year = pay for 9 months, get 12 → 3 months free.
+    monthsFree: Math.round((savePercent / 100) * MONTHS_PER_YEAR),
+  };
 }
 
 export function PricingCard({
@@ -42,34 +70,22 @@ export function PricingCard({
   price,
   originalPrice,
   description,
-  featurestitle,
   features,
+  featuresHeading,
   durationIsMonth,
   className,
   planId,
   isCurrentPlan,
   hasActiveSubscription,
   isPro = false,
-  isEnterprise = false,
-  priceLabel,
-  ctaLabel,
-  ctaHref,
 }: PricingCardProps) {
-  const formatUSDPrice = (amountInCents: number) => {
-    if (amountInCents === 0) return "$0";
-    return `$${(amountInCents / 100).toFixed(0)}`;
-  };
-
-  const displayPrice = formatUSDPrice(price);
-  const originalDisplayPrice = originalPrice
-    ? formatUSDPrice(originalPrice)
-    : null;
-
-  // Yearly Pro: show per-month equivalent, note annual billing
-  const monthlyEquivalent =
-    !durationIsMonth && isPro && price > 0
-      ? formatUSDPrice(Math.round(price / 12))
-      : null;
+  const {
+    perMonthDollars,
+    yearlyTotalDollars,
+    priceSubLine,
+    showSavings,
+    monthsFree,
+  } = getPriceDisplay(price, originalPrice, durationIsMonth);
 
   const {
     createSubscriptionAndRedirect,
@@ -98,11 +114,6 @@ export function PricingCard({
       has_active_subscription: hasActiveSubscription,
       is_free_plan: price === 0,
     });
-
-    if (ctaHref) {
-      router.push(ctaHref);
-      return;
-    }
 
     if (price === 0) {
       if (user) router.push("/c");
@@ -137,23 +148,15 @@ export function PricingCard({
   };
 
   const getButtonText = () => {
-    if (ctaLabel) return ctaLabel;
     if (isCreatingSubscription) return "Creating subscription...";
     if (isCurrentPlan && hasActiveSubscription) return "Current Plan";
     if (hasActiveSubscription && !isCurrentPlan) return "Switch Plan";
-    if (price === 0) return "Start for Free";
-    return "Get GAIA Pro";
+    return `Get GAIA ${title}`;
   };
 
-  const isFree = price === 0 && !isEnterprise;
-
-  const planImage = isEnterprise
-    ? "/images/pricing/enterprise.webp"
-    : isPro
-      ? "/images/pricing/pro.webp"
-      : isFree
-        ? "/images/pricing/free.webp"
-        : null;
+  const isFree = price === 0;
+  // A signed-in user with no active paid subscription is on the Free plan.
+  const isOnFreePlan = !!user && !hasActiveSubscription;
 
   return (
     <div
@@ -194,42 +197,44 @@ export function PricingCard({
         </p>
       </div>
 
-      {planImage && (
-        <div className="px-6 pb-5">
-          <div className="relative h-40 w-full overflow-hidden rounded-2xl">
-            <Image
-              src={planImage}
-              alt={`${title} plan`}
-              fill
-              sizes="(max-width: 640px) 100vw, 33vw"
-              className="object-cover hover:scale-125 transition duration-300"
-            />
-          </div>
-        </div>
-      )}
-
       {/* Price */}
       <div className="px-6 pb-5">
-        <div className="flex items-baseline gap-2">
-          {originalDisplayPrice && !durationIsMonth && !priceLabel && (
-            <span className="text-2xl font-normal text-zinc-500 line-through">
-              {originalDisplayPrice}
-            </span>
-          )}
-          <span className="text-5xl font-semibold tracking-tight">
-            {priceLabel ?? monthlyEquivalent ?? displayPrice}
-          </span>
+        <div className="flex items-baseline gap-1.5">
+          <NumberFlow
+            value={perMonthDollars}
+            format={{
+              style: "currency",
+              currency: "USD",
+              maximumFractionDigits: 0,
+            }}
+            willChange
+            className="text-5xl font-semibold tracking-tight"
+          />
+          <span className="text-base font-normal text-zinc-400">/ month</span>
         </div>
-        {/* Always render this line so height stays consistent */}
-        <p className="mt-1 text-sm text-zinc-400 font-normal">
-          {isEnterprise
-            ? "Tailored pricing"
-            : price > 0
-              ? monthlyEquivalent
-                ? `/ mo, billed ${displayPrice} / year`
-                : "/ per month"
-              : "\u00A0"}
-        </p>
+        {/* Sub-line \u2014 morphs on the billing toggle to keep card heights aligned */}
+        <div className="mt-1.5 flex min-h-6 items-center gap-2">
+          <TextMorph
+            as="span"
+            className="text-sm font-normal text-zinc-400"
+            ease={{ stiffness: 200, damping: 20 }}
+          >
+            {priceSubLine}
+          </TextMorph>
+          {!!yearlyTotalDollars && (
+            <>
+              <span aria-hidden className="size-1 rounded-full bg-zinc-600" />
+              <span className="text-sm font-normal text-zinc-400">
+                ${yearlyTotalDollars.toLocaleString()}
+              </span>
+            </>
+          )}
+          {showSavings && (
+            <Chip color="success" size="sm" variant="flat">
+              {monthsFree} months free
+            </Chip>
+          )}
+        </div>
       </div>
 
       {/* CTA */}
@@ -239,56 +244,55 @@ export function PricingCard({
             <p className="text-sm text-red-400">{paymentError}</p>
           </div>
         )}
-        <RaisedButton
-          className={`w-full ${isFree ? "text-zinc-400!" : isEnterprise ? "text-black!" : "text-black!"}`}
-          color={isFree ? "#2a2a2a" : isEnterprise ? "#fa4b00" : "#00bbff"}
-          onClick={handleGetStarted}
-          disabled={
-            isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
-          }
-        >
-          {getButtonText()}
-        </RaisedButton>
-        <p className="mt-2 text-center text-xs text-zinc-500 font-light">
-          {isEnterprise
-            ? "Reply within 24 hours"
-            : isFree
-              ? "No credit card required"
-              : "Cancel anytime · Secure payment"}
-        </p>
+        {isFree ? (
+          isOnFreePlan ? (
+            <Button isDisabled className="w-full" variant="flat">
+              Current Plan
+            </Button>
+          ) : (
+            <Button
+              className="w-full"
+              variant="flat"
+              onPress={handleGetStarted}
+            >
+              Start for Free
+            </Button>
+          )
+        ) : (
+          <RaisedButton
+            className="w-full text-black!"
+            color="#00bbff"
+            onClick={handleGetStarted}
+            disabled={
+              isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
+            }
+          >
+            {getButtonText()}
+          </RaisedButton>
+        )}
       </div>
 
       {/* Features — flex-1 so both cards fill remaining height equally */}
       <div className="flex flex-1 flex-col gap-2.5 px-6 py-5">
-        {featurestitle && (
-          <p className="mb-0.5 text-xs uppercase text-zinc-500 font-normal">
-            {featurestitle}
-          </p>
+        {!!featuresHeading && (
+          <span className="mb-1 text-sm font-medium text-zinc-500">
+            {featuresHeading}
+          </span>
         )}
-
         {!!features &&
-          features.map((feature) => {
-            const featureText =
-              typeof feature === "string" ? feature : feature.text;
-            const FeatureIcon =
-              typeof feature === "object" && feature.icon
-                ? feature.icon
-                : Tick02Icon;
-
-            return (
-              <div
-                key={featureText}
-                className="flex items-start gap-3 text-sm font-light"
-              >
-                <FeatureIcon
-                  height="15"
-                  width="15"
-                  className={`mt-0.5 shrink-0 ${isPro || isEnterprise ? "text-primary" : "text-zinc-500"}`}
-                />
-                <span className="text-zinc-300">{featureText}</span>
-              </div>
-            );
-          })}
+          features.map((feature) => (
+            <div
+              key={feature}
+              className="flex items-center gap-3 text-sm font-light"
+            >
+              <Tick02Icon
+                height="15"
+                width="15"
+                className={`shrink-0 ${isPro ? "text-primary" : "text-zinc-500"}`}
+              />
+              <span className="whitespace-nowrap text-zinc-300">{feature}</span>
+            </div>
+          ))}
       </div>
     </div>
   );

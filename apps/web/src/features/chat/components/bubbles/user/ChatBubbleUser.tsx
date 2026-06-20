@@ -27,6 +27,7 @@ export default function ChatBubbleUser({
   selectedWorkflow,
   selectedCalendarEvent,
   replyToMessage,
+  queued,
   disableActions = false,
   onRetry,
   isRetrying,
@@ -73,7 +74,11 @@ export default function ChatBubbleUser({
       <div className="flex flex-col items-end gap-1">
         {/* Bubble content + avatar aligned at bottom */}
         <div className="flex items-end gap-1" id={message_id}>
-          <div className="chat_bubble_container user">
+          <div
+            className={`chat_bubble_container user transition-opacity duration-300 ${
+              queued ? "opacity-50" : "opacity-100"
+            }`}
+          >
             {fileData.length > 0 && <ChatBubbleFilePreview files={fileData} />}
 
             {selectedTool && (
@@ -154,8 +159,17 @@ export default function ChatBubbleUser({
           )}
         </div>
 
+        {/* Queued: show a persistent "Queued" label, no date or actions. */}
+        {!disableActions && queued && (
+          <div
+            className={`flex flex-col items-end gap-1 ${hideAvatar ? "pr-1" : "pr-13"} pb-1`}
+          >
+            <span className="text-xs text-zinc-400 select-none">Queued</span>
+          </div>
+        )}
+
         {/* Actions row below bubble, aligned under content (not avatar) */}
-        {!disableActions && (
+        {!disableActions && !queued && (
           <div
             className={`flex flex-col items-end gap-1 ${hideAvatar ? "pr-1" : "pr-13"} pb-1 opacity-0 transition-all group-hover:opacity-100`}
           >

@@ -4,9 +4,9 @@ import { Tooltip } from "@heroui/tooltip";
 import { AudioWave01Icon } from "@icons";
 import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
+import { useComposerSendMode } from "@/features/chat/hooks/useComposerSendMode";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useComposerFiles } from "@/stores/composerStore";
-import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
@@ -27,10 +27,6 @@ export default function RightSide({
   const { selectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent } = useCalendarEventSelection();
   const { uploadedFiles } = useComposerFiles();
-  // Only the INITIAL response phase locks the composer (send → main_response_complete).
-  // Once the agent has acknowledged the task, the composer unlocks so the user
-  // can queue the next message while a background executor keeps running.
-  const isResponding = useIsMainResponseStreaming();
   const hasText = (searchbarText || "").trim().length > 0;
   const hasSelectedTool = selectedTool != null;
   const hasSelectedWorkflow = selectedWorkflow != null;
@@ -43,8 +39,22 @@ export default function RightSide({
     hasSelectedCalendarEvent ||
     hasFiles;
 
+  // Mirror the send button's state so the tooltip matches what the button shows
+  // (Stop while streaming with an empty composer, Queue while streaming with
+  // typed content, send hints otherwise).
+  const { showStop, showQueue } = useComposerSendMode(hasContent);
+
   const getTooltipContent = () => {
-    if (isResponding) return "Stop generation";
+    if (showStop) return "Stop generation";
+
+    if (showQueue) {
+      return (
+        <div className="flex items-center gap-2">
+          Queue message
+          <Kbd className="text-zinc-400" keys={["enter"]} />
+        </div>
+      );
+    }
 
     if (hasSelectedCalendarEvent && !hasText && !hasSelectedTool && !hasFiles) {
       return `Send with calendar event: ${selectedCalendarEvent?.summary}`;
@@ -105,7 +115,7 @@ export default function RightSide({
       <Tooltip
         content={getTooltipContent()}
         placement="right"
-        color={isResponding ? "danger" : "primary"}
+        color={showStop ? "danger" : "primary"}
         showArrow
       >
         <SendStopButton hasContent={hasContent} onSend={handleFormSubmit} />

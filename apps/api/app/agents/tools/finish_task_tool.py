@@ -9,7 +9,16 @@ from langchain_core.tools import tool
 from app.constants.general import FINISH_TASK_NAME
 
 
-@tool(description="Finish the task and return the final result to the parent.")
+@tool(
+    description=(
+        "Finish the task and return the final result to the parent. `result` must "
+        "contain the ACTUAL deliverable in full, not a description of what you did. "
+        "If the task asked for a list, records, or data, include every item with its "
+        "details (do not return a count, a few highlights, or a 'successfully "
+        "retrieved X' summary in place of the data). The data itself is the result; "
+        "the parent only sees what you put here."
+    )
+)
 async def finish_task(result: str) -> str:
     return result
 

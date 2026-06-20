@@ -9,6 +9,11 @@ and any future consumers reference a single source of truth.
 # Must match VOICE_TTS_KEY in apps/voice-agent/src/constants.py — the voice
 # agent matches on this exact string to decide what to speak.
 VOICE_TTS_KEY = "voice_tts"
+# SSE frame key carrying the saved bot message's id alongside the voice answer,
+# so the voice agent can forward a display frame keyed by it and the frontend
+# reconciles it with the WebSocket push. Must match MESSAGE_ID_KEY in
+# apps/voice-agent/src/constants.py.
+MESSAGE_ID_KEY = "message_id"
 
 # Internal markers prefixing the executor result handed to comms as context.
 # Comms re-voices the payload; these markers are stripped from its reply.

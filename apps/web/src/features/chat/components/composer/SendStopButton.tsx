@@ -1,22 +1,26 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ArrowUp02Icon, StopIcon } from "@icons";
+import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
+import { TextMorph } from "torph/react";
+import { useComposerSendMode } from "@/features/chat/hooks/useComposerSendMode";
 import { useLoading } from "@/features/chat/hooks/useLoading";
-import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 
 interface SendStopButtonProps {
   /** Whether there is content ready to send. */
   hasContent: boolean;
-  /** Submit handler invoked when not responding. */
+  /** Submit handler invoked when sending or queueing. */
   onSend: () => void;
   className?: string;
 }
 
 /**
- * The chat send button that flips into a stop button while the main
- * response is streaming. Single source of truth for both the web
- * composer and the desktop assistant popup — edit here, ships to both.
+ * The chat send button. While a stream is open it flips to Stop (empty
+ * composer) or Queue (typed content, held behind the running turn). Single
+ * source of truth for both the web composer and the desktop assistant popup —
+ * edit here, ships to both.
  */
 export default function SendStopButton({
   hasContent,
@@ -24,33 +28,75 @@ export default function SendStopButton({
   className = "h-9 min-h-9 w-9 max-w-9 min-w-9",
 }: Readonly<SendStopButtonProps>) {
   const { stopStream } = useLoading();
-  // Only the INITIAL response phase locks sending (send → main_response_complete).
-  const isResponding = useIsMainResponseStreaming();
+  const { isStreaming, showQueue, showStop, mode } =
+    useComposerSendMode(hasContent);
 
   const handlePress = () => {
-    if (isResponding) {
+    if (showStop) {
       stopStream();
     } else {
       onSend();
     }
   };
 
+  // One source of truth for the button's look per state: the HeroUI background
+  // (`color`) and the icon color (icons inherit `currentColor`, transitioned)
+  // are decided in a single branch so they can never drift apart.
+  const { bg, contentColor } = showStop
+    ? ({ bg: "default", contentColor: "text-zinc-300" } as const)
+    : hasContent
+      ? ({ bg: "primary", contentColor: "text-black" } as const)
+      : ({ bg: "default", contentColor: "text-zinc-500" } as const);
+
   return (
     <Button
-      isIconOnly
-      aria-label={isResponding ? "Stop generation" : "Send message"}
-      className={`${className} ${isResponding ? "cursor-pointer" : ""}`}
-      color={!isResponding && hasContent ? "primary" : "default"}
-      disabled={!isResponding && !hasContent}
+      isIconOnly={!showQueue}
+      aria-label={
+        showStop
+          ? "Stop generation"
+          : showQueue
+            ? "Queue message"
+            : "Send message"
+      }
+      className={`transition-all duration-300 ${contentColor} ${
+        showQueue
+          ? "h-9 min-h-9 gap-1.5 rounded-xl px-3"
+          : `${className} ${showStop ? "cursor-pointer" : ""}`
+      }`}
+      color={bg}
+      disabled={!isStreaming && !hasContent}
       radius="full"
       type="submit"
       onPress={handlePress}
     >
-      {isResponding ? (
-        <StopIcon color="lightgray" width={20} height={20} fill="lightgray" />
-      ) : (
-        <ArrowUp02Icon color={hasContent ? "black" : "gray"} />
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        <m.span
+          key={mode}
+          className="flex items-center gap-1.5"
+          initial={{ opacity: 0, scale: 0.6 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.6 }}
+          transition={{ duration: 0.16, ease: "easeOut" }}
+        >
+          {mode === "stop" ? (
+            <StopIcon
+              color="currentColor"
+              fill="currentColor"
+              width={20}
+              height={20}
+            />
+          ) : mode === "queue" ? (
+            <>
+              <Clock01Icon color="currentColor" width={18} height={18} />
+              <TextMorph as="span" className="font-medium text-sm">
+                Queue
+              </TextMorph>
+            </>
+          ) : (
+            <ArrowUp02Icon color="currentColor" />
+          )}
+        </m.span>
+      </AnimatePresence>
     </Button>
   );
 }

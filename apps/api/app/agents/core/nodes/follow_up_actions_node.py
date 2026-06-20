@@ -77,7 +77,20 @@ async def generate_follow_up_actions(
                 ),
                 HumanMessage(content=context_text),
             ],
-            config=cast(RunnableConfig, {**config, "silent": True}),
+            config=cast(
+                RunnableConfig,
+                {
+                    **config,
+                    "silent": True,  # top-level flag
+                    # Canonical location the messages-stream consumers read
+                    # (execute_graph_streaming / subagent_runner check
+                    # metadata.get("silent")). Without this, this internal
+                    # structured-output call's `{"actions": [...]}` tokens are
+                    # captured by the chat token stream and leak into the
+                    # assistant response. See memory/extraction.py.
+                    "metadata": {**config.get("metadata", {}), "silent": True},
+                },
+            ),
         )
         actions = parser.parse(result if isinstance(result, str) else result.text)
         return actions.actions if actions.actions else []

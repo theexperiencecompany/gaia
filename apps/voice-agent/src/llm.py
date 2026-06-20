@@ -17,6 +17,7 @@ from src.constants import (
     DONE_SENTINEL,
     FRONTEND_STREAM_TOPIC,
     MAIN_RESPONSE_COMPLETE_KEY,
+    MESSAGE_ID_KEY,
     OPEN_TAG_DEFER_CAP,
     PLUMBING_EVENT_KEYS,
     RESPONSE_KEY,
@@ -193,6 +194,23 @@ class CustomLLM(LLM):
                 # say() schedules its own utterance; the comms turn is already
                 # over so it plays as soon as it lands.
                 self.session.say(spoken)
+            # Bubble the answer immediately off the data channel, keyed by the
+            # saved message_id so the backend's WebSocket push (same id)
+            # reconciles in place instead of duplicating. Without this the
+            # bubble waits on (or misses) that WebSocket push while TTS already
+            # played.
+            message_id = event.get(MESSAGE_ID_KEY)
+            if not isinstance(message_id, str) or not message_id:
+                # No id to reconcile against. The frontend only treats this frame
+                # as a delegated answer when message_id is a non-empty string;
+                # forwarding a null id makes it fall through to the normal response
+                # path and append onto the active comms bubble. Skip the immediate
+                # bubble and let the backend's WebSocket push render it instead.
+                log.warning("Voice TTS frame missing message_id; skipping immediate bubble")
+                return
+            await self.forward_stream_event_to_frontend(
+                json.dumps({RESPONSE_KEY: voice_tts, MESSAGE_ID_KEY: message_id})
+            )
             return
         if event.keys() & PLUMBING_EVENT_KEYS:
             await self.forward_stream_event_to_frontend(data)

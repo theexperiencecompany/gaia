@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { Switch } from "@heroui/switch";
+import { Tab, Tabs } from "@heroui/tabs";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
@@ -28,8 +28,8 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
   }, []);
 
   return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-center pt-24 sm:pt-[30vh] lg:pt-[35vh]">
-      <div className="fixed inset-0 top-0 z-0 h-[90vh] w-full">
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center pt-24 sm:pt-[30vh] lg:pt-[35vh]">
+      <div className="absolute inset-0 top-0 z-0 h-[90vh] w-full">
         <Image
           src={wallpapers.pricing.png}
           alt="GAIA Pricing page Wallpaper"
@@ -53,18 +53,26 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
         </div>
 
         <div className="mt-5 mb-20 flex w-full flex-col items-center gap-6 font-medium">
-          <Switch
-            isSelected={isYearly}
-            onValueChange={setIsYearly}
-            color="primary"
+          <Tabs
+            selectedKey={isYearly ? "yearly" : "monthly"}
+            onSelectionChange={(key) => setIsYearly(key === "yearly")}
+            radius="full"
+            size="lg"
+            aria-label="Billing period"
           >
-            <div className="flex items-center gap-2 text-white">
-              Annually
-              <Chip color={"primary"} size="sm">
-                <div className="text-sm font-medium">Save 25%</div>
-              </Chip>
-            </div>
-          </Switch>
+            <Tab key="monthly" title="Monthly" />
+            <Tab
+              key="yearly"
+              title={
+                <div className="flex items-center gap-2">
+                  Yearly
+                  <Chip color="primary" size="sm" variant="solid">
+                    Save 25%
+                  </Chip>
+                </div>
+              }
+            />
+          </Tabs>
 
           <PricingCards
             durationIsMonth={!isYearly}

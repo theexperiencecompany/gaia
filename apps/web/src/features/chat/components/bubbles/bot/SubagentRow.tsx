@@ -5,7 +5,7 @@ import { ToolsIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
-import { ChevronDown } from "@/components/shared/icons";
+import { BrainIcon, ChevronDown } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -21,7 +21,26 @@ const expandTransition = {
 
 // ── Top-level tool call row ─────────────────────────────────────────────────
 
-export function ToolCallRow({
+// A `read` of a markdown file returns line-numbered text (`    12\t# Heading`),
+// whose number+tab prefix stops the content from parsing as markdown. For the
+// display card, strip that prefix so skill files (SKILL.md) and other .md reads
+// render as real markdown. The agent still receives the numbered version.
+const MARKDOWN_READ_PATH = /\.(md|markdown|mdx)$/i;
+function displayToolOutput(call: ToolCallEntry): unknown {
+  const { output, inputs } = call;
+  if (call.tool_name === "read" && typeof output === "string") {
+    const path =
+      inputs && typeof inputs === "object"
+        ? String((inputs as { path?: unknown }).path ?? "")
+        : "";
+    if (MARKDOWN_READ_PATH.test(path)) {
+      return output.replace(/^ *\d+\t/gm, "");
+    }
+  }
+  return output;
+}
+
+function ToolCallRow({
   call,
   isLast,
   getIconUrl,
@@ -141,7 +160,7 @@ export function ToolCallRow({
                     <span className="text-zinc-500 font-medium mb-1">
                       Output
                     </span>
-                    <CompactMarkdown content={call.output} />
+                    <CompactMarkdown content={displayToolOutput(call)} />
                   </div>
                 )}
               </div>
@@ -151,6 +170,83 @@ export function ToolCallRow({
       </div>
     </div>
   );
+}
+
+// ── Model thinking row ──────────────────────────────────────────────────────
+// A step where the model reasoned (a ToolCallEntry carrying `reasoning`). Mirrors
+// ToolCallRow's layout (icon column + connector + collapsible body) so thinking
+// sits naturally between tool steps at both the root and subagent levels.
+
+function ThinkingStepRow({
+  reasoning,
+  isLast,
+}: Readonly<{ reasoning: string; isLast: boolean }>) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="flex items-stretch gap-2">
+      <div className="flex flex-col items-center self-stretch">
+        <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
+          <BrainIcon width={21} height={21} className="text-zinc-500" />
+        </div>
+        {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <button
+          type="button"
+          className="w-full text-left group/think flex items-center min-h-8 cursor-pointer"
+          onClick={() => setExpanded((e) => !e)}
+        >
+          <div className="flex items-center gap-1">
+            <p className="text-xs font-medium text-zinc-500 italic group-hover/think:text-zinc-300 transition-colors">
+              Thinking
+            </p>
+            <ChevronDown
+              className={`text-zinc-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+              width={14}
+              height={14}
+            />
+          </div>
+        </button>
+
+        <AnimatePresence>
+          {expanded && (
+            <m.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={expandTransition}
+              className="overflow-hidden"
+            >
+              <div className="mt-2 mb-3 w-fit rounded-xl bg-zinc-800/50 p-3 text-[11px] text-zinc-400">
+                <CompactMarkdown content={reasoning} />
+              </div>
+            </m.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+// One timeline step: a thinking block when the entry carries `reasoning`, else a
+// normal tool-call row. Hook-free, so it stands in for ToolCallRow at every call
+// site (root timeline + subagent tool lists) without conditional-hook issues.
+export function StepRow(
+  props: Readonly<{
+    call: ToolCallEntry;
+    isLast: boolean;
+    getIconUrl: (c: ToolCallEntry) => string | undefined;
+    getIntegrationName: (c: ToolCallEntry) => string | undefined;
+  }>,
+) {
+  if (props.call.reasoning != null) {
+    return (
+      <ThinkingStepRow reasoning={props.call.reasoning} isLast={props.isLast} />
+    );
+  }
+  return <ToolCallRow {...props} />;
 }
 
 // ── Subagent row (Option B style) ───────────────────────────────────────────
@@ -178,10 +274,13 @@ export function SubagentRow({
   // Start expanded while running so live tool calls are visible by default
   const [expanded, setExpanded] = useState(() => isRunning);
 
-  // Filter out spawn_subagent tool calls — they're represented by nested SubagentRows
-  const visibleToolCalls = group.tool_calls.filter(
+  // Steps shown in order: tool calls + thinking blocks. spawn_subagent is
+  // excluded (rendered separately as nested SubagentRows).
+  const visibleSteps = group.tool_calls.filter(
     (tc) => tc.tool_name !== "spawn_subagent",
   );
+  // Count only real tool calls for the label (thinking blocks aren't "tools").
+  const toolCount = visibleSteps.filter((s) => s.reasoning == null).length;
 
   const iconEl = getToolCategoryIcon(
     group.tool_category ?? "subagent",
@@ -196,7 +295,7 @@ export function SubagentRow({
   // Running mode: show spinner + live tool calls, collapsible
   if (isRunning) {
     return (
-      <div className="flex items-stretch gap-2">
+      <div className="flex items-stretch gap-2 pb-2">
         <div className="flex flex-col items-center self-stretch">
           <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
             {iconEl}
@@ -232,13 +331,13 @@ export function SubagentRow({
                   <CompactMarkdown content={group.handoff_input} />
                 </div>
               )}
-              {visibleToolCalls.length > 0 && (
+              {visibleSteps.length > 0 && (
                 <div className="space-y-0">
-                  {visibleToolCalls.map((tc, tIdx) => (
-                    <ToolCallRow
+                  {visibleSteps.map((tc, tIdx) => (
+                    <StepRow
                       key={`${group.subagent_id}-live-${tc.tool_call_id || tIdx}`}
                       call={tc}
-                      isLast={tIdx === visibleToolCalls.length - 1}
+                      isLast={tIdx === visibleSteps.length - 1}
                       getIconUrl={getIconUrl}
                       getIntegrationName={getIntegrationName}
                     />
@@ -254,7 +353,7 @@ export function SubagentRow({
 
   // Completed mode: show duration + collapsed/expanded tool history
   return (
-    <div className="flex items-stretch gap-2">
+    <div className="flex items-stretch gap-2 pb-2">
       <div className="flex flex-col items-center self-stretch">
         <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
           {iconEl}
@@ -287,8 +386,8 @@ export function SubagentRow({
           </div>
           <p className="text-[11px] text-zinc-600 leading-tight">
             Subagent
-            {visibleToolCalls.length > 0 &&
-              ` · ${visibleToolCalls.length} tool${visibleToolCalls.length === 1 ? "" : "s"}`}
+            {toolCount > 0 &&
+              ` · ${toolCount} tool${toolCount === 1 ? "" : "s"}`}
           </p>
         </button>
 
@@ -311,14 +410,14 @@ export function SubagentRow({
                   </div>
                 )}
 
-                {visibleToolCalls.length > 0 && (
+                {visibleSteps.length > 0 && (
                   <div className="space-y-0">
-                    {visibleToolCalls.map((tc, tIdx) => (
-                      <ToolCallRow
+                    {visibleSteps.map((tc, tIdx) => (
+                      <StepRow
                         key={`${group.subagent_id}-tc-${tc.tool_call_id || tIdx}`}
                         call={tc}
                         isLast={
-                          tIdx === visibleToolCalls.length - 1 &&
+                          tIdx === visibleSteps.length - 1 &&
                           group.nested_subagents.length === 0
                         }
                         getIconUrl={getIconUrl}
@@ -329,7 +428,7 @@ export function SubagentRow({
                 )}
 
                 {group.nested_subagents.length > 0 && (
-                  <div className={visibleToolCalls.length > 0 ? "mt-1" : ""}>
+                  <div className={visibleSteps.length > 0 ? "mt-1" : ""}>
                     {group.nested_subagents.map((nested) => (
                       <SubagentRow
                         key={`nested-${nested.subagent_id}`}

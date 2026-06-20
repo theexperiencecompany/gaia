@@ -3,8 +3,10 @@ by subscription plan. Set on the comms configurable; executor/subagents inherit 
 """
 
 from app.constants.llm import (
+    COMMS_REASONING,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL_NAME,
+    PAID_MODEL_MODEL_KWARGS,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
 )
@@ -37,6 +39,11 @@ async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
     if plan == PlanType.FREE:
         _pin_model(configurable, DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME)
     else:
+        # Paid: MiniMax M3 via OpenRouter, comms-specific reasoning, first-party
+        # provider pin. The executor + provider subagents inherit this model and the
+        # provider pin from `configurable` (see agent_helpers._inherit_from_parent_configurable).
         _pin_model(configurable, PAID_MODEL_PROVIDER, PAID_MODEL_NAME)
+        configurable["reasoning"] = COMMS_REASONING
+        configurable["model_kwargs"] = PAID_MODEL_MODEL_KWARGS
 
     log.set(plan_model={"plan": plan.value, "model": configurable["model"]})

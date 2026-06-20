@@ -151,7 +151,15 @@ export interface ToolCallEntry {
   output?: string;
   icon_url?: string; // For custom integrations with dynamic icons
   integration_name?: string; // Friendly name (e.g., 'Researcher')
+  // When set, this entry is the model's thinking for the step (not a tool call).
+  // It rides the same ordered tool_calls stream so it interleaves between steps,
+  // and renders as a collapsible "Thinking" row at both the root (executor) and
+  // subagent levels. See REASONING_TOOL_NAME.
+  reasoning?: string;
 }
+
+// tool_name marker for a thinking/reasoning step (a ToolCallEntry with `reasoning`).
+export const REASONING_TOOL_NAME = "reasoning";
 
 export interface SubagentGroupData {
   subagent_id: string;
