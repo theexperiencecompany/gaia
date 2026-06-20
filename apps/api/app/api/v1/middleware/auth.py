@@ -53,6 +53,10 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/bot",
             "/api/v1/webhook",
             "/metrics",
+            # Public desktop release lookup for the marketing download page.
+            # Scoped to /releases so the authed /desktop/tool-result bridge stays
+            # protected.
+            "/api/v1/desktop/releases",
             # Login-free connect link — self-authenticates via a signed,
             # single-use, connect-scoped token (see connect_link_service).
             "/api/v1/integrations/connect-link",
