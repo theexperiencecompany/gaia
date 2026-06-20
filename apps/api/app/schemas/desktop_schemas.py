@@ -32,14 +32,15 @@ class DesktopToolResultRequest(BaseModel):
 
     @model_validator(mode="after")
     def _enforce_result_contract(self) -> "DesktopToolResultRequest":
-        """Reject ambiguous payloads so the bridge contract stays unambiguous.
+        """Reject internally-inconsistent payloads without ever dropping a result.
 
-        Success carries data and no error; failure carries an error and no data.
+        A success must not carry an error, and a failure must not carry data.
+        We deliberately do NOT require a non-empty ``error`` on failure: the
+        bridge guarantees a tool result always reaches the awaiting tool, so a
+        failure with an empty message is relayed, not rejected into a timeout.
         """
         if self.ok and self.error:
             raise ValueError("'error' must be omitted when ok is true")
-        if not self.ok and not self.error:
-            raise ValueError("'error' is required when ok is false")
         if not self.ok and self.data is not None:
             raise ValueError("'data' must be omitted when ok is false")
         return self
