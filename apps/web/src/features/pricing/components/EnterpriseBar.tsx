@@ -27,7 +27,7 @@ export function EnterpriseBar({ plan, ctaHref }: EnterpriseBarProps) {
               {plan.description}
             </p>
           )}
-          <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1.5">
+          <div className="mt-1 grid grid-cols-1 gap-x-5 gap-y-1.5 sm:grid-cols-[auto_auto]">
             {plan.features.map((feature) => (
               <span
                 key={feature}
