@@ -73,7 +73,7 @@ result = spawn_subagent(
 
 For "show me today's mail" / "what came in this week" / "unread from last 7 days" — use `GMAIL_FETCH_INBOX_SUMMARY` instead of `GMAIL_FETCH_EMAILS` + manual pagination.
 
-```
+```python
 result = GMAIL_FETCH_INBOX_SUMMARY(timeframe="today", query="is:unread")
 # → up to 100 messages for today, paginated server-side.
 # → When aggregate > 60KB, the tool writes a JSONL file to the session

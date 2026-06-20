@@ -32,6 +32,8 @@ from app.services.composio.custom_tools.gmail_constants import (
 )
 from app.services.composio.proxy_client import proxy_request_sync
 from app.services.contact_service import build_contact_index
+from app.services.storage.juicefs import _contained, _require_mount, ensure_safe_path_id
+from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
 
@@ -103,12 +105,6 @@ def _write_session_file_sync(
     without the async instrumentation. The body is just a file write;
     the JuiceFS mount is already on the host filesystem.
     """
-    from app.services.storage.juicefs import (
-        _contained,
-        _require_mount,
-        ensure_safe_path_id,
-    )
-
     ensure_safe_path_id(conversation_id, label="conversation_id")
     base = _require_mount() / "users" / user_id / "sessions" / conversation_id
     target = _contained(base, relative_path, root_label="session root")
@@ -146,8 +142,10 @@ def _timeframe_clause(timeframe: str, tz: Timezone) -> str:
     if match:
         n = int(match.group(1))
         days = n * _DAYS_PER_UNIT[match.group(2)]
-        start = today - datetime.timedelta(days=days)
-        # "last N days" → window ends at the end of today.
+        # "last N days" is inclusive of today, so the window spans N calendar
+        # days: [today - (N-1), today]. _date_window_clause makes the end
+        # exclusive (today + 1).
+        start = today - datetime.timedelta(days=days - 1)
         return _date_window_clause(start, end_date=today)
 
     return ""
@@ -575,7 +573,17 @@ def _gmail_inbox_label(user_id: str) -> dict[str, Any]:
 def _recent_inbox_ids(user_id: str, *, since: str | None, max_results: int) -> list[str]:
     messages_query: dict[str, Any] = {"labelIds": "INBOX", "maxResults": max_results}
     if since:
-        since_ts = int(datetime.datetime.fromisoformat(since.replace("Z", "+00:00")).timestamp())
+        try:
+            since_ts = int(
+                datetime.datetime.fromisoformat(since.replace("Z", "+00:00")).timestamp()
+            )
+        except ValueError as exc:
+            raise AppError(
+                message=f"Invalid 'since' value: {since!r}",
+                why="GMAIL_CUSTOM_GATHER_CONTEXT received a 'since' that is not an ISO-8601 datetime.",
+                fix="Pass an ISO-8601 datetime such as 2026-06-19T00:00:00Z.",
+                status_code=400,
+            ) from exc
         messages_query["q"] = f"after:{since_ts}"
     messages_data = (
         _gmail_proxy(
@@ -586,7 +594,7 @@ def _recent_inbox_ids(user_id: str, *, since: str | None, max_results: int) -> l
         )
         or {}
     )
-    return [m.get("id") for m in messages_data.get("messages", [])]
+    return [mid for m in messages_data.get("messages", []) if (mid := m.get("id"))]
 
 
 def register_gmail_custom_tools(composio: Composio):

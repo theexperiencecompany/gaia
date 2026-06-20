@@ -121,6 +121,7 @@ class FetchInboxSummaryInput(BaseModel):
     )
     max_messages: int | None = Field(
         default=None,
+        ge=1,
         description=(
             "Cap on total messages aggregated. Default scales with timeframe "
             "(100 for today/yesterday, 200 for a week, 500 for a month+)."

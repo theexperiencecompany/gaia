@@ -10,6 +10,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from app.utils.email_body_normalizer import normalize_email_body
 from shared.py.wide_events import log
 
 # ============================================================================
@@ -431,8 +432,8 @@ def build_message_view(
     Args:
         raw: Raw Gmail API message object (the same shape consumed by
             ``minimal_message_template`` and ``detailed_message_template``).
-        fields: List of fields to include. ``None`` or an empty list means
-            "all fields" (parity with ``detailed_message_template``). Pass a
+        fields: List of fields to include (from ``MessageFieldLiteral``).
+            ``None`` or an empty list means "all documented fields". Pass a
             non-empty list to constrain the output.
         body_processing: One of ``"normalize"``, ``"raw"``, ``"none"``.
             ``"normalize"`` runs ``normalize_email_body`` over the body,
@@ -446,16 +447,19 @@ def build_message_view(
     # caller's selection is honored uniformly.
     view = detailed_message_template(raw)
 
+    # `content` is the detailed template's internal dual text/html blob; it is
+    # not part of the field contract and would otherwise leak the full body
+    # (even when body_processing="none") through the "all fields" path. Drop it.
+    view.pop("content", None)
+
     # Body processing. "none" drops the body entirely; "normalize" cleans it;
     # "raw" leaves it untouched.
     if body_processing == "none":
         view.pop("body", None)
     elif body_processing == "normalize" and view.get("body"):
-        from app.utils.email_body_normalizer import normalize_email_body
-
         view["body"] = normalize_email_body(view["body"])
 
-    # `None` or an empty list both mean "all fields" (the documented contract).
+    # `None` or an empty list both mean "all documented fields".
     if not fields:
         return view
 

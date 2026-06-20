@@ -93,6 +93,11 @@ _MULTI_BLANK_RE = re.compile(r"\n{3,}")
 # Trailing whitespace on each line
 _TRAILING_WS_RE = re.compile(r"[ \t]+$", re.MULTILINE)
 
+# An actual HTML tag: ``<tag ...>`` / ``</tag>`` / ``<tag/>``. The tag name must
+# follow ``<`` (or ``</``) immediately, so prose like ``a < b > c`` or ``<3``
+# is not misread as HTML.
+_HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^>]*>")
+
 
 def strip_signature(body: str) -> str:
     """Remove the signature block (everything after ``-- \\n`` on its own line)."""
@@ -189,7 +194,11 @@ def html_to_text(html: str) -> str:
     """
     if not html or "<" not in html:
         return unescape(html)
-    soup = BeautifulSoup(unescape(html), "html.parser")
+    # Parse the raw HTML BEFORE unescaping. Unescaping first would turn an
+    # escaped literal like ``&lt;script&gt;keep&lt;/script&gt;`` into a real
+    # tag that decompose() then deletes, losing user-visible content. We
+    # unescape the extracted text at the end instead.
+    soup = BeautifulSoup(html, "html.parser")
     # Drop script/style entirely (they may have text we don't want).
     for tag in soup(["script", "style"]):
         tag.decompose()
@@ -201,7 +210,7 @@ def html_to_text(html: str) -> str:
         tag.insert_after("\n\n")
     for br in soup.find_all("br"):
         br.insert_after("\n")
-    text = soup.get_text()
+    text = unescape(soup.get_text())
     text = collapse_whitespace(text)
     return text
 
@@ -231,8 +240,9 @@ def normalize_email_body(body: str, *, level: str = "default") -> str:
     if not body:
         return body
 
-    # HTML → text first so the text rules operate on clean content.
-    if "<" in body and ">" in body and re.search(r"<\s*\w+", body):
+    # HTML → text first so the text rules operate on clean content. Require an
+    # actual tag (not just stray angle brackets) so plain prose isn't mangled.
+    if _HTML_TAG_RE.search(body):
         body = html_to_text(body)
 
     if level == "default":

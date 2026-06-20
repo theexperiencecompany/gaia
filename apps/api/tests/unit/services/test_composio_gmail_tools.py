@@ -4,6 +4,7 @@ Each tool routes provider API calls through `proxy_request_sync` instead of
 raw httpx. Tests patch that helper and assert on the request shape.
 """
 
+import base64
 import re
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -19,8 +20,11 @@ from app.services.composio.custom_tools.gmail_tools import (
     MarkAsReadInput,
     MarkAsUnreadInput,
     StarEmailInput,
+    _resolve_timeframe,
+    _timeframe_clause,
     register_gmail_custom_tools,
 )
+from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
 PROXY_PATH = "app.services.composio.custom_tools.gmail_tools.proxy_request_sync"
@@ -287,9 +291,6 @@ class TestResolveTimeframe:
     """Test the internal _resolve_timeframe + _timeframe_clause helpers."""
 
     def test_today_produces_after_before_same_day(self):
-        from app.services.composio.custom_tools.gmail_tools import _timeframe_clause
-        from app.utils.timezone import Timezone
-
         tz = Timezone.parse("+05:30")
         clause = _timeframe_clause("today", tz)
         # Should look like "after:2024/06/18 before:2024/06/19"
@@ -301,25 +302,16 @@ class TestResolveTimeframe:
         assert before_date > after_date
 
     def test_7d_default_max(self):
-        from app.services.composio.custom_tools.gmail_tools import _resolve_timeframe
-        from app.utils.timezone import Timezone
-
         combined, default_max = _resolve_timeframe("7d", None, Timezone.utc())
         assert default_max == 200
         assert combined.startswith("after:")
 
     def test_1m_default_max_500(self):
-        from app.services.composio.custom_tools.gmail_tools import _resolve_timeframe
-        from app.utils.timezone import Timezone
-
         combined, default_max = _resolve_timeframe("1m", None, Timezone.utc())
         assert default_max == 500
         assert combined.startswith("after:")
 
     def test_explicit_after_in_query_wins(self):
-        from app.services.composio.custom_tools.gmail_tools import _resolve_timeframe
-        from app.utils.timezone import Timezone
-
         combined, _ = _resolve_timeframe("today", "from:alice after:2024/01/01", Timezone.utc())
         assert "from:alice" in combined
         assert "after:2024/01/01" in combined
@@ -328,24 +320,15 @@ class TestResolveTimeframe:
         assert "before:" not in combined
 
     def test_query_only_no_timeframe(self):
-        from app.services.composio.custom_tools.gmail_tools import _resolve_timeframe
-        from app.utils.timezone import Timezone
-
         combined, _ = _resolve_timeframe(None, "is:unread", Timezone.utc())
         assert combined == "is:unread"
 
     def test_timeframe_only_no_query(self):
-        from app.services.composio.custom_tools.gmail_tools import _resolve_timeframe
-        from app.utils.timezone import Timezone
-
         combined, _ = _resolve_timeframe("today", None, Timezone.utc())
         assert combined.startswith("after:")
         assert "before:" in combined
 
     def test_timeframe_and_query_combined(self):
-        from app.services.composio.custom_tools.gmail_tools import _resolve_timeframe
-        from app.utils.timezone import Timezone
-
         combined, _ = _resolve_timeframe("today", "is:unread", Timezone.utc())
         assert combined.startswith("after:")
         assert combined.endswith("is:unread")
@@ -453,8 +436,6 @@ class TestFetchInboxSummary:
 
     def test_pagination_loop_stops_on_gmail_error(self, mock_proxy):
         """Mid-loop error → return partial + error, no crash."""
-        from unittest.mock import MagicMock
-
         tools = _register_and_get_tools()
 
         list_responses = [
@@ -499,8 +480,6 @@ class TestFetchInboxSummary:
 
     def test_default_fields_excludes_body(self, mock_proxy):
         """Default fields list must NOT contain body, cc, or bcc."""
-        from app.models.composio_schemas.gmail import FetchInboxSummaryInput
-
         defaults = FetchInboxSummaryInput.model_fields["fields"].default_factory()
         assert "body" not in defaults
         assert "cc" not in defaults
@@ -551,10 +530,6 @@ class TestFetchInboxSummary:
 
     def test_offload_triggered_when_large(self, mock_proxy, tmp_path):
         """Response > 60KB chars → writes JSONL file and returns digest."""
-        import base64
-
-        from app.models.composio_schemas.gmail import FetchInboxSummaryInput
-
         tools = _register_and_get_tools()
 
         # Build a synthetic list response with 5 messages; each message body
