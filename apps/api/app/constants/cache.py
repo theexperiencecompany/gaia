@@ -85,6 +85,10 @@ PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
 # rejects late POSTs whose key is gone.
 DESKTOP_REQUEST_PREFIX = "desktop:request:"
 DESKTOP_RESULT_CHANNEL_PREFIX = "desktop:result:"
+# Latest desktop (Electron) release resolved from GitHub for the download page.
+# Infrequent releases, so 30 min keeps the page fresh without hammering GitHub.
+DESKTOP_RELEASE_CACHE_KEY = "desktop:release:latest"
+DESKTOP_RELEASE_CACHE_TTL = THIRTY_MINUTES_TTL
 # The ownership key's TTL is derived per-call from the awaiting tool's timeout
 # plus this grace, so the key always outlives the wait (a fixed TTL could be
 # outrun by a longer custom timeout, expiring mid-wait and dropping a valid

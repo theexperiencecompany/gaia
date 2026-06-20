@@ -10,26 +10,17 @@ releases list.
 import httpx
 
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
+from app.constants.cache import DESKTOP_RELEASE_CACHE_KEY, DESKTOP_RELEASE_CACHE_TTL
+from app.constants.desktop import (
+    DESKTOP_RELEASE_TAG_PREFIX,
+    DESKTOP_RELEASES_PAGE_SIZE,
+    GAIA_GITHUB_REPO,
+    GITHUB_RELEASES_TIMEOUT_SECONDS,
+)
 from app.decorators.caching import Cacheable
 from app.schemas.desktop_schemas import DesktopReleaseAsset, DesktopReleaseResponse
 from app.utils.errors import create_error
 from shared.py.wide_events import log
-
-# GAIA's own monorepo. Desktop builds are tagged ``desktop-<version>``.
-GAIA_GITHUB_REPO = "theexperiencecompany/gaia"
-DESKTOP_TAG_PREFIX = "desktop-"
-
-# GitHub's max page size. Desktop releases recur often enough that the newest one
-# always lands within the first page even when interleaved with the far more
-# frequent web/api/cli/bots/mobile releases — a smaller page silently hid it and
-# forced every download button to fall back to the releases list.
-_RELEASES_PAGE_SIZE = 100
-_GITHUB_TIMEOUT_SECONDS = 15.0
-
-DESKTOP_RELEASE_CACHE_KEY = "desktop:release:latest"
-# Desktop releases are infrequent; 30 min keeps the page fresh without hammering
-# GitHub's API (and staying well inside its rate limits).
-DESKTOP_RELEASE_CACHE_TTL = 1800
 
 
 @Cacheable(
@@ -46,10 +37,10 @@ async def get_latest_desktop_release() -> DesktopReleaseResponse:
     url = f"{GITHUB_API_BASE}/repos/{GAIA_GITHUB_REPO}/releases"
 
     try:
-        async with httpx.AsyncClient(timeout=_GITHUB_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=GITHUB_RELEASES_TIMEOUT_SECONDS) as client:
             response = await client.get(
                 url,
-                params={"per_page": _RELEASES_PAGE_SIZE},
+                params={"per_page": DESKTOP_RELEASES_PAGE_SIZE},
                 headers=get_github_headers(),
             )
             response.raise_for_status()
@@ -66,7 +57,7 @@ async def get_latest_desktop_release() -> DesktopReleaseResponse:
         (
             release
             for release in releases
-            if release.get("tag_name", "").startswith(DESKTOP_TAG_PREFIX)
+            if release.get("tag_name", "").startswith(DESKTOP_RELEASE_TAG_PREFIX)
             and not release.get("draft")
             and not release.get("prerelease")
         ),
@@ -76,7 +67,10 @@ async def get_latest_desktop_release() -> DesktopReleaseResponse:
     if latest is None:
         raise create_error(
             message="No published desktop release was found",
-            why=f"No '{DESKTOP_TAG_PREFIX}*' tag in the {_RELEASES_PAGE_SIZE} most recent releases",
+            why=(
+                f"No '{DESKTOP_RELEASE_TAG_PREFIX}*' tag in the "
+                f"{DESKTOP_RELEASES_PAGE_SIZE} most recent releases"
+            ),
             status_code=404,
         )
 
