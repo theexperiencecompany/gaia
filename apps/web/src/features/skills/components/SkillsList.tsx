@@ -1,18 +1,20 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
 import { PlusSignIcon, PuzzleIcon } from "@icons";
 import { useMemo } from "react";
 import type { Skill, SkillTarget } from "../api/types";
 import { EXECUTOR_TARGET } from "../constants";
+import { skillMatchesQuery } from "../utils";
 import { SkillGroup } from "./SkillGroup";
+import { SkillListSkeleton } from "./SkillListSkeleton";
 import { SkillRow } from "./SkillRow";
 import { SkillTargetIcon } from "./SkillTargetIcon";
 
 interface SkillsListProps {
   skills: Skill[];
-  targets: SkillTarget[];
+  /** value → target lookup, built once by the parent. */
+  targetByValue: Map<string, SkillTarget>;
   loading: boolean;
   query: string;
   deletingId: string | null;
@@ -23,17 +25,9 @@ interface SkillsListProps {
   onDelete: (skill: Skill) => void;
 }
 
-function matches(skill: Skill, query: string): boolean {
-  const q = query.toLowerCase();
-  return (
-    skill.name.toLowerCase().includes(q) ||
-    skill.description.toLowerCase().includes(q)
-  );
-}
-
 export function SkillsList({
   skills,
-  targets,
+  targetByValue,
   loading,
   query,
   deletingId,
@@ -43,15 +37,9 @@ export function SkillsList({
   onToggle,
   onDelete,
 }: SkillsListProps) {
-  const targetByValue = useMemo(() => {
-    const map = new Map<string, SkillTarget>();
-    for (const t of targets) map.set(t.value, t);
-    return map;
-  }, [targets]);
-
   const isSearching = query.trim().length > 0;
   const visible = isSearching
-    ? skills.filter((s) => matches(s, query))
+    ? skills.filter((s) => skillMatchesQuery(s.name, s.description, query))
     : skills;
 
   const active = visible.filter((s) => targetByValue.has(s.target));
@@ -88,13 +76,7 @@ export function SkillsList({
   );
 
   if (loading) {
-    return (
-      <div className="space-y-2">
-        <Skeleton className="h-16 w-full rounded-2xl" />
-        <Skeleton className="h-16 w-full rounded-2xl" />
-        <Skeleton className="h-16 w-full rounded-2xl" />
-      </div>
-    );
+    return <SkillListSkeleton />;
   }
 
   if (visible.length === 0) {

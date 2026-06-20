@@ -126,6 +126,7 @@ async def install_from_github(
     repo_url: str,
     skill_path: str | None = None,
     target_override: str | None = None,
+    allowed_targets: set[str] | None = None,
 ) -> Skill:
     """Install a skill from a GitHub repository.
 
@@ -137,12 +138,17 @@ async def install_from_github(
         repo_url: GitHub repo reference (owner/repo, full URL, etc.)
         skill_path: Optional path within repo to skill folder
         target_override: Override target from SKILL.md frontmatter
+        allowed_targets: If provided, the effective target (override or the
+            repo's frontmatter target) must be in this set, else ValueError.
+            Used by the REST endpoint to block scoping a skill to an
+            integration the user hasn't connected; left None for agent tools.
 
     Returns:
         The installed skill
 
     Raises:
-        ValueError: If skill is invalid or already installed
+        ValueError: If skill is invalid, already installed, or its effective
+            target is not in ``allowed_targets``.
     """
     owner, repo, url_path = _parse_github_url(repo_url)
 
@@ -197,8 +203,14 @@ async def install_from_github(
         # Parse frontmatter → metadata + body
         metadata, body = parse_skill_md(skill_md_content)
 
-        # Apply target override
+        # Apply target override, then validate the effective target so a repo's
+        # frontmatter can't scope a skill to an unconnected/invalid agent.
         target = target_override if target_override else metadata.target
+        if allowed_targets is not None and target not in allowed_targets:
+            raise ValueError(
+                f"Target '{target}' is not available. "
+                "Connect the integration before installing a skill scoped to it."
+            )
 
         # Determine logical storage path (used by the Skill record)
         storage_path = _skill_storage_path(user_id, metadata.name)

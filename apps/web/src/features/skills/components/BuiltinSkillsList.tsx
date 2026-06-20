@@ -2,12 +2,13 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Skeleton } from "@heroui/skeleton";
 import NextLink from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { skillsApi } from "../api/skillsApi";
 import type { BuiltinSkillInfo } from "../api/types";
+import { skillMatchesQuery } from "../utils";
 import { SkillGroup } from "./SkillGroup";
+import { SkillListSkeleton } from "./SkillListSkeleton";
 import { SkillPreviewModal } from "./SkillPreviewModal";
 import { SkillTargetIcon } from "./SkillTargetIcon";
 
@@ -24,29 +25,29 @@ interface Group {
 
 export function BuiltinSkillsList({ query }: BuiltinSkillsListProps) {
   const [skills, setSkills] = useState<BuiltinSkillInfo[] | null>(null);
+  const [error, setError] = useState(false);
   const [selected, setSelected] = useState<BuiltinSkillInfo | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    skillsApi
-      .listBuiltinSkills()
-      .then((res) => active && setSkills(res.skills))
-      .catch(() => active && setSkills([]));
-    return () => {
-      active = false;
-    };
+  const load = useCallback(async () => {
+    setError(false);
+    setSkills(null);
+    try {
+      const res = await skillsApi.listBuiltinSkills();
+      setSkills(res.skills);
+    } catch {
+      setError(true);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const groups = useMemo<Group[]>(() => {
     if (!skills) return [];
-    const q = query.trim().toLowerCase();
-    const filtered = q
-      ? skills.filter(
-          (s) =>
-            s.name.toLowerCase().includes(q) ||
-            s.description.toLowerCase().includes(q),
-        )
-      : skills;
+    const filtered = skills.filter((s) =>
+      skillMatchesQuery(s.name, s.description, query),
+    );
 
     const byLabel = new Map<string, Group>();
     for (const skill of filtered) {
@@ -67,14 +68,24 @@ export function BuiltinSkillsList({ query }: BuiltinSkillsListProps) {
     });
   }, [skills, query]);
 
-  if (skills === null) {
+  if (error) {
     return (
-      <div className="space-y-2">
-        <Skeleton className="h-16 w-full rounded-2xl" />
-        <Skeleton className="h-16 w-full rounded-2xl" />
-        <Skeleton className="h-16 w-full rounded-2xl" />
+      <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-900/60 px-6 py-12 text-center">
+        <p className="text-sm text-zinc-400">Couldn't load built-in skills.</p>
+        <Button
+          size="sm"
+          variant="flat"
+          className="rounded-xl"
+          onPress={() => load()}
+        >
+          Retry
+        </Button>
       </div>
     );
+  }
+
+  if (skills === null) {
+    return <SkillListSkeleton />;
   }
 
   return (

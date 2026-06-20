@@ -190,8 +190,9 @@ async def install_skill_with_auto_discover(
         skill={"repo": repo_url, "name": skill_name, "path": skill_path},
     )
     try:
-        if target:
-            await _validate_target(user_id, target)
+        # The effective target (override or the repo's frontmatter target) is
+        # validated inside install_from_github against the user's allowed set.
+        allowed_targets = {t.value for t in await get_skill_targets(user_id)}
 
         install_path = skill_path
 
@@ -215,6 +216,7 @@ async def install_skill_with_auto_discover(
             repo_url=repo_url,
             skill_path=install_path,
             target_override=target,
+            allowed_targets=allowed_targets,
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")

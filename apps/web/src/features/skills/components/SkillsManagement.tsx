@@ -13,8 +13,9 @@ import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import type { Skill, SkillTarget } from "../api/types";
+import type { Skill } from "../api/types";
 import { useSkills } from "../hooks/useSkills";
+import { buildTargetMap } from "../utils";
 import { BuiltinSkillsList } from "./BuiltinSkillsList";
 import { SkillEditorModal } from "./SkillEditorModal";
 import type { SkillPreview } from "./SkillPreviewModal";
@@ -32,11 +33,7 @@ export default function SkillsManagement() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { confirm, confirmationProps } = useConfirmation();
 
-  const targetByValue = useMemo(() => {
-    const map = new Map<string, SkillTarget>();
-    for (const t of targets) map.set(t.value, t);
-    return map;
-  }, [targets]);
+  const targetByValue = useMemo(() => buildTargetMap(targets), [targets]);
 
   const openCreate = () => {
     setEditingSkill(null);
@@ -128,7 +125,7 @@ export default function SkillsManagement() {
         {tab === "yours" ? (
           <SkillsList
             skills={skills}
-            targets={targets}
+            targetByValue={targetByValue}
             loading={loading}
             query={query}
             deletingId={deletingId}

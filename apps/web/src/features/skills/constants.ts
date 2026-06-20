@@ -5,6 +5,8 @@ export const EXECUTOR_TARGET = "executor";
 export const MAX_SKILL_NAME_LENGTH = 64;
 export const MAX_SKILL_DESCRIPTION_LENGTH = 1024;
 export const SKILL_NAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+/** The backend rejects consecutive hyphens separately from the pattern. */
+export const CONSECUTIVE_HYPHENS = /--/;
 
 /**
  * Accepts a GitHub repo reference: `owner/repo` (optionally with a sub-path) or
