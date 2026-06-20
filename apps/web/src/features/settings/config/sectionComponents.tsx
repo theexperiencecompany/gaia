@@ -10,6 +10,7 @@ import NotificationSettings from "@/features/settings/components/NotificationSet
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
 import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
 import type { ModalAction } from "@/features/settings/components/SettingsMenu";
+import SkillsSettings from "@/features/settings/components/SkillsSettings";
 import { SubscriptionSettings } from "@/features/settings/components/SubscriptionSettings";
 import UsageSettings from "@/features/settings/components/UsageSettings";
 import VoiceSettings from "@/features/settings/components/VoiceSettings";
@@ -45,6 +46,8 @@ export function SectionComponent({
       return <IntegrationInstructionsSettings />;
     case "memory":
       return <MemorySettings />;
+    case "skills":
+      return <SkillsSettings />;
     case "notifications":
       return <NotificationSettings />;
     case "desktop":

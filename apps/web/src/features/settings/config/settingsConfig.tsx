@@ -8,6 +8,7 @@ import {
   MessageMultiple02Icon,
   NoteEditIcon,
   NotificationIcon,
+  PuzzleIcon,
   UserCircleIcon,
   VoiceIdIcon,
   WhatsappIcon,
@@ -85,6 +86,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Memories",
     icon: Brain02Icon,
     href: "/settings/memory",
+  },
+  {
+    key: "skills",
+    label: "Skills",
+    icon: PuzzleIcon,
+    href: "/settings/skills",
   },
   // Only rendered inside the Electron app (filtered in SettingsSidebar).
   {
