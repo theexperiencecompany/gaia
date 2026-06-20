@@ -39,15 +39,15 @@ async def deliver_result(
     result_text: str,
     result_type: str,
     returned_note: str = "",
-) -> str | None:
+) -> tuple[str | None, str | None]:
     """Narrate, persist, and deliver a finished executor run's result.
 
     Comms is invoked silently — no SSE stream. Its generated text becomes the
     user-visible bot message. The executor's terminal text is NOT shown to the
     user directly; it's internal context for comms.
 
-    Returns the comms-narrated text shown to the user so a voice-mode stream can
-    also speak it (None on delivery failure).
+    Returns ``(narrated_text, message_id)`` of the saved bot message (voice mode
+    speaks the text and bubbles it by that id). ``(None, None)`` on failure.
 
     The message is always saved to the conversation, then delivered over EXACTLY
     ONE transport chosen by the conversation's own ``source``:
@@ -73,7 +73,7 @@ async def deliver_result(
         )
     except Exception as e:  # noqa: BLE001 — delivery is best-effort, never propagates
         log.error("Background notification delivery failed", error=str(e))
-        return None
+        return None, None
 
 
 async def persist_cancelled_run(run: ExecutorRun) -> None:
@@ -132,11 +132,11 @@ async def _narrate_and_deliver(
     result_type: str,
     tool_data: list[dict[str, Any]] | None,
     returned_note: str,
-) -> str | None:
+) -> tuple[str | None, str | None]:
     """Compose the user-facing message, save it, and route it.
 
-    Returns the user-facing narrated text (None if the message could not be
-    saved) so a voice-mode stream can speak it.
+    Returns ``(narrated_text, message_id)`` of the saved bot message, or
+    ``(None, None)`` if it could not be saved.
     """
     user_id = run.user.get("user_id", "")
 
@@ -209,7 +209,7 @@ async def _narrate_and_deliver(
         )
     except Exception as e:
         log.error("deliver_result: failed to save message", error=str(e))
-        return None
+        return None, None
 
     # Workflow run: the result was produced with no human watching, so deliver it
     # as the proactive completion notification (multi-channel, "Done with X")
@@ -226,7 +226,7 @@ async def _narrate_and_deliver(
             message_id=bot_message.message_id,
             notify_on_completion=run.workflow_notify_on_completion,
         )
-        return notification_text
+        return notification_text, bot_message.message_id
 
     # Deliver over exactly one transport, decided by the conversation's source.
     # Bot conversations go to their platform's API; web/mobile/system go to the
@@ -275,7 +275,7 @@ async def _narrate_and_deliver(
         transport=transport,
         delivered=delivered,
     )
-    return notification_text
+    return notification_text, bot_message.message_id
 
 
 async def _build_follow_up_actions(

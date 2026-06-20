@@ -193,6 +193,14 @@ class CustomLLM(LLM):
                 # say() schedules its own utterance; the comms turn is already
                 # over so it plays as soon as it lands.
                 self.session.say(spoken)
+            # Bubble the answer immediately off the data channel, keyed by the
+            # saved message_id so the backend's WebSocket push (same id)
+            # reconciles in place instead of duplicating. Without this the
+            # bubble waits on (or misses) that WebSocket push while TTS already
+            # played.
+            await self.forward_stream_event_to_frontend(
+                json.dumps({RESPONSE_KEY: voice_tts, MESSAGE_ID_KEY: event.get(MESSAGE_ID_KEY)})
+            )
             return
         if event.keys() & PLUMBING_EVENT_KEYS:
             await self.forward_stream_event_to_frontend(data)
