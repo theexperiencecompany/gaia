@@ -58,11 +58,6 @@ export const useSharedCalendar = () => {
       // Sync to backend
       try {
         await calendarApi.updateCalendarPreferences(updatedSelections);
-        console.log(
-          "[Calendar] Synced selection to backend:",
-          updatedSelections.length,
-          "calendars",
-        );
       } catch (error) {
         console.error("[Calendar] Failed to sync selection to backend:", error);
       }

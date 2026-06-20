@@ -61,9 +61,9 @@ export default async function ContactPage({
   return (
     <>
       <JsonLd data={[contactSchema, webPageSchema, breadcrumbSchema]} />
-      <main className="flex h-screen w-screen flex-col items-center justify-center bg-gradient-to-b from-zinc-900 to-black px-6 py-16">
+      <main className="flex min-h-screen w-full flex-col items-center justify-center bg-linear-to-b from-zinc-900 to-black px-4 py-16 sm:px-6 lg:px-8">
         <header className="text-center">
-          <h1 className="font-serif text-8xl font-light tracking-tight text-balance">
+          <h1 className="font-serif text-4xl sm:text-6xl lg:text-8xl font-light tracking-tight text-balance">
             Contact us
           </h1>
           <p className="mt-3 text-foreground-500">

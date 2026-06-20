@@ -93,7 +93,7 @@ export default function MemoryFoldersCard() {
   return (
     <div ref={ref} className="flex h-full flex-col gap-2">
       <m.div
-        className="flex items-center gap-2 rounded-2xl bg-zinc-900 p-3"
+        className="flex items-center gap-2 rounded-2xl bg-zinc-900 p-2 sm:p-3"
         initial={{ opacity: 0, y: -10 }}
         animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: -10 }}
         transition={{ duration: 0.35, ease }}
@@ -126,7 +126,7 @@ export default function MemoryFoldersCard() {
             >
               <button
                 type="button"
-                className="flex w-full cursor-pointer items-center justify-between p-3 text-left"
+                className="flex w-full cursor-pointer items-center justify-between p-2 text-left sm:p-3"
                 onClick={() => setExpanded(isOpen ? null : folder.name)}
               >
                 <div className="flex items-center gap-2">
@@ -164,7 +164,7 @@ export default function MemoryFoldersCard() {
                     exit={{ height: 0, opacity: 0 }}
                     transition={{ duration: 0.22, ease }}
                   >
-                    <div className="flex flex-col gap-1 px-3 pb-3">
+                    <div className="flex flex-col gap-1 px-2 pb-2 sm:px-3 sm:pb-3">
                       {folder.memories.map((memory) => (
                         <div
                           key={memory.text}

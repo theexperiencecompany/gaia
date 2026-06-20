@@ -141,8 +141,7 @@ export default function WorkflowPage() {
   }, [workflowId, workflows, onEditOpen]);
 
   const handleWorkflowDeleted = useCallback(
-    (workflowId: string) => {
-      console.log("Workflow deleted:", workflowId);
+    (_workflowId: string) => {
       refetch();
     },
     [refetch],

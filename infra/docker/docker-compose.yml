@@ -192,6 +192,15 @@ services:
     volumes:
       - mongo_data:/data/db
     restart: on-failure
+    environment:
+      # Required for Linux kernel 7.x (6.19+): disables glibc rseq registration
+      # so TCMalloc's per-CPU caches don't conflict with the kernel's rseq ABI.
+      GLIBC_TUNABLES: glibc.pthread.rseq=0
+    security_opt:
+      # Required for Linux kernel 7.x: block rseq (ENOSYS) so TCMalloc falls
+      # back from per-CPU caches to a safe path. Using rseq on kernel 7.x causes
+      # a SIGSEGV in mongo:8's TCMalloc ~30s after startup (SERVER-121912).
+      - seccomp:seccomp-mongo.json
     ports:
       - "${MONGO_HOST_PORT:-27017}:27017"
     healthcheck:

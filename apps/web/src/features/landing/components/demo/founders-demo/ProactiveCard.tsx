@@ -6,24 +6,28 @@ const HANDLED_ITEMS = [
     icon: "gmail",
     label: "Investor update drafted",
     detail: "2h saved",
+    shortDetail: "2h",
   },
   {
     id: "pro-2",
     icon: "hubspot",
     label: "Acme follow-up queued — trial ends Friday",
     detail: "flagged",
+    shortDetail: "flagged",
   },
   {
     id: "pro-3",
     icon: "slack",
     label: "47 Slack threads summarized",
     detail: "30min saved",
+    shortDetail: "30min",
   },
   {
     id: "pro-4",
     icon: "googlesheets",
     label: "Pipeline report built from latest metrics",
     detail: "1.5h saved",
+    shortDetail: "1.5h",
   },
 ];
 
@@ -35,7 +39,7 @@ export default function ProactiveCard() {
           Handled while you were focused
         </span>
         <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-          ~4h saved today
+          ~4h<span className="hidden sm:inline"> saved today</span>
         </span>
       </div>
       <div className="space-y-2.5">
@@ -49,7 +53,10 @@ export default function ProactiveCard() {
               })}
             </div>
             <span className="flex-1 text-zinc-300">{item.label}</span>
-            <span className="text-[11px] text-emerald-400">{item.detail}</span>
+            <span className="text-[11px] text-emerald-400">
+              <span className="sm:hidden">{item.shortDetail}</span>
+              <span className="hidden sm:inline">{item.detail}</span>
+            </span>
           </div>
         ))}
       </div>

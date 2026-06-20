@@ -93,14 +93,14 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 350, damping: 30 }}
           style={{ willChange: "transform, opacity" }}
-          className="absolute inset-x-12 top-1/2 z-20 mx-auto max-w-5xl h-[560px] -translate-y-1/2 overflow-hidden rounded-2xl border border-zinc-700/50 bg-zinc-900 shadow-2xl flex flex-col"
+          className="absolute inset-x-3 sm:inset-x-8 top-1/2 z-20 mx-auto max-w-5xl h-[480px] sm:h-[560px] -translate-y-1/2 overflow-hidden rounded-2xl border border-zinc-700/50 bg-zinc-900 shadow-2xl flex flex-col"
         >
           {/* Top scrollable content */}
           <div className="flex-1 min-h-0 overflow-hidden">
-            <div className="flex h-full min-h-0 items-start gap-8 p-6">
+            <div className="flex h-full min-h-0 flex-col items-start gap-4 p-4 sm:flex-row sm:gap-8 sm:p-6">
               {/* Left panel */}
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-2">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 sm:space-y-6 sm:pr-2">
                   {/* Title */}
                   <m.div
                     initial={{ opacity: 0 }}
@@ -113,7 +113,7 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
                       placeholder="Workflow title"
                       readOnly
                       classNames={{
-                        input: "font-medium! text-4xl",
+                        input: "font-medium! text-xl sm:text-4xl",
                         inputWrapper: "px-0",
                       }}
                     />
@@ -129,10 +129,10 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
                       value={DEMO_WORKFLOW.description}
                       variant="underlined"
                       placeholder="What should this workflow do?"
-                      minRows={3}
+                      minRows={2}
                       readOnly
                       classNames={{
-                        input: "text-sm mb-1",
+                        input: "text-xs sm:text-sm mb-1",
                         inputWrapper: "px-0",
                       }}
                     />
@@ -150,8 +150,8 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
                 </div>
               </div>
 
-              {/* Right panel: steps */}
-              <div className="flex min-h-0 w-80 flex-col">
+              {/* Right panel: steps — hidden on mobile to save space */}
+              <div className="hidden sm:flex min-h-0 w-80 flex-col">
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-zinc-500">

@@ -28,7 +28,7 @@ export const useCalendarOperations = () => {
       if (calendarsToUse.length === 0) return;
 
       // Format dates as YYYY-MM-DD for comparison
-      const formatDateForComparison = (date: Date) =>
+      const _formatDateForComparison = (date: Date) =>
         date.toISOString().split("T")[0];
 
       // Check if this range is already loaded (only for specific ranges)
@@ -38,12 +38,6 @@ export const useCalendarOperations = () => {
         !reset &&
         isDateRangeLoaded(customStartDate, customEndDate, calendarsToUse)
       ) {
-        console.log(
-          "Range already loaded:",
-          formatDateForComparison(customStartDate),
-          "to",
-          formatDateForComparison(customEndDate),
-        );
         return;
       }
 

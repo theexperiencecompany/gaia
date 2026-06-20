@@ -10,6 +10,7 @@ export const VALID_SECTIONS = [
   "voice",
   "instructions",
   "memory",
+  "skills",
   "notifications",
   "desktop",
 ] as const;

@@ -318,7 +318,7 @@ export default function ChatDemoSection() {
   }, [phase]);
 
   useEffect(() => {
-    setSidebarOpen(window.innerWidth >= 768);
+    setSidebarOpen(window.innerWidth >= 1024);
   }, []);
 
   const switchUseCase = useCallback(
@@ -780,10 +780,10 @@ export default function ChatDemoSection() {
       {/* Use case chips + retry — only for chat demo */}
       {activePage === "chats" && (
         <div
-          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl ${isInView ? "animate-in fade-in slide-in-from-bottom-3 duration-[400ms] delay-200" : "opacity-0"}`}
+          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 ${isInView ? "animate-in fade-in slide-in-from-bottom-3 duration-[400ms] delay-200" : "opacity-0"}`}
         >
           <div className="hidden sm:block" />
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             {USE_CASES.map((useCase, i) => (
               <Chip
                 key={useCase.id}
