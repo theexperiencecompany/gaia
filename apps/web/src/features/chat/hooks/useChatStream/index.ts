@@ -91,9 +91,6 @@ export const useChatStream = () => {
   });
 
   const resetStreamState = () => {
-    console.log("[QUEUE] resetStreamState → stream closed", {
-      hasPending: pendingStreamArgsRef.current != null,
-    });
     streamState.endStream();
 
     streamInProgressRef.current = false;
@@ -136,11 +133,6 @@ export const useChatStream = () => {
       console.warn(
         "[useChatStream] stream already in progress, queuing for later",
       );
-      console.log("[QUEUE] streamFunction → HELD in pending queue", {
-        inputText,
-        optimisticUserId: options.optimisticUserId,
-        hadPreviousPending: pendingStreamArgsRef.current != null,
-      });
       pendingStreamArgsRef.current = [inputText, currentMessages, options];
       return;
     }
@@ -151,11 +143,6 @@ export const useChatStream = () => {
       conversationId ??
       useChatStore.getState().activeConversationId ??
       refs.current.newConversation.id;
-    console.log("[QUEUE] streamFunction → STARTING new stream", {
-      inputText,
-      effectiveConversationId,
-      optimisticUserId: options.optimisticUserId,
-    });
     streamState.startStream(effectiveConversationId);
 
     trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {
@@ -271,10 +258,6 @@ export const useChatStream = () => {
       // bubble from "queued" (grey) to "sending" (normal) so it turns blue the
       // moment it leaves the queue.
       const queuedUserId = pending[2]?.optimisticUserId;
-      console.log("[QUEUE] dispatchPending → releasing held message", {
-        inputText: pending[0],
-        queuedUserId,
-      });
       if (queuedUserId) {
         db.updateMessageStatus(queuedUserId, "sending");
       }

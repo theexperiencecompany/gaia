@@ -40,7 +40,7 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.constants.executor import VOICE_TTS_KEY
+from app.constants.executor import MESSAGE_ID_KEY, VOICE_TTS_KEY
 from app.core.stream_manager import StreamManager
 from app.utils.agent_utils import format_sse_data
 from shared.py.wide_events import log
@@ -194,7 +194,7 @@ async def _publish_voice_tts(
     if session is not None and session.voice_mode:
         await StreamManager.publish_chunk(
             stream_id,
-            format_sse_data({VOICE_TTS_KEY: notification_text, "message_id": message_id}),
+            format_sse_data({VOICE_TTS_KEY: notification_text, MESSAGE_ID_KEY: message_id}),
         )
 
 

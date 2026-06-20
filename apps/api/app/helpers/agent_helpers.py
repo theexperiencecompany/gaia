@@ -310,6 +310,14 @@ def build_agent_config(  # NOSONAR python:S107
     if effective_tags:
         configurable["langfuse_tags"] = effective_tags
 
+    # Propagate the OpenRouter provider pin inherited from the parent (see
+    # _inherit_from_parent_configurable) so spawned subagents stay on the
+    # first-party lane. Conditional so an absent pin leaves the model's
+    # model_kwargs ConfigurableField default intact instead of clobbering it
+    # with None.
+    if resolved.get("model_kwargs"):
+        configurable["model_kwargs"] = resolved["model_kwargs"]
+
     metadata: dict = {
         "user_id": user.get("user_id"),
         "source_category": source_category,

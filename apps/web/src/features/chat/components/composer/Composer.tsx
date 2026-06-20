@@ -193,11 +193,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
       conversation_id: conversationId,
     });
 
-    console.log("[QUEUE] handleFormSubmit → sendMessage", {
-      hasText: !!inputText,
-      conversationId,
-    });
-
     sendMessage(inputText, {
       files: uploadedFileData,
       selectedTool: selectedTool ?? null,
@@ -225,7 +220,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
     // background executor still running), the send is held in the queue rather
     // than starting a new turn (see useChatStream's pending-stream queue).
     if (event.key === "Enter" && !event.shiftKey) {
-      console.log("[QUEUE] Enter pressed → handleFormSubmit");
       event.preventDefault();
       handleFormSubmit();
     }

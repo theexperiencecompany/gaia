@@ -4,7 +4,6 @@ import { Button } from "@heroui/button";
 import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { useEffect } from "react";
 import { TextMorph } from "torph/react";
 import { useComposerSendMode } from "@/features/chat/hooks/useComposerSendMode";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -32,18 +31,7 @@ export default function SendStopButton({
   const { isStreaming, showQueue, showStop, mode } =
     useComposerSendMode(hasContent);
 
-  // [QUEUE] debug: trace every button-mode transition while testing the queue UX.
-  useEffect(() => {
-    console.log(`[QUEUE] button mode = ${mode.toUpperCase()}`, {
-      isStreaming,
-      hasContent,
-      showQueue,
-      showStop,
-    });
-  }, [mode, isStreaming, hasContent, showQueue, showStop]);
-
   const handlePress = () => {
-    console.log("[QUEUE] button press →", showStop ? "STOP" : "SUBMIT");
     if (showStop) {
       stopStream();
     } else {
