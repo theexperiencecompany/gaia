@@ -1,8 +1,11 @@
-"""Desktop tool bridge endpoints.
+"""Desktop app endpoints.
 
-The Electron app POSTs results of desktop-executed tool actions here; the
-endpoint validates ownership against the pending-request key and relays the
-payload to the awaiting agent tool over Redis.
+Two concerns share the ``/desktop`` prefix:
+
+- the tool bridge (authed): the Electron app POSTs results of desktop-executed
+  tool actions here, and the endpoint relays them to the awaiting agent tool;
+- release distribution (public): the marketing download page resolves the latest
+  desktop binary so its buttons link straight to the right platform/arch asset.
 """
 
 from typing import Annotated
@@ -10,11 +13,29 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.schemas.desktop_schemas import DesktopToolResultRequest, DesktopToolResultResponse
+from app.schemas.desktop_schemas import (
+    DesktopReleaseResponse,
+    DesktopToolResultRequest,
+    DesktopToolResultResponse,
+)
 from app.services.desktop.bridge import relay_desktop_result
+from app.services.desktop.releases import get_latest_desktop_release
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/desktop", tags=["desktop"])
+
+
+@router.get("/releases/latest")
+async def latest_desktop_release() -> DesktopReleaseResponse:
+    """Return the newest published desktop release and its per-platform binaries.
+
+    Public (no auth) — the download page links straight to the correct
+    platform/arch asset instead of falling back to the GitHub releases list.
+    """
+    log.set(desktop_release={"operation": "resolve_latest"})
+    release = await get_latest_desktop_release()
+    log.set(desktop_release={"tag": release.tag, "asset_count": len(release.assets)})
+    return release
 
 
 @router.post("/tool-result")
