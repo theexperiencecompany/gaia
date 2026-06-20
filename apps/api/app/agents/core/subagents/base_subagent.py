@@ -34,6 +34,7 @@ from app.agents.tools.integration_instructions_tools import update_integration_i
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
+from app.agents.tools.wait_tool import wait
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.general import FINISH_TASK_NAME
 from app.override.langgraph_bigtool.create_agent import create_agent
@@ -79,6 +80,11 @@ def _build_scoped_tool_dict(
     scoped_tool_dict[web_search_tool.name] = web_search_tool
     scoped_tool_dict[fetch_webpages.name] = fetch_webpages
     scoped_tool_dict[deep_research.name] = deep_research
+    # Always-bound so a subagent can pause on a long-running tool (e.g. an MCP
+    # render/export job) instead of polling its status in a tight loop until it
+    # exhausts the recursion limit.
+    scoped_tool_dict[wait.name] = wait
+    initial_tool_ids.append(wait.name)
     # Always-on so a subagent can persist a user's durable preference for its
     # own integration the moment it hears one (its instructions are already in
     # context, so it can rewrite the full block without a separate read).

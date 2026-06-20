@@ -42,6 +42,23 @@ It is YOUR responsibility to resolve uncertainty and complete the task.
 - **Search then act**: Search/query first → Use results to inform action
 - **Batch operations**: Gather all needed data → Execute in logical order
 
+### Long-Running Operations (use the `wait` tool, always available)
+- When a tool reports work is still in progress (rendering, building, exporting,
+  uploading, processing, queued, "not ready"), do NOT call its status tool again
+  immediately in a loop. That wastes your step budget and the task never finishes.
+- Call `wait(seconds=<estimate>, reason="...")` once to pause, then re-check. Use
+  any estimate the tool gives you; otherwise start small and increase.
+- After waiting, re-check. If still not done, `wait` again with a longer duration
+  and re-check. Repeat until complete.
+- A single `wait` caps at 5 minutes. If the job will take much longer than a few
+  minutes, do not block: report back to the main agent that it is still in progress.
+- Pattern:
+  render(...) returns "rendering, ~60s"
+  wait(seconds=60, reason="waiting for the render")
+  get_status(...) still rendering?
+  wait(seconds=120, reason="still rendering")
+  get_status(...) done, continue
+
 ## FAILURE HANDLING
 
 If an attempt fails:
