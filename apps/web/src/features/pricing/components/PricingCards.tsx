@@ -113,15 +113,12 @@ export function PricingCards({
     return a.amount - b.amount;
   });
 
-  // Match the column count to the number of priced tiers so the row stays
-  // centered (2 tiers → 2 columns, 3 tiers → 3 columns) instead of leaving an
-  // empty trailing column.
-  const gridColsClass =
-    sortedPlans.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2";
-
   return (
     <div className="flex w-full max-w-5xl flex-col gap-3">
-      <div className={`grid grid-cols-1 items-stretch gap-3 ${gridColsClass}`}>
+      {/* Each tier keeps the width it would have in a 3-column layout
+          ((100% - 2 gaps) / 3); the columns are centered as a group so a
+          2-tier lineup stays centered instead of stretching or left-aligning. */}
+      <div className="grid grid-cols-1 items-stretch justify-center gap-3 sm:grid-flow-col sm:auto-cols-[calc((100%-1.5rem)/3)] sm:grid-cols-none">
         {sortedPlans.map((plan: Plan) => {
           const isPro = plan.name.toLowerCase().includes("pro");
           // Convert any currency to USD cents for display

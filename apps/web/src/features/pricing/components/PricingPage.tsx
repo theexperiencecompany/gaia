@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { Switch } from "@heroui/switch";
+import { Tab, Tabs } from "@heroui/tabs";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
@@ -53,18 +53,27 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
         </div>
 
         <div className="mt-5 mb-20 flex w-full flex-col items-center gap-6 font-medium">
-          <Switch
-            isSelected={isYearly}
-            onValueChange={setIsYearly}
+          <Tabs
+            selectedKey={isYearly ? "yearly" : "monthly"}
+            onSelectionChange={(key) => setIsYearly(key === "yearly")}
             color="primary"
+            radius="full"
+            size="lg"
+            aria-label="Billing period"
           >
-            <div className="flex items-center gap-2 text-white">
-              Annually
-              <Chip color="success" size="sm" variant="flat">
-                Save 25%
-              </Chip>
-            </div>
-          </Switch>
+            <Tab key="monthly" title="Monthly" />
+            <Tab
+              key="yearly"
+              title={
+                <div className="flex items-center gap-2">
+                  Yearly
+                  <Chip color="warning" size="sm" variant="solid">
+                    Save 25%
+                  </Chip>
+                </div>
+              }
+            />
+          </Tabs>
 
           <PricingCards
             durationIsMonth={!isYearly}
