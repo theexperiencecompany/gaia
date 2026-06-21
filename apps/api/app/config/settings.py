@@ -280,7 +280,15 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     E2B_API_KEY: str
     E2B_TEMPLATE_ID: str  # gaia-coder template ID (run scripts/build_e2b_template.py)
-    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 60
+    # Idle window before a sandbox is paused. A paused sandbox must resume +
+    # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
+    # most expensive step in an acquire (the metadata engine is remote). At 60s,
+    # any think-gap between turns paused the sandbox and made the *next* `bash`
+    # pay a full remount. 300s keeps the sandbox warm across normal conversation
+    # gaps so back-to-back turns reuse a live mount. Trade-off: more concurrently
+    # live sandboxes vs the E2B quota — the scalable fix is the warm pool
+    # (E2B_WARM_POOL_TARGET_RATIO), still a follow-up.
+    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 300
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
     E2B_SANDBOX_EVICT_DAYS: int = 14
     E2B_WARM_POOL_TARGET_RATIO: float = 2.0  # Phase 2
@@ -460,7 +468,15 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     E2B_API_KEY: str | None = None
     E2B_TEMPLATE_ID: str | None = None
-    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 60
+    # Idle window before a sandbox is paused. A paused sandbox must resume +
+    # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
+    # most expensive step in an acquire (the metadata engine is remote). At 60s,
+    # any think-gap between turns paused the sandbox and made the *next* `bash`
+    # pay a full remount. 300s keeps the sandbox warm across normal conversation
+    # gaps so back-to-back turns reuse a live mount. Trade-off: more concurrently
+    # live sandboxes vs the E2B quota — the scalable fix is the warm pool
+    # (E2B_WARM_POOL_TARGET_RATIO), still a follow-up.
+    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 300
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
     E2B_SANDBOX_EVICT_DAYS: int = 14
     E2B_WARM_POOL_TARGET_RATIO: float = 2.0

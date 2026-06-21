@@ -156,12 +156,31 @@ export META_PASSWORD="${META_PASSWORD:-}"
 # future change re-grants sudo to the sandbox user, the daemon's environ
 # and cmdline stay locked down.
 JFS_LAUNCHER="/etc/gaia/jfs_launcher.py"
+JFS_LOG=/var/log/juicefs.log
 
-# Poll until $1 is a real mountpoint, up to $2 seconds (default 45). JuiceFS's
-# own --background readiness probe gives up after ~10s, but a remote meta (Neon
-# / cloud Postgres) often needs longer while the daemon finishes mounting.
-# Trusting the mount command's exit code would drop a slow-but-successful mount
-# to the ephemeral fallback, leaving /workspace unshared from the host.
+# Launch a juicefs mount as a detached FOREGROUND daemon (NO --background).
+#
+# Why not --background: in background mode juicefs forks a child daemon and the
+# parent runs an internal readiness self-check that gives up after ~10s, printing
+# `<FATAL>: mount point is not ready in 10 seconds` AND tearing the child down —
+# so a mount that just needs longer never completes. From an E2B sandbox the
+# metadata engine (remote CockroachDB) needs ~13s+ for the cold handshake +
+# per-table schema introspection, so --background turned a slow-but-fine mount
+# into a guaranteed FATAL → ephemeral fallback → canary-stale → recreate loop.
+#
+# Foreground juicefs has no such self-abort; `setsid ... &` detaches it into its
+# own session so the daemon survives this script exiting, and wait_mounted below
+# is the only readiness gate. fds are redirected so nothing ties the daemon to
+# mount.sh's stdio. The jfs_launcher PR_SET_DUMPABLE hardening still applies
+# (it runs before exec, inside setsid).
+launch_juicefs() {
+    setsid "$JFS_LAUNCHER" mount "$@" </dev/null >>"$JFS_LOG" 2>&1 &
+}
+
+# Poll until $1 is a real mountpoint, up to $2 seconds (default 45). The juicefs
+# daemon is launched detached-foreground (see launch_juicefs), so this poll —
+# not the mount command's exit code — is the real readiness gate: a slow-but-
+# successful cold mount is no longer dropped to the ephemeral fallback.
 wait_mounted() {
     local secs="${2:-45}"
     while [ "$secs" -gt 0 ]; do
@@ -182,15 +201,22 @@ mount_user_subdir() {
     # and there is no way to navigate up to a sibling user.
     # --backup-meta=0 : R2 ListObjects is unsorted; auto-backup would fail.
     # no --writeback  : writeback loses data on sandbox kill — keep durable.
-    "$JFS_LAUNCHER" mount \
+    #
+    # Memory: the E2B sandbox has only ~1 GB RAM, and mount.sh starts THREE
+    # juicefs daemons (this + skills + system). --buffer-size is an in-RAM
+    # read/write buffer, so the old 600+300+300 MB summed past the sandbox's
+    # total RAM and the kernel OOM-killed the mount ~2/3 of the time (the host
+    # sidecar mount, on a 16 GB box, never hit this — the flags were sized for
+    # it). Keep the three buffers small enough to coexist in ~1 GB; reads go
+    # host-side in prod so a large sandbox read buffer buys little anyway.
+    launch_juicefs \
         --subdir "/users/$USER_ID" \
         --backup-meta=0 \
         --cache-dir=/var/cache/juicefs \
-        --cache-size=8192 \
+        --cache-size=2048 \
         --max-uploads=20 \
-        --buffer-size=600 \
-        --background \
-        "$JFS_META_URL" "$JFS_MOUNT" 2>&1 || true
+        --buffer-size=128 \
+        "$JFS_META_URL" "$JFS_MOUNT"
     wait_mounted "$JFS_MOUNT" 45
 }
 
@@ -200,15 +226,16 @@ mount_skills_subdir() {
     fi
     mkdir -p "$JFS_SKILLS_MOUNT"
     # Read-only mount of /skills/$USER_ID — backs /workspace/skills.
-    "$JFS_LAUNCHER" mount \
+    # Small buffer — see the memory note in mount_user_subdir (three daemons in
+    # a ~1 GB sandbox). Read-only skills overlay needs almost no write buffer.
+    launch_juicefs \
         --subdir "/skills/$USER_ID" \
         --read-only \
         --backup-meta=0 \
         --cache-dir=/var/cache/juicefs \
-        --cache-size=1024 \
-        --buffer-size=300 \
-        --background \
-        "$JFS_META_URL" "$JFS_SKILLS_MOUNT" 2>&1 || true
+        --cache-size=512 \
+        --buffer-size=32 \
+        "$JFS_META_URL" "$JFS_SKILLS_MOUNT"
     wait_mounted "$JFS_SKILLS_MOUNT" 30
 }
 
@@ -220,15 +247,16 @@ mount_system_subdir() {
     # Read-only mount of the SHARED /_system subtree (same for every user) —
     # backs /workspace/.system. Per-user workspaces symlink INDEX.md / GUIDE.md
     # / builtin skills into here instead of holding their own copies.
-    "$JFS_LAUNCHER" mount \
+    # Small buffer — see the memory note in mount_user_subdir (three daemons in
+    # a ~1 GB sandbox). Read-only shared overlay needs almost no write buffer.
+    launch_juicefs \
         --subdir "/_system" \
         --read-only \
         --backup-meta=0 \
         --cache-dir=/var/cache/juicefs \
-        --cache-size=1024 \
-        --buffer-size=300 \
-        --background \
-        "$JFS_META_URL" "$JFS_SYSTEM_MOUNT" 2>&1 || true
+        --cache-size=512 \
+        --buffer-size=32 \
+        "$JFS_META_URL" "$JFS_SYSTEM_MOUNT"
     wait_mounted "$JFS_SYSTEM_MOUNT" 30
 }
 
