@@ -12,10 +12,14 @@ import {
 import { useMemo, useRef } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import { toTitleCase } from "@/features/chat/utils/chatUtils";
+import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import type {
   TodoProgressData,
   TodoProgressItem,
 } from "@/types/features/todoProgressTypes";
+
+/** Resolver mapping a todo_progress source to its display label. */
+type SourceLabel = (source: string) => string;
 
 interface TodoProgressSectionProps {
   todo_progress: TodoProgressData;
@@ -99,7 +103,17 @@ export default function TodoProgressSection({
   todo_progress,
   isStreaming,
 }: TodoProgressSectionProps) {
+  const { getIntegrationName } = useIntegrationLookup();
   const sources = Object.keys(todo_progress);
+
+  // Custom MCP integrations stream their raw integration id as the source.
+  // Prefer the backend-provided display name, fall back to the client-side
+  // integration lookup (for older messages without it), then prettify the id.
+  const getSourceLabel: SourceLabel = (source) =>
+    todo_progress[source]?.integration_name ??
+    getIntegrationName(source) ??
+    toTitleCase(source);
+
   if (sources.length === 0) return null;
 
   const activeSources = sources.filter(
@@ -113,6 +127,7 @@ export default function TodoProgressSection({
         source={activeSources[0]}
         todos={todo_progress[activeSources[0]].todos}
         isStreaming={isStreaming}
+        getSourceLabel={getSourceLabel}
       />
     );
   }
@@ -122,6 +137,7 @@ export default function TodoProgressSection({
       activeSources={activeSources}
       todo_progress={todo_progress}
       isStreaming={isStreaming}
+      getSourceLabel={getSourceLabel}
     />
   );
 }
@@ -130,10 +146,12 @@ function SingleSourceCard({
   source,
   todos,
   isStreaming,
+  getSourceLabel,
 }: {
   source: string;
   todos: TodoProgressItem[];
   isStreaming?: boolean;
+  getSourceLabel: SourceLabel;
 }) {
   const completedCount = todos.filter((t) => t.status === "completed").length;
   const pct = todos.length > 0 ? (completedCount / todos.length) * 100 : 0;
@@ -143,7 +161,7 @@ function SingleSourceCard({
     <div className="mt-2 mb-2 animate-scale-in rounded-3xl bg-zinc-800/70 backdrop-blur-xl p-4 w-full max-w-96">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-zinc-400">
-          {toTitleCase(source)}
+          {getSourceLabel(source)}
         </span>
         <Chip
           size="sm"
@@ -166,10 +184,12 @@ function MultiSourceAccordion({
   activeSources,
   todo_progress,
   isStreaming,
+  getSourceLabel,
 }: {
   activeSources: string[];
   todo_progress: TodoProgressData;
   isStreaming?: boolean;
+  getSourceLabel: SourceLabel;
 }) {
   const prevDataRef = useRef<TodoProgressData>({});
 
@@ -217,7 +237,7 @@ function MultiSourceAccordion({
               title={
                 <div className="flex items-center gap-2 w-full pr-1">
                   <span className="text-xs font-medium text-zinc-400 min-w-0 flex-1 truncate">
-                    {toTitleCase(source)}
+                    {getSourceLabel(source)}
                   </span>
                   <Progress
                     size="sm"
