@@ -9,6 +9,7 @@ from langchain_core.messages import ToolCall
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.agents import INTERNAL_AGENT_MARKERS
+from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.mongodb.collections import integrations_collection
 from app.decorators.caching import Cacheable
@@ -66,7 +67,7 @@ def parse_subagent_id(subagent_id: str) -> tuple[str, str | None]:
     return clean, None
 
 
-@Cacheable(key_pattern="handoff_name:{clean_id}", ttl=3600)
+@Cacheable(key_pattern=f"{HANDOFF_NAME_CACHE_PREFIX}:{{clean_id}}", ttl=3600)
 async def _lookup_custom_integration_name(clean_id: str) -> str | None:
     """Look up custom integration name from MongoDB with caching."""
     custom = await integrations_collection.find_one(

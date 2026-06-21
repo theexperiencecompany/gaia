@@ -14,7 +14,7 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
 )
 from app.db.postgresql import get_db_session
-from app.db.redis import delete_cache, delete_cache_by_pattern
+from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.db_oauth import MCPCredential
 from app.models.integration_models import (
@@ -26,7 +26,11 @@ from app.models.mcp_config import MCPConfig
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
-from app.services.integrations.user_integrations import add_user_integration
+from app.services.integrations.user_integrations import (
+    add_user_integration,
+    invalidate_user_integration_caches,
+    remove_user_integration,
+)
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.favicon_utils import fetch_favicon_from_url
 from shared.py.wide_events import log
@@ -128,6 +132,15 @@ async def update_custom_integration(
         {"$set": update_data},
     )
 
+    # A name/description change makes every connected user's cached connected list
+    # (which embeds the display name) stale. Bust them so the rename shows on the
+    # next turn instead of lingering for the 24h cache TTL.
+    if "name" in update_data or "description" in update_data:
+        async for ui in user_integrations_collection.find(
+            {"integration_id": integration_id}, {"user_id": 1}
+        ):
+            await invalidate_user_integration_caches(ui["user_id"])
+
     updated_doc = await integrations_collection.find_one({"integration_id": integration_id})
     return Integration(**updated_doc) if updated_doc else None
 
@@ -140,16 +153,9 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     )
 
     if not doc:
-        user_int = await user_integrations_collection.find_one(
-            {"user_id": user_id, "integration_id": integration_id}
-        )
-        if user_int:
-            await user_integrations_collection.delete_one(
-                {"user_id": user_id, "integration_id": integration_id}
-            )
-            await delete_cache_by_pattern(f"tools:user:{user_id}:*")
-            return True
-        return False
+        # No catalog row — just drop this user's link. The mutator deletes the
+        # row and invalidates atomically, returning False if there was nothing.
+        return await remove_user_integration(user_id, integration_id)
 
     is_creator = doc.get("created_by") == user_id
 
@@ -174,13 +180,13 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
             )
             affected_user_ids = [d["user_id"] async for d in affected_users_cursor]
 
-            await user_integrations_collection.delete_many({"integration_id": integration_id})
-
+            # Remove each user's link through the canonical mutator so the row
+            # delete and its cache invalidation stay coupled per user.
             for affected_user_id in affected_user_ids:
                 try:
-                    await delete_cache_by_pattern(f"tools:user:{affected_user_id}:*")
+                    await remove_user_integration(affected_user_id, integration_id)
                 except Exception as e:
-                    log.debug(f"Cache deletion failed for user {affected_user_id}: {e}")
+                    log.debug(f"Failed to remove integration for user {affected_user_id}: {e}")
 
             try:
                 async with get_db_session() as session:
@@ -205,13 +211,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
 
             return True
         return False
-    result = await user_integrations_collection.delete_one(
-        {"user_id": user_id, "integration_id": integration_id}
-    )
-
-    if result.deleted_count > 0:
-        await delete_cache_by_pattern(f"tools:user:{user_id}:*")
-
+    if await remove_user_integration(user_id, integration_id):
         try:
             async with get_db_session() as session:
                 await session.execute(

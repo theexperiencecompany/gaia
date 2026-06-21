@@ -13,7 +13,7 @@ from app.config.oauth_config import (
     get_integration_scopes,
 )
 from app.config.token_repository import token_repository
-from app.constants.keys import OAUTH_STATUS_KEY
+from app.constants.cache import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url, invalidate_mcp_status_cache
 from app.schemas.integrations.responses import (

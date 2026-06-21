@@ -108,6 +108,7 @@ async def build_initial_messages(
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
+    include_connected_integrations: bool = False,
 ) -> list:
     """Build the [static_prompt, dynamic_context, human_task] triplet.
 
@@ -135,6 +136,8 @@ async def build_initial_messages(
             parallel with its own work and pass it down here to avoid the
             subagent running a duplicate ChromaDB lookup.
         skills_text: Pre-fetched skills section; same rationale.
+        include_connected_integrations: Executor-only; appends the live
+            connected-integrations manifest to the dynamic-context message.
     """
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
 
@@ -146,6 +149,7 @@ async def build_initial_messages(
         integration_id=integration_id,
         memories_text=memories_text,
         skills_text=skills_text,
+        include_connected_integrations=include_connected_integrations,
     )
 
     # Current time rides in a HumanMessage so the system_instruction prefix
@@ -418,6 +422,9 @@ async def prepare_executor_execution(
         task=enhanced_task,
         user_id=user_id,
         retrieval_query=task,
+        # Executor is the agent that performs handoffs, so it gets the live
+        # connected-integrations manifest (names + handoff subagent_ids).
+        include_connected_integrations=True,
     )
 
     return SubagentExecutionContext(

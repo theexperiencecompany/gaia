@@ -22,7 +22,9 @@ from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.helpers.message_helpers import (
     BACKGROUND_EXECUTION_BANNER,
     DYNAMIC_CONTEXT_MARKER,
+    EXECUTOR_CONNECTED_INTEGRATIONS_HEADER,
     _build_active_todo_banner,
+    build_connected_integrations_manifest,
     build_workspace_session_banner,
 )
 from app.memory.engine import memory_engine
@@ -135,6 +137,7 @@ async def create_agent_context_message(
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
+    include_connected_integrations: bool = False,
 ) -> SystemMessage:
     """Build the dynamic-context system message for executor/subagent runs.
 
@@ -156,6 +159,8 @@ async def create_agent_context_message(
             ChromaDB lookup. Memory fetched by the caller is passed through
             the handoff payload so subagents don't re-run the same search.
         skills_text: Pre-fetched skills section; same rationale as memories.
+        include_connected_integrations: When True (executor only), append the
+            live connected-integrations manifest (names + handoff subagent_ids).
     """
     parts: list[str] = []
 
@@ -241,12 +246,34 @@ async def create_agent_context_message(
 
         return f"\n\n{block}" if block else ""
 
-    memories_section, skills_section, metadata_section, instructions_section = await asyncio.gather(
+    async def _fetch_integrations_manifest() -> str:
+        # Executor-only: the agent that actually performs handoffs gets the live
+        # list of connected integrations with their handoff subagent_ids.
+        # Provider subagents operate within their own provider and don't need it.
+        if not (include_connected_integrations and user_id):
+            return ""
+        return await build_connected_integrations_manifest(
+            user_id, header=EXECUTOR_CONNECTED_INTEGRATIONS_HEADER
+        )
+
+    (
+        memories_section,
+        skills_section,
+        metadata_section,
+        instructions_section,
+        integrations_section,
+    ) = await asyncio.gather(
         _fetch_memories(),
         _fetch_skills(),
         _fetch_provider_metadata_block(integration_id, user_id),
         _fetch_instructions_block(integration_id or subagent_id, user_id),
+        _fetch_integrations_manifest(),
     )
+
+    # Manifest sits with the stable prefix (it changes only on connect/disconnect,
+    # not per turn), right before the per-turn fetched sections below.
+    if integrations_section:
+        parts.append(integrations_section)
 
     content = (
         "\n".join(parts)
