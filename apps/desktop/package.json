@@ -1,7 +1,7 @@
 {
   "name": "@gaia/desktop",
   "description": "GAIA Desktop - Your Personal AI Assistant",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "main": "./out/main/index.mjs",
   "scripts": {
