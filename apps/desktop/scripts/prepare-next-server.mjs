@@ -123,26 +123,26 @@ async function deleteByExtension(dir, ext) {
 
 /**
  * Strip onnxruntime-web wasm variants the wake-word engine never requests.
- * The default ESM entry loads the JSEP flavor `ort-wasm-simd-threaded.jsep.*`
- * even for the plain "wasm" provider (JSEP is the unified CPU+WebGPU build).
- * Keep that pair; drop plain/asyncify/jspi. Pruning jsep instead leaves the
- * engine with "no available backend found" and the wake word silently dead in
- * packaged builds — the canary fails the build loudly if that ever happens.
+ * libs/wake-word imports `onnxruntime-web/wasm` and runs the "wasm" execution
+ * provider, which loads the CPU build `ort-wasm-simd-threaded.{wasm,mjs}`. The
+ * web sync step (sync-wake-word-runtime.mjs) already copies only that CPU pair,
+ * but drop the JSEP/asyncify/jspi variants defensively in case the upstream
+ * package layout changes, then assert the CPU binary survived — the canary
+ * fails the build loudly if the wake-word runtime ever goes missing.
  */
 async function pruneOnnxRuntime(ortDir) {
   if (!existsSync(ortDir)) return;
   for (const name of await readdir(ortDir)) {
     const unused =
+      name.includes(".jsep.") ||
       name.includes(".asyncify.") ||
-      name.includes(".jspi.") ||
-      name === "ort-wasm-simd-threaded.wasm" ||
-      name === "ort-wasm-simd-threaded.mjs";
+      name.includes(".jspi.");
     if (unused) await rm(resolve(ortDir, name), { force: true });
   }
-  const jsepWasm = resolve(ortDir, "ort-wasm-simd-threaded.jsep.wasm");
-  if (!existsSync(jsepWasm)) {
+  const cpuWasm = resolve(ortDir, "ort-wasm-simd-threaded.wasm");
+  if (!existsSync(cpuWasm)) {
     throw new Error(
-      `wake-word runtime '${jsepWasm}' missing after prune. The onnxruntime-web ` +
+      `wake-word runtime '${cpuWasm}' missing after prune. The onnxruntime-web ` +
         "wasm flavor the engine loads may have changed — update pruneOnnxRuntime().",
     );
   }

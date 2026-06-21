@@ -572,9 +572,9 @@ class TestFetchMessages:
             )
             # Request "body" in fields so the aggregate is large enough to
             # trigger offload (default field set excludes body).
-            fields_with_body = list(
-                FetchMessagesInput.model_fields["fields"].default_factory()
-            ) + ["body"]
+            fields_with_body = list(FetchMessagesInput.model_fields["fields"].default_factory()) + [
+                "body"
+            ]
             result = tools["FETCH_MESSAGES"](
                 request=FetchMessagesInput(
                     timeframe="today",

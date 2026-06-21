@@ -425,7 +425,6 @@ def build_message_view(
     """Project a raw Gmail API message to only the requested fields.
 
     Single source of truth for per-message field selection. Used by
-    ``process_list_messages_response`` (minimal field set, raw body) and by
     ``GMAIL_FETCH_MESSAGES`` (caller-supplied fields + body processing
     mode).
 
@@ -464,43 +463,6 @@ def build_message_view(
         return view
 
     return {key: view[key] for key in fields if key in view}
-
-
-# Fields surfaced per message in a list response: metadata plus the raw body
-# text, matching the historical minimal_message_template output. Deliberately
-# excludes the HTML `content` blob and `cc` to keep the LLM payload small.
-_LIST_VIEW_FIELDS = [
-    "id",
-    "threadId",
-    "from",
-    "to",
-    "subject",
-    "snippet",
-    "time",
-    "isRead",
-    "hasAttachment",
-    "body",
-    "labels",
-]
-
-
-def process_list_messages_response(response: dict[str, Any]) -> dict[str, Any]:
-    """Process the response from list_gmail_messages tool to minimize data."""
-    processed_response = {
-        "nextPageToken": response.get("nextPageToken"),
-        "resultSize": len(response.get("messages", [])),
-    }
-
-    if "messages" in response:
-        processed_response["messages"] = [
-            build_message_view(msg, fields=_LIST_VIEW_FIELDS, body_processing="raw")
-            for msg in response.get("messages", [])
-        ]
-
-    if "error" in response:
-        processed_response["error"] = response["error"]
-
-    return processed_response
 
 
 def process_list_drafts_response(response: dict[str, Any]) -> dict[str, Any]:
