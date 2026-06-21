@@ -36,10 +36,14 @@ export const getErrorMessage = (data: unknown): string | undefined => {
       ? (data as { detail: unknown }).detail
       : undefined;
   if (typeof detail === "string") return detail;
-  if (detail && typeof detail === "object" && "message" in detail)
-    return (detail as { message?: string }).message;
-  if (data && typeof data === "object" && "message" in data)
-    return (data as { message?: string }).message;
+  if (detail && typeof detail === "object" && "message" in detail) {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  if (data && typeof data === "object" && "message" in data) {
+    const message = (data as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
   return undefined;
 };
 
