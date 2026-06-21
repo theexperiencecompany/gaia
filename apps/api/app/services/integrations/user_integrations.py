@@ -1,5 +1,6 @@
 """User integration management functions."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -186,8 +187,16 @@ async def invalidate_user_integration_caches(user_id: str) -> None:
     the SAME pattern list so no caller can bust a partial set and let one cache
     (e.g. OAUTH_STATUS) drift out of sync with the others.
     """
-    for pattern in USER_INTEGRATION_CACHE_PATTERNS:
-        await delete_cache(pattern.format(user_id=user_id))
+    # gather (not a sequential loop) so one failing delete doesn't skip the
+    # rest — every pattern is attempted. Mirrors the @CacheInvalidator decorator
+    # exactly, and still propagates the error (fail loud, never a partial silent
+    # success).
+    await asyncio.gather(
+        *(
+            delete_cache(pattern.format(user_id=user_id))
+            for pattern in USER_INTEGRATION_CACHE_PATTERNS
+        )
+    )
 
 
 @CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)
