@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { TextMorph } from "torph/react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { ShineBorder } from "@/components/ui/shine-border";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
@@ -191,13 +192,16 @@ export function PricingCard({
   return (
     <div
       className={[
-        "flex h-full w-full flex-col overflow-hidden rounded-3xl",
+        "relative flex h-full w-full flex-col overflow-hidden rounded-3xl",
         "bg-zinc-800/50 backdrop-blur-lg",
         className,
       ]
         .filter(Boolean)
         .join(" ")}
     >
+      {isPro && (
+        <ShineBorder borderWidth={1} shineColor={["#00bbff", "#A7F3FF"]} />
+      )}
       {/* Header: plan name + current plan badge */}
       <div className="flex flex-col gap-1.5 p-6 pb-4">
         {/* Reserve the same vertical space on both cards for the label row */}

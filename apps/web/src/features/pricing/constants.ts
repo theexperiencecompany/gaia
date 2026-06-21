@@ -30,3 +30,9 @@ export const PENDING_CHECKOUT_KEY = "gaia_pending_checkout_plan";
  * Generous vs the seconds-long OAuth round-trip.
  */
 export const PENDING_CHECKOUT_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * localStorage key holding the last product id sent to checkout, so the payment
+ * result page can restart checkout for the same plan via "Try Again".
+ */
+export const LAST_CHECKOUT_PRODUCT_KEY = "gaia_last_checkout_product";
