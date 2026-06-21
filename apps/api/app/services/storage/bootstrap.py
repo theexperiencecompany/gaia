@@ -393,9 +393,8 @@ async def init_juicefs_mount() -> str:
         )
     except TimeoutError:
         log.warning(
-            "[juicefs] mount probe timed out after %ss — mount likely unresponsive; "
-            "(re)starting bootstrap",
-            _MOUNT_PROBE_TIMEOUT_SECONDS,
+            f"[juicefs] mount probe timed out after {_MOUNT_PROBE_TIMEOUT_SECONDS}s — "
+            "mount likely unresponsive; (re)starting bootstrap"
         )
         already_mounted = False
 
