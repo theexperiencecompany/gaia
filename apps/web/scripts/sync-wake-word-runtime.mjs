@@ -1,13 +1,27 @@
 /**
  * Copies the onnxruntime-web WASM runtime into public/wake-word/ort/
  * so the wake-word pipeline (libs/wake-word) can load it from the same
- * origin. The runtime is ~25 MB of generated binaries, so it is synced
- * from node_modules on dev/build instead of being committed.
+ * origin. The binaries are large generated files, so they are synced from
+ * node_modules on dev/build instead of being committed.
+ *
+ * Only the CPU WASM bundle is copied — `libs/wake-word` imports
+ * `onnxruntime-web/wasm` and runs the "wasm" execution provider, so the
+ * JSEP (WebGPU/WebNN), JSPI, and asyncify variants are never loaded. The
+ * JSEP binary alone is 25 MiB, which exceeds Cloudflare Workers' 25 MiB
+ * per-asset limit, so shipping it would break the Cloudflare deploy.
  */
-import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, mkdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Files the `onnxruntime-web/wasm` bundle fetches at runtime: the CPU WASM
+// binary and its Emscripten glue. Keep this in sync with the bundle imported
+// in libs/wake-word/src/web/runtime.ts.
+const RUNTIME_FILES = [
+  "ort-wasm-simd-threaded.wasm",
+  "ort-wasm-simd-threaded.mjs",
+];
 
 const require = createRequire(import.meta.url);
 // onnxruntime-web's exports map hides dist/, so resolve the package main
@@ -21,8 +35,7 @@ const targetDir = join(
 mkdirSync(targetDir, { recursive: true });
 
 let copied = 0;
-for (const file of readdirSync(distDir)) {
-  if (!file.startsWith("ort-wasm-simd-threaded")) continue;
+for (const file of RUNTIME_FILES) {
   const source = join(distDir, file);
   const target = join(targetDir, file);
   try {
@@ -35,5 +48,7 @@ for (const file of readdirSync(distDir)) {
 }
 
 if (copied > 0) {
-  console.log(`[wake-word] Synced ${copied} ONNX runtime file(s) to public/wake-word/ort`);
+  console.log(
+    `[wake-word] Synced ${copied} ONNX runtime file(s) to public/wake-word/ort`,
+  );
 }

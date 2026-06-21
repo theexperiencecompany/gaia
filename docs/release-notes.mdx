@@ -5,8 +5,70 @@ rss: true
 ---
 
 <Frame>
-  <img src="/images/changelog/release-jun-14-2026.webp" alt="GAIA release notes" />
+  <img src="/images/changelog/release-jun-21-2026.webp" alt="GAIA release notes" />
 </Frame>
+
+<Update label="Jun 21, 2026" description="API, Web, Desktop, Mobile, Bots">
+
+![GAIA voice mode](/images/changelog/release-jun-21-2026.webp)
+
+# Voice Mode & Smarter Models
+
+You can now talk to GAIA. Voice mode is a real-time, full-duplex conversation backed by LiveKit — GAIA listens while you speak, answers out loud, and can do everything in a call that it can in a chat. Paid plans also move to a sharper model, and GAIA now shows its thinking as it works.
+
+## [API v0.20.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.20.0)
+
+### Features
+
+- **Real-Time Voice Mode**: Talk to GAIA in a live, full-duplex call powered by LiveKit. A dedicated voice worker bridges your audio to the same agent that runs text chat, so voice has the full toolset — GAIA acknowledges right away, then narrates the answer as it works.
+- **Smarter Paid Model**: Paid plans now run on MiniMax M3 (free plans stay on Gemini), with reasoning enabled and provider routing hardened so tool calls and long answers stay reliable.
+- **Model Thinking in Chat**: GAIA streams its reasoning alongside each step and shows it as a collapsible Thinking row inside the tool card, so you can see how it reached an answer.
+- **User Skills in Settings**: Create, edit, and manage your own skills from a dedicated settings page.
+
+### Bug Fixes
+
+- **MCP Connections**: Migrated OAuth to the official SDK with more reliable auth detection, dynamic registration, and a smoother post-connect flow, plus repaired marketplace data.
+- **Integrations**: Unified per-user cache invalidation so connected integrations are discovered consistently by the agent.
+- **Agent Reliability**: Clearer agent prompting for more reliable generated UI and result surfacing, with subagent conversation history now persisted across turns.
+- **Code Sandbox**: Repaired the sandbox lifecycle and native files API, and hardened the coding tools.
+- **Background Worker**: The ARQ worker now rides out JuiceFS stalls instead of wedging, and the embedding sidecar uses less memory.
+
+## [Web v0.21.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.21.0)
+
+### Features
+
+- **Voice Mode**: A new in-app voice experience with live transcription, token-by-token replies, and tool cards that render right inside the call.
+- **Voice Selection**: Pick from a library of 100+ voices with country and language filters, starred favorites, and preview-on-select. Swap voices live, mid-call, from the "Customise voice" popover.
+- **Model Thinking**: Reasoning now appears as collapsible Thinking rows in the unified tool card, at both the main and subagent level.
+- **Queue Your Next Message**: Send a follow-up while GAIA is still replying and it waits in line — the composer's Send button morphs to Queue, and the queued message shows as pending until it's picked up.
+- **User Skills Management**: A settings page to manage your skills.
+
+### Bug Fixes
+
+- **Smoother Streaming**: Reworked chat markdown rendering to remove per-token re-render lag and keep long, streaming answers fast.
+- **Reliable Retry**: Retrying a message now works without a page reload.
+- **Responsive Landing & Pricing**: Landing and pricing pages now lay out correctly on smaller screens.
+- **Desktop Downloads**: Download buttons resolve straight to the latest desktop release.
+
+## [Desktop v0.4.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.4.0)
+
+### Features
+
+- **Hey GAIA Wake Word**: Say "Hey GAIA" to summon a Siri-style assistant popup and start talking without touching the keyboard.
+
+## [Mobile v0.6.1](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.6.1)
+
+### Bug Fixes
+
+- **Agent Reliability**: Picked up the clearer agent prompting for more reliable generated UI and result surfacing.
+
+## [Bots v1.4.1](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.4.1)
+
+### Bug Fixes
+
+- **WhatsApp Delivery**: Falls back to a template message whenever a free-form send fails, so replies still get through.
+
+</Update>
 
 <Update label="Jun 14, 2026" description="API, Web, CLI">
 

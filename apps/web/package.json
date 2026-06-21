@@ -35,7 +35,8 @@
     "lint:fix": "npm run fix",
     "format": "biome format --write .",
     "promote-static": "node scripts/promote-static-landing.mjs",
-    "cf:build": "IMAGE_LOADER=cloudflare opennextjs-cloudflare build && npm run promote-static",
+    "prune-desktop-assets": "node scripts/prune-desktop-assets.mjs",
+    "cf:build": "IMAGE_LOADER=cloudflare opennextjs-cloudflare build && npm run promote-static && npm run prune-desktop-assets",
     "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
