@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { useEffect, useRef, useState } from "react";
-import { toTitleCase } from "@/features/chat/utils/chatUtils";
+import { formatToolName } from "@/features/chat/utils/chatUtils";
 
 interface ToolCardProps {
   readonly name: string;
@@ -24,7 +24,7 @@ export function ToolCard({ name, description }: ToolCardProps) {
 
   return (
     <div className="rounded-xl bg-zinc-800/50 p-3">
-      <p className="font-medium text-zinc-200">{toTitleCase(name)}</p>
+      <p className="font-medium text-zinc-200">{formatToolName(name)}</p>
       {description && (
         <>
           <p
