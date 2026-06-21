@@ -108,11 +108,14 @@ export default function TodoProgressSection({
 
   // Custom MCP integrations stream their raw integration id as the source.
   // Prefer the backend-provided display name, fall back to the client-side
-  // integration lookup (for older messages without it), then prettify the id.
+  // integration lookup (for older messages without it), then the raw id.
+  // Title-case whichever we land on so lowercase names/ids read cleanly.
   const getSourceLabel: SourceLabel = (source) =>
-    todo_progress[source]?.integration_name ??
-    getIntegrationName(source) ??
-    toTitleCase(source);
+    toTitleCase(
+      todo_progress[source]?.integration_name ??
+        getIntegrationName(source) ??
+        source,
+    );
 
   if (sources.length === 0) return null;
 
