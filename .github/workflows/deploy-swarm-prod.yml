@@ -93,12 +93,13 @@ jobs:
       - name: Wait for convergence
         id: converge
         run: |
-          echo "Waiting for gaia-backend and arq_worker to converge (up to 5 minutes)..."
+          SERVICES="gaia-backend arq_worker voice-agent-worker"
+          echo "Waiting for ${SERVICES} to converge (up to 5 minutes)..."
           DEADLINE=$(( $(date +%s) + 300 ))
 
           while true; do
             # Detect if Swarm auto-rolled back any app service
-            for svc in gaia-backend arq_worker; do
+            for svc in $SERVICES; do
               state=$(docker --context prod service inspect "gaia-prod_${svc}" \
                 --format '{{.UpdateStatus.State}}' 2>/dev/null || echo "")
               if echo "$state" | grep -qE "rollback_completed|rollback_started|rollback_paused"; then
@@ -108,31 +109,32 @@ jobs:
               fi
             done
 
-            # Check running replicas for both app services
-            running_backend=$(docker --context prod service ps gaia-prod_gaia-backend \
-              --filter desired-state=running \
-              --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
-            running_backend=${running_backend:-0}
+            # Check running replicas for every app service
+            pending=""
+            status=""
+            for svc in $SERVICES; do
+              running=$(docker --context prod service ps "gaia-prod_${svc}" \
+                --filter desired-state=running \
+                --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
+              running=${running:-0}
+              status="${status}${svc}=${running} "
+              [ "$running" -lt 1 ] && pending="${pending}${svc} "
+            done
 
-            running_worker=$(docker --context prod service ps gaia-prod_arq_worker \
-              --filter desired-state=running \
-              --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
-            running_worker=${running_worker:-0}
-
-            if [ "$running_backend" -ge 1 ] && [ "$running_worker" -ge 1 ]; then
-              echo "gaia-backend and arq_worker are running"
+            if [ -z "$pending" ]; then
+              echo "All app services are running (${status})"
               break
             fi
 
             now=$(date +%s)
             if [ "$now" -ge "$DEADLINE" ]; then
               echo "timed_out=true" >> "$GITHUB_OUTPUT"
-              echo "::error::services did not converge within 5 minutes (backend=${running_backend} worker=${running_worker})"
+              echo "::error::services did not converge within 5 minutes (${status})"
               exit 1
             fi
 
             remaining=$(( DEADLINE - now ))
-            echo "  ... waiting (backend=${running_backend} worker=${running_worker}, ${remaining}s remaining)"
+            echo "  ... waiting (${status}${remaining}s remaining)"
             sleep 15
           done
 
@@ -189,7 +191,7 @@ jobs:
           color: "#ff6b6b"
           message: |
             **Backend Deploy Failed — Convergence Timeout**
-            gaia-backend and arq_worker did not reach Running state within 5 minutes. Check `docker service ps gaia-prod_gaia-backend` and `docker service ps gaia-prod_arq_worker` on the VM.
+            gaia-backend, arq_worker, and voice-agent-worker did not all reach Running state within 5 minutes. Check `docker service ps gaia-prod_<service>` on the VM.
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
@@ -240,7 +242,7 @@ jobs:
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             for svc in $(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot'); do
+              | grep -E 'gaia-backend|arq_worker|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot'); do
               echo "Rolling back $svc..."
               docker --context prod service rollback "$svc"
             done
@@ -257,7 +259,7 @@ jobs:
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             SERVICES=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot')
+              | grep -E 'gaia-backend|arq_worker|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot')
           else
             SERVICES="gaia-prod_gaia-backend gaia-prod_arq_worker"
           fi

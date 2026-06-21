@@ -105,6 +105,7 @@ class SubAgentFactory:
         auto_bind_tools: list[str] | None = None,
         include_finish_task: bool = True,
         mcp_tools: list[BaseTool] | None = None,
+        source_label: str | None = None,
     ) -> CompiledStateGraph:
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
@@ -125,6 +126,9 @@ class SubAgentFactory:
                 captures as the final answer. Use False for answer-only
                 subagents (e.g. documentation fetchers) where finish_task adds
                 latency without value.
+            source_label: Human-readable name for the provider, streamed with
+                todo_progress events so the frontend shows the integration's
+                name instead of its raw id (provider).
 
         Returns:
             Compiled LangGraph agent with tool registry, retrieval, and checkpointer
@@ -163,7 +167,7 @@ class SubAgentFactory:
         )
 
         # Create todo tools and register them in the scoped tool registry
-        todo_tools: list[BaseTool] = create_todo_tools(source=provider)
+        todo_tools: list[BaseTool] = create_todo_tools(source=provider, source_label=source_label)
         todo_hook = create_todo_pre_model_hook(source=provider)
         todo_tool_names: list[str] = []
         for todo_tool in todo_tools:

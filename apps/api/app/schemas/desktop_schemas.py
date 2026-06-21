@@ -50,3 +50,26 @@ class DesktopToolResultResponse(BaseModel):
     """Acknowledgement that a desktop tool result was relayed."""
 
     success: bool
+
+
+class DesktopReleaseAsset(BaseModel):
+    """One downloadable binary attached to a desktop release."""
+
+    name: str = Field(description="Asset filename, e.g. GAIA-x64.exe")
+    download_url: str = Field(description="Direct browser download URL for the asset")
+    size: int = Field(description="Asset size in bytes")
+    content_type: str | None = Field(
+        default=None, description="Asset MIME type as reported by GitHub"
+    )
+
+
+class DesktopReleaseResponse(BaseModel):
+    """Latest published desktop (Electron) release and its per-platform binaries."""
+
+    tag: str = Field(description="Release tag, e.g. desktop-v0.3.0")
+    name: str | None = Field(default=None, description="Human-readable release name")
+    html_url: str = Field(description="GitHub release page URL")
+    published_at: str | None = Field(default=None, description="ISO 8601 publish timestamp")
+    assets: list[DesktopReleaseAsset] = Field(
+        description="Downloadable binaries for every platform/arch in this release"
+    )

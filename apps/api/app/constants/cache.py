@@ -59,6 +59,8 @@ SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
 HANDOFF_METADATA_CACHE_PREFIX = "handoff_metadata"
+# Custom-MCP display name resolved for handoff (keyed by integration id).
+HANDOFF_NAME_CACHE_PREFIX = "handoff_name"
 SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
 OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
@@ -66,6 +68,18 @@ OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
 # than the old ad-hoc dict; bump busts stale dict-shaped entries.
 OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery_v2"
 OAUTH_STATUS_KEY = "OAUTH_STATUS"
+
+# Every cache that derives from a user's integration set. Whenever a user's
+# integrations change (add / remove / status flip), ALL of these must be busted
+# together — otherwise one cache lags behind another and the views diverge (a
+# stale OAUTH_STATUS hid a freshly-connected MCP from retrieve_tools while the
+# tools:user:* caches already showed it). Single source so no mutation path can
+# forget one. `{user_id}` is substituted by CacheInvalidator at call time.
+USER_INTEGRATION_CACHE_PATTERNS = [
+    "tools:user:{user_id}:*",
+    "tool_namespaces:{user_id}",
+    f"{OAUTH_STATUS_KEY}:{{user_id}}",
+]
 MCP_TOOLS_CACHE_KEY = "mcp:tools:all"
 GLOBAL_TOOLS_CACHE_KEY = "tools:global"
 USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
@@ -85,6 +99,10 @@ PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
 # rejects late POSTs whose key is gone.
 DESKTOP_REQUEST_PREFIX = "desktop:request:"
 DESKTOP_RESULT_CHANNEL_PREFIX = "desktop:result:"
+# Latest desktop (Electron) release resolved from GitHub for the download page.
+# Infrequent releases, so 30 min keeps the page fresh without hammering GitHub.
+DESKTOP_RELEASE_CACHE_KEY = "desktop:release:latest"
+DESKTOP_RELEASE_CACHE_TTL = THIRTY_MINUTES_TTL
 # The ownership key's TTL is derived per-call from the awaiting tool's timeout
 # plus this grace, so the key always outlives the wait (a fixed TTL could be
 # outrun by a longer custom timeout, expiring mid-wait and dropping a valid
