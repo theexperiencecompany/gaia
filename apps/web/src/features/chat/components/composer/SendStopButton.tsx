@@ -18,9 +18,13 @@ import { useLoading } from "@/features/chat/hooks/useLoading";
 function getButtonStyle(
   showStop: boolean,
   hasContent: boolean,
+  isUploading: boolean,
 ): { bg: "default" | "primary"; contentColor: string } {
   if (showStop) return { bg: "default", contentColor: "text-zinc-300" };
-  if (hasContent) return { bg: "primary", contentColor: "text-black" };
+  // An in-flight upload holds the send, so it must read as muted/not-ready
+  // rather than the live primary fill even though there is content.
+  if (hasContent && !isUploading)
+    return { bg: "primary", contentColor: "text-black" };
   return { bg: "default", contentColor: "text-zinc-500" };
 }
 
@@ -91,7 +95,11 @@ export default function SendStopButton({
     }
   };
 
-  const { bg, contentColor } = getButtonStyle(showStop, hasContent);
+  const { bg, contentColor } = getButtonStyle(
+    showStop,
+    hasContent,
+    isUploading,
+  );
 
   // Queue widens into a labelled pill; stop/send stay icon-only square buttons.
   const stopCursor = showStop ? "cursor-pointer" : "";
