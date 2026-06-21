@@ -37,14 +37,13 @@ import {
   sanitizeErrorForLog,
   unsupportedMediaMessage,
 } from "@gaia/shared";
-import { GraphApiError, WhatsAppClient } from "@kapso/whatsapp-cloud-api";
+import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
   NOTIFICATION_TEMPLATE_LANGUAGE,
   NOTIFICATION_TEMPLATE_NAME,
   NOTIFICATION_TEMPLATE_PARAM_NAME,
   REPLAY_WINDOW_MS,
   TEMPLATE_BODY_MAX_LENGTH,
-  WHATSAPP_REENGAGEMENT_ERROR_CODE,
 } from "./constants";
 import {
   extractMedia,
@@ -79,25 +78,6 @@ function loadWhatsAppConfig(): WhatsAppConfig {
   if (!kapsoWebhookSecret) throw new Error("KAPSO_WEBHOOK_SECRET is required");
 
   return { kapsoApiKey, kapsoPhoneNumberId, kapsoWebhookSecret };
-}
-
-/**
- * True when Meta rejected a free-form message because it was sent outside the
- * 24-hour customer-service window (Graph API error 131047) — the signal to
- * retry delivery through an approved message template.
- *
- * Deliberately matches the exact error code rather than the broader
- * `reengagementWindow` error category: 131047 is the canonical "closed window"
- * rejection, and only it is reliably recoverable by resending as a template.
- * Sibling category codes (e.g. undeliverable / unsupported-type) are different
- * failures that templating would not fix, so they fall through to the
- * consumer's normal retry/dead-letter path instead.
- */
-function isReengagementWindowError(err: unknown): boolean {
-  return (
-    err instanceof GraphApiError &&
-    err.code === WHATSAPP_REENGAGEMENT_ERROR_CODE
-  );
 }
 
 /**
@@ -814,12 +794,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     try {
       await this.sendWhatsAppText(destinationId, text);
     } catch (err) {
-      if (!isReengagementWindowError(err)) throw err;
-      // The 24-hour customer-service window is closed, so Meta rejected the
-      // free-form message. Fall back to the approved utility template, which can
-      // be delivered any time, so proactive notifications still reach the user.
-      this.adapterLogger.info("outbound_reengagement_template_fallback", {
+      // Free-form send failed — most often the 24-hour window is closed. Fall
+      // back to the approved template (sendable any time); if it also fails it
+      // rethrows so the consumer dead-letters it. The original error is logged
+      // so a non-window failure stays visible.
+      this.adapterLogger.info("outbound_template_fallback", {
         wa_hash: hashLogIdentifier(destinationId),
+        ...sanitizeErrorForLog(err),
       });
       await this.sendNotificationTemplate(destinationId, text);
     }
