@@ -176,13 +176,10 @@ services:
   # ---------------------------------------------------------------------------
   # Embedding + reranking sidecar
   # ---------------------------------------------------------------------------
-  # Loads the fastembed models (mxbai embedder + jina reranker, ~1.85GB) ONCE
-  # so gaia-backend and arq_worker share a single copy over HTTP instead of each
-  # loading their own. Without this, the worker alone (2G limit) would OOM just
-  # loading the models. Memory limit is 2.5G: the footprint is ~1.85GB and stays
-  # flat under batched load (measured +24MB for a 25-text batch), so 2.5G is a
-  # runaway ceiling with real headroom — capping below 2G would OOM-kill it
-  # since the model can't even load in under ~1.85GB.
+  # Loads the fastembed models (mxbai embedder + jina reranker, ~2GB) ONCE so
+  # gaia-backend and arq_worker share one copy over HTTP instead of each loading
+  # their own. Memory: with the ONNX CPU mem arena OFF (see embeddings.py) RSS
+  # settles near the ~2GB weights; 3G limit leaves headroom over the ~2.4GB peak.
   embedding-sidecar:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
@@ -197,6 +194,8 @@ services:
       # Persist the ~1.85GB fastembed weights so they download ONCE, not on every
       # restart/redeploy (measured ~148s cold-load). Mounted volume below.
       MEMORY_MODEL_CACHE_DIR: /models
+      # Cap glibc malloc arenas (complements the ONNX arena being off).
+      MALLOC_ARENA_MAX: "2"
       # MEMORY_EMBEDDING_SIDECAR_URL MUST stay unset here so the sidecar serves
       # from its own local models rather than calling itself.
     secrets:
@@ -239,9 +238,9 @@ services:
           # with batch_size, up to 40). The old 2560M cap sat below that, so
           # the kernel OOM-killed it (exit 137) on first real traffic. 5G gives
           # headroom; host has 15 GiB total / ~10 GiB free.
-          memory: 5120M
+          memory: 3072M
         reservations:
-          memory: 3G
+          memory: 2G
 
   # ---------------------------------------------------------------------------
   # Bots
