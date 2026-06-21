@@ -45,6 +45,7 @@ from app.services.chat.workspace import (
     forward_artifact_events,
     schedule_last_active_touch,
 )
+from app.services.file_service import seed_uploads_for_new_conversation
 from app.services.storage import flush_fs_metrics
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
@@ -154,6 +155,12 @@ async def _run_chat_stream(
             start_event,
             is_new_conversation,
         )
+
+        # For new conversations, files were uploaded without a conversation_id
+        # so they only landed in Cloudinary — not JuiceFS. Seed them now, before
+        # the agent runs, so they're on disk at the expected user-uploaded/ path.
+        if is_new_conversation and user_id and body.fileData:
+            await seed_uploads_for_new_conversation(body.fileData, user_id, conversation_id)
 
         # Start description generation only after the conversation row exists
         # (created in ``_publish_init_chunk``). Starting it earlier races the

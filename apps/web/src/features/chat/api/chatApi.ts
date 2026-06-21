@@ -120,9 +120,15 @@ export const chatApi = {
   },
 
   // File upload
-  uploadFile: async (file: File): Promise<FileUploadResponse> => {
+  uploadFile: async (
+    file: File,
+    conversationId?: string,
+  ): Promise<FileUploadResponse> => {
     const formData = new FormData();
     formData.append("file", file);
+    if (conversationId) {
+      formData.append("conversation_id", conversationId);
+    }
 
     // No errorMessage override: let the backend detail surface (e.g. the 413
     // "File size exceeds the N MB limit." or 415 unsupported-type message)

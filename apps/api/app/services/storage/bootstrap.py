@@ -214,6 +214,8 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     # variables when --access-key/--secret-key are absent), so they do not
     # appear in argv visible to `ps auxww` during the format window.
     log.info(f"[juicefs] formatting filesystem against {_bucket_url()}")
+    r2_key = (settings.R2_ACCESS_KEY or "").strip()
+    r2_secret = (settings.R2_SECRET_KEY or "").strip()
     cmd: list[str] = [
         "juicefs",
         "format",
@@ -221,14 +223,18 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
         "s3",
         "--bucket",
         _bucket_url(),
+        # Pass R2 credentials as explicit flags — JuiceFS falls through to EC2
+        # IMDS when only AWS_* env vars are set against a non-AWS endpoint, which
+        # times out in Docker. Explicit --access-key/--secret-key bypass that chain.
+        "--access-key",
+        r2_key,
+        "--secret-key",
+        r2_secret,
     ]
     if encrypt_key is not None:
         cmd.extend(["--encrypt-rsa-key", str(encrypt_key)])
     cmd.extend([meta_url, "gaia-0"])
-    fmt_env = {
-        "AWS_ACCESS_KEY_ID": (settings.R2_ACCESS_KEY or "").strip(),
-        "AWS_SECRET_ACCESS_KEY": (settings.R2_SECRET_KEY or "").strip(),
-    }
+    fmt_env: dict[str, str] = {}
     fmt_started = time.monotonic()
     fmt = _run(cmd, timeout=120, env=fmt_env)
     record_fs_op(
@@ -272,6 +278,13 @@ def _mount(meta_url: str, mount_path: Path) -> str:
         log.info(f"[juicefs] already mounted at {mount_path}")
         return "ok"
 
+    # If the directory exists but is a broken/stale FUSE mountpoint (left over
+    # from a prior container run), JuiceFS will detect it and try a normal umount
+    # that can time out for 3 seconds and still fail. Lazy-unmount proactively so
+    # the mount call gets a clean directory instead of fighting a stale endpoint.
+    if mount_path.exists():
+        _run(["fusermount", "-u", "-z", str(mount_path)], timeout=5)
+
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     mount_path.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -283,6 +296,9 @@ def _mount(meta_url: str, mount_path: Path) -> str:
         f"--cache-size={_CACHE_SIZE_MB}",
         f"--max-uploads={_MAX_UPLOADS}",
         f"--buffer-size={_BUFFER_SIZE_MB}",
+        # NOTE: --access-key / --secret-key are NOT valid flags for `juicefs mount`.
+        # Credentials were stored in the Neon metadata during `juicefs format` and
+        # are read from there automatically at mount time.
         meta_url,
         str(mount_path),
     ]

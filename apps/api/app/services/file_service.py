@@ -12,6 +12,7 @@ import uuid
 import cloudinary
 import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
+import httpx
 from langchain_core.documents import Document
 
 from app.agents.workspace.paths import USER_UPLOADED_DIRNAME, safe_upload_filename
@@ -20,6 +21,7 @@ from app.db.mongodb.collections import files_collection
 from app.db.utils import serialize_document
 from app.decorators.caching import CacheInvalidator
 from app.models.files_models import DocumentSummaryModel
+from app.models.message_models import FileData as MessageFileData
 from app.services.artifact_events import publish_artifact_event, upload_event
 from app.services.storage import (
     FsOps,
@@ -507,3 +509,52 @@ async def update_file_service(
             updated_file[date_field] = updated_file[date_field].isoformat()
 
     return serialize_document(updated_file)
+
+
+async def _seed_one_upload(
+    client: httpx.AsyncClient,
+    file: MessageFileData,
+    user_id: str,
+    conversation_id: str,
+) -> None:
+    """Download one Cloudinary-hosted file and mirror it into the session sandbox."""
+    try:
+        safe_name = safe_upload_filename(file.filename)
+    except ValueError:
+        log.warning(f"[seed_uploads] skipping {file.filename!r}: invalid filename after sanitize")
+        return
+
+    try:
+        resp = await client.get(file.url)
+        resp.raise_for_status()
+    except Exception as e:
+        log.warning(f"[seed_uploads] download failed for {file.filename!r}: {e}")
+        return
+
+    await _persist_upload_to_sandbox(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        safe_filename=safe_name,
+        content=resp.content,
+        content_type=file.type or "application/octet-stream",
+    )
+
+
+async def seed_uploads_for_new_conversation(
+    file_data: list[MessageFileData],
+    user_id: str,
+    conversation_id: str,
+) -> None:
+    """Mirror Cloudinary-backed attachments into a freshly created session's user-uploaded/ dir.
+
+    Files uploaded before a conversation exists land in Cloudinary only (no
+    conversation_id → no JuiceFS write). This is called once, right after the
+    session dirs are created, so the agent finds them at the expected path.
+    """
+    if not file_data:
+        return
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        await asyncio.gather(
+            *(_seed_one_upload(client, f, user_id, conversation_id) for f in file_data)
+        )
