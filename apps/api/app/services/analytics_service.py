@@ -4,6 +4,7 @@ Provides type-safe event tracking with consistent naming conventions.
 """
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from app.constants.auth import LOGIN_METHOD_WORKOS
@@ -31,6 +32,22 @@ class AnalyticsEvents:
     SUBSCRIPTION_CANCELLED = "subscription:cancelled"
     SUBSCRIPTION_EXPIRED = "subscription:expired"
     SUBSCRIPTION_FAILED = "subscription:failed"
+
+
+# Subscription person-property values. Kept in sync with the frontend, which
+# mirrors the same `plan` / `is_subscribed` values onto the person each session
+# (apps/web/src/features/pricing/hooks/useSubscriptionAnalyticsSync.ts).
+# StrEnum members are real strings, so they serialize to PostHog unchanged.
+# Add new tiers (e.g. MAX, ENTERPRISE) here — no new module-level constants.
+class SubscriptionPlan(StrEnum):
+    PRO = "pro"
+    FREE = "free"
+
+
+class SubscriptionStatus(StrEnum):
+    ACTIVE = "active"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
 
 
 def _get_posthog_client():
@@ -248,21 +265,46 @@ def track_subscription_event(
 
     capture_event(user_id, event_type, event_properties)
 
-    # Update user properties for subscription status
-    if event_type == AnalyticsEvents.SUBSCRIPTION_ACTIVATED:
+    # Mirror the lifecycle change onto person properties so pro-vs-free
+    # segmentation stays correct over the whole subscription lifecycle.
+    person_properties = _subscription_person_properties(event_type)
+    if person_properties:
         client = _get_posthog_client()
         if client:
             try:
-                client.set(
-                    distinct_id=user_id,
-                    properties={
-                        "plan": plan_name,
-                        "subscription_status": "active",
-                        "subscription_activated_at": datetime.now(UTC).isoformat(),
-                    },
-                )
+                client.set(distinct_id=user_id, properties=person_properties)
             except Exception as e:
                 log.error(f"Failed to update user subscription properties: {e}")
+
+
+def _subscription_person_properties(event_type: str) -> dict[str, Any] | None:
+    """Person-property updates for a subscription lifecycle event.
+
+    `is_subscribed` is the canonical pro-vs-free flag. Cancellation only flips
+    auto-renew, so access (and the flag) is retained until the subscription
+    actually expires.
+    """
+    if event_type in (
+        AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
+        AnalyticsEvents.SUBSCRIPTION_RENEWED,
+    ):
+        properties: dict[str, Any] = {
+            "plan": SubscriptionPlan.PRO,
+            "is_subscribed": True,
+            "subscription_status": SubscriptionStatus.ACTIVE,
+        }
+        if event_type == AnalyticsEvents.SUBSCRIPTION_ACTIVATED:
+            properties["subscription_activated_at"] = datetime.now(UTC).isoformat()
+        return properties
+    if event_type == AnalyticsEvents.SUBSCRIPTION_CANCELLED:
+        return {"subscription_status": SubscriptionStatus.CANCELLED}
+    if event_type == AnalyticsEvents.SUBSCRIPTION_EXPIRED:
+        return {
+            "plan": SubscriptionPlan.FREE,
+            "is_subscribed": False,
+            "subscription_status": SubscriptionStatus.EXPIRED,
+        }
+    return None
 
 
 def track_payment_event(

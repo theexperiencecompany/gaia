@@ -160,6 +160,7 @@ interface UserProperties {
   name?: string;
   timezone?: string;
   plan?: string;
+  is_subscribed?: boolean;
   created_at?: string;
   profession?: string;
   onboarding_completed?: boolean;
