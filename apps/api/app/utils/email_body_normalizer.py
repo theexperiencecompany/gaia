@@ -7,7 +7,7 @@ quoted replies, which the user finds useful for thread context).
 
 Pure functions, no side effects. Safe to apply multiple times (idempotent).
 
-Used by ``GMAIL_FETCH_INBOX_SUMMARY`` to keep typical inbox responses
+Used by ``GMAIL_FETCH_MESSAGES`` to keep typical inbox responses
 under the inline-context threshold. When the aggregate is still too big,
 ``WorkspaceCompactionMiddleware`` writes the result to a file the agent
 mines with ``bash``/``jq``/``grep``; the offloaded JSONL is meaningfully

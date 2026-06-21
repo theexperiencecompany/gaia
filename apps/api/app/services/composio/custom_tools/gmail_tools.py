@@ -14,12 +14,12 @@ import uuid
 
 from composio import Composio
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_config
+from langgraph.config import get_config, get_stream_writer
 from pydantic import BaseModel, Field
 
 from app.agents.templates.mail_templates import build_message_view
 from app.models.common_models import GatherContextInput
-from app.models.composio_schemas.gmail import FetchInboxSummaryInput
+from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
     CHUNK_TARGET_BYTES,
@@ -120,7 +120,7 @@ def _write_session_file_sync(
 
 
 # =============================================================================
-# FETCH_INBOX_SUMMARY — timeframe resolution
+# FETCH_MESSAGES — timeframe resolution
 # =============================================================================
 
 
@@ -192,7 +192,7 @@ def _resolve_timeframe(
     if explicit_after_or_before:
         if timeframe is not None:
             log.warning(
-                f"GMAIL_FETCH_INBOX_SUMMARY: query already has after:/before:, "
+                f"GMAIL_FETCH_MESSAGES: query already has after:/before:, "
                 f"ignoring timeframe={timeframe!r}"
             )
         return query or "", default_max
@@ -202,21 +202,21 @@ def _resolve_timeframe(
     return combined, default_max
 
 
-def _effective_max(request: FetchInboxSummaryInput, default_max: int) -> int:
+def _effective_max(request: FetchMessagesInput, default_max: int) -> int:
     """Apply the per-call override and the absolute ceiling, in that order."""
     override = request.max_messages if request.max_messages is not None else default_max
     return min(override, MAX_ABSOLUTE_MESSAGES)
 
 
 # =============================================================================
-# FETCH_INBOX_SUMMARY — pagination + field shaping + offload
+# FETCH_MESSAGES — pagination + field shaping + offload
 # =============================================================================
 
 
 class _PartialResult(Exception):
     """Raised internally to short-circuit the pagination loop on error.
 
-    Caught at the top of ``FETCH_INBOX_SUMMARY`` and rendered as a
+    Caught at the top of ``FETCH_MESSAGES`` and rendered as a
     partial / error response. ``partial_messages`` is the list of
     messages we managed to fetch before the error — the caller decides
     whether to surface them.
@@ -278,7 +278,7 @@ def _fetch_message_view(
 
 def _aggregate_pages(
     user_id: str,
-    request: FetchInboxSummaryInput,
+    request: FetchMessagesInput,
     *,
     combined_query: str,
     effective_max: int,
@@ -332,7 +332,7 @@ def _aggregate_pages(
             # reports `successful: false` instead of masking it as an empty
             # inbox.
             raise
-        log.warning(f"GMAIL_FETCH_INBOX_SUMMARY: pagination aborted mid-loop: {exc}")
+        log.warning(f"GMAIL_FETCH_MESSAGES: pagination aborted mid-loop: {exc}")
         raise _PartialResult(reason=str(exc), partial_messages=all_messages) from exc
 
     return all_messages, truncated
@@ -433,8 +433,38 @@ def _format_offload_result(
     }
 
 
+def _emit_email_card(messages: list[dict[str, Any]]) -> None:
+    """Stream the interactive email-list card to the chat for an inline result.
+
+    Mirrors what the old GMAIL_FETCH_EMAILS after-hook rendered. No active run
+    (background/silent execution, tests) just means no card; the data is still
+    returned to the agent.
+    """
+    if not messages:
+        return
+    try:
+        writer = get_stream_writer()
+    except RuntimeError:
+        # No runnable context (background/silent/test): streaming unavailable.
+        return
+    if writer is None:
+        return
+    email_fetch_data = [
+        {
+            "from": msg.get("from", ""),
+            "subject": msg.get("subject", ""),
+            "time": msg.get("time", ""),
+            "thread_id": msg.get("threadId", ""),
+            "id": msg.get("id", ""),
+        }
+        for msg in messages
+    ]
+    writer({"email_fetch_data": email_fetch_data, "resultSize": len(email_fetch_data)})
+
+
 def _format_inline_result(messages: list[dict[str, Any]], *, truncated: bool) -> dict[str, Any]:
-    """Small-result shape: full payload, no offload."""
+    """Small-result shape: full payload, no offload. Renders the email-list card."""
+    _emit_email_card(messages)
     return {
         "fetched_count": len(messages),
         "truncated": truncated,
@@ -455,7 +485,7 @@ def _format_partial_result(messages: list[dict[str, Any]], *, reason: str) -> di
 
 def _summarize(
     user_id: str,
-    request: FetchInboxSummaryInput,
+    request: FetchMessagesInput,
 ) -> dict[str, Any]:
     """Top-level orchestrator: resolve → paginate → offload-or-inline."""
     config = _current_config()
@@ -479,7 +509,7 @@ def _summarize(
     conversation_id = _conversation_id(config)
     if conversation_id is None:
         log.warning(
-            "GMAIL_FETCH_INBOX_SUMMARY: no conversation_id for offload; "
+            "GMAIL_FETCH_MESSAGES: no conversation_id for offload; "
             "returning inline (compaction middleware will catch it if needed)"
         )
         return _format_inline_result(all_messages, truncated=truncated)
@@ -833,27 +863,28 @@ def register_gmail_custom_tools(composio: Composio):
         }
 
     @composio.tools.custom_tool(toolkit="gmail")
-    def FETCH_INBOX_SUMMARY(
-        request: FetchInboxSummaryInput,
+    def FETCH_MESSAGES(
+        request: FetchMessagesInput,
         execute_request: Any,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
-        """Fetch and aggregate Gmail messages matching a timeframe/query.
+        """Fetch Gmail messages matching a query/timeframe, exhaustively.
 
-        Server-side paginates the Gmail API and returns the full set of
-        matching messages in one tool call. This avoids the broken
-        pagination handoff (subagent receiving a nextPageToken it never
-        returns to the gmail_agent).
+        The canonical read tool. Server-side paginates the Gmail API and
+        returns the full set of matching messages in one call, so a
+        nextPageToken never escapes the process and results are never
+        silently capped (unlike a single fixed-size list fetch).
 
         Supports a ``timeframe`` convenience enum (``today``, ``7d``,
-        ``this_week``, etc.) which is resolved to Gmail's after:/before:
-        operators in the user's home timezone (read from the run's
-        LangGraph ``configurable``).
+        ``this_week``, etc.) resolved to Gmail's after:/before: operators
+        in the user's home timezone (read from the run's LangGraph
+        ``configurable``).
 
-        When the aggregate response is too large to inline, the tool
-        writes a JSONL file to the user's session workspace and returns
-        a digest + path. The agent then uses ``bash``/``jq``/``grep`` to
-        mine it (the standard GAIA offload pattern).
+        Small results render the inbox email-list card in chat and are
+        returned inline. When the aggregate is too large to inline, the
+        tool writes a JSONL file to the session workspace and returns a
+        digest + read_plan; the agent fans out parallel reads over the
+        chunks or mines it with ``bash``/``jq``/``grep``.
         """
         return _summarize(_user_id(auth_credentials), request)
 
@@ -865,7 +896,7 @@ def register_gmail_custom_tools(composio: Composio):
         "GMAIL_GET_UNREAD_COUNT",
         "GMAIL_GET_CONTACT_LIST",
         "GMAIL_CUSTOM_GATHER_CONTEXT",
-        "GMAIL_FETCH_INBOX_SUMMARY",
+        "GMAIL_FETCH_MESSAGES",
     ]
 
 

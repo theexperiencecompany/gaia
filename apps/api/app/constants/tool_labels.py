@@ -30,7 +30,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "GOOGLECALENDAR_CREATE_EVENT": "Adding to your calendar",
     "GOOGLECALENDAR_LIST_CALENDARS": "Checking your calendars",
     # ── Gmail ──────────────────────────────────────────────────────────
-    "GMAIL_FETCH_EMAILS": "Reading your inbox",
+    "GMAIL_FETCH_MESSAGES": "Reading your inbox",
     "GMAIL_FETCH_MESSAGE_BY_THREAD_ID": "Opening the thread",
     "GMAIL_SEND_EMAIL": "Sending the email",
     "GMAIL_CREATE_EMAIL_DRAFT": "Drafting the email",

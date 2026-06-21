@@ -426,7 +426,7 @@ def build_message_view(
 
     Single source of truth for per-message field selection. Used by
     ``process_list_messages_response`` (minimal field set, raw body) and by
-    ``GMAIL_FETCH_INBOX_SUMMARY`` (caller-supplied fields + body processing
+    ``GMAIL_FETCH_MESSAGES`` (caller-supplied fields + body processing
     mode).
 
     Args:

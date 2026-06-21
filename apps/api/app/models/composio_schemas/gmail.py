@@ -59,8 +59,8 @@ TimeframeLiteral = Literal[
 BodyProcessingLiteral = Literal["normalize", "raw", "none"]
 
 
-class FetchInboxSummaryInput(BaseModel):
-    """Input for the GMAIL_FETCH_INBOX_SUMMARY custom tool."""
+class FetchMessagesInput(BaseModel):
+    """Input for the GMAIL_FETCH_MESSAGES custom tool."""
 
     timeframe: TimeframeLiteral | None = Field(
         default=None,

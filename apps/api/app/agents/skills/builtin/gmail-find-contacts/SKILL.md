@@ -48,7 +48,7 @@ Lists Google contact connections from the account contacts dataset.
 - User explicitly asks for saved contacts/address book style data
 - Inbox-history lookup is not enough
 
-### 4) GMAIL_FETCH_EMAILS
+### 4) GMAIL_FETCH_MESSAGES
 Search emails directly for context when contact tools are inconclusive.
 
 ## Workflow
@@ -75,7 +75,7 @@ fragment).
 ### Step 4: Use fallbacks
 - Try `GMAIL_SEARCH_PEOPLE(query="john")`
 - If user wants saved contacts, call `GMAIL_GET_CONTACTS`
-- If still unclear, use `GMAIL_FETCH_EMAILS` for recent sender/recipient context
+- If still unclear, use `GMAIL_FETCH_MESSAGES` for recent sender/recipient context
 
 ### Step 5: Present and disambiguate
 Show concise matches (name + email). If multiple strong matches remain, ask one

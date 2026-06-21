@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.models.common_models import GatherContextInput
-from app.models.composio_schemas.gmail import FetchInboxSummaryInput
+from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
     GetContactListInput,
@@ -103,7 +103,7 @@ class TestRegistration:
             "GMAIL_GET_UNREAD_COUNT",
             "GMAIL_GET_CONTACT_LIST",
             "GMAIL_CUSTOM_GATHER_CONTEXT",
-            "GMAIL_FETCH_INBOX_SUMMARY",
+            "GMAIL_FETCH_MESSAGES",
         ]
 
 
@@ -283,7 +283,7 @@ class TestGatherContext:
 
 
 # ---------------------------------------------------------------------------
-# FETCH_INBOX_SUMMARY — timeframe resolution
+# FETCH_MESSAGES — timeframe resolution
 # ---------------------------------------------------------------------------
 
 
@@ -335,12 +335,12 @@ class TestResolveTimeframe:
 
 
 # ---------------------------------------------------------------------------
-# FETCH_INBOX_SUMMARY — pagination, field shaping, offload
+# FETCH_MESSAGES — pagination, field shaping, offload
 # ---------------------------------------------------------------------------
 
 
-class TestFetchInboxSummary:
-    """Tests for the GMAIL_FETCH_INBOX_SUMMARY custom tool."""
+class TestFetchMessages:
+    """Tests for the GMAIL_FETCH_MESSAGES custom tool."""
 
     @staticmethod
     def _make_message_response() -> dict[str, Any]:
@@ -387,8 +387,8 @@ class TestFetchInboxSummary:
 
         mock_proxy.side_effect = side_effect
 
-        result = tools["FETCH_INBOX_SUMMARY"](
-            request=FetchInboxSummaryInput(timeframe="today", per_page=3, body_processing="none"),
+        result = tools["FETCH_MESSAGES"](
+            request=FetchMessagesInput(timeframe="today", per_page=3, body_processing="none"),
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
@@ -420,8 +420,8 @@ class TestFetchInboxSummary:
 
         mock_proxy.side_effect = side_effect
 
-        result = tools["FETCH_INBOX_SUMMARY"](
-            request=FetchInboxSummaryInput(
+        result = tools["FETCH_MESSAGES"](
+            request=FetchMessagesInput(
                 timeframe="today",
                 max_messages=5,
                 per_page=3,
@@ -463,8 +463,8 @@ class TestFetchInboxSummary:
 
         mock_proxy.side_effect = side_effect
 
-        result = tools["FETCH_INBOX_SUMMARY"](
-            request=FetchInboxSummaryInput(
+        result = tools["FETCH_MESSAGES"](
+            request=FetchMessagesInput(
                 timeframe="today",
                 per_page=2,
                 body_processing="none",
@@ -480,7 +480,7 @@ class TestFetchInboxSummary:
 
     def test_default_fields_excludes_body(self, mock_proxy):
         """Default fields list must NOT contain body, cc, or bcc."""
-        defaults = FetchInboxSummaryInput.model_fields["fields"].default_factory()
+        defaults = FetchMessagesInput.model_fields["fields"].default_factory()
         assert "body" not in defaults
         assert "cc" not in defaults
         assert "bcc" not in defaults
@@ -514,8 +514,8 @@ class TestFetchInboxSummary:
 
         mock_proxy.side_effect = side_effect
 
-        result = tools["FETCH_INBOX_SUMMARY"](
-            request=FetchInboxSummaryInput(
+        result = tools["FETCH_MESSAGES"](
+            request=FetchMessagesInput(
                 timeframe="today",
                 per_page=10,
                 body_processing="none",
@@ -573,10 +573,10 @@ class TestFetchInboxSummary:
             # Request "body" in fields so the aggregate is large enough to
             # trigger offload (default field set excludes body).
             fields_with_body = list(
-                FetchInboxSummaryInput.model_fields["fields"].default_factory()
+                FetchMessagesInput.model_fields["fields"].default_factory()
             ) + ["body"]
-            result = tools["FETCH_INBOX_SUMMARY"](
-                request=FetchInboxSummaryInput(
+            result = tools["FETCH_MESSAGES"](
+                request=FetchMessagesInput(
                     timeframe="today",
                     per_page=10,
                     fields=fields_with_body,
@@ -622,8 +622,8 @@ class TestFetchInboxSummary:
             "app.services.composio.custom_tools.gmail_tools.get_config",
             return_value={"configurable": {}},  # no vfs_session_id / thread_id
         ):
-            result = tools["FETCH_INBOX_SUMMARY"](
-                request=FetchInboxSummaryInput(
+            result = tools["FETCH_MESSAGES"](
+                request=FetchMessagesInput(
                     timeframe="today",
                     per_page=10,
                     body_processing="none",

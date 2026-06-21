@@ -28,37 +28,26 @@ Gmail supports powerful search operators:
 **Content:** `subject:meeting` / `"exact phrase"` / `has:attachment` / `filename:pdf` / `larger:5M` / `smaller:1M`
 **Logic:** AND (default), OR, `-exclude`
 
-## Step 2: Fetch — pick the path by intent
+## Step 2: Fetch the messages
 
-### A) Targeted search (a specific email or topic)
-**Always use `spawn_subagent` for `GMAIL_FETCH_EMAILS` / `GMAIL_LIST_THREADS`** — raw
-email responses are too large for the parent context regardless of count. The subagent
-fetches, summarizes, and returns only a compact digest + `next_page_token`.
-
-```
-result = spawn_subagent(task="""
-  Call GMAIL_FETCH_EMAILS(query="from:sarah@company.com subject:Q1 after:2025/01/01", max_results=30)
-  Summarize each: sender, subject, date, key points, action items.
-  Return: digest, next_page_token (or null).
-""")
-```
-
-Threads: same pattern with `GMAIL_LIST_THREADS(query=..., max_results=30, verbose=true)`,
-extracting participants, timeline, decisions, action items per thread.
-
-Contact lookup is lightweight, call directly: `GMAIL_SEARCH_PEOPLE(query="Sarah", pageSize=10)`.
-
-### B) Inbox scan / summary (today's mail, this week, triage the whole inbox)
-Use `GMAIL_FETCH_INBOX_SUMMARY` **directly — do NOT wrap it in `spawn_subagent`**. It
-paginates server-side in one call and offloads large results itself. Include `body` in
-`fields` when you need to triage on content, not just subjects.
+`GMAIL_FETCH_MESSAGES` is the one read tool for everything: a specific email, a topic,
+or a whole-inbox scan. Call it **directly, do NOT wrap it in `spawn_subagent`**. It
+paginates the Gmail API server-side in one call (results are never silently capped),
+renders the email-list card for small results, and offloads big ones to a file itself.
 
 ```
-GMAIL_FETCH_INBOX_SUMMARY(
-  timeframe="today",   # yesterday | 1d | 3d | 7d | this_week | 1m | ... ; ANDed with `query`
+GMAIL_FETCH_MESSAGES(
+  query="from:sarah@company.com subject:Q1 after:2025/01/01",  # any Gmail search query
+  timeframe="today",   # optional: yesterday | 7d | this_week | 1m | ... ; ANDed with query
   fields=["id","threadId","from","to","subject","snippet","time","isRead","labels","body"],
 )
 ```
+
+Include `body` in `fields` when you need to triage or read content, not just subjects.
+
+For thread-grouped views (participants, timeline, decisions per thread) use
+`GMAIL_LIST_THREADS(query=..., max_results=30, verbose=true)` via `spawn_subagent`.
+Contact lookup is lightweight, call directly: `GMAIL_SEARCH_PEOPLE(query="Sarah", pageSize=10)`.
 
 It returns one of two shapes:
 - **Inline** (`{"messages": [...]}`): a small inbox. Use the messages directly.
@@ -157,8 +146,8 @@ deliverable: return it to the executor verbatim (headings, order, emoji, line br
 intact) and tell the executor to relay it to comms unchanged, not re-summarized.
 
 ## Anti-Patterns
-- Calling `GMAIL_FETCH_EMAILS` / `GMAIL_LIST_THREADS` in the parent context (use `spawn_subagent`).
-- Wrapping `GMAIL_FETCH_INBOX_SUMMARY` in a subagent (call it directly; it self-paginates).
+- Wrapping `GMAIL_FETCH_MESSAGES` in a subagent (call it directly; it self-paginates and offloads).
+- Calling `GMAIL_LIST_THREADS` in the parent context (use `spawn_subagent`).
 - Reading a whole offloaded JSONL into your own context instead of fanning out the `read_plan` chunks.
 - Using `label:snoozed` (use `is:snoozed`).
 - Long natural-language queries (use operators); giving up after one search.

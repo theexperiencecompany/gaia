@@ -73,6 +73,10 @@ class SubAgentConfig(BaseModel):
     use_direct_tools: bool = False
     disable_retrieve_tools: bool = False
     specific_tools: list[str] | None = None
+    # Toolkit tools to drop from this provider's space: neither bound nor
+    # retrievable/indexed. Use to retire a stock Composio tool that a custom
+    # tool supersedes (e.g. GMAIL_FETCH_EMAILS -> GMAIL_FETCH_MESSAGES).
+    exclude_tools: list[str] | None = None
     auto_bind_tools: list[str] | None = None
     memory_prompt: str | None = None
     # When False, finish_task is omitted from the subagent's tool set. The

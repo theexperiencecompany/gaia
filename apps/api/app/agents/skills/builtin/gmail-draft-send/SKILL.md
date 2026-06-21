@@ -42,7 +42,7 @@ Send an already-created draft.
 **Required parameters:**
 - `draft_id`: The ID from GMAIL_CREATE_EMAIL_DRAFT response
 
-### GMAIL_FETCH_EMAILS
+### GMAIL_FETCH_MESSAGES
 Search existing emails before composing.
 
 **Useful for:**
