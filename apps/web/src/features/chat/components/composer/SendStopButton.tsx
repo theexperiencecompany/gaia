@@ -84,8 +84,7 @@ export default function SendStopButton({
   className = "h-9 min-h-9 w-9 max-w-9 min-w-9",
 }: Readonly<SendStopButtonProps>) {
   const { stopStream } = useLoading();
-  const { isStreaming, showQueue, showStop, mode } =
-    useComposerSendMode(hasContent);
+  const { showQueue, showStop, mode } = useComposerSendMode(hasContent);
 
   const handlePress = () => {
     if (showStop) {
@@ -113,9 +112,10 @@ export default function SendStopButton({
       aria-label={MODE_ARIA_LABEL[mode]}
       className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
       color={bg}
-      // While streaming the button is Stop and stays active; otherwise it must
-      // be empty of content AND have no in-flight upload before it can send.
-      disabled={!isStreaming && (!hasContent || isUploading)}
+      // Stop (abort the stream) is always pressable; send/queue is gated on
+      // readiness — there must be content AND no in-flight upload, otherwise the
+      // submit is dropped by the composer's uploading guard.
+      disabled={!showStop && (!hasContent || isUploading)}
       radius="full"
       // In stop mode the button aborts the stream rather than submitting, so it
       // must not trigger the composer form. Only send/queue submit.
