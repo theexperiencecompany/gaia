@@ -1,6 +1,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { ONBOARDING_PROCESSING_PHASES } from "@/features/auth/constants";
+import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
 import { usePathname } from "@/i18n/navigation";
 
 import { useUser } from "./useUser";
@@ -11,6 +12,9 @@ export const useOnboardingGuard = () => {
   const pathname = usePathname();
 
   useEffect(() => {
+    // A pending checkout must resume before onboarding routing kicks in.
+    if (readPendingCheckout()) return;
+
     // Only proceed if user data is loaded with email and onboarding data is available
     if (user.email && user.onboarding !== undefined) {
       const isOnboardingCompleted = user.onboarding?.completed;

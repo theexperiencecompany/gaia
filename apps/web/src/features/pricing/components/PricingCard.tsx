@@ -14,6 +14,7 @@ import { toast } from "@/lib/toast";
 
 import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
+import { writePendingCheckout } from "../lib/pendingCheckout";
 
 interface PricingCardProps {
   title: string;
@@ -114,13 +115,15 @@ export function PricingCard({
     });
 
     if (price === 0) {
-      if (user) router.push("/c");
+      if (user.userId) router.push("/c");
       else router.push("/signup");
       return;
     }
 
-    if (!user) {
-      toast.error("Please sign in to subscribe to a plan");
+    if (!user.userId) {
+      // Carry the chosen plan across OAuth signup; useCheckoutResume picks it
+      // up once authenticated and goes straight to the Dodo checkout.
+      if (planId) writePendingCheckout(planId);
       router.push("/login");
       return;
     }

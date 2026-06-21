@@ -25,6 +25,25 @@ const getErrorCode = (data: unknown): string | undefined => {
 };
 
 /**
+ * Extracts a human-readable message from an Axios error response body,
+ * handling both string `detail` and the structured `{ message, ... }` detail
+ * the backend returns for auth / integration / rate-limit errors. Prevents an
+ * object `detail` from rendering as the literal "[object Object]".
+ */
+export const getErrorMessage = (data: unknown): string | undefined => {
+  const detail =
+    data && typeof data === "object" && "detail" in data
+      ? (data as { detail: unknown }).detail
+      : undefined;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && "message" in detail)
+    return (detail as { message?: string }).message;
+  if (data && typeof data === "object" && "message" in data)
+    return (data as { message?: string }).message;
+  return undefined;
+};
+
+/**
  * Surfaces API error UI for app-shell requests. Only mounted inside the (main)
  * provider tree.
  */
