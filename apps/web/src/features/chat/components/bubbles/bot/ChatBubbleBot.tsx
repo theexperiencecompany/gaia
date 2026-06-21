@@ -80,26 +80,37 @@ export default function ChatBubbleBot(
     return <TextBubble {...props} />;
   }, [image_data, props]);
 
-  const itShouldShowTextBubble = shouldShowTextBubble(
-    text,
-    isConvoSystemGenerated,
-    systemPurpose,
+  // Parse once. The avatar + actions chrome must gate on the SAME notion of
+  // visible content that TextBubble uses for the bubble itself — the cleaned,
+  // thinking-stripped text. Gating chrome on raw `text` (as before) let a
+  // thinking-only or strips-to-empty message paint a lone avatar with no bubble
+  // beside it.
+  const parsedContent = useMemo(
+    () => parseThinkingFromText(text?.toString() || ""),
+    [text],
   );
+  const hasVisibleText = parsedContent.cleanText.trim().length > 0;
+
+  const itShouldShowTextBubble =
+    shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
+    hasVisibleText;
 
   const logoDelay = useMemo(() => {
     if (!itShouldShowTextBubble) return 0;
-    const cleanText = parseThinkingFromText(text?.toString() || "").cleanText;
-    if (!cleanText) return 0;
+    const { cleanText } = parsedContent;
     const parts = cleanText.includes(":::openui")
       ? splitByBreaksPreservingFences(cleanText)
       : splitMessageByBreaks(cleanText);
     return Math.max(0, parts.length - 1) * MESSAGE_BREAK_STAGGER_SECONDS;
-  }, [text, itShouldShowTextBubble]);
+  }, [parsedContent, itShouldShowTextBubble]);
 
-  // Check if there's actual content to display
+  // Check if there's actual content to display. Inline `<thinking>` still
+  // renders a ThinkingBubble, so keep the message alive when only thinking is
+  // present (it shows no avatar/bubble chrome, just the thinking block).
   const hasContent =
     image_data ||
-    !!text ||
+    hasVisibleText ||
+    !!parsedContent.thinking ||
     (isConvoSystemGenerated &&
       systemPurpose === SystemPurpose.EMAIL_PROCESSING) ||
     props.tool_data?.length;
