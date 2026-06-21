@@ -25,7 +25,10 @@ RERANKER_MODEL_NAME = "jinaai/jina-reranker-v1-turbo-en"
 # ONNX CPU mem arena retains buffers to fill RAM (~5GB for ~2GB of weights); off
 # keeps RSS near model size. Thread cap bounds per-thread arenas. Vectors unchanged.
 ONNX_ENABLE_CPU_MEM_ARENA = os.getenv("MEMORY_ONNX_CPU_MEM_ARENA", "0") == "1"
-ONNX_INTRA_OP_THREADS = int(os.getenv("MEMORY_ONNX_THREADS", "4"))
+try:
+    ONNX_INTRA_OP_THREADS = max(1, int(os.getenv("MEMORY_ONNX_THREADS", "4")))
+except ValueError:
+    ONNX_INTRA_OP_THREADS = 4
 
 # Optional embedding/reranking sidecar. When this env var holds the sidecar's
 # base URL, embed/rerank become HTTP calls so the ~1.8GB of model weights load
