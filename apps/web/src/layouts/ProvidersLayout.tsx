@@ -12,7 +12,6 @@ import { useExecutorStream } from "@/features/chat/hooks/useExecutorStream";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
-import { useSubscriptionAnalyticsSync } from "@/features/pricing/hooks/useSubscriptionAnalyticsSync";
 import { useTodoWorkflowGlobalListener } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
 
 import useAxiosInterceptor from "@/hooks/api/useAxiosInterceptor";
@@ -52,9 +51,6 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();
-
-  // Mirror subscription status onto PostHog person properties (pro vs free)
-  useSubscriptionAnalyticsSync();
 
   // App-shell-only API error handling. Surfaces toasts for 5xx/429/403
   // and auto-opens the login modal on 401. Landing pages mount neither.
