@@ -177,6 +177,14 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     Raises:
         RuntimeError: If any critical service fails to initialize
     """
+    # WORKER_TYPE is the single source of truth for is_main_app(), which routes
+    # WebSocket broadcasts (direct in-process send vs RabbitMQ hand-off to the main
+    # app). Derive it from the declared startup context so it can't drift from
+    # reality: docker sets it via env, but native dev does not — leaving it
+    # "unknown", which makes the main app misroute its own broadcasts through
+    # RabbitMQ instead of delivering them straight to the held socket.
+    settings.WORKER_TYPE = context
+
     log.info(f"Starting {context} with unified provider system...")
 
     # Register lazy providers (dormant until first access).

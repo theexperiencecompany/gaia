@@ -119,47 +119,48 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
         {
             "dodo_product_id": "",  # Free plan doesn't need Dodo product ID
             "name": "Free",
-            "description": "All tools & features included, start creating for free",
+            "description": "Start free. See what GAIA can do.",
             "amount": 0,
             "currency": "USD",
             "duration": "monthly",
             "max_users": 1,
             "features": [
-                "Limited access to everything",
-                "Basic memory features",
-                "Standard support",
+                "All tools & 100s of integrations",
+                "Standard models",
+                "Standard usage limits",
+                "Community support",
             ],
             "is_active": True,
         },
         {
             "dodo_product_id": monthly_product_id,  # Monthly plan
             "name": "Pro",
-            "description": "A boost of extra access, because you deserve it",
+            "description": "For serious users who want to save time.",
             "amount": 3000,  # $30.00 in cents
             "currency": "USD",
             "duration": "monthly",
             "max_users": 1,
             "features": [
-                "Extended access to everything",
-                "Advanced memory features",
+                "Higher usage limits",
+                "More powerful models",
                 "Priority support",
-                "Private Discord access",
+                "Early access to new features",
             ],
             "is_active": True,
         },
         {
             "dodo_product_id": yearly_product_id,  # Yearly plan
             "name": "Pro",
-            "description": "A boost of extra access, because you deserve it",
+            "description": "For serious users who want to save time.",
             "amount": 27000,  # $270.00 in cents (3 months free, 25% discount)
             "currency": "USD",
             "duration": "yearly",
             "max_users": 1,
             "features": [
-                "Extended access to everything",
-                "Advanced memory features",
+                "Higher usage limits",
+                "More powerful models",
                 "Priority support",
-                "Private Discord access",
+                "Early access to new features",
             ],
             "is_active": True,
         },
@@ -173,10 +174,12 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "duration": "monthly",
             "max_users": 0,  # 0 == unlimited, contact sales
             "features": [
-                "Self host or private cloud deployment",
-                "SSO, SCIM provisioning, audit logs",
-                "Custom integrations built for your stack",
-                "Dedicated solutions engineer and SLA",
+                "Everything in Pro",
+                "SSO, SCIM & audit logs",
+                "Custom integrations",
+                "Self-host or private cloud",
+                "Private Slack support",
+                "Dedicated engineer & SLA",
             ],
             "is_active": True,
         },

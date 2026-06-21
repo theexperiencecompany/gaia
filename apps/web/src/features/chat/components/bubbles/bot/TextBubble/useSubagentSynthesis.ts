@@ -1,3 +1,4 @@
+import { TOOL_CALLS_DATA_TOOL_NAME } from "@shared/chat";
 import React from "react";
 
 import {
@@ -32,7 +33,7 @@ function bucketToolData(
   tool_data?.forEach((entry) => {
     const toolName = entry.tool_name;
 
-    if (toolName === "tool_calls_data") {
+    if (toolName === TOOL_CALLS_DATA_TOOL_NAME) {
       // tool_calls_data is rendered via UnifiedToolThread, not via TOOL_RENDERERS.
       const calls = Array.isArray(entry.data)
         ? (entry.data as ToolCallEntry[])
@@ -69,6 +70,54 @@ function bucketToolData(
 }
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
+
+// Merge consecutive reasoning steps into one. A single continuous thought can
+// arrive as several adjacent reasoning entries (e.g. when an interleaved tool
+// call between them was nested into a subagent group and dropped from this
+// level), which would otherwise render as several separate "Thinking" rows for
+// one block. Only truly adjacent reasoning is merged — a real tool call between
+// two thoughts still separates them, preserving chronological order.
+function coalesceReasoning(calls: ToolCallEntry[]): ToolCallEntry[] {
+  const out: ToolCallEntry[] = [];
+  for (const tc of calls) {
+    const prev = out.at(-1);
+    if (tc.reasoning != null && prev?.reasoning != null) {
+      out[out.length - 1] = {
+        ...prev,
+        reasoning: prev.reasoning + tc.reasoning,
+      };
+      continue;
+    }
+    out.push(tc);
+  }
+  return out;
+}
+
+// Same coalescing for the root-level timeline, where reasoning steps are
+// `kind: "tool"` items carrying a `reasoning` field.
+function coalesceTimelineReasoning(timeline: TimelineItem[]): TimelineItem[] {
+  const out: TimelineItem[] = [];
+  for (const item of timeline) {
+    const prev = out.at(-1);
+    if (
+      item.kind === "tool" &&
+      item.data.reasoning != null &&
+      prev?.kind === "tool" &&
+      prev.data.reasoning != null
+    ) {
+      out[out.length - 1] = {
+        kind: "tool",
+        data: {
+          ...prev.data,
+          reasoning: prev.data.reasoning + item.data.reasoning,
+        },
+      };
+      continue;
+    }
+    out.push(item);
+  }
+  return out;
+}
 
 function extractTaskFromInputs(
   inputs: ToolCallEntry["inputs"],
@@ -107,6 +156,7 @@ function collectAllSubagentToolCallIds(
 function deepEnrichGroup(g: SubagentGroupData): EnrichedSubagentGroup {
   return {
     ...g,
+    tool_calls: coalesceReasoning(g.tool_calls),
     nested_subagents: g.nested_subagents.map(deepEnrichGroup),
   };
 }
@@ -353,7 +403,15 @@ function buildSyntheticTimeline(toolCalls: ToolCallEntry[]): TimelineItem[] {
     }
   }
 
-  return timeline;
+  // Synthetic groups are built by pushing raw tool calls, so their adjacent
+  // reasoning fragments aren't merged yet. Enrich them the same way the backend
+  // path does (buildBackendTimeline via deepEnrichGroup) so fallback timelines
+  // don't render split Thinking rows.
+  return timeline.map((item) =>
+    item.kind === "subagent"
+      ? { kind: "subagent" as const, data: deepEnrichGroup(item.data) }
+      : item,
+  );
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
@@ -378,7 +436,7 @@ export const useSubagentSynthesis = (
     }
 
     return {
-      timeline,
+      timeline: coalesceTimelineReasoning(timeline),
       processedTools: [...groupedEntries, ...individual],
     };
   }, [tool_data]);

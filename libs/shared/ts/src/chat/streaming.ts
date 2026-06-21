@@ -202,12 +202,22 @@ export interface StreamToolDataEntry {
   subagent_id?: string;
 }
 
+/**
+ * tool_name marking a streamed tool-call-progress entry. These render via the
+ * unified tool thread (not the per-tool renderers) and carry reasoning deltas.
+ */
+export const TOOL_CALLS_DATA_TOOL_NAME = "tool_calls_data";
+
 export interface StreamToolOutput {
   tool_call_id: string;
   output: string;
   subagent_id?: string;
 }
 
+import {
+  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
+  type DesktopToolRequest,
+} from "../desktop-tools";
 import type { TodoProgressSnapshot } from "./types";
 export type { TodoProgressSnapshot };
 
@@ -252,10 +262,12 @@ export type ChatStreamEvent =
     }
   | { type: "tool_data"; entry: StreamToolDataEntry }
   | { type: "tool_output"; output: StreamToolOutput }
+  | { type: "reasoning"; content: string; subagent_id?: string }
   | { type: "todo_progress"; snapshot: TodoProgressSnapshot }
   | { type: "follow_up_actions"; actions: string[] }
   | { type: "subagent_start"; payload: SubagentStartPayload }
   | { type: "subagent_end"; payload: SubagentEndPayload }
+  | { type: "desktop_tool_request"; request: DesktopToolRequest }
   | { type: "token_usage" }
   | { type: "unknown"; payload: JsonObject };
 
@@ -376,6 +388,9 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     }
   }
 
+  // Emit subagent_start before reasoning: when one payload carries both, the
+  // reasoning handler routes by subagent_id into the group, which must already
+  // exist or that first delta is dropped.
   if (isObject(payload.subagent_start)) {
     const s = payload.subagent_start;
     if (
@@ -406,6 +421,20 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     }
   }
 
+  if (isObject(payload.reasoning)) {
+    const content = payload.reasoning.content;
+    if (typeof content === "string" && content.length > 0) {
+      events.push({
+        type: "reasoning",
+        content,
+        subagent_id:
+          typeof payload.reasoning.subagent_id === "string"
+            ? payload.reasoning.subagent_id
+            : undefined,
+      });
+    }
+  }
+
   if (isObject(payload.subagent_end)) {
     const e = payload.subagent_end;
     if (typeof e.subagent_id === "string") {
@@ -416,6 +445,24 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
           duration_ms:
             typeof e.duration_ms === "number" ? e.duration_ms : undefined,
           token_count: typeof e.token_count === "number" ? e.token_count : null,
+        },
+      });
+    }
+  }
+
+  if (isObject(payload.desktop_tool_request)) {
+    const r = payload.desktop_tool_request;
+    if (typeof r.request_id === "string" && typeof r.tool === "string") {
+      events.push({
+        type: "desktop_tool_request",
+        request: {
+          request_id: r.request_id,
+          tool: r.tool,
+          params: isObject(r.params) ? r.params : {},
+          timeout_ms:
+            typeof r.timeout_ms === "number"
+              ? r.timeout_ms
+              : DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
         },
       });
     }
@@ -533,7 +580,7 @@ export function upsertTodoProgressToolData<T extends StreamToolDataEntry>(
 export function extractToolProgressMessage(
   entry: StreamToolDataEntry,
 ): string | null {
-  if (entry.tool_name !== "tool_calls_data") return null;
+  if (entry.tool_name !== TOOL_CALLS_DATA_TOOL_NAME) return null;
   if (!isObject(entry.data)) return null;
   return typeof entry.data.message === "string" ? entry.data.message : null;
 }

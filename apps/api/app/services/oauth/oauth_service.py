@@ -10,6 +10,7 @@ from app.config.oauth_config import (
 )
 from app.config.token_repository import token_repository
 from app.constants.auth import LOGIN_METHOD_WORKOS
+from app.constants.cache import OAUTH_STATUS_KEY
 from app.constants.integrations import (
     GMAIL_INTEGRATION_ID,
     GOOGLE_CALENDAR_INTEGRATION_ID,
@@ -18,7 +19,6 @@ from app.constants.integrations import (
     MANAGED_BY_MCP,
     MANAGED_BY_SELF,
 )
-from app.constants.keys import OAUTH_STATUS_KEY
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import user_integrations_collection, users_collection
 from app.db.redis import delete_cache

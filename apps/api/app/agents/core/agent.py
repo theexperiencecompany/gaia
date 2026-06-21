@@ -8,7 +8,6 @@ Both share _core_agent_logic() for common setup (messages, graph, config).
 
 import asyncio
 from collections.abc import AsyncGenerator
-from datetime import datetime
 import json
 from typing import Literal, cast
 from uuid import uuid4
@@ -23,6 +22,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
+from app.agents.llm.plan_model import apply_plan_model
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
 from app.helpers.agent_helpers import (
@@ -40,7 +40,6 @@ async def _core_agent_logic(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: dict,
-    user_time: datetime,
     user_model_config: ModelConfig | None = None,
     trigger_context: dict | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
@@ -56,8 +55,7 @@ async def _core_agent_logic(
     Args:
         request: Message request with conversation history and file data
         conversation_id: Unique identifier for the conversation thread
-        user: User information dictionary with ID, email, and name
-        user_time: Current datetime in user's timezone
+        user: User information dictionary with ID, email, name, and home timezone
         user_model_config: Optional model configuration for inference
         trigger_context: Optional context data from workflow triggers
         langfuse_trace_id: Seed for the Langfuse trace; forwarded into the
@@ -113,7 +111,6 @@ async def _core_agent_logic(
     config = build_agent_config(
         conversation_id=conversation_id,
         user=user,
-        user_time=user_time,
         user_model_config=user_model_config,
         usage_metadata_callback=usage_metadata_callback,
         agent_name="comms_agent",
@@ -125,6 +122,10 @@ async def _core_agent_logic(
         langfuse_trace_id=langfuse_trace_id,
         langfuse_tags=langfuse_tags,
     )
+
+    # Route the model by subscription plan (Free -> Gemini, Pro -> MiniMax).
+    # Hardcoded policy; the executor and subagents inherit it via the configurable.
+    await apply_plan_model(config["configurable"], user_id)
 
     # Workflow runs carry their id/title so the background executor's delivery
     # path can route the final result to the workflow-completion notification
@@ -154,7 +155,6 @@ async def call_agent(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: dict,
-    user_time: datetime,
     user_model_config: ModelConfig | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     stream_id: str | None = None,
@@ -183,7 +183,6 @@ async def call_agent(
             request,
             conversation_id,
             user,
-            user_time,
             user_model_config,
             usage_metadata_callback=usage_metadata_callback,
             source=source,
@@ -218,7 +217,6 @@ async def call_agent_silent(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: dict,
-    user_time: datetime,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     user_model_config: ModelConfig | None = None,
     trigger_context: dict | None = None,
@@ -241,7 +239,6 @@ async def call_agent_silent(
             request,
             conversation_id,
             user,
-            user_time,
             user_model_config,
             trigger_context,
             usage_metadata_callback=usage_metadata_callback,

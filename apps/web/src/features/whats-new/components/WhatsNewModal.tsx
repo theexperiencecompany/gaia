@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useWhatsNewModal, useWhatsNewStore } from "@/stores/whatsNewStore";
 import { useReleases } from "../hooks/useReleases";
+import { WhatsNewRecentReleases } from "./WhatsNewRecentReleases";
 import { WhatsNewSlide } from "./WhatsNewSlide";
 
 export function WhatsNewModal() {
@@ -24,6 +25,7 @@ export function WhatsNewModal() {
 
   const [selectedIndex, setSelectedIndex] = useState(modalInitialIndex);
   const lastTrackedRef = useRef(-1);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const canScrollPrev = selectedIndex > 0;
   const canScrollNext = selectedIndex < releases.length - 1;
@@ -37,6 +39,13 @@ export function WhatsNewModal() {
     if (!canScrollNext) return;
     setSelectedIndex((i) => i + 1);
   }, [canScrollNext]);
+
+  // Jump to a release from the recent-releases footer and bring its hero back
+  // into view (the user clicked from the bottom of the scroll area).
+  const selectRelease = useCallback((index: number) => {
+    setSelectedIndex(index);
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   // Track slide views
   useEffect(() => {
@@ -90,13 +99,22 @@ export function WhatsNewModal() {
                   No releases found.
                 </p>
               ) : (
-                <div className="overflow-y-auto" style={{ maxHeight: "70vh" }}>
+                <div
+                  ref={scrollRef}
+                  className="overflow-y-auto"
+                  style={{ maxHeight: "70vh" }}
+                >
                   {release && (
                     <WhatsNewSlide
                       release={release}
                       isFirst={selectedIndex === 0}
                     />
                   )}
+                  <WhatsNewRecentReleases
+                    releases={releases}
+                    currentIndex={selectedIndex}
+                    onSelect={selectRelease}
+                  />
                 </div>
               )}
             </ModalBody>

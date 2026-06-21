@@ -14,13 +14,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import (
-    GET_USER_TZ_TYPE,
     get_current_user,
-    get_user_timezone,
+    get_user_timezone_from_preferences,
 )
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
+from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
 from shared.py.wide_events import ChatContext, log
@@ -30,8 +30,21 @@ _background_tasks: set[asyncio.Task] = set()
 
 _USER_ID_REQUIRED = "user_id is required"
 _SSE_MEDIA_TYPE = "text/event-stream"
+_CLIENT_TYPE_HEADER = "X-Client-Type"
 
 router = APIRouter()
+
+
+def _resolve_source(request: Request) -> str:
+    """Map the client-type header to a conversation source.
+
+    Only the desktop app is trusted to claim a non-web source — it unlocks
+    desktop-executed tools, which are useless (harmless) anywhere else.
+    """
+    client_type = request.headers.get(_CLIENT_TYPE_HEADER, "").strip().lower()
+    if client_type == ConversationSource.DESKTOP.value:
+        return ConversationSource.DESKTOP.value
+    return ConversationSource.WEB.value
 
 
 def _build_chat_context(
@@ -85,7 +98,7 @@ async def chat_stream_endpoint(
     body: MessageRequestWithHistory,
     background_tasks: BackgroundTasks,
     user: Annotated[dict, Depends(get_current_user)],
-    tz_info: Annotated[GET_USER_TZ_TYPE, Depends(get_user_timezone)],
+    home_timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
 ) -> StreamingResponse:
     """Stream a chat turn. Continues in the background if the client disconnects."""
     stream_id = str(uuid4())
@@ -96,6 +109,9 @@ async def chat_stream_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_USER_ID_REQUIRED,
         )
+    # Seed the agent's home zone (DB-resolved, browser-header-healed) so its
+    # "now" and schedule defaults run in the user's real zone, not stored UTC.
+    user = {**user, "timezone": home_timezone}
     log.set(
         user={"id": user_id},
         chat=_build_chat_context(body, conversation_id, stream_id),
@@ -115,9 +131,8 @@ async def chat_stream_endpoint(
             stream_id=stream_id,
             body=body,
             user=user,
-            user_time=tz_info[1],
             conversation_id=conversation_id,
-            source="web",
+            source=_resolve_source(request),
             start_event=start_event,
         )
     )

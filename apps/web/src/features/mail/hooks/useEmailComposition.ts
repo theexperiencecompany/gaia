@@ -163,12 +163,10 @@ export function useEmailComposition(): UseEmailCompositionReturn {
               has_prompt: !!prompt,
             });
           } else {
-            console.log(`Invalid response format: ${JSON.stringify(response)}`);
             setError("Invalid response format from server");
             toast.error("Invalid response format from server");
           }
         } else {
-          console.log(`Invalid response format: ${JSON.stringify(response)}`);
           setError("Invalid response format from server");
           toast.error("Invalid response format from server");
         }

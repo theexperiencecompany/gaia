@@ -1,0 +1,125 @@
+name: Desktop PR Build
+
+# Catches desktop packaging/platform regressions BEFORE merge — the class of bug
+# that passes lint + type-check but only surfaces at package time or on an OS you
+# didn't build locally (script divergence, asar/dependency breakage, native-dep
+# install, the wake-word prune, code-signing seal).
+#
+# Efficient by design: the platform-agnostic work (Next.js build, electron-vite
+# build, the prepare/prune script + its wake-word canary) runs ONCE on cheap
+# Linux and is shared as an artifact; each OS then only installs deps and
+# packages (electron-builder --dir, no installer). macOS additionally ad-hoc
+# signs and verifies the bundle seal.
+on:
+  pull_request:
+    paths:
+      # Desktop app, the shared TS lib it bundles, and this workflow. Web is
+      # intentionally excluded (high churn, its own gates) — desktop-specific
+      # regressions live in these paths.
+      - "apps/desktop/**"
+      - "libs/shared/ts/**"
+      - ".github/workflows/desktop-pr-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-pr-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # All platform-agnostic build work, done once on cheap Linux:
+  # web standalone -> electron-vite out/ -> prepare/prune (+ wake-word canary).
+  # The prepared, ready-to-package payload is shared with every OS.
+  # ---------------------------------------------------------------------------
+  prepare:
+    name: Build + prepare payload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build web (standalone)
+        run: pnpm nx build web --skip-nx-cache
+      - name: Build Electron main/preload
+        run: pnpm nx build desktop
+      - name: Prepare standalone (prune + wake-word canary)
+        working-directory: apps/desktop
+        run: node ./scripts/prepare-next-server.mjs
+      # Pack the ready-to-package payload (electron-vite output + pruned server)
+      # into one tarball: deterministic paths, captures hidden dirs, preserves
+      # symlinks, and small enough to round-trip reliably.
+      - name: Archive packaging payload
+        run: tar -czf desktop-payload.tar.gz apps/desktop/out apps/desktop/.next-server-prepared
+      - name: Upload packaging payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-payload
+          if-no-files-found: error
+          retention-days: 3
+          path: desktop-payload.tar.gz
+
+  # ---------------------------------------------------------------------------
+  # Package the app on each OS (no installer) to prove it builds + links.
+  # ---------------------------------------------------------------------------
+  package:
+    name: Package desktop (${{ matrix.target }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac
+          - os: windows-latest
+            target: win
+          - os: ubuntu-latest
+            target: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+      # Installs electron-builder + the per-OS app-builder binaries + the
+      # desktop runtime deps that get packaged into the app.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Download packaging payload
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-payload
+      - name: Unpack payload (restores apps/desktop/out + .next-server-prepared)
+        shell: bash
+        run: tar -xzf desktop-payload.tar.gz
+
+      # --dir = unpacked app, no installer: fast, and enough to catch asar /
+      # dependency / prune regressions. macOS ad-hoc-signs via the afterSign hook
+      # (CSC_IDENTITY_AUTO_DISCOVERY=false) so the seal can be verified below.
+      - name: Package (electron-builder --dir)
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder --${{ matrix.target }} --dir --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # The signing regression only shows at runtime — assert the seal in CI.
+      - name: Verify macOS code-signing seal
+        if: matrix.target == 'mac'
+        run: |
+          APP=$(find apps/desktop/release -name 'GAIA.app' -type d | head -1)
+          echo "Verifying $APP"
+          codesign --verify --deep --strict --verbose=1 "$APP"
+          echo "macOS bundle seal is valid"

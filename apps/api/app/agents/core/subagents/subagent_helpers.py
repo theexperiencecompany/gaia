@@ -10,18 +10,22 @@ message emitted alongside the static prompt — not inside the static prompt.
 """
 
 import asyncio
-import re
 
 from langchain_core.messages import SystemMessage
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
+from app.agents.workspace.skill_loader import target_to_subagent
 from app.config.oauth_config import get_integration_by_id
+from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.helpers.message_helpers import (
     BACKGROUND_EXECUTION_BANNER,
     DYNAMIC_CONTEXT_MARKER,
+    EXECUTOR_CONNECTED_INTEGRATIONS_HEADER,
     _build_active_todo_banner,
+    build_connected_integrations_manifest,
+    build_workspace_session_banner,
 )
 from app.memory.engine import memory_engine
 from app.services.integration_instructions_service import get_instructions
@@ -133,12 +137,16 @@ async def create_agent_context_message(
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
+    include_connected_integrations: bool = False,
 ) -> SystemMessage:
     """Build the dynamic-context system message for executor/subagent runs.
 
-    Carries everything that varies per request: user name, current time,
-    memories, installable skills, and (for subagents) provider metadata. This
-    is the message `manage_system_prompts_node` keeps only the latest of.
+    Carries everything that varies per request: user name, static home
+    timezone, memories, installable skills, and (for subagents) provider
+    metadata. Current time is NOT here — it lives in a HumanMessage built by
+    ``build_initial_messages`` so this system message stays byte-stable across
+    minute ticks. This is the message `manage_system_prompts_node` keeps only
+    the latest of.
 
     Args:
         configurable: The config["configurable"] dict from RunnableConfig.
@@ -151,12 +159,14 @@ async def create_agent_context_message(
             ChromaDB lookup. Memory fetched by the caller is passed through
             the handoff payload so subagents don't re-run the same search.
         skills_text: Pre-fetched skills section; same rationale as memories.
+        include_connected_integrations: When True (executor only), append the
+            live connected-integrations manifest (names + handoff subagent_ids).
     """
     parts: list[str] = []
 
     user_id = user_id or configurable.get("user_id")
     user_name = configurable.get("user_name")
-    user_time_str = configurable.get("user_time", "")
+    user_timezone = configurable.get("user_timezone")
     execution_mode = configurable.get("execution_mode") or "interactive"
     active_todo_id = configurable.get("active_todo_id")
 
@@ -171,23 +181,27 @@ async def create_agent_context_message(
         if banner:
             parts.append(banner)
 
+    # User identity.
     if user_name:
         parts.append(f"User Name: {user_name}")
 
     # Clock is NOT embedded here any more — it lives in a HumanMessage built
     # alongside by ``build_initial_messages`` so the system_instruction stays
-    # stable across minute ticks. Only the user's static timezone offset
+    # stable across minute ticks. Only the user's static home timezone
     # (byte-stable across turns) stays in system_instruction.
-    if user_time_str:
-        try:
-            tz_match = re.search(r"([+-]\d{2}:\d{2}|Z)$", user_time_str)
-            if tz_match:
-                tz_offset = tz_match.group(1)
-                if tz_offset == "Z":
-                    tz_offset = "+00:00"
-                parts.append(f"User Timezone Offset: {tz_offset}")
-        except Exception as e:
-            log.warning(f"Error parsing user_time: {e}")
+    if user_timezone:
+        parts.append(f"User Timezone: {user_timezone}")
+
+    # Session directory — stated so the agent never guesses a
+    # `/workspace/sessions/<id>/` id when reporting or delivering artifacts (a
+    # wrong id lands files outside the session the artifact watcher scans). Only
+    # `vfs_session_id` is trusted: the executor pins it to the conversation
+    # thread and subagents inherit it. We deliberately do NOT fall back to
+    # `thread_id` — that is the `executor_<conv>` wrapper, which would yield
+    # `/workspace/sessions/executor_<conv>/` and recreate the wrong-dir bug.
+    session_id = configurable.get("vfs_session_id")
+    if session_id:
+        parts.append(build_workspace_session_banner(session_id))
 
     async def _fetch_memories() -> str:
         if memories_text is not None:
@@ -213,7 +227,7 @@ async def create_agent_context_message(
             block = skills_text or ""
         elif user_id:
             try:
-                agent_for_skills = subagent_id or "executor"
+                agent_for_skills = subagent_id or EXECUTOR_SUBAGENT_ID
                 text = await get_available_skills_text(user_id=user_id, agent_name=agent_for_skills)
                 if text:
                     log.info(f"Injected installable skills for {agent_for_skills}")
@@ -222,18 +236,44 @@ async def create_agent_context_message(
                 log.warning(f"Error injecting installable skills: {e}")
 
         if subagent_id:
-            integration_block = integration_skills_block(subagent_id)
+            # `subagent_id` carries the agent_name ("docgen_agent"), but
+            # skills_by_subagent is keyed by the subagent id ("docgen"). Map it the
+            # same way the loader builds those keys, or integration_skills_block
+            # silently finds nothing and the subagent runs with no skills.
+            integration_block = integration_skills_block(target_to_subagent(subagent_id))
             if integration_block:
                 block = f"{block}\n\n{integration_block}" if block else integration_block
 
         return f"\n\n{block}" if block else ""
 
-    memories_section, skills_section, metadata_section, instructions_section = await asyncio.gather(
+    async def _fetch_integrations_manifest() -> str:
+        # Executor-only: the agent that actually performs handoffs gets the live
+        # list of connected integrations with their handoff subagent_ids.
+        # Provider subagents operate within their own provider and don't need it.
+        if not (include_connected_integrations and user_id):
+            return ""
+        return await build_connected_integrations_manifest(
+            user_id, header=EXECUTOR_CONNECTED_INTEGRATIONS_HEADER
+        )
+
+    (
+        memories_section,
+        skills_section,
+        metadata_section,
+        instructions_section,
+        integrations_section,
+    ) = await asyncio.gather(
         _fetch_memories(),
         _fetch_skills(),
         _fetch_provider_metadata_block(integration_id, user_id),
         _fetch_instructions_block(integration_id or subagent_id, user_id),
+        _fetch_integrations_manifest(),
     )
+
+    # Manifest sits with the stable prefix (it changes only on connect/disconnect,
+    # not per turn), right before the per-turn fetched sections below.
+    if integrations_section:
+        parts.append(integrations_section)
 
     content = (
         "\n".join(parts)

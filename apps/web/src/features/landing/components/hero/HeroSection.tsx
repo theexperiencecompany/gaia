@@ -15,7 +15,7 @@ export default function HeroSection({
   latestRelease?: LatestRelease | null;
 }) {
   return (
-    <div className="relative w-full flex-col gap-8 pb-20 sm:pb-30">
+    <div className="relative w-full flex-col gap-8 py-20 sm:py-30">
       {/* Above-the-fold: blur-in is CSS-driven (see TextSoftBlurIn/SoftBlurInBlock
           `immediate`), so the hero paints and animates straight from SSR HTML
           without waiting for React hydration. A plain layout div replaces the old
@@ -56,7 +56,7 @@ export default function HeroSection({
         <div onClick={onTextClick} className="cursor-default select-none">
           <h1
             aria-label="Get a workday back every week."
-            className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible font-serif"
+            className="max-w-(--breakpoint-lg) text-center text-[3.2rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible font-serif"
           >
             <TextSoftBlurIn
               text="Get a workday back"

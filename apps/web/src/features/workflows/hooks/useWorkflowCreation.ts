@@ -17,13 +17,7 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
     try {
       setIsCreating(true);
       setError(null);
-
-      console.log(
-        "useWorkflowCreation: Making API call with request:",
-        request,
-      );
       const response = await workflowApi.createWorkflow(request);
-      console.log("useWorkflowCreation: API response:", response);
 
       setCreatedWorkflow(response.workflow);
       // Note: Store updates are handled by the caller (WorkflowModal)

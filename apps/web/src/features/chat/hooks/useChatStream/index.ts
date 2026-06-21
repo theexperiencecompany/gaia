@@ -14,6 +14,7 @@ import type { MessageType } from "@/types/features/convoTypes";
 import fetchDate from "@/utils/date/dateUtils";
 import { useLoadingText } from "../useLoadingText";
 import { createConversationInitHandlers } from "./conversationInit";
+import { hasExecutorDelegation } from "./executorDelegation";
 import { createIMessage, createMessageHelpers } from "./messageBuilder";
 import { createPersistenceHelpers } from "./persistence";
 import { createStreamHandlers } from "./streamHandlers";
@@ -224,7 +225,11 @@ export const useChatStream = () => {
       await chatApi.fetchChatStream(
         inputText,
         [...refs.current.convoMessages, ...currentMessages],
-        conversationId ?? undefined,
+        // The resolved id (option ?? store-active ?? in-flight new id).
+        // Passing the raw option meant surfaces without a /c/[id] URL
+        // (the desktop popup) sent null and forked a NEW conversation
+        // on every message.
+        effectiveConversationId ?? undefined,
         handleStreamEvent,
         handleStreamClose,
         handleStreamError,
@@ -249,6 +254,18 @@ export const useChatStream = () => {
     const pending = pendingStreamArgsRef.current;
     if (pending) {
       pendingStreamArgsRef.current = null;
+      // The held message is now actually being sent — flip its optimistic
+      // bubble from "queued" (grey) to "sending" (normal) so it turns blue the
+      // moment it leaves the queue.
+      const queuedUserId = pending[2]?.optimisticUserId;
+      if (queuedUserId) {
+        db.updateMessageStatus(queuedUserId, "sending").catch((error) => {
+          console.error("Failed to flip queued message to sending:", error);
+        });
+      }
+      // The queued send deferred its loading trigger to here (see useSendMessage):
+      // now that it's actually starting, it takes over the loading indicator.
+      useLoadingStore.getState().setLoadingWithContext(true, pending[0]);
       setTimeout(() => streamFunction(...pending), 100);
     }
   };
@@ -303,10 +320,9 @@ export const useChatStream = () => {
       // A turn that delegated to a background executor (tool_category "executor")
       // delivers its real answer later via a `conversation.new_message` event.
       // Keep the turn visually "in progress" until that arrives.
-      const delegatedToExecutor =
-        refs.current.botMessage?.tool_data?.some(
-          (e) => (e as { tool_category?: string }).tool_category === "executor",
-        ) ?? false;
+      const delegatedToExecutor = hasExecutorDelegation(
+        refs.current.botMessage?.tool_data,
+      );
 
       const conversationId = resolveConversationId();
 

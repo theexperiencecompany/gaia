@@ -22,6 +22,10 @@ DEFAULT_CACHE_TTL = ONE_HOUR_TTL
 STATS_CACHE_TTL = THIRTY_MINUTES_TTL
 CUSTOM_INT_METADATA_TTL = ONE_HOUR_TTL
 SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
+# Subscription plan tier, cached for hot paths (rate limiting, per-request model
+# routing). Eventually consistent: a plan change takes effect within the TTL.
+SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
+SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
@@ -55,10 +59,27 @@ SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
 HANDOFF_METADATA_CACHE_PREFIX = "handoff_metadata"
+# Custom-MCP display name resolved for handoff (keyed by integration id).
+HANDOFF_NAME_CACHE_PREFIX = "handoff_name"
 SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
-OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery"
+OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
+# v2: discovery is now cached as the OAuthDiscovery model (model_dump) rather
+# than the old ad-hoc dict; bump busts stale dict-shaped entries.
+OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery_v2"
 OAUTH_STATUS_KEY = "OAUTH_STATUS"
+
+# Every cache that derives from a user's integration set. Whenever a user's
+# integrations change (add / remove / status flip), ALL of these must be busted
+# together — otherwise one cache lags behind another and the views diverge (a
+# stale OAUTH_STATUS hid a freshly-connected MCP from retrieve_tools while the
+# tools:user:* caches already showed it). Single source so no mutation path can
+# forget one. `{user_id}` is substituted by CacheInvalidator at call time.
+USER_INTEGRATION_CACHE_PATTERNS = [
+    "tools:user:{user_id}:*",
+    "tool_namespaces:{user_id}",
+    f"{OAUTH_STATUS_KEY}:{{user_id}}",
+]
 MCP_TOOLS_CACHE_KEY = "mcp:tools:all"
 GLOBAL_TOOLS_CACHE_KEY = "tools:global"
 USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
@@ -73,6 +94,21 @@ STATE_KEY_PREFIX = "oauth_state"
 CONNECT_LINK_USED_PREFIX = "connect_link_used"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
+# Desktop tool bridge — request ownership keys + per-request result channels.
+# A request key expiring means the desktop never answered; the result endpoint
+# rejects late POSTs whose key is gone.
+DESKTOP_REQUEST_PREFIX = "desktop:request:"
+DESKTOP_RESULT_CHANNEL_PREFIX = "desktop:result:"
+# Latest desktop (Electron) release resolved from GitHub for the download page.
+# Infrequent releases, so 30 min keeps the page fresh without hammering GitHub.
+DESKTOP_RELEASE_CACHE_KEY = "desktop:release:latest"
+DESKTOP_RELEASE_CACHE_TTL = THIRTY_MINUTES_TTL
+# The ownership key's TTL is derived per-call from the awaiting tool's timeout
+# plus this grace, so the key always outlives the wait (a fixed TTL could be
+# outrun by a longer custom timeout, expiring mid-wait and dropping a valid
+# late result). The tool deletes the key as soon as it resolves, so this TTL
+# only bounds the orphaned-on-crash case.
+DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 EXECUTOR_QUEUE_PREFIX = "executor:queue:"
@@ -81,3 +117,10 @@ EXECUTOR_QUEUE_TTL = ONE_HOUR_TTL  # Tasks expire if not picked up within 1 hour
 # whatever tool events were collected. Matches the busy lock TTL — the executor
 # cannot outlive its lock, so waiting longer would be pointless.
 EXECUTOR_WAIT_TIMEOUT = THIRTY_MINUTES_TTL
+# ElevenLabs voice lists (account + shared library) cached for the voice picker.
+ELEVENLABS_VOICES_CACHE_KEY = "voice:elevenlabs_voices"
+ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
+# Upper bound a voice-mode stream waits for a delegated executor's narrated
+# answer before sending [DONE] anyway. Real action turns resolve in a few
+# seconds; on timeout the answer still reaches the user via the WebSocket push.
+VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0

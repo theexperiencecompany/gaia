@@ -187,16 +187,17 @@ class WorkflowService:
         trigger_ids: list[str] = []
 
         try:
-            # Use provided timezone (from dependency) - should already be resolved by dependency
-            timezone_to_use = user_timezone or "UTC"
-
-            log.info(f"Creating workflow with timezone: {timezone_to_use}")
-
             # Calculate next_run for scheduled workflows with timezone awareness
             trigger_config = request.trigger_config
 
             # Automatically populate timezone field
             if trigger_config.type == "schedule":
+                # The schedule's own timezone is authoritative — it is the wall-clock
+                # context the cron was built against in the UI. Fall back to the
+                # request-resolved user timezone only when the schedule didn't carry
+                # one (e.g. the agent-created path), then UTC.
+                timezone_to_use = trigger_config.timezone or user_timezone or "UTC"
+                log.info(f"Creating workflow with timezone: {timezone_to_use}")
                 trigger_config.timezone = timezone_to_use
                 if trigger_config.cron_expression:
                     trigger_config.update_next_run(user_timezone=timezone_to_use)
@@ -500,18 +501,15 @@ class WorkflowService:
                 new_trigger_config = ensure_trigger_config_object(update_fields["trigger_config"])
                 new_trigger_config.enabled = effective_activated
 
-                # Use provided timezone or fallback to UTC
-                timezone_to_use = user_timezone or "UTC"
-
-                log.info(f"Updating workflow {workflow_id} with timezone: {timezone_to_use}")
-
-                # Automatically populate timezone field if it's a scheduled workflow
+                # Automatically populate timezone field if it's a scheduled workflow.
+                # The timezone chosen in the UI for this schedule wins; fall back to
+                # the request-resolved user timezone, then UTC.
                 if new_trigger_config.type == "schedule":
+                    timezone_to_use = new_trigger_config.timezone or user_timezone or "UTC"
+                    log.info(f"Updating workflow {workflow_id} with timezone: {timezone_to_use}")
                     new_trigger_config.timezone = timezone_to_use
-
-                # Calculate next_run for scheduled workflows with timezone awareness
-                if new_trigger_config.type == "schedule" and new_trigger_config.cron_expression:
-                    new_trigger_config.update_next_run(user_timezone=timezone_to_use)
+                    if new_trigger_config.cron_expression:
+                        new_trigger_config.update_next_run(user_timezone=timezone_to_use)
 
                 # Check if we need to reschedule
                 old_config = current_workflow.trigger_config
@@ -750,8 +748,12 @@ class WorkflowService:
 
             # Recompute next_run from the cron so a stale/frozen schedule time (e.g.
             # left over from a prior deactivation) cannot carry over on reactivation.
+            # The schedule's stored timezone is authoritative; the activating
+            # request's tz is only a fallback for legacy rows that never stored one.
             if trigger_type == TriggerType.SCHEDULE and trigger_config.cron_expression:
-                trigger_config.update_next_run(user_timezone=user_timezone)
+                trigger_config.update_next_run(
+                    user_timezone=trigger_config.timezone or user_timezone
+                )
 
             # Refuse activation up front: registration would otherwise silently
             # no-op for a disconnected integration, confusing the user.

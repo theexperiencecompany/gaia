@@ -561,7 +561,6 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
             error=str(exc),
         )
 
-    user_time = datetime.now(UTC)
     conversation_id = str(uuid4())
 
     request = MessageRequestWithHistory(
@@ -577,7 +576,6 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            user_time=user_time,
             user_model_config=user_model_config,
             trigger_context={
                 "trigger_type": "maintenance_health_check",

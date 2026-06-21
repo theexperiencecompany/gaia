@@ -6,13 +6,13 @@ handed to the comms agent as internal context (a HumanMessage with an
 persona. This module owns that single invocation.
 """
 
-from datetime import UTC, datetime
-
 from langchain_core.messages import HumanMessage
 
 from app.agents.core.graph_manager import GraphManager
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
+from app.constants.agents import EXECUTOR_ERROR_MARKER, EXECUTOR_RESULT_MARKER
 from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
+from app.utils.agent_utils import strip_internal_agent_markers
 from shared.py.wide_events import log
 
 
@@ -33,7 +33,7 @@ async def narrate_executor_result(
 
     Returns the comms-generated text, or an empty string on failure.
     """
-    prefix = "[EXECUTOR_ERROR]" if msg_type == "error" else "[EXECUTOR_RESULT]"
+    prefix = EXECUTOR_ERROR_MARKER if msg_type == "error" else EXECUTOR_RESULT_MARKER
     if workflow_id:
         # Text-only platform delivery: tell comms to restate everything. The
         # card-suppression note (returned_note) is deliberately dropped here —
@@ -55,7 +55,6 @@ async def narrate_executor_result(
         config = build_agent_config(
             conversation_id=conversation_id,
             user=user,
-            user_time=datetime.now(UTC),
             agent_name="comms_agent",
         )
         initial_state = {
@@ -78,7 +77,7 @@ async def narrate_executor_result(
             ],
         }
         notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
-        return notification_text
+        return strip_internal_agent_markers(notification_text)
     except Exception as e:
         log.error("narrate_executor_result: failed", error=str(e))
         return ""

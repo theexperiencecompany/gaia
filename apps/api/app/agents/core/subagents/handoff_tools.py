@@ -11,14 +11,13 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 """
 
 import asyncio
-from datetime import datetime
 import re
 import time
 from typing import Annotated
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore, PutOp
 
@@ -214,6 +213,7 @@ async def index_custom_mcp_as_subagent(
     name: str,
     description: str,
     server_url: str | None = None,
+    tools: list[BaseTool] | None = None,
 ) -> None:
     """
     Index a custom MCP as a subagent for handoff discovery.
@@ -227,13 +227,21 @@ async def index_custom_mcp_as_subagent(
         name: Display name of the integration
         description: Description of what the integration does
         server_url: MCP server URL for namespace derivation
+        tools: The MCP's tools — their names/summaries are embedded so the
+            subagent ranks for what it can actually do (e.g. a "get_meetings"
+            tool surfaces on a "meetings" query) instead of generic boilerplate.
     """
-    rich_description = (
-        f"{name}. Custom MCP integration. "
-        f"{description}. "
-        f"Use cases: data fetching, automation, API access, external services. "
-        f"Examples: fetch data, scrape, query, automate"
-    )
+    parts = [f"{name}."]
+    if description:
+        parts.append(f"{description}.")
+    if tools:
+        summaries = []
+        for t in tools:
+            first_line = (t.description or "").strip().splitlines()
+            summary = first_line[0][:120] if first_line else ""
+            summaries.append(f"{t.name}: {summary}" if summary else t.name)
+        parts.append(f"Available tools: {'; '.join(summaries)}.")
+    rich_description = " ".join(parts)
 
     tool_namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
 
@@ -251,7 +259,9 @@ async def index_custom_mcp_as_subagent(
     )
 
     await store.abatch([put_op])
-    log.info(f"Indexed custom MCP {name} ({integration_id}) as subagent")
+    log.info(
+        f"Indexed custom MCP {name} ({integration_id}) as subagent with {len(tools or [])} tools"
+    )
 
 
 async def _resolve_subagent(
@@ -316,7 +326,7 @@ async def _resolve_subagent(
     # Platform/builtin subagent (Subagent object)
     subagent = resolved
     agent_name = subagent.config.agent_name
-    int_id = subagent.id
+    integration_id = subagent.id
 
     # Handle auth-required MCP integrations specially
     if subagent.managed_by == "mcp" and subagent.mcp_config and subagent.mcp_config.requires_auth:
@@ -330,9 +340,9 @@ async def _resolve_subagent(
 
         # Check if user has connected this MCP integration
         token_store = MCPTokenStore(user_id=user_id)
-        is_connected = await token_store.is_connected(int_id)
+        is_connected = await token_store.is_connected(integration_id)
         if not is_connected:
-            connect_url = build_connect_link_url(user_id, int_id)
+            connect_url = build_connect_link_url(user_id, integration_id)
             return (
                 None,
                 None,
@@ -341,7 +351,7 @@ async def _resolve_subagent(
             )
 
         # Create subagent on-the-fly with user's tokens
-        subagent_graph = await create_subagent_for_user(int_id, user_id)
+        subagent_graph = await create_subagent_for_user(integration_id, user_id)
         if not subagent_graph:
             return (
                 None,
@@ -353,7 +363,7 @@ async def _resolve_subagent(
         # Non-MCP or non-auth-required MCP integrations
         # Skip connection check for internal integrations (always available)
         if subagent.managed_by not in ("mcp", "internal") and user_id:
-            error_message = await check_integration_connection(int_id, user_id)
+            error_message = await check_integration_connection(integration_id, user_id)
             if error_message:
                 return None, None, error_message, False
 
@@ -364,28 +374,30 @@ async def _resolve_subagent(
         if not subagent_graph:
             return None, None, f"Error: {agent_name} not available", False
 
-    return subagent_graph, agent_name, int_id, False
+    return subagent_graph, agent_name, integration_id, False
 
 
 _background_subagent_tasks: set[asyncio.Task[None]] = set()
 
 
-async def _build_integration_metadata(is_custom: bool, int_id: str) -> IntegrationMetadata | None:
+async def _build_integration_metadata(
+    is_custom: bool, integration_id: str
+) -> IntegrationMetadata | None:
     """Build display metadata for a resolved subagent integration."""
     if is_custom:
-        integration = await _get_subagent_by_id(int_id)
+        integration = await _get_subagent_by_id(integration_id)
         if isinstance(integration, dict):
             return IntegrationMetadata(
                 icon_url=integration.get("icon_url"),
-                integration_id=int_id,
-                name=str(integration.get("name") or int_id),
+                integration_id=integration_id,
+                name=str(integration.get("name") or integration_id),
             )
         return None
-    platform_integ = get_subagent_by_id(int_id)
+    platform_integ = get_subagent_by_id(integration_id)
     if platform_integ:
         return IntegrationMetadata(
             icon_url=getattr(platform_integ, "icon_url", None),
-            integration_id=int_id,
+            integration_id=integration_id,
             name=platform_integ.name,
         )
     return None
@@ -410,12 +422,14 @@ async def _run_blocking_handoff(
     ctx: SubagentExecutionContext,
     metadata: IntegrationMetadata | None,
     agent_name: str,
-    int_id: str,
+    integration_id: str,
 ) -> str:
     """Run a handoff subagent synchronously, emitting lifecycle SSE events."""
     writer = get_stream_writer()
     sa_id = str(uuid4())
-    display, icon_url, tool_category = _resolve_display_metadata(metadata, agent_name, int_id)
+    display, icon_url, tool_category = _resolve_display_metadata(
+        metadata, agent_name, integration_id
+    )
 
     # Propagate this subagent's UUID into config so nested spawned subagents
     # can reference it as parent_subagent_id.
@@ -513,11 +527,11 @@ async def handoff(
             return int_id_or_error or "Unknown error resolving subagent"
 
         agent_name: str = resolved_agent_name
-        int_id: str = int_id_or_error
+        integration_id: str = int_id_or_error
         log.set(
             subagent={
                 "name": agent_name,
-                "provider": int_id,
+                "provider": integration_id,
                 "is_custom": is_custom,
                 "task_length": len(task),
             }
@@ -525,20 +539,17 @@ async def handoff(
 
         # Build config
         thread_id = configurable.get("thread_id", "")
-        subagent_thread_id = f"{int_id}_{thread_id}"
+        subagent_thread_id = f"{integration_id}_{thread_id}"
 
         user = {
             "user_id": user_id,
             "email": configurable.get("email"),
             "name": configurable.get("user_name"),
         }
-        user_time_str = configurable.get("user_time", "")
-        user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
 
         subagent_config = build_agent_config(
             conversation_id=thread_id,
             user=user,
-            user_time=user_time,
             thread_id=subagent_thread_id,
             base_configurable=configurable,
             agent_name=agent_name,
@@ -548,7 +559,7 @@ async def handoff(
 
         # Create system message
         system_message = await create_subagent_system_message(
-            integration_id=int_id,
+            integration_id=integration_id,
             agent_name=agent_name,
             user_id=user_id,
         )
@@ -556,7 +567,7 @@ async def handoff(
         # Avoid passing Gaia display name as a service username
         provider_meta = None
         provider_name = None
-        platform_subagent = get_subagent_by_id(int_id)
+        platform_subagent = get_subagent_by_id(integration_id)
         if platform_subagent and platform_subagent.provider and user_id:
             provider_name = platform_subagent.provider
             provider_meta = await get_provider_metadata(user_id, platform_subagent.provider)
@@ -567,7 +578,7 @@ async def handoff(
         sanitized_task = _sanitize_task_user_reference(
             task=task,
             gaia_name=user.get("name"),
-            provider_hint=(provider_name or int_id),
+            provider_hint=(provider_name or integration_id),
             service_username=service_username,
         )
 
@@ -582,7 +593,7 @@ async def handoff(
             # Without this the custom-instructions/provider-metadata lookup falls
             # back to agent_name ("gmail_agent"), which never matches the stored
             # integration id ("gmail"), so the user's instructions are dropped.
-            integration_id=int_id,
+            integration_id=integration_id,
         )
 
         # Create execution context with stream_id for cancellation
@@ -591,7 +602,7 @@ async def handoff(
             agent_name=agent_name,
             config=subagent_config,
             configurable=new_configurable,
-            integration_id=int_id,
+            integration_id=integration_id,
             initial_state={
                 "messages": messages,
                 "todos": [],
@@ -602,7 +613,7 @@ async def handoff(
             stream_id=stream_id,
         )
 
-        integration_metadata = await _build_integration_metadata(is_custom, int_id)
+        integration_metadata = await _build_integration_metadata(is_custom, integration_id)
 
         # Background mode: spawn subagent as asyncio task and return immediately.
         # Caller must use wait_for_subagents() to collect results.
@@ -616,7 +627,7 @@ async def handoff(
                     "falling back to blocking execution"
                 )
                 blocking_result = await _run_blocking_handoff(
-                    ctx, integration_metadata, agent_name, int_id
+                    ctx, integration_metadata, agent_name, integration_id
                 )
                 return (
                     "[WARNING: background handoff fell back to blocking — "
@@ -626,7 +637,7 @@ async def handoff(
             sid: str = str(stream_id)
             bg_sa_id = str(uuid4())
             bg_display, bg_icon, bg_cat = _resolve_display_metadata(
-                integration_metadata, agent_name, int_id
+                integration_metadata, agent_name, integration_id
             )
             increment_pending_subagents(sid)
             bg_task = asyncio.create_task(
@@ -649,7 +660,7 @@ async def handoff(
             )
 
         # Blocking (default): execute synchronously and return result.
-        return await _run_blocking_handoff(ctx, integration_metadata, agent_name, int_id)
+        return await _run_blocking_handoff(ctx, integration_metadata, agent_name, integration_id)
 
     except Exception as e:
         log.error(

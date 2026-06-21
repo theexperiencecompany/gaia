@@ -1,13 +1,16 @@
 import {
   Brain02Icon,
   ChartLineData02Icon,
+  ComputerIcon,
   CreditCardIcon,
   DiscordIcon,
   Link04Icon,
   MessageMultiple02Icon,
   NoteEditIcon,
   NotificationIcon,
+  PuzzleIcon,
   UserCircleIcon,
+  VoiceIdIcon,
   WhatsappIcon,
 } from "@icons";
 import { PostageStampIcon } from "@/components/shared/icons";
@@ -67,6 +70,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     href: "/settings/preferences",
   },
   {
+    key: "voice",
+    label: "Voices",
+    icon: VoiceIdIcon,
+    href: "/settings/voice",
+  },
+  {
     key: "instructions",
     label: "Custom Instructions",
     icon: NoteEditIcon,
@@ -78,7 +87,23 @@ export const settingsPageItems: SettingsMenuItem[] = [
     icon: Brain02Icon,
     href: "/settings/memory",
   },
+  {
+    key: "skills",
+    label: "Skills",
+    icon: PuzzleIcon,
+    href: "/settings/skills",
+  },
+  // Only rendered inside the Electron app (filtered in SettingsSidebar).
+  {
+    key: "desktop",
+    label: "Desktop",
+    icon: ComputerIcon,
+    href: "/settings/desktop",
+  },
 ];
+
+/** Settings sections that only make sense inside the desktop app. */
+export const DESKTOP_ONLY_SETTINGS_KEYS = new Set(["desktop"]);
 
 export const socialMediaItems: SettingsMenuItem[] = [
   {

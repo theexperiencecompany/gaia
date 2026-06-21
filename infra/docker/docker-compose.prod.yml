@@ -102,7 +102,7 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-        max_attempts: 3
+        # No max_attempts: a crash/OOM loop must self-heal, not park at 0/N.
       resources:
         limits:
           memory: 4G
@@ -146,10 +146,13 @@ services:
         aliases:
           - arq_worker
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('redis', 6379), timeout=5)"]
+      # arq --check fails when the poll loop stops refreshing its health key (a
+      # wedged worker); the old Redis-socket probe passed even when frozen.
+      test: ["CMD", "arq", "app.worker.WorkerSettings", "--check"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
+      start_period: 120s
     deploy:
       replicas: 1
       update_config:
@@ -165,7 +168,7 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-        max_attempts: 3
+        # No max_attempts: a wedged/crashed worker must self-heal, not park at 0/1.
       resources:
         limits:
           memory: 2G
@@ -173,13 +176,10 @@ services:
   # ---------------------------------------------------------------------------
   # Embedding + reranking sidecar
   # ---------------------------------------------------------------------------
-  # Loads the fastembed models (mxbai embedder + jina reranker, ~1.85GB) ONCE
-  # so gaia-backend and arq_worker share a single copy over HTTP instead of each
-  # loading their own. Without this, the worker alone (2G limit) would OOM just
-  # loading the models. Memory limit is 2.5G: the footprint is ~1.85GB and stays
-  # flat under batched load (measured +24MB for a 25-text batch), so 2.5G is a
-  # runaway ceiling with real headroom — capping below 2G would OOM-kill it
-  # since the model can't even load in under ~1.85GB.
+  # Loads the fastembed models (mxbai embedder + jina reranker, ~2GB) ONCE so
+  # gaia-backend and arq_worker share one copy over HTTP instead of each loading
+  # their own. Memory: with the ONNX CPU mem arena OFF (see embeddings.py) RSS
+  # settles near the ~2GB weights; 3G limit leaves headroom over the ~2.4GB peak.
   embedding-sidecar:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
@@ -194,6 +194,8 @@ services:
       # Persist the ~1.85GB fastembed weights so they download ONCE, not on every
       # restart/redeploy (measured ~148s cold-load). Mounted volume below.
       MEMORY_MODEL_CACHE_DIR: /models
+      # Cap glibc malloc arenas (complements the ONNX arena being off).
+      MALLOC_ARENA_MAX: "2"
       # MEMORY_EMBEDDING_SIDECAR_URL MUST stay unset here so the sidecar serves
       # from its own local models rather than calling itself.
     secrets:
@@ -236,9 +238,9 @@ services:
           # with batch_size, up to 40). The old 2560M cap sat below that, so
           # the kernel OOM-killed it (exit 137) on first real traffic. 5G gives
           # headroom; host has 15 GiB total / ~10 GiB free.
-          memory: 5120M
+          memory: 3072M
         reservations:
-          memory: 3G
+          memory: 2G
 
   # ---------------------------------------------------------------------------
   # Bots
@@ -837,23 +839,58 @@ services:
     working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: "1"
-      FORCE_COLOR: "1"
+      FORCE_COLOR: "0"
       WORKER_TYPE: voice_agent_worker
       PYTHONDONTWRITEBYTECODE: "1"
       HF_HUB_OFFLINE: "1"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+      # In-cluster route to the API over the overlay network (the chat-stream
+      # SSE endpoint the agent's CustomLLM talks to).
+      GAIA_BACKEND_URL: http://gaia-backend:80
+    secrets:
+      - gaia_infisical_token
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
     volumes:
       - voice_agent_models:/home/appuser/.cache/huggingface
     networks:
-      - gaia-prod-shared
+      gaia-prod-shared:
+        aliases:
+          - voice-agent-worker
+    healthcheck:
+      # livekit-agents serves its health endpoint on 8081 in prod mode.
+      test: ["CMD", "curl", "-f", "http://localhost:8081/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     deploy:
       # replicas: 0 — not started by default; scale up manually when needed:
       #   docker --context gaia-prod service scale gaia-prod_voice-agent-worker=1
       replicas: 0
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+        monitor: 45s
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
       restart_policy:
         condition: any
         delay: 5s
+        # No max_attempts: a crash/OOM loop must self-heal, not park at 0/N.
+      resources:
+        limits:
+          # VAD + turn-detector models live in each forked job process.
+          memory: 2G
       placement:
         constraints:
           - node.role == manager

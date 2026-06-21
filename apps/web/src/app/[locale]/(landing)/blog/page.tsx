@@ -65,9 +65,9 @@ export default async function BlogPage() {
     return (
       <>
         <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
-        <div className="flex min-h-screen w-screen justify-center py-28">
+        <div className="flex min-h-screen w-full justify-center px-4 py-28 sm:px-6 lg:px-8">
           <div className="w-full max-w-(--breakpoint-lg) space-y-2">
-            <h1 className="font-serif text-6xl">Blog</h1>
+            <h1 className="font-serif text-4xl sm:text-6xl">Blog</h1>
             <BlogList blogs={blogsMeta} />
           </div>
         </div>
@@ -75,7 +75,7 @@ export default async function BlogPage() {
     );
   } catch (error) {
     return (
-      <div className="flex min-h-screen w-screen justify-center px-6 pt-28">
+      <div className="flex min-h-screen w-full justify-center px-4 pt-28 sm:px-6 lg:px-8">
         <div className="w-full max-w-(--breakpoint-lg)">
           <div className="flex flex-col items-center justify-center py-20">
             <span className="text-danger">Error loading blog posts</span>

@@ -7,7 +7,6 @@ run_executor_background.
 """
 
 import asyncio
-from datetime import UTC, datetime
 import json
 from typing import Annotated
 from uuid import uuid4
@@ -45,6 +44,54 @@ from shared.py.wide_events import log
 # Prevent GC of background tasks
 _executor_tasks: set[asyncio.Task[None]] = set()
 
+# A "stop X, do Y" redirect makes the comms model emit cancel_executor and
+# call_executor in ONE turn. The tool node runs both concurrently, so
+# call_executor can reach the busy lock before cancel_executor releases it and
+# would wrongly queue Y behind the task being killed — which renders Y as a
+# separate queued tool card instead of streaming live into the same turn. These
+# bound a short wait for the in-flight cancel to free the lock so Y runs live.
+# DETECT is how long we look for evidence a cancel is happening (if none, the
+# holder is a genuinely busy different turn and we queue immediately); WAIT caps
+# the total wait once a cancel is seen.
+REDIRECT_CANCEL_DETECT_S = 0.4
+REDIRECT_CANCEL_WAIT_S = 1.5
+REDIRECT_CANCEL_POLL_S = 0.05
+
+
+async def _acquire_lock_through_redirect(
+    lock_key: str,
+    lock_value: str,
+    held_stream_id: str,
+) -> bool:
+    """Take the busy lock once an in-flight cancel of its current holder frees it.
+
+    Returns True if the lock was acquired for a live run, False if the holder is
+    not being cancelled (a genuinely busy different turn — queue instead) or it
+    did not release within the wait budget.
+    """
+    if not held_stream_id:
+        return False
+    waited = 0.0
+    saw_cancel = False
+    # Polls Redis state (try_acquire_lock / is_cancelled) freed by cancel_executor,
+    # which may run in a different uvicorn worker — an asyncio.Event can't observe
+    # that cross-process release, so polling is the correct mechanism here.
+    while waited < REDIRECT_CANCEL_WAIT_S:  # NOSONAR python:S7484
+        if not saw_cancel:
+            saw_cancel = await StreamManager.is_cancelled(held_stream_id)
+        # Try the lock on every poll, not only after a cancel is observed:
+        # cancel_executor deletes the busy key WITHOUT calling cancel_stream for
+        # empty/"1" stream ids, so is_cancelled() may never flip even though the
+        # holder is gone. Gating acquisition on saw_cancel would then queue behind
+        # a lock that is already free. saw_cancel only governs the extended wait.
+        if await try_acquire_lock(lock_key, lock_value):
+            return True
+        if not saw_cancel and waited >= REDIRECT_CANCEL_DETECT_S:
+            return False
+        await asyncio.sleep(REDIRECT_CANCEL_POLL_S)
+        waited += REDIRECT_CANCEL_POLL_S
+    return False
+
 
 @tool
 async def call_executor(
@@ -73,13 +120,12 @@ async def call_executor(
     conversation as a new bot message when it completes.
     """
     base_configurable = config.get("configurable", {})
-    # When binding to a specific todo, layer a shallow override on top of
-    # the inherited configurable so the executor sees the binding without
-    # mutating the comms agent's RunnableConfig.
+    # Shallow-copy so the executor's overrides (todo binding) never mutate the
+    # comms agent's live RunnableConfig. The model is inherited from the comms
+    # configurable (set by per-plan routing).
+    configurable = {**base_configurable}
     if active_todo_id:
-        configurable = {**base_configurable, "active_todo_id": active_todo_id}
-    else:
-        configurable = base_configurable
+        configurable["active_todo_id"] = active_todo_id
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:
@@ -142,33 +188,63 @@ async def _dispatch_executor(
     lock_value = build_lock_value(stream_id, task_id)
 
     if not await try_acquire_lock(lock_key, lock_value):
-        # Executor is busy — queue for later execution
-        queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
-        await enqueue_task(
-            queue_key=queue_key,
-            task=task,
-            task_id=task_id,
-            configurable=configurable,
-            conversation_id=conversation_id,
-            user_message_id=user_message_id,
-        )
-        log.info(
-            "Executor busy — task queued",
-            task_id=task_id,
-            conversation_id=conversation_id,
-        )
-        return (
-            "I'm already working on a task for this conversation. "
-            f"Your request has been queued (task_id: {task_id}) "
-            "and I'll handle it right after."
-        )
+        # The lock is held. Distinguish two cases by the holder's stream_id:
+        #   - SAME stream_id → the comms model called call_executor twice within
+        #     ONE turn. Queuing it would run the whole task a SECOND time
+        #     (observed: deep research executed twice for a single user message).
+        #     Reject it — the first dispatch already covers this turn.
+        #   - DIFFERENT stream_id → a genuinely new request arrived while the
+        #     executor is busy; queue it to run next.
+        held_value = await redis_cache.client.get(lock_key) if redis_cache.client else None
+        held_stream_id = parse_lock_value(decode_raw_item(held_value))[0] if held_value else ""
+        if stream_id and held_stream_id == stream_id:
+            log.warning(
+                "Duplicate call_executor in same turn — ignored, not queued",
+                task_id=task_id,
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+            )
+            return (
+                "That task is already running from this same message — not "
+                "starting it again. The results are on the way."
+            )
+
+        # A same-turn redirect (cancel_executor + call_executor together) races
+        # the cancel: the holder is being killed THIS turn, so wait for that
+        # cancel to free the lock and run live instead of queuing behind it — the
+        # redirect then streams into the same turn's card, not a separate queued
+        # one. Only waits when a cancel is actually in flight (see helper).
+        if await _acquire_lock_through_redirect(lock_key, lock_value, held_stream_id):
+            log.info(
+                "Acquired executor lock after redirect cancel — running live",
+                task_id=task_id,
+                conversation_id=conversation_id,
+            )
+        else:
+            # Executor is busy with a different turn — queue for later execution
+            queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
+            await enqueue_task(
+                queue_key=queue_key,
+                task=task,
+                task_id=task_id,
+                configurable=configurable,
+                conversation_id=conversation_id,
+                user_message_id=user_message_id,
+            )
+            log.info(
+                "Executor busy — task queued",
+                task_id=task_id,
+                conversation_id=conversation_id,
+            )
+            return (
+                "I'm already working on a task for this conversation. "
+                f"Your request has been queued (task_id: {task_id}) "
+                "and I'll handle it right after."
+            )
 
     # MCP tools load lazily inside each subagent's first use — the old eager
     # warmup hit get_all_connected_tools() on every executor call and
     # dominated cold-start latency.
-
-    user_time_str = configurable.get("user_time", "")
-    user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now(UTC)
 
     if stream_id:
         mark_executor_spawned(stream_id)
@@ -186,7 +262,6 @@ async def _dispatch_executor(
             run=run,
             task=task,
             configurable=configurable,
-            user_time=user_time,
         ),
     )
     _executor_tasks.add(bg_task)

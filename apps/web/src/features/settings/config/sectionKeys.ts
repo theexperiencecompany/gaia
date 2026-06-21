@@ -7,9 +7,12 @@ export const VALID_SECTIONS = [
   "subscription",
   "usage",
   "preferences",
+  "voice",
   "instructions",
   "memory",
+  "skills",
   "notifications",
+  "desktop",
 ] as const;
 
 export type SettingsSection = (typeof VALID_SECTIONS)[number];

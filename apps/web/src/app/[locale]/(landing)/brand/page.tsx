@@ -64,8 +64,8 @@ export default function BrandPage() {
   return (
     <>
       <JsonLd data={brandSchema} />
-      <div className="flex min-h-screen w-screen justify-center py-28">
-        <div className="w-full max-w-(--breakpoint-lg) space-y-16 px-6">
+      <div className="flex min-h-screen w-full justify-center py-28">
+        <div className="w-full max-w-(--breakpoint-lg) space-y-16 px-4 sm:px-6 lg:px-8">
           <section>
             <div className="mx-auto max-w-3xl text-center">
               <h1 className="mb-6 text-4xl font-medium tracking-tight md:text-5xl">

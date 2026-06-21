@@ -1,12 +1,5 @@
 import { toZonedTime } from "date-fns-tz";
-
-/**
- * Gets the user's current timezone
- * @returns {string} Timezone identifier (e.g., "Asia/Kolkata", "America/New_York")
- */
-const getUserTimezone = (): string => {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
-};
+import { getBrowserTimezone } from "@/lib/timezone";
 
 /**
  * Determines time grouping (Today/Yesterday/Earlier) based on user's local timezone
@@ -22,7 +15,7 @@ const getUserTimezone = (): string => {
 export const getTimeGroup = (
   createdAt: string,
 ): "Today" | "Yesterday" | "Earlier" => {
-  const userTimeZone = getUserTimezone();
+  const userTimeZone = getBrowserTimezone();
 
   // Force the timestamp to be treated as UTC by adding 'Z' if it's missing
   const utcTimestamp = createdAt.endsWith("Z") ? createdAt : `${createdAt}Z`;

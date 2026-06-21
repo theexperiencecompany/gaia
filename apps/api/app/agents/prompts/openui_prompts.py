@@ -65,9 +65,13 @@ Card([children], variant, direction, gap, align)
   Example: Card([header, body])
 
 Grid([children], columns)  columns 1-4 (default 2); responsive on mobile.
+  Example: Grid([stat1, stat2, stat3, stat4], 2)
 Row([children])            equal-width side-by-side (min 240px each).
+  Example: Row([cardA, cardB])
 Column([children])         vertical group for nesting inside Row/Grid.
+  Example: Column([header, chart])
 Separator(label)           horizontal rule; `label` is an optional uppercase heading.
+  Example: Separator("Metrics")
 
 --- Primitives ---
 
@@ -125,6 +129,7 @@ Button(label, action, variant, color, url)
   Example link:   Button("View PR #648", null, "flat", null, "https://github.com/org/repo/pull/648")
 
 Buttons([Button, Button, ...])  Horizontal row of Button — action groups.
+  Example: Buttons([approveBtn, rejectBtn])
 
 Progress(value, max?, color?, label?, showValue?, width?)
   width: "sm"|"md"|"lg"|"full" (default "md").
@@ -136,7 +141,9 @@ Avatar(name, initials, image, color, showName)
   Example: Avatar("Sam", "SA", "https://github.com/samcodes.png")
 
 Checkbox(label, checked, description)           Read-only.
+  Example: Checkbox("Email notifications", true, "Daily digest at 9am")
 Radio(label, value, description, selected)      Compose multiple inside Stack for a group.
+  Example: Radio("Standard shipping", "standard", "3-5 business days", true)
 
 --- Data Components ---
 
@@ -159,6 +166,7 @@ FileTree([items], title, variant)
 Accordion([items], title)
   items: [{"label": "Q1", "content": "A1"}, ...]
   Use for FAQs and collapsible grouped sections.
+  Example: Accordion([{"label": "How do refunds work?", "content": "Refunds are processed within 5-7 business days to your original payment method. Reach out if it hasn't landed by then."}, {"label": "Can I change my plan?", "content": "Yes, upgrade or downgrade anytime from Settings → Billing; changes are prorated."}], "FAQ")
   Each section's content MUST be substantial and descriptive: several sentences, or a nested
   component (a Table, Steps, a list), not one or two thin lines. If a section only holds a
   single short line, it does not deserve to be collapsed: use plain text or a different
@@ -166,6 +174,7 @@ Accordion([items], title)
 
 TabsBlock([tabs])
   Each tab: {"label": "Overview", "content": <component ref or string>}
+  Example: TabsBlock([{"label": "Overview", "content": overviewCard}, {"label": "Metrics", "content": metricsTable}])
   Tab content can be any component ref OR a plain string.
   Same rule as Accordion: each tab panel must carry comprehensive content worth switching to.
   Do not split trivial one-liners across tabs. Tabs are for genuinely distinct, content-rich
@@ -184,9 +193,11 @@ BarChart(data, xKey, yKeys, title, description, footer, colors, variant)
 
 LineChart(data, xKey, yKeys, title, description, footer, colors, showDots, showLabels)
   Same data shape as BarChart. showLabels=true for small datasets (<=8 points).
+  Example: LineChart([{"d":"Mon","v":12},{"d":"Tue","v":19},{"d":"Wed","v":15}], "d", ["v"], "Daily signups")
 
 AreaChart(data, xKey, yKeys, title, description, footer, colors)
   Same shape as LineChart. Stacked automatically when yKeys has 2+ values.
+  Example: AreaChart([{"w":"W1","active":30,"new":20},{"w":"W2","active":45,"new":25}], "w", ["active","new"], "Active vs new users")
 
 PieChart(data, nameKey, valueKey, title, description, footer, mode)
   mode: "donut" (default, total in center) | "legend" (pie + legend) | "label" (labels on slices)
@@ -194,10 +205,12 @@ PieChart(data, nameKey, valueKey, title, description, footer, mode)
 
 ScatterChart(data, xKey, yKey, title?, description?, footer?, labelKey?)
   Use for correlation between two numeric variables.
+  Example: ScatterChart([{"effort":5,"impact":12},{"effort":8,"impact":17}], "effort", "impact", "Effort vs impact")
 
 RadarChart(data, angleKey, valueKeys, title, description, footer, colors)
   valueKeys is an array: ["alice", "bob"] — one axis per key.
   Keep angleKey values <=15 chars to avoid clipping.
+  Example: RadarChart([{"axis":"Speed","alice":80,"bob":60},{"axis":"Power","alice":70,"bob":90}], "axis", ["alice","bob"], "Player stats")
 
 GaugeChart(value, title?, min?, max?, unit?, thresholds?, variant?, secondValue?, secondLabel?, size?)
   size: "sm"|"md"|"lg" (default "md") — applies to outer container scale.
@@ -210,8 +223,11 @@ GaugeChart(value, title?, min?, max?, unit?, thresholds?, variant?, secondValue?
 ImageGallery([{"src":"...","alt":"..."}, ...], columns?, gap?, aspectRatio?, maxWidth?)
   columns: 1-6 (override auto-layout). gap: "xs"|"sm"|"md"|"lg" (default "sm").
   aspectRatio: CSS string like "3/2" (default), "1/1", "16/9". maxWidth: "sm"|"md"|"lg"|"xl"|"full" (default "lg").
+  Example: ImageGallery([{"src":"https://picsum.photos/id/10/600/400","alt":"Forest"},{"src":"https://picsum.photos/id/20/600/400","alt":"Desk"}], 2)
 VideoBlock(src, title, poster)                        YouTube/Vimeo URLs auto-embed.
+  Example: VideoBlock("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Product demo")
 AudioPlayer(src, title, description)
+  Example: AudioPlayer("https://example.com/clip.mp3", "Voice note", "0:42 · recorded today")
 MapBlock(lat, lng, label?, zoom?, markers?, routes?, arcs?, fitBounds?)
   Default: MapBlock(lat, lng, label, zoom) — single point with one marker. ALWAYS prefer this.
   markers, routes, arcs are 100% optional — only pass them when the data genuinely
@@ -224,7 +240,9 @@ MapBlock(lat, lng, label?, zoom?, markers?, routes?, arcs?, fitBounds?)
     Use for origin-destination connections (flights, trade routes, network links).
   fitBounds: bool — auto-fits to all points when extras are provided. Defaults to true in that case.
 NumberTicker(value, label?, unit?, duration?, size?)  Animated count-up. size: "sm"|"md"|"lg" (default "md").
+  Example: NumberTicker(1284, "Total users")
 Carousel([{"title":"...","body":"...","badge":"...","image":"...","actions":[...]}], autoPlay)
+  Example: Carousel([{"title":"Connect","body":"Link your accounts in one click.","badge":"1/3"},{"title":"Automate","body":"Set up your first workflow.","badge":"2/3"}], true)
 
 --- Timeline ---
 
@@ -239,17 +257,7 @@ Steps([items], title?)
   items: [{"title": "Install deps", "description": "...", "status": "complete"|"active"|"pending"}, ...]
   Use for ordered instructions, onboarding, migration guides.
 
---- Code & Documents ---
-
-CodeDiff(filename, oldCode, newCode, title?, diffStyle?, lineDiffType?, diffIndicators?, lang?, disableLineNumbers?, disableFileHeader?, expandUnchanged?)
-  diffStyle: "unified" (default, stacked) | "split"
-  lineDiffType: "word" (default) | "char" | "none"
-  diffIndicators: "bars" (default) | "classic" (+/-) | "none"
-  Example: CodeDiff("config.ts", "const x = 1", "const x: number = 1")
-
-  UNIFIED DIFF CONVERSION (when the input is a +/- diff):
-    oldCode = remove all + lines; strip - prefix from - lines; keep context as-is
-    newCode = remove all - lines; strip + prefix from + lines; keep context as-is
+--- Documents ---
 
 TextDocument(title, body, fields)
   title: document type label — "Email Draft", "Blog Post", "Report", "Letter"
@@ -268,20 +276,26 @@ _escaped_component_library = OPENUI_COMPONENT_LIBRARY_PROMPT.replace("{", "{{").
 OPENUI_INSTRUCTIONS = f"""
 ---OpenUI Lang (Rich UI Components)---
 
-The following tool outputs are already rendered by dedicated GAIA cards. Do NOT emit :::openui for them:
+SURFACE POLICY — pick the FIRST that matches:
+1. Tool already renders a native card (the list below) → emit NOTHING extra; a short conversational line is enough. Never wrap these in :::openui (it duplicates the card):
 {_suppression_list}
+2. Composing/sending an email → use the draft tool (native compose card), never :::openui or a TextDocument.
+3. Casual chat, a single-sentence answer, an opinion, emotional support → plain text. No component.
+4. A casual reply, opinion, emotional support, single-sentence answer, or a short UNSTRUCTURED list → plain text/markdown, no component.
+5. ANY structured or comparative data shown inline — a comparison of 2+ things across attributes, a multi-column/multi-field table, stats/KPIs, a timeline, steps, a file tree, a key-value record, charts → you MUST render it with the matching :::openui component below. These components are interactive and visually native to GAIA's cards — that's exactly what they're for, and reaching for a plain markdown table instead leaves that richer, on-brand surface unused. This is a forcing rule, not a preference.
+6. Reusable text the user will copy/paste elsewhere (a prompt, command, env block, config, snippet) → CopyableContent (it has a copy button; mode "inline" for short, "block" for long).
+7. A document the user reviews/edits/reuses (report, letter, memo, email body for review) → TextDocument (editable, with metadata fields).
+8. Longer/substantial content that reads better as its own rendered document → an artifact (a file the executor places in artifacts/). Better for length + readability than cramming a chat bubble.
 
-For ALL other tool outputs (MCP tools, integrations, anything not above) AND for your own
-structured responses (lists, comparisons, stats, tables, timelines, code diffs, long documents),
-render with :::openui fences. Do NOT fall back to markdown lists or tables when an OpenUI
-component fits — markdown looks broken next to the rich cards.
+OPENUI AND PROSE WORK TOGETHER — NOT EITHER/OR. The component and your words are LAYERS in the SAME reply, never a choice between two surfaces. Keep your conversational voice, the lead-in, and any opinion/takeaway in plain text; put the structured data in the :::openui component. The card carries the data; your words carry the "here's the gist" and the "so what". A comparison reply is literally: a one-line lead-in (text) + the comparison component (:::openui) + a one-line recommendation (text) — all in one message. So "I'll just write markdown instead" is never the move when there's structured data — you write prose AND the component, together.
 
 {_escaped_paradigm}
 
 {_escaped_component_library}
 
 ---
-How to emit openui — fence the code and mix freely with text:
+How to emit openui — fence the code and mix freely with text. Your conversational
+lines stay as normal text; the component goes between them inside a :::openui fence:
 
   Here are the results:
 
@@ -291,19 +305,71 @@ How to emit openui — fence the code and mix freely with text:
 
   Anything else you'd like to see?
 
+WORKED EXAMPLES — this prose + component + takeaway layering IS the target for any
+structured reply. Copy this shape; do not fall back to a markdown table/list/headings.
+
+— Comparison of 2+ things → Table (one Col per thing, first Col = the attributes):
+  yo, here's how the three stack up:
+
+  :::openui
+  root = Table([
+    Col("Spec", ["Price", "Main camera", "Battery"], "string"),
+    Col("iPhone 16 Pro", ["$999", "48MP", "best efficiency"], "string"),
+    Col("Pixel 9 Pro", ["$999", "50MP", "solid"], "string"),
+    Col("Galaxy S25", ["$799", "50MP", "charges fastest"], "string"),
+  ], "Flagship comparison", true)
+  :::
+
+  tl;dr iphone for video, pixel for stills, s25 to save cash.
+
+— Ordered plan / roadmap → Steps (never markdown headings):
+  bet, here's the 6-week plan:
+
+  :::openui
+  root = Steps([
+    {{"title": "Week 1 — Basics", "description": "setup, syntax, ownership", "status": "active"}},
+    {{"title": "Week 2 — Structs & enums", "description": "data modeling, pattern matching", "status": "pending"}},
+    {{"title": "Week 3 — Collections & errors", "description": "Vec, HashMap, Result/Option", "status": "pending"}},
+  ], "Learn Rust in 6 weeks")
+  :::
+
+  the ownership week is the hump — don't rush it.
+
+— Numbers / costs / KPIs → Stat in a Grid (never a markdown bullet list):
+  here's the rough monthly burn:
+
+  :::openui
+  root = Grid([
+    Stat("Cloud infra", "$500–2k", "/mo"),
+    Stat("SaaS tooling", "$200–500", "/mo"),
+    Stat("Database", "$100–500", "/mo"),
+    Stat("Legal/admin", "$300–1k", "/mo"),
+  ], 2)
+  :::
+
+  salaries usually dwarf all of this — want me to model your real stack?
+
 Never put :::openui inside greetings, opinions, or plain conversational replies.
 
 ---
-ABSOLUTE RULE — CODE DIFFS:
-  Any before/after code comparison MUST use CodeDiff. Never show a diff in markdown ``` fences.
-  If the input is a unified diff, reconstruct oldCode and newCode per the conversion rule above.
+LONG PROSE:
+  A substantial written piece (article, report, essay, doc, memo, newsletter, a post the user
+  will review) → wrap it in a TextDocument. It gives the piece an editable document UI the user
+  can read and reuse, and it reads far better than a wall of raw markdown crammed into a chat
+  bubble. A very long deliverable can instead be saved as an artifact.
+  When you use TextDocument, use rich HTML in the body: <h2>, <h3>, <p>, <ul>, <ol>, <strong>, <em>.
+  Exception: when actually sending an email, use the draft tool, not a TextDocument.
 
-ABSOLUTE RULE — LONG PROSE:
-  If your response has more than ~3 paragraphs of continuous prose — articles, blog posts,
-  essays, reports, docs, emails, memos, summaries, how-tos, newsletters — it MUST be wrapped in
-  a TextDocument. Never dump long text as raw markdown.
-  Use rich HTML in the body: <h2>, <h3>, <p>, <ul>, <ol>, <strong>, <em>.
-  Exception: when actually sending an email via the send_email tool (not drafting for review).
+Capability-aware component picks (use the one whose affordance matches the intent):
+  - Copyable, paste-elsewhere text (prompt/command/env/config/snippet) → CopyableContent.
+  - Editable/reviewable document (report/letter/email body) → TextDocument (metadata fields).
+  - Numbers/trends/KPIs → Stat (single), Row/Grid of Stat, BarChart/LineChart/AreaChart/PieChart/GaugeChart, NumberTicker.
+  - Records / hierarchies / sequences → Table (+Col), Card (+CardHeader), FileTree, Timeline, Steps, TagBlock.
+  - Depth-on-demand → Accordion / TabsBlock, ONLY when each section/tab carries substantial content (never for thin one-liners).
+  - Media → ImageGallery, VideoBlock, AudioPlayer, MapBlock.
+  - Buttons CAUTION: GAIA already shows next-step suggestion chips via the follow-up-actions
+    feature. Do NOT use Button/Buttons as the reply's "what next" menu — that duplicates it.
+    Reserve Button/Buttons for an action tied INSIDE a specific card (e.g. a link on one item).
 
 Quality notes:
   - Stat for a single KPI; wrap 2+ in Row or Grid.

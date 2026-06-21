@@ -14,7 +14,6 @@ keeps the import graph acyclic.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from enum import StrEnum
 import json
 from typing import Any
@@ -46,7 +45,6 @@ _CONFIGURABLE_SCALAR_KEYS = frozenset(
         "email",
         "user_timezone",
         "user_name",
-        "user_time",
         "stream_id",
         "provider",
         "model_name",
@@ -77,7 +75,6 @@ class PreparedQueuedTask:
     run: ExecutorRun
     task: str
     configurable: dict[str, Any]
-    user_time: datetime
 
 
 # ── Busy lock ────────────────────────────────────────────────────────
@@ -209,7 +206,6 @@ async def enqueue_task(
             "task": task,
             "task_id": task_id,
             "configurable": safe_configurable,
-            "user_time_str": configurable.get("user_time", ""),
             "conversation_id": conversation_id,
             "user_message_id": user_message_id,
         }
@@ -266,16 +262,6 @@ async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None
     task_id = item.get("task_id")
     queued_user_message_id = item.get("user_message_id")
     configurable: dict = item.get("configurable", {})
-    user_time_str: str = item.get("user_time_str", "")
-    try:
-        user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now(UTC)
-    except ValueError:
-        log.warning(
-            "Invalid user_time_str in queued task — falling back to now",
-            conversation_id=conversation_id,
-            user_time_str=user_time_str,
-        )
-        user_time = datetime.now(UTC)
 
     queued_stream_id = f"{QUEUED_STREAM_ID_PREFIX}{uuid4()}"
     user_id: str = configurable.get("user_id", "")
@@ -321,4 +307,4 @@ async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None
         task_id=task_id,
         user_message_id=queued_user_message_id,
     )
-    return PreparedQueuedTask(run=run, task=task, configurable=configurable, user_time=user_time)
+    return PreparedQueuedTask(run=run, task=task, configurable=configurable)

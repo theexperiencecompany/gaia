@@ -6,10 +6,7 @@ export default function SupportTicketSection({
 }: {
   support_ticket_data: SupportTicketData[];
 }) {
-  const handleTicketSubmitted = () => {
-    // Optional: Add any post-submit logic here
-    console.log("Support ticket submitted from chat bubble");
-  };
+  const handleTicketSubmitted = () => {};
 
   return (
     <div className="mt-3 w-full space-y-3">

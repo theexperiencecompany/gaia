@@ -572,10 +572,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
     return filtered;
   }, [selectedCategory, searchQuery]);
 
-  const handleToolClick = (toolName: string) => {
-    // Do nothing - this is a dummy component
-    console.log(`Clicked tool: ${toolName}`);
-  };
+  const handleToolClick = (_toolName: string) => {};
 
   return (
     <AnimatePresence>

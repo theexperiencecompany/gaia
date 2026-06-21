@@ -207,8 +207,70 @@ class SkillInlineCreateRequest(BaseModel):
     )
 
 
+class SkillUpdateRequest(BaseModel):
+    """Request to edit an existing skill. Only provided fields are changed.
+
+    The skill ``name`` is its identity (and the key of its VFS directory), so it
+    is immutable after creation — rename is delete + recreate, not an edit.
+    """
+
+    description: str | None = Field(
+        default=None, max_length=1024, description="What it does and when to use it"
+    )
+    instructions: str | None = Field(
+        default=None, description="Markdown instructions (body of SKILL.md)"
+    )
+    target: str | None = Field(
+        default=None,
+        description="Target agent: 'executor' or a connected subagent agent_name (unchanged if omitted)",
+    )
+
+
 class SkillListResponse(BaseModel):
     """Response for listing installed skills."""
 
     skills: list[Skill] = Field(default_factory=list)
+    total: int = Field(default=0)
+
+
+class SkillTarget(BaseModel):
+    """A place a skill can run: the executor, or a connected integration subagent.
+
+    ``value`` is the subagent ``agent_name`` written to a skill's ``target``;
+    ``icon`` is the integration id (``executor`` for the general bucket) so the
+    UI can reuse the integration logo set.
+    """
+
+    value: str = Field(..., description="Skill target value (agent_name)")
+    label: str = Field(..., description="Human-readable display name")
+    icon: str = Field(..., description="Icon key (integration id, or 'executor')")
+    connected: bool = Field(default=True, description="Whether the target is available")
+
+
+class SkillTargetsResponse(BaseModel):
+    """Available skill targets for the current user."""
+
+    targets: list[SkillTarget] = Field(default_factory=list)
+
+
+class BuiltinSkillInfo(BaseModel):
+    """A read-only built-in skill shipped with GAIA, for display in settings."""
+
+    slug: str = Field(..., description="Skill directory slug")
+    name: str = Field(..., description="Skill name")
+    description: str = Field(..., description="What the skill does")
+    target: str = Field(..., description="Target agent_name (executor or a subagent)")
+    group_label: str = Field(..., description="Display name of the owning agent")
+    icon: str = Field(..., description="Icon key (owning subagent id, or 'executor')")
+    connected: bool = Field(
+        default=True,
+        description="Whether the owning agent is available to the user (always-on, or a connected integration)",
+    )
+    body: str = Field(default="", description="SKILL.md markdown body (for read-only preview)")
+
+
+class BuiltinSkillsResponse(BaseModel):
+    """Response for listing built-in skills."""
+
+    skills: list[BuiltinSkillInfo] = Field(default_factory=list)
     total: int = Field(default=0)

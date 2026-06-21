@@ -10,23 +10,30 @@ startup. Session dirs are created at conversation creation
 
 :func:`forward_artifact_events` is the bridge between the coding tools
 (which write to ``artifacts:{user_id}`` on Redis pub/sub) and the live SSE
-stream. Forwarded events are appended to the shared ``tool_data`` accumulator
-so the card persists with the conversation on server reload.
+stream. Each forwarded event is ``$push``-ed straight onto the turn's bot
+message in Mongo so the card persists with the conversation on server reload.
 """
 
 import asyncio
+from collections import deque
 import contextlib
 from datetime import UTC, datetime
 import json
+from pathlib import Path
 from typing import Any
 
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.core.stream_manager import stream_manager
+from app.db.mongodb.collections import conversations_collection
 from app.db.redis import redis_cache
 from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
 from app.services.outbound_delivery import publish_outbound_file
-from app.services.storage import JuiceFSUnavailable, touch_session_last_active
+from app.services.storage import (
+    JuiceFSUnavailable,
+    resolve_session_path,
+    touch_session_last_active,
+)
 from shared.py.wide_events import log
 
 
@@ -43,6 +50,7 @@ def _bot_source(source: str | None) -> ConversationSource | None:
 
 
 _last_active_tasks: set[asyncio.Task[None]] = set()
+_warm_tasks: set[asyncio.Task[None]] = set()
 
 
 def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
@@ -76,18 +84,21 @@ async def forward_artifact_events(
     user_id: str,
     conversation_id: str,
     stream_id: str,
-    tool_data: dict[str, Any],
+    bot_message_id: str | None,
     source: str | None = None,
 ) -> None:
     """Forward this conversation's artifact events to the chat SSE stream
-    *and* record them into the conversation's ``tool_data`` so they persist.
+    *and* persist each one onto the turn's bot message so it survives a reload.
 
     Subscribes to ``artifacts:{user_id}`` (published by the coding tools and the
     upload pipeline) and re-emits events whose ``session_id`` matches this
     conversation as ``artifact_data`` tool chunks. Each forwarded artifact is
-    also appended to the shared ``tool_data`` accumulator that the persistence
-    layer writes to Mongo — without this the card only lives in the live stream
-    / client cache and is gone on a server reload.
+    also ``$push``-ed straight onto the bot message's ``tool_data`` in Mongo.
+    We persist on arrival rather than via the in-memory accumulator because the
+    turn's early ``_persist_turn`` saves before the background executor has
+    created any artifact, and the executor-tool-data attach only drains the
+    executor's own events, so an appended entry would never reach Mongo and the
+    card would vanish on reload.
 
     De-duped by ``path`` (artifacts are pushed repeatedly in real time): an
     unchanged file is neither re-sent nor re-persisted; the last write wins.
@@ -129,11 +140,20 @@ async def forward_artifact_events(
                 "timestamp": datetime.now(UTC).isoformat(),
                 "tool_category": "artifact",
             }
-            # Persist with the conversation (re-renders on server reload)…
-            tool_data.setdefault("tool_data", []).append(entry)
-            # …and push live so the card appears during this turn.
+            # Push live first so the card appears during this turn — durability
+            # (persisting onto the bot message) must never gate live delivery.
             chunk = "data: " + json.dumps({"tool_data": entry}) + "\n\n"
             await stream_manager.publish_chunk(stream_id, chunk)
+            # …then persist onto the bot message so the card re-renders on reload.
+            await _persist_artifact_entry(user_id, conversation_id, bot_message_id, entry)
+            # Warm the host JuiceFS cache for files that need a follow-up fetch
+            # (no inline body) so the user's first "open" is served from local
+            # cache instead of a cold R2 read. Inlined files carry their body and
+            # never hit the file endpoint, so they don't need warming.
+            if event == "upsert" and path and not payload.get("body"):
+                warm = asyncio.create_task(_warm_artifact_cache(user_id, conversation_id, path))
+                _warm_tasks.add(warm)
+                warm.add_done_callback(_warm_tasks.discard)
     except asyncio.CancelledError:
         raise
     except Exception as e:  # noqa: BLE001 — log and exit; orchestrator cleans up
@@ -143,6 +163,86 @@ async def forward_artifact_events(
             await pubsub.unsubscribe(channel)
         with contextlib.suppress(Exception):
             await pubsub.aclose()
+
+
+# The bot message row is written by ``_persist_turn`` *after* the artifact
+# forwarder starts, so an artifact created early in the turn can arrive before
+# the row exists (``matched_count == 0``). Retry briefly to bridge that window —
+# the row lands within a few hundred ms of the forwarder starting.
+_PERSIST_MAX_ATTEMPTS = 5
+_PERSIST_RETRY_BASE_DELAY = 0.1
+
+
+async def _persist_artifact_entry(
+    user_id: str,
+    conversation_id: str,
+    bot_message_id: str | None,
+    entry: dict[str, Any],
+) -> None:
+    """``$push`` one ``artifact_data`` entry onto the turn's bot message.
+
+    Best-effort: the live SSE stream already delivered the card, so a failed
+    persist only costs the reload re-render. A not-yet-saved bot message (an
+    early-turn artifact racing ``_persist_turn``) is retried with a short backoff
+    so the entry isn't silently dropped before the row exists.
+    """
+    if not bot_message_id:
+        return
+    try:
+        for attempt in range(_PERSIST_MAX_ATTEMPTS):
+            result = await conversations_collection.update_one(
+                {
+                    "user_id": user_id,
+                    "conversation_id": conversation_id,
+                    "messages.message_id": bot_message_id,
+                },
+                {"$push": {"messages.$.tool_data": entry}},
+            )
+            if result.matched_count:
+                return
+            await asyncio.sleep(_PERSIST_RETRY_BASE_DELAY * (attempt + 1))
+        log.warning(
+            "[chat] artifact persist matched no bot message after retries "
+            f"(conv={conversation_id}, msg={bot_message_id})"
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort; live stream already delivered it
+        log.warning(f"[chat] failed to persist artifact entry: {e}")
+
+
+# JuiceFS default block size: reading in block-sized chunks pulls each block
+# into the local cache with no wasted partial fetches.
+_WARM_CHUNK_BYTES = 4 * 1024 * 1024
+
+# Cap concurrent cache-warm reads so a burst of artifacts in one turn can't
+# saturate the shared default thread pool (``asyncio.to_thread``) and starve
+# other blocking IO. Tasks past the cap queue on the semaphore, not the pool.
+_WARM_MAX_CONCURRENCY = 4
+_warm_semaphore = asyncio.Semaphore(_WARM_MAX_CONCURRENCY)
+
+
+def _warm_artifact_blocks(host_path: Path) -> None:
+    """Read a file through the FUSE mount to pull its blocks into the JuiceFS
+    local cache. Constant memory: chunks are read and discarded."""
+    with host_path.open("rb") as fh:
+        # Drain the file in fixed-size chunks, discarding each: the read is the
+        # side effect (it pulls blocks into the JuiceFS cache), the bytes aren't
+        # kept. ``deque(maxlen=0)`` consumes the iterator without a loop body.
+        deque(iter(lambda: fh.read(_WARM_CHUNK_BYTES), b""), maxlen=0)
+
+
+async def _warm_artifact_cache(user_id: str, conversation_id: str, path: str) -> None:
+    """Pre-read a freshly written artifact into the host JuiceFS cache so the
+    user's first open is served warm (local cache) instead of cold (from R2).
+
+    Best-effort: a failure (mount absent, file not yet flushed, deleted) just
+    means the on-demand read pays the cold cost as it did before.
+    """
+    try:
+        async with _warm_semaphore:
+            host_path = await resolve_session_path(user_id, conversation_id, "artifacts", path)
+            await asyncio.to_thread(_warm_artifact_blocks, host_path)
+    except Exception as e:  # noqa: BLE001 — best-effort cache warm
+        log.debug(f"[chat] artifact cache warm skipped: {e}")
 
 
 def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> dict[str, Any] | None:

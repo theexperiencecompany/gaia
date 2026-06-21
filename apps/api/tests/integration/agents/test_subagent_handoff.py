@@ -16,7 +16,6 @@ Real production classes and functions are imported so tests fail if code moves.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -688,7 +687,7 @@ class TestBuildInitialMessages:
         configurable = {
             "thread_id": str(uuid4()),
             "user_id": str(uuid4()),
-            "user_time": datetime.now(UTC).isoformat(),
+            "user_timezone": "Asia/Kolkata",
         }
 
         with patch(

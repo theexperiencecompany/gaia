@@ -85,7 +85,6 @@ class ScheduleConfig(BaseModel):
     scheduled_at: datetime | None = Field(None, description="When to first execute the task")
     max_occurrences: int | None = Field(None, description="Maximum number of executions")
     stop_after: datetime | None = Field(None, description="Stop executing after this date")
-    base_time: datetime | None = Field(None, description="Base time for cron calculations")
 
     @field_validator("max_occurrences")
     @classmethod
@@ -94,7 +93,7 @@ class ScheduleConfig(BaseModel):
             raise ValueError("max_occurrences must be greater than 0")
         return v
 
-    @field_validator("scheduled_at", "stop_after", "base_time")
+    @field_validator("scheduled_at", "stop_after")
     @classmethod
     def ensure_timezone_aware(cls, v):
         """Ensure datetime fields are timezone-aware (UTC if no timezone)."""

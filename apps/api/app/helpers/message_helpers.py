@@ -1,7 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 from bson import ObjectId
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -20,8 +19,10 @@ from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
-from app.agents.workspace.paths import safe_upload_filename
-from app.config.oauth_config import get_integration_by_id
+from app.agents.workspace.paths import (
+    safe_upload_filename,
+    session_dir,
+)
 from app.db.mongodb.collections import (
     conversations_collection,
     todos_collection,
@@ -38,9 +39,10 @@ from app.models.message_models import (
 )
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
-from app.services.integrations.user_integrations import get_user_integration_records
+from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
+from app.utils.timezone import Timezone
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
@@ -95,7 +97,9 @@ def build_current_time_message(
     parts = [f"[Current UTC Time: {utc_now}]"]
     if user_timezone:
         try:
-            local_now = datetime.now(ZoneInfo(user_timezone)).strftime("%A, %B %d, %Y, %H:%M")
+            # Timezone.parse handles both IANA names and ±HH:MM offsets (ZoneInfo
+            # raised on offsets, silently dropping this line).
+            local_now = Timezone.parse(user_timezone).now().strftime("%A, %B %d, %Y, %H:%M")
             parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
         except Exception as e:
             log.warning(f"Error formatting user local time: {e}")
@@ -218,6 +222,18 @@ BACKGROUND_EXECUTION_BANNER = (
 )
 
 
+def build_workspace_session_banner(session_id: str) -> str:
+    """State the absolute path of the agent's own session directory.
+
+    The agent never otherwise learns its conversation/session id, so a prompt
+    that asks it to report an absolute ``/workspace/sessions/<id>/...`` path
+    forces it to guess — and a weak model fabricates one, writing the
+    deliverable outside the session the artifact watcher scans, where it is
+    silently lost. Stating the real path removes the guess.
+    """
+    return f"Session directory: {session_dir(session_id)}"
+
+
 def _format_active_todo_banner(todo: dict) -> str:
     vfs_path = todo.get("vfs_path") or "(no vfs)"
     title = todo.get("title", "Untitled")
@@ -261,30 +277,55 @@ def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
     return msg
 
 
-async def _get_connected_integrations_manifest(user_id: str) -> str:
+# Default header for the comms agent: pure capability awareness.
+CONNECTED_INTEGRATIONS_HEADER = (
+    "Connected integrations (hand off to the matching subagent to use them):"
+)
+
+# Header for the executor, which is the agent that actually performs handoffs.
+# States that the list is live (fetched this turn), names the parenthesised id
+# as the handoff subagent_id, and guards against treating always-available
+# built-in subagents as "not connected" just because they are not listed here.
+EXECUTOR_CONNECTED_INTEGRATIONS_HEADER = (
+    "CONNECTED INTEGRATIONS (live snapshot of the user's currently connected accounts as of "
+    "this turn; this is the latest connected set, so trust it over retrieve_tools for what is "
+    "connected). To act on one, handoff to its subagent using the id in parentheses as the "
+    "handoff subagent_id. If the user asks for a provider that is NOT listed here, it is not "
+    "connected yet, so tell them to connect it instead of attempting the handoff. Built-in "
+    "subagents (reminders, todos, gaia_knowledge_guide, docgen) are always available and are "
+    "not listed here:"
+)
+
+
+async def build_connected_integrations_manifest(
+    user_id: str,
+    header: str = CONNECTED_INTEGRATIONS_HEADER,
+) -> str:
     """One line per connected integration so the agent knows what it can reach.
 
     Capability awareness only — the agent learns Slack/Linear/GitHub/etc. are
     available without first running tool retrieval. Detailed tool schemas still
-    come from ``retrieve_tools`` at inference time. Names resolve from the
-    in-memory OAuth config (no extra DB calls); unknown ids fall back to the id.
+    come from ``retrieve_tools`` at inference time. Names (platform and custom
+    MCP) are resolved and cached by ``get_connected_integrations_named``.
+
+    The parenthesised id is also the ``subagent_id`` the executor passes to
+    ``handoff``. ``header`` lets each agent frame the same list for its own use
+    (comms gets capability awareness; the executor gets handoff instructions).
+    Each line reads ``- Name (id)``, collapsing to ``- id`` only when the name
+    is the id itself, so a custom integration whose name equals its id never
+    renders the value twice.
     """
     try:
-        docs = await get_user_integration_records(user_id)
+        items = await get_connected_integrations_named(user_id)
     except Exception as e:
         log.warning(f"Error building connected-integrations manifest: {e}")
         return ""
-    connected = sorted(
-        str(d["integration_id"])
-        for d in docs
-        if d.get("status") == "connected" and d.get("integration_id")
-    )
-    if not connected:
+    if not items:
         return ""
-    lines = ["Connected integrations (hand off to the matching subagent to use them):"]
-    for iid in connected:
-        integration = get_integration_by_id(iid)
-        lines.append(f"- {integration.name} ({iid})" if integration else f"- {iid}")
+    lines = [header]
+    for item in items:
+        iid, name = item["id"], item["name"]
+        lines.append(f"- {name} ({iid})" if name and name != iid else f"- {iid}")
     return "\n".join(lines)
 
 
@@ -363,7 +404,7 @@ async def build_dynamic_context_message(
         # Connected-integrations manifest sits with the stable prefix: it only
         # changes when the user connects/disconnects an integration, not per turn.
         if user_id:
-            if manifest := await _get_connected_integrations_manifest(user_id):
+            if manifest := await build_connected_integrations_manifest(user_id):
                 user_stable_parts.append(manifest)
 
         # --- Fetches (may change turn-to-turn) -----------------------------

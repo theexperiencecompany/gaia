@@ -24,36 +24,48 @@ from dataclasses import dataclass
 from functools import lru_cache
 import hashlib
 from pathlib import Path
-import re
 
+from app.agents.core.subagents.registry import resolve_subagent_id
+from app.constants.skills import (
+    BUILTIN_SKILLS_DIRNAME,
+    EXECUTOR_SUBAGENT_ID,
+    SKILL_FRONTMATTER_KV_RE,
+    SKILL_FRONTMATTER_RE,
+    SKILL_SOURCE_FILENAME,
+    SKILLS_PACKAGE_DIRNAME,
+)
 from shared.py.wide_events import log
 
 # Skills live as siblings in source: apps/api/app/agents/skills/builtin/<slug>/SKILL.md.
 # Resolved relative to this file so prod (the docker image), tests, and the dev
 # server all pick up the same library.
-_BUILTIN_ROOT = Path(__file__).resolve().parent.parent / "skills" / "builtin"
-
-# Filename of the materialized skill body inside each slug dir. Shared by the
-# materializer (storage.sessions.skills) and the index (skills.discovery) so the
-# path the agent is told to read always matches the file actually on disk.
-SKILL_BODY_FILENAME = "skill.md"
-
-# Frontmatter `target` values use a `<provider>_agent` convention plus the
-# special "executor" target for general-purpose skills. Map them to the
-# subagent id used by the registry/integrations service so the FS layout
-# (`integrations/<id>/...`) matches the runtime identifier.
-_TARGET_ALIASES = {
-    # Special "general" bucket — not tied to a single integration.
-    "executor": "executor",
-}
+_BUILTIN_ROOT = (
+    Path(__file__).resolve().parent.parent / SKILLS_PACKAGE_DIRNAME / BUILTIN_SKILLS_DIRNAME
+)
 
 
-def _target_to_subagent(target: str) -> str:
-    if target in _TARGET_ALIASES:
-        return _TARGET_ALIASES[target]
-    if target.endswith("_agent"):
-        return target[: -len("_agent")]
-    return target
+def target_to_subagent(agent_name: str) -> str:
+    """Resolve a subagent ``agent_name`` to the canonical subagent ``id`` used as
+    the ``skills_by_subagent`` key.
+
+    ``agent_name`` is the single handle the skill catalog is keyed on: every
+    builtin skill's frontmatter ``target`` is the owning subagent's ``agent_name``
+    (e.g. ``google_sheets_agent``), and the handoff path passes that same
+    ``agent_name`` when surfacing a subagent's skills. Resolution goes through the
+    subagent registry, the single source of truth for ``agent_name -> id``.
+    ``executor`` is the general bucket for skills not owned by a subagent and maps
+    to itself. An unknown ``agent_name`` is returned unchanged and logged so a
+    mis-targeted skill surfaces instead of being silently misfiled.
+    """
+    agent_name = agent_name.strip()
+    if agent_name == EXECUTOR_SUBAGENT_ID:
+        return EXECUTOR_SUBAGENT_ID
+    resolved = resolve_subagent_id(agent_name)
+    if resolved is None:
+        log.set(skill_target=agent_name, component="skill_loader")
+        log.warning("skill target matches no subagent agent_name")
+        return agent_name
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -73,26 +85,15 @@ class BuiltinSkill:
     resources: tuple[tuple[str, str], ...] = ()
 
 
-# Input is a trusted, bounded builtin SKILL.md frontmatter block bundled in the
-# repo — never user-supplied — so the lazy `.*?` cannot be driven into pathological
-# backtracking by an adversary.
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)  # NOSONAR python:S5852
-# Forgiving YAML reader: builtins only ever use scalar key: value pairs and we
-# don't want to depend on PyYAML in this hot path. The leading-whitespace gap is
-# matched possessively (`\s*+`) so it never backtracks into the value group,
-# keeping the match linear. Trailing whitespace is stripped by the caller.
-_KV_RE = re.compile(r"^([A-Za-z_]\w*):\s*+(.+)$")
-
-
 def _parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
-    match = _FRONTMATTER_RE.match(raw)
+    match = SKILL_FRONTMATTER_RE.match(raw)
     if not match:
         return {}, raw
     meta: dict[str, str] = {}
     for line in match.group(1).splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
-        kv = _KV_RE.match(line)
+        kv = SKILL_FRONTMATTER_KV_RE.match(line)
         if kv:
             meta[kv.group(1)] = kv.group(2).strip().strip('"').strip("'")
     body = raw[match.end() :]
@@ -106,7 +107,7 @@ def _load_resources(skill_dir: Path) -> tuple[tuple[str, str], ...]:
     system-file model is text only)."""
     resources: list[tuple[str, str]] = []
     for path in sorted(skill_dir.rglob("*")):
-        if not path.is_file() or path.name == "SKILL.md":
+        if not path.is_file() or path.name == SKILL_SOURCE_FILENAME:
             continue
         # Skip build/junk artifacts (e.g. __pycache__/*.pyc, dotfiles) so a stray
         # local file never gets materialized + symlinked as a skill "resource".
@@ -130,19 +131,19 @@ def _load_resources(skill_dir: Path) -> tuple[tuple[str, str], ...]:
 
 
 def _load_one(skill_dir: Path) -> BuiltinSkill | None:
-    skill_path = skill_dir / "SKILL.md"
+    skill_path = skill_dir / SKILL_SOURCE_FILENAME
     if not skill_path.is_file():
         return None
     raw = skill_path.read_text(encoding="utf-8")
     meta, body = _parse_frontmatter(raw)
     name = meta.get("name", skill_dir.name)
-    target = meta.get("target", "executor")
+    target = meta.get("target", EXECUTOR_SUBAGENT_ID)
     return BuiltinSkill(
         slug=skill_dir.name,
         name=name,
         description=meta.get("description", ""),
         target=target,
-        subagent_id=_target_to_subagent(target),
+        subagent_id=target_to_subagent(target),
         body=body,
         resources=_load_resources(skill_dir),
     )
@@ -188,7 +189,7 @@ def skills_by_subagent() -> dict[str, list[BuiltinSkill]]:
 
 def integration_subagent_ids() -> Iterable[str]:
     """Subagent ids that own at least one skill (excluding executor)."""
-    return tuple(sa for sa in sorted(skills_by_subagent()) if sa != "executor")
+    return tuple(sa for sa in sorted(skills_by_subagent()) if sa != EXECUTOR_SUBAGENT_ID)
 
 
 @lru_cache(maxsize=1)
@@ -219,10 +220,10 @@ def library_hash() -> str:
 
 
 __all__ = [
-    "SKILL_BODY_FILENAME",
     "BuiltinSkill",
     "integration_subagent_ids",
     "library_hash",
     "load_builtin_skills",
     "skills_by_subagent",
+    "target_to_subagent",
 ]

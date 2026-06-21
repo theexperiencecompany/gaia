@@ -541,7 +541,7 @@ class TestGetRetrieveToolsFunction:
 
 class TestRetrieveToolsBinding:
     @pytest.mark.asyncio
-    async def test_raises_when_no_args(self):
+    async def test_returns_corrective_when_no_args(self):
         from app.agents.tools.core.retrieval import get_retrieve_tools_function
 
         fn = get_retrieve_tools_function()
@@ -552,8 +552,14 @@ class TestRetrieveToolsBinding:
             "app.agents.tools.core.retrieval.get_tool_registry",
             new_callable=AsyncMock,
         ):
-            with pytest.raises(ValueError, match="Either 'query'"):
-                await fn(store=store, config=config)
+            # The real no-usable-argument call the LLM makes is an empty list
+            # (a plain-array schema can't send null); it returns corrective
+            # guidance instead of raising, so a recoverable model slip doesn't
+            # abort the executor turn.
+            result = await fn(store=store, config=config, exact_tool_names=[])
+
+        assert result["tools_to_bind"] == []
+        assert any("no usable argument" in r for r in result["response"])
 
     @pytest.mark.asyncio
     async def test_binding_mode_validates_tools(self):
@@ -574,12 +580,38 @@ class TestRetrieveToolsBinding:
             result = await fn(
                 store=store,
                 config=config,
-                exact_tool_names=["TOOL_A", "TOOL_C", "subagent:gmail"],
+                exact_tool_names=["TOOL_A", "TOOL_C"],
             )
 
         assert "TOOL_A" in result["tools_to_bind"]
-        assert "subagent:gmail" in result["tools_to_bind"]
         assert "TOOL_C" not in result["tools_to_bind"]
+
+    @pytest.mark.asyncio
+    async def test_binding_mode_returns_corrective_for_subagents(self):
+        from app.agents.tools.core.retrieval import get_retrieve_tools_function
+
+        fn = get_retrieve_tools_function(include_subagents=True)
+        store = MagicMock()
+        config: dict = {"configurable": {"user_id": "u1"}}
+
+        mock_registry = MagicMock()
+        mock_registry.get_tool_names.return_value = ["TOOL_A"]
+
+        with patch(
+            "app.agents.tools.core.retrieval.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=mock_registry,
+        ):
+            result = await fn(
+                store=store,
+                config=config,
+                exact_tool_names=["subagent:gmail"],
+            )
+
+        # Subagents are handed off to, never bound: binding mode returns
+        # corrective guidance instead of echoing the name back as a fake bind.
+        assert result["tools_to_bind"] == []
+        assert any("handoff" in r for r in result["response"])
 
     @pytest.mark.asyncio
     async def test_binding_mode_filters_subagents_when_disabled(self):

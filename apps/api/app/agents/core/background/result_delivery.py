@@ -39,12 +39,15 @@ async def deliver_result(
     result_text: str,
     result_type: str,
     returned_note: str = "",
-) -> None:
+) -> tuple[str | None, str | None]:
     """Narrate, persist, and deliver a finished executor run's result.
 
     Comms is invoked silently — no SSE stream. Its generated text becomes the
     user-visible bot message. The executor's terminal text is NOT shown to the
     user directly; it's internal context for comms.
+
+    Returns ``(narrated_text, message_id)`` of the saved bot message (voice mode
+    speaks the text and bubbles it by that id). ``(None, None)`` on failure.
 
     The message is always saved to the conversation, then delivered over EXACTLY
     ONE transport chosen by the conversation's own ``source``:
@@ -65,9 +68,12 @@ async def deliver_result(
         drain_executor_tool_data(run.stream_id) if run.executor_owns_tool_data else None
     )
     try:
-        await _narrate_and_deliver(run, result_text, result_type, attach_tool_data, returned_note)
+        return await _narrate_and_deliver(
+            run, result_text, result_type, attach_tool_data, returned_note
+        )
     except Exception as e:  # noqa: BLE001 — delivery is best-effort, never propagates
         log.error("Background notification delivery failed", error=str(e))
+        return None, None
 
 
 async def persist_cancelled_run(run: ExecutorRun) -> None:
@@ -126,8 +132,12 @@ async def _narrate_and_deliver(
     result_type: str,
     tool_data: list[dict[str, Any]] | None,
     returned_note: str,
-) -> None:
-    """Compose the user-facing message, save it, and route it."""
+) -> tuple[str | None, str | None]:
+    """Compose the user-facing message, save it, and route it.
+
+    Returns ``(narrated_text, message_id)`` of the saved bot message, or
+    ``(None, None)`` if it could not be saved.
+    """
     user_id = run.user.get("user_id", "")
 
     notification_text = await narrate_executor_result(
@@ -171,14 +181,25 @@ async def _narrate_and_deliver(
             role="user",
         )
 
-    follow_up_actions = await _build_follow_up_actions(
-        msg_type=result_type,
-        notification_text=notification_text,
-        user_msg_content=user_msg_content,
-        user_id=user_id,
-    )
-    if follow_up_actions:
-        bot_message.follow_up_actions = follow_up_actions
+    # Follow-up actions are a second LLM call. The interactive web/mobile path
+    # delivers the answer first and generates them in the background (see the
+    # WebSocket branch) so the user-visible result is never gated behind them.
+    # Workflow + bot-platform paths deliver via a single send with no spinner to
+    # unblock, so they attach follow-ups inline.
+    conversation_source = await _get_conversation_source(run.conversation_id, user_id)
+    is_ws_path = not run.workflow_id and not is_bot_platform(conversation_source)
+
+    if not is_ws_path:
+        follow_up_actions = await _safe_inline_follow_ups(
+            result_type=result_type,
+            notification_text=notification_text,
+            user_msg_content=user_msg_content,
+            user_id=user_id,
+            conversation_id=run.conversation_id,
+            message_id=bot_message.message_id,
+        )
+        if follow_up_actions:
+            bot_message.follow_up_actions = follow_up_actions
 
     try:
         await update_messages(
@@ -190,7 +211,7 @@ async def _narrate_and_deliver(
         )
     except Exception as e:
         log.error("deliver_result: failed to save message", error=str(e))
-        return
+        return None, None
 
     # Workflow run: the result was produced with no human watching, so deliver it
     # as the proactive completion notification (multi-channel, "Done with X")
@@ -207,13 +228,12 @@ async def _narrate_and_deliver(
             message_id=bot_message.message_id,
             notify_on_completion=run.workflow_notify_on_completion,
         )
-        return
+        return notification_text, bot_message.message_id
 
     # Deliver over exactly one transport, decided by the conversation's source.
     # Bot conversations go to their platform's API; web/mobile/system go to the
     # WebSocket push. (The web conversation list excludes bot sources, so a
     # WebSocket push for a bot conversation would be dropped anyway.)
-    conversation_source = await _get_conversation_source(run.conversation_id, user_id)
     if is_bot_platform(conversation_source):
         delivered = await deliver_message_to_platform(
             conversation_source,
@@ -222,16 +242,27 @@ async def _narrate_and_deliver(
         )
         transport = "platform"
     else:
+        # Broadcast the answer NOW so the spinner clears, then generate follow-up
+        # actions in the background and push them as a second update on the same
+        # message (reuses conversation.new_message — the client upserts by id).
         await _broadcast_bot_message(
             user_id=user_id,
             conversation_id=run.conversation_id,
             bot_message=bot_message,
             notification_text=notification_text,
             tool_data=tool_data,
-            follow_up_actions=follow_up_actions,
+            follow_up_actions=[],
             task_id=run.task_id,
             show_reply_quote=show_reply_quote,
             user_message_id=run.user_message_id,
+            user_msg_content=user_msg_content,
+        )
+        _spawn_deferred_follow_ups(
+            run=run,
+            bot_message=bot_message,
+            result_type=result_type,
+            tool_data=tool_data,
+            show_reply_quote=show_reply_quote,
             user_msg_content=user_msg_content,
         )
         delivered = True
@@ -246,6 +277,40 @@ async def _narrate_and_deliver(
         transport=transport,
         delivered=delivered,
     )
+    return notification_text, bot_message.message_id
+
+
+async def _safe_inline_follow_ups(
+    *,
+    result_type: str,
+    notification_text: str,
+    user_msg_content: str,
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+) -> list[str]:
+    """Build follow-up actions for the single-send path, swallowing failures.
+
+    Follow-ups are a best-effort enhancement. A failure in this second LLM call
+    must not abort delivery — the outer deliver_result handler turns any exception
+    into (None, None) and drops the result, so guard it here and ship the message
+    without suggestions instead.
+    """
+    try:
+        return await _build_follow_up_actions(
+            msg_type=result_type,
+            notification_text=notification_text,
+            user_msg_content=user_msg_content,
+            user_id=user_id,
+        )
+    except Exception as e:  # noqa: BLE001 — follow-ups are best-effort
+        log.error(
+            "deliver_result: failed to generate follow-up actions",
+            error=str(e),
+            conversation_id=conversation_id,
+            message_id=message_id,
+        )
+        return []
 
 
 async def _build_follow_up_actions(
@@ -273,6 +338,83 @@ async def _build_follow_up_actions(
         user_id,
         {"configurable": {"user_id": user_id}},
     )
+
+
+# Strong refs to in-flight deferred tasks — asyncio.create_task only holds a weak
+# reference, so without this the task can be GC'd before it finishes.
+_deferred_follow_up_tasks: set[asyncio.Task[None]] = set()
+
+
+def _spawn_deferred_follow_ups(
+    *,
+    run: ExecutorRun,
+    bot_message: MessageModel,
+    result_type: str,
+    tool_data: list[dict[str, Any]] | None,
+    show_reply_quote: bool,
+    user_msg_content: str,
+) -> None:
+    """Generate follow-up actions off the critical path and push them as a second
+    update on the already-delivered message, so the answer isn't gated behind the
+    extra LLM call."""
+    task = asyncio.create_task(
+        _generate_and_push_follow_ups(
+            run=run,
+            bot_message=bot_message,
+            result_type=result_type,
+            tool_data=tool_data,
+            show_reply_quote=show_reply_quote,
+            user_msg_content=user_msg_content,
+        )
+    )
+    _deferred_follow_up_tasks.add(task)
+    task.add_done_callback(_deferred_follow_up_tasks.discard)
+
+
+async def _generate_and_push_follow_ups(
+    *,
+    run: ExecutorRun,
+    bot_message: MessageModel,
+    result_type: str,
+    tool_data: list[dict[str, Any]] | None,
+    show_reply_quote: bool,
+    user_msg_content: str,
+) -> None:
+    user_id = run.user.get("user_id", "")
+    try:
+        follow_up_actions = await _build_follow_up_actions(
+            msg_type=result_type,
+            notification_text=bot_message.response,
+            user_msg_content=user_msg_content,
+            user_id=user_id,
+        )
+        if not follow_up_actions:
+            return
+
+        bot_message.follow_up_actions = follow_up_actions
+        await update_messages(
+            UpdateMessagesRequest(
+                conversation_id=run.conversation_id,
+                messages=[bot_message],
+            ),
+            user=run.user,
+        )
+        await _broadcast_bot_message(
+            user_id=user_id,
+            conversation_id=run.conversation_id,
+            bot_message=bot_message,
+            notification_text=bot_message.response,
+            tool_data=tool_data,
+            follow_up_actions=follow_up_actions,
+            task_id=run.task_id,
+            show_reply_quote=show_reply_quote,
+            user_message_id=run.user_message_id,
+            user_msg_content=user_msg_content,
+        )
+    except Exception as e:
+        # Non-critical enhancement — the answer is already delivered. Log loudly
+        # but never let a follow-up failure crash the background task.
+        log.error("deliver_result: deferred follow-up actions failed", error=str(e))
 
 
 async def _dispatch_workflow_notification(

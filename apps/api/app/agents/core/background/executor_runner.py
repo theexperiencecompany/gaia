@@ -17,7 +17,6 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
 import asyncio
-from datetime import datetime
 from typing import Any
 
 from langsmith import traceable
@@ -36,12 +35,14 @@ from app.agents.core.background.executor_queue import (
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.result_delivery import deliver_result, persist_cancelled_run
-from app.agents.core.background.session import ExecutorRun, signal_executor_done
+from app.agents.core.background.session import ExecutorRun, get_session, signal_executor_done
 from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
+from app.constants.executor import MESSAGE_ID_KEY, VOICE_TTS_KEY
 from app.core.stream_manager import StreamManager
+from app.utils.agent_utils import format_sse_data
 from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
@@ -53,7 +54,6 @@ async def run_executor_background(
     run: ExecutorRun,
     task: str,
     configurable: dict[str, Any],
-    user_time: datetime,
 ) -> None:
     """Run the executor agent in background and hand its result to delivery.
 
@@ -71,9 +71,7 @@ async def run_executor_background(
     result_type = "final"
 
     try:
-        result_text, result_type = await _execute_executor(
-            task, configurable, user_time, run.stream_id
-        )
+        result_text, result_type = await _execute_executor(task, configurable, run.stream_id)
         log.info("Background executor completed", task_id=run.task_id, stream_id=run.stream_id)
     finally:
         await _finalize_executor_run(run, result_text, result_type)
@@ -82,7 +80,6 @@ async def run_executor_background(
 async def _execute_executor(
     task: str,
     configurable: dict[str, Any],
-    user_time: datetime,
     stream_id: str,
 ) -> tuple[str, str]:
     """Run the executor agent graph once. Returns (result_text, result_type).
@@ -90,12 +87,14 @@ async def _execute_executor(
     Tool events stream to the session's collector via make_redis_stream_writer
     so the terminal path can persist the executor's tool_data. Never raises —
     errors come back as ("...", "error").
+
+    The executor inherits the comms agent's model/provider/reasoning from
+    ``configurable`` (free -> Gemini, paid -> MiniMax M3), so no override here.
     """
     try:
         ctx, error = await prepare_executor_execution(
             task=task,
             configurable=configurable,
-            user_time=user_time,
             stream_id=stream_id,
         )
         if error or ctx is None:
@@ -169,7 +168,34 @@ async def _deliver_terminal_outcome(
                 stream_id=run.stream_id,
             )
     elif result_text:
-        await deliver_result(run, result_text, result_type, returned_note)
+        notification_text, message_id = await deliver_result(
+            run, result_text, result_type, returned_note
+        )
+        await _publish_voice_tts(run.stream_id, notification_text, message_id)
+
+
+async def _publish_voice_tts(
+    stream_id: str, notification_text: str | None, message_id: str | None
+) -> None:
+    """Push the narrated answer on a voice-mode stream so the agent can speak it
+    AND bubble it.
+
+    The frame carries the saved message's ``message_id`` so the voice agent can
+    forward it as a display frame keyed by that id: the bubble then renders
+    immediately off the data channel instead of waiting on the separate
+    WebSocket push from ``deliver_result``, and that same WebSocket message
+    (identical id) reconciles in place rather than duplicating. Only live
+    streams are ever marked voice mode, so queued/workflow runs never reach here
+    with ``session.voice_mode`` set.
+    """
+    if not notification_text:
+        return
+    session = get_session(stream_id)
+    if session is not None and session.voice_mode:
+        await StreamManager.publish_chunk(
+            stream_id,
+            format_sse_data({VOICE_TTS_KEY: notification_text, MESSAGE_ID_KEY: message_id}),
+        )
 
 
 async def _close_queued_stream(run: ExecutorRun, was_cancelled: bool) -> None:
@@ -229,7 +255,6 @@ def _spawn_queued_run(run: ExecutorRun, prepared: PreparedQueuedTask) -> None:
             run=prepared.run,
             task=prepared.task,
             configurable=prepared.configurable,
-            user_time=prepared.user_time,
         )
     )
     _queued_executor_tasks.add(bg_task)

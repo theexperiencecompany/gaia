@@ -9,7 +9,10 @@ Centralizes:
 
 from __future__ import annotations
 
+import contextlib
+from datetime import UTC
 import posixpath
+import time
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -23,6 +26,7 @@ from app.agents.workspace.paths import (
     is_under_workspace,
     session_dir,
 )
+from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
 from shared.py.wide_events import log
 
 _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
@@ -43,8 +47,8 @@ def get_session_id(config: RunnableConfig) -> str | None:
 
     Prefer `vfs_session_id`: subagent_runner pins it to the *parent*
     conversation thread so artifacts written by one executor call are visible
-    to the next (`thread_id` is the ephemeral `executor_<conv>_<hex>` wrapper
-    and differs from the conversation_id that `ensure_session_dirs` and the
+    to the next (`thread_id` is the `executor_<conv>` wrapper and differs from
+    the conversation_id that `ensure_session_dirs` and the
     chat artifact forwarder key on — using it would split the session dir and
     drop every artifact event). May be None for non-chat invocations
     (workflows, background tasks)."""
@@ -87,6 +91,34 @@ def sh_quote(s: str) -> str:
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
+async def atomic_write(sbx: Any, abs_path: str, data: bytes) -> float:
+    """Write bytes into the sandbox atomically; return the file's mtime (epoch s).
+
+    Writes to a temp path then `rename`s into place — atomic on the same FS, so a
+    concurrent reader never sees a partial file (and the watcher ignores the temp
+    suffix). `rename` returns the new entry's metadata, giving the real mtime the
+    artifact-event dedup signature needs with no extra round-trip.
+
+    `EntryInfo.modified_time` is a NAIVE datetime in UTC (protobuf
+    `Timestamp.ToDatetime()`), so it MUST be tagged UTC before `.timestamp()` —
+    otherwise a non-UTC worker reinterprets it in local time and the epoch is off
+    by the UTC offset, breaking dedup against the host/bash mtimes.
+    """
+    tmp_path = f"{abs_path}{WORKSPACE_TMP_SUFFIX}"
+    await sbx.files.write(tmp_path, data)
+    try:
+        info = await sbx.files.rename(tmp_path, abs_path)
+    except Exception:
+        # Don't leave a half-written temp littering the workspace if the rename
+        # fails (e.g. a transient sandbox blip). Best-effort — on a dead sandbox
+        # the remove fails too, which is fine.
+        with contextlib.suppress(Exception):
+            await sbx.files.remove(tmp_path)
+        raise
+    mtime = getattr(info, "modified_time", None)
+    return mtime.replace(tzinfo=UTC).timestamp() if mtime is not None else time.time()
+
+
 def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
     """Emit a custom stream event, swallowing 'no writer' errors silently.
 
@@ -114,6 +146,7 @@ def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
 # Re-exported from the pure workspace.paths module so non-agent callers
 # (storage, HTTP endpoints) can reuse it without importing langchain.
 __all__ = [
+    "atomic_write",
     "canonical_path",
     "detect_content_type",
     "get_session_id",

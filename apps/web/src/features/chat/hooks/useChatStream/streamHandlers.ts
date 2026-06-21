@@ -4,19 +4,24 @@ import {
   parseChatStreamEvent,
   type SubagentEndPayload,
   type SubagentStartPayload,
+  TOOL_CALLS_DATA_TOOL_NAME,
   upsertTodoProgressToolData,
 } from "@shared/chat";
-import type {
-  SubagentGroupData,
-  ToolCallEntry,
-  ToolDataEntry,
+import {
+  REASONING_TOOL_NAME,
+  type SubagentGroupData,
+  type ToolCallEntry,
+  type ToolDataEntry,
 } from "@/config/registries/toolRegistry";
 import { parseStreamData } from "@/features/chat/hooks/useStreamDataParser";
+import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
+import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import { toast } from "@/lib/toast";
 import { useChatStore } from "@/stores/chatStore";
 import { useLoadingStore } from "@/stores/loadingStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { TodoProgressSnapshot } from "@/types/features/todoProgressTypes";
+import { hasExecutorDelegation } from "./executorDelegation";
 import { updateSubagentInToolData } from "./subagentTree";
 import type { StreamContext } from "./types";
 
@@ -61,28 +66,34 @@ function formatStreamError(error: unknown, eventData: string): string {
   return `Error processing stream data: ${errorMessage}`;
 }
 
-// Pull the loading-indicator hints out of a tool_data event's payload (returns null if none).
-function readToolDataLoadingHints(data: unknown): {
-  message: string;
-  toolName?: string;
-  toolCategory?: string;
-  integrationName?: string;
-  iconUrl?: string;
-  showCategory: boolean;
-} | null {
-  if (typeof data !== "object" || data === null) return null;
-  const d = data as Record<string, unknown>;
-  if (typeof d.message !== "string" || d.message.length === 0) return null;
+const REASONING_CATEGORY = "reasoning";
+
+// A thinking step: a ToolCallEntry carrying `reasoning` (rendered as a collapsible
+// "Thinking" row, not a tool call). Rides the same ordered tool-call stream.
+function makeReasoningStep(content: string): ToolCallEntry {
   return {
-    message: d.message,
-    toolName: typeof d.tool_name === "string" ? d.tool_name : undefined,
-    toolCategory:
-      typeof d.tool_category === "string" ? d.tool_category : undefined,
-    integrationName:
-      typeof d.integration_name === "string" ? d.integration_name : undefined,
-    iconUrl: typeof d.icon_url === "string" ? d.icon_url : undefined,
-    showCategory: (d.show_category as boolean) ?? true,
+    tool_name: REASONING_TOOL_NAME,
+    tool_category: REASONING_CATEGORY,
+    message: "",
+    reasoning: content,
   };
+}
+
+// Append a reasoning delta onto a trailing thinking step, or start a new one when
+// the previous step was a real tool call. This merges consecutive deltas into one
+// block that naturally breaks at each tool call.
+function appendReasoningStep(
+  steps: ToolCallEntry[],
+  content: string,
+): ToolCallEntry[] {
+  const last = steps.at(-1);
+  if (last?.reasoning != null) {
+    return [
+      ...steps.slice(0, -1),
+      { ...last, reasoning: last.reasoning + content },
+    ];
+  }
+  return [...steps, makeReasoningStep(content)];
 }
 
 export const createStreamHandlers = (deps: StreamHandlerDeps) => {
@@ -128,7 +139,10 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
 
     // Route tool_calls_data entries into the matching subagent group by event's own subagent_id.
-    if (toolData.subagent_id && toolData.tool_name === "tool_calls_data") {
+    if (
+      toolData.subagent_id &&
+      toolData.tool_name === TOOL_CALLS_DATA_TOOL_NAME
+    ) {
       const updatedToolData = updateSubagentInToolData(
         existingToolData,
         toolData.subagent_id,
@@ -146,8 +160,61 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
     // Root-level tool_data entry — append and (only for tool_calls_data) surface
     // the loading indicator.
     updateBotMessage({ tool_data: [...existingToolData, toolData] });
-    if (toolData.tool_name === "tool_calls_data") {
+    if (toolData.tool_name === TOOL_CALLS_DATA_TOOL_NAME) {
       applyToolDataLoadingHints(toolData.data);
+    }
+    persistIfReady();
+  };
+
+  // Stream the model's thinking into the unified tool card, interleaved between
+  // steps. Subagent thinking (subagent_id set) nests inside that subagent's step
+  // list; executor-level thinking (no subagent_id) sits in the root timeline as a
+  // tool_calls_data entry. Both merge consecutive deltas into one block per step.
+  const handleReasoning = (reasoning: {
+    content: string;
+    subagent_id?: string;
+  }) => {
+    const { content, subagent_id } = reasoning;
+    if (!content) return;
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+
+    if (subagent_id) {
+      const updatedToolData = updateSubagentInToolData(
+        existingToolData,
+        subagent_id,
+        (g) => ({
+          ...g,
+          tool_calls: appendReasoningStep(g.tool_calls, content),
+        }),
+      );
+      updateBotMessage({ tool_data: updatedToolData });
+      persistIfReady();
+      return;
+    }
+
+    // Executor-level thinking rides a tool_calls_data entry (data is a one-element
+    // step list) so it flows through the root timeline like a tool call.
+    const last = existingToolData[existingToolData.length - 1];
+    const lastSteps =
+      last?.tool_name === TOOL_CALLS_DATA_TOOL_NAME && Array.isArray(last.data)
+        ? (last.data as ToolCallEntry[])
+        : undefined;
+    const trailing = lastSteps?.[lastSteps.length - 1];
+    if (lastSteps && trailing?.reasoning != null) {
+      const merged = existingToolData.slice(0, -1);
+      merged.push({
+        ...(last as ToolDataEntry),
+        data: appendReasoningStep(lastSteps, content),
+      });
+      updateBotMessage({ tool_data: merged });
+    } else {
+      const entry: ToolDataEntry = {
+        tool_name: TOOL_CALLS_DATA_TOOL_NAME,
+        tool_category: REASONING_CATEGORY,
+        data: [makeReasoningStep(content)],
+        timestamp: new Date().toISOString(),
+      };
+      updateBotMessage({ tool_data: [...existingToolData, entry] });
     }
     persistIfReady();
   };
@@ -322,10 +389,19 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
   };
 
   const handleMainResponseComplete = () => {
-    setIsLoading(false);
     // The comms agent has finished its initial response ("on it"), so unlock the
     // composer — the user can now queue while any background executor runs.
     useLoadingStore.getState().setMainResponseStreaming(false);
+
+    // A turn that delegated to the executor isn't actually done: the executor
+    // streams its tool events over this same SSE moments later. Clearing the
+    // spinner here would leave a dead frame (no loading animation) until the
+    // first executor event re-arms it via ensureSpinnerOn — the "delegating to
+    // executor then frozen" gap. Keep the spinner + loading state up so it reads
+    // as one continuous in-progress turn.
+    if (hasExecutorDelegation(refs.current.botMessage?.tool_data)) return;
+
+    setIsLoading(false);
     resetLoadingText();
     updateBotMessage({ loading: false });
   };
@@ -447,7 +523,8 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
       parsed.type === "tool_output" ||
       parsed.type === "subagent_start" ||
       parsed.type === "subagent_end" ||
-      parsed.type === "todo_progress"
+      parsed.type === "todo_progress" ||
+      parsed.type === "reasoning"
     ) {
       ensureSpinnerOn();
     }
@@ -466,6 +543,9 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
         return undefined;
       case "tool_output":
         handleToolOutput(parsed.output);
+        return undefined;
+      case "reasoning":
+        handleReasoning(parsed);
         return undefined;
       case "subagent_start":
         handleSubagentStart(parsed.payload);
@@ -490,6 +570,11 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
         return undefined;
       case "conversation_description":
         handleConversationDescriptionEvent(parsed.description);
+        return undefined;
+      case "desktop_tool_request":
+        // Fire-and-forget: the desktop executes while the stream stays live;
+        // the relay POSTs the result back to the awaiting backend tool.
+        void relayDesktopToolRequest(parsed.request);
         return undefined;
       case "unknown":
         Object.assign(streamingData, parsed.payload);

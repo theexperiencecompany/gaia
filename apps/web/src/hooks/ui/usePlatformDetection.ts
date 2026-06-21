@@ -1,50 +1,106 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { desktopApi } from "@/features/download/api/desktopApi";
+import type { DesktopRelease } from "@/features/download/types";
+import type {
+  DesktopArch,
+  DesktopOS,
+  DesktopVariant,
+  Platform,
+  PlatformInfo,
+} from "./usePlatformDetection.types";
 
-export type Platform =
-  | "mac-arm"
-  | "mac-intel"
-  | "windows"
-  | "linux"
-  | "ios"
-  | "android"
-  | "unknown";
-
-export interface PlatformInfo {
-  platform: Platform;
-  displayName: string;
-  shortName: string;
-  iconPath: string;
-  downloadUrl: string | null;
-  isDesktop: boolean;
-  isMobile: boolean;
-}
+export type {
+  DesktopArch,
+  DesktopOS,
+  DesktopVariant,
+  Platform,
+  PlatformInfo,
+} from "./usePlatformDetection.types";
 
 const GITHUB_RELEASES_BASE =
   "https://github.com/theexperiencecompany/gaia/releases";
-const GITHUB_RELEASES_API =
-  "https://api.github.com/repos/theexperiencecompany/gaia/releases?per_page=10";
 
-// GitHub's global "latest" release tracks the web app, not desktop, so we
-// resolve the newest tag starting with `desktop-` at runtime. If that fetch
-// fails, buttons fall back to this filtered releases page.
-const DESKTOP_RELEASES_FALLBACK = `${GITHUB_RELEASES_BASE}?q=desktop&expanded=true`;
+// Expected asset filename per (OS, arch). Mirrors apps/desktop/electron-builder.yml
+// `artifactName: "${productName}-${arch}.${ext}"`. Linux x64 ships as the x86_64
+// AppImage. Download URLs are resolved by matching these names against the real
+// published assets, so a missing binary (e.g. Windows arm64, not yet built)
+// resolves to null and is simply not offered — never a 404.
+const DESKTOP_ASSET_NAMES: Record<DesktopOS, Record<DesktopArch, string>> = {
+  mac: { x64: "GAIA-x64.dmg", arm64: "GAIA-arm64.dmg" },
+  windows: { x64: "GAIA-x64.exe", arm64: "GAIA-arm64.exe" },
+  linux: { x64: "GAIA-x86_64.AppImage", arm64: "GAIA-arm64.AppImage" },
+};
 
+const DESKTOP_VARIANT_META: Record<
+  DesktopOS,
+  Record<DesktopArch, { label: string; description: string }>
+> = {
+  mac: {
+    x64: { label: "Intel", description: "For Macs with an Intel processor" },
+    arm64: {
+      label: "Apple Silicon",
+      description: "For Macs with M1, M2, M3, or M4 chips",
+    },
+  },
+  windows: {
+    x64: { label: "x64", description: "For 64-bit Intel or AMD processors" },
+    arm64: { label: "ARM64", description: "For Windows on ARM devices" },
+  },
+  linux: {
+    x64: { label: "x64", description: "For 64-bit Intel or AMD processors" },
+    arm64: { label: "ARM64", description: "For 64-bit ARM processors" },
+  },
+};
+
+const DESKTOP_OS_ORDER: DesktopArch[] = ["x64", "arm64"];
+
+function resolveAssetUrl(
+  release: DesktopRelease | null,
+  assetName: string,
+): string | null {
+  if (!release) return null;
+  return (
+    release.assets.find((asset) => asset.name === assetName)?.download_url ??
+    null
+  );
+}
+
+function buildDesktopDownloads(
+  release: DesktopRelease | null,
+): Record<DesktopOS, DesktopVariant[]> {
+  const forOs = (os: DesktopOS): DesktopVariant[] =>
+    DESKTOP_OS_ORDER.map((arch) => ({
+      os,
+      arch,
+      label: DESKTOP_VARIANT_META[os][arch].label,
+      description: DESKTOP_VARIANT_META[os][arch].description,
+      downloadUrl: resolveAssetUrl(release, DESKTOP_ASSET_NAMES[os][arch]),
+    }));
+
+  return {
+    mac: forOs("mac"),
+    windows: forOs("windows"),
+    linux: forOs("linux"),
+  };
+}
+
+// Legacy PlatformInfo map kept for consumers that key off a single Platform
+// (e.g. the settings download submenu). Mac keeps its two arch entries; Windows
+// and Linux expose their x64 build as the default single-click download.
 function buildPlatformConfigs(
-  tag: string | null,
+  downloads: Record<DesktopOS, DesktopVariant[]>,
 ): Record<Platform, Omit<PlatformInfo, "platform">> {
-  const desktopUrl = (asset: string) =>
-    tag
-      ? `${GITHUB_RELEASES_BASE}/download/${tag}/${asset}`
-      : DESKTOP_RELEASES_FALLBACK;
+  const url = (os: DesktopOS, arch: DesktopArch): string | null =>
+    downloads[os].find((v) => v.arch === arch)?.downloadUrl ?? null;
 
   return {
     "mac-arm": {
       displayName: "macOS (Apple Silicon)",
       shortName: "Mac (M-series)",
       iconPath: "/images/icons/apple.svg",
-      downloadUrl: desktopUrl("GAIA-arm64.dmg"),
+      downloadUrl: url("mac", "arm64"),
       isDesktop: true,
       isMobile: false,
     },
@@ -52,7 +108,7 @@ function buildPlatformConfigs(
       displayName: "macOS (Intel)",
       shortName: "Mac (Intel)",
       iconPath: "/images/icons/apple.svg",
-      downloadUrl: desktopUrl("GAIA-x64.dmg"),
+      downloadUrl: url("mac", "x64"),
       isDesktop: true,
       isMobile: false,
     },
@@ -60,7 +116,7 @@ function buildPlatformConfigs(
       displayName: "Windows",
       shortName: "Windows",
       iconPath: "/images/icons/windows.svg",
-      downloadUrl: desktopUrl("GAIA-x64.exe"),
+      downloadUrl: url("windows", "x64"),
       isDesktop: true,
       isMobile: false,
     },
@@ -68,7 +124,7 @@ function buildPlatformConfigs(
       displayName: "Linux",
       shortName: "Linux",
       iconPath: "/images/icons/linux.svg",
-      downloadUrl: desktopUrl("GAIA-x86_64.AppImage"),
+      downloadUrl: url("linux", "x64"),
       isDesktop: true,
       isMobile: false,
     },
@@ -92,44 +148,58 @@ function buildPlatformConfigs(
       displayName: "Desktop",
       shortName: "Desktop",
       iconPath: "/images/icons/apple.svg",
-      downloadUrl: tag
-        ? `${GITHUB_RELEASES_BASE}/tag/${tag}`
-        : DESKTOP_RELEASES_FALLBACK,
+      downloadUrl: null,
       isDesktop: true,
       isMobile: false,
     },
   };
 }
 
-interface GithubRelease {
-  tag_name: string;
-  draft: boolean;
-  prerelease: boolean;
+function detectedDesktopOf(
+  platform: Platform,
+): { os: DesktopOS; arch: DesktopArch } | null {
+  switch (platform) {
+    case "mac-arm":
+      return { os: "mac", arch: "arm64" };
+    case "mac-intel":
+      return { os: "mac", arch: "x64" };
+    case "windows":
+      return { os: "windows", arch: "x64" };
+    case "linux":
+      return { os: "linux", arch: "x64" };
+    default:
+      return null;
+  }
 }
 
-function useLatestDesktopTag(): string | null {
-  const [tag, setTag] = useState<string | null>(null);
+function useLatestDesktopRelease(): {
+  release: DesktopRelease | null;
+  isLoading: boolean;
+} {
+  const [release, setRelease] = useState<DesktopRelease | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch(GITHUB_RELEASES_API, {
-      headers: { Accept: "application/vnd.github+json" },
-      signal: controller.signal,
-    })
-      .then((r) => (r.ok ? (r.json() as Promise<GithubRelease[]>) : null))
-      .then((releases) => {
-        if (!releases) return;
-        const desktop = releases.find(
-          (r) => r.tag_name.startsWith("desktop-") && !r.draft && !r.prerelease,
-        );
-        if (desktop) setTag(desktop.tag_name);
+    let active = true;
+    desktopApi
+      .getLatestRelease()
+      .then((data) => {
+        if (active) setRelease(data);
       })
-      .catch(() => {});
-
-    return () => controller.abort();
+      .catch((error) => {
+        // Degrade gracefully: buttons fall back to the GitHub releases page.
+        // Logged (console.error survives prod stripping) so an outage is visible.
+        console.error("Failed to resolve latest desktop release", error);
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
-  return tag;
+  return { release, isLoading };
 }
 
 function detectPlatform(): Platform {
@@ -184,16 +254,21 @@ function detectPlatform(): Platform {
 export function usePlatformDetection() {
   const [platform, setPlatform] = useState<Platform>("unknown");
   const [isLoading, setIsLoading] = useState(true);
-  const desktopTag = useLatestDesktopTag();
+  const { release, isLoading: isDesktopReleaseLoading } =
+    useLatestDesktopRelease();
 
   useEffect(() => {
     setPlatform(detectPlatform());
     setIsLoading(false);
   }, []);
 
+  const desktopDownloads = useMemo(
+    () => buildDesktopDownloads(release),
+    [release],
+  );
   const platformConfigs = useMemo(
-    () => buildPlatformConfigs(desktopTag),
-    [desktopTag],
+    () => buildPlatformConfigs(desktopDownloads),
+    [desktopDownloads],
   );
 
   const currentPlatform: PlatformInfo = {
@@ -201,37 +276,21 @@ export function usePlatformDetection() {
     ...platformConfigs[platform],
   };
 
-  const allPlatforms: PlatformInfo[] = Object.entries(platformConfigs)
+  const desktopPlatforms: PlatformInfo[] = Object.entries(platformConfigs)
     .filter(([key]) => key !== "unknown")
-    .map(([key, config]) => ({
-      platform: key as Platform,
-      ...config,
-    }));
-
-  const desktopPlatforms = allPlatforms.filter((p) => p.isDesktop);
-  const mobilePlatforms = allPlatforms.filter((p) => p.isMobile);
-
-  // Get platforms sorted with current platform first (for desktop)
-  const sortedDesktopPlatforms = [
-    ...desktopPlatforms.filter((p) => p.platform === platform),
-    ...desktopPlatforms.filter((p) => p.platform !== platform),
-  ];
+    .map(([key, config]) => ({ platform: key as Platform, ...config }))
+    .filter((p) => p.isDesktop);
 
   return {
     platform,
-    platformConfigs,
     currentPlatform,
-    allPlatforms,
     desktopPlatforms,
-    mobilePlatforms,
-    sortedDesktopPlatforms,
+    desktopDownloads,
+    detectedDesktop: detectedDesktopOf(platform),
     isLoading,
-    isMac: platform === "mac-arm" || platform === "mac-intel",
-    isWindows: platform === "windows",
-    isLinux: platform === "linux",
-    isMobile: platform === "ios" || platform === "android",
+    isDesktopReleaseLoading,
   };
 }
 
-// Export platform configs for use in server components
+// Exposed for the download page's SEO schema and the "All releases" link.
 export { GITHUB_RELEASES_BASE };

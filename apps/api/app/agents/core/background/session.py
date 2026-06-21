@@ -50,6 +50,9 @@ class StreamSession:
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     pending_subagents: int = 0
     subagent_results: list[dict[str, str]] = field(default_factory=list)
+    # Voice-mode streams: the executor's finalize step publishes a TTS-only
+    # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
+    voice_mode: bool = False
 
 
 @dataclass(frozen=True)
@@ -85,6 +88,10 @@ class ExecutorRun:
                 "user_id": configurable.get("user_id", ""),
                 "email": configurable.get("email", ""),
                 "name": configurable.get("user_name", ""),
+                # Carry the home timezone forward so the comms re-voicing run
+                # reads the user's zone via build_agent_config instead of
+                # silently falling back to UTC.
+                "timezone": configurable.get("user_timezone"),
             },
             kind=kind,
             task_id=task_id,

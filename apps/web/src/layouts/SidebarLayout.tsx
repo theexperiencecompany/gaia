@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { WhatsNewCard } from "@/features/whats-new/components/WhatsNewCard";
 import { usePlatform } from "@/hooks/ui/usePlatform";
+import { useElectron } from "@/hooks/useElectron";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 interface SidebarLayoutProps {
@@ -61,16 +62,24 @@ export const CustomSidebarTrigger = () => {
 };
 
 export default function SidebarLayout({ children }: SidebarLayoutProps) {
+  const { isElectron } = useElectron();
+  const { isMac } = usePlatform();
+
   return (
     <Sidebar
       variant="sidebar"
       collapsible="offcanvas"
       className="sidebar border-none!"
     >
-      <SidebarHeader className="pb-0">
-        <div className="flex items-center justify-between">
-          <LogoWithContextMenu className="group ml-2 flex items-center gap-2 px-1" />
-        </div>
+      {/* In the desktop app the window chrome owns the top-left corner:
+          no logo, and on macOS extra top padding clears the traffic
+          lights (hiddenInset title bar, lights at y=16). */}
+      <SidebarHeader className={isElectron && isMac ? "pt-10 pb-0" : "pb-0"}>
+        {!isElectron && (
+          <div className="flex items-center justify-between">
+            <LogoWithContextMenu className="group ml-2 flex items-center gap-2 px-1" />
+          </div>
+        )}
       </SidebarHeader>
 
       <SidebarContent className="flex-1 px-1">

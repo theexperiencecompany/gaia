@@ -1,34 +1,32 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp02Icon, StopIcon } from "@icons";
+import { AudioWave01Icon } from "@icons";
+import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
-import { useLoading } from "@/features/chat/hooks/useLoading";
+import { useComposerSendMode } from "@/features/chat/hooks/useComposerSendMode";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useComposerFiles } from "@/stores/composerStore";
-import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
   searchbarText: string | null | undefined;
   selectedTool?: string | null;
   setvoiceModeActive: () => void;
+  /** Hover intent on the voice button — prefetches the session token. */
+  onVoiceModeHover?: () => void;
 }
 
 export default function RightSide({
   handleFormSubmit,
   searchbarText,
   selectedTool,
-  setvoiceModeActive: _setvoiceModeActive,
+  setvoiceModeActive,
+  onVoiceModeHover,
 }: RightSideProps) {
-  const { stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent } = useCalendarEventSelection();
   const { uploadedFiles } = useComposerFiles();
-  // Only the INITIAL response phase locks the composer (send → main_response_complete).
-  // Once the agent has acknowledged the task, the composer unlocks so the user
-  // can queue the next message while a background executor keeps running.
-  const isResponding = useIsMainResponseStreaming();
   const hasText = (searchbarText || "").trim().length > 0;
   const hasSelectedTool = selectedTool != null;
   const hasSelectedWorkflow = selectedWorkflow != null;
@@ -41,8 +39,22 @@ export default function RightSide({
     hasSelectedCalendarEvent ||
     hasFiles;
 
+  // Mirror the send button's state so the tooltip matches what the button shows
+  // (Stop while streaming with an empty composer, Queue while streaming with
+  // typed content, send hints otherwise).
+  const { showStop, showQueue } = useComposerSendMode(hasContent);
+
   const getTooltipContent = () => {
-    if (isResponding) return "Stop generation";
+    if (showStop) return "Stop generation";
+
+    if (showQueue) {
+      return (
+        <div className="flex items-center gap-2">
+          Queue message
+          <Kbd className="text-zinc-400" keys={["enter"]} />
+        </div>
+      );
+    }
 
     if (hasSelectedCalendarEvent && !hasText && !hasSelectedTool && !hasFiles) {
       return `Send with calendar event: ${selectedCalendarEvent?.summary}`;
@@ -83,48 +95,30 @@ export default function RightSide({
     );
   };
 
-  const handleButtonPress = () => {
-    if (isResponding) {
-      stopStream();
-    } else {
-      handleFormSubmit();
-    }
-  };
-
-  let buttonColor: "default" | "primary" = "default";
-  if (!isResponding && hasContent) {
-    buttonColor = "primary";
-  }
-
   return (
     <div className="ml-2 flex items-center gap-2">
+      <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
+        <Button
+          isIconOnly
+          aria-label="Voice Mode"
+          className="h-9 min-h-9 w-9 max-w-9 min-w-9"
+          color="default"
+          radius="full"
+          type="button"
+          onMouseEnter={onVoiceModeHover}
+          onPress={() => setvoiceModeActive()}
+        >
+          <AudioWave01Icon className="text-zinc-400" />
+        </Button>
+      </Tooltip>
+
       <Tooltip
         content={getTooltipContent()}
         placement="right"
-        color={isResponding ? "danger" : "primary"}
+        color={showStop ? "danger" : "primary"}
         showArrow
       >
-        <Button
-          isIconOnly
-          aria-label={isResponding ? "Stop generation" : "Send message"}
-          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`}
-          color={buttonColor}
-          disabled={!isResponding && !hasContent}
-          radius="full"
-          type="submit"
-          onPress={handleButtonPress}
-        >
-          {isResponding ? (
-            <StopIcon
-              color="lightgray"
-              width={20}
-              height={20}
-              fill="lightgray"
-            />
-          ) : (
-            <ArrowUp02Icon color={hasContent ? "black" : "gray"} />
-          )}
-        </Button>
+        <SendStopButton hasContent={hasContent} onSend={handleFormSubmit} />
       </Tooltip>
     </div>
   );

@@ -5,9 +5,6 @@ Lives here (rather than in handoff_tools.py) so those modules import from it,
 avoiding a cyclic dependency.
 """
 
-from datetime import datetime
-import uuid
-
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
@@ -50,6 +47,32 @@ def _capture_finish_task_content(chunk: ToolMessage, current_message: str) -> st
     return current_message
 
 
+def _extract_reasoning_delta(chunk: AIMessageChunk) -> str:
+    """Pull this chunk's reasoning ("thinking") text, model-agnostic.
+
+    ChatOpenRouter surfaces reasoning as standard ``reasoning`` content blocks;
+    other providers (DeepSeek-style) put it in ``additional_kwargs.reasoning_content``.
+    Returns "" when the chunk carries no thinking (e.g. non-reasoning models), so
+    the caller emits nothing for them.
+    """
+    parts: list[str] = []
+    for block in getattr(chunk, "content_blocks", None) or []:
+        block_type = block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
+        if block_type == "reasoning":
+            text = (
+                block.get("reasoning")
+                if isinstance(block, dict)
+                else getattr(block, "reasoning", "")
+            )
+            if text:
+                parts.append(text)
+    if not parts:
+        fallback = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content")
+        if fallback:
+            parts.append(fallback if isinstance(fallback, str) else str(fallback))
+    return "".join(parts)
+
+
 class SubagentExecutionContext:
     """Container for all data needed to execute a subagent."""
 
@@ -85,6 +108,7 @@ async def build_initial_messages(
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
+    include_connected_integrations: bool = False,
 ) -> list:
     """Build the [static_prompt, dynamic_context, human_task] triplet.
 
@@ -97,7 +121,7 @@ async def build_initial_messages(
         system_message: Pre-built STATIC system message (must not include
             any per-user or per-time content — keeps the cache prefix stable).
         agent_name: Name of the agent (for HumanMessage visibility metadata).
-        configurable: Config dict with user_time, user_name, etc.
+        configurable: Config dict with user_timezone, user_name, etc.
         task: The task/query to execute (goes into the HumanMessage).
         user_id: Optional user ID for memory retrieval.
         subagent_id: Optional subagent ID for skill retrieval.
@@ -112,6 +136,8 @@ async def build_initial_messages(
             parallel with its own work and pass it down here to avoid the
             subagent running a duplicate ChromaDB lookup.
         skills_text: Pre-fetched skills section; same rationale.
+        include_connected_integrations: Executor-only; appends the live
+            connected-integrations manifest to the dynamic-context message.
     """
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
 
@@ -123,6 +149,7 @@ async def build_initial_messages(
         integration_id=integration_id,
         memories_text=memories_text,
         skills_text=skills_text,
+        include_connected_integrations=include_connected_integrations,
     )
 
     # Current time rides in a HumanMessage so the system_instruction prefix
@@ -141,6 +168,55 @@ async def build_initial_messages(
             additional_kwargs={"visible_to": {agent_name}},
         ),
     ]
+
+
+def _process_messages_payload(
+    payload: tuple,
+    complete_message: str,
+    stream_writer: StreamWriterCallable | None,
+    subagent_id: str | None,
+) -> str:
+    """Handle one "messages"-mode stream event, returning the updated message.
+
+    Accumulates AI content, streams reasoning deltas, and emits tool_output for
+    ToolMessages — all gated on a non-silent payload and an available writer.
+    """
+    chunk, metadata = payload
+    if metadata.get("silent"):
+        return complete_message
+
+    # Accumulate AI response content
+    if chunk and isinstance(chunk, AIMessageChunk):
+        content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
+        if content:
+            complete_message += content
+
+        # Stream the model's thinking interleaved with tool events, so the
+        # UI can show what it reasoned about between each step. Carries the
+        # subagent_id so the client nests it in the right step (same routing
+        # as tool_data/tool_output). Empty for non-reasoning models.
+        if stream_writer:
+            reasoning_delta = _extract_reasoning_delta(chunk)
+            if reasoning_delta:
+                reasoning_event: dict = {"content": reasoning_delta}
+                if subagent_id:
+                    reasoning_event["subagent_id"] = subagent_id
+                stream_writer({"reasoning": reasoning_event})
+
+    # Emit tool_output when ToolMessage arrives
+    elif chunk and isinstance(chunk, ToolMessage):
+        content_str = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+        complete_message = _capture_finish_task_content(chunk, complete_message)
+        if stream_writer:
+            tool_output_data: dict = {
+                "tool_call_id": chunk.tool_call_id,
+                "output": content_str,
+            }
+            if subagent_id:
+                tool_output_data["subagent_id"] = subagent_id
+            stream_writer({"tool_output": tool_output_data})
+
+    return complete_message
 
 
 async def execute_subagent_stream(
@@ -212,30 +288,9 @@ async def execute_subagent_stream(
             continue
 
         if stream_mode == "messages":
-            chunk, metadata = payload
-            if metadata.get("silent"):
-                continue
-
-            # Accumulate AI response content
-            if chunk and isinstance(chunk, AIMessageChunk):
-                content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-                if content:
-                    complete_message += content
-
-            # Emit tool_output when ToolMessage arrives
-            elif chunk and isinstance(chunk, ToolMessage):
-                content_str = (
-                    chunk.content if isinstance(chunk.content, str) else str(chunk.content)
-                )
-                complete_message = _capture_finish_task_content(chunk, complete_message)
-                if stream_writer:
-                    tool_output_data: dict = {
-                        "tool_call_id": chunk.tool_call_id,
-                        "output": content_str,
-                    }
-                    if subagent_id:
-                        tool_output_data["subagent_id"] = subagent_id
-                    stream_writer({"tool_output": tool_output_data})
+            complete_message = _process_messages_payload(
+                payload, complete_message, stream_writer, subagent_id
+            )
             continue
 
         if stream_mode == "custom":
@@ -263,7 +318,6 @@ async def execute_subagent_stream(
 async def prepare_executor_execution(
     task: str,
     configurable: dict,
-    user_time: datetime,
     stream_id: str | None = None,
 ) -> tuple[SubagentExecutionContext | None, str | None]:
     """Prepare execution context for the executor agent.
@@ -278,19 +332,15 @@ async def prepare_executor_execution(
     user_id = configurable.get("user_id")
     thread_id = configurable.get("thread_id", "")
 
-    # Fresh executor thread per call_executor invocation. Architecturally the
-    # comms agent owns the conversation thread; the executor is a subroutine
-    # invoked with a task description + the last user message. Giving it its
-    # own ephemeral thread keeps its context small and prevents stale tool
-    # observations from one task bleeding into the next. If a later user turn
-    # needs prior context, comms passes it explicitly in the new task
-    # description.
-    call_scope = uuid.uuid4().hex[:12]
-    executor_thread_id = f"executor_{thread_id}_{call_scope}"
+    # Deterministic executor thread, derived purely from the conversation
+    # thread so it can be reconstructed from the conversation id alone. The
+    # executor (and the subagents it spawns, whose threads are derived from
+    # this one) retains its history across call_executor invocations within
+    # the same conversation.
+    executor_thread_id = f"executor_{thread_id}"
 
-    # VFS session stays pinned to the PARENT conversation thread so files
-    # written by one executor call are visible to the next — the ephemeral
-    # thread only scopes agent reasoning, not persisted artefacts.
+    # VFS session stays pinned to the conversation thread so files written by
+    # one executor call are visible to the next.
     vfs_session_id = configurable.get("vfs_session_id") or thread_id
 
     # Load executor graph
@@ -309,7 +359,6 @@ async def prepare_executor_execution(
     config = build_agent_config(
         conversation_id=thread_id,
         user=user,
-        user_time=user_time,
         thread_id=executor_thread_id,
         base_configurable=configurable,
         agent_name="executor_agent",
@@ -373,6 +422,9 @@ async def prepare_executor_execution(
         task=enhanced_task,
         user_id=user_id,
         retrieval_query=task,
+        # Executor is the agent that performs handoffs, so it gets the live
+        # connected-integrations manifest (names + handoff subagent_ids).
+        include_connected_integrations=True,
     )
 
     return SubagentExecutionContext(

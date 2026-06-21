@@ -19,9 +19,9 @@ export default function UseCasesPageClient({
 
   return (
     <>
-      <div className="relative z-1 container mx-auto pb-8">
+      <div className="relative z-1 container mx-auto pb-8 px-4 sm:px-6">
         <div className="mb-8 text-center">
-          <h1 className="mb-1 font-serif text-8xl font-normal">
+          <h1 className="mb-1 font-serif text-4xl sm:text-6xl md:text-8xl font-normal">
             See what's Possible
           </h1>
           <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
@@ -31,7 +31,7 @@ export default function UseCasesPageClient({
         <UseCaseSection dummySectionRef={contentRef} useBlurEffect={true} />
         <div id="community-section" className="mt-22 space-y-6">
           <div className="mb-14 text-center">
-            <h1 className="mb-1 font-serif text-6xl font-normal">
+            <h1 className="mb-1 font-serif text-3xl sm:text-5xl md:text-6xl font-normal">
               Published by The Community
             </h1>
             <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">

@@ -26,7 +26,6 @@ import {
   useComposerUI,
   useInputText,
 } from "@/stores/composerStore";
-import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import type { FileData } from "@/types/shared/fileTypes";
@@ -53,6 +52,8 @@ interface MainSearchbarProps {
   hasMessages: boolean;
   conversationId?: string;
   voiceModeActive: () => void;
+  /** Hover intent on the voice button — used to prefetch the session token. */
+  onVoiceModeHover?: () => void;
 }
 
 const Composer: React.FC<MainSearchbarProps> = ({
@@ -65,6 +66,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   hasMessages,
   conversationId,
   voiceModeActive,
+  onVoiceModeHover,
 }) => {
   const router = useRouter();
   const [currentHeight, setCurrentHeight] = useState<number>(24);
@@ -103,18 +105,10 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   const sendMessage = useSendMessage();
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
-  const isMainResponseStreaming = useIsMainResponseStreaming();
   const currentMode = useMemo(
     () => Array.from(selectedMode)[0],
     [selectedMode],
   );
-
-  // Look up the icon URL for the selected tool's integration
-  const selectedToolIconUrl = useMemo(() => {
-    if (!selectedToolCategory) return null;
-    const integration = integrations.find((i) => i.id === selectedToolCategory);
-    return integration?.iconUrl ?? null;
-  }, [selectedToolCategory, integrations]);
 
   // Set up input focus callback for reply-to-message functionality
   useEffect(() => {
@@ -222,10 +216,10 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (
     event,
   ) => {
-    // Block Enter only during the initial response (send → main_response_complete).
-    // After that, Enter submits and the message is queued behind the running
-    // background executor (see useChatStream's pending-stream queue).
-    if (event.key === "Enter" && !event.shiftKey && !isMainResponseStreaming) {
+    // Enter always submits. If a stream is still open (initial response OR a
+    // background executor still running), the send is held in the queue rather
+    // than starting a new turn (see useChatStream's pending-stream queue).
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleFormSubmit();
     }
@@ -445,7 +439,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
           <SelectedToolIndicator
             toolName={selectedTool}
             toolCategory={selectedToolCategory}
-            iconUrl={selectedToolIconUrl}
             onRemove={handleRemoveSelectedTool}
           />
           <SelectedWorkflowIndicator
@@ -498,6 +491,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
           onToggleSlashCommandDropdown={handleToggleSlashCommandDropdown}
           isSlashCommandDropdownOpen={isSlashCommandDropdownOpen}
           voiceModeActive={voiceModeActive}
+          onVoiceModeHover={onVoiceModeHover}
         />
       </div>
       <FileUpload

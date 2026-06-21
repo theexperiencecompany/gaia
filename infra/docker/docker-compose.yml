@@ -78,6 +78,9 @@ services:
       - ../../apps/api/.env
     volumes:
       - ../../apps/api/app:/app/apps/api/app
+      # Live-mount scripts so mount_juicefs.sh edits (shipped into the sandbox at
+      # runtime by _run_mount_script) apply on the next acquire with no rebuild.
+      - ../../apps/api/scripts:/app/apps/api/scripts
       - juicefs_cache:/var/cache/juicefs
     # Harden the resolver: Docker's embedded DNS (127.0.0.11) intermittently
     # drops rapid back-to-back external lookups, so juicefs sees a spurious
@@ -189,6 +192,15 @@ services:
     volumes:
       - mongo_data:/data/db
     restart: on-failure
+    environment:
+      # Required for Linux kernel 7.x (6.19+): disables glibc rseq registration
+      # so TCMalloc's per-CPU caches don't conflict with the kernel's rseq ABI.
+      GLIBC_TUNABLES: glibc.pthread.rseq=0
+    security_opt:
+      # Required for Linux kernel 7.x: block rseq (ENOSYS) so TCMalloc falls
+      # back from per-CPU caches to a safe path. Using rseq on kernel 7.x causes
+      # a SIGSEGV in mongo:8's TCMalloc ~30s after startup (SERVER-121912).
+      - seccomp:seccomp-mongo.json
     ports:
       - "${MONGO_HOST_PORT:-27017}:27017"
     healthcheck:
@@ -250,6 +262,9 @@ services:
     restart: always
     volumes:
       - ../../apps/api/app:/app/apps/api/app
+      # Live-mount scripts so mount_juicefs.sh edits (shipped into the sandbox at
+      # runtime by _run_mount_script) apply on the next acquire with no rebuild.
+      - ../../apps/api/scripts:/app/apps/api/scripts
       - juicefs_cache:/var/cache/juicefs
     # JuiceFS mount needs FUSE; same caps/devices as gaia-backend
     cap_add:
@@ -463,13 +478,13 @@ services:
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
+      GAIA_BACKEND_URL: http://localhost:${API_HOST_PORT:-8000}
     env_file:
       - ../../apps/api/.env
     volumes:
       - voice_agent_models:/home/appuser/.cache/huggingface
     restart: on-failure
-    networks:
-      - gaia_network
+    network_mode: host
 
   loki:
     image: grafana/loki:3.3.2

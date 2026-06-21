@@ -32,12 +32,14 @@ def _mock_category(
     integration_name: str | None = None,
     require_integration: bool = False,
     space: str = "default",
+    internal: bool = False,
 ):
     cat = MagicMock()
     cat.tools = tools or [_mock_tool()]
     cat.integration_name = integration_name
     cat.require_integration = require_integration
     cat.space = space
+    cat.internal = internal
     return cat
 
 
@@ -540,24 +542,16 @@ class TestGetUserMcpTools:
                     "integration_id": "mcp_1",
                     "name": "MCP One",
                     "icon_url": "https://example.com/icon.png",
+                    "tools": [{"name": "tool_a"}, {"name": "tool_b"}],
                 }
             ]
         )
         mock_col = MagicMock()
         mock_col.aggregate = MagicMock(return_value=mock_cursor)
 
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_tools = AsyncMock(return_value=[{"name": "tool_a"}, {"name": "tool_b"}])
-
-        with (
-            patch(
-                "app.services.tools.tools_service.user_integrations_collection",
-                mock_col,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
+        with patch(
+            "app.services.tools.tools_service.user_integrations_collection",
+            mock_col,
         ):
             result = await get_user_mcp_tools("user_123")
 
@@ -568,23 +562,14 @@ class TestGetUserMcpTools:
     async def test_skips_empty_integration_tools(self):
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(
-            return_value=[{"integration_id": "mcp_1", "name": "MCP", "icon_url": None}]
+            return_value=[{"integration_id": "mcp_1", "name": "MCP", "icon_url": None, "tools": []}]
         )
         mock_col = MagicMock()
         mock_col.aggregate = MagicMock(return_value=mock_cursor)
 
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_tools = AsyncMock(return_value=[])
-
-        with (
-            patch(
-                "app.services.tools.tools_service.user_integrations_collection",
-                mock_col,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
+        with patch(
+            "app.services.tools.tools_service.user_integrations_collection",
+            mock_col,
         ):
             result = await get_user_mcp_tools("user_123")
 
@@ -594,25 +579,26 @@ class TestGetUserMcpTools:
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(
             return_value=[
-                {"integration_id": "m1", "name": "M1", "icon_url": None},
-                {"integration_id": "m2", "name": "M2", "icon_url": None},
+                {
+                    "integration_id": "m1",
+                    "name": "M1",
+                    "icon_url": None,
+                    "tools": [{"name": "same_tool"}],
+                },
+                {
+                    "integration_id": "m2",
+                    "name": "M2",
+                    "icon_url": None,
+                    "tools": [{"name": "same_tool"}],
+                },
             ]
         )
         mock_col = MagicMock()
         mock_col.aggregate = MagicMock(return_value=mock_cursor)
 
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_tools = AsyncMock(return_value=[{"name": "same_tool"}])
-
-        with (
-            patch(
-                "app.services.tools.tools_service.user_integrations_collection",
-                mock_col,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
+        with patch(
+            "app.services.tools.tools_service.user_integrations_collection",
+            mock_col,
         ):
             result = await get_user_mcp_tools("user_123")
 
@@ -633,23 +619,21 @@ class TestGetUserMcpTools:
     async def test_skips_tool_with_no_name(self):
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(
-            return_value=[{"integration_id": "m1", "name": "M1", "icon_url": None}]
+            return_value=[
+                {
+                    "integration_id": "m1",
+                    "name": "M1",
+                    "icon_url": None,
+                    "tools": [{"name": None}, {"name": "valid"}],
+                }
+            ]
         )
         mock_col = MagicMock()
         mock_col.aggregate = MagicMock(return_value=mock_cursor)
 
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_tools = AsyncMock(return_value=[{"name": None}, {"name": "valid"}])
-
-        with (
-            patch(
-                "app.services.tools.tools_service.user_integrations_collection",
-                mock_col,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
+        with patch(
+            "app.services.tools.tools_service.user_integrations_collection",
+            mock_col,
         ):
             result = await get_user_mcp_tools("user_123")
 

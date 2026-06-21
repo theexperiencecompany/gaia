@@ -20,20 +20,29 @@ Features:
 
 import asyncio
 import base64
-from datetime import UTC, datetime, timedelta
 import json as _json
 import re
 import secrets
 import time
 import traceback
-from typing import Any
+from typing import Any, TypedDict
 import urllib.parse
 
 import httpx
 from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
+from pydantic import AnyHttpUrl, AnyUrl
 
+from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, OAUTH_DISCOVERY_PREFIX
+from app.constants.mcp import (
+    COMPOSIO_MCP_HOST,
+    GAIA_OAUTH_CLIENT_NAME,
+    GAIA_OAUTH_LOGO_PATH,
+    GAIA_OAUTH_PRIVACY_PATH,
+    GAIA_OAUTH_TOS_PATH,
+    MAX_OAUTH_INVALID_SCOPE_DROPS,
+)
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
 from app.db.mongodb.collections import (
@@ -41,9 +50,9 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
 )
 from app.db.redis import delete_cache
-from app.helpers.mcp_helpers import get_api_base_url
+from app.helpers.mcp_helpers import get_api_base_url, get_frontend_url
 from app.helpers.namespace_utils import derive_integration_namespace
-from app.models.mcp_config import MCPConfig
+from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
@@ -69,17 +78,37 @@ from app.utils.mcp_oauth_utils import (
     OAuthSecurityError,
     get_client_metadata_document_url,
     is_localhost_url,
+    oauth_token_expiry,
     parse_oauth_error_response,
+    parse_rejected_scopes,
     validate_https_url,
     validate_jwt_issuer,
     validate_pkce_support,
-    validate_token_response,
 )
 from app.utils.mcp_utils import (
-    generate_pkce_pair,
     wrap_tools_with_null_filter,
 )
-from shared.py.wide_events import log
+from mcp.client.auth.oauth2 import PKCEParameters
+from mcp.client.auth.utils import (
+    create_client_registration_request,
+    get_client_metadata_scopes,
+    handle_registration_response,
+)
+from mcp.shared.auth import (
+    OAuthClientMetadata,
+    OAuthMetadata,
+    OAuthToken,
+)
+from shared.py.wide_events import log, log_context
+
+
+class _ClientBranding(TypedDict, total=False):
+    """Optional consent-screen branding URIs for Dynamic Client Registration."""
+
+    client_uri: AnyHttpUrl
+    logo_uri: AnyHttpUrl
+    tos_uri: AnyHttpUrl
+    policy_uri: AnyHttpUrl
 
 
 class DCRNotSupportedException(Exception):
@@ -162,8 +191,23 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
 _BG_TASKS: set[asyncio.Task] = set()
 
 
+async def _with_wide_event(coro: Any, label: str) -> None:
+    """Run a background coroutine inside its own wide event boundary.
+
+    Detached tasks escape the request's logging middleware, so without this
+    every ``log.set()`` they make (mcp_connect, mcp_connect_error, mcp_reconnect)
+    would be discarded. ``log_context`` binds a fresh accumulator and flushes a
+    canonical ``background_task`` line on exit so those fields reach Loki.
+    """
+    async with log_context(f"mcp:{label}"):
+        await coro
+
+
 def _spawn_background(coro: Any, label: str) -> asyncio.Task | None:
     """Spawn a fire-and-forget task that survives until completion.
+
+    The coroutine runs inside a wide event boundary so its ``log.set()`` fields
+    are emitted — a detached task has no HTTP middleware to flush them.
 
     Returns None if there is no running event loop (e.g., test contexts where
     the caller will await inline instead).
@@ -173,7 +217,7 @@ def _spawn_background(coro: Any, label: str) -> asyncio.Task | None:
     except RuntimeError:
         return None
 
-    task = loop.create_task(coro, name=f"mcp:{label}")
+    task = loop.create_task(_with_wide_event(coro, label), name=f"mcp:{label}")
     _BG_TASKS.add(task)
 
     def _on_done(t: asyncio.Task) -> None:
@@ -260,7 +304,7 @@ class MCPClient:
         integration_id: str,
         mcp_config: MCPConfig,
         challenge_data: dict | None = None,
-    ) -> dict:
+    ) -> OAuthDiscovery:
         """Full MCP OAuth discovery flow per specification."""
         return await discover_oauth_config(
             self.token_store, integration_id, mcp_config, challenge_data
@@ -348,6 +392,17 @@ class MCPClient:
                 f"[{integration_id}] _build_config: no auth required, connecting unauthenticated"
             )
             server_config["auth"] = None
+
+        # Composio's hosted MCP gateway authenticates the calling platform via an
+        # x-api-key header (GAIA's COMPOSIO_KEY), not per-user OAuth/bearer. Without
+        # it these servers reject the request with a bare 401. requires_auth stays
+        # False because there is no user credential — this is a platform key.
+        if (
+            mcp_config.server_url
+            and COMPOSIO_MCP_HOST in mcp_config.server_url
+            and settings.COMPOSIO_KEY
+        ):
+            server_config.setdefault("headers", {})["x-api-key"] = settings.COMPOSIO_KEY
 
         return {"mcpServers": {integration_id: server_config}}
 
@@ -886,6 +941,7 @@ class MCPClient:
                         name=resolved_name,
                         description=resolved_description or "",
                         server_url=server_url,
+                        tools=tools,
                     )
                     log.info(
                         f"Indexed custom MCP {integration_id} ({resolved_name}) "
@@ -921,6 +977,7 @@ class MCPClient:
         redirect_uri: str,
         redirect_path: str = "/integrations",
         challenge_data: dict | None = None,
+        excluded_scopes: set[str] | None = None,
     ) -> str:
         """
         Build OAuth authorization URL using MCP spec discovery.
@@ -972,7 +1029,7 @@ class MCPClient:
             api_base = get_api_base_url()
             is_localhost = is_localhost_url(api_base)
 
-            if oauth_config.get("client_id_metadata_document_supported") and not is_localhost:
+            if oauth_config.as_metadata.client_id_metadata_document_supported and not is_localhost:
                 client_id = get_client_metadata_document_url(api_base)
                 log.info(
                     f"Using client metadata document URL as client_id for {integration_id}: {client_id}"
@@ -980,10 +1037,10 @@ class MCPClient:
             # Priority 4: Fall back to Dynamic Client Registration (DCR).
             # Also required when running locally since the auth server
             # cannot reach localhost to validate the client metadata document.
-            elif oauth_config.get("registration_endpoint"):
+            elif oauth_config.as_metadata.registration_endpoint:
                 client_id = await self._register_client(
                     integration_id,
-                    oauth_config["registration_endpoint"],
+                    oauth_config.as_metadata,
                     redirect_uri,
                 )
                 log.info(f"Registered new client via DCR for {integration_id}")
@@ -999,32 +1056,33 @@ class MCPClient:
         log.info(f"[{integration_id}] client_id resolved for auth URL")
 
         # Verify PKCE support per MCP spec using centralized validation
-        validate_pkce_support(oauth_config, integration_id)
+        validate_pkce_support(oauth_config.as_metadata, integration_id)
 
         # Generate PKCE pair (required for OAuth 2.1)
-        code_verifier, code_challenge = generate_pkce_pair()
+        pkce = PKCEParameters.generate()
 
         # Create OAuth state (stores code_verifier for token exchange)
-        state = await self.token_store.create_oauth_state(integration_id, code_verifier)
+        state = await self.token_store.create_oauth_state(integration_id, pkce.code_verifier)
         state_data = f"{state}:{integration_id}:{redirect_path}"
 
         # Build authorization URL
-        auth_endpoint = oauth_config.get("authorization_endpoint")
-        if not auth_endpoint:
-            raise ValueError(f"No authorization_endpoint discovered for {integration_id}")
+        auth_endpoint = str(oauth_config.as_metadata.authorization_endpoint)
 
-        # Scope selection per MCP spec:
-        # 1. Use scope from WWW-Authenticate header (initial_scope) - takes priority
-        # 2. Fall back to configured scopes
-        # 3. Fall back to scopes_supported from discovery
-        scope_str = ""
-        if oauth_config.get("initial_scope"):
-            # Scope from 401 WWW-Authenticate (priority per spec)
-            scope_str = oauth_config["initial_scope"]
-        elif mcp_config.oauth_scopes:
+        # Scope selection per MCP spec (SDK helper: WWW-Authenticate scope >
+        # PRM scopes_supported > AS scopes_supported). A configured override
+        # (mcp_config.oauth_scopes) wins when the server didn't dictate a scope
+        # via the 401 challenge — GAIA-specific behavior the SDK doesn't cover.
+        if not oauth_config.initial_scope and mcp_config.oauth_scopes:
             scope_str = " ".join(mcp_config.oauth_scopes)
-        elif oauth_config.get("scopes_supported"):
-            scope_str = " ".join(oauth_config["scopes_supported"])
+        else:
+            scope_str = (
+                get_client_metadata_scopes(
+                    oauth_config.initial_scope,
+                    oauth_config.prm,
+                    oauth_config.as_metadata,
+                )
+                or ""
+            )
 
         # Inject offline_access if the server supports it and it's not already present.
         # This is the key to "connect once, stay forever" — without it many OAuth servers
@@ -1032,23 +1090,36 @@ class MCPClient:
         # offline_access tells the server: issue a long-lived refresh token for background use.
         # We only add it when the server advertises support to avoid breaking servers that
         # reject unknown scopes.
-        scopes_supported = oauth_config.get("scopes_supported", [])
+        scopes_supported = oauth_config.scopes_supported
         scope_parts = scope_str.split() if scope_str else []
         if "offline_access" in scopes_supported and "offline_access" not in scope_parts:
             scope_parts.append("offline_access")
-            scope_str = " ".join(scope_parts)
             log.info(f"[{integration_id}] Added offline_access scope for long-lived refresh token")
+
+        # Drop scopes the auth server previously rejected with invalid_scope so a
+        # re-authorization retry can converge. Some servers advertise scopes in
+        # their metadata (e.g. agentmail's "user:org:read") that a dynamically
+        # registered client is not actually permitted to request.
+        if excluded_scopes:
+            dropped = [s for s in scope_parts if s in excluded_scopes]
+            if dropped:
+                scope_parts = [s for s in scope_parts if s not in excluded_scopes]
+                log.info(
+                    f"[{integration_id}] Dropping previously-rejected scopes on retry: {dropped}"
+                )
+
+        scope_str = " ".join(scope_parts)
 
         # Get resource URL for token binding (RFC 8707)
         # This ensures the token is bound to the specific MCP server
-        resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
+        resource = oauth_config.resource
 
         params = {
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
             "state": state_data,
-            "code_challenge": code_challenge,
+            "code_challenge": pkce.code_challenge,
             "code_challenge_method": "S256",
             "resource": resource,  # CRITICAL: Binds token to MCP server (RFC 8707)
         }
@@ -1065,8 +1136,37 @@ class MCPClient:
 
         return f"{auth_endpoint}?{urllib.parse.urlencode(params)}"
 
+    async def build_scope_retry_url(
+        self,
+        integration_id: str,
+        error_description: str | None,
+        redirect_uri: str,
+        redirect_path: str,
+    ) -> str | None:
+        """Re-issue the authorization URL after an ``invalid_scope`` rejection.
+
+        Some auth servers advertise scopes in their metadata that a dynamically
+        registered client cannot actually request. We drop the rejected scope(s)
+        and rebuild the URL — retrying only when a genuinely new scope was named
+        (so the loop converges) and bounding the total drops.
+
+        Returns the new authorization URL, or None when retrying would not help.
+        """
+        rejected = parse_rejected_scopes(error_description)
+        excluded = await self.token_store.get_excluded_scopes(integration_id)
+        if not rejected - excluded or len(excluded) >= MAX_OAUTH_INVALID_SCOPE_DROPS:
+            return None
+
+        excluded = await self.token_store.add_excluded_scopes(integration_id, rejected)
+        log.info(
+            f"[{integration_id}] invalid_scope — retrying authorization without {sorted(excluded)}"
+        )
+        return await self.build_oauth_auth_url(
+            integration_id, redirect_uri, redirect_path, excluded_scopes=excluded
+        )
+
     async def _register_client(
-        self, integration_id: str, registration_endpoint: str, redirect_uri: str
+        self, integration_id: str, as_metadata: OAuthMetadata, redirect_uri: str
     ) -> str | None:
         """
         Perform Dynamic Client Registration (RFC 7591) on the authorization server.
@@ -1075,33 +1175,54 @@ class MCPClient:
             DCRNotSupportedException: If server returns 403/404/405 (DCR not supported)
             ValueError: For other registration failures
         """
+        registration_endpoint = str(as_metadata.registration_endpoint)
+        # Branding rendered on the third-party consent screen the user authorizes.
+        # These URIs are optional cosmetics; RFC 7591 servers (e.g. Clerk-backed
+        # ones like granola) reject non-HTTPS branding URIs with
+        # 400 invalid_client_metadata, so only send them when the frontend is
+        # served over HTTPS. The redirect_uri itself may stay http://localhost.
+        frontend = get_frontend_url()
+        branding: _ClientBranding = {}
+        if frontend.startswith("https://"):
+            branding = {
+                "client_uri": AnyHttpUrl(frontend),
+                "logo_uri": AnyHttpUrl(f"{frontend}{GAIA_OAUTH_LOGO_PATH}"),
+                "tos_uri": AnyHttpUrl(f"{frontend}{GAIA_OAUTH_TOS_PATH}"),
+                "policy_uri": AnyHttpUrl(f"{frontend}{GAIA_OAUTH_PRIVACY_PATH}"),
+            }
+        client_metadata = OAuthClientMetadata(
+            client_name=GAIA_OAUTH_CLIENT_NAME,
+            redirect_uris=[AnyUrl(redirect_uri)],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+            token_endpoint_auth_method="none",  # nosec B106 - OAuth spec literal, not a secret
+            **branding,
+        )
+        request = create_client_registration_request(
+            as_metadata, client_metadata, registration_endpoint
+        )
         try:
             async with httpx.AsyncClient() as http_client:
-                response = await http_client.post(
-                    registration_endpoint,
-                    json={
-                        "client_name": "GAIA",
-                        "redirect_uris": [redirect_uri],
-                        "grant_types": ["authorization_code", "refresh_token"],
-                        "response_types": ["code"],
-                        "token_endpoint_auth_method": "none",  # nosec B105 - OAuth spec requires literal "none"
-                    },
-                    headers={"MCP-Protocol-Version": MCP_PROTOCOL_VERSION},
-                    timeout=30,
-                )
+                response = await http_client.send(request)
 
-                # Check for DCR not supported (403/404/405)
+                # Check for DCR not supported (403/404/405) before the SDK parser,
+                # which would otherwise raise a generic OAuthRegistrationError and
+                # lose the "pre-registration required" signal the caller acts on.
                 if response.status_code in (403, 404, 405):
                     raise DCRNotSupportedException(
                         f"DCR not supported at {registration_endpoint} "
                         f"(status {response.status_code}). Pre-registration required."
                     )
 
-                response.raise_for_status()
-                dcr_data = response.json()
-                await self.token_store.store_dcr_client(integration_id, dcr_data)
+                # Parse + validate the RFC 7591 response via the SDK, symmetric with
+                # create_client_registration_request above — keeps DCR handling
+                # spec-aligned in one place instead of hand-rolling status/body checks.
+                client_info = await handle_registration_response(response)
+                await self.token_store.store_dcr_client(
+                    integration_id, client_info.model_dump(mode="json", exclude_none=True)
+                )
                 log.info(f"DCR successful for {integration_id} at {registration_endpoint}")
-                return dcr_data.get("client_id")
+                return client_info.client_id
         except DCRNotSupportedException:
             raise  # Re-raise without wrapping
         except Exception as e:
@@ -1138,10 +1259,7 @@ class MCPClient:
 
         # Get OAuth config (should be cached from build_oauth_auth_url)
         oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
-        token_endpoint = oauth_config.get("token_endpoint")
-
-        if not token_endpoint:
-            raise ValueError(f"No token_endpoint for {integration_id}")
+        token_endpoint = str(oauth_config.as_metadata.token_endpoint)
 
         # Validate token endpoint uses HTTPS
         try:
@@ -1177,7 +1295,7 @@ class MCPClient:
         if not client_id:
             api_base = get_api_base_url()
             is_localhost = is_localhost_url(api_base)
-            if oauth_config.get("client_id_metadata_document_supported") and not is_localhost:
+            if oauth_config.as_metadata.client_id_metadata_document_supported and not is_localhost:
                 client_id = get_client_metadata_document_url(api_base)
                 log.info(
                     f"Using client metadata document URL as client_id "
@@ -1198,7 +1316,7 @@ class MCPClient:
         )
 
         # Get resource for token binding (RFC 8707)
-        resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
+        resource = oauth_config.resource
 
         # Exchange code for tokens
         async with httpx.AsyncClient() as http_client:
@@ -1246,16 +1364,16 @@ class MCPClient:
 
             tokens = response.json()
 
-        # Validate token response per OAuth 2.1 spec
-        validate_token_response(tokens, integration_id)
-        access_token = tokens["access_token"]
+        # Parse + validate the token response (OAuthToken requires access_token
+        # and normalizes/validates token_type as Bearer per OAuth 2.1).
+        token = OAuthToken.model_validate(tokens)
+        access_token = token.access_token
 
         # Validate JWT issuer if applicable
-        issuer = oauth_config.get("issuer")
-        if issuer:
-            if not validate_jwt_issuer(access_token, issuer, integration_id):
-                log.warning(f"JWT issuer validation failed for {integration_id}")
-                # Continue anyway - some tokens are opaque, not JWTs
+        issuer = str(oauth_config.as_metadata.issuer)
+        if not validate_jwt_issuer(access_token, issuer, integration_id):
+            log.warning(f"JWT issuer validation failed for {integration_id}")
+            # Continue anyway - some tokens are opaque, not JWTs
 
         # Validate OIDC nonce if one was stored during auth URL build
         stored_nonce = await self.token_store.get_and_delete_oauth_nonce(integration_id)
@@ -1283,13 +1401,10 @@ class MCPClient:
             else:
                 log.warning(f"OIDC nonce stored but no id_token in response for {integration_id}")
 
-        # Calculate expiry time if provided
-        expires_at = None
-        if tokens.get("expires_in"):
-            expires_at = datetime.now(UTC) + timedelta(seconds=tokens["expires_in"])
+        expires_at = oauth_token_expiry(token.expires_in)
 
         # Handle refresh token rotation (new refresh_token may be issued)
-        new_refresh_token = tokens.get("refresh_token")
+        new_refresh_token = token.refresh_token
 
         log.info(
             f"[{integration_id}] OAuth callback - token exchange successful. "
@@ -1634,10 +1749,14 @@ class MCPClient:
         return raw
 
     async def _get_session_for_server(self, server_url: str) -> Any:
-        """Resolve and return an active session for the given server URL.
+        """Resolve the underlying official MCP ``ClientSession`` for ``server_url``.
+
+        Returns the SDK session beneath mcp_use's wrapper so resource/prompt calls
+        yield typed ``*Result`` models — mcp_use's convenience session returns bare
+        lists for list ops and has no ``list_resource_templates`` at all.
 
         Raises:
-            ValueError: If no connected integration matches or session unavailable.
+            ValueError: If no connected integration matches or the session is unavailable.
         """
         matching_integration_id = await self._find_integration_id_by_server_url(server_url)
         if matching_integration_id is None:
@@ -1648,7 +1767,10 @@ class MCPClient:
             raise ValueError(
                 f"MCP integration {matching_integration_id} is not connected in memory"
             )
-        return client.get_session(matching_integration_id)
+        client_session = client.get_session(matching_integration_id).connector.client_session
+        if client_session is None:
+            raise ValueError(f"MCP integration {matching_integration_id} has no active session")
+        return client_session
 
     async def list_resources_on_server(
         self,
@@ -1657,13 +1779,8 @@ class MCPClient:
     ) -> dict[str, Any]:
         """List resources on an MCP server identified by server_url."""
         session = await self._get_session_for_server(server_url)
-        kwargs: dict[str, Any] = {}
-        if cursor is not None:
-            kwargs["cursor"] = cursor
-        result = await session.list_resources(**kwargs)
-        if hasattr(result, "model_dump"):
-            return result.model_dump()
-        return dict(result)
+        result = await session.list_resources(cursor=cursor)
+        return result.model_dump(mode="json", by_alias=True)
 
     async def list_resource_templates_on_server(
         self,
@@ -1672,13 +1789,8 @@ class MCPClient:
     ) -> dict[str, Any]:
         """List resource templates on an MCP server identified by server_url."""
         session = await self._get_session_for_server(server_url)
-        kwargs: dict[str, Any] = {}
-        if cursor is not None:
-            kwargs["cursor"] = cursor
-        result = await session.list_resource_templates(**kwargs)
-        if hasattr(result, "model_dump"):
-            return result.model_dump()
-        return dict(result)
+        result = await session.list_resource_templates(cursor=cursor)
+        return result.model_dump(mode="json", by_alias=True)
 
     async def read_resource_on_server(
         self,
@@ -1687,10 +1799,8 @@ class MCPClient:
     ) -> dict[str, Any]:
         """Read a resource on an MCP server identified by server_url."""
         session = await self._get_session_for_server(server_url)
-        result = await session.read_resource(uri)
-        if hasattr(result, "model_dump"):
-            return result.model_dump()
-        return dict(result)
+        result = await session.read_resource(AnyUrl(uri))
+        return result.model_dump(mode="json", by_alias=True)
 
     async def list_prompts_on_server(
         self,
@@ -1699,13 +1809,8 @@ class MCPClient:
     ) -> dict[str, Any]:
         """List prompts on an MCP server identified by server_url."""
         session = await self._get_session_for_server(server_url)
-        kwargs: dict[str, Any] = {}
-        if cursor is not None:
-            kwargs["cursor"] = cursor
-        result = await session.list_prompts(**kwargs)
-        if hasattr(result, "model_dump"):
-            return result.model_dump()
-        return dict(result)
+        result = await session.list_prompts(cursor=cursor)
+        return result.model_dump(mode="json", by_alias=True)
 
     async def read_ui_resource_details(
         self, server_url: str, resource_uri: str

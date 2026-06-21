@@ -325,12 +325,56 @@ def absorb_collector_event(
         tid, val = out.get("tool_call_id"), out.get("output")
         if tid and val:
             tool_outputs[tid] = val
+    if "reasoning" in evt:
+        _absorb_reasoning(evt["reasoning"], accumulated["tool_data"])
     if "subagent_start" in evt:
         sid = evt["subagent_start"]["subagent_id"]
         accumulated.setdefault("subagent_starts", {})[sid] = evt["subagent_start"]
     if "subagent_end" in evt:
         sid = evt["subagent_end"]["subagent_id"]
         accumulated.setdefault("subagent_ends", {})[sid] = evt["subagent_end"]
+
+
+def _absorb_reasoning(reasoning: dict[str, Any], tool_data: list[dict[str, Any]]) -> None:
+    """Persist a streamed thinking delta into tool_data as a reasoning step.
+
+    Mirrors the frontend (streamHandlers.handleReasoning): a reasoning step rides a
+    ``tool_calls_data`` entry so it persists + renders alongside tool calls; the
+    ``subagent_id`` tag lets reconstruct_subagent_groups nest subagent thinking.
+    Consecutive deltas for the same scope merge into one block that breaks at each
+    tool call (so thinking shows per-step, not as hundreds of fragments).
+    """
+    content = reasoning.get("content")
+    if not content:
+        return
+    subagent_id = reasoning.get("subagent_id")
+    # `data` is a SINGLE step dict (not a list): reconstruct_subagent_groups appends
+    # a subagent entry's `data` straight into tool_calls, and bucketToolData wraps a
+    # single dict on the frontend — a list here would nest a tool_call with no
+    # tool_name and crash the renderer.
+    last = tool_data[-1] if tool_data else None
+    if (
+        last is not None
+        and last.get("tool_name") == "tool_calls_data"
+        and last.get("subagent_id") == subagent_id
+        and isinstance(last.get("data"), dict)
+        and last["data"].get("reasoning") is not None
+    ):
+        last["data"]["reasoning"] += content
+        return
+    entry: dict[str, Any] = {
+        "tool_name": "tool_calls_data",
+        "tool_category": "reasoning",
+        "data": {
+            "tool_name": "reasoning",
+            "tool_category": "reasoning",
+            "message": "",
+            "reasoning": content,
+        },
+    }
+    if subagent_id:
+        entry["subagent_id"] = subagent_id
+    tool_data.append(entry)
 
 
 def apply_outputs_to_tool_data(
