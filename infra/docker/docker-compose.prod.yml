@@ -102,7 +102,7 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-        max_attempts: 3
+        # No max_attempts: a crash/OOM loop must self-heal, not park at 0/N.
       resources:
         limits:
           memory: 4G
@@ -146,10 +146,13 @@ services:
         aliases:
           - arq_worker
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('redis', 6379), timeout=5)"]
+      # arq --check fails when the poll loop stops refreshing its health key (a
+      # wedged worker); the old Redis-socket probe passed even when frozen.
+      test: ["CMD", "arq", "app.worker.WorkerSettings", "--check"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
+      start_period: 120s
     deploy:
       replicas: 1
       update_config:
@@ -165,7 +168,7 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-        max_attempts: 3
+        # No max_attempts: a wedged/crashed worker must self-heal, not park at 0/1.
       resources:
         limits:
           memory: 2G
@@ -884,7 +887,7 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-        max_attempts: 3
+        # No max_attempts: a crash/OOM loop must self-heal, not park at 0/N.
       resources:
         limits:
           # VAD + turn-detector models live in each forked job process.
