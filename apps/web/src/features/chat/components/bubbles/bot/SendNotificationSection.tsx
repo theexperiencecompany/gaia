@@ -26,7 +26,7 @@ export default function SendNotificationSection({
       <div className="flex items-center gap-3 rounded-[22px] bg-zinc-800 p-3.5 shadow-2xl shadow-black/40">
         {isDelivered ? (
           <div className="flex shrink-0 -space-x-2">
-            {delivered_channels.map((channel) => {
+            {delivered_channels.map((channel, index) => {
               const icon = NOTIFICATION_CHANNEL_ICONS[channel];
               const label = NOTIFICATION_CHANNEL_LABELS[channel] ?? channel;
               if (!icon) return null;
@@ -38,7 +38,7 @@ export default function SendNotificationSection({
                   title={label}
                   width={44}
                   height={44}
-                  className="size-11 rounded-xl ring-2 ring-zinc-800"
+                  className={`size-11 ${index % 2 === 0 ? "rotate-3" : "-rotate-3"}`}
                 />
               );
             })}

@@ -109,6 +109,7 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
         disable_retrieve_tools=config.disable_retrieve_tools,
         auto_bind_tools=config.auto_bind_tools,
         include_finish_task=config.include_finish_task,
+        source_label=subagent.name,
     )
 
     log.info(f"Subagent {config.agent_name} created successfully")
@@ -192,6 +193,7 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
         auto_bind_tools=config.auto_bind_tools,
         include_finish_task=config.include_finish_task,
         mcp_tools=tools,
+        source_label=subagent.name,
     )
 
     log.info(f"User-specific subagent {config.agent_name} created successfully")
@@ -253,6 +255,7 @@ async def _create_custom_mcp_subagent(
         use_direct_tools=use_direct,
         disable_retrieve_tools=use_direct,
         mcp_tools=tools,
+        source_label=custom_doc.get("name"),
     )
 
     log.info(f"Custom MCP subagent {agent_name} created successfully")
