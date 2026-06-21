@@ -19,7 +19,7 @@ export default function MemoryJournalCard() {
 
   return (
     <div ref={ref} className="flex h-full flex-col gap-2">
-      <div className="flex flex-1 flex-col rounded-2xl bg-zinc-900 p-4">
+      <div className="flex flex-1 flex-col rounded-2xl bg-zinc-900 p-3 sm:p-4">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar01Icon className="size-4 text-zinc-400" />
@@ -55,7 +55,7 @@ export default function MemoryJournalCard() {
       </div>
 
       <m.div
-        className="rounded-2xl bg-zinc-900 p-3"
+        className="rounded-2xl bg-zinc-900 p-2 sm:p-3"
         initial={{ opacity: 0, y: 12 }}
         animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 }}
         transition={{ duration: 0.35, ease, delay: 0.8 }}

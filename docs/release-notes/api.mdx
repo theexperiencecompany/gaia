@@ -4,6 +4,27 @@ description: "Version history and changelog for the GAIA API backend, including 
 icon: "server"
 ---
 
+<Update label="Jun 21, 2026" description="API, Web, Desktop, Mobile, Bots">
+
+## [API v0.20.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.20.0)
+
+### Features
+
+- **Real-Time Voice Mode**: Talk to GAIA in a live, full-duplex call powered by LiveKit. A dedicated voice worker bridges your audio to the same agent that runs text chat, so voice has the full toolset — GAIA acknowledges right away, then narrates the answer as it works.
+- **Smarter Paid Model**: Paid plans now run on MiniMax M3 (free plans stay on Gemini), with reasoning enabled and provider routing hardened so tool calls and long answers stay reliable.
+- **Model Thinking in Chat**: GAIA streams its reasoning alongside each step and shows it as a collapsible Thinking row inside the tool card, so you can see how it reached an answer.
+- **User Skills in Settings**: Create, edit, and manage your own skills from a dedicated settings page.
+
+### Bug Fixes
+
+- **MCP Connections**: Migrated OAuth to the official SDK with more reliable auth detection, dynamic registration, and a smoother post-connect flow, plus repaired marketplace data.
+- **Integrations**: Unified per-user cache invalidation so connected integrations are discovered consistently by the agent.
+- **Agent Reliability**: Clearer agent prompting for more reliable generated UI and result surfacing, with subagent conversation history now persisted across turns.
+- **Code Sandbox**: Repaired the sandbox lifecycle and native files API, and hardened the coding tools.
+- **Background Worker**: The ARQ worker now rides out JuiceFS stalls instead of wedging, and the embedding sidecar uses less memory.
+
+</Update>
+
 <Update label="Jun 14, 2026" description="API, Web, CLI">
 
 ## [API v0.19.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.19.0)

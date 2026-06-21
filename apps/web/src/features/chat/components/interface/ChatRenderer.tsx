@@ -1,5 +1,6 @@
 "use client";
 
+import { TOOL_CALLS_DATA_TOOL_NAME } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import nextDynamic from "next/dynamic";
@@ -13,7 +14,6 @@ import {
   useRef,
   useState,
 } from "react";
-
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
@@ -320,7 +320,7 @@ export default function ChatRenderer({
       const deduplicatedToolData = message.tool_data
         .map((entry) => {
           // Only deduplicate tool_calls_data entries
-          if (entry.tool_name !== "tool_calls_data") {
+          if (entry.tool_name !== TOOL_CALLS_DATA_TOOL_NAME) {
             return entry;
           }
 

@@ -162,7 +162,12 @@ async def bash(
         str,
         "Working directory; defaults to your session root (holds artifacts/, scratch/, user-uploaded/)",
     ] = "",
-    timeout: Annotated[int, "Seconds before kill"] = BASH_DEFAULT_TIMEOUT_SECONDS,
+    # Agent-facing tool parameter: the e2b server-side command deadline (see
+    # _run_foreground). A local asyncio.timeout context manager can't replace it
+    # — it would cancel our coroutine without killing the remote command.
+    timeout: Annotated[
+        int, "Seconds before kill"
+    ] = BASH_DEFAULT_TIMEOUT_SECONDS,  # NOSONAR python:S7483
     background: Annotated[bool, "Run detached; returns pid + log path"] = False,
 ) -> str:
     """Run a shell command in the user's persistent coding sandbox."""

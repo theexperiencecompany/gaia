@@ -8,13 +8,14 @@ oauth_service.py and integration_service.py.
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
 from app.db.mongodb.collections import user_integrations_collection
 from app.decorators.caching import CacheInvalidator
 from app.services.integrations_fs import schedule_user_integrations_sync
 from shared.py.wide_events import log
 
 
-@CacheInvalidator(key_patterns=["tools:user:{user_id}:*", "tool_namespaces:{user_id}"])
+@CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)
 async def update_user_integration_status(
     user_id: str,
     integration_id: str,

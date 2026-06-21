@@ -38,7 +38,7 @@ def test_containment_is_workspace_wide_not_session_scoped() -> None:
     # This test exists so that behavior isn't later "fixed" as a vulnerability.
     up, _, _ = canonical_path("..", session_id="c1")
     assert up == "/workspace/sessions"
-    other, role, conv = canonical_path("../other/scratch/x", session_id="c1")
+    other, _, conv = canonical_path("../other/scratch/x", session_id="c1")
     assert other == "/workspace/sessions/other/scratch/x"
     assert conv == "other"  # cross-session within the same user is allowed
 

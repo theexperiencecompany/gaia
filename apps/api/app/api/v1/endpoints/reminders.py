@@ -2,6 +2,8 @@
 FastAPI endpoints for reminder management.
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
 from app.api.v1.dependencies.oauth_dependencies import (
@@ -26,8 +28,8 @@ router = APIRouter(prefix="/reminders", tags=["reminders"])
 @tiered_rate_limit("reminder_operations")
 async def create_reminder_endpoint(
     reminder_data: CreateReminderRequest,
+    user_timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
     user: dict = Depends(get_current_user),
-    user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """
     Create a new reminder.

@@ -40,7 +40,7 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.constants.executor import VOICE_TTS_KEY
+from app.constants.executor import MESSAGE_ID_KEY, VOICE_TTS_KEY
 from app.core.stream_manager import StreamManager
 from app.utils.agent_utils import format_sse_data
 from shared.py.wide_events import log
@@ -87,6 +87,9 @@ async def _execute_executor(
     Tool events stream to the session's collector via make_redis_stream_writer
     so the terminal path can persist the executor's tool_data. Never raises —
     errors come back as ("...", "error").
+
+    The executor inherits the comms agent's model/provider/reasoning from
+    ``configurable`` (free -> Gemini, paid -> MiniMax M3), so no override here.
     """
     try:
         ctx, error = await prepare_executor_execution(
@@ -165,18 +168,25 @@ async def _deliver_terminal_outcome(
                 stream_id=run.stream_id,
             )
     elif result_text:
-        notification_text = await deliver_result(run, result_text, result_type, returned_note)
-        await _publish_voice_tts(run.stream_id, notification_text)
+        notification_text, message_id = await deliver_result(
+            run, result_text, result_type, returned_note
+        )
+        await _publish_voice_tts(run.stream_id, notification_text, message_id)
 
 
-async def _publish_voice_tts(stream_id: str, notification_text: str | None) -> None:
-    """Speak the narrated answer on a voice-mode stream.
+async def _publish_voice_tts(
+    stream_id: str, notification_text: str | None, message_id: str | None
+) -> None:
+    """Push the narrated answer on a voice-mode stream so the agent can speak it
+    AND bubble it.
 
-    Voice mode pushes the comms-narrated answer back through the SSE channel so
-    the voice agent speaks it. The frontend still renders it from the WebSocket
-    push delivered by ``deliver_result``, so this is TTS-only (never forwarded to
-    the UI). Only live streams are ever marked voice mode, so queued/workflow
-    runs never reach here with ``session.voice_mode`` set.
+    The frame carries the saved message's ``message_id`` so the voice agent can
+    forward it as a display frame keyed by that id: the bubble then renders
+    immediately off the data channel instead of waiting on the separate
+    WebSocket push from ``deliver_result``, and that same WebSocket message
+    (identical id) reconciles in place rather than duplicating. Only live
+    streams are ever marked voice mode, so queued/workflow runs never reach here
+    with ``session.voice_mode`` set.
     """
     if not notification_text:
         return
@@ -184,7 +194,7 @@ async def _publish_voice_tts(stream_id: str, notification_text: str | None) -> N
     if session is not None and session.voice_mode:
         await StreamManager.publish_chunk(
             stream_id,
-            format_sse_data({VOICE_TTS_KEY: notification_text}),
+            format_sse_data({VOICE_TTS_KEY: notification_text, MESSAGE_ID_KEY: message_id}),
         )
 
 

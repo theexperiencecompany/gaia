@@ -18,11 +18,19 @@ import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import { appConfig } from "@/config/appConfig";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import {
+  type DesktopArch,
+  type DesktopOS,
   GITHUB_RELEASES_BASE,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
 
-type MacChipOption = "intel" | "m-series";
+const DESKTOP_OSES: DesktopOS[] = ["mac", "windows", "linux"];
+
+const OS_META: Record<DesktopOS, { name: string; icon: string }> = {
+  mac: { name: "macOS", icon: "/images/icons/apple.svg" },
+  windows: { name: "Windows", icon: "/images/icons/windows.svg" },
+  linux: { name: "Linux", icon: "/images/icons/linux.svg" },
+};
 
 // Reusable section layout component
 interface DownloadSectionLayoutProps {
@@ -59,7 +67,7 @@ function DownloadSectionLayout({
   };
 
   return (
-    <section className="relative z-10 w-full max-w-5xl py-16">
+    <section className="relative z-10 w-full max-w-5xl px-4 sm:px-6 py-16">
       <div className="grid grid-cols-1 items-center gap-8 md:grid-cols-2">
         {/* Image */}
         <div
@@ -94,123 +102,121 @@ function DownloadSectionLayout({
   );
 }
 
-function MacDownloadButton({ isPrimary = false }: { isPrimary?: boolean }) {
-  const { platformConfigs } = usePlatformDetection();
-  const [selectedOption, setSelectedOption] = useState<Set<MacChipOption>>(
-    new Set(["intel"]),
+// One download control for a desktop OS. Renders an arch chooser (x64 / ARM)
+// when more than one binary is published, a single button when only one is, a
+// loading state while the release resolves, and a releases-page fallback if the
+// lookup failed entirely — so a click always does something sensible.
+function DesktopDownloadButton({
+  os,
+  isPrimary = false,
+}: {
+  os: DesktopOS;
+  isPrimary?: boolean;
+}) {
+  const { desktopDownloads, detectedDesktop, isDesktopReleaseLoading } =
+    usePlatformDetection();
+  const [overrideArch, setOverrideArch] = useState<DesktopArch | null>(null);
+
+  const meta = OS_META[os];
+  const available = desktopDownloads[os].filter((v) => v.downloadUrl);
+  const buttonVariant = isPrimary ? undefined : ("flat" as const);
+  // Mac's apple.svg is dark; invert it on the light "flat" (secondary) buttons.
+  const invertIcon = os === "mac" && !isPrimary;
+
+  const icon = (
+    <div className="relative h-4 w-4">
+      <Image
+        src={meta.icon}
+        alt={meta.name}
+        fill
+        className={
+          invertIcon ? "object-contain filter invert" : "object-contain"
+        }
+      />
+    </div>
   );
 
-  const labelsMap: Record<MacChipOption, string> = {
-    intel: "Download for macOS Intel",
-    "m-series": "Download for M-series",
-  };
+  const baseLabel = isPrimary ? `Download for ${meta.name}` : meta.name;
 
-  const downloadUrlMap: Record<MacChipOption, string> = {
-    intel: platformConfigs["mac-intel"].downloadUrl || "#",
-    "m-series": platformConfigs["mac-arm"].downloadUrl || "#",
-  };
-
-  const selectedOptionValue = Array.from(selectedOption)[0] as MacChipOption;
-
-  if (!isPrimary) {
+  if (isDesktopReleaseLoading) {
     return (
-      <ButtonGroup>
-        <Button
-          as={Link}
-          href={downloadUrlMap[selectedOptionValue]}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="flat"
-          startContent={
-            <div className="relative h-4 w-4">
-              <Image
-                src="/images/icons/apple.svg"
-                alt="Apple"
-                fill
-                className="object-contain filter invert"
-              />
-            </div>
-          }
-        >
-          {selectedOptionValue === "intel" ? "macOS Intel" : "macOS M-series"}
-        </Button>
-        <Dropdown placement="bottom-end">
-          <DropdownTrigger>
-            <Button isIconOnly variant="flat">
-              <ChevronDown width={17} height={17} />
-            </Button>
-          </DropdownTrigger>
-          <DropdownMenu
-            disallowEmptySelection
-            aria-label="Mac chip options"
-            selectedKeys={selectedOption}
-            selectionMode="single"
-            onSelectionChange={(keys) =>
-              setSelectedOption(keys as Set<MacChipOption>)
-            }
-          >
-            <DropdownItem
-              key="intel"
-              description="For Macs with Intel processor"
-            >
-              Intel
-            </DropdownItem>
-            <DropdownItem
-              key="m-series"
-              description="For Macs with M1, M2, M3, or M4 chip"
-            >
-              Apple Silicon (M-series)
-            </DropdownItem>
-          </DropdownMenu>
-        </Dropdown>
-      </ButtonGroup>
+      <Button variant={buttonVariant} isLoading startContent={icon}>
+        {baseLabel}
+      </Button>
     );
+  }
+
+  if (available.length === 0) {
+    return (
+      <Button
+        as={Link}
+        href={GITHUB_RELEASES_BASE}
+        target="_blank"
+        rel="noopener noreferrer"
+        variant={buttonVariant}
+        startContent={icon}
+      >
+        {baseLabel}
+      </Button>
+    );
+  }
+
+  const defaultArch =
+    detectedDesktop?.os === os &&
+    available.some((v) => v.arch === detectedDesktop.arch)
+      ? detectedDesktop.arch
+      : available[0].arch;
+  const effectiveArch =
+    overrideArch && available.some((v) => v.arch === overrideArch)
+      ? overrideArch
+      : defaultArch;
+  const selected =
+    available.find((v) => v.arch === effectiveArch) ?? available[0];
+
+  // Surface the selected arch only when there's a real choice to make.
+  const label =
+    available.length > 1 ? `${baseLabel} (${selected.label})` : baseLabel;
+
+  const mainButton = (
+    <Button
+      as={Link}
+      href={selected.downloadUrl ?? "#"}
+      target="_blank"
+      rel="noopener noreferrer"
+      variant={buttonVariant}
+      startContent={icon}
+    >
+      {label}
+    </Button>
+  );
+
+  if (available.length === 1) {
+    return mainButton;
   }
 
   return (
     <ButtonGroup>
-      <Button
-        as={Link}
-        href={downloadUrlMap[selectedOptionValue]}
-        target="_blank"
-        rel="noopener noreferrer"
-        startContent={
-          <div className="relative h-4 w-4">
-            <Image
-              src="/images/icons/apple.svg"
-              alt="Apple"
-              fill
-              className="object-contain"
-            />
-          </div>
-        }
-      >
-        {labelsMap[selectedOptionValue]}
-      </Button>
+      {mainButton}
       <Dropdown placement="bottom-end">
         <DropdownTrigger>
-          <Button isIconOnly>
+          <Button isIconOnly variant={buttonVariant}>
             <ChevronDown width={17} height={17} />
           </Button>
         </DropdownTrigger>
         <DropdownMenu
           disallowEmptySelection
-          aria-label="Mac chip options"
-          selectedKeys={selectedOption}
+          aria-label={`${meta.name} architecture options`}
+          selectedKeys={new Set([effectiveArch])}
           selectionMode="single"
           onSelectionChange={(keys) =>
-            setSelectedOption(keys as Set<MacChipOption>)
+            setOverrideArch(Array.from(keys)[0] as DesktopArch)
           }
         >
-          <DropdownItem key="intel" description="For Macs with Intel processor">
-            Intel
-          </DropdownItem>
-          <DropdownItem
-            key="m-series"
-            description="For Macs with M1, M2, M3, or M4 chip"
-          >
-            Apple Silicon (M-series)
-          </DropdownItem>
+          {available.map((variant) => (
+            <DropdownItem key={variant.arch} description={variant.description}>
+              {variant.label}
+            </DropdownItem>
+          ))}
         </DropdownMenu>
       </Dropdown>
     </ButtonGroup>
@@ -218,114 +224,9 @@ function MacDownloadButton({ isPrimary = false }: { isPrimary?: boolean }) {
 }
 
 function DesktopSection() {
-  const { isMac, isWindows, isLinux, platformConfigs } = usePlatformDetection();
-
-  const renderPrimaryButton = () => {
-    if (isMac) return <MacDownloadButton isPrimary />;
-
-    if (isWindows) {
-      return (
-        <Button
-          as={Link}
-          href={platformConfigs["windows"].downloadUrl || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          startContent={
-            <div className="relative h-4 w-4">
-              <Image
-                src="/images/icons/windows.svg"
-                alt="Windows"
-                fill
-                className="object-contain"
-              />
-            </div>
-          }
-        >
-          Download for Windows
-        </Button>
-      );
-    }
-
-    if (isLinux)
-      return (
-        <Button
-          as={Link}
-          href={platformConfigs["linux"].downloadUrl || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          startContent={
-            <div className="relative h-4 w-4">
-              <Image
-                src="/images/icons/linux.svg"
-                alt="Linux"
-                fill
-                className="object-contain"
-              />
-            </div>
-          }
-        >
-          Download for Linux
-        </Button>
-      );
-
-    return <MacDownloadButton isPrimary />;
-  };
-
-  const renderSecondaryButtons = () => {
-    const buttons: ReactNode[] = [];
-
-    if (!isMac) buttons.push(<MacDownloadButton key="mac" />);
-
-    if (!isWindows)
-      buttons.push(
-        <Button
-          key="windows"
-          as={Link}
-          href={platformConfigs["windows"].downloadUrl || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="flat"
-          startContent={
-            <div className="relative h-4 w-4">
-              <Image
-                src="/images/icons/windows.svg"
-                alt="Windows"
-                fill
-                className="object-contain"
-              />
-            </div>
-          }
-        >
-          Windows
-        </Button>,
-      );
-
-    if (!isLinux)
-      buttons.push(
-        <Button
-          key="linux"
-          as={Link}
-          href={platformConfigs["linux"].downloadUrl || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="flat"
-          startContent={
-            <div className="relative h-4 w-4">
-              <Image
-                src="/images/icons/linux.svg"
-                alt="Linux"
-                fill
-                className="object-contain"
-              />
-            </div>
-          }
-        >
-          Linux
-        </Button>,
-      );
-
-    return buttons;
-  };
+  const { detectedDesktop } = usePlatformDetection();
+  const primaryOs: DesktopOS = detectedDesktop?.os ?? "mac";
+  const secondaryOses = DESKTOP_OSES.filter((os) => os !== primaryOs);
 
   return (
     <DownloadSectionLayout
@@ -343,9 +244,11 @@ function DesktopSection() {
       description="Get the native desktop experience with enhanced performance."
       actions={
         <div className="flex flex-col gap-3 justify-center items-center">
-          {renderPrimaryButton()}
+          <DesktopDownloadButton os={primaryOs} isPrimary />
           <div className="flex flex-wrap justify-center gap-2 md:justify-end">
-            {renderSecondaryButtons()}
+            {secondaryOses.map((os) => (
+              <DesktopDownloadButton key={os} os={os} />
+            ))}
           </div>
         </div>
       }
@@ -530,61 +433,10 @@ function DownloadCard({
   );
 }
 
-// Landing page variant - 2 column grid with Desktop and Mobile side by side
+// Landing page variant - 3 column grid with Desktop, Web and Mobile
 export function LandingDownloadSection() {
-  const { isMac, isWindows, isLinux, platformConfigs } = usePlatformDetection();
-
-  const renderPrimaryButton = () => {
-    if (isMac) return <MacDownloadButton isPrimary />;
-
-    if (isWindows) {
-      return (
-        <Button
-          as={Link}
-          href={platformConfigs["windows"].downloadUrl || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          startContent={
-            <div className="relative h-4 w-4">
-              <Image
-                src="/images/icons/windows.svg"
-                alt="Windows"
-                fill
-                className="object-contain"
-              />
-            </div>
-          }
-        >
-          Download for Windows
-        </Button>
-      );
-    }
-
-    if (isLinux)
-      return (
-        <Button
-          as={Link}
-          href={platformConfigs["linux"].downloadUrl || "#"}
-          target="_blank"
-          color="primary"
-          rel="noopener noreferrer"
-          startContent={
-            <div className="relative h-4 w-4">
-              <Image
-                src="/images/icons/linux.svg"
-                alt="Linux"
-                fill
-                className="object-contain"
-              />
-            </div>
-          }
-        >
-          Download for Linux
-        </Button>
-      );
-
-    return <MacDownloadButton isPrimary />;
-  };
+  const { detectedDesktop } = usePlatformDetection();
+  const primaryOs: DesktopOS = detectedDesktop?.os ?? "mac";
 
   return (
     <section className="relative z-10 mx-auto w-full px-4 sm:px-6 py-16 sm:py-24">
@@ -610,7 +462,7 @@ export function LandingDownloadSection() {
                 All platforms
                 <ArrowRight02Icon className="h-3 w-3" />
               </Link>
-              {renderPrimaryButton()}
+              <DesktopDownloadButton os={primaryOs} isPrimary />
             </>
           }
         />

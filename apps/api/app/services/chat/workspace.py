@@ -15,6 +15,7 @@ message in Mongo so the card persists with the conversation on server reload.
 """
 
 import asyncio
+from collections import deque
 import contextlib
 from datetime import UTC, datetime
 import json
@@ -223,8 +224,10 @@ def _warm_artifact_blocks(host_path: Path) -> None:
     """Read a file through the FUSE mount to pull its blocks into the JuiceFS
     local cache. Constant memory: chunks are read and discarded."""
     with host_path.open("rb") as fh:
-        while fh.read(_WARM_CHUNK_BYTES):
-            pass
+        # Drain the file in fixed-size chunks, discarding each: the read is the
+        # side effect (it pulls blocks into the JuiceFS cache), the bytes aren't
+        # kept. ``deque(maxlen=0)`` consumes the iterator without a loop body.
+        deque(iter(lambda: fh.read(_WARM_CHUNK_BYTES), b""), maxlen=0)
 
 
 async def _warm_artifact_cache(user_id: str, conversation_id: str, path: str) -> None:

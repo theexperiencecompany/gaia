@@ -145,6 +145,11 @@ export default function TextBubble({
       })}
 
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
+        // Gate on the CLEANED display text, not raw `text`: during a slow start
+        // the message can briefly hold non-visible content (thinking residue, a
+        // stray char) while the rendered text is still empty, which would flash
+        // an empty bubble + tail. No visible content → no bubble.
+        parsedContent.cleanText.trim().length > 0 &&
         (() => {
           // Use cleaned text without thinking tags
           const displayText = parsedContent.cleanText || "";
@@ -175,18 +180,31 @@ export default function TextBubble({
             </div>
           );
 
+          // Filter empty/whitespace-only parts up front so first/last/single
+          // reflect the *visible* list, not the array index. Without this, a
+          // single visible part sandwiched between blanks (e.g. trailing break,
+          // post-thinking residue) would lose its tail because `isLast` would
+          // point at a non-rendered entry. Animation delays use the visible
+          // index so blanks don't shift the stagger; the original index is kept
+          // for keys to preserve React identity across re-renders.
+          const visibleParts = textParts
+            .map((part, originalIndex) => ({ part, originalIndex }))
+            .filter(({ part }) => part.trim());
+
+          if (visibleParts.length === 0) return null;
+
           return (
             <div className="flex flex-col">
-              {textParts.map((part, index) => {
-                const isFirst = index === 0;
-                const isLast = index === textParts.length - 1;
-                const isSingle = textParts.length === 1;
+              {visibleParts.map(({ part, originalIndex }, visibleIndex) => {
+                const isFirst = visibleIndex === 0;
+                const isLast = visibleIndex === visibleParts.length - 1;
+                const isSingle = visibleParts.length === 1;
                 const segments = parseOpenUISegments(part, !!loading);
                 const hasOpenUI = segments.some((s) => s.type === "openui");
                 const partTransition = {
                   duration: MESSAGE_BREAK_DURATION_SECONDS,
                   ease: MESSAGE_BREAK_EASE_OUT_QUART,
-                  delay: index * MESSAGE_BREAK_STAGGER_SECONDS,
+                  delay: visibleIndex * MESSAGE_BREAK_STAGGER_SECONDS,
                 };
 
                 // ── Pure markdown part — normal iMessage bubble ──
@@ -221,8 +239,7 @@ export default function TextBubble({
 
                   return (
                     <m.div
-                      // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
-                      key={`${baseId}-text-part-${index}`}
+                      key={`${baseId}-text-part-${originalIndex}`}
                       className={`${bubbleClassName} ${groupedClasses}`}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -248,15 +265,14 @@ export default function TextBubble({
 
                 return (
                   <m.div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
-                    key={`${baseId}-text-part-${index}`}
+                    key={`${baseId}-text-part-${originalIndex}`}
                     className="flex flex-col"
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={partTransition}
                   >
                     {segments.map((seg, segIdx) => {
-                      const segKey = `${baseId}-seg-${index}-${segIdx}`;
+                      const segKey = `${baseId}-seg-${originalIndex}-${segIdx}`;
                       if (seg.type === "openui") {
                         return (
                           <OpenUIRenderer

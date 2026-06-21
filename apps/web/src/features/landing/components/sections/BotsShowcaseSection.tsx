@@ -643,7 +643,7 @@ function PhoneFrame({
       <IPhoneMockup
         screenBackground={platform.phone.screenBackground}
         statusBarTone={platform.phone.statusBarTone}
-        className="sm:scale-[1.1] sm:origin-top"
+        className="scale-[0.75] origin-top sm:scale-[1.1] sm:origin-top"
       >
         <AnimatePresence mode="wait" initial={false}>
           <m.div

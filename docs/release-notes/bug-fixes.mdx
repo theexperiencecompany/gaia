@@ -4,6 +4,33 @@ description: "A consolidated list of bug fixes shipped across all GAIA releases,
 icon: "bug"
 ---
 
+<Update label="Jun 21, 2026" description="API, Web, Desktop, Mobile, Bots">
+
+## [API v0.20.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.20.0)
+
+- **MCP Connections**: Migrated OAuth to the official SDK with more reliable auth detection, dynamic registration, and a smoother post-connect flow, plus repaired marketplace data.
+- **Integrations**: Unified per-user cache invalidation so connected integrations are discovered consistently by the agent.
+- **Agent Reliability**: Clearer agent prompting for more reliable generated UI and result surfacing, with subagent conversation history now persisted across turns.
+- **Code Sandbox**: Repaired the sandbox lifecycle and native files API, and hardened the coding tools.
+- **Background Worker**: The ARQ worker now rides out JuiceFS stalls instead of wedging, and the embedding sidecar uses less memory.
+
+## [Web v0.21.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.21.0)
+
+- **Smoother Streaming**: Reworked chat markdown rendering to remove per-token re-render lag and keep long, streaming answers fast.
+- **Reliable Retry**: Retrying a message now works without a page reload.
+- **Responsive Landing & Pricing**: Landing and pricing pages now lay out correctly on smaller screens.
+- **Desktop Downloads**: Download buttons resolve straight to the latest desktop release.
+
+## [Mobile v0.6.1](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.6.1)
+
+- **Agent Reliability**: Picked up the clearer agent prompting for more reliable generated UI and result surfacing.
+
+## [Bots v1.4.1](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.4.1)
+
+- **WhatsApp Delivery**: Falls back to a template message whenever a free-form send fails, so replies still get through.
+
+</Update>
+
 <Update label="Jun 13, 2026" description="API, Web, Mobile, Bots, CLI">
 
 ## [API v0.18.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.18.0)

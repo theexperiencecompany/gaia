@@ -217,6 +217,34 @@ export function useVoiceMessages(
     (event: Record<string, unknown>, cid: string) => {
       if (isNonRenderingEvent(event)) return;
 
+      // A delegated executor's final answer arrives as {response, message_id}:
+      // render it as its OWN bubble keyed by that message_id (not folded into
+      // the comms-ack turn). The backend's WebSocket conversation.new_message
+      // carries the same id, so it reconciles in place instead of duplicating —
+      // and the bubble shows off the data channel without waiting on that push.
+      const answerId = event.message_id;
+      if (
+        typeof answerId === "string" &&
+        answerId &&
+        typeof event.response === "string" &&
+        event.response
+      ) {
+        addOrUpdateMessage({
+          id: answerId,
+          conversationId: cid,
+          content: event.response,
+          role: "assistant",
+          status: "sent",
+          createdAt: nextCreatedAt(),
+          updatedAt: new Date(),
+          messageId: answerId,
+          tool_data: null,
+          follow_up_actions: null,
+          optimistic: true,
+        });
+        return;
+      }
+
       const turn = activeTurnRef.current ?? openBotTurn();
 
       let changed = false;
@@ -244,7 +272,7 @@ export function useVoiceMessages(
       if (!changed) return;
       addOrUpdateMessage(turnToIMessage(turn, cid));
     },
-    [addOrUpdateMessage, openBotTurn],
+    [addOrUpdateMessage, openBotTurn, nextCreatedAt],
   );
 
   // Bot data-channel handler — runs on every event the agent emits.

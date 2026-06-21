@@ -42,6 +42,9 @@ export interface UserMessageData extends BaseMessageData {
   file?: File | null | string;
   filename?: string;
 
+  // True while the message is held in the send queue (greyed-out bubble).
+  queued?: boolean;
+
   // True while the message is still streaming in — the voice transcript grows
   // word-by-word as the user speaks. Drives the user bubble's blur-in animation.
   loading?: boolean;
@@ -77,6 +80,7 @@ export interface ConversationMessage extends Partial<BaseMessageData> {
   type: "user" | "bot";
   response: string; // The main content field for conversations
   loading?: boolean;
+  queued?: boolean; // Held in the send queue (greyed-out user bubble)
   disclaimer?: string;
 }
 

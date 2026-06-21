@@ -65,6 +65,8 @@ _PLAIN_TEXT_EXTS = (
     "gradle",
 )
 
+_APPLICATION_YAML = "application/yaml"
+
 _EXT_CONTENT_TYPES = {
     "png": "image/png",
     "jpg": "image/jpeg",
@@ -75,8 +77,8 @@ _EXT_CONTENT_TYPES = {
     "pdf": "application/pdf",
     "json": "application/json",
     "xml": "application/xml",
-    "yaml": "application/yaml",
-    "yml": "application/yaml",
+    "yaml": _APPLICATION_YAML,
+    "yml": _APPLICATION_YAML,
     "md": "text/markdown",
     "txt": "text/plain",
     "csv": "text/csv",
@@ -96,7 +98,7 @@ _INLINEABLE_APPLICATION_TYPES = frozenset(
     {
         "application/json",
         "application/xml",
-        "application/yaml",
+        _APPLICATION_YAML,
         "application/x-yaml",
         "application/javascript",
         "application/x-sh",

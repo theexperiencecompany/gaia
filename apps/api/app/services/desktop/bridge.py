@@ -11,6 +11,7 @@ process.
 
 import asyncio
 from dataclasses import dataclass
+from http import HTTPStatus
 import json
 from typing import Any
 from uuid import uuid4
@@ -22,6 +23,7 @@ from app.constants.cache import (
 )
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
+from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 DESKTOP_TOOL_TIMEOUT_SECONDS = 30.0
@@ -34,12 +36,24 @@ ERROR_TIMEOUT = (
 ERROR_REDIS_UNAVAILABLE = "Desktop bridge unavailable (no Redis connection)."
 
 
-class DesktopRequestNotFound(Exception):
+class DesktopRequestNotFound(AppError):
     """The pending request key is gone — expired or already resolved."""
 
+    def __init__(self) -> None:
+        super().__init__(
+            message="Desktop tool request expired or already resolved",
+            status_code=HTTPStatus.GONE,
+        )
 
-class DesktopRequestForbidden(Exception):
+
+class DesktopRequestForbidden(AppError):
     """A result was POSTed by a user who does not own the pending request."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Desktop tool request belongs to another user",
+            status_code=HTTPStatus.FORBIDDEN,
+        )
 
 
 @dataclass
@@ -112,7 +126,14 @@ async def request_desktop_action(
 
         return outcome
     finally:
-        await redis_cache.delete(request_key)
+        # Best-effort cleanup in independent guards: a failure here must never
+        # mask the real outcome, and a failed key-delete must not skip the
+        # pubsub teardown (the request key also carries a TTL, so it expires
+        # regardless).
+        try:
+            await redis_cache.delete(request_key)
+        except Exception:  # nosec B110 - cleanup must not mask the outcome
+            pass
         try:
             await pubsub.unsubscribe(result_channel)
             await pubsub.aclose()

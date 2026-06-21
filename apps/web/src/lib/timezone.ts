@@ -25,11 +25,15 @@ declare const timezoneBrand: unique symbol;
 /** A validated IANA timezone string. Construct only via the helpers below. */
 export type Timezone = string & { readonly [timezoneBrand]: true };
 
+/** Fixed UTC offset zones like "+05:30" or "-08:00" (up to ±14:00). */
+const OFFSET_TZ_PATTERN = /^[+-](?:0\d|1[0-4]):[0-5]\d$/;
+
 /** Whether `raw` is an IANA zone the runtime accepts (narrows to `Timezone`). */
 export const isValidTimezone = (
   raw: string | null | undefined,
 ): raw is Timezone => {
   if (!raw) return false;
+  if (OFFSET_TZ_PATTERN.test(raw)) return true;
   try {
     // Throws RangeError for an unknown IANA zone.
     new Intl.DateTimeFormat("en-US", { timeZone: raw });

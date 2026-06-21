@@ -33,22 +33,14 @@ export function useWebSocketConnection() {
         apiBaseUrl.replace("http://", "ws://").replace("https://", "wss://") +
         "ws/connect";
 
-      console.log("[WebSocket] Configuring connection", {
-        apiBaseUrl,
-        wsUrl,
-        userEmail: user.email,
-      });
-
       wsManager.configure({ url: wsUrl });
       wsManager.connect();
 
       return () => {
-        console.log("[WebSocket] Disconnecting due to unmount or user change");
         wsManager.disconnect();
       };
-    } else {
-      console.log("[WebSocket] Not connecting - no user email available");
     }
+    // No signed-in user: nothing to connect, so no cleanup either.
     return undefined;
   }, [user?.email]);
 
@@ -57,7 +49,6 @@ export function useWebSocketConnection() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && userEmailRef.current) {
         if (!wsManager.isConnected) {
-          console.log("[WebSocket] Page became visible, reconnecting...");
           wsManager.connect();
         }
       }

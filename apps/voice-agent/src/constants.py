@@ -16,6 +16,10 @@ MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
 # frontend stops folding transcript into the live bubble.
 # Must match VOICE_TTS_KEY in apps/api/app/agents/core/background/executor_runner.py.
 VOICE_TTS_KEY = "voice_tts"
+# Saved bot-message id carried on the voice_tts frame. We forward the answer as a
+# display frame keyed by it so the bubble renders off the data channel and the
+# backend's WebSocket push (same id) reconciles in place instead of duplicating.
+MESSAGE_ID_KEY = "message_id"
 
 # Plumbing event keys that must never reach TTS.
 # Any backend SSE event carrying one of these keys is forwarded to the frontend

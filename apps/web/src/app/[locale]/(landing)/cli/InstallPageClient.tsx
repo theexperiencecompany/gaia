@@ -147,17 +147,17 @@ const commands = [
 export function InstallPageClient() {
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center">
-      <div
-        className={`relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900 max-w-4xl mx-auto mt-24 sm:mt-32`}
-      >
-        <ProgressiveImage
-          webpSrc="/images/screenshots/cli.webp"
-          pngSrc="/images/screenshots/cli.png"
-          alt="Terminal"
-          width={1920}
-          height={1080}
-          className="w-full rounded-4xl"
-        />
+      <div className="w-full max-w-4xl mx-auto mt-24 sm:mt-32 px-4 sm:px-6">
+        <div className="relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900">
+          <ProgressiveImage
+            webpSrc="/images/screenshots/cli.webp"
+            pngSrc="/images/screenshots/cli.png"
+            alt="Terminal"
+            width={1920}
+            height={1080}
+            className="w-full rounded-4xl"
+          />
+        </div>
       </div>
 
       <section className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-4 px-6 mt-5">

@@ -29,7 +29,7 @@ export interface IMessage {
   conversationId: string;
   content: string;
   role: "user" | "assistant" | "system";
-  status: "sending" | "sent" | "failed";
+  status: "sending" | "sent" | "failed" | "queued";
   createdAt: Date;
   updatedAt: Date;
   messageId?: string;

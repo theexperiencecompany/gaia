@@ -19,8 +19,8 @@ export default function ScheduledFieldChip({
   timezone,
 }: Readonly<ScheduledFieldChipProps>) {
   // Use user's preferred timezone or fallback to browser timezone
-  const userTimezone =
-    timezone && timezone.trim() !== "" ? timezone : getBrowserTimezone();
+  const normalizedTimezone = timezone?.trim();
+  const userTimezone = normalizedTimezone || getBrowserTimezone();
 
   const formatDisplayValue = (dateString: string) => {
     const date = new Date(dateString);
@@ -58,12 +58,14 @@ export default function ScheduledFieldChip({
     : "";
 
   const buildISOFromParts = (datePart: string, timePart: string): string => {
-    if (timezone) {
+    if (normalizedTimezone) {
       // Build an ISO string that represents this wall-clock time in the user's timezone
       // Use Intl to compute the offset, then adjust
       const naive = new Date(`${datePart}T${timePart}:00`);
       const utcStr = naive.toLocaleString("en-US", { timeZone: "UTC" });
-      const tzStr = naive.toLocaleString("en-US", { timeZone: timezone });
+      const tzStr = naive.toLocaleString("en-US", {
+        timeZone: normalizedTimezone,
+      });
       const utcDate = new Date(utcStr);
       const tzDate = new Date(tzStr);
       const offsetMs = utcDate.getTime() - tzDate.getTime();

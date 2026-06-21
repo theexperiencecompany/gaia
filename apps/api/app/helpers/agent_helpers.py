@@ -184,6 +184,14 @@ def _inherit_from_parent_configurable(
     merged["provider_name"] = base_configurable.get("provider", merged["provider_name"])
     merged["max_tokens"] = base_configurable.get("max_tokens", merged["max_tokens"])
     merged["model_name"] = base_configurable.get("model_name", merged["model_name"])
+    # Inherit the OpenRouter provider-routing pin (model_kwargs) from the parent.
+    # Without it a subagent drops the first-party provider pin and falls back to the
+    # client default, so the request load-balances onto throttled resellers (e.g.
+    # Parasail) and can 400 / rate-limit. `reasoning` is intentionally NOT inherited:
+    # the executor and provider subagents keep the client default effort, while comms
+    # sets its own lower effort.
+    if "model_kwargs" in base_configurable:
+        merged["model_kwargs"] = base_configurable["model_kwargs"]
 
     for local_key, parent_key in _PARENT_FALLBACK_FIELDS:
         if not merged.get(local_key):
@@ -301,6 +309,14 @@ def build_agent_config(  # NOSONAR python:S107
         configurable["langfuse_trace_id"] = effective_trace_id
     if effective_tags:
         configurable["langfuse_tags"] = effective_tags
+
+    # Propagate the OpenRouter provider pin inherited from the parent (see
+    # _inherit_from_parent_configurable) so spawned subagents stay on the
+    # first-party lane. Conditional so an absent pin leaves the model's
+    # model_kwargs ConfigurableField default intact instead of clobbering it
+    # with None.
+    if resolved.get("model_kwargs"):
+        configurable["model_kwargs"] = resolved["model_kwargs"]
 
     metadata: dict = {
         "user_id": user.get("user_id"),

@@ -5,8 +5,11 @@ Provides REST API for installing, creating, listing, and managing
 installable agent skills (Agent Skills open standard).
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.skills.github_discovery import (
     discover_skills_from_repo,
     get_skill_from_repo,
@@ -15,11 +18,16 @@ from app.agents.skills.installer import (
     install_from_github,
     install_from_inline,
     uninstall_skill_full,
+    update_skill_inline,
 )
 from app.agents.skills.models import (
+    BuiltinSkillInfo,
+    BuiltinSkillsResponse,
     Skill,
     SkillInlineCreateRequest,
     SkillListResponse,
+    SkillTargetsResponse,
+    SkillUpdateRequest,
 )
 from app.agents.skills.registry import (
     disable_skill,
@@ -27,8 +35,13 @@ from app.agents.skills.registry import (
     get_skill,
     list_skills,
 )
+from app.agents.skills.targets import get_skill_targets
+from app.agents.workspace.skill_loader import load_builtin_skills
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.config.oauth_config import get_integration_by_id
+from app.constants.skills import EXECUTOR_SUBAGENT_ID, EXECUTOR_TARGET_LABEL
 from app.decorators import tiered_rate_limit
+from app.services.integrations.user_integrations import get_connected_integration_ids
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/skills", tags=["skills"])
@@ -42,6 +55,76 @@ def _get_user_id(user: dict = Depends(get_current_user)) -> str:
             detail="User not authenticated",
         )
     return user_id
+
+
+async def _validate_target(user_id: str, target: str) -> None:
+    """Reject a target that isn't the executor or one of the user's connected
+    integration subagents. Keeps the UI from scoping a skill to something the
+    agent can never run."""
+    targets = await get_skill_targets(user_id)
+    allowed = {t.value for t in targets}
+    if target not in allowed:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Target '{target}' is not available. "
+                "Connect the integration before scoping a skill to it."
+            ),
+        )
+
+
+@router.get("/targets")
+async def list_skill_targets_endpoint(
+    user_id: Annotated[str, Depends(_get_user_id)],
+) -> SkillTargetsResponse:
+    """List the targets a skill can run in: the executor plus the user's
+    connected integration subagents."""
+    log.set(operation="list_skill_targets")
+    targets = await get_skill_targets(user_id)
+    log.set(result_count=len(targets), outcome="success")
+    return SkillTargetsResponse(targets=targets)
+
+
+@router.get("/builtin")
+async def list_builtin_skills_endpoint(
+    user_id: Annotated[str, Depends(_get_user_id)],
+) -> BuiltinSkillsResponse:
+    """List the read-only built-in skills shipped with GAIA, grouped by the
+    agent they run in. Each carries a `connected` flag so the UI can deactivate
+    skills whose owning integration the user hasn't connected."""
+    log.set(operation="list_builtin_skills")
+    connected_ids = await get_connected_integration_ids(user_id)
+
+    def _is_available(subagent_id: str) -> bool:
+        # The executor and non-integration builtin subagents (docgen, knowledge
+        # guide) are always available; integration-backed ones need a connection.
+        if subagent_id == EXECUTOR_SUBAGENT_ID:
+            return True
+        if get_integration_by_id(subagent_id) is None:
+            return True
+        return subagent_id in connected_ids
+
+    def _group_label(subagent_id: str) -> str:
+        if subagent_id == EXECUTOR_SUBAGENT_ID:
+            return EXECUTOR_TARGET_LABEL
+        subagent = get_subagent_by_id(subagent_id)
+        return subagent.name if subagent else subagent_id
+
+    skills = [
+        BuiltinSkillInfo(
+            slug=s.slug,
+            name=s.name,
+            description=s.description,
+            target=s.target,
+            group_label=_group_label(s.subagent_id),
+            icon=s.subagent_id,
+            connected=_is_available(s.subagent_id),
+            body=s.body,
+        )
+        for s in load_builtin_skills()
+    ]
+    log.set(result_count=len(skills), outcome="success")
+    return BuiltinSkillsResponse(skills=skills, total=len(skills))
 
 
 @router.get("/discover")
@@ -111,6 +194,10 @@ async def install_skill_with_auto_discover(
         skill={"repo": repo_url, "name": skill_name, "path": skill_path},
     )
     try:
+        # The effective target (override or the repo's frontmatter target) is
+        # validated inside install_from_github against the user's allowed set.
+        allowed_targets = {t.value for t in await get_skill_targets(user_id)}
+
         install_path = skill_path
 
         if skill_name and not install_path:
@@ -133,6 +220,7 @@ async def install_skill_with_auto_discover(
             repo_url=repo_url,
             skill_path=install_path,
             target_override=target,
+            allowed_targets=allowed_targets,
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
@@ -165,6 +253,7 @@ async def create_inline_skill_endpoint(
     """Create a skill from inline components."""
     log.set(user={"id": user_id}, skill={"name": request.name, "target": request.target})
     try:
+        await _validate_target(user_id, request.target)
         installed = await install_from_inline(
             user_id=user_id,
             name=request.name,
@@ -175,6 +264,8 @@ async def create_inline_skill_endpoint(
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
         return installed
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -185,6 +276,52 @@ async def create_inline_skill_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create skill",
+        ) from e
+
+
+@router.put("/{skill_id}")
+@tiered_rate_limit("skill_operations")
+async def update_skill_endpoint(
+    skill_id: str,
+    request: SkillUpdateRequest,
+    user_id: Annotated[str, Depends(_get_user_id)],
+) -> Skill:
+    """Edit an existing skill's description, instructions, and/or target.
+
+    The skill name is immutable. Only the fields present in the request body are
+    changed; omitting a field leaves it untouched.
+    """
+    log.set(operation="update_skill", skill_id=skill_id, skill={"target": request.target})
+    try:
+        if request.target is not None:
+            await _validate_target(user_id, request.target)
+
+        updated = await update_skill_inline(
+            user_id=user_id,
+            skill_id=skill_id,
+            description=request.description,
+            instructions=request.instructions,
+            target=request.target,
+        )
+        if not updated:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Skill {skill_id} not found",
+            )
+        log.set(skill_name=updated.name, outcome="success")
+        return updated
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        log.error(f"Error updating skill {skill_id}: {e}")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update skill",
         ) from e
 
 

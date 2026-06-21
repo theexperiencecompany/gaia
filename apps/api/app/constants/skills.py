@@ -24,6 +24,11 @@ SKILL_BODY_FILENAME = "skill.md"
 # /workspace/integrations/<id>/.
 EXECUTOR_SUBAGENT_ID = "executor"
 
+# User-facing label for the executor target in the skills UI. The executor is
+# the general assistant (not a registered integration subagent), so it needs an
+# explicit display name where subagents get theirs from the subagent registry.
+EXECUTOR_TARGET_LABEL = "General assistant"
+
 # Builtin SKILL.md library location, relative to the app/agents/ package dir.
 SKILLS_PACKAGE_DIRNAME = "skills"
 BUILTIN_SKILLS_DIRNAME = "builtin"

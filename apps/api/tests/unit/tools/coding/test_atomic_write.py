@@ -32,10 +32,10 @@ def _fake_sbx(entry_mtime: datetime | None) -> tuple[AsyncMock, dict]:
 
     files = AsyncMock()
 
-    async def _write(path: str, data: bytes) -> None:
+    def _write(path: str, data: bytes) -> None:
         calls["write"].append((path, data))
 
-    async def _rename(src: str, dst: str):  # noqa: ANN202
+    def _rename(src: str, dst: str):  # noqa: ANN202
         calls["rename"].append((src, dst))
         return _Info()
 

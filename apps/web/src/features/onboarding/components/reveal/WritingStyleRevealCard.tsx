@@ -29,7 +29,7 @@ interface WritingStyleRevealCardProps extends WritingStyleResults {
 }
 
 const hasExampleContent = (blocks: WritingStyleExampleBlocks | null): boolean =>
-  Boolean(blocks && blocks.body.some((p) => p.trim()));
+  Boolean(blocks?.body.some((p) => p.trim()));
 
 export function WritingStyleRevealCard({
   style_summary,

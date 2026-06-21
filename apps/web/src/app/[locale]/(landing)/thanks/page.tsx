@@ -53,10 +53,6 @@ async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
       return {};
     }
 
-    console.log(
-      `${logPrefix} Fetching metadata for ${tools.length} tools from: ${apiUrl}`,
-    );
-
     const urls = tools.map((tool) => tool.url);
     const response = await fetch(`${apiUrl}/fetch-url-metadata`, {
       method: "POST",
@@ -80,9 +76,7 @@ async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
     const data = (await response.json()) as {
       results?: Record<string, ToolMetadata>;
     };
-    const resultCount = Object.keys(data.results ?? {}).length;
-    console.log(`${logPrefix} ✓ Successfully fetched metadata for ${resultCount}/${tools.length} tools,
-    `);
+    const _resultCount = Object.keys(data.results ?? {}).length;
     return data.results ?? {};
   } catch (error) {
     console.error(`

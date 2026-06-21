@@ -122,6 +122,7 @@ async def test_command_deadline_timeout_does_not_evict_a_live_sandbox() -> None:
     async with _run(
         sbx, body_error=TimeoutException("exceeding 'timeout' — long running request")
     ) as (uid, pool, coll, sched, raised):
+        assert isinstance(raised, TimeoutException)
         assert pool.get(uid) is not None, "a slow command must not evict a healthy sandbox"
         assert not _dead_state_written(coll)
 
@@ -137,6 +138,7 @@ async def test_eviction_when_health_probe_itself_raises() -> None:
         sched,
         raised,
     ):
+        assert isinstance(raised, RuntimeError)
         assert pool.get(uid) is None, "unreachable /health → treat as dead → evict"
 
 

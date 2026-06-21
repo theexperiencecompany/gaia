@@ -2,7 +2,8 @@
  * Format tool name for display
  * Converts snake_case tool names to readable format with Title Case
  */
-export const formatToolName = (toolName: string): string => {
+export const formatToolName = (toolName: string | null | undefined): string => {
+  if (!toolName) return "";
   return toolName
     .toLowerCase() // First convert to lowercase
     .replace(/_/g, " ") // Replace underscores with spaces
