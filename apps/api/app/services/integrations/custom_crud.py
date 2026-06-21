@@ -29,6 +29,7 @@ from app.services.integrations.user_integration_status import (
 from app.services.integrations.user_integrations import (
     add_user_integration,
     invalidate_user_integration_caches,
+    remove_user_integration,
 )
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.favicon_utils import fetch_favicon_from_url
@@ -152,16 +153,9 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     )
 
     if not doc:
-        user_int = await user_integrations_collection.find_one(
-            {"user_id": user_id, "integration_id": integration_id}
-        )
-        if user_int:
-            await user_integrations_collection.delete_one(
-                {"user_id": user_id, "integration_id": integration_id}
-            )
-            await invalidate_user_integration_caches(user_id)
-            return True
-        return False
+        # No catalog row — just drop this user's link. The mutator deletes the
+        # row and invalidates atomically, returning False if there was nothing.
+        return await remove_user_integration(user_id, integration_id)
 
     is_creator = doc.get("created_by") == user_id
 
@@ -186,13 +180,13 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
             )
             affected_user_ids = [d["user_id"] async for d in affected_users_cursor]
 
-            await user_integrations_collection.delete_many({"integration_id": integration_id})
-
+            # Remove each user's link through the canonical mutator so the row
+            # delete and its cache invalidation stay coupled per user.
             for affected_user_id in affected_user_ids:
                 try:
-                    await invalidate_user_integration_caches(affected_user_id)
+                    await remove_user_integration(affected_user_id, integration_id)
                 except Exception as e:
-                    log.debug(f"Cache deletion failed for user {affected_user_id}: {e}")
+                    log.debug(f"Failed to remove integration for user {affected_user_id}: {e}")
 
             try:
                 async with get_db_session() as session:
@@ -217,13 +211,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
 
             return True
         return False
-    result = await user_integrations_collection.delete_one(
-        {"user_id": user_id, "integration_id": integration_id}
-    )
-
-    if result.deleted_count > 0:
-        await invalidate_user_integration_caches(user_id)
-
+    if await remove_user_integration(user_id, integration_id):
         try:
             async with get_db_session() as session:
                 await session.execute(
