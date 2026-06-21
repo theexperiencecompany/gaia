@@ -21,6 +21,7 @@ import { useSendMessage } from "@/hooks/useSendMessage";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   useComposerFiles,
+  useComposerIsUploading,
   useComposerModeSelection,
   useComposerTextActions,
   useComposerUI,
@@ -94,6 +95,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
     removeUploadedFile,
     clearAllFiles,
   } = useComposerFiles();
+  const isUploadingFiles = useComposerIsUploading();
   const { isSlashCommandDropdownOpen, setIsSlashCommandDropdownOpen } =
     useComposerUI();
   const { selectedWorkflow, clearSelectedWorkflow } = useWorkflowSelection();
@@ -167,6 +169,10 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
     // Prevent double execution when workflow is auto-sending
     if (autoSend) return;
+
+    // Hold the send until every attachment has finished uploading, otherwise the
+    // message goes out before its file data is ready and the attachment is lost.
+    if (isUploadingFiles) return;
 
     // Only prevent submission if there's no text AND no files AND no selected tool AND no selected workflow AND no selected calendar event
     if (

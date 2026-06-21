@@ -62,6 +62,8 @@ interface SendStopButtonProps {
   hasContent: boolean;
   /** Submit handler invoked when sending or queueing. */
   onSend: () => void;
+  /** While true an attachment is still uploading, so send is held. */
+  isUploading?: boolean;
   className?: string;
 }
 
@@ -74,6 +76,7 @@ interface SendStopButtonProps {
 export default function SendStopButton({
   hasContent,
   onSend,
+  isUploading = false,
   className = "h-9 min-h-9 w-9 max-w-9 min-w-9",
 }: Readonly<SendStopButtonProps>) {
   const { stopStream } = useLoading();
@@ -102,7 +105,9 @@ export default function SendStopButton({
       aria-label={MODE_ARIA_LABEL[mode]}
       className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
       color={bg}
-      disabled={!isStreaming && !hasContent}
+      // While streaming the button is Stop and stays active; otherwise it must
+      // be empty of content AND have no in-flight upload before it can send.
+      disabled={!isStreaming && (!hasContent || isUploading)}
       radius="full"
       // In stop mode the button aborts the stream rather than submitting, so it
       // must not trigger the composer form. Only send/queue submit.
