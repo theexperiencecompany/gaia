@@ -91,9 +91,9 @@ completed — especially when they are away from the app or the event is time-se
 - Informational updates the user did not ask to be pinged about
 - More than 1-2 times per session unless the user explicitly requests it
 
-—CHANNEL SELECTION—
-- If the user named specific channels ("text me on whatsapp", "ping me on slack"), pass EXACTLY those channel names ("whatsapp", "telegram", "discord", "slack", "inapp"). Honor what they asked for.
-- Only when the user did NOT specify a channel: omit `channels` to send on all enabled channels.
+—CHANNEL SELECTION (channels is REQUIRED)—
+- `channels` is required. Pass EXACTLY the channel(s) the user named ("text me on whatsapp" → ["whatsapp"], "ping me on slack" → ["slack"]). Valid names: "whatsapp", "telegram", "discord", "slack", "inapp".
+- If the user did NOT name a channel, ASK them which channel(s) they want before calling this tool. Never guess and never broadcast to channels the user did not ask for.
 - Use get_notification_preferences first if you need to know what channels are available
 
 —WORKFLOW RUNS—
@@ -112,7 +112,8 @@ Args:
     message: Required notification body text (keep it concise and actionable)
     title: Required short, specific title summarizing the update (e.g. "Reminder",
         "Task completed", "Build failed") — never a generic app name
-    channels: Optional list of channel names to target (omit for all enabled channels)
+    channels: Required list of channel names to target — pass exactly the channel(s) the
+        user named; ask the user which channel(s) if they did not specify one
     notification_type: Optional type — "info", "success", "warning", or "error"
 
 Returns:
