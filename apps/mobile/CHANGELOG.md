@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.6.0...mobile-v0.6.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* **agents:** agent prompt clarity — OpenUI reliability, result surfacing, orchestration discipline ([#776](https://github.com/theexperiencecompany/gaia/issues/776)) ([1846fd7](https://github.com/theexperiencecompany/gaia/commit/1846fd75cc62f1db92d3a399dd826b3e4eb3ac8c))
+
 ## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.5.0...mobile-v0.6.0) (2026-06-12)
 
 

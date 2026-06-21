@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.3.0...desktop-v0.4.0) (2026-06-21)
+
+
+### Features
+
+* **desktop:** Hey GAIA wake word + Siri-style assistant popup ([#746](https://github.com/theexperiencecompany/gaia/issues/746)) ([89f97e5](https://github.com/theexperiencecompany/gaia/commit/89f97e55b2b06316b0bc2d7bbffe7295e4b1b4bb))
+
+
+### Bug Fixes
+
+* address CodeRabbit & SonarQube feedback on develop (PR [#774](https://github.com/theexperiencecompany/gaia/issues/774)) ([#785](https://github.com/theexperiencecompany/gaia/issues/785)) ([397cbe2](https://github.com/theexperiencecompany/gaia/commit/397cbe2bf7da081b090550a4fcfe5a834cfbe762))
+
 ## [0.3.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.2.0...desktop-v0.3.0) (2026-04-05)
 
 

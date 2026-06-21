@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.20.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.19.0...api-v0.20.0) (2026-06-21)
+
+
+### Features
+
+* **chat:** queue button + MiniMax M3 hardening, model-thinking tool cards & executor reliability ([#775](https://github.com/theexperiencecompany/gaia/issues/775)) ([1ac6fb4](https://github.com/theexperiencecompany/gaia/commit/1ac6fb4af3c6d8a9589f828afb4a8c80f806c23a))
+* **desktop:** Hey GAIA wake word + Siri-style assistant popup ([#746](https://github.com/theexperiencecompany/gaia/issues/746)) ([89f97e5](https://github.com/theexperiencecompany/gaia/commit/89f97e55b2b06316b0bc2d7bbffe7295e4b1b4bb))
+* **skills:** user skills management in settings ([#784](https://github.com/theexperiencecompany/gaia/issues/784)) ([f05c848](https://github.com/theexperiencecompany/gaia/commit/f05c848346300c589ac3b995ba7f4fe8a0f90a4e))
+* **voice:** real-time voice mode with LiveKit, observability, and voice selection ([#733](https://github.com/theexperiencecompany/gaia/issues/733)) ([6c0d212](https://github.com/theexperiencecompany/gaia/commit/6c0d2123600079daf6fc64e5f26e87f4891a2498))
+
+
+### Bug Fixes
+
+* address CodeRabbit & SonarQube feedback on develop (PR [#774](https://github.com/theexperiencecompany/gaia/issues/774)) ([#785](https://github.com/theexperiencecompany/gaia/issues/785)) ([397cbe2](https://github.com/theexperiencecompany/gaia/commit/397cbe2bf7da081b090550a4fcfe5a834cfbe762))
+* **agents:** agent prompt clarity — OpenUI reliability, result surfacing, orchestration discipline ([#776](https://github.com/theexperiencecompany/gaia/issues/776)) ([1846fd7](https://github.com/theexperiencecompany/gaia/commit/1846fd75cc62f1db92d3a399dd826b3e4eb3ac8c))
+* **agents:** restore subagent conversation history persistence ([#781](https://github.com/theexperiencecompany/gaia/issues/781)) ([dc6ada9](https://github.com/theexperiencecompany/gaia/commit/dc6ada9ab9bfd623afc045989169e5b7cdf26736))
+* ARQ worker JuiceFS-wedge resilience + cut embedding-sidecar memory ([#789](https://github.com/theexperiencecompany/gaia/issues/789)) ([80c9b96](https://github.com/theexperiencecompany/gaia/commit/80c9b969150e62148678ddb8266696785a698925))
+* **download:** resolve desktop release via API so buttons download directly ([#787](https://github.com/theexperiencecompany/gaia/issues/787)) ([a105c99](https://github.com/theexperiencecompany/gaia/commit/a105c9953f806cadcf8161ec5b9bafd4ceb55b72))
+* **integrations:** unify integration cache invalidation + executor connected-integrations discovery ([#788](https://github.com/theexperiencecompany/gaia/issues/788)) ([e628151](https://github.com/theexperiencecompany/gaia/commit/e6281510e1f310d8fcf601e9ac2aeb54e5d26eb4))
+* **mcp:** migrate OAuth to official SDK, fix auth detection/DCR, repair marketplace data + post-connect UX ([#782](https://github.com/theexperiencecompany/gaia/issues/782)) ([8b86ae7](https://github.com/theexperiencecompany/gaia/commit/8b86ae76adb26d694560b8f8a182c01e8a66f468))
+* **sandbox:** repair lifecycle, native files API, harden coding tools ([#758](https://github.com/theexperiencecompany/gaia/issues/758)) ([347b2a4](https://github.com/theexperiencecompany/gaia/commit/347b2a43e4d59ce2bbc134481e68536749eb1e3d))
+* **storage:** use f-string in juicefs mount-probe timeout warning ([#791](https://github.com/theexperiencecompany/gaia/issues/791)) ([c23d939](https://github.com/theexperiencecompany/gaia/commit/c23d939b32034c162c4abf51f43946d272265339))
+
 ## [0.19.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.18.0...api-v0.19.0) (2026-06-14)
 
 
