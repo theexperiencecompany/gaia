@@ -44,6 +44,8 @@ from shared.py.wide_events import log
 
 _ENCRYPTION_KEY_FILE = Path("/etc/gaia/jfs-master.pem")
 _CACHE_DIR = Path("/var/cache/juicefs")
+# A stat on an unresponsive FUSE mount blocks forever; bound the startup probe.
+_MOUNT_PROBE_TIMEOUT_SECONDS = 10
 _CACHE_SIZE_MB = 4096
 _BUFFER_SIZE_MB = 600
 _MAX_UPLOADS = 20
@@ -381,11 +383,28 @@ async def init_juicefs_mount() -> str:
         log.info("[juicefs] skipping bootstrap; missing settings: " + ", ".join(missing))
         return settings.JUICEFS_HOST_MOUNT_PATH
 
+    # Probe off the event loop with a timeout — a wedged FUSE mount blocks forever
+    # and running this inline previously froze the worker before it consumed jobs.
+    mount_path = Path(settings.JUICEFS_HOST_MOUNT_PATH)
+    try:
+        already_mounted = await asyncio.wait_for(
+            asyncio.to_thread(_is_mounted, mount_path),
+            timeout=_MOUNT_PROBE_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        log.warning(
+            "[juicefs] mount probe timed out after %ss — mount likely unresponsive; "
+            "(re)starting bootstrap",
+            _MOUNT_PROBE_TIMEOUT_SECONDS,
+        )
+        already_mounted = False
+
+    if already_mounted:
+        log.info("[juicefs] mount already healthy")
+        return settings.JUICEFS_HOST_MOUNT_PATH
+
     with _bootstrap_lock:
         if _bootstrap_thread is not None and _bootstrap_thread.is_alive():
-            return settings.JUICEFS_HOST_MOUNT_PATH
-        if _is_mounted(Path(settings.JUICEFS_HOST_MOUNT_PATH)):
-            log.info("[juicefs] mount already healthy")
             return settings.JUICEFS_HOST_MOUNT_PATH
         _bootstrap_thread = threading.Thread(
             target=_bootstrap_loop,
