@@ -39,6 +39,14 @@ const useCloudflareImageLoader = process.env.IMAGE_LOADER === "cloudflare";
 
 const nextConfig = {
   productionBrowserSourceMaps: true,
+  // OpenNext file-traces every `public/*.wasm` into the Worker as a wasm chunk
+  // (it shows up even in unrelated routes' .nft.json), which collects the
+  // desktop-only ~12 MiB wake-word WASM into the Worker script and blows past
+  // Cloudflare's 10 MiB limit. Exclude it from tracing on the Cloudflare build;
+  // the Electron standalone build copies `public/` wholesale and is unaffected.
+  ...(useCloudflareImageLoader
+    ? { outputFileTracingExcludes: { "*": ["**/public/wake-word/**"] } }
+    : {}),
   compiler: {
     removeConsole:
       process.env.NODE_ENV === "production"
@@ -64,6 +72,19 @@ const nextConfig = {
     // and:  https://nextjs-forum.com/post/1471409705514569798
     resolveAlias: {
       "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
+      // The wake-word ONNX runtime (onnxruntime-web + its ~12 MiB WASM) is
+      // desktop-only: the `/wake-listener` route runs solely in the Electron
+      // shell. On Cloudflare, Turbopack still pulls onnxruntime's WASM loader
+      // into the route's server chunk, and the WASM gets collected into the
+      // Worker script — pushing it past Cloudflare's 10 MiB limit. Stub it out
+      // for the Cloudflare build only; the standalone build Electron bundles
+      // (IMAGE_LOADER unset) keeps the real runtime.
+      ...(useCloudflareImageLoader
+        ? {
+            "onnxruntime-web": "./scripts/empty-module.mjs",
+            "onnxruntime-web/wasm": "./scripts/empty-module.mjs",
+          }
+        : {}),
       // Stub out unused heavy deps (mirrors the webpack hook below). Webpack's
       // `alias: false` doesn't exist for Turbopack — we point to a tiny empty
       // module that exports a no-op proxy.
@@ -141,6 +162,13 @@ const nextConfig = {
     // Alias @icons to the active icon variant — change here to swap the entire set
     config.resolve.alias["@icons"] =
       "@theexperiencecompany/gaia-icons/solid-rounded";
+
+    // Desktop-only wake-word ONNX runtime — stub out of the Cloudflare build
+    // so its WASM never lands in the Worker script (see turbopack alias above).
+    if (useCloudflareImageLoader) {
+      config.resolve.alias["onnxruntime-web"] = false;
+      config.resolve.alias["onnxruntime-web/wasm"] = false;
+    }
 
     // Keep gaia-icons out of the eager/initial landing chunk.
     // By default, modules reachable from >= 2 chunks get hoisted into a shared
