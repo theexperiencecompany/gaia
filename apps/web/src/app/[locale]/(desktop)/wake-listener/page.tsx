@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import ErrorBoundary from "@/components/shared/ErrorBoundary";
 
 /**
  * Headless wake-word listener.
@@ -21,5 +22,9 @@ const WakeListenerClient = dynamic(
 );
 
 export default function WakeListenerPage() {
-  return <WakeListenerClient />;
+  return (
+    <ErrorBoundary>
+      <WakeListenerClient />
+    </ErrorBoundary>
+  );
 }

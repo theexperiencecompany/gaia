@@ -54,8 +54,12 @@ function collect(dir, found) {
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return found;
+  } catch (error) {
+    // A directory may vanish between discovery and read; that's expected.
+    // Any other failure (permissions, I/O) must fail the build loudly rather
+    // than silently skip pruning and ship a too-large Worker.
+    if (error?.code === "ENOENT") return found;
+    throw error;
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
