@@ -24,8 +24,13 @@ type OrtModule = typeof ortType;
 let ortPromise: Promise<OrtModule> | null = null;
 function getOrt(): Promise<OrtModule> {
   if (!ortPromise) {
+    // Import the CPU-only WASM bundle, not the default JSEP/WebGPU bundle.
+    // The pipeline only uses the "wasm" execution provider, so the JSEP build
+    // (which fetches the 25 MiB `ort-wasm-simd-threaded.jsep.wasm`) is pure
+    // overhead — and that binary exceeds Cloudflare Workers' 25 MiB asset cap.
+    // This bundle loads `ort-wasm-simd-threaded.wasm` (~12 MiB) instead.
     ortPromise = (
-      import(/* @vite-ignore */ "onnxruntime-web") as Promise<OrtModule>
+      import(/* @vite-ignore */ "onnxruntime-web/wasm") as Promise<OrtModule>
     ).catch((err) => {
       // Don't cache a rejected import — let the next call retry.
       ortPromise = null;
