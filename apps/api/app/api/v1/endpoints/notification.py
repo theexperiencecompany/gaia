@@ -163,9 +163,7 @@ async def execute_action(
     log.set(
         user={"id": user_id},
         operation="execute_action",
-        notification=NotificationContext(
-            operation="dispatch", notification_id=notification_id
-        ),
+        notification=NotificationContext(operation="dispatch", notification_id=notification_id),
     )
 
     try:

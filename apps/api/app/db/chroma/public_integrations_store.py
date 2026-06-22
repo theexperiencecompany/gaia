@@ -62,9 +62,7 @@ async def search_public_integrations(
     category: str | None = None,
 ) -> list[dict]:
     """Search public integrations. Returns list of {integration_id, relevance_score}."""
-    log.set(
-        vector=VectorContext(operation="query", collection=COLLECTION_NAME, n_results=limit)
-    )
+    log.set(vector=VectorContext(operation="query", collection=COLLECTION_NAME, n_results=limit))
     try:
         embedding_fn = await providers.aget("google_embeddings")
         chroma = await ChromaClient.get_langchain_client(

@@ -82,9 +82,7 @@ class NotificationOrchestrator:
     # NOTIFICATION CREATION & MANAGEMENT
     async def create_notification(self, request: NotificationRequest) -> NotificationRecord | None:
         """Create, store, and deliver a new notification."""
-        log.set(
-            notification=NotificationContext(operation="send", notification_id=request.id)
-        )
+        log.set(notification=NotificationContext(operation="send", notification_id=request.id))
         log.info(
             f"{LogTag.NOTIFICATION} Creating notification {request.id} for user {request.user_id}"
         )
@@ -237,9 +235,7 @@ class NotificationOrchestrator:
         log.set(
             user={"id": user_id},
             operation="execute_action",
-            notification=NotificationContext(
-                operation="dispatch", notification_id=notification_id
-            ),
+            notification=NotificationContext(operation="dispatch", notification_id=notification_id),
         )
         log.info(
             f"{LogTag.NOTIFICATION} Executing action {action_id} for notification {notification_id}"

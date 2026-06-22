@@ -101,9 +101,7 @@ async def proxy_mcp_resources_list(
             cursor=request.cursor,
         )
         log.set(outcome="success")
-        log.set(
-            mcp=McpContext(success=True, result_count=len(result.get("resources", [])))
-        )
+        log.set(mcp=McpContext(success=True, result_count=len(result.get("resources", []))))
         return MCPProxyResourcesListResponse(
             resources=result.get("resources", []),
             next_cursor=result.get("next_cursor") or result.get("nextCursor"),
@@ -149,9 +147,7 @@ async def proxy_mcp_resource_templates_list(
             mcp=McpContext(
                 success=True,
                 result_count=len(
-                    result.get("resource_templates")
-                    or result.get("resourceTemplates")
-                    or []
+                    result.get("resource_templates") or result.get("resourceTemplates") or []
                 ),
             )
         )
@@ -202,9 +198,7 @@ async def proxy_mcp_resource_read(
             uri=request.uri,
         )
         log.set(outcome="success")
-        log.set(
-            mcp=McpContext(success=True, result_count=len(result.get("contents", [])))
-        )
+        log.set(mcp=McpContext(success=True, result_count=len(result.get("contents", []))))
         return MCPProxyResourceReadResponse(
             contents=result.get("contents", []),
         )
@@ -245,9 +239,7 @@ async def proxy_mcp_prompts_list(
             cursor=request.cursor,
         )
         log.set(outcome="success")
-        log.set(
-            mcp=McpContext(success=True, result_count=len(result.get("prompts", [])))
-        )
+        log.set(mcp=McpContext(success=True, result_count=len(result.get("prompts", []))))
         return MCPProxyPromptsListResponse(
             prompts=result.get("prompts", []),
             next_cursor=result.get("next_cursor") or result.get("nextCursor"),
