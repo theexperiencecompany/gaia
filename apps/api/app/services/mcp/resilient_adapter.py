@@ -19,6 +19,7 @@ from langchain_core.tools import BaseTool
 import mcp_use.agents.adapters.langchain_adapter as _mcp_use_lc_adapter
 from pydantic import BaseModel
 
+from app.constants.log_tags import LogTag
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.utils.schema_fixes import patch_tool_schema
 from shared.py.wide_events import log
@@ -75,7 +76,7 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
         # Get connectors from active sessions
         sessions = client.get_all_active_sessions()
         if not sessions:
-            log.warning("No active sessions found in client")
+            log.warning(f"{LogTag.MCP} No active sessions found in client")
             return []
 
         # Get first session (we typically only have one per integration)
@@ -86,13 +87,13 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
         # Get tools from MCP server
         try:
             mcp_tools = await connector.list_tools()
-            log.info(f"[{integration_id}] MCP server returned {len(mcp_tools)} tools")
+            log.info(f"{LogTag.MCP} [{integration_id}] MCP server returned {len(mcp_tools)} tools")
         except Exception as e:
-            log.error(f"[{integration_id}] Failed to list tools: {e}")
+            log.error(f"{LogTag.MCP} [{integration_id}] Failed to list tools: {e}")
             raise
 
         if not mcp_tools:
-            log.warning(f"[{integration_id}] No tools returned from MCP server")
+            log.warning(f"{LogTag.MCP} [{integration_id}] No tools returned from MCP server")
             return []
 
         # Normalize schemas before conversion
@@ -102,7 +103,9 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                 normalized_tool = patch_tool_schema(tool)
                 normalized_tools.append(normalized_tool)
             except Exception as e:
-                log.warning(f"[{integration_id}] Could not normalize schema for {tool.name}: {e}")
+                log.warning(
+                    f"{LogTag.MCP} [{integration_id}] Could not normalize schema for {tool.name}: {e}"
+                )
                 # Still try to use the original tool
                 normalized_tools.append(tool)
 
@@ -137,15 +140,15 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                             "permissions": ui_meta.get("permissions", []),
                         }
                         log.debug(
-                            f"[{integration_id}] Attached mcp_ui metadata to tool: {tool.name}"
+                            f"{LogTag.MCP} [{integration_id}] Attached mcp_ui metadata to tool: {tool.name}"
                         )
 
                 successfully_converted.append(langchain_tool)
-                log.debug(f"[{integration_id}] ✓ Converted tool: {tool.name}")
+                log.debug(f"{LogTag.MCP} [{integration_id}] Converted tool: {tool.name}")
             except Exception as e:
                 failed_tools.append((tool.name, str(e)))
                 log.warning(
-                    f"[{integration_id}] ✗ Failed to convert tool '{tool.name}': "
+                    f"{LogTag.MCP} [{integration_id}] Failed to convert tool '{tool.name}': "
                     f"{type(e).__name__}: {e}"
                 )
                 # Continue with other tools
@@ -153,12 +156,12 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
         # Log summary
         if successfully_converted:
             log.info(
-                f"[{integration_id}] Successfully converted {len(successfully_converted)}/{len(mcp_tools)} tools"
+                f"{LogTag.MCP} [{integration_id}] Successfully converted {len(successfully_converted)}/{len(mcp_tools)} tools"
             )
 
         if failed_tools:
             log.warning(
-                f"[{integration_id}] Skipped {len(failed_tools)} tools with invalid schemas:\n"
+                f"{LogTag.MCP} [{integration_id}] Skipped {len(failed_tools)} tools with invalid schemas:\n"
                 + "\n".join(f"  - {name}: {error}" for name, error in failed_tools)
             )
 

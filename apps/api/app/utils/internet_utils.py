@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from fastapi import HTTPException, status
 import httpx
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import search_urls_collection
 from app.db.redis import get_cache, set_cache
 from app.db.utils import serialize_document
@@ -81,7 +82,7 @@ async def _resolve_and_validate(hostname: str) -> None:
             )
         if _is_blocked_ip(ip):
             log.warning(
-                "ssrf_blocked",
+                f"{LogTag.TOOL} ssrf_blocked",
                 hostname=hostname,
                 resolved_ip=ip_str,
             )

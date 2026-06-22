@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import user_integrations_collection
 from app.decorators.caching import CacheInvalidator
 from app.services.integrations_fs import schedule_user_integrations_sync
@@ -56,7 +57,9 @@ async def update_user_integration_status(
     # Operation is successful if document was modified, inserted, or matched
     # (matched_count > 0 means document exists with same values - still success)
     if result.modified_count > 0 or result.upserted_id or result.matched_count > 0:
-        log.info(f"Updated user {user_id} integration {integration_id} status to {status}")
+        log.info(
+            f"{LogTag.INTEGRATION} Updated user {user_id} integration {integration_id} status to {status}"
+        )
         if status == "connected":
             # Reflect the new connected set in the user's workspace VFS.
             schedule_user_integrations_sync(user_id)

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy.orm import declarative_base
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
@@ -61,7 +62,7 @@ def _ensure_timestamptz_columns(connection: Connection) -> None:
                 f"TYPE timestamptz USING {column} AT TIME ZONE 'UTC'"
             )
         )
-        log.info("Promoted column to timestamptz", table=table, column=column)
+        log.info(f"{LogTag.STARTUP} Promoted column to timestamptz", table=table, column=column)
 
 
 def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, Any]]:
@@ -108,7 +109,7 @@ async def init_postgresql_engine() -> AsyncEngine:
     Returns:
         AsyncEngine: The SQLAlchemy async engine
     """
-    log.debug("Initializing PostgreSQL async engine")
+    log.debug(f"{LogTag.STARTUP} Initializing PostgreSQL async engine")
 
     postgres_url: str = settings.POSTGRES_URL  # type: ignore
     url, connect_args = _adapt_url_for_asyncpg(postgres_url)
@@ -127,7 +128,7 @@ async def init_postgresql_engine() -> AsyncEngine:
         await conn.run_sync(_ensure_timestamptz_columns)
 
     log.set(db={"connection_status": "connected", "backend": "postgresql"})
-    log.info("PostgreSQL engine initialized for database")
+    log.info(f"{LogTag.STARTUP} PostgreSQL engine initialized for database")
     return engine
 
 
@@ -172,6 +173,6 @@ async def close_postgresql_db() -> None:
         if providers.is_initialized("postgresql_engine"):
             engine = await get_postgresql_engine()
             await engine.dispose()
-            log.info("PostgreSQL connections closed")
+            log.info(f"{LogTag.STARTUP} PostgreSQL connections closed")
     except Exception as e:
-        log.error(f"Error closing PostgreSQL connections: {e}")
+        log.error(f"{LogTag.STARTUP} Error closing PostgreSQL connections: {e}")

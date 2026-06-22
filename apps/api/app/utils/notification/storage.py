@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     notifications_collection,
 )
@@ -76,14 +77,12 @@ class MongoDBNotificationStorage:
     async def update_notification(self, notification_id: str, updates: dict[str, Any]) -> None:
         """Update a notification's fields"""
         updates["updated_at"] = datetime.now(UTC)
-        log.set(
-            notification_id=notification_id,
-            operation="update_notification",
-            update_fields=list(updates.keys()),
-        )
+        log.set_ns("notification", notification_id=notification_id)
 
         # Debug logging
-        log.info(f"Updating notification {notification_id} with updates: {updates}")
+        log.info(
+            f"{LogTag.NOTIFICATION} Updating notification {notification_id} with updates: {updates}"
+        )
 
         result = await notifications_collection.update_one(
             {"id": notification_id}, {"$set": updates}
@@ -91,15 +90,17 @@ class MongoDBNotificationStorage:
 
         # Log the result
         log.info(
-            f"Update result - matched: {result.matched_count}, modified: {result.modified_count}"
+            f"{LogTag.NOTIFICATION} Update result - matched: {result.matched_count}, modified: {result.modified_count}"
         )
 
         if result.matched_count == 0:
-            log.warning(f"No notification found with id: {notification_id}")
+            log.warning(f"{LogTag.NOTIFICATION} No notification found with id: {notification_id}")
         elif result.modified_count == 0:
-            log.warning(f"Notification {notification_id} found but not modified")
+            log.warning(
+                f"{LogTag.NOTIFICATION} Notification {notification_id} found but not modified"
+            )
         else:
-            log.info(f"Successfully updated notification {notification_id}")
+            log.info(f"{LogTag.NOTIFICATION} Successfully updated notification {notification_id}")
 
     async def get_user_notifications(
         self,

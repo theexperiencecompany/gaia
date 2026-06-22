@@ -12,6 +12,7 @@ from typing import Any
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
 
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.google_docs_models import CreateTOCInput, DeleteDocInput, ShareDocInput
@@ -79,7 +80,7 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             except AppError as e:
-                log.error(f"Error sharing with {recipient.email}: {e}")
+                log.error(f"{LogTag.TOOL} Error sharing with {recipient.email}: {e}")
                 errors.append(
                     {
                         "email": recipient.email,
@@ -116,7 +117,7 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
                 user_id=auth_credentials.get("user_id"),
             )
         except TypeError as e:
-            log.debug(f"TypeError in execute: {e}")
+            log.debug(f"{LogTag.TOOL} TypeError in execute: {e}")
             raise
 
         # Unwrap response (ToolExecutionResponse format)
@@ -129,7 +130,7 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
             try:
                 doc_data = json.loads(doc_data)
             except json.JSONDecodeError as e:
-                log.debug(f"JSON parsing skipped for doc_data: {e}")
+                log.debug(f"{LogTag.TOOL} JSON parsing skipped for doc_data: {e}")
 
         if not doc_data or "body" not in doc_data:
             raise ValueError("Failed to get document or document has no body content")
@@ -194,7 +195,7 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
                 method="DELETE",
             )
         except AppError as e:
-            log.error(f"Error deleting doc {request.document_id}: {e}")
+            log.error(f"{LogTag.TOOL} Error deleting doc {request.document_id}: {e}")
             raise RuntimeError(f"Failed to delete document: {e.status_code} - {e.message}")
 
         return {
@@ -240,7 +241,7 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
                 for f in (data or {}).get("files", [])
             ]
         except Exception as e:
-            log.debug(f"Google Docs fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Google Docs fetch failed: {e}")
 
         return {"recent_docs": files, "doc_count": len(files)}
 

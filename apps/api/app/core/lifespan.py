@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.constants.log_tags import LogTag
 from app.core.provider_registration import (
     unified_shutdown,
     unified_startup,
@@ -24,7 +25,7 @@ async def lifespan(app: FastAPI):
         yield
 
     except Exception as e:
-        log.error(f"Error during startup: {e}")
+        log.error(f"{LogTag.STARTUP} Error during startup: {e}")
         raise RuntimeError("Startup failed") from e
 
     finally:

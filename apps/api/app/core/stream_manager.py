@@ -51,6 +51,7 @@ from app.constants.cache import (
     STREAM_SIGNAL_PREFIX,
     STREAM_TTL,
 )
+from app.constants.log_tags import LogTag
 from app.constants.streaming import (
     STREAM_CANCELLED_SIGNAL,
     STREAM_DONE_SIGNAL,
@@ -126,7 +127,7 @@ class StreamManager:
             ttl=STREAM_TTL,
         )
 
-        log.debug(f"Stream {stream_id} started for conversation {conversation_id}")
+        log.debug(f"{LogTag.STARTUP} Stream {stream_id} started for conversation {conversation_id}")
 
     @classmethod
     async def complete_stream(cls, stream_id: str) -> None:
@@ -146,7 +147,7 @@ class StreamManager:
         # Notify subscribers that stream is done
         await cls._publish(stream_id, STREAM_DONE_SIGNAL)
 
-        log.debug(f"Stream {stream_id} completed")
+        log.debug(f"{LogTag.STARTUP} Stream {stream_id} completed")
 
     @classmethod
     async def cleanup(cls, stream_id: str) -> None:
@@ -158,7 +159,7 @@ class StreamManager:
         await redis_cache.delete(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
         await redis_cache.delete(f"{STREAM_SIGNAL_PREFIX}{stream_id}")
 
-        log.debug(f"Stream {stream_id} cleaned up")
+        log.debug(f"{LogTag.STARTUP} Stream {stream_id} cleaned up")
 
     # -------------------------------------------------------------------------
     # Pub/Sub Communication
@@ -199,7 +200,7 @@ class StreamManager:
             interspersed with ``": keepalive\\n\\n"`` comments during idle periods.
         """
         if not redis_cache.redis:
-            log.error("Redis not available for stream subscription")
+            log.error(f"{LogTag.STARTUP} Redis not available for stream subscription")
             if start_event and not start_event.is_set():
                 start_event.set()
             return
@@ -210,7 +211,7 @@ class StreamManager:
 
         try:
             await pubsub.subscribe(channel)
-            log.debug(f"Subscribed to stream channel: {channel}")
+            log.debug(f"{LogTag.STARTUP} Subscribed to stream channel: {channel}")
 
             # Allow the background task to start publishing
             if start_event and not start_event.is_set():
@@ -241,17 +242,17 @@ class StreamManager:
                 # Handle control signals
                 if data == STREAM_DONE_SIGNAL:
                     log.debug(
-                        f"Stream {stream_id} completed successfully ({chunks_received} chunks)"
+                        f"{LogTag.STARTUP} Stream {stream_id} completed successfully ({chunks_received} chunks)"
                     )
                     break
 
                 if data == STREAM_CANCELLED_SIGNAL:
-                    log.info(f"Stream {stream_id} was cancelled by user")
+                    log.info(f"{LogTag.STARTUP} Stream {stream_id} was cancelled by user")
                     yield "data: [DONE]\n\n"
                     break
 
                 if data == STREAM_ERROR_SIGNAL:
-                    log.error(f"Stream {stream_id} encountered an error")
+                    log.error(f"{LogTag.STARTUP} Stream {stream_id} encountered an error")
                     progress = await cls.get_progress(stream_id)
                     error_msg = (
                         progress.get("error", "An unexpected error occurred")
@@ -266,10 +267,14 @@ class StreamManager:
                 yield data
 
             if chunks_received == 0:
-                log.warning(f"Stream {stream_id} ended without receiving any chunks")
+                log.warning(
+                    f"{LogTag.STARTUP} Stream {stream_id} ended without receiving any chunks"
+                )
 
         except Exception as e:
-            log.error(f"Error in stream subscription {stream_id}: {e}", exc_info=True)
+            log.error(
+                f"{LogTag.STARTUP} Error in stream subscription {stream_id}: {e}", exc_info=True
+            )
             yield f"data: {json.dumps({'error': 'Stream subscription failed'})}\n\n"
         finally:
             try:
@@ -318,7 +323,7 @@ class StreamManager:
         # Notify subscribers
         await cls._publish(stream_id, STREAM_CANCELLED_SIGNAL)
 
-        log.info(f"Stream {stream_id} cancelled")
+        log.info(f"{LogTag.STARTUP} Stream {stream_id} cancelled")
         return True
 
     @classmethod

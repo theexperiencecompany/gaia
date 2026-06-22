@@ -26,6 +26,7 @@ import hashlib
 from pathlib import Path
 
 from app.agents.core.subagents.registry import resolve_subagent_id
+from app.constants.log_tags import LogTag
 from app.constants.skills import (
     BUILTIN_SKILLS_DIRNAME,
     EXECUTOR_SUBAGENT_ID,
@@ -63,7 +64,7 @@ def target_to_subagent(agent_name: str) -> str:
     resolved = resolve_subagent_id(agent_name)
     if resolved is None:
         log.set(skill_target=agent_name, component="skill_loader")
-        log.warning("skill target matches no subagent agent_name")
+        log.warning(f"{LogTag.AGENT} skill target matches no subagent agent_name")
         return agent_name
     return resolved
 
@@ -124,7 +125,7 @@ def _load_resources(skill_dir: Path) -> tuple[tuple[str, str], ...]:
             # A repo-owned template/script that can't be read signals broken
             # packaging or image contents — surface it so the gap is detectable
             # at load time instead of as an opaque downstream docgen failure.
-            log.warning(f"skill_loader: skipping unreadable resource {path}: {exc}")
+            log.warning(f"{LogTag.AGENT} skill_loader: skipping unreadable resource {path}: {exc}")
             continue
         resources.append((path.relative_to(skill_dir).as_posix(), content))
     return tuple(resources)

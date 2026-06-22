@@ -36,6 +36,7 @@ import hashlib
 from pathlib import Path
 
 from app.agents.workspace.system_files import SystemFile, system_files
+from app.constants.log_tags import LogTag
 from app.services.storage.juicefs import (
     JuiceFSUnavailable,
     _host_base_and_rel,
@@ -176,7 +177,7 @@ async def link_system_files_into_workspace(user_id: str) -> int:
 
     count = await asyncio.to_thread(_link)
     if count:
-        log.info(f"linked {count} system files for {user_id}")
+        log.info(f"{LogTag.STORAGE} linked {count} system files for {user_id}")
     return count
 
 

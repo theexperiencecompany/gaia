@@ -18,6 +18,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
+from app.constants.log_tags import LogTag
 from app.services.storage import JuiceFSUnavailable, write_session_file
 from shared.py.wide_events import log
 
@@ -52,9 +53,9 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             try:
                 archive_path = await self._archive(state, runtime)
             except JuiceFSUnavailable as e:
-                log.warning(f"Archive skipped (workspace unavailable): {e}")
+                log.warning(f"{LogTag.AGENT} Archive skipped (workspace unavailable): {e}")
             except Exception as e:
-                log.error(f"Archive failed: {e}")
+                log.error(f"{LogTag.AGENT} Archive failed: {e}")
 
         result = await super().abefore_model(state, runtime)
         if result is not None and archive_path:
@@ -109,7 +110,9 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             relative_path=relative_path,
             content=json.dumps(history, indent=2, default=str),
         )
-        log.info(f"Archived {len(messages)} messages to {sandbox_path} before summarization")
+        log.info(
+            f"{LogTag.AGENT} Archived {len(messages)} messages to {sandbox_path} before summarization"
+        )
         return sandbox_path
 
     def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:

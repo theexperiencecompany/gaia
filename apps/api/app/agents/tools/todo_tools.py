@@ -36,6 +36,7 @@ from app.agents.prompts.todo_prompts import (
     TODO_SYSTEM_PROMPT,
     UPDATE_TASKS_DESCRIPTION,
 )
+from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
@@ -87,7 +88,7 @@ def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None
         writer = get_stream_writer()
         writer(payload)
     except Exception as e:
-        log.warning(f"Stream writer not available for todo_progress: {e}")
+        log.warning(f"{LogTag.TOOL} Stream writer not available for todo_progress: {e}")
 
 
 def _format_todos(todos: list[Todo]) -> str:

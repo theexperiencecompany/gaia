@@ -5,6 +5,7 @@ Uses model_service to fetch models with caching support.
 
 from typing import NamedTuple
 
+from app.constants.log_tags import LogTag
 from app.services.model_service import get_model_by_id
 from shared.py.wide_events import log
 
@@ -61,7 +62,7 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
         return DEFAULT_PRICING
 
     except Exception as e:
-        log.error(f"Error fetching pricing for model {model_name}: {e}")
+        log.error(f"{LogTag.STARTUP} Error fetching pricing for model {model_name}: {e}")
         return DEFAULT_PRICING
 
 

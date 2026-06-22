@@ -1,8 +1,9 @@
 """ChromaDB store for public integrations semantic search."""
 
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.chroma.chromadb import ChromaClient
-from shared.py.wide_events import log
+from shared.py.wide_events import VectorContext, log
 
 COLLECTION_NAME = "public_integrations"
 
@@ -14,6 +15,7 @@ async def index_public_integration(
     tools: list[dict],
 ) -> None:
     """Index a public integration in ChromaDB for semantic search."""
+    log.set(vector=VectorContext(operation="upsert", collection=COLLECTION_NAME))
     try:
         embedding_fn = await providers.aget("google_embeddings")
         chroma = await ChromaClient.get_langchain_client(
@@ -30,15 +32,16 @@ async def index_public_integration(
             ids=[integration_id],
             metadatas=[{"integration_id": integration_id}],
         )
-        log.info(f"Indexed public integration {integration_id} in ChromaDB")
+        log.info(f"{LogTag.CHROMA} Indexed public integration {integration_id} in ChromaDB")
 
     except Exception as e:
-        log.error(f"Failed to index public integration {integration_id}: {e}")
+        log.error(f"{LogTag.CHROMA} Failed to index public integration {integration_id}: {e}")
         raise
 
 
 async def remove_public_integration(integration_id: str) -> None:
     """Remove a public integration from ChromaDB index."""
+    log.set(vector=VectorContext(operation="delete", collection=COLLECTION_NAME))
     try:
         embedding_fn = await providers.aget("google_embeddings")
         chroma = await ChromaClient.get_langchain_client(
@@ -47,10 +50,10 @@ async def remove_public_integration(integration_id: str) -> None:
             create_if_not_exists=True,
         )
         await chroma.adelete(ids=[integration_id])
-        log.info(f"Removed public integration {integration_id} from ChromaDB")
+        log.info(f"{LogTag.CHROMA} Removed public integration {integration_id} from ChromaDB")
 
     except Exception as e:
-        log.error(f"Failed to remove public integration {integration_id}: {e}")
+        log.error(f"{LogTag.CHROMA} Failed to remove public integration {integration_id}: {e}")
 
 
 async def search_public_integrations(
@@ -59,6 +62,9 @@ async def search_public_integrations(
     category: str | None = None,
 ) -> list[dict]:
     """Search public integrations. Returns list of {integration_id, relevance_score}."""
+    log.set(
+        vector=VectorContext(operation="query", collection=COLLECTION_NAME, n_results=limit)
+    )
     try:
         embedding_fn = await providers.aget("google_embeddings")
         chroma = await ChromaClient.get_langchain_client(
@@ -72,7 +78,7 @@ async def search_public_integrations(
             k=limit,
         )
 
-        return [
+        matches = [
             {
                 "integration_id": doc.metadata.get("integration_id") or getattr(doc, "id", None),
                 "relevance_score": score,
@@ -80,7 +86,9 @@ async def search_public_integrations(
             for doc, score in results
             if doc.metadata.get("integration_id") or getattr(doc, "id", None)
         ]
+        log.set_ns("vector", result_count=len(matches))
+        return matches
 
     except Exception as e:
-        log.error(f"Failed to search public integrations: {e}")
+        log.error(f"{LogTag.CHROMA} Failed to search public integrations: {e}")
         return []

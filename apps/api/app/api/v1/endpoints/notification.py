@@ -12,6 +12,7 @@ from fastapi import (
 )
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.log_tags import LogTag
 from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
 from app.db.mongodb.collections import users_collection
 from app.models.device_token_models import (
@@ -31,7 +32,7 @@ from app.models.notification.request_models import (
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
-from shared.py.wide_events import log
+from shared.py.wide_events import NotificationContext, log
 
 router = APIRouter()
 
@@ -52,12 +53,10 @@ async def get_notifications(
 
     log.set(
         user={"id": user_id},
-        notification={
-            "status": str(status),
-            "channel_type": channel_type,
-            "limit": limit,
-            "offset": offset,
-        },
+        operation="list",
+        notification=NotificationContext(operation="list", channel=channel_type)
+        if channel_type
+        else NotificationContext(operation="list"),
     )
 
     try:
@@ -68,11 +67,8 @@ async def get_notifications(
             notification_service.get_user_notifications_count(user_id, status, channel_type),
         )
 
-        log.set(
-            operation="list",
-            result_count=len(notifications),
-            outcome="success",
-        )
+        log.set(outcome="success")
+        log.set_ns("notification", result_count=len(notifications), success=True)
         return PaginatedNotificationsResponse(
             notifications=notifications,
             total=notification_count,
@@ -81,7 +77,7 @@ async def get_notifications(
         )
 
     except Exception as e:
-        log.error(f"Failed to get notifications: {e}")
+        log.error(f"{LogTag.NOTIFICATION} Failed to get notifications: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -106,7 +102,7 @@ async def get_channel_preferences(
             slack=prefs["slack"],
         )
     except Exception as e:
-        log.error(f"Failed to get channel preferences: {e}")
+        log.error(f"{LogTag.NOTIFICATION} Failed to get channel preferences: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -148,7 +144,7 @@ async def update_channel_preferences(
             slack=prefs["slack"],
         )
     except Exception as e:
-        log.error(f"Failed to update channel preferences: {e}")
+        log.error(f"{LogTag.NOTIFICATION} Failed to update channel preferences: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -166,7 +162,10 @@ async def execute_action(
 
     log.set(
         user={"id": user_id},
-        notification={"id": notification_id, "action_id": action_id},
+        operation="execute_action",
+        notification=NotificationContext(
+            operation="dispatch", notification_id=notification_id
+        ),
     )
 
     try:
@@ -177,7 +176,8 @@ async def execute_action(
         if not result.success:
             raise HTTPException(status_code=400, detail=result.message)
 
-        log.set(operation="execute_action", outcome="success")
+        log.set(outcome="success")
+        log.set_ns("notification", success=True)
         return NotificationResponse(
             success=True,
             message=result.message or "Action executed successfully",
@@ -187,7 +187,7 @@ async def execute_action(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Failed to execute action: {e}")
+        log.error(f"{LogTag.NOTIFICATION} Failed to execute action: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -201,14 +201,19 @@ async def mark_as_read(
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
-    log.set(user={"id": user_id}, notification={"id": notification_id})
+    log.set(
+        user={"id": user_id},
+        operation="mark_read",
+        notification=NotificationContext(operation="read", notification_id=notification_id),
+    )
 
     try:
         updated_notification = await notification_service.mark_as_read(notification_id, user_id)
         if not updated_notification:
             raise HTTPException(status_code=404, detail="Notification not found")
 
-        log.set(operation="mark_read", notification_id=notification_id, outcome="success")
+        log.set(outcome="success")
+        log.set_ns("notification", success=True)
         return NotificationResponse(
             success=True,
             message="Notification marked as read",
@@ -218,7 +223,7 @@ async def mark_as_read(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Failed to mark notification as read: {e}")
+        log.error(f"{LogTag.NOTIFICATION} Failed to mark notification as read: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -234,12 +239,11 @@ async def bulk_actions(
 
     notification_ids = request.notification_ids or []
     log.set(
-        notification={
-            "bulk_action": request.action.value if request.action else None,
-            "action_type": str(request.action) if request.action else None,
-            "count": len(notification_ids),
-        },
-        user_id=user_id,
+        user={"id": user_id},
+        operation="bulk_actions",
+        notification=NotificationContext(
+            operation="mark_all_read", result_count=len(notification_ids)
+        ),
     )
 
     try:
@@ -249,18 +253,12 @@ async def bulk_actions(
         results = await notification_service.bulk_actions(notification_ids, user_id, request.action)
 
         successful = sum(1 for success in results.values() if success)
-        failed = len(results) - successful
         total = len(results)
 
-        log.set(
-            notification={
-                "bulk_action": request.action.value if request.action else None,
-                "action_type": str(request.action) if request.action else None,
-                "count": total,
-                "successful": successful,
-                "failed": failed,
-            },
-            user_id=user_id,
+        log.set_ns(
+            "notification",
+            result_count=successful,
+            success=successful == total,
         )
 
         return NotificationResponse(
@@ -270,7 +268,7 @@ async def bulk_actions(
         )
 
     except Exception as e:
-        log.error(f"Failed to perform bulk actions: {e}")
+        log.error(f"{LogTag.NOTIFICATION} Failed to perform bulk actions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -327,7 +325,7 @@ async def register_device_token(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Failed to register device token: {e}")
+        log.error(f"{LogTag.NOTIFICATION} Failed to register device token: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -360,7 +358,7 @@ async def unregister_device_token(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Failed to unregister device token: {e}")
+        log.error(f"{LogTag.NOTIFICATION} Failed to unregister device token: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -374,14 +372,19 @@ async def get_notification(
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
-    log.set(user={"id": user_id}, notification={"id": notification_id})
+    log.set(
+        user={"id": user_id},
+        operation="get",
+        notification=NotificationContext(operation="read", notification_id=notification_id),
+    )
 
     try:
         notification = await notification_service.get_notification(notification_id, user_id)
         if not notification:
             raise HTTPException(status_code=404, detail="Notification not found")
 
-        log.set(operation="get", notification_id=notification_id, outcome="success")
+        log.set(outcome="success")
+        log.set_ns("notification", success=True)
         return NotificationResponse(
             success=True,
             message="Notification retrieved successfully",
@@ -391,5 +394,5 @@ async def get_notification(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Failed to get notification: {e}")
+        log.error(f"{LogTag.NOTIFICATION} Failed to get notification: {e}")
         raise HTTPException(status_code=500, detail=str(e))

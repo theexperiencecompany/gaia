@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import (
     get_api_base_url,
@@ -19,7 +20,7 @@ from app.helpers.mcp_helpers import (
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
-from shared.py.wide_events import log
+from shared.py.wide_events import McpContext, log
 
 router = APIRouter()
 
@@ -40,8 +41,8 @@ async def test_mcp_connection(
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(
         user={"id": user_id},
-        integration_id=integration_id,
         operation="test_mcp_connection",
+        mcp=McpContext(operation="health", server_id=integration_id),
     )
 
     client = await get_mcp_client(user_id=str(user_id))
@@ -64,6 +65,7 @@ async def test_mcp_connection(
 
     if probe_result.get("error"):
         log.set(outcome="failed")
+        log.set_ns("mcp", success=False)
         return JSONResponse(
             content={
                 "status": "failed",
@@ -77,7 +79,13 @@ async def test_mcp_connection(
             tools = await client.connect(integration_id)
             # Note: status update now handled in connect()
             await invalidate_mcp_status_cache(str(user_id))
-            log.set(outcome="connected", tools_count=len(tools) if tools else 0)
+            log.set(outcome="connected")
+            log.set_ns(
+                "mcp",
+                operation="connect",
+                success=True,
+                tool_count=len(tools) if tools else 0,
+            )
             return JSONResponse(
                 content={
                     "status": "connected",
@@ -86,6 +94,12 @@ async def test_mcp_connection(
             )
         except Exception as e:
             log.set(outcome="failed")
+            log.set_ns(
+                "mcp",
+                operation="connect",
+                success=False,
+                error_type=type(e).__name__,
+            )
             return JSONResponse(
                 content={
                     "status": "failed",
@@ -113,7 +127,7 @@ async def test_mcp_connection(
             }
         )
     except Exception as e:
-        log.error(f"OAuth URL build failed for {integration_id}: {e}")
+        log.error(f"{LogTag.MCP} OAuth URL build failed for {integration_id}: {e}")
         return JSONResponse(
             content={
                 "status": "failed",
@@ -149,9 +163,9 @@ async def mcp_oauth_callback(
         state_token = parts[0]
         integration_id = parts[1]
         redirect_path = parts[2] if len(parts) > 2 else "/integrations"
-        log.set(integration_id=integration_id)
+        log.set(mcp=McpContext(operation="connect", server_id=integration_id))
     except Exception as e:
-        log.error("Failed to parse OAuth state", error=str(e))
+        log.error(f"{LogTag.MCP} Failed to parse OAuth state", error=str(e))
         return RedirectResponse(
             url=f"{frontend_url}/integrations?status=failed&error=invalid_state"
         )
@@ -162,7 +176,7 @@ async def mcp_oauth_callback(
     # Handle OAuth error response from authorization server
     if error:
         log.warning(
-            f"OAuth error for {integration_id}: {error} - {error_description or 'no description'}"
+            f"{LogTag.MCP} OAuth error for {integration_id}: {error} - {error_description or 'no description'}"
         )
 
         # Some servers advertise scopes in their metadata that a dynamically
@@ -178,11 +192,15 @@ async def mcp_oauth_callback(
                 if retry_url:
                     return RedirectResponse(url=retry_url)
             except Exception as retry_err:
-                log.warning(f"Scope retry URL build failed for {integration_id}: {retry_err}")
+                log.warning(
+                    f"{LogTag.MCP} Scope retry URL build failed for {integration_id}: {retry_err}"
+                )
         try:
             await client.token_store.clear_excluded_scopes(integration_id)
         except Exception as clear_err:
-            log.warning(f"Failed to clear excluded scopes for {integration_id}: {clear_err}")
+            log.warning(
+                f"{LogTag.MCP} Failed to clear excluded scopes for {integration_id}: {clear_err}"
+            )
 
         # Map common OAuth errors to user-friendly codes
         error_code = error
@@ -205,7 +223,7 @@ async def mcp_oauth_callback(
 
     # Validate code is present (required for success case)
     if not code:
-        log.error(f"OAuth callback missing code for {integration_id}")
+        log.error(f"{LogTag.MCP} OAuth callback missing code for {integration_id}")
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error=missing_code"
         )
@@ -214,16 +232,9 @@ async def mcp_oauth_callback(
     resolved = await IntegrationResolver.resolve(integration_id)
     integration_name = resolved.name if resolved else integration_id
 
-    log.set(
-        mcp_oauth_callback={
-            "integration_id": integration_id,
-            "integration_name": integration_name,
-            "user_id": user_id,
-            "redirect_path": redirect_path,
-        }
-    )
+    log.set_ns("mcp", server_name=integration_name)
     log.info(
-        f"mcp_oauth_callback: starting handle_oauth_callback for "
+        f"{LogTag.MCP} mcp_oauth_callback: starting handle_oauth_callback for "
         f"integration={integration_id} user={user_id}"
     )
     try:
@@ -245,7 +256,7 @@ async def mcp_oauth_callback(
             await client.token_store.clear_excluded_scopes(integration_id)
         except Exception as clear_err:
             log.warning(
-                f"Failed to clear excluded scopes after OAuth success for "
+                f"{LogTag.MCP} Failed to clear excluded scopes after OAuth success for "
                 f"{integration_id}: {clear_err}"
             )
 
@@ -253,15 +264,16 @@ async def mcp_oauth_callback(
             await delete_cache("api:get_available_tools:*")
         except Exception as cache_err:
             log.warning(
-                f"Failed to invalidate tools cache: {type(cache_err).__name__}: {cache_err}"
+                f"{LogTag.MCP} Failed to invalidate tools cache: {type(cache_err).__name__}: {cache_err}"
             )
 
         await invalidate_mcp_status_cache(str(user_id))
 
         frontend_url = get_frontend_url()
         log.set(outcome="connected")
+        log.set_ns("mcp", success=True)
         log.info(
-            f"mcp_oauth_callback: OAuth complete for {integration_id} user={user_id}; "
+            f"{LogTag.MCP} mcp_oauth_callback: OAuth complete for {integration_id} user={user_id}; "
             f"connect dispatched to background, redirecting now"
         )
         return RedirectResponse(
@@ -269,17 +281,10 @@ async def mcp_oauth_callback(
         )
 
     except Exception as e:
-        log.set(
-            outcome="failed",
-            mcp_oauth_callback_error={
-                "integration_id": integration_id,
-                "user_id": user_id,
-                "error_type": type(e).__name__,
-                "error_message": str(e)[:500],
-            },
-        )
+        log.set(outcome="failed")
+        log.set_ns("mcp", success=False, error_type=type(e).__name__)
         log.error(
-            f"mcp_oauth_callback FAILED for integration={integration_id} user={user_id}: "
+            f"{LogTag.MCP} mcp_oauth_callback FAILED for integration={integration_id} user={user_id}: "
             f"{type(e).__name__}: {e}"
         )
         frontend_url = get_frontend_url()

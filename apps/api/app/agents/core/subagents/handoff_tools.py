@@ -34,6 +34,7 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
 )
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
@@ -123,7 +124,7 @@ async def check_integration_connection(
         return build_integration_connection_message(subagent.name, connect_url)
 
     except Exception as e:
-        log.error(f"Error checking integration status for {integration_id}: {e}")
+        log.error(f"{LogTag.AGENT} Error checking integration status for {integration_id}: {e}")
         return None
 
 
@@ -260,7 +261,7 @@ async def index_custom_mcp_as_subagent(
 
     await store.abatch([put_op])
     log.info(
-        f"Indexed custom MCP {name} ({integration_id}) as subagent with {len(tools or [])} tools"
+        f"{LogTag.AGENT} Indexed custom MCP {name} ({integration_id}) as subagent with {len(tools or [])} tools"
     )
 
 
@@ -623,7 +624,7 @@ async def handoff(
         if background:
             if not stream_id:
                 log.warning(
-                    "handoff background=True but stream_id is missing — "
+                    f"{LogTag.AGENT} handoff background=True but stream_id is missing — "
                     "falling back to blocking execution"
                 )
                 blocking_result = await _run_blocking_handoff(
@@ -653,7 +654,9 @@ async def handoff(
             )
             _background_subagent_tasks.add(bg_task)
             bg_task.add_done_callback(_background_subagent_tasks.discard)
-            log.info(f"Subagent {agent_name} dispatched to background for stream {sid}")
+            log.info(
+                f"{LogTag.AGENT} Subagent {agent_name} dispatched to background for stream {sid}"
+            )
             return (
                 f"Subagent {agent_name} started in background. "
                 "Call wait_for_subagents() when ready to collect results."
@@ -664,7 +667,7 @@ async def handoff(
 
     except Exception as e:
         log.error(
-            "handoff_failed",
+            f"{LogTag.AGENT} handoff_failed",
             subagent_id=subagent_id,
             user_id=user_id,
             error_type=type(e).__name__,

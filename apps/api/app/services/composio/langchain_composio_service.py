@@ -15,6 +15,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
+from app.constants.log_tags import LogTag
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -110,7 +111,7 @@ class LangchainProvider(
                 # which would silently route this call to the wrong (or no)
                 # connected account. Fail loudly instead of hitting "default".
                 log.warning(
-                    f"composio tool {tool} (toolkit={toolkit}) invoked without a "
+                    f"{LogTag.COMPOSIO} composio tool {tool} (toolkit={toolkit}) invoked without a "
                     "user_id in runnable metadata; refusing to fall back to the "
                     "Composio 'default' account."
                 )
@@ -156,16 +157,18 @@ class LangchainProvider(
                     )
                     if looks_like_dead_account:
                         log.warning(
-                            f"composio tool {tool} (toolkit={toolkit}) likely "
+                            f"{LogTag.COMPOSIO} composio tool {tool} (toolkit={toolkit}) likely "
                             f"dead account for user={user_id}: error={err_preview!r}"
                         )
                     else:
                         log.info(
-                            f"composio tool {tool} (toolkit={toolkit}) returned "
+                            f"{LogTag.COMPOSIO} composio tool {tool} (toolkit={toolkit}) returned "
                             f"successful=False for user={user_id}: error={err_preview!r}"
                         )
             except Exception as obs_err:  # noqa: BLE001 - observability must not break tool
-                log.debug(f"composio invocation log skipped for {tool}: {obs_err}")
+                log.debug(
+                    f"{LogTag.COMPOSIO} composio invocation log skipped for {tool}: {obs_err}"
+                )
 
             return result
 

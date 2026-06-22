@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
+from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.utils import State
 from app.services.integrations.user_integrations import (
     get_user_integration_capabilities,
@@ -95,7 +96,7 @@ async def generate_follow_up_actions(
         actions = parser.parse(result if isinstance(result, str) else result.text)
         return actions.actions if actions.actions else []
     except Exception as e:
-        log.debug(f"Follow-up action generation failed: {e}")
+        log.debug(f"{LogTag.AGENT} Follow-up action generation failed: {e}")
         return []
 
 
@@ -110,7 +111,9 @@ async def follow_up_actions_node(state: State, config: RunnableConfig, store: Ba
         writer({"main_response_complete": True})
     except Exception as write_error:
         # Stream is closed (user disconnected), no need to continue
-        log.debug(f"Stream already closed when sending completion marker: {write_error}")
+        log.debug(
+            f"{LogTag.AGENT} Stream already closed when sending completion marker: {write_error}"
+        )
         return state
 
     messages = state.get("messages", [])
@@ -121,7 +124,7 @@ async def follow_up_actions_node(state: State, config: RunnableConfig, store: Ba
     # intermediate comms acknowledgement, where they flash then vanish once the
     # executor's result message supersedes it.
     if _delegated_to_executor(messages):
-        log.debug("Skipping comms follow-ups: turn delegated to executor")
+        log.debug(f"{LogTag.AGENT} Skipping comms follow-ups: turn delegated to executor")
         return state
 
     # Skip if insufficient conversation history for meaningful suggestions
@@ -151,7 +154,7 @@ def _safe_write_actions(writer: StreamWriter, actions: list[str]) -> None:
     try:
         writer({"follow_up_actions": actions})
     except Exception as e:
-        log.debug(f"Stream closed when sending follow-up actions: {e}")
+        log.debug(f"{LogTag.AGENT} Stream closed when sending follow-up actions: {e}")
 
 
 def _delegated_to_executor(messages: list[AnyMessage]) -> bool:

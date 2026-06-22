@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import (
     integrations_collection,
@@ -112,7 +113,7 @@ async def get_public_integration(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error fetching public integration {identifier}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error fetching public integration {identifier}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch integration")
 
 
@@ -149,7 +150,9 @@ async def add_public_integration(
                     status="connected",
                     message="Integration already connected",
                 )
-            log.info(f"User {user_id} re-attempting connection to {integration_id}")
+            log.info(
+                f"{LogTag.INTEGRATION} User {user_id} re-attempting connection to {integration_id}"
+            )
         else:
             try:
                 await add_user_integration(
@@ -165,7 +168,7 @@ async def add_public_integration(
                 {"$inc": {"clone_count": 1}},
             )
 
-            log.info(f"User {user_id} added integration {integration_id}")
+            log.info(f"{LogTag.INTEGRATION} User {user_id} added integration {integration_id}")
 
         mcp_config = original_doc.get("mcp_config", {})
         server_url = mcp_config.get("server_url")
@@ -208,7 +211,7 @@ async def add_public_integration(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error adding integration {integration_id}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error adding integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to add integration")
 
 
@@ -268,7 +271,7 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
         return SearchIntegrationsResponse(integrations=formatted, query=q)
 
     except Exception as e:
-        log.error(f"Error searching integrations: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error searching integrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to search integrations")
 
 
@@ -380,5 +383,5 @@ async def get_related_workflows(
         return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
 
     except Exception as e:
-        log.error(f"Error fetching related workflows for {identifier}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error fetching related workflows for {identifier}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch related workflows")

@@ -18,6 +18,7 @@ from app.agents.core.background.session import (
     drain_bg_subagent_results,
     get_pending_subagents,
 )
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -48,7 +49,7 @@ async def wait_for_subagents(
 
     deadline = asyncio.get_running_loop().time() + timeout
     log.info(
-        f"wait_for_subagents: waiting for {get_pending_subagents(stream_id)} "
+        f"{LogTag.TOOL} wait_for_subagents: waiting for {get_pending_subagents(stream_id)} "
         f"subagent(s) on stream {stream_id}"
     )
 
@@ -57,7 +58,7 @@ async def wait_for_subagents(
     # guarantees all results are visible.
     while get_pending_subagents(stream_id) > 0:
         if asyncio.get_running_loop().time() >= deadline:
-            log.warning(f"wait_for_subagents: timed out after {timeout}s")
+            log.warning(f"{LogTag.TOOL} wait_for_subagents: timed out after {timeout}s")
             break
         await asyncio.sleep(0.1)
 
@@ -66,7 +67,9 @@ async def wait_for_subagents(
     if not results:
         return "No background subagent results to collect."
 
-    log.info(f"wait_for_subagents: collected {len(results)} result(s) for stream {stream_id}")
+    log.info(
+        f"{LogTag.TOOL} wait_for_subagents: collected {len(results)} result(s) for stream {stream_id}"
+    )
     return "\n\n---\n\n".join(f"[{item['agent']} result]\n{item['message']}" for item in results)
 
 

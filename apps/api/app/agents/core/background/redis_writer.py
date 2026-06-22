@@ -15,6 +15,7 @@ import json
 from typing import Any
 
 from app.agents.core.background.session import get_session
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from shared.py.wide_events import log
 
@@ -42,7 +43,7 @@ def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]
             _publish_tasks.add(task)
             task.add_done_callback(_publish_tasks.discard)
         except RuntimeError:
-            log.error("redis_writer: no event loop for stream", stream_id=stream_id)
+            log.error(f"{LogTag.AGENT} redis_writer: no event loop for stream", stream_id=stream_id)
 
         session = get_session(stream_id)
         if session is not None:

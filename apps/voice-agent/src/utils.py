@@ -15,6 +15,7 @@ from src.constants import (
     SENTINEL_RE,
     TAG_RE,
     WHITESPACE_RE,
+    LogTag,
 )
 
 
@@ -73,7 +74,9 @@ def extract_meta_data(md: str | None) -> ParticipantMeta:
             backend_url=_clean_str(obj.get("backendUrl")),
         )
     except (json.JSONDecodeError, AttributeError, TypeError) as e:
-        log.debug("Unparseable participant metadata", error=str(e), metadata=md[:200])
+        log.debug(
+            f"{LogTag.VOICE} Unparseable participant metadata", error=str(e), metadata=md[:200]
+        )
         return ParticipantMeta()
 
 
