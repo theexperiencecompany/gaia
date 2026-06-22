@@ -36,14 +36,20 @@ _inference_slots = asyncio.Semaphore(EMBEDDING_SIDECAR_MAX_CONCURRENCY)
 
 
 class EmbedRequest(BaseModel):
+    """Passage texts to embed in one fastembed pass."""
+
     texts: list[str]
 
 
 class EmbedQueryRequest(BaseModel):
+    """A single query string to embed with the model's query instruction."""
+
     text: str
 
 
 class RerankRequest(BaseModel):
+    """A query and the documents to score against it."""
+
     query: str
     documents: list[str]
 
@@ -63,11 +69,13 @@ app = FastAPI(title="GAIA Embedding Sidecar", lifespan=_lifespan)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    """Liveness probe — must never block, so it takes no inference slot."""
     return {"status": "ok"}
 
 
 @app.post("/embed")
 async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
+    """Embed a batch of passage texts."""
     if not request.texts:
         return {"vectors": []}
     async with _inference_slots:
@@ -76,12 +84,14 @@ async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
 
 @app.post("/embed_query")
 async def embed_query(request: EmbedQueryRequest) -> dict[str, list[float]]:
+    """Embed a single query with the model's query instruction."""
     async with _inference_slots:
         return {"vector": await asyncio.to_thread(_embed_query_sync, request.text)}
 
 
 @app.post("/rerank")
 async def rerank(request: RerankRequest) -> dict[str, list[float]]:
+    """Score documents against the query, aligned with input order."""
     if not request.documents:
         return {"scores": []}
     async with _inference_slots:
