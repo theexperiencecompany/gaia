@@ -8,6 +8,7 @@ import uuid
 
 from bson import ObjectId
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     goals_collection,
     projects_collection,
@@ -84,7 +85,9 @@ async def sync_goal_node_completion(
         )
 
         if result.modified_count == 0:
-            log.warning(f"No subtask updated for subtask_id {subtask_id} in todo {todo_id}")
+            log.warning(
+                f"{LogTag.TODO} No subtask updated for subtask_id {subtask_id} in todo {todo_id}"
+            )
             return False
 
         # Get project_id for cache invalidation
@@ -98,12 +101,12 @@ async def sync_goal_node_completion(
         await _invalidate_goal_caches(user_id, goal_id)
 
         log.info(
-            f"Synced completion status for node {node_id} <-> subtask {subtask_id}: {is_complete}"
+            f"{LogTag.TODO} Synced completion status for node {node_id} <-> subtask {subtask_id}: {is_complete}"
         )
         return True
 
     except Exception as e:
-        log.error(f"Error syncing goal node completion: {e!s}")
+        log.error(f"{LogTag.TODO} Error syncing goal node completion: {e!s}")
         return False
 
 
@@ -153,7 +156,9 @@ async def sync_subtask_to_goal_completion(
         )
 
         if result.modified_count == 0:
-            log.warning(f"No node updated for subtask_id {subtask_id} in goal {goal_id}")
+            log.warning(
+                f"{LogTag.TODO} No node updated for subtask_id {subtask_id} in goal {goal_id}"
+            )
             return False
 
         # Invalidate goal caches
@@ -162,11 +167,13 @@ async def sync_subtask_to_goal_completion(
         # Also invalidate todo caches since this sync was triggered by a todo change
         await _invalidate_todo_caches(user_id, todo_project_id, todo_id)
 
-        log.info(f"Synced subtask {subtask_id} completion back to goal {goal_id}: {is_complete}")
+        log.info(
+            f"{LogTag.TODO} Synced subtask {subtask_id} completion back to goal {goal_id}: {is_complete}"
+        )
         return True
 
     except Exception as e:
-        log.error(f"Error syncing subtask to goal completion: {e!s}")
+        log.error(f"{LogTag.TODO} Error syncing subtask to goal completion: {e!s}")
         return False
 
 
@@ -265,12 +272,12 @@ async def create_goal_project_and_todo(
         await _invalidate_project_caches(user_id, project_id)
 
         log.info(
-            f"Added goal todo {created_todo.id} with {len(subtasks)} subtasks to Goals project {project_id} for goal {goal_id}"
+            f"{LogTag.TODO} Added goal todo {created_todo.id} with {len(subtasks)} subtasks to Goals project {project_id} for goal {goal_id}"
         )
         return project_id
 
     except Exception as e:
-        log.error(f"Error creating goal todo in Goals project: {e!s}")
+        log.error(f"{LogTag.TODO} Error creating goal todo in Goals project: {e!s}")
         raise
 
 
@@ -329,11 +336,11 @@ async def _invalidate_todo_caches(
         await delete_cache_by_pattern(f"todo:{user_id}:*")
 
         log.info(
-            f"Todo caches invalidated for user {user_id}, project {project_id}, todo {todo_id}"
+            f"{LogTag.TODO} Todo caches invalidated for user {user_id}, project {project_id}, todo {todo_id}"
         )
 
     except Exception as e:
-        log.error(f"Error invalidating todo caches: {e!s}")
+        log.error(f"{LogTag.TODO} Error invalidating todo caches: {e!s}")
 
 
 async def _invalidate_goal_caches(user_id: str, goal_id: str | None = None):
@@ -354,10 +361,10 @@ async def _invalidate_goal_caches(user_id: str, goal_id: str | None = None):
             cache_key_goal = f"goal_cache:{goal_id}"
             await delete_cache(cache_key_goal)
 
-        log.info(f"Goal caches invalidated for user {user_id}, goal {goal_id}")
+        log.info(f"{LogTag.TODO} Goal caches invalidated for user {user_id}, goal {goal_id}")
 
     except Exception as e:
-        log.error(f"Error invalidating goal caches: {e!s}")
+        log.error(f"{LogTag.TODO} Error invalidating goal caches: {e!s}")
 
 
 async def _invalidate_project_caches(user_id: str, project_id: str | None = None):
@@ -372,7 +379,9 @@ async def _invalidate_project_caches(user_id: str, project_id: str | None = None
         if project_id:
             await delete_cache_by_pattern(f"*:project:{project_id}*")
 
-        log.info(f"Project caches invalidated for user {user_id}, project {project_id}")
+        log.info(
+            f"{LogTag.TODO} Project caches invalidated for user {user_id}, project {project_id}"
+        )
 
     except Exception as e:
-        log.error(f"Error invalidating project caches: {e!s}")
+        log.error(f"{LogTag.TODO} Error invalidating project caches: {e!s}")

@@ -140,6 +140,7 @@
 
   /* Animations */
   --animate-shine: shine 1s linear infinite;
+  --animate-shine-border: shine-border var(--duration, 14s) infinite linear;
   --animate-orbit: orbit calc(var(--duration) * 1s) linear infinite;
   --animate-grid: grid 15s linear infinite;
   --animate-accordion-down: accordion-down 0.2s ease-out;
@@ -156,6 +157,19 @@
   }
   100% {
     background-position: -100%;
+  }
+}
+
+/* Animated gradient border sweep (magicui ShineBorder). */
+@keyframes shine-border {
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  100% {
+    background-position: 0% 0%;
   }
 }
 

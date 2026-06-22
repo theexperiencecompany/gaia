@@ -6,6 +6,7 @@ This module provides utilities to normalize schemas before conversion.
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -40,7 +41,7 @@ def normalize_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
 
         if numeric_keys:
             log.warning(
-                f"Found numeric definition keys: {numeric_keys}. "
+                f"{LogTag.STARTUP} Found numeric definition keys: {numeric_keys}. "
                 f"This can cause $ref resolution issues. Normalizing..."
             )
 
@@ -53,7 +54,9 @@ def normalize_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
                     new_key = f"Def{old_key}"
                     new_defs[new_key] = value
                     key_mapping[old_key] = new_key
-                    log.debug(f"Renamed definition key: '{old_key}' -> '{new_key}'")
+                    log.debug(
+                        f"{LogTag.STARTUP} Renamed definition key: '{old_key}' -> '{new_key}'"
+                    )
                 else:
                     new_defs[old_key] = value
 
@@ -83,7 +86,7 @@ def _update_refs_recursive(obj: Any, key_mapping: dict[str, str], defs_key: str)
                 if ref_key in key_mapping:
                     new_ref = f"#/{defs_key}/{key_mapping[ref_key]}"
                     obj["$ref"] = new_ref
-                    log.debug(f"Updated $ref: '{ref}' -> '{new_ref}'")
+                    log.debug(f"{LogTag.STARTUP} Updated $ref: '{ref}' -> '{new_ref}'")
 
         # Recurse into dict values
         for value in obj.values():
@@ -112,12 +115,14 @@ def patch_tool_schema(tool: Any) -> Any:
     try:
         normalized = normalize_schema_refs(tool.inputSchema)
         if normalized != tool.inputSchema:
-            log.info(f"Normalized schema for tool: {tool.name}")
+            log.info(f"{LogTag.STARTUP} Normalized schema for tool: {tool.name}")
             # Create a modified copy
             tool_dict = tool.model_dump()
             tool_dict["inputSchema"] = normalized
             return type(tool)(**tool_dict)
     except Exception as e:
-        log.warning(f"Could not normalize schema for tool {tool.name}: {e}. Using original schema.")
+        log.warning(
+            f"{LogTag.STARTUP} Could not normalize schema for tool {tool.name}: {e}. Using original schema."
+        )
 
     return tool

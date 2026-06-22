@@ -12,6 +12,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone_from_preferences,
 )
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import projects_collection, todos_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.utils import serialize_document
@@ -360,7 +361,7 @@ async def update_todo(
             try:
                 await tracked_todo_service.reschedule_execution(todo_id, updates.scheduled_at)
             except Exception as e:
-                log.warning(f"Failed to reschedule todo {todo_id} after update: {e}")
+                log.warning(f"{LogTag.TODO} Failed to reschedule todo {todo_id} after update: {e}")
 
         return updated_todo
     except ValueError as e:
@@ -830,7 +831,7 @@ async def update_subtask(
                     todo_id, subtask_id, updates.completed, user["user_id"]
                 )
             except Exception as e:
-                log.warning(f"Failed to sync subtask to goal: {e!s}")
+                log.warning(f"{LogTag.TODO} Failed to sync subtask to goal: {e!s}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:
@@ -948,7 +949,7 @@ async def toggle_subtask_completion(
                 todo_id, subtask_id, new_completed, user["user_id"]
             )
         except Exception as e:
-            log.warning(f"Failed to sync subtask to goal: {e!s}")
+            log.warning(f"{LogTag.TODO} Failed to sync subtask to goal: {e!s}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:

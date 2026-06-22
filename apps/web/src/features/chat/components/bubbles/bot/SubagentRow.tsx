@@ -1,7 +1,7 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
-import { ToolsIcon } from "@icons";
+import { PuzzleIcon, ToolsIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
@@ -42,6 +42,28 @@ function displayToolOutput(call: ToolCallEntry): unknown {
   return output;
 }
 
+// A read/write/edit whose path is any `skill.md` renders as a first-class
+// "… a Skill" step with the Settings→Skills plugin icon, instead of the generic
+// "Read"/"Write" tool row.
+const SKILL_FILE_PATH = /(^|\/)skill\.md$/i;
+const SKILL_TOOL_LABELS: Record<string, string> = {
+  read: "Reading a Skill",
+  write: "Writing a Skill",
+  edit: "Editing a Skill",
+};
+function skillToolLabel(call: ToolCallEntry): string | null {
+  const label = SKILL_TOOL_LABELS[call.tool_name];
+  if (!label) return null;
+  const { inputs } = call;
+  const rawPath =
+    inputs && typeof inputs === "object"
+      ? (inputs as { path?: unknown }).path
+      : undefined;
+  return typeof rawPath === "string" && SKILL_FILE_PATH.test(rawPath)
+    ? label
+    : null;
+}
+
 function ToolCallRow({
   call,
   isLast,
@@ -55,7 +77,11 @@ function ToolCallRow({
 }>) {
   const [expanded, setExpanded] = useState(false);
 
-  const primaryLabel = call.message || formatToolName(call.tool_name);
+  // Skill-file reads/writes/edits get a dedicated label + plugin icon; the skill
+  // label wins over any backend-provided custom message.
+  const skillLabel = skillToolLabel(call);
+  const primaryLabel =
+    skillLabel || call.message || formatToolName(call.tool_name);
   const integrationLabel =
     getIntegrationName(call) ||
     (call.tool_category && call.tool_category !== "unknown"
@@ -99,14 +125,25 @@ function ToolCallRow({
     <div className="flex items-stretch gap-2">
       <div className="flex flex-col items-center self-stretch">
         <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
-          {getToolCategoryIcon(
-            call.tool_category || "general",
-            { size: 21, width: 21, height: 21 },
-            getIconUrl(call),
-          ) || (
-            <div className="p-1 bg-zinc-800 rounded-lg">
-              <ToolsIcon width={21} height={21} />
+          {skillLabel ? (
+            <div className="relative rounded-lg p-1">
+              <div className="absolute inset-0 rounded-lg bg-lime-500/20 backdrop-blur" />
+              <PuzzleIcon
+                width={21}
+                height={21}
+                className="relative text-lime-400"
+              />
             </div>
+          ) : (
+            getToolCategoryIcon(
+              call.tool_category || "general",
+              { size: 21, width: 21, height: 21 },
+              getIconUrl(call),
+            ) || (
+              <div className="p-1 bg-zinc-800 rounded-lg">
+                <ToolsIcon width={21} height={21} />
+              </div>
+            )
           )}
         </div>
         {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}

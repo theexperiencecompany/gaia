@@ -4,6 +4,7 @@ from typing import Any
 
 from composio import Composio
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from shared.py.wide_events import log
@@ -47,7 +48,7 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
             )
             contacts = data.get("results", [])
         except Exception as e:
-            log.debug(f"HubSpot contacts fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} HubSpot contacts fetch failed: {e}")
 
         deals: list[dict[str, Any]] = []
         try:
@@ -67,7 +68,7 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
             )
             deals = data.get("results", [])
         except Exception as e:
-            log.debug(f"HubSpot deals fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} HubSpot deals fetch failed: {e}")
 
         recent_contacts = [
             {

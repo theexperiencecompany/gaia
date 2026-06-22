@@ -4,6 +4,7 @@ from typing import Any
 
 from composio import Composio
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 from shared.py.wide_events import log
@@ -45,7 +46,7 @@ def register_github_custom_tools(composio: Composio) -> list[str]:
             )
             review_requests = reviews_data.get("items", [])
         except Exception as e:
-            log.debug(f"GitHub review requests fetch skipped: {e}")
+            log.debug(f"{LogTag.TOOL} GitHub review requests fetch skipped: {e}")
 
         notifications: list[dict[str, Any]] = []
         try:
@@ -57,7 +58,7 @@ def register_github_custom_tools(composio: Composio) -> list[str]:
             raw = notif_data.get("notifications", notif_data)
             notifications = raw if isinstance(raw, list) else []
         except Exception as e:
-            log.debug(f"GitHub notifications fetch skipped: {e}")
+            log.debug(f"{LogTag.TOOL} GitHub notifications fetch skipped: {e}")
 
         return {
             "assigned_issues": actual_issues,

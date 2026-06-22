@@ -10,6 +10,7 @@ from typing import Any
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 from .registry import (
@@ -125,7 +126,7 @@ def twitter_create_post_before_hook(
         writer(payload)
 
     except Exception as e:
-        log.error(f"Error in twitter_create_post_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in twitter_create_post_before_hook: {e}")
 
     return params
 
@@ -147,7 +148,7 @@ def twitter_search_before_hook(
         writer(payload)
 
     except Exception as e:
-        log.error(f"Error in twitter_search_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in twitter_search_before_hook: {e}")
 
     return params
 
@@ -229,7 +230,7 @@ def twitter_search_after_hook(tool: str, toolkit: str, response: ToolExecutionRe
         }
 
     except Exception as e:
-        log.error(f"Error in twitter_search_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in twitter_search_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -287,7 +288,7 @@ def twitter_user_lookup_after_hook(tool: str, toolkit: str, response: ToolExecut
         }
 
     except Exception as e:
-        log.error(f"Error in twitter_user_lookup_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in twitter_user_lookup_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -355,7 +356,7 @@ def twitter_timeline_after_hook(tool: str, toolkit: str, response: ToolExecution
         }
 
     except Exception as e:
-        log.error(f"Error in twitter_timeline_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in twitter_timeline_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -409,7 +410,7 @@ def twitter_followers_after_hook(tool: str, toolkit: str, response: ToolExecutio
         }
 
     except Exception as e:
-        log.error(f"Error in twitter_followers_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in twitter_followers_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -445,5 +446,5 @@ def twitter_post_created_after_hook(
         }
 
     except Exception as e:
-        log.error(f"Error in twitter_post_created_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in twitter_post_created_after_hook: {e}")
         return response.get("data", {})

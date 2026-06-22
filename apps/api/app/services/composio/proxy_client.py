@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 from app.config.oauth_config import get_composio_social_configs
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
+from app.constants.log_tags import LogTag
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -89,7 +90,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
         raise
     except Exception as e:
         log.error(
-            f"composio.connected_accounts.list FAILED for user={user_id} "
+            f"{LogTag.COMPOSIO} composio.connected_accounts.list FAILED for user={user_id} "
             f"toolkit={toolkit}: {type(e).__name__}: {e}"
         )
         raise AppError(
@@ -121,7 +122,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             for acc in accounts.items[:5]
         ]
         log.warning(
-            f"composio: no ACTIVE account for user={user_id} toolkit={toolkit} "
+            f"{LogTag.COMPOSIO} composio: no ACTIVE account for user={user_id} toolkit={toolkit} "
             f"(total_accounts={total_accounts}, sample={account_summary})"
         )
         # 403, not 401: the user's GAIA session is valid — they simply have no
@@ -142,7 +143,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
         )
 
     log.info(
-        f"composio: resolved connected_account_id for user={user_id} toolkit={toolkit} "
+        f"{LogTag.COMPOSIO} composio: resolved connected_account_id for user={user_id} toolkit={toolkit} "
         f"-> {active.id} (cached for {_CONNECTED_ACCOUNT_CACHE_TTL_SECONDS}s)"
     )
     with _cache_lock:
@@ -214,7 +215,7 @@ def _proxy_call(
         raise
     except Exception as e:
         log.error(
-            f"composio.tools.proxy raised for user={user_id} toolkit={toolkit} "
+            f"{LogTag.COMPOSIO} composio.tools.proxy raised for user={user_id} toolkit={toolkit} "
             f"{method} {endpoint}: {type(e).__name__}: {e}"
         )
         raise AppError(

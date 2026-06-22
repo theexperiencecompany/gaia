@@ -3,16 +3,9 @@ import {
   Button,
   Checkbox,
   Chip,
-  Link,
   Progress,
   Radio,
   RadioGroup,
-  Table,
-  TableBody,
-  TableCell,
-  TableColumn,
-  TableHeader,
-  TableRow,
 } from "@heroui/react";
 import {
   Alert02Icon,
@@ -83,13 +76,6 @@ export const statSchema = z.object({
   trend: z.enum(["up", "down", "neutral"]).optional(),
   trendLabel: z.string().optional(),
   size: z.enum(["sm", "md", "lg"]).optional(),
-});
-
-export const colSchema = z.object({
-  header: z.string(),
-  values: z.array(z.union([z.string(), z.number()])),
-  type: z.enum(["string", "number", "badge", "link"]).optional(),
-  align: z.enum(["start", "center", "end"]).optional(),
 });
 
 export const buttonSchema = z.object({
@@ -421,83 +407,6 @@ export function RadioView(props: z.infer<typeof radioSchema>) {
 }
 
 // ---------------------------------------------------------------------------
-// Col + Table (typed child pattern via colDef.ref)
-// ---------------------------------------------------------------------------
-
-export const colDef = defineComponent({
-  name: "Col",
-  description: "Data column for Table. Defines header, values array, and type.",
-  props: colSchema,
-  // Col renders nothing on its own — Table consumes it as typed data
-  component: () => null,
-});
-
-const tableSchema = z.object({
-  cols: z.array(colDef.ref),
-  title: z.string().optional(),
-});
-
-export function TableView(props: z.infer<typeof tableSchema>) {
-  if (!props.cols || props.cols.length === 0) return null;
-
-  const rowCount = Math.max(...props.cols.map((c) => c.props.values.length));
-
-  return (
-    <div className="w-full max-w-2xl space-y-2">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100">{props.title}</p>
-      )}
-      <Table aria-label={props.title ?? "Table"} radius="lg">
-        <TableHeader>
-          {props.cols.map((col) => (
-            <TableColumn
-              key={col.props.header}
-              align={
-                col.props.align ??
-                (col.props.type === "number" ? "end" : "start")
-              }
-            >
-              {col.props.header}
-            </TableColumn>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {Array.from({ length: rowCount }, (_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: table rows indexed by position
-            <TableRow key={i}>
-              {props.cols.map((col) => {
-                const raw = col.props.values[i];
-                const val = raw ?? "";
-                const type = col.props.type;
-
-                let cell: React.ReactNode;
-                if (type === "number" && typeof val === "number") {
-                  cell = (
-                    <span className="tabular-nums">{val.toLocaleString()}</span>
-                  );
-                } else if (type === "badge") {
-                  cell = <Chip size="sm">{String(val)}</Chip>;
-                } else if (type === "link") {
-                  cell = (
-                    <Link href={String(val)} isExternal size="sm">
-                      {String(val)}
-                    </Link>
-                  );
-                } else {
-                  cell = String(val);
-                }
-
-                return <TableCell key={col.props.header}>{cell}</TableCell>;
-              })}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Button + Buttons (typed child pattern via buttonDef.ref)
 // ---------------------------------------------------------------------------
 
@@ -569,14 +478,6 @@ export const statDef = defineComponent({
   description: "Single KPI: label, large value, optional unit and trend.",
   props: statSchema,
   component: ({ props }) => React.createElement(StatView, props),
-});
-
-export const tableDef = defineComponent({
-  name: "Table",
-  description:
-    "Data table built from Col children. Each Col defines a header + values array.",
-  props: tableSchema,
-  component: ({ props }) => React.createElement(TableView, props),
 });
 
 export const buttonsDef = defineComponent({

@@ -4,6 +4,7 @@ from typing import Any
 
 from composio import Composio
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
@@ -49,7 +50,7 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
             log.set(
                 user_id=user_id, endpoint=f"{REDDIT_API_BASE}/api/v1/me", toolkit=REDDIT_TOOLKIT
             )
-            log.error("Reddit /me fetch failed", exc=e)
+            log.error(f"{LogTag.TOOL} Reddit /me fetch failed", exc=e)
 
         subreddits: list[dict[str, Any]] = []
         try:
@@ -79,7 +80,7 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
                 endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
                 toolkit=REDDIT_TOOLKIT,
             )
-            log.error("Reddit subreddits fetch failed", exc=e)
+            log.error(f"{LogTag.TOOL} Reddit subreddits fetch failed", exc=e)
 
         unread_messages: list[dict[str, Any]] = []
         try:
@@ -110,7 +111,7 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
                 endpoint=f"{REDDIT_API_BASE}/message/unread",
                 toolkit=REDDIT_TOOLKIT,
             )
-            log.error("Reddit unread messages fetch failed", exc=e)
+            log.error(f"{LogTag.TOOL} Reddit unread messages fetch failed", exc=e)
 
         return {
             "user": {

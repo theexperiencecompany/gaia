@@ -36,6 +36,7 @@ from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
@@ -135,7 +136,7 @@ class SubAgentFactory:
         """
         log.set(subagent={"name": name, "provider": provider})
         log.info(
-            f"Creating {provider} sub-agent graph using tool space '{tool_space}' with "
+            f"{LogTag.AGENT} Creating {provider} sub-agent graph using tool space '{tool_space}' with "
             + ("direct tools binding" if use_direct_tools else "retrieve tools")
         )
 
@@ -197,7 +198,9 @@ class SubAgentFactory:
             else None
         )
         if valid_auto_bind:
-            log.info(f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}")
+            log.info(
+                f"{LogTag.AGENT} Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
+            )
 
         parent_tool_runtime = build_provider_parent_tool_runtime_config(
             provider_tool_names=initial_tool_ids,
@@ -211,6 +214,8 @@ class SubAgentFactory:
             build_create_agent_tool_kwargs(
                 parent_tool_runtime,
                 tool_space=tool_space,
+                # Validate binding against exactly what this graph executes.
+                bindable_tool_names=set(scoped_tool_dict.keys()),
             )
         )
 
@@ -237,14 +242,16 @@ class SubAgentFactory:
         try:
             checkpointer_manager = await get_checkpointer_manager()
             checkpointer = checkpointer_manager.get_checkpointer()
-            log.debug(f"Using PostgreSQL checkpointer for {provider} sub-agent")
+            log.debug(f"{LogTag.AGENT} Using PostgreSQL checkpointer for {provider} sub-agent")
         except Exception as e:
             log.warning(
-                f"PostgreSQL checkpointer unavailable for {provider} sub-agent: {e}. Using InMemorySaver."
+                f"{LogTag.AGENT} PostgreSQL checkpointer unavailable for {provider} sub-agent: {e}. Using InMemorySaver."
             )
             checkpointer = InMemorySaver()
 
         subagent_graph = builder.compile(store=store, name=name, checkpointer=checkpointer)
 
-        log.info(f"Successfully created {provider} sub-agent graph with checkpointer")
+        log.info(
+            f"{LogTag.AGENT} Successfully created {provider} sub-agent graph with checkpointer"
+        )
         return subagent_graph

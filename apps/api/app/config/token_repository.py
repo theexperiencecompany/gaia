@@ -19,6 +19,7 @@ import httpx
 from sqlalchemy import select, update
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.db.postgresql import get_db_session
 from app.models.db_oauth import OAuthToken
 from shared.py.wide_events import log
@@ -40,7 +41,9 @@ class TokenRepository:
         # Initialize supported providers
         self._init_oauth_clients()
 
-        log.info("Token repository initialized for managing API tokens (Google, etc.)")
+        log.info(
+            f"{LogTag.STARTUP} Token repository initialized for managing API tokens (Google, etc.)"
+        )
 
     def _init_oauth_clients(self):
         """Initialize OAuth clients for all supported providers."""
@@ -56,9 +59,11 @@ class TokenRepository:
                     "prompt": "select_account",
                 },
             )
-            log.info("Google OAuth client registered")
+            log.info(f"{LogTag.STARTUP} Google OAuth client registered")
         else:
-            log.warning("Google OAuth credentials not found, client not registered")
+            log.warning(
+                f"{LogTag.STARTUP} Google OAuth credentials not found, client not registered"
+            )
 
     def _get_token_expiration(self, token_data: dict) -> datetime:
         """Get token expiration time with fallback logic."""
@@ -69,7 +74,7 @@ class TokenRepository:
             try:
                 return datetime.fromtimestamp(float(expires_at), UTC)
             except (ValueError, TypeError, OverflowError):
-                log.warning(f"Invalid expires_at: {expires_at}")
+                log.warning(f"{LogTag.STARTUP} Invalid expires_at: {expires_at}")
 
         # Fall back to expires_in
         expires_in = token_data.get("expires_in", 3500)  # Default about 1 hour
@@ -77,7 +82,7 @@ class TokenRepository:
             expires_in = float(expires_in)
             return datetime.now(UTC) + timedelta(seconds=expires_in)
         except (ValueError, TypeError):
-            log.warning(f"Invalid expires_in: {expires_in}, using default")
+            log.warning(f"{LogTag.STARTUP} Invalid expires_in: {expires_in}, using default")
             return datetime.now(UTC) + timedelta(seconds=3600)
 
     async def store_token(
@@ -231,7 +236,7 @@ class TokenRepository:
         """
 
         if not self.oauth.google:
-            log.error("Google OAuth client not properly initialized")
+            log.error(f"{LogTag.STARTUP} Google OAuth client not properly initialized")
             return None
 
         client = self.oauth.google
@@ -253,7 +258,7 @@ class TokenRepository:
                 )
 
             if response.status_code != 200:
-                log.error(f"Failed to refresh token: {response.text}")
+                log.error(f"{LogTag.STARTUP} Failed to refresh token: {response.text}")
                 return None
 
             token_data = response.json()
@@ -265,7 +270,7 @@ class TokenRepository:
             # Create OAuth2Token from response
             return OAuth2Token(token_data)
         except Exception as e:
-            log.error(f"Error refreshing Google token: {e!s}")
+            log.error(f"{LogTag.STARTUP} Error refreshing Google token: {e!s}")
             return None
 
     async def _refresh_provider_token(
@@ -284,7 +289,7 @@ class TokenRepository:
         if provider == "google":
             return await self._refresh_google_token(refresh_token)
         # Add more providers as needed
-        log.error(f"Provider {provider} not supported for token refresh")
+        log.error(f"{LogTag.STARTUP} Provider {provider} not supported for token refresh")
         return None
 
     async def refresh_token(self, user_id: str, provider: str) -> OAuth2Token | None:
@@ -307,24 +312,28 @@ class TokenRepository:
             token_record = result.scalar_one_or_none()
 
             if not token_record:
-                log.warning(f"Cannot refresh token: No {provider} token found for user {user_id}")
+                log.warning(
+                    f"{LogTag.STARTUP} Cannot refresh token: No {provider} token found for user {user_id}"
+                )
                 return None
 
             # Check if refresh token is available
             refresh_token = token_record.refresh_token
             if not refresh_token:
                 log.warning(
-                    f"Cannot refresh token: No refresh token for user {user_id} and provider {provider}"
+                    f"{LogTag.STARTUP} Cannot refresh token: No refresh token for user {user_id} and provider {provider}"
                 )
                 return None
 
             # Refresh the token using the appropriate provider handler
             try:
-                log.info(f"Refreshing {provider} token for user {user_id}")
+                log.info(f"{LogTag.STARTUP} Refreshing {provider} token for user {user_id}")
                 token = await self._refresh_provider_token(provider, refresh_token)
 
                 if not token:
-                    log.error(f"Failed to refresh {provider} token for user {user_id}")
+                    log.error(
+                        f"{LogTag.STARTUP} Failed to refresh {provider} token for user {user_id}"
+                    )
                     return None
 
                 # Convert OAuth2Token to a dictionary we can store
@@ -346,11 +355,13 @@ class TokenRepository:
                 # without querying the database again
                 refreshed_token = await self.store_token(user_id, provider, token_dict)
 
-                log.info(f"Successfully refreshed {provider} token for user {user_id}")
+                log.info(
+                    f"{LogTag.STARTUP} Successfully refreshed {provider} token for user {user_id}"
+                )
 
                 return refreshed_token
             except Exception as e:
-                log.error(f"Error refreshing {provider} token: {e!s}")
+                log.error(f"{LogTag.STARTUP} Error refreshing {provider} token: {e!s}")
                 return None
 
     async def revoke_token(self, user_id: str, provider: str) -> bool:
@@ -374,17 +385,21 @@ class TokenRepository:
             token_record = result.scalar_one_or_none()
 
             if not token_record:
-                log.warning(f"Cannot revoke token: No {provider} token found for user {user_id}")
+                log.warning(
+                    f"{LogTag.STARTUP} Cannot revoke token: No {provider} token found for user {user_id}"
+                )
                 return False
 
             try:
                 # Delete the token record
                 await session.delete(token_record)
                 await session.commit()
-                log.info(f"Successfully revoked {provider} token for user {user_id}")
+                log.info(
+                    f"{LogTag.STARTUP} Successfully revoked {provider} token for user {user_id}"
+                )
                 return True
             except Exception as e:
-                log.error(f"Error revoking token: {e!s}")
+                log.error(f"{LogTag.STARTUP} Error revoking token: {e!s}")
                 await session.rollback()
                 return False
 
@@ -423,7 +438,7 @@ class TokenRepository:
 
             # Log token status for debugging
             log.debug(
-                f"Token expiry status - is_expired: {oauth_token.is_expired()}, will_renew: {renew_if_expired}"
+                f"{LogTag.STARTUP} Token expiry status - is_expired: {oauth_token.is_expired()}, will_renew: {renew_if_expired}"
             )
 
             # Check if token is expired

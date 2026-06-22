@@ -4,6 +4,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
+from app.constants.log_tags import LogTag
 from app.constants.notifications import ALL_AUTO_INJECTED_CHANNELS, CHANNEL_TYPE_INAPP
 from app.decorators import with_doc, with_rate_limiting
 from app.models.notification.notification_models import (
@@ -66,7 +67,7 @@ async def get_notifications(
         return {"notifications": notifications}
 
     except Exception as e:
-        log.error(f"Error getting notifications: {e!s}")
+        log.error(f"{LogTag.TOOL} Error getting notifications: {e!s}")
         return {"error": str(e), "notifications": []}
 
 
@@ -119,7 +120,7 @@ async def search_notifications(
         return {"notifications": matching_notifications}
 
     except Exception as e:
-        log.error(f"Error searching notifications: {e!s}")
+        log.error(f"{LogTag.TOOL} Error searching notifications: {e!s}")
         return {"error": str(e), "notifications": []}
 
 
@@ -144,7 +145,7 @@ async def get_notification_count(
         return {"count": total_count}
 
     except Exception as e:
-        log.error(f"Error getting notification count: {e!s}")
+        log.error(f"{LogTag.TOOL} Error getting notification count: {e!s}")
         return {"error": str(e), "count": 0}
 
 
@@ -181,7 +182,7 @@ async def mark_notifications_read(
         return {"success": success}
 
     except Exception as e:
-        log.error(f"Error marking notifications as read: {e!s}")
+        log.error(f"{LogTag.TOOL} Error marking notifications as read: {e!s}")
         return {"error": str(e), "success": False}
 
 
@@ -296,7 +297,7 @@ async def send_notification(
         return result
 
     except Exception as e:
-        log.error(f"Error sending notification: {e!s}")
+        log.error(f"{LogTag.TOOL} Error sending notification: {e!s}")
         return {"error": str(e), "success": False}
 
 
@@ -326,7 +327,7 @@ async def get_notification_preferences(
         }
 
     except Exception as e:
-        log.error(f"Error fetching notification preferences: {e!s}")
+        log.error(f"{LogTag.TOOL} Error fetching notification preferences: {e!s}")
         return {"error": str(e), "preferences": {}}
 
 

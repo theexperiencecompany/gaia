@@ -4,13 +4,15 @@ import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { ConnectIcon, MessageFavourite02Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
-import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import {
+  integrationKeys,
+  toolKeys,
+} from "@/features/integrations/api/queryKeys";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
@@ -18,6 +20,8 @@ import {
   POST_CONNECT_POLL_INTERVAL_MS,
   POST_CONNECT_POLL_MAX_ATTEMPTS,
 } from "@/features/integrations/constants/connect";
+import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
+import { useIntegrationDeepLink } from "@/features/integrations/hooks/useIntegrationDeepLink";
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
@@ -29,7 +33,6 @@ import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {
   const queryClient = useQueryClient();
-  const router = useRouter();
   const { isMac } = usePlatform();
   const { setHeader } = useHeader();
 
@@ -46,10 +49,6 @@ export default function IntegrationsPage() {
     unpublishIntegration,
     refetch,
   } = useIntegrations();
-
-  // Pre-fetch tools on page load; also used to detect when a just-connected
-  // integration's tools have finished discovering in the background.
-  const { tools: toolsWithIntegrations } = useToolsWithIntegrations();
 
   // Right sidebar store
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
@@ -81,43 +80,60 @@ export default function IntegrationsPage() {
   // same `integrations` reference until tools actually land).
   const [settleTick, setSettleTick] = useState(0);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
-  const [bearerModalOpen, setBearerModalOpen] = useState(false);
-  const [bearerIntegrationId, setBearerIntegrationId] = useState("");
-  const [bearerIntegrationName, setBearerIntegrationName] = useState("");
 
-  // Update sidebar content when selected integration status changes
-  useEffect(() => {
-    if (!selectedIntegrationId || !isSidebarOpen) return;
+  // Bearer-token connect modal (MCP `status=bearer_required` flow).
+  const bearer = useBearerTokenModal({
+    connect: (id, token) => integrationsApi.addIntegration(id, token),
+    onConnected: (_id, result) => {
+      toast.success(`Connected to ${result.name}`);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: toolKeys.all });
+    },
+  });
 
-    const selectedIntegration = integrations.find(
-      (i) => i.id === selectedIntegrationId,
-    );
+  const selectedIntegration = useMemo(
+    () => integrations.find((i) => i.id === selectedIntegrationId) ?? null,
+    [integrations, selectedIntegrationId],
+  );
 
-    if (!selectedIntegration) return;
-
-    const handleDisconnect = async (id: string) => {
+  // Stable handlers — they only depend on the (memoized) hook actions, so the
+  // sidebar content isn't rebuilt just because they were recreated.
+  const handleDisconnect = useCallback(
+    async (id: string) => {
       await disconnectIntegration(id);
       closeRightSidebar();
-    };
-
-    const handleDelete = async (id: string) => {
+    },
+    [disconnectIntegration, closeRightSidebar],
+  );
+  const handleDelete = useCallback(
+    async (id: string) => {
       await deleteCustomIntegration(id);
       closeRightSidebar();
-    };
+    },
+    [deleteCustomIntegration, closeRightSidebar],
+  );
+  const handlePublish = useCallback(
+    (id: string) => publishIntegration(id),
+    [publishIntegration],
+  );
+  const handleUnpublish = useCallback(
+    (id: string) => unpublishIntegration(id),
+    [unpublishIntegration],
+  );
 
-    const handlePublish = async (id: string) => {
-      await publishIntegration(id);
-    };
+  const isSelectedSettling = selectedIntegration
+    ? settlingIntegrationId === selectedIntegration.id
+    : false;
 
-    const handleUnpublish = async (id: string) => {
-      await unpublishIntegration(id);
-    };
-
-    // For custom integrations, always pass the handlers
-    // The sidebar component will determine when to show the buttons
+  // Build the sidebar element once per relevant change. React Query's structural
+  // sharing keeps `selectedIntegration`'s identity stable across no-op refetches
+  // (e.g. the post-connect poll), so this only rebuilds when the selected
+  // integration's data or its settling state actually changes — not on every
+  // poll tick.
+  const sidebarElement = useMemo(() => {
+    if (!selectedIntegration) return null;
     const isCustomIntegration = selectedIntegration.source === "custom";
-
-    setRightSidebarContent(
+    return (
       <IntegrationSidebar
         integration={selectedIntegration}
         onConnect={connectIntegration}
@@ -126,95 +142,24 @@ export default function IntegrationsPage() {
         onPublish={isCustomIntegration ? handlePublish : undefined}
         onUnpublish={isCustomIntegration ? handleUnpublish : undefined}
         category={selectedIntegration.name}
-        isSettling={settlingIntegrationId === selectedIntegration.id}
-      />,
+        isSettling={isSelectedSettling}
+      />
     );
   }, [
-    selectedIntegrationId,
-    integrations,
-    isSidebarOpen,
-    settlingIntegrationId,
-    setRightSidebarContent,
+    selectedIntegration,
+    isSelectedSettling,
     connectIntegration,
-    disconnectIntegration,
-    deleteCustomIntegration,
-    publishIntegration,
-    unpublishIntegration,
-    closeRightSidebar,
+    handleDisconnect,
+    handleDelete,
+    handlePublish,
+    handleUnpublish,
   ]);
 
-  // Handle query params from backend redirects (status, oauth_success, etc.)
+  // Push the memoized element into the right sidebar while it's open.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const status = params.get("status");
-    const integrationId = params.get("id");
-    const oauthSuccess = params.get("oauth_success");
-    const oauthIntegration = params.get("integration");
-
-    // Handle OAuth success callback - toast is handled globally by useOAuthSuccessToast
-    // Here we just handle opening the sidebar for the connected integration
-    if (oauthSuccess === "true") {
-      // Set pending integration to open sidebar after data refresh
-      // Use integrationId (from redirect_path) or oauthIntegration as fallback
-      const targetIntegrationId = integrationId || oauthIntegration;
-      if (targetIntegrationId) {
-        setPendingIntegrationId(targetIntegrationId);
-      }
-      return;
-    }
-
-    if (status && integrationId) {
-      router.replace("/integrations", { scroll: false });
-
-      if (status === "connected") {
-        const nameParam = params.get("name");
-        if (nameParam) {
-          toast.success(`Connected to ${nameParam}`);
-        }
-        refetch();
-        queryClient.refetchQueries({ queryKey: ["tools", "available"] });
-        // Open the sidebar for the freshly-connected integration and poll until
-        // its tools finish discovering in the background (see the poller below).
-        setPendingIntegrationId(integrationId);
-        setSettleTick(0);
-        setSettlingIntegrationId(integrationId);
-      } else if (status === "bearer_required") {
-        // name should be in URL when redirected here
-        const nameParam = params.get("name");
-        if (nameParam) {
-          setBearerIntegrationId(integrationId);
-          setBearerIntegrationName(nameParam);
-          setBearerModalOpen(true);
-        }
-      } else if (status === "failed") {
-        const error = params.get("error");
-        toast.error(`Connection failed: ${error || "Unknown error"}`);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleBearerSubmit = async (id: string, token: string) => {
-    const toastId = toast.loading(`Connecting...`);
-    try {
-      const result = await integrationsApi.addIntegration(id, token);
-      if (result.status === "connected") {
-        toast.success(`Connected to ${result.name}`, { id: toastId });
-        refetch();
-        queryClient.refetchQueries({ queryKey: ["tools", "available"] });
-      } else if (result.status === "error") {
-        toast.error(result.message || "Connection failed", { id: toastId });
-      } else {
-        toast.dismiss(toastId);
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Connection failed",
-        { id: toastId },
-      );
-      throw error;
-    }
-  };
+    if (!isSidebarOpen || !sidebarElement) return;
+    setRightSidebarContent(sidebarElement);
+  }, [isSidebarOpen, sidebarElement, setRightSidebarContent]);
 
   // Keyboard shortcut to focus search input
   useHotkeys(
@@ -236,33 +181,32 @@ export default function IntegrationsPage() {
     [openRightSidebar],
   );
 
-  // Handle standalone id param (from slash command dropdown navigation)
-  // Separated from the main useEffect to avoid using handleIntegrationClick before declaration
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const status = params.get("status");
-    const integrationId = params.get("id");
-    const oauthSuccess = params.get("oauth_success");
-    const needsRefresh = params.get("refresh") === "true";
-
-    // Only process if we have an id and no status/oauth params (to avoid double-processing)
-    if (integrationId && !status && !oauthSuccess) {
-      // Clear the URL param first to prevent re-triggering
-      router.replace("/integrations", { scroll: false });
-
-      // If refresh param is set (coming from marketplace add), invalidate cache and wait for fresh data
-      if (needsRefresh) {
-        // Set pending integration and trigger refetch
+  // All backend connect-callback query params flow through one reactive hook.
+  useIntegrationDeepLink({
+    onConnected: (integrationId, name) => {
+      if (name) toast.success(`Connected to ${name}`);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: toolKeys.all });
+      // Open the sidebar for the freshly-connected integration and poll until
+      // its tools finish discovering in the background (see the poller below).
+      setPendingIntegrationId(integrationId);
+      setSettleTick(0);
+      setSettlingIntegrationId(integrationId);
+    },
+    onBearerRequired: (integrationId, name) => bearer.open(integrationId, name),
+    onFailed: (error) =>
+      toast.error(`Connection failed: ${error || "Unknown error"}`),
+    onOpen: (integrationId, { refresh }) => {
+      if (refresh) {
+        // Marketplace add / custom create — may not be in the cached list yet.
         setPendingIntegrationId(integrationId);
-        queryClient.invalidateQueries({ queryKey: ["integrations"] });
-        queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+        queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+        queryClient.invalidateQueries({ queryKey: toolKeys.all });
       } else {
-        // Normal navigation - open sidebar immediately
         handleIntegrationClick(integrationId);
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    },
+  });
 
   // Open sidebar once pending integration data is available after refresh
   useEffect(() => {
@@ -277,41 +221,34 @@ export default function IntegrationsPage() {
 
   // The OAuth callback redirects as soon as tokens are stored; the MCP handshake
   // and tools/list run in the background, so a connected integration's tools land
-  // a few seconds later. Poll until they appear (or give up) instead of forcing a
-  // page reload. Re-runs whenever a refetch updates `integrations`/tools data.
+  // a few seconds later. Poll the personalized /integrations/me catalog until the
+  // integration reports connected with discovered tools (or give up) instead of
+  // forcing a page reload. Re-runs whenever a refetch updates `integrations`.
   useEffect(() => {
     if (!settlingIntegrationId) return;
 
     const integration = integrations.find(
       (i) => i.id === settlingIntegrationId,
     );
-    const hasEndpointTools = toolsWithIntegrations.some(
-      (t) => t.category.toLowerCase() === settlingIntegrationId.toLowerCase(),
-    );
-    const hasTools = hasEndpointTools || (integration?.tools?.length ?? 0) > 0;
+    const hasSettled =
+      integration?.status === "connected" && (integration?.toolCount ?? 0) > 0;
 
-    // Stop once the tools land, or after the attempt ceiling (covers a failed
-    // background connect). Note: keep polling even while the integration isn't
-    // in the list yet — the post-connect refetch may still be in flight.
-    if (hasTools || settleTick >= POST_CONNECT_POLL_MAX_ATTEMPTS) {
+    // Stop once the integration connects with tools, or after the attempt
+    // ceiling (covers a failed background connect). Keep polling while the
+    // integration isn't in the list yet — the post-connect refetch may still
+    // be in flight.
+    if (hasSettled || settleTick >= POST_CONNECT_POLL_MAX_ATTEMPTS) {
       setSettlingIntegrationId(null);
       return;
     }
 
     const timer = setTimeout(() => {
       refetch();
-      queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+      queryClient.invalidateQueries({ queryKey: toolKeys.all });
       setSettleTick((tick) => tick + 1);
     }, POST_CONNECT_POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
-  }, [
-    settlingIntegrationId,
-    settleTick,
-    integrations,
-    toolsWithIntegrations,
-    refetch,
-    queryClient,
-  ]);
+  }, [settlingIntegrationId, settleTick, integrations, refetch, queryClient]);
 
   // Handler for pressing Enter in search input
   const handleEnterSearch = useCallback(() => {
@@ -409,11 +346,11 @@ export default function IntegrationsPage() {
       />
 
       <BearerTokenModal
-        isOpen={bearerModalOpen}
-        onClose={() => setBearerModalOpen(false)}
-        integrationId={bearerIntegrationId}
-        integrationName={bearerIntegrationName}
-        onSubmit={handleBearerSubmit}
+        isOpen={bearer.isOpen}
+        onClose={bearer.close}
+        integrationId={bearer.integrationId}
+        integrationName={bearer.integrationName}
+        onSubmit={bearer.submit}
       />
     </div>
   );

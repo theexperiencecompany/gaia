@@ -52,22 +52,18 @@ const HEADER_CLOSE_BG = "rgba(63,63,70,0.6)";
 const CHIP_ACTIVE_BG = "rgba(63,63,70,0.55)";
 const CHIP_INACTIVE_BG = "rgba(255,255,255,0.05)";
 
-interface EnhancedTool extends ToolInfo {
-  isLocked: boolean;
-}
-
 type ListItem =
-  | { type: "tool"; tool: EnhancedTool }
+  | { type: "tool"; tool: ToolInfo }
   | {
       type: "locked-section";
       category: string;
       categoryDisplayName: string;
-      tools: EnhancedTool[];
+      tools: ToolInfo[];
       iconUrl?: string;
       isConnected: boolean;
       isConnecting: boolean;
     }
-  | { type: "locked-tool"; tool: EnhancedTool };
+  | { type: "locked-tool"; tool: ToolInfo };
 
 export interface SlashCommandSheetRef {
   open: () => void;
@@ -327,19 +323,6 @@ export const SlashCommandSheet = forwardRef<
     [],
   );
 
-  // Build enhanced tools with isLocked computed from integration status —
-  // mirrors web's useToolsWithIntegrations.
-  const enhancedTools = useMemo<EnhancedTool[]>(() => {
-    return tools.map((tool) => {
-      if (!tool.requires_integration) {
-        return { ...tool, isLocked: false };
-      }
-      const integration = findIntegration(integrations, tool.category);
-      const isLocked = !integration || integration.status !== "connected";
-      return { ...tool, isLocked };
-    });
-  }, [tools, integrations]);
-
   // Map: category id -> { displayName, iconUrl } from tools data
   const categoryDisplayMap = useMemo(() => {
     const map: Record<string, { displayName: string; iconUrl?: string }> = {};
@@ -368,7 +351,7 @@ export const SlashCommandSheet = forwardRef<
 
   // Filter by category + search
   const filteredTools = useMemo(() => {
-    let filtered = enhancedTools;
+    let filtered = tools;
 
     if (selectedCategory !== "all") {
       filtered = filtered.filter((tool) => tool.category === selectedCategory);
@@ -385,16 +368,16 @@ export const SlashCommandSheet = forwardRef<
     }
 
     return filtered;
-  }, [enhancedTools, selectedCategory, searchQuery]);
+  }, [tools, selectedCategory, searchQuery]);
 
   // Build the list: unlocked tools first, then grouped locked sections.
   const listItems = useMemo<ListItem[]>(() => {
     const items: ListItem[] = [];
-    const unlocked: EnhancedTool[] = [];
-    const lockedByCategory: Record<string, EnhancedTool[]> = {};
+    const unlocked: ToolInfo[] = [];
+    const lockedByCategory: Record<string, ToolInfo[]> = {};
 
     filteredTools.forEach((tool) => {
-      if (tool.isLocked) {
+      if (tool.locked) {
         if (!lockedByCategory[tool.category]) {
           lockedByCategory[tool.category] = [];
         }
@@ -427,8 +410,8 @@ export const SlashCommandSheet = forwardRef<
   }, [filteredTools, integrations, categoryDisplayMap, connectingCategory]);
 
   const handleSelect = useCallback(
-    (tool: EnhancedTool) => {
-      if (tool.isLocked) return;
+    (tool: ToolInfo) => {
+      if (tool.locked) return;
       void haptics.light();
       onSelectTool(tool.name, tool.category);
       setIsOpen(false);

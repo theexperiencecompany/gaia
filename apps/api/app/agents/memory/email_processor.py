@@ -47,6 +47,7 @@ from app.constants.email import (
     MAX_RESULTS,
     ONBOARDING_EMAIL_SCAN_LIMIT,
 )
+from app.constants.log_tags import LogTag
 from app.constants.memory import MemorySourceType
 from app.db.mongodb.collections import users_collection
 from app.helpers.email_helpers import (
@@ -126,7 +127,7 @@ async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict]
     platform_emails: dict[str, list[dict]] = {}
     for (platform, _), result in zip(search_tasks, results):
         if isinstance(result, Exception):
-            log.error(f"Search failed for {platform}: {result}")
+            log.error(f"{LogTag.MEMORY} Search failed for {platform}: {result}")
             platform_emails[platform] = []
         elif isinstance(result, list):
             platform_emails[platform] = result
@@ -136,7 +137,7 @@ async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict]
     elapsed = time.time() - search_start
     total_found = sum(len(emails) for emails in platform_emails.values())
     log.info(
-        f"Parallel Gmail searches completed in {elapsed:.2f}s: "
+        f"{LogTag.MEMORY} Parallel Gmail searches completed in {elapsed:.2f}s: "
         f"found {total_found} platform emails across {len(platform_emails)} platforms"
     )
 
@@ -169,7 +170,7 @@ async def _search_platform_emails(
         return emails
 
     except Exception as e:
-        log.error(f"Error searching {platform} emails: {e}")
+        log.error(f"{LogTag.MEMORY} Error searching {platform} emails: {e}")
         return []
 
 
@@ -230,12 +231,12 @@ async def fetch_emails_for_onboarding(
                 break
     except Exception as e:
         log.error(
-            f"[fetch_emails_for_onboarding] Failed for {user_id} after {len(all_emails)} emails: {e}",
+            f"{LogTag.MEMORY} fetch_emails_for_onboarding failed for {user_id} after {len(all_emails)} emails: {e}",
             exc_info=True,
         )
 
     log.info(
-        f"[fetch_emails_for_onboarding] Fetched {len(all_emails)} emails for {user_id} (fmt={fmt})"
+        f"{LogTag.MEMORY} fetch_emails_for_onboarding fetched {len(all_emails)} emails for {user_id} (fmt={fmt})"
     )
     return all_emails
 
@@ -256,7 +257,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
     timer = _StepTimer()
     user = await users_collection.find_one({"_id": ObjectId(user_id)})
     if user and user.get("email_memory_processed", False):
-        log.info(f"User {user_id} emails already processed, skipping")
+        log.info(f"{LogTag.MEMORY} User {user_id} emails already processed, skipping")
         return {
             "total": 0,
             "successful": 0,
@@ -315,7 +316,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
             )
             fetch_elapsed = time.monotonic() - t0_search
             log.info(
-                f"[timing] Gmail fetch batch {batch_count}: {fetch_elapsed:.1f}s "
+                f"{LogTag.MEMORY} Gmail fetch batch {batch_count}: {fetch_elapsed:.1f}s "
                 f"(fetched so far: {total_fetched + len(result.get('messages', []))})"
             )
             timer.record(f"Gmail API fetch — batch {batch_count}", fetch_elapsed)
@@ -338,7 +339,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
             total_parsed += len(processed_batch)
             total_failed += failed
             log.info(
-                f"[timing] Email content parsing batch {batch_count}: {parse_elapsed:.3f}s "
+                f"{LogTag.MEMORY} Email content parsing batch {batch_count}: {parse_elapsed:.3f}s "
                 f"({len(processed_batch)} parsed, {failed} failed/skipped)"
             )
             timer.record(
@@ -362,13 +363,13 @@ async def process_gmail_to_memory(user_id: str) -> dict:
                 break
 
     except Exception as e:
-        log.error(f"Error in email processing pipeline: {e}")
+        log.error(f"{LogTag.MEMORY} Error in email processing pipeline: {e}")
 
     timer.record("Gmail fetch + parse phase (total)", time.monotonic() - t0_fetch_phase)
 
     # Await all email storage tasks in parallel with error handling
     log.info(
-        f"[timing] Awaiting {len(email_storage_tasks)} memory storage tasks ({total_parsed} emails total)..."
+        f"{LogTag.MEMORY} Awaiting {len(email_storage_tasks)} memory storage tasks ({total_parsed} emails total)..."
     )
     storage_results: list[Any] = []
     storage_errors = 0
@@ -381,20 +382,22 @@ async def process_gmail_to_memory(user_id: str) -> dict:
                 f"Memory email storage await ({len(email_storage_tasks)} batches queued)",
                 storage_elapsed,
             )
-            log.info(f"[timing] Memory email storage tasks dispatched in {storage_elapsed:.1f}s")
+            log.info(
+                f"{LogTag.MEMORY} Memory email storage tasks dispatched in {storage_elapsed:.1f}s"
+            )
 
             for idx, result in enumerate(storage_results):
                 if isinstance(result, Exception):
                     storage_errors += 1
-                    log.warning(f"Email storage task {idx + 1} failed: {result}")
+                    log.warning(f"{LogTag.MEMORY} Email storage task {idx + 1} failed: {result}")
 
             successful_batches = len(storage_results) - storage_errors
             log.info(
-                f"Email storage complete: {successful_batches}/{len(storage_results)} batches succeeded, "
+                f"{LogTag.MEMORY} Email storage complete: {successful_batches}/{len(storage_results)} batches succeeded, "
                 f"{storage_errors} failed (continuing anyway)"
             )
         except Exception as e:
-            log.error(f"Critical error in email storage tasks: {e}")
+            log.error(f"{LogTag.MEMORY} Critical error in email storage tasks: {e}")
             storage_errors = len(email_storage_tasks)
 
     # Wait for profile extraction task (also with error handling)
@@ -405,16 +408,16 @@ async def process_gmail_to_memory(user_id: str) -> dict:
         profile_result: dict = await profile_extraction_task
         profile_elapsed = time.monotonic() - t0_profile
         timer.record("Profile extraction track (wait for completion)", profile_elapsed)
-        log.info(f"[timing] Profile extraction track finished: {profile_elapsed:.1f}s")
+        log.info(f"{LogTag.MEMORY} Profile extraction track finished: {profile_elapsed:.1f}s")
         profiles_stored = profile_result.get("profiles_stored", 0)
         extracted_profiles = profile_result.get("extracted_profiles", [])
     except Exception as e:
-        log.error(f"Profile extraction task failed: {e}")
+        log.error(f"{LogTag.MEMORY} Profile extraction task failed: {e}")
         # Continue anyway - don't let profile failures block completion
 
     total_elapsed = time.time() - fetch_start_time
     log.info(
-        f"Processing complete in {total_elapsed:.2f}s: "
+        f"{LogTag.MEMORY} Processing complete in {total_elapsed:.2f}s: "
         f"{total_parsed} emails processed, {profiles_stored} profiles stored, "
         f"{storage_errors} storage errors"
     )
@@ -430,10 +433,10 @@ async def process_gmail_to_memory(user_id: str) -> dict:
             await mark_email_processing_complete(user_id, total_parsed + profiles_stored)
             mark_elapsed = time.monotonic() - t0_mark
             timer.record("DB mark-complete write", mark_elapsed)
-            log.info(f"[timing] mark_email_processing_complete: {mark_elapsed:.1f}s")
-            log.info(f"✓ Marked email processing as complete for user {user_id}")
+            log.info(f"{LogTag.MEMORY} mark_email_processing_complete: {mark_elapsed:.1f}s")
+            log.info(f"{LogTag.MEMORY} Marked email processing as complete for user {user_id}")
     except Exception as e:
-        log.error(f"Failed to mark email processing complete: {e}")
+        log.error(f"{LogTag.MEMORY} Failed to mark email processing complete: {e}")
         # Continue anyway - we still want to trigger post-onboarding
 
     # Update the scan timestamp after processing (regardless of success/failure)
@@ -445,9 +448,9 @@ async def process_gmail_to_memory(user_id: str) -> dict:
             {"$set": {"integration_scan_states.gmail.last_scan_timestamp": current_time}},
         )
     except Exception as e:
-        log.error(f"Failed to update Gmail scan timestamp: {e}")
+        log.error(f"{LogTag.MEMORY} Failed to update Gmail scan timestamp: {e}")
 
-    log.info(timer.summary())
+    log.info(f"{LogTag.MEMORY} {timer.summary()}")
 
     return {
         "total": total_fetched,
@@ -486,7 +489,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
         t0_platform_search = time.monotonic()
         platform_emails = await _search_platform_emails_parallel(user_id)
         log.info(
-            f"[email_processor:timing] _search_platform_emails_parallel: {time.monotonic() - t0_platform_search:.1f}s"
+            f"{LogTag.MEMORY} _search_platform_emails_parallel: {time.monotonic() - t0_platform_search:.1f}s"
         )
 
         # Filter out platforms with no emails
@@ -522,7 +525,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
             *[task for _, task in platform_tasks], return_exceptions=True
         )
         log.info(
-            f"[email_processor:timing] asyncio.gather platform_tasks: {time.monotonic() - t0_platform_gather:.1f}s"
+            f"{LogTag.MEMORY} asyncio.gather platform_tasks: {time.monotonic() - t0_platform_gather:.1f}s"
         )
 
         # Step 3: Count successful profiles, collect pairs and discovery tasks
@@ -530,7 +533,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
         extracted_profiles: list[dict] = []
         for (platform, _), result in zip(platform_tasks, results):
             if isinstance(result, Exception):
-                log.error(f"Platform {platform} extraction failed: {result}")
+                log.error(f"{LogTag.MEMORY} Platform {platform} extraction failed: {result}")
             elif isinstance(result, dict) and result.get("success"):
                 if "discovery_task" in result:
                     discovered_profile_tasks.append(result["discovery_task"])
@@ -545,17 +548,17 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
                 *discovered_profile_tasks, return_exceptions=True
             )
             log.info(
-                f"[email_processor:timing] asyncio.gather discovered_profile_tasks: {time.monotonic() - t0_discovery:.1f}s"
+                f"{LogTag.MEMORY} asyncio.gather discovered_profile_tasks: {time.monotonic() - t0_discovery:.1f}s"
             )
             for result in discovery_results:
                 if isinstance(result, int):  # Discovery task returns count of profiles stored
                     discovered_count += result
                 elif isinstance(result, Exception):
-                    log.error(f"Discovery task failed: {result}")
+                    log.error(f"{LogTag.MEMORY} Discovery task failed: {result}")
 
         elapsed = time.time() - extraction_start
         log.info(
-            f"Profile extraction completed in {elapsed:.2f}s: "
+            f"{LogTag.MEMORY} Profile extraction completed in {elapsed:.2f}s: "
             f"{profiles_stored}/{len(platforms_with_emails)} profiles stored (including {discovered_count} discovered)"
         )
 
@@ -565,7 +568,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
         }
 
     except Exception as e:
-        log.error(f"Error in profile extraction from parallel searches: {e}")
+        log.error(f"{LogTag.MEMORY} Error in profile extraction from parallel searches: {e}")
         return {"profiles_stored": 0, "extracted_profiles": []}
 
 
@@ -591,18 +594,22 @@ async def _process_single_platform(
         t0_llm = time.monotonic()
         username = await extract_username_with_llm(platform, emails, user_name)
         llm_elapsed = time.monotonic() - t0_llm
-        log.info(f"[timing:{platform}] LLM username extraction: {llm_elapsed:.1f}s → '{username}'")
+        log.info(
+            f"{LogTag.MEMORY} [{platform}] LLM username extraction: {llm_elapsed:.1f}s → '{username}'"
+        )
 
         if not validate_username(username, platform):
             log.warning(
-                f"Username validation failed for {platform}: '{username}' "
+                f"{LogTag.MEMORY} Username validation failed for {platform}: '{username}' "
                 f"(expected pattern: {PLATFORM_CONFIG[platform]['regex_pattern']})"
             )
             return {"error": f"Invalid username '{username}' for {platform}"}
 
         profile_url = build_profile_url(username, platform)
         if not profile_url:
-            log.warning(f"Could not build profile URL for {platform} with username: {username}")
+            log.warning(
+                f"{LogTag.MEMORY} Could not build profile URL for {platform} with username: {username}"
+            )
             return {"error": f"Could not build URL for {platform}"}
 
         # Check if already crawled (deduplication)
@@ -618,12 +625,14 @@ async def _process_single_platform(
         crawl_result = await crawl_profile_url(profile_url, platform, semaphore)
         crawl_elapsed = time.monotonic() - t0_crawl
         log.info(
-            f"[timing:{platform}] Profile crawl: {crawl_elapsed:.1f}s "
+            f"{LogTag.MEMORY} [{platform}] Profile crawl: {crawl_elapsed:.1f}s "
             f"({'OK' if crawl_result['content'] else 'FAILED'})"
         )
 
         if not crawl_result["content"] or crawl_result["error"]:
-            log.warning(f"Failed to crawl {platform} profile: {crawl_result.get('error')}")
+            log.warning(
+                f"{LogTag.MEMORY} Failed to crawl {platform} profile: {crawl_result.get('error')}"
+            )
             return {"error": crawl_result.get("error", "Crawl failed")}
 
         # 3. Store profile
@@ -636,9 +645,9 @@ async def _process_single_platform(
             user_name,
         )
         store_elapsed = time.monotonic() - t0_store
-        log.info(f"[timing:{platform}] Memory profile store: {store_elapsed:.1f}s")
+        log.info(f"{LogTag.MEMORY} [{platform}] Memory profile store: {store_elapsed:.1f}s")
         log.info(
-            f"[timing:{platform}] TOTAL {time.monotonic() - t0_platform:.1f}s "
+            f"{LogTag.MEMORY} [{platform}] TOTAL {time.monotonic() - t0_platform:.1f}s "
             f"(llm={llm_elapsed:.1f}s, crawl={crawl_elapsed:.1f}s, store={store_elapsed:.1f}s)"
         )
 
@@ -658,7 +667,7 @@ async def _process_single_platform(
         }
 
     except Exception as e:
-        log.error(f"Error processing {platform} profile: {e}")
+        log.error(f"{LogTag.MEMORY} Error processing {platform} profile: {e}")
         return {"error": str(e)}
 
 
@@ -774,14 +783,16 @@ async def _discover_and_store_linked_profiles(
             )
             if retain_result.facts_extracted > 0:
                 log.info(
-                    f"Stored {len(profile_messages)} discovered profiles from {source_platform}"
+                    f"{LogTag.MEMORY} Stored {len(profile_messages)} discovered profiles from {source_platform}"
                 )
                 return len(profile_messages)
-            log.warning(f"No facts extracted from discovered profiles from {source_platform}")
+            log.warning(
+                f"{LogTag.MEMORY} No facts extracted from discovered profiles from {source_platform}"
+            )
             return 0
 
         return 0
 
     except Exception as e:
-        log.error(f"Error discovering linked profiles from {source_platform}: {e}")
+        log.error(f"{LogTag.MEMORY} Error discovering linked profiles from {source_platform}: {e}")
         return 0

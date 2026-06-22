@@ -11,6 +11,7 @@ from app.constants.cache import (
     WEB_SEARCH_CACHE_TTL,
     WEBPAGE_FETCH_CACHE_TTL,
 )
+from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
 from app.utils.exceptions import FetchError
 from shared.py.wide_events import log
@@ -37,7 +38,7 @@ def get_tavily_client() -> TavilyClient:
         if not settings.TAVILY_API_KEY:
             raise ValueError("TAVILY_API_KEY is not configured")
         _tavily_client = TavilyClient(api_key=settings.TAVILY_API_KEY)
-        log.info("Initialized Tavily client")
+        log.info(f"{LogTag.TOOL} Initialized Tavily client")
     return _tavily_client
 
 
@@ -48,7 +49,7 @@ def get_firecrawl_client() -> FirecrawlApp:
         if not settings.FIRECRAWL_API_KEY:
             raise ValueError("FIRECRAWL_API_KEY is not configured")
         _firecrawl_client = FirecrawlApp(api_key=settings.FIRECRAWL_API_KEY)
-        log.info("Initialized Firecrawl client")
+        log.info(f"{LogTag.TOOL} Initialized Firecrawl client")
     return _firecrawl_client
 
 
@@ -88,11 +89,11 @@ async def fetch_tavily_search(
 
         # Perform the search
         result = tavily.search(**search_params)
-        log.info(f"Fetched Tavily search results for query: {query}")
+        log.info(f"{LogTag.TOOL} Fetched Tavily search results for query: {query}")
 
         return result
     except Exception as e:
-        log.error(f"Error calling Tavily API: {e}")
+        log.error(f"{LogTag.TOOL} Error calling Tavily API: {e}")
         return {}
 
 
@@ -121,7 +122,7 @@ async def perform_search(query: str, count: int) -> dict:
         }
 
     except Exception as e:
-        log.error(f"Search failed: {e}")
+        log.error(f"{LogTag.TOOL} Search failed: {e}")
         return {
             "web": [],
             "news": [],
@@ -227,7 +228,7 @@ async def fetch_with_httpx(url: str) -> str:
         if not markdown:
             raise FetchError("httpx+BS4 returned empty content", url=url)
 
-        log.info(f"httpx fallback successfully fetched: {url[:60]}")
+        log.info(f"{LogTag.TOOL} httpx fallback successfully fetched: {url[:60]}")
         return markdown[:60_000]  # Cap at 60KB
     except FetchError:
         raise
@@ -258,7 +259,7 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
         # treats as success; without this guard it parses as a silent "0 results".
         if response.status_code == 202 or "bots use duckduckgo" in response.text[:2000].lower():
             log.warning(
-                f"DuckDuckGo served a bot-challenge page "
+                f"{LogTag.TOOL} DuckDuckGo served a bot-challenge page "
                 f"(status {response.status_code}) for query: {query[:60]}"
             )
             return {"results": []}
@@ -285,10 +286,10 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
                 }
             )
 
-        log.info(f"DuckDuckGo returned {len(results)} results for: {query[:60]}")
+        log.info(f"{LogTag.TOOL} DuckDuckGo returned {len(results)} results for: {query[:60]}")
         return {"results": results}
     except Exception as e:
-        log.error(f"DuckDuckGo search failed: {e}")
+        log.error(f"{LogTag.TOOL} DuckDuckGo search failed: {e}")
         return {"results": []}
 
 
@@ -302,8 +303,10 @@ async def search_for_research(query: str, count: int = 5) -> dict:
         results = tavily_result.get("results") if isinstance(tavily_result, dict) else None
         if results:
             return {"results": results}
-        log.warning(f"Tavily returned no results, falling back to DuckDuckGo for: {query[:60]}")
+        log.warning(
+            f"{LogTag.TOOL} Tavily returned no results, falling back to DuckDuckGo for: {query[:60]}"
+        )
     except Exception as e:
-        log.warning(f"Tavily research search failed, falling back to DuckDuckGo: {e}")
+        log.warning(f"{LogTag.TOOL} Tavily research search failed, falling back to DuckDuckGo: {e}")
 
     return await search_with_duckduckgo(query, count)

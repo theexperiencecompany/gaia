@@ -7,6 +7,7 @@ import httpx
 
 from app.config.settings import settings
 from app.constants.cache import ONE_HOUR_TTL
+from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
 from shared.py.wide_events import log
 
@@ -190,7 +191,7 @@ async def user_weather(location_name: str | None = None):
 
             cached_weather = await get_cache(cache_key)
             if cached_weather:
-                log.debug(f"Using cached weather data for location {cached_weather}")
+                log.debug(f"{LogTag.TOOL} Using cached weather data for location {cached_weather}")
                 return cached_weather
 
             weather = await prepare_weather_data(
@@ -203,11 +204,11 @@ async def user_weather(location_name: str | None = None):
 
         except Exception as e:
             error_msg = f"Could not find location: {location_name}"
-            log.error(f"Error getting location data: {e!s}")
+            log.error(f"{LogTag.TOOL} Error getting location data: {e!s}")
             return error_msg
 
     except Exception as e:
-        log.error(f"Error fetching weather: {e!s}")
+        log.error(f"{LogTag.TOOL} Error fetching weather: {e!s}")
         return f"Failed to fetch weather: {e!s}"
 
 
@@ -334,5 +335,5 @@ async def geocode_location(location_name: str) -> dict[str, Any]:
         }
 
     except Exception as e:
-        log.error(f"Error geocoding location '{location_name}': {e!s}")
+        log.error(f"{LogTag.TOOL} Error geocoding location '{location_name}': {e!s}")
         raise Exception(f"Failed to geocode location: {e!s}")

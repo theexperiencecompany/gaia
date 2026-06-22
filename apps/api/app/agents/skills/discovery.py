@@ -32,9 +32,10 @@ from app.constants.cache import (
     SKILLS_TEXT_CACHE_KEY,
     SKILLS_TEXT_CACHE_TTL,
 )
+from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.decorators.caching import Cacheable
-from shared.py.wide_events import log
+from shared.py.wide_events import SkillContext, log
 
 
 def _builtin_entries(agent_name: str) -> list[tuple[str, str, str]]:
@@ -76,7 +77,7 @@ async def get_available_skills_text(
     Returns:
         Plain text string for system prompt injection, or empty string if no skills
     """
-    log.set(user_id=user_id, agent_name=agent_name, skill_op="get_available_skills_text")
+    log.set(user_id=user_id, agent_name=agent_name, skill=SkillContext(operation="get"))
 
     # Builtins come from process memory and are always available. Only the
     # executor needs them merged here: integration subagents already get their
@@ -86,13 +87,13 @@ async def get_available_skills_text(
     try:
         user_skills = await get_skills_for_agent(user_id, agent_name)
     except Exception as e:
-        log.warning(f"[skills] Failed to load user skills for {agent_name}: {e}")
+        log.warning(f"{LogTag.SKILLS} Failed to load user skills for {agent_name}: {e}")
         user_skills = []
 
     if not builtins and not user_skills:
         return ""
 
-    log.set(skill_count=len(builtins) + len(user_skills))
+    log.set_ns("skill", result_count=len(builtins) + len(user_skills))
     return _format_skills(builtins, user_skills)
 
 

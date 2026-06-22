@@ -32,6 +32,7 @@ from app.agents.workspace.paths import (
     session_artifacts,
     session_dir,
 )
+from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
     BASH_DEFAULT_TIMEOUT_SECONDS,
     BASH_MAX_COMMAND_LENGTH,
@@ -231,7 +232,7 @@ async def bash(
     except Exception as e:
         # acquire_sandbox already evicted the sandbox if this failure means it
         # died (it health-checks on any error) — here we just surface it.
-        log.error(f"bash tool failed: {e}", exc_info=True)
+        log.error(f"{LogTag.SANDBOX} bash tool failed: {e}", exc_info=True)
         return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
 
 

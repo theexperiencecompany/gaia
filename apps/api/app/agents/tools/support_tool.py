@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.support_models import (
     SupportRequestType,
@@ -48,7 +49,7 @@ async def create_support_ticket(
     """
     try:
         log.set(tool={"name": "create_support_ticket", "action": "create"})
-        log.info(f"Support Tool: Preparing support ticket draft with title '{title}'")
+        log.info(f"{LogTag.TOOL} Support Tool: Preparing support ticket draft with title '{title}'")
 
         metadata = config.get("metadata", {})
         user_id = metadata.get("user_id")
@@ -83,7 +84,7 @@ async def create_support_ticket(
         writer({"progress": "Creating support ticket..."})
         writer({"support_ticket_data": [support_ticket_data]})
 
-        log.info(f"Support ticket draft prepared for user {user_id}")
+        log.info(f"{LogTag.TOOL} Support ticket draft prepared for user {user_id}")
 
         # Return confirmation message
         ticket_type_display = (
@@ -92,7 +93,7 @@ async def create_support_ticket(
         return f"I've prepared a {ticket_type_display} draft for you to review. Please check the details and click 'Submit Ticket' when you're ready to send it to our support team."
 
     except Exception as e:
-        log.error(f"Error preparing support ticket: {e!s}")
+        log.error(f"{LogTag.TOOL} Error preparing support ticket: {e!s}")
         return f"Sorry, I encountered an error while preparing your support ticket: {e!s}"
 
 

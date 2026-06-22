@@ -5,6 +5,7 @@ Provides functions to format user preferences for agent system prompts.
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -58,7 +59,7 @@ def build_user_context_parts(preferences: dict[str, Any]) -> list[str]:
                 parts.append(f"Special Instructions: {instructions}")
 
     except Exception as e:
-        log.warning(f"Error building user context parts: {e!s}")
+        log.warning(f"{LogTag.AGENT} Error building user context parts: {e!s}")
 
     return parts
 
@@ -135,5 +136,5 @@ def format_user_preferences_for_agent(
         return None
 
     except Exception as e:
-        log.error(f"Error formatting user preferences for agent: {e!s}")
+        log.error(f"{LogTag.AGENT} Error formatting user preferences for agent: {e!s}")
         return None

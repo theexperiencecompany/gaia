@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
     ConversationModel,
@@ -90,10 +91,10 @@ async def seed_onboarding_todo(user_id: str) -> None:
 
         # Create the todo using the service
         await TodoService.create_todo(todo, user_id)
-        log.info(f"Seeded onboarding todo for user {user_id}")
+        log.info(f"{LogTag.STARTUP} Seeded onboarding todo for user {user_id}")
 
     except Exception as e:
-        log.error(f"Failed to seed onboarding todo for user {user_id}: {e}")
+        log.error(f"{LogTag.STARTUP} Failed to seed onboarding todo for user {user_id}: {e}")
 
 
 async def seed_onboarding_conversation(user_id: str) -> str | None:
@@ -120,9 +121,13 @@ async def seed_onboarding_conversation(user_id: str) -> str | None:
             {"$set": {"is_onboarding_conversation": True}},
         )
 
-        log.info(f"Seeded onboarding conversation {conversation_id} for user {user_id}")
+        log.info(
+            f"{LogTag.STARTUP} Seeded onboarding conversation {conversation_id} for user {user_id}"
+        )
         return conversation_id
 
     except Exception as e:
-        log.error(f"Failed to seed onboarding conversation for user {user_id}: {e}")
+        log.error(
+            f"{LogTag.STARTUP} Failed to seed onboarding conversation for user {user_id}: {e}"
+        )
         return None

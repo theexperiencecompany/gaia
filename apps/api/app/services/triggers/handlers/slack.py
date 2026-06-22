@@ -7,6 +7,7 @@ from typing import Any
 
 from composio.types import ToolExecutionResponse
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     SlackChannelCreatedPayload,
@@ -154,7 +155,7 @@ class SlackTriggerHandler(TriggerHandler):
             if isinstance(result, Exception):
                 has_failure = True
                 failure_message = str(result)
-                log.error(f"Slack trigger registration failed: {result}")
+                log.error(f"{LogTag.TRIGGER} Slack trigger registration failed: {result}")
             elif isinstance(result, list):
                 successful_ids.extend(result)
 
@@ -162,7 +163,7 @@ class SlackTriggerHandler(TriggerHandler):
         if has_failure:
             if successful_ids:
                 log.warning(
-                    f"Rolling back {len(successful_ids)} Slack triggers due to partial failure"
+                    f"{LogTag.TRIGGER} Rolling back {len(successful_ids)} Slack triggers due to partial failure"
                 )
                 await self.unregister(user_id, successful_ids)
 
@@ -187,18 +188,20 @@ class SlackTriggerHandler(TriggerHandler):
             )
 
             if result and hasattr(result, "trigger_id"):
-                log.info(f"Registered {composio_slug} for user {user_id}: {result.trigger_id}")
+                log.info(
+                    f"{LogTag.TRIGGER} Registered {composio_slug} for user {user_id}: {result.trigger_id}"
+                )
                 return [result.trigger_id]
             return []
         except Exception as e:
-            log.error(f"Failed to register Slack trigger {composio_slug}: {e}")
+            log.error(f"{LogTag.TRIGGER} Failed to register Slack trigger {composio_slug}: {e}")
             return []
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching a Slack trigger event."""
-        log.set(trigger={"provider": "slack", "event": event_type})
+        log.set_ns("trigger", integration_id="slack", trigger_type=event_type)
         try:
             # Validate payload based on event/trigger type
             try:
@@ -207,7 +210,7 @@ class SlackTriggerHandler(TriggerHandler):
                 elif "message" in event_type.lower() or "message" in trigger_id:
                     SlackReceiveMessagePayload.model_validate(data)
             except Exception as e:
-                log.debug(f"Slack payload validation failed: {e}")
+                log.debug(f"{LogTag.TRIGGER} Slack payload validation failed: {e}")
 
             query = {
                 "activated": True,
@@ -254,19 +257,19 @@ class SlackTriggerHandler(TriggerHandler):
                         # If channels specified and message not in list, skip
                         if selected_channels and message_channel not in selected_channels:
                             log.debug(
-                                f"Message channel {message_channel} not in selected channels for workflow {workflow.id}"
+                                f"{LogTag.TRIGGER} Message channel {message_channel} not in selected channels for workflow {workflow.id}"
                             )
                             continue
 
                     workflows.append(workflow)
                 except Exception as e:
-                    log.error(f"Error processing workflow document: {e}")
+                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
                     continue
 
             return workflows
 
         except Exception as e:
-            log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
     async def get_config_options(
@@ -287,7 +290,7 @@ class SlackTriggerHandler(TriggerHandler):
                 # Use SLACK_LIST_ALL_CHANNELS with pagination support
                 tool = composio_service.get_tool("SLACK_LIST_ALL_CHANNELS", user_id=user_id)
                 if not tool:
-                    log.error("Slack list all channels tool not found")
+                    log.error(f"{LogTag.TRIGGER} Slack list all channels tool not found")
                     return []
 
                 all_channels = []
@@ -311,7 +314,7 @@ class SlackTriggerHandler(TriggerHandler):
 
                     # Check response status
                     if not result["successful"]:
-                        log.error(f"Slack API error: {result['error']}")
+                        log.error(f"{LogTag.TRIGGER} Slack API error: {result['error']}")
                         break
 
                     data = SlackListAllChannelsData.model_validate(result["data"])
@@ -346,11 +349,11 @@ class SlackTriggerHandler(TriggerHandler):
 
                     page_count += 1
 
-                log.info(f"Returning {len(all_channels)} Slack channel options")
+                log.info(f"{LogTag.TRIGGER} Returning {len(all_channels)} Slack channel options")
                 return all_channels
 
             except Exception as e:
-                log.error(f"Failed to fetch Slack channels: {e}")
+                log.error(f"{LogTag.TRIGGER} Failed to fetch Slack channels: {e}")
                 return []
 
         return []

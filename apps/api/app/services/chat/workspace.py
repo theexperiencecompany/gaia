@@ -22,6 +22,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
@@ -73,7 +74,7 @@ def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
         except JuiceFSUnavailable:
             return  # dev mode — no mount, nothing to touch
         except Exception as e:  # noqa: BLE001 — last_active bump must not affect chat
-            log.warning(f"[chat] last_active touch failed: {e}")
+            log.warning(f"{LogTag.CHAT} last_active touch failed: {e}")
 
     task = loop.create_task(_touch())
     _last_active_tasks.add(task)
@@ -157,7 +158,7 @@ async def forward_artifact_events(
     except asyncio.CancelledError:
         raise
     except Exception as e:  # noqa: BLE001 — log and exit; orchestrator cleans up
-        log.warning(f"[chat] artifact forwarder error: {e}")
+        log.warning(f"{LogTag.CHAT} artifact forwarder error: {e}")
     finally:
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(channel)
@@ -202,11 +203,11 @@ async def _persist_artifact_entry(
                 return
             await asyncio.sleep(_PERSIST_RETRY_BASE_DELAY * (attempt + 1))
         log.warning(
-            "[chat] artifact persist matched no bot message after retries "
+            f"{LogTag.CHAT} artifact persist matched no bot message after retries "
             f"(conv={conversation_id}, msg={bot_message_id})"
         )
     except Exception as e:  # noqa: BLE001 — best-effort; live stream already delivered it
-        log.warning(f"[chat] failed to persist artifact entry: {e}")
+        log.warning(f"{LogTag.CHAT} failed to persist artifact entry: {e}")
 
 
 # JuiceFS default block size: reading in block-sized chunks pulls each block
@@ -242,7 +243,7 @@ async def _warm_artifact_cache(user_id: str, conversation_id: str, path: str) ->
             host_path = await resolve_session_path(user_id, conversation_id, "artifacts", path)
             await asyncio.to_thread(_warm_artifact_blocks, host_path)
     except Exception as e:  # noqa: BLE001 — best-effort cache warm
-        log.debug(f"[chat] artifact cache warm skipped: {e}")
+        log.debug(f"{LogTag.CHAT} artifact cache warm skipped: {e}")
 
 
 def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> dict[str, Any] | None:

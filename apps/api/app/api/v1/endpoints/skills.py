@@ -39,6 +39,7 @@ from app.agents.skills.targets import get_skill_targets
 from app.agents.workspace.skill_loader import load_builtin_skills
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.oauth_config import get_integration_by_id
+from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID, EXECUTOR_TARGET_LABEL
 from app.decorators import tiered_rate_limit
 from app.services.integrations.user_integrations import get_connected_integration_ids
@@ -156,7 +157,7 @@ async def discover_skills_from_github(
             detail=str(e),
         )
     except Exception as e:
-        log.error(f"Error discovering skills from {repo}: {e}")
+        log.error(f"{LogTag.SKILLS} Error discovering skills from {repo}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to discover skills from repository",
@@ -233,7 +234,7 @@ async def install_skill_with_auto_discover(
             detail=str(e),
         ) from e
     except Exception as e:
-        log.error(f"Error installing skill from GitHub: {e}")
+        log.error(f"{LogTag.SKILLS} Error installing skill from GitHub: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to install skill from GitHub",
@@ -272,7 +273,7 @@ async def create_inline_skill_endpoint(
             detail=str(e),
         ) from e
     except Exception as e:
-        log.error(f"Error creating inline skill: {e}")
+        log.error(f"{LogTag.SKILLS} Error creating inline skill: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create skill",
@@ -318,7 +319,7 @@ async def update_skill_endpoint(
             detail=str(e),
         ) from e
     except Exception as e:
-        log.error(f"Error updating skill {skill_id}: {e}")
+        log.error(f"{LogTag.SKILLS} Error updating skill {skill_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update skill",
@@ -345,7 +346,7 @@ async def list_skills_endpoint(
         log.set(outcome="success")
         return SkillListResponse(skills=skills, total=len(skills))
     except Exception as e:
-        log.error(f"Error listing skills: {e}")
+        log.error(f"{LogTag.SKILLS} Error listing skills: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list skills",
@@ -372,7 +373,7 @@ async def get_skill_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error getting skill {skill_id}: {e}")
+        log.error(f"{LogTag.SKILLS} Error getting skill {skill_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve skill",
@@ -391,7 +392,7 @@ async def enable_skill_endpoint(
         log.set(outcome="success")
         return {"success": success, "skill_id": skill_id, "enabled": True}
     except Exception as e:
-        log.error(f"Error enabling skill {skill_id}: {e}")
+        log.error(f"{LogTag.SKILLS} Error enabling skill {skill_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to enable skill",
@@ -410,7 +411,7 @@ async def disable_skill_endpoint(
         log.set(outcome="success")
         return {"success": success, "skill_id": skill_id, "enabled": False}
     except Exception as e:
-        log.error(f"Error disabling skill {skill_id}: {e}")
+        log.error(f"{LogTag.SKILLS} Error disabling skill {skill_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to disable skill",
@@ -435,7 +436,7 @@ async def uninstall_skill_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error uninstalling skill {skill_id}: {e}")
+        log.error(f"{LogTag.SKILLS} Error uninstalling skill {skill_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to uninstall skill",

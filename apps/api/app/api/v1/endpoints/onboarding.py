@@ -9,6 +9,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
+from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import (
@@ -90,7 +91,7 @@ async def complete_user_onboarding(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"Error completing onboarding: {e!s}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Error completing onboarding: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
@@ -134,7 +135,7 @@ async def reset_user_onboarding(user: dict = Depends(get_current_user)):
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error resetting onboarding: {e!s}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Error resetting onboarding: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to reset onboarding")
 
 
@@ -153,7 +154,7 @@ async def get_onboarding_status(user: dict = Depends(get_current_user)):
         log.set(onboarding={"operation": "get_status", "is_complete": is_complete})
         return status
     except Exception as e:
-        log.error(f"Error getting onboarding status: {e!s}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Error getting onboarding status: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get onboarding status")
 
 
@@ -175,10 +176,10 @@ async def update_onboarding_phase(
         )
 
         if not user_id or not isinstance(user_id, str):
-            log.error("[update_onboarding_phase] user_id is missing or not a string")
+            log.error(f"{LogTag.ONBOARDING} user_id is missing or not a string")
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
-        log.info(f"[update_onboarding_phase] Updating phase to {phase} for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Updating phase to {phase} for user {user_id}")
 
         result = await users_collection.update_one(
             {"_id": ObjectId(user_id)},
@@ -191,11 +192,11 @@ async def update_onboarding_phase(
         )
 
         if result.matched_count == 0:
-            log.warning(f"[update_onboarding_phase] No document found for user {user_id}")
+            log.warning(f"{LogTag.ONBOARDING} No document found for user {user_id}")
             raise HTTPException(status_code=404, detail="User not found")
 
         log.info(
-            f"[update_onboarding_phase] Successfully updated phase to {phase} for user {user_id}, modified_count={result.modified_count}"
+            f"{LogTag.ONBOARDING} Successfully updated phase to {phase} for user {user_id}, modified_count={result.modified_count}"
         )
 
         try:
@@ -206,11 +207,9 @@ async def update_onboarding_phase(
                     "data": {"phase": phase},
                 },
             )
-            log.info(
-                f"[update_onboarding_phase] Sent WebSocket notification for phase update to {phase}"
-            )
+            log.info(f"{LogTag.ONBOARDING} Sent WebSocket notification for phase update to {phase}")
         except Exception as ws_error:
-            log.warning(f"[update_onboarding_phase] Failed to send WebSocket update: {ws_error}")
+            log.warning(f"{LogTag.ONBOARDING} Failed to send WebSocket update: {ws_error}")
 
         return {
             "success": True,
@@ -221,7 +220,7 @@ async def update_onboarding_phase(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error updating onboarding phase: {e!s}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Error updating onboarding phase: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update onboarding phase")
 
 
@@ -249,7 +248,7 @@ async def update_user_preferences(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"Error updating preferences: {e!s}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Error updating preferences: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
 
@@ -266,7 +265,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             user={"id": user_id},
             onboarding={"operation": "get_personalization"},
         )
-        log.info(f"[get_onboarding_personalization] Fetching personalization for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Fetching personalization for user {user_id}")
         user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
 
         if not user_doc:
@@ -276,7 +275,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
         user_bio = onboarding.get("user_bio", "")
         phase = onboarding.get("phase", "initial")
         log.info(
-            f"[get_onboarding_personalization] User {user_id} has phase: {phase}, bio_status: {onboarding.get('bio_status')}"
+            f"{LogTag.ONBOARDING} User {user_id} has phase: {phase}, bio_status: {onboarding.get('bio_status')}"
         )
         has_personalization = phase in [
             "personalization_complete",
@@ -322,7 +321,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                             }
                         )
             except Exception as e:
-                log.error(f"Error fetching workflows: {e!s}", exc_info=True)
+                log.error(f"{LogTag.ONBOARDING} Error fetching workflows: {e!s}", exc_info=True)
 
         bio_status = onboarding.get("bio_status", "pending")
         display_bio = user_bio
@@ -378,7 +377,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                 async for t in todo_cursor
             ]
         except Exception as e:
-            log.warning(f"Failed to fetch onboarding todos: {e}")
+            log.warning(f"{LogTag.ONBOARDING} Failed to fetch onboarding todos: {e}")
 
         return {
             "phase": phase,
@@ -409,7 +408,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error fetching personalization: {e!s}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Error fetching personalization: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch personalization data")
 
 
@@ -438,7 +437,7 @@ async def save_writing_style(
         await save_user_edited_summary(user_id, request.edited_summary.strip())
         return {"success": True}
     except Exception as e:
-        log.error(f"[onboarding] Failed to save writing style: {e}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Failed to save writing style: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save writing style")
 
 
@@ -465,7 +464,7 @@ async def regenerate_writing_style_example(
         return {"example": None}
     except Exception as e:
         log.error(
-            f"[onboarding] Failed to regenerate writing style example: {e}",
+            f"{LogTag.ONBOARDING} Failed to regenerate writing style example: {e}",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to regenerate writing style example")
@@ -497,5 +496,5 @@ async def confirm_social_profiles(
         await save_confirmed_profiles(user_id, profiles)
         return {"success": True, "saved": len(profiles)}
     except Exception as e:
-        log.error(f"[onboarding] Failed to save social profiles: {e}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Failed to save social profiles: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save social profiles")

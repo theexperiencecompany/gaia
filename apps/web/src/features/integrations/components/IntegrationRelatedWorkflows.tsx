@@ -1,11 +1,15 @@
 "use client";
 
+import { Skeleton } from "@heroui/skeleton";
 import { CircleArrowUpRightIcon } from "@icons";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 import { integrationsApi } from "../api/integrationsApi";
+
+// Distinct keys for the sidebar loading placeholders (also serve as React keys).
+const WORKFLOW_SKELETON_KEYS = ["wf-a", "wf-b", "wf-c"];
 
 interface IntegrationRelatedWorkflowsProps {
   /** The integration slug or native integration ID */
@@ -53,10 +57,28 @@ export function IntegrationRelatedWorkflows({
     staleTime: 5 * 60 * 1000,
   });
 
-  // Render nothing until data is resolved AND we have something to show.
-  // This avoids the "skeleton flash → empty collapse" jank for integrations
-  // that have zero matching workflows.
-  if (isLoading) return null;
+  // While loading, the sidebar shows a skeleton matching the workflow cards so
+  // the panel doesn't flash in. The "section" variant stays null until resolved
+  // (it's a full marketplace block, not a panel). Once resolved with zero
+  // workflows we still collapse to null — no empty section.
+  if (isLoading) {
+    if (variant !== "sidebar") return null;
+    return (
+      <div className="flex flex-col gap-2 mt-6">
+        <h2 className="text-sm font-medium text-zinc-300">
+          Workflows that use this integration
+        </h2>
+        <section
+          aria-label="Loading workflows that use this integration"
+          className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {WORKFLOW_SKELETON_KEYS.map((key) => (
+            <Skeleton key={key} className="h-40 w-70 shrink-0 rounded-3xl" />
+          ))}
+        </section>
+      </div>
+    );
+  }
 
   const workflows = (data?.workflows ?? []) as CommunityWorkflow[];
   if (workflows.length === 0) return null;
