@@ -27,6 +27,7 @@ import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
+import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type { Integration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
@@ -96,7 +97,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
-  const [showBearerModal, setShowBearerModal] = useState(false);
+  const bearer = useBearerTokenModal({
+    connect: (id, token) => integrationsApi.connectIntegration(id, token),
+    onConnected: () => {
+      toast.success(`Connected to ${integration.name}`);
+      // Refresh data in the background so the sidebar reflects the new tools.
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+      queryClient.invalidateQueries({ queryKey: ["tools"] });
+    },
+  });
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -156,7 +166,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
     // For bearer-auth integrations, show modal instead of direct connect
     if (integration.authType === "bearer" && integration.requiresAuth) {
-      setShowBearerModal(true);
+      bearer.open(integration.id, integration.name);
       return;
     }
 
@@ -172,32 +182,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     } catch {
       // Error toast is handled in the hook
       setIsConnecting(false);
-    }
-  };
-
-  const handleBearerSubmit = async (_id: string, token: string) => {
-    const toastId = toast.loading(`Connecting to ${integration.name}...`);
-    try {
-      const result = await integrationsApi.connectIntegration(
-        integration.id,
-        token,
-      );
-      if (result.status === "connected") {
-        toast.success(`Connected to ${integration.name}`, { id: toastId });
-        // Invalidate in the background so the modal closes immediately;
-        // awaiting the refetches here held the modal open until they settled.
-        queryClient.invalidateQueries({ queryKey: ["integrations"] });
-        queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
-        queryClient.invalidateQueries({ queryKey: ["tools"] });
-      } else {
-        toast.error(`Connection failed: ${result.status}`, { id: toastId });
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Connection failed",
-        { id: toastId },
-      );
-      throw error;
     }
   };
 
@@ -655,11 +639,11 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       />
 
       <BearerTokenModal
-        isOpen={showBearerModal}
-        onClose={() => setShowBearerModal(false)}
-        integrationId={integration.id}
-        integrationName={integration.name}
-        onSubmit={handleBearerSubmit}
+        isOpen={bearer.isOpen}
+        onClose={bearer.close}
+        integrationId={bearer.integrationId}
+        integrationName={bearer.integrationName}
+        onSubmit={bearer.submit}
       />
     </div>
   );

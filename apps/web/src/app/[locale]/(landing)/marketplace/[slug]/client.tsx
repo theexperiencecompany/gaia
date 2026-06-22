@@ -25,6 +25,7 @@ import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationRelatedIntegrations } from "@/features/integrations/components/IntegrationRelatedIntegrations";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
+import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
 import { toast } from "@/lib/toast";
@@ -43,7 +44,19 @@ export function IntegrationDetailClient({
   const queryClient = useQueryClient();
   const [isAdding, setIsAdding] = useState(false);
   const [isAdded, setIsAdded] = useState(false);
-  const [bearerModalOpen, setBearerModalOpen] = useState(false);
+  const bearer = useBearerTokenModal({
+    connect: (id, token) => integrationsApi.addIntegration(id, token),
+    onConnected: () => {
+      toast.success(`Successfully added ${integration.name}!`);
+      setIsAdded(true);
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      setTimeout(() => {
+        router.push(
+          `/integrations?id=${integration.integrationId}&refresh=true`,
+        );
+      }, 1000);
+    },
+  });
 
   // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
@@ -118,7 +131,7 @@ export function IntegrationDetailClient({
 
         if (result.status === "bearer_required") {
           toast.dismiss(loadingToast);
-          setBearerModalOpen(true);
+          bearer.open(integration.integrationId, integration.name);
           setIsAdding(false);
           return;
         }
@@ -137,38 +150,6 @@ export function IntegrationDetailClient({
       toast.dismiss(loadingToast);
       toast.error("Failed to add integration.");
       setIsAdding(false);
-    }
-  };
-
-  const handleBearerSubmit = async (_id: string, token: string) => {
-    const loadingToast = toast.loading("Connecting...");
-    try {
-      const result = await integrationsApi.addIntegration(
-        integration.integrationId,
-        token,
-      );
-      if (result.status === "connected") {
-        toast.success(`Successfully added ${integration.name}!`, {
-          id: loadingToast,
-        });
-        setIsAdded(true);
-        queryClient.invalidateQueries({ queryKey: ["integrations"] });
-        setTimeout(() => {
-          router.push(
-            `/integrations?id=${integration.integrationId}&refresh=true`,
-          );
-        }, 1000);
-      } else {
-        toast.error(result.message || "Connection failed", {
-          id: loadingToast,
-        });
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Connection failed",
-        { id: loadingToast },
-      );
-      throw error;
     }
   };
 
@@ -446,11 +427,11 @@ export function IntegrationDetailClient({
       </div>
 
       <BearerTokenModal
-        isOpen={bearerModalOpen}
-        onClose={() => setBearerModalOpen(false)}
-        integrationId={integration.integrationId}
-        integrationName={integration.name}
-        onSubmit={handleBearerSubmit}
+        isOpen={bearer.isOpen}
+        onClose={bearer.close}
+        integrationId={bearer.integrationId}
+        integrationName={bearer.integrationName}
+        onSubmit={bearer.submit}
       />
     </div>
   );

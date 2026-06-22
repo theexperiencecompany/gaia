@@ -18,6 +18,7 @@ import {
   POST_CONNECT_POLL_INTERVAL_MS,
   POST_CONNECT_POLL_MAX_ATTEMPTS,
 } from "@/features/integrations/constants/connect";
+import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
@@ -91,9 +92,14 @@ export default function IntegrationsPage() {
   // same `integrations` reference until tools actually land).
   const [settleTick, setSettleTick] = useState(0);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
-  const [bearerModalOpen, setBearerModalOpen] = useState(false);
-  const [bearerIntegrationId, setBearerIntegrationId] = useState("");
-  const [bearerIntegrationName, setBearerIntegrationName] = useState("");
+  const bearer = useBearerTokenModal({
+    connect: (id, token) => integrationsApi.addIntegration(id, token),
+    onConnected: (_id, result) => {
+      toast.success(`Connected to ${result.name}`);
+      refetch();
+      queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+    },
+  });
 
   // Strip MCP connect-callback params from the URL (locale-safe, preserves any
   // unrelated params). No-op when none are present so it's cheap to call often.
@@ -220,9 +226,7 @@ export default function IntegrationsPage() {
         // name should be in URL when redirected here
         const nameParam = params.get("name");
         if (nameParam) {
-          setBearerIntegrationId(integrationId);
-          setBearerIntegrationName(nameParam);
-          setBearerModalOpen(true);
+          bearer.open(integrationId, nameParam);
         }
       } else if (status === "failed") {
         const error = params.get("error");
@@ -231,28 +235,6 @@ export default function IntegrationsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleBearerSubmit = async (id: string, token: string) => {
-    const toastId = toast.loading(`Connecting...`);
-    try {
-      const result = await integrationsApi.addIntegration(id, token);
-      if (result.status === "connected") {
-        toast.success(`Connected to ${result.name}`, { id: toastId });
-        refetch();
-        queryClient.refetchQueries({ queryKey: ["tools", "available"] });
-      } else if (result.status === "error") {
-        toast.error(result.message || "Connection failed", { id: toastId });
-      } else {
-        toast.dismiss(toastId);
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Connection failed",
-        { id: toastId },
-      );
-      throw error;
-    }
-  };
 
   // Keyboard shortcut to focus search input
   useHotkeys(
@@ -450,11 +432,11 @@ export default function IntegrationsPage() {
       />
 
       <BearerTokenModal
-        isOpen={bearerModalOpen}
-        onClose={() => setBearerModalOpen(false)}
-        integrationId={bearerIntegrationId}
-        integrationName={bearerIntegrationName}
-        onSubmit={handleBearerSubmit}
+        isOpen={bearer.isOpen}
+        onClose={bearer.close}
+        integrationId={bearer.integrationId}
+        integrationName={bearer.integrationName}
+        onSubmit={bearer.submit}
       />
     </div>
   );
