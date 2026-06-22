@@ -22,6 +22,7 @@ import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { integrationKeys } from "@/features/integrations/api/queryKeys";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationRelatedIntegrations } from "@/features/integrations/components/IntegrationRelatedIntegrations";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
@@ -49,7 +50,7 @@ export function IntegrationDetailClient({
     onConnected: () => {
       toast.success(`Successfully added ${integration.name}!`);
       setIsAdded(true);
-      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
       setTimeout(() => {
         router.push(
           `/integrations?id=${integration.integrationId}&refresh=true`,
@@ -63,7 +64,7 @@ export function IntegrationDetailClient({
 
   // Fetch user's integrations (only when authenticated) to check for duplicates
   const { data: userIntegrationsData } = useQuery({
-    queryKey: ["integrations", "user"],
+    queryKey: integrationKeys.user,
     queryFn: integrationsApi.getUserIntegrations,
     enabled: isAuthenticated,
   });
