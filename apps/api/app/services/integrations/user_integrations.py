@@ -202,8 +202,11 @@ async def invalidate_user_integration_caches(user_id: str) -> None:
     for pattern, result in zip(USER_INTEGRATION_CACHE_PATTERNS, results):
         if isinstance(result, Exception):
             log.warning(
-                f"Failed to invalidate user-integration cache "
-                f"'{pattern.format(user_id=user_id)}': {type(result).__name__}: {result}"
+                "user_integration_cache_invalidation_failed",
+                user_id=user_id,
+                cache_key=pattern.format(user_id=user_id),
+                error_type=type(result).__name__,
+                error=str(result),
             )
 
 
