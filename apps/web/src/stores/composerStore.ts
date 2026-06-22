@@ -314,6 +314,13 @@ export const useComposerFiles = () =>
     })),
   );
 
+// True while any composer file is still uploading. Send is blocked until this
+// clears so a message never goes out before its attachment finishes uploading.
+export const useComposerIsUploading = () =>
+  useComposerStore((state) =>
+    state.uploadedFiles.some((file) => file.isUploading),
+  );
+
 export const useComposerUI = () =>
   useComposerStore(
     useShallow((state) => ({
