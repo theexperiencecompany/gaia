@@ -4,6 +4,7 @@ from collections.abc import ItemsView, Iterator, KeysView, Mapping
 from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
@@ -211,7 +212,7 @@ class ToolRegistry:
             }
         )
         log.info(
-            f"_add_category: '{name}' space='{space}' tools_in="
+            f"{LogTag.TOOL} _add_category: '{name}' space='{space}' tools_in="
             f"{len(tools) if tools else 0} core_in="
             f"{len(core_tools) if core_tools else 0} final="
             f"{len(category.tools)} replacing={replacing} (was {prior_tools_count})"
@@ -337,7 +338,9 @@ class ToolRegistry:
         if toolkit_name in self._categories:
             return self._categories[toolkit_name]
 
-        log.info(f"Registering provider tools for {toolkit_name} (space: {space_name})")
+        log.info(
+            f"{LogTag.TOOL} Registering provider tools for {toolkit_name} (space: {space_name})"
+        )
 
         composio_service = get_composio_service()
 
@@ -357,7 +360,7 @@ class ToolRegistry:
 
         await self._index_category_tools(toolkit_name)
 
-        log.info(f"Registered {len(tools)} tools for {toolkit_name}")
+        log.info(f"{LogTag.TOOL} Registered {len(tools)} tools for {toolkit_name}")
         return self._categories[toolkit_name]
 
     async def populate_provider_catalog(self) -> int:
@@ -409,7 +412,7 @@ class ToolRegistry:
                     tool_kit=toolkit, specific_tools=specific
                 )
             except Exception as e:
-                log.error(f"Failed to load catalog metadata for {toolkit}: {e}")
+                log.error(f"{LogTag.TOOL} Failed to load catalog metadata for {toolkit}: {e}")
                 return
 
             metas = [
@@ -425,7 +428,7 @@ class ToolRegistry:
             try:
                 await index_tools_to_store([(m, space) for m in metas])
             except Exception as e:
-                log.error(f"Failed to index catalog metadata for {toolkit}: {e}")
+                log.error(f"{LogTag.TOOL} Failed to index catalog metadata for {toolkit}: {e}")
                 return
 
             mongo_batch.append(
@@ -444,7 +447,7 @@ class ToolRegistry:
         for integration, result in zip(integrations, results):
             if isinstance(result, Exception):
                 log.error(
-                    "Catalog metadata population failed for "
+                    f"{LogTag.TOOL} Catalog metadata population failed for "
                     f"{integration.composio_config.toolkit}: {result}"
                 )
 
@@ -452,10 +455,12 @@ class ToolRegistry:
             try:
                 await mcp_store.store_tools_batch(mongo_batch)
             except Exception as e:
-                log.warning(f"Failed to store provider catalog metadata to Mongo: {e}")
+                log.warning(
+                    f"{LogTag.TOOL} Failed to store provider catalog metadata to Mongo: {e}"
+                )
 
         log.info(
-            f"Provider catalog metadata indexed: {total} tools "
+            f"{LogTag.TOOL} Provider catalog metadata indexed: {total} tools "
             f"across {len(integrations)} toolkits (no StructuredTools materialized)"
         )
         return total
@@ -476,7 +481,7 @@ class ToolRegistry:
         category = self._categories.get(category_name)
         if not category:
             log.warning(
-                f"_index_category_tools: category '{category_name}' not in registry, "
+                f"{LogTag.TOOL} _index_category_tools: category '{category_name}' not in registry, "
                 f"known={sorted(self._categories.keys())[:20]}..."
             )
             return
@@ -490,14 +495,14 @@ class ToolRegistry:
             }
         )
         log.info(
-            f"_index_category_tools: '{category_name}' space='{category.space}' "
+            f"{LogTag.TOOL} _index_category_tools: '{category_name}' space='{category.space}' "
             f"category.tools count={category_tools_count}"
         )
 
         tools_with_space = [(tool.tool, category.space) for tool in category.tools]
         if not tools_with_space:
             log.warning(
-                f"_index_category_tools: category '{category_name}' has 0 tools "
+                f"{LogTag.TOOL} _index_category_tools: category '{category_name}' has 0 tools "
                 f"(space='{category.space}'), nothing to index — caller likely passed "
                 f"empty tools to _add_category"
             )

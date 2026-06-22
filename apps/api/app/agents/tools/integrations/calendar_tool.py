@@ -17,6 +17,7 @@ from composio import Composio
 from langgraph.config import get_config, get_stream_writer
 
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.calendar_models import (
     AddRecurrenceInput,
@@ -113,7 +114,7 @@ def _get_user_timezone() -> tzinfo | None:
         if (config.get("configurable") or {}).get("user_timezone"):
             return home_timezone_from_config(config).tzinfo
     except Exception:
-        log.error("Error getting user timezone")
+        log.error(f"{LogTag.TOOL} Error getting user timezone")
     return None
 
 
@@ -359,7 +360,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             except AppError as e:
-                log.error(f"Error getting event {event_ref.event_id}: {e}")
+                log.error(f"{LogTag.TOOL} Error getting event {event_ref.event_id}: {e}")
                 errors.append(
                     {
                         "event_id": event_ref.event_id,
@@ -404,7 +405,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             except AppError as e:
-                log.error(f"Error deleting event {event_ref.event_id}: {e}")
+                log.error(f"{LogTag.TOOL} Error deleting event {event_ref.event_id}: {e}")
                 errors.append(
                     {
                         "event_id": event_ref.event_id,

@@ -22,6 +22,7 @@ from app.agents.core.background.session import (
 )
 from app.constants.agents import RETURNED_TO_FRONTEND_MARKER
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
+from app.constants.log_tags import LogTag
 from app.models.chat_models import tool_fields
 from app.utils.stream_utils import (
     absorb_collector_event,
@@ -61,12 +62,14 @@ async def await_executor_done(
     session = get_session(stream_id)
     if session is None:
         return
-    log.info("Waiting for executor completion", stream_id=stream_id)
+    log.info(f"{LogTag.AGENT} Waiting for executor completion", stream_id=stream_id)
     try:
         async with asyncio.timeout(timeout):
             await session.done_event.wait()
     except TimeoutError:
-        log.warning("Timed out waiting for executor — draining anyway", stream_id=stream_id)
+        log.warning(
+            f"{LogTag.AGENT} Timed out waiting for executor — draining anyway", stream_id=stream_id
+        )
 
 
 def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:

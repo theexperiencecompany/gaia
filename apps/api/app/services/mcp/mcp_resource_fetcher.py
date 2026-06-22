@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.services.mcp.mcp_client import get_mcp_client
-from shared.py.wide_events import log
+from shared.py.wide_events import McpContext, log
 
 
 async def fetch_mcp_ui_resource(
@@ -40,11 +41,12 @@ async def fetch_mcp_ui_resource(
             server_url=server_url,
             resource_uri=resource_uri,
         )
-        log.set(mcp_ui={"fetch_success": True})
+        log.set(mcp=McpContext(success=True))
         return details
     except Exception as e:
+        log.set(mcp=McpContext(success=False, error_type=type(e).__name__))
         log.warning(
-            "Failed to fetch MCP UI resource",
+            f"{LogTag.MCP} Failed to fetch MCP UI resource",
             resource_uri=resource_uri,
             server_url=server_url,
             error=str(e),

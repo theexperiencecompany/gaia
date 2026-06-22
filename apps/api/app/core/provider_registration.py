@@ -40,6 +40,7 @@ from app.config.cloudinary import init_cloudinary
 from app.config.langfuse import init_langfuse
 from app.config.posthog import init_posthog
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.constants.startup import (
     AUTO_PROVIDER_CONCURRENCY,
     PROD_PROVIDER_WARMUP_CONCURRENCY,
@@ -101,15 +102,15 @@ def _spawn_background_task(
     """
 
     async def _runner() -> None:
-        log.info(f"Background init started: {name}")
+        log.info(f"{LogTag.STARTUP} Background init started: {name}")
         try:
             await coro_factory()
-            log.info(f"Background init finished: {name}")
+            log.info(f"{LogTag.STARTUP} Background init finished: {name}")
         except asyncio.CancelledError:
-            log.info(f"Background init cancelled: {name}")
+            log.info(f"{LogTag.STARTUP} Background init cancelled: {name}")
             raise
         except Exception as e:
-            log.error(f"Background init failed: {name}: {e}")
+            log.error(f"{LogTag.STARTUP} Background init failed: {name}: {e}")
 
     task = asyncio.create_task(_runner(), name=f"warmup:{name}")
     _background_tasks.append(task)
@@ -140,24 +141,26 @@ def _spawn_background_services(
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 failed += 1
-                log.error(f"Background init failed ({service_names[i]}): {result}")
+                log.error(f"{LogTag.STARTUP} Background init failed ({service_names[i]}): {result}")
 
         if failed:
-            log.warning(f"Background init completed with {failed}/{len(services)} failures")
+            log.warning(
+                f"{LogTag.STARTUP} Background init completed with {failed}/{len(services)} failures"
+            )
         else:
-            log.info(f"Background init completed: {len(services)} services")
+            log.info(f"{LogTag.STARTUP} Background init completed: {len(services)} services")
 
         if after is not None:
             followup_name = after_name or "followup"
-            log.info(f"Background init started: {followup_name}")
+            log.info(f"{LogTag.STARTUP} Background init started: {followup_name}")
             try:
                 await after()
-                log.info(f"Background init finished: {followup_name}")
+                log.info(f"{LogTag.STARTUP} Background init finished: {followup_name}")
             except asyncio.CancelledError:
-                log.info(f"Background init cancelled: {followup_name}")
+                log.info(f"{LogTag.STARTUP} Background init cancelled: {followup_name}")
                 raise
             except Exception as e:
-                log.error(f"Background init failed: {followup_name}: {e}")
+                log.error(f"{LogTag.STARTUP} Background init failed: {followup_name}: {e}")
 
     _spawn_background_task(name, _run_all)
 
@@ -185,14 +188,14 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # RabbitMQ instead of delivering them straight to the held socket.
     settings.WORKER_TYPE = context
 
-    log.info(f"Starting {context} with unified provider system...")
+    log.info(f"{LogTag.STARTUP} Starting {context} with unified provider system...")
 
     # Register lazy providers (dormant until first access).
     #
     # Gotcha: many providers are authored as `async def` and decorated with
     # `@lazy_provider(...)`. The decorator replaces the async function with a
     # sync registration function, so these calls are intentionally NOT awaited.
-    log.info(f"Registering lazy providers for {context}...")
+    log.info(f"{LogTag.STARTUP} Registering lazy providers for {context}...")
 
     registrations: tuple[Callable[[], object], ...] = (
         init_postgresql_engine,
@@ -217,7 +220,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
 
     for register in registrations:
         register()
-    log.info(f"All lazy providers registered successfully for {context}")
+    log.info(f"{LogTag.STARTUP} All lazy providers registered successfully for {context}")
 
     # Services we typically want running in-process.
     #
@@ -264,7 +267,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # warm up in background.
     if context == "main_app" and not settings.ENABLE_LAZY_LOADING:
         log.info(
-            "Hot reloading disabled: scheduling warmup tasks in background (non-blocking startup)"
+            f"{LogTag.STARTUP} Hot reloading disabled: scheduling warmup tasks in background (non-blocking startup)"
         )
 
         _spawn_background_services(
@@ -286,11 +289,11 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         results = await asyncio.gather(*startup_tasks, return_exceptions=True)
         _process_results(results, service_names)  # Validate results and handle failures
 
-        log.info(f"All {context} services initialized successfully")
-        log.info(f"{context.title().replace('_', ' ')} startup complete")
+        log.info(f"{LogTag.STARTUP} All {context} services initialized successfully")
+        log.info(f"{LogTag.STARTUP} {context.title().replace('_', ' ')} startup complete")
 
     except Exception as e:
-        log.error(f"Error during {context} startup: {e}")
+        log.error(f"{LogTag.STARTUP} Error during {context} startup: {e}")
         raise RuntimeError(f"{context} startup failed") from e
 
 
@@ -306,11 +309,11 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
     Args:
         context: "main_app" for FastAPI, "arq_worker" for background tasks
     """
-    log.info(f"Shutting down {context}...")
+    log.info(f"{LogTag.STARTUP} Shutting down {context}...")
 
     # Cancel any background warmup tasks first.
     if _background_tasks:
-        log.info(f"Cancelling {len(_background_tasks)} background tasks")
+        log.info(f"{LogTag.STARTUP} Cancelling {len(_background_tasks)} background tasks")
         for task in _background_tasks:
             if not task.done():
                 task.cancel()
@@ -335,7 +338,7 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         shutdown_services.append((close_websocket_async, "websocket"))
 
     if not shutdown_services:
-        log.info(f"No shutdown tasks for {context}")
+        log.info(f"{LogTag.STARTUP} No shutdown tasks for {context}")
         return
 
     # Build parallel cleanup tasks (faster shutdown via concurrency)
@@ -350,11 +353,13 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         # Log failures without stopping other cleanup operations
         for i, result in enumerate(shutdown_results):
             if isinstance(result, Exception):
-                log.error(f"Error during {context} {shutdown_service_names[i]} shutdown: {result}")
+                log.error(
+                    f"{LogTag.STARTUP} Error during {context} {shutdown_service_names[i]} shutdown: {result}"
+                )
 
-        log.info(f"{context} services shutdown completed")
+        log.info(f"{LogTag.STARTUP} {context} services shutdown completed")
 
     except Exception as e:
-        log.error(f"Error during {context} shutdown: {e}")
+        log.error(f"{LogTag.STARTUP} Error during {context} shutdown: {e}")
 
-    log.info(f"{context} shutdown complete")
+    log.info(f"{LogTag.STARTUP} {context} shutdown complete")

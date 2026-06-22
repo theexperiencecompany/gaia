@@ -7,6 +7,7 @@ Service functions for tracking workflow execution history.
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflow_executions_collection
 from app.models.workflow_execution_models import (
     WorkflowExecution,
@@ -52,7 +53,9 @@ async def create_execution(
             "trigger_type": trigger_type,
         }
     )
-    log.info(f"Created execution {execution.execution_id} for workflow {workflow_id}")
+    log.info(
+        f"{LogTag.WORKFLOW} Created execution {execution.execution_id} for workflow {workflow_id}"
+    )
 
     return execution
 
@@ -82,7 +85,7 @@ async def complete_execution(
     # Calculate duration
     execution = await workflow_executions_collection.find_one({"execution_id": execution_id})
     if not execution:
-        log.warning(f"Execution {execution_id} not found for completion")
+        log.warning(f"{LogTag.WORKFLOW} Execution {execution_id} not found for completion")
         return False
 
     started_at = execution.get("started_at")
@@ -118,7 +121,7 @@ async def complete_execution(
         }
     )
     log.info(
-        f"Completed execution {execution_id} with status {status}, duration {duration_seconds}s"
+        f"{LogTag.WORKFLOW} Completed execution {execution_id} with status {status}, duration {duration_seconds}s"
     )
 
     return result.modified_count > 0

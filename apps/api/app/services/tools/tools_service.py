@@ -5,6 +5,7 @@ from typing import Any
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import user_integrations_collection
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
@@ -64,7 +65,7 @@ async def _fetch_user_mcp_integrations(user_id: str | None) -> list[dict]:
         ]
         return await user_integrations_collection.aggregate(pipeline).to_list(None)
     except Exception as e:
-        log.warning(f"Failed to fetch user MCP integrations: {e}")
+        log.warning(f"{LogTag.TOOL} Failed to fetch user MCP integrations: {e}")
         return []
 
 
@@ -84,7 +85,7 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
             seen_integrations.add(category_obj.integration_name)
         for tool in category_obj.tools:
             if tool.name in seen_tool_names:
-                log.debug(f"Skipping duplicate tool from registry: {tool.name}")
+                log.debug(f"{LogTag.TOOL} Skipping duplicate tool from registry: {tool.name}")
                 continue
             seen_tool_names.add(tool.name)
 
@@ -110,7 +111,7 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
             _fetch_user_mcp_integrations(user_id),
         )
     except Exception as e:
-        log.warning(f"Failed to fetch MCP tools: {e}")
+        log.warning(f"{LogTag.TOOL} Failed to fetch MCP tools: {e}")
 
     # Process custom integrations first for proper metadata
     for custom in custom_integrations:
@@ -128,10 +129,14 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
         for tool_dict in custom_tools:
             tool_name = tool_dict.get("name")
             if not tool_name:
-                log.warning(f"Skipping tool with missing 'name' from custom MCP {integration_id}")
+                log.warning(
+                    f"{LogTag.TOOL} Skipping tool with missing 'name' from custom MCP {integration_id}"
+                )
                 continue
             if tool_name in seen_tool_names:
-                log.debug(f"Skipping duplicate tool from custom MCP {integration_id}: {tool_name}")
+                log.debug(
+                    f"{LogTag.TOOL} Skipping duplicate tool from custom MCP {integration_id}: {tool_name}"
+                )
                 continue
             seen_tool_names.add(tool_name)
 
@@ -145,7 +150,7 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
             )
             categories.add(integration_id)
 
-        log.info(f"Added {len(custom_tools)} tools from custom MCP {integration_id}")
+        log.info(f"{LogTag.TOOL} Added {len(custom_tools)} tools from custom MCP {integration_id}")
         seen_integrations.add(integration_id)
 
     # SECURITY: global_mcp_tools is keyed by integration_id only — it holds
@@ -302,10 +307,12 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
                     )
                 )
 
-            log.debug(f"Fetched {len(integration_tools)} tools from MCP {integration_id}")
+            log.debug(
+                f"{LogTag.TOOL} Fetched {len(integration_tools)} tools from MCP {integration_id}"
+            )
 
     except Exception as e:
-        log.warning(f"Failed to fetch user MCP tools: {e}")
+        log.warning(f"{LogTag.TOOL} Failed to fetch user MCP tools: {e}")
 
     return tool_infos
 

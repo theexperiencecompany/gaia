@@ -24,6 +24,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
+from app.constants.log_tags import LogTag
 from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
     CRAWL4AI_MIN_MAX_BROWSERS,
@@ -53,7 +54,7 @@ class BaseAppSettings(BaseSettings):
         try:
             return cls(**kwargs)
         except Exception as e:
-            log.warning(f"Error creating settings: {e!s}")
+            log.warning(f"{LogTag.STARTUP} Error creating settings: {e!s}")
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
@@ -593,7 +594,9 @@ def _ensure_infisical_loaded():
     if not _infisical_secrets_loaded:
         infisical_start = time.time()
         inject_infisical_secrets()
-        log.info(f"Infisical secrets loaded in {(time.time() - infisical_start):.3f}s")
+        log.info(
+            f"{LogTag.STARTUP} Infisical secrets loaded in {(time.time() - infisical_start):.3f}s"
+        )
         _infisical_secrets_loaded = True
 
 
@@ -606,7 +609,7 @@ def get_settings():
     avoiding expensive Pydantic validation on every import.
     """
     log.set(service={"name": "gaia-api"})
-    log.info("Starting settings initialization...")
+    log.info(f"{LogTag.STARTUP} Starting settings initialization...")
 
     _ensure_infisical_loaded()
 
@@ -618,7 +621,7 @@ def get_settings():
             settings_obj = DevelopmentSettings.from_env()
         else:
             settings_obj = ProductionSettings.from_env()
-            log.info("Production settings initialized")
+            log.info(f"{LogTag.STARTUP} Production settings initialized")
 
         # Validate settings after full initialization
         settings_validator.configure(
@@ -633,12 +636,12 @@ def get_settings():
         return settings_obj
 
     except Exception as e:
-        log.error(f"Error initializing settings: {e!s}")
+        log.error(f"{LogTag.STARTUP} Error initializing settings: {e!s}")
         # In case of error, we still need to return a settings object
         # Use development settings with defaults as fallback
         if env == "development":
             return DevelopmentSettings.from_env(SHOW_MISSING_KEY_WARNINGS=True)
-        log.critical("Critical error initializing production settings!")
+        log.critical(f"{LogTag.STARTUP} Critical error initializing production settings!")
         raise
 
 

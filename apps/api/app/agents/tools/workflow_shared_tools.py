@@ -6,6 +6,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
+from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
 from app.services.workflow import WorkflowService
 from app.services.workflow.trigger_search import TriggerSearchService
@@ -51,7 +52,7 @@ async def search_triggers(
         )
 
     except Exception as e:
-        log.error(f"Error searching triggers: {e}")
+        log.error(f"{LogTag.TOOL} Error searching triggers: {e}")
         return error_response("search_failed", str(e))
 
 
@@ -93,7 +94,7 @@ async def list_workflows(config: RunnableConfig) -> dict:
         return success_response({"workflows": workflow_summaries, "total": len(workflows)})
 
     except Exception as e:
-        log.error(f"Error listing workflows: {e}")
+        log.error(f"{LogTag.TOOL} Error listing workflows: {e}")
         return error_response("fetch_failed", str(e))
 
 

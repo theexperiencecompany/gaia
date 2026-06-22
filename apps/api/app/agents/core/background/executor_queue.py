@@ -26,6 +26,7 @@ from app.constants.cache import (
     EXECUTOR_QUEUE_PREFIX,
     EXECUTOR_QUEUE_TTL,
 )
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
@@ -252,7 +253,7 @@ async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None
         item: dict = json.loads(raw)
     except (json.JSONDecodeError, ValueError) as e:
         log.error(
-            "Failed to parse queued executor task",
+            f"{LogTag.AGENT} Failed to parse queued executor task",
             conversation_id=conversation_id,
             error=str(e),
         )

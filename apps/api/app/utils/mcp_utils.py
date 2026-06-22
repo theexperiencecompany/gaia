@@ -12,6 +12,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -81,13 +82,15 @@ def wrap_tool_with_null_filter(
     async def filtered_arun(**kwargs: Any) -> Any:
         filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
         log.set(operation="mcp_tool_call", tool_name=tool.name)
-        log.debug(f"MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}")
+        log.debug(
+            f"{LogTag.MCP} MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}"
+        )
         try:
             return await original_arun(**filtered_kwargs)
         except Exception as e:
             error_msg = str(e)
             error_lower = error_msg.lower()
-            log.error(f"MCP tool '{tool.name}' failed: {error_msg}")
+            log.error(f"{LogTag.MCP} MCP tool '{tool.name}' failed: {error_msg}")
 
             # Re-raise auth errors so the orchestrator can handle token refresh.
             if "401" in error_msg or "unauthorized" in error_lower:
@@ -100,18 +103,20 @@ def wrap_tool_with_null_filter(
                     raise TypeError(
                         "on_connection_error must be a synchronous callable, not a coroutine function"
                     )
-                log.warning(f"MCP tool '{tool.name}' hit connection error, evicting session")
+                log.warning(
+                    f"{LogTag.MCP} MCP tool '{tool.name}' hit connection error, evicting session"
+                )
                 on_connection_error()
 
             if is_connection_error and reconnect_and_retry:
                 try:
                     log.warning(
-                        f"MCP tool '{tool.name}' attempting transparent reconnect-and-retry"
+                        f"{LogTag.MCP} MCP tool '{tool.name}' attempting transparent reconnect-and-retry"
                     )
                     return await reconnect_and_retry(tool.name, filtered_kwargs)
                 except Exception as retry_err:
                     log.error(
-                        f"MCP tool '{tool.name}' reconnect-retry failed: "
+                        f"{LogTag.MCP} MCP tool '{tool.name}' reconnect-retry failed: "
                         f"{type(retry_err).__name__}: {retry_err}"
                     )
                     return f"MCP tool error after reconnect: {retry_err}"

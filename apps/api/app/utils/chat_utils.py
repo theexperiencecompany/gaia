@@ -6,6 +6,7 @@ from uuid_extensions import uuid7str
 from app.agents.core.state import State
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
+from app.constants.log_tags import LogTag
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.services.conversation_service import (
     ConversationModel,
@@ -39,12 +40,12 @@ async def _generate_description_from_message(
         )
 
         if not isinstance(response, dict) or "response" not in response:
-            log.error("Invalid response from LLM for description generation")
+            log.error(f"{LogTag.CHAT} Invalid response from LLM for description generation")
             return "New Chat"
 
         return response.get("response", "New Chat").replace('"', "").strip()
     except Exception as e:
-        log.error(f"Failed to generate description: {e}")
+        log.error(f"{LogTag.CHAT} Failed to generate description: {e}")
         return "New Chat"
 
 
@@ -124,7 +125,7 @@ async def generate_and_update_description(
     try:
         await update_conversation_description(conversation_id, description, user)
     except Exception as e:
-        log.error(f"Failed to persist description to DB for {conversation_id}: {e}")
+        log.error(f"{LogTag.CHAT} Failed to persist description to DB for {conversation_id}: {e}")
 
     return description
 
@@ -157,13 +158,13 @@ async def do_prompt_no_stream(
 def get_user_id_from_config(config: RunnableConfig) -> str:
     """Extract user ID from the config."""
     if not config:
-        log.error("Tool called without config")
+        log.error(f"{LogTag.CHAT} Tool called without config")
         return ""
 
     metadata = config.get("metadata", {})
     user_id = metadata.get("user_id", "")
 
     if not user_id:
-        log.error("No user_id found in config metadata")
+        log.error(f"{LogTag.CHAT} No user_id found in config metadata")
 
     return user_id

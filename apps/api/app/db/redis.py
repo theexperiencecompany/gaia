@@ -30,6 +30,7 @@ from app.constants.cache import (
     DEFAULT_CACHE_TTL,
     ONE_YEAR_TTL,
 )
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # Re-export for backwards compatibility
@@ -111,12 +112,14 @@ class RedisCache:
                 # connectivity is asserted by verify_connection() at startup.
                 self.redis = redis.from_url(self.redis_url, decode_responses=True)
                 log.set(db={"connection_status": "configured", "backend": "redis"})
-                log.info("Redis client configured (connection verified at startup).")
+                log.info(
+                    f"{LogTag.STORAGE} Redis client configured (connection verified at startup)."
+                )
             except Exception as e:
                 log.set(db={"connection_status": "error", "backend": "redis"})
-                log.error(f"Failed to create Redis client: {e}")
+                log.error(f"{LogTag.STORAGE} Failed to create Redis client: {e}")
         else:
-            log.warning("REDIS_URL is not set. Caching will be disabled.")
+            log.warning(f"{LogTag.STORAGE} REDIS_URL is not set. Caching will be disabled.")
 
     async def verify_connection(self) -> None:
         """Assert Redis is actually reachable, and scream if it is not.
@@ -130,7 +133,7 @@ class RedisCache:
         if self.redis is None:
             message = "Redis is UNAVAILABLE: REDIS_URL is not configured."
             log.set(db={"connection_status": "unavailable", "backend": "redis"})
-            log.error(message)
+            log.error(f"{LogTag.STORAGE} {message}")
             if settings.ENV == "production":
                 raise ConnectionError(message)
             return
@@ -138,11 +141,11 @@ class RedisCache:
         try:
             await self.redis.ping()
             log.set(db={"connection_status": "verified", "backend": "redis"})
-            log.info("Redis connection verified.")
+            log.info(f"{LogTag.STORAGE} Redis connection verified.")
         except Exception as e:
             message = f"Redis is UNAVAILABLE: ping failed ({type(e).__name__}: {e})"
             log.set(db={"connection_status": "error", "backend": "redis"})
-            log.error(message)
+            log.error(f"{LogTag.STORAGE} {message}")
             if settings.ENV == "production":
                 raise ConnectionError(message) from e
 
@@ -166,7 +169,7 @@ class RedisCache:
             user = await cache.get("user:123", model=User)
         """
         if not self.redis:
-            log.warning("Redis is not initialized. Skipping get operation.")
+            log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping get operation.")
             return None
 
         try:
@@ -203,7 +206,7 @@ class RedisCache:
             await cache.set("user:123", user_obj, model=User, ttl=3600)
         """
         if not self.redis:
-            log.warning("Redis is not initialized. Skipping set operation.")
+            log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping set operation.")
             return
 
         try:
@@ -226,12 +229,12 @@ class RedisCache:
         Delete a cached key.
         """
         if not self.redis:
-            log.warning("Redis is not initialized. Skipping delete operation.")
+            log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping delete operation.")
             return
 
         try:
             await self.redis.delete(key)
-            log.info(f"Cache deleted for key: {key}")
+            log.info(f"{LogTag.STORAGE} Cache deleted for key: {key}")
         except Exception as e:
             log.error(
                 "redis_op_failed",
@@ -248,7 +251,7 @@ class RedisCache:
         """
         if not self.redis:
             self.redis = redis.from_url(self.redis_url, decode_responses=True)
-            log.info("Re-initialized Redis connection.")
+            log.info(f"{LogTag.STORAGE} Re-initialized Redis connection.")
 
         return self.redis
 
@@ -317,7 +320,9 @@ async def get_and_delete_cache(key: str) -> Any | None:
         Cached value (deserialized from JSON) or None if not found
     """
     if not redis_cache.redis:
-        log.warning("Redis is not initialized. Skipping get_and_delete operation.")
+        log.warning(
+            f"{LogTag.STORAGE} Redis is not initialized. Skipping get_and_delete operation."
+        )
         return None
 
     try:
@@ -326,7 +331,7 @@ async def get_and_delete_cache(key: str) -> Any | None:
             return deserialize_any(value)
         return None
     except Exception as e:
-        log.error(f"Error in get_and_delete for key {key}: {e}")
+        log.error(f"{LogTag.STORAGE} Error in get_and_delete for key {key}: {e}")
         return None
 
 
@@ -349,19 +354,19 @@ async def delete_cache_by_pattern(pattern: str):
         await delete_cache_by_pattern("temp:*")  # Delete temporary data
     """
     if not redis_cache.redis:
-        log.warning("Redis is not initialized. Skipping delete operation.")
+        log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping delete operation.")
         return
 
     try:
         keys = await redis_cache.redis.keys(pattern)
         if not keys:
-            log.info(f"No keys found for pattern: {pattern}")
+            log.info(f"{LogTag.STORAGE} No keys found for pattern: {pattern}")
             return
         for key in keys:
             await redis_cache.delete(key)
-            log.info(f"Cache deleted for key: {key}")
+            log.info(f"{LogTag.STORAGE} Cache deleted for key: {key}")
     except Exception as e:
-        log.error(f"Error deleting Redis keys by pattern {pattern}: {e}")
+        log.error(f"{LogTag.STORAGE} Error deleting Redis keys by pattern {pattern}: {e}")
 
 
 # Caching decorators have been moved to app.decorators.caching

@@ -4,6 +4,7 @@ from aio_pika.abc import AbstractChannel, AbstractRobustConnection
 from aio_pika.exceptions import ChannelPreconditionFailed
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.constants.outbound import (
     OUTBOUND_DLX,
     OUTBOUND_QUEUES,
@@ -25,18 +26,18 @@ class RabbitMQPublisher:
     async def connect(self):
         """Connect to RabbitMQ and create channel."""
         if self.connection is None:
-            log.debug("Establishing RabbitMQ connection")
+            log.debug(f"{LogTag.STARTUP} Establishing RabbitMQ connection")
             self.connection = await aio_pika.connect_robust(self.amqp_url)
             self.channel = await self.connection.channel()
             log.set(db={"connection_status": "connected", "backend": "rabbitmq"})
-            log.info("RabbitMQ connection established")
+            log.info(f"{LogTag.STARTUP} RabbitMQ connection established")
 
     async def declare_queue(self, queue_name: str):
         """Declare a queue if not already declared."""
         if queue_name not in self.declared_queues and self.channel:
             await self.channel.declare_queue(queue_name, durable=True)
             self.declared_queues.add(queue_name)
-            log.debug(f"RabbitMQ queue '{queue_name}' declared")
+            log.debug(f"{LogTag.STARTUP} RabbitMQ queue '{queue_name}' declared")
 
     async def is_connected(self) -> bool:
         """Check if the RabbitMQ connection is still active."""
@@ -58,7 +59,7 @@ class RabbitMQPublisher:
         the WebSocket consumer, but ARQ workers only publish sporadically.
         """
         if not await self.is_connected():
-            log.info("RabbitMQ connection not active, reconnecting...")
+            log.info(f"{LogTag.STARTUP} RabbitMQ connection not active, reconnecting...")
             # Reset connection state
             self.connection = None
             self.channel = None
@@ -66,7 +67,7 @@ class RabbitMQPublisher:
             self._outbound_topology_declared = False
             # Reconnect
             await self.connect()
-            log.info("RabbitMQ reconnected successfully")
+            log.info(f"{LogTag.STARTUP} RabbitMQ reconnected successfully")
 
     async def _publish_with_retry(self, queue_name: str, body: bytes, *, declare: bool) -> None:
         """Publish to the default exchange, reconnecting and retrying once.
@@ -89,9 +90,11 @@ class RabbitMQPublisher:
         try:
             await _attempt()
         except Exception as e:
-            log.error(f"Failed to publish to RabbitMQ: {e}. Attempting recovery...")
+            log.error(
+                f"{LogTag.STARTUP} Failed to publish to RabbitMQ: {e}. Attempting recovery..."
+            )
             await _attempt()
-            log.info("Successfully published after reconnection")
+            log.info(f"{LogTag.STARTUP} Successfully published after reconnection")
 
     async def publish(self, queue_name: str, body: bytes) -> None:
         """Publish to ``queue_name`` (declared on demand) with one retry."""
@@ -150,7 +153,7 @@ class RabbitMQPublisher:
                 # durable queues already exist.
                 self._outbound_topology_declared = True
                 log.error(
-                    "Outbound topology redeclare rejected (divergent queue arguments); "
+                    f"{LogTag.STARTUP} Outbound topology redeclare rejected (divergent queue arguments); "
                     "publishing to the existing queue. Delete or migrate it to reconcile.",
                     error=str(e),
                 )
@@ -160,10 +163,10 @@ class RabbitMQPublisher:
         """Close RabbitMQ connection and channel."""
         if self.channel:
             await self.channel.close()
-            log.debug("RabbitMQ channel closed")
+            log.debug(f"{LogTag.STARTUP} RabbitMQ channel closed")
         if self.connection:
             await self.connection.close()
-            log.info("RabbitMQ connection closed")
+            log.info(f"{LogTag.STARTUP} RabbitMQ connection closed")
 
 
 @lazy_provider(
@@ -180,7 +183,7 @@ async def init_rabbitmq_publisher() -> RabbitMQPublisher:
     Returns:
         RabbitMQPublisher: Connected RabbitMQ publisher instance
     """
-    log.debug("Initializing RabbitMQ publisher")
+    log.debug(f"{LogTag.STARTUP} Initializing RabbitMQ publisher")
 
     rabbitmq_url: str = settings.RABBITMQ_URL  # type: ignore
     publisher = RabbitMQPublisher(rabbitmq_url)
@@ -219,7 +222,7 @@ async def declare_outbound_topology_on_startup() -> None:
         # every outbound publish keeps failing until an operator deletes or
         # migrates the queue, so surface it loudly instead of as a warning.
         log.error(
-            "Outbound topology rejected: a queue exists with divergent arguments. "
+            f"{LogTag.STARTUP} Outbound topology rejected: a queue exists with divergent arguments. "
             "Delete or migrate it — outbound delivery will fail until resolved.",
             error=str(e),
         )
@@ -227,6 +230,6 @@ async def declare_outbound_topology_on_startup() -> None:
     except Exception as e:
         # Best-effort: a missing/unreachable broker must not crash-loop startup —
         # the first publish reconnects and re-declares the topology.
-        log.warning("Outbound topology not declared at startup", error=str(e))
+        log.warning(f"{LogTag.STARTUP} Outbound topology not declared at startup", error=str(e))
         return
-    log.info("Outbound message topology declared")
+    log.info(f"{LogTag.STARTUP} Outbound message topology declared")

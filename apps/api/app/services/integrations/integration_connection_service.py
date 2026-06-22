@@ -14,6 +14,7 @@ from app.config.oauth_config import (
 )
 from app.config.token_repository import token_repository
 from app.constants.cache import OAUTH_STATUS_KEY
+from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url, invalidate_mcp_status_cache
 from app.schemas.integrations.responses import (
@@ -147,7 +148,7 @@ async def _handle_connect_failure(
     """Surface a connection failure as a structured error, never a 500."""
     if not is_platform:
         await update_user_integration_status(user_id, integration_id, "created")
-    log.warning(f"MCP connection failed for {integration_id}: {error}")
+    log.warning(f"{LogTag.INTEGRATION} MCP connection failed for {integration_id}: {error}")
     log.set(integration={"provider": integration_name, "action": "connect_mcp", "status": "error"})
     return ConnectIntegrationResponse(
         status="error",
@@ -458,7 +459,7 @@ async def initiate_integration_connection(
             )
         return _error(f"Unsupported integration type: {resolved.managed_by}")
     except Exception as e:
-        log.error(f"Failed to initiate connection for {integration_id}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Failed to initiate connection for {integration_id}: {e}")
         return _error(str(e))
 
 
@@ -521,9 +522,9 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
     try:
         cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
         await delete_cache(cache_key)
-        log.info(f"OAuth status cache invalidated for user {user_id}")
+        log.info(f"{LogTag.INTEGRATION} OAuth status cache invalidated for user {user_id}")
     except redis.RedisError as e:
-        log.warning(f"Failed to invalidate OAuth status cache: {e}")
+        log.warning(f"{LogTag.INTEGRATION} Failed to invalidate OAuth status cache: {e}")
 
     # Provider metadata cache (24h TTL) is keyed by integration.provider, not
     # integration_id. Without this clear, disconnected integrations keep
@@ -533,14 +534,16 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
         try:
             metadata_key = f"provider_metadata:{user_id}:{integration.provider}"
             await delete_cache(metadata_key)
-            log.info(f"Provider metadata cache invalidated for {user_id}:{integration.provider}")
+            log.info(
+                f"{LogTag.INTEGRATION} Provider metadata cache invalidated for {user_id}:{integration.provider}"
+            )
         except redis.RedisError as e:
-            log.warning(f"Failed to invalidate provider metadata cache: {e}")
+            log.warning(f"{LogTag.INTEGRATION} Failed to invalidate provider metadata cache: {e}")
 
     # Determine whether to delete record or set status to "created"
     if managed_by == "mcp":
         # MCP integrations: record already deleted in main disconnect logic
-        log.info(f"MCP integration {integration_id} record removed")
+        log.info(f"{LogTag.INTEGRATION} MCP integration {integration_id} record removed")
     else:
         # Check if it's a platform integration (defined in oauth_config.py)
         # If get_integration_by_id returns a value, it's a platform integration
@@ -549,13 +552,17 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
             # Platform integrations: delete the record entirely
             try:
                 await remove_user_integration(user_id, integration_id)
-                log.info(f"Removed platform integration {integration_id} record")
+                log.info(
+                    f"{LogTag.INTEGRATION} Removed platform integration {integration_id} record"
+                )
             except pymongo.errors.PyMongoError as e:
-                log.warning(f"Failed to remove integration record: {e}")
+                log.warning(f"{LogTag.INTEGRATION} Failed to remove integration record: {e}")
         else:
             # Custom integrations: preserve in workspace by setting status to "created"
             try:
                 await update_user_integration_status(user_id, integration_id, "created")
-                log.info(f"Updated status to 'created' for custom integration {integration_id}")
+                log.info(
+                    f"{LogTag.INTEGRATION} Updated status to 'created' for custom integration {integration_id}"
+                )
             except pymongo.errors.PyMongoError as e:
-                log.warning(f"Failed to update status: {e}")
+                log.warning(f"{LogTag.INTEGRATION} Failed to update status: {e}")

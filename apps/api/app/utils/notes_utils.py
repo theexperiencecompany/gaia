@@ -1,5 +1,6 @@
 from langchain_core.documents import Document
 
+from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import notes_collection
 from app.db.redis import delete_cache, set_cache
@@ -13,7 +14,7 @@ async def insert_note(
     auto_created=False,
 ) -> NoteResponse:
     log.set(user_id=user_id, auto_created=auto_created, operation="insert_note")
-    log.info(f"Creating new note for user: {user_id}")
+    log.info(f"{LogTag.API} Creating new note for user: {user_id}")
 
     langchain_chroma_client = await ChromaClient.get_langchain_client(collection_name="notes")
 
@@ -25,7 +26,7 @@ async def insert_note(
 
     note_id = str(result.inserted_id)
 
-    log.info(f"Note created with ID: {note_id}")
+    log.info(f"{LogTag.API} Note created with ID: {note_id}")
 
     # Add note to ChromaDB for vector search
     await langchain_chroma_client.aadd_documents(
@@ -40,7 +41,7 @@ async def insert_note(
         ],
         ids=[note_id],
     )
-    log.info(f"Note with id {note_id} indexed in ChromaDB")
+    log.info(f"{LogTag.API} Note with id {note_id} indexed in ChromaDB")
 
     response_data = {
         "id": note_id,
@@ -55,6 +56,6 @@ async def insert_note(
     await delete_cache(f"notes:{user_id}")
 
     await set_cache(f"note:{user_id}:{note_id}", response_data)
-    log.info(f"Note created with ID: {note_id} and cache updated")
+    log.info(f"{LogTag.API} Note created with ID: {note_id} and cache updated")
 
     return NoteResponse(**response_data)
