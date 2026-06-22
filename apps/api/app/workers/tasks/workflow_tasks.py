@@ -310,9 +310,16 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
             return f"Workflow {workflow_id} executed successfully"
 
         except Exception as e:
-            log.exception(
-                f"{LogTag.WORKER} Error executing workflow {workflow_id}: {e}",
-            )
+            if isinstance(e, RateLimitExceededException):
+                # User hit their plan's workflow-execution quota — an expected,
+                # by-design outcome, not a worker failure. Log at WARNING so it
+                # doesn't trip the ARQ failed-task alert. The execution is still
+                # recorded as failed and the user is notified below.
+                log.warning(
+                    f"{LogTag.WORKER} Workflow {workflow_id} skipped — rate limit exceeded: {e}"
+                )
+            else:
+                log.exception(f"{LogTag.WORKER} Error executing workflow {workflow_id}: {e}")
 
             # Complete execution record with failure
             if execution_id:
