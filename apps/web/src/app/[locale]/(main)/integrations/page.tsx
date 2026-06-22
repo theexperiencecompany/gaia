@@ -5,7 +5,7 @@ import { Kbd } from "@heroui/kbd";
 import { ConnectIcon, MessageFavourite02Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
@@ -111,39 +111,49 @@ export default function IntegrationsPage() {
     }
   }, [router]);
 
-  // Update sidebar content when selected integration status changes
-  useEffect(() => {
-    if (!selectedIntegrationId || !isSidebarOpen) return;
+  const selectedIntegration = useMemo(
+    () => integrations.find((i) => i.id === selectedIntegrationId) ?? null,
+    [integrations, selectedIntegrationId],
+  );
 
-    const selectedIntegration = integrations.find(
-      (i) => i.id === selectedIntegrationId,
-    );
-
-    if (!selectedIntegration) return;
-
-    const handleDisconnect = async (id: string) => {
+  // Stable handlers — they only depend on the (memoized) hook actions, so the
+  // sidebar content isn't rebuilt just because they were recreated.
+  const handleDisconnect = useCallback(
+    async (id: string) => {
       await disconnectIntegration(id);
       closeRightSidebar();
-    };
-
-    const handleDelete = async (id: string) => {
+    },
+    [disconnectIntegration, closeRightSidebar],
+  );
+  const handleDelete = useCallback(
+    async (id: string) => {
       await deleteCustomIntegration(id);
       closeRightSidebar();
-    };
+    },
+    [deleteCustomIntegration, closeRightSidebar],
+  );
+  const handlePublish = useCallback(
+    (id: string) => publishIntegration(id),
+    [publishIntegration],
+  );
+  const handleUnpublish = useCallback(
+    (id: string) => unpublishIntegration(id),
+    [unpublishIntegration],
+  );
 
-    const handlePublish = async (id: string) => {
-      await publishIntegration(id);
-    };
+  const isSelectedSettling = selectedIntegration
+    ? settlingIntegrationId === selectedIntegration.id
+    : false;
 
-    const handleUnpublish = async (id: string) => {
-      await unpublishIntegration(id);
-    };
-
-    // For custom integrations, always pass the handlers
-    // The sidebar component will determine when to show the buttons
+  // Build the sidebar element once per relevant change. React Query's structural
+  // sharing keeps `selectedIntegration`'s identity stable across no-op refetches
+  // (e.g. the post-connect poll), so this only rebuilds when the selected
+  // integration's data or its settling state actually changes — not on every
+  // poll tick.
+  const sidebarElement = useMemo(() => {
+    if (!selectedIntegration) return null;
     const isCustomIntegration = selectedIntegration.source === "custom";
-
-    setRightSidebarContent(
+    return (
       <IntegrationSidebar
         integration={selectedIntegration}
         onConnect={connectIntegration}
@@ -152,22 +162,24 @@ export default function IntegrationsPage() {
         onPublish={isCustomIntegration ? handlePublish : undefined}
         onUnpublish={isCustomIntegration ? handleUnpublish : undefined}
         category={selectedIntegration.name}
-        isSettling={settlingIntegrationId === selectedIntegration.id}
-      />,
+        isSettling={isSelectedSettling}
+      />
     );
   }, [
-    selectedIntegrationId,
-    integrations,
-    isSidebarOpen,
-    settlingIntegrationId,
-    setRightSidebarContent,
+    selectedIntegration,
+    isSelectedSettling,
     connectIntegration,
-    disconnectIntegration,
-    deleteCustomIntegration,
-    publishIntegration,
-    unpublishIntegration,
-    closeRightSidebar,
+    handleDisconnect,
+    handleDelete,
+    handlePublish,
+    handleUnpublish,
   ]);
+
+  // Push the memoized element into the right sidebar while it's open.
+  useEffect(() => {
+    if (!isSidebarOpen || !sidebarElement) return;
+    setRightSidebarContent(sidebarElement);
+  }, [isSidebarOpen, sidebarElement, setRightSidebarContent]);
 
   // Handle query params from backend redirects (status, oauth_success, etc.)
   useEffect(() => {

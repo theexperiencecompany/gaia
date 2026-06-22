@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
@@ -164,6 +164,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     });
   }, [configData, userIntegrationsData, statusData]);
 
+  // Read the latest integrations inside callbacks without making the callbacks
+  // depend on the array — otherwise every refetch changes their identity and
+  // churns consumers (e.g. the sidebar content rebuilt on every poll tick).
+  const integrationsRef = useRef(integrations);
+  integrationsRef.current = integrations;
+
   // Get status for a specific integration
   const getIntegrationStatus = useCallback(
     (integrationId: string): IntegrationStatus | undefined => {
@@ -179,7 +185,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     async (
       integrationId: string,
     ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
-      const integration = integrations.find(
+      const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
       const integrationName = integration?.name || "Integration";
@@ -220,7 +226,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         throw error;
       }
     },
-    [queryClient, integrations],
+    [queryClient],
   );
 
   // Disconnect integration
@@ -287,7 +293,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   // Publish custom integration
   const publishIntegration = useCallback(
     async (integrationId: string): Promise<void> => {
-      const integration = integrations.find(
+      const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
       const integrationName = integration?.name || integrationId;
@@ -314,13 +320,13 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         throw error;
       }
     },
-    [integrations],
+    [],
   );
 
   // Unpublish custom integration
   const unpublishIntegration = useCallback(
     async (integrationId: string): Promise<void> => {
-      const integration = integrations.find(
+      const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
       const integrationName = integration?.name || integrationId;
@@ -339,7 +345,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         throw error;
       }
     },
-    [queryClient, integrations],
+    [queryClient],
   );
 
   // Simple refetch all
