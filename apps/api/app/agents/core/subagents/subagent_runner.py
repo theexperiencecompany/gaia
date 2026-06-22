@@ -17,6 +17,7 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
 )
+from app.agents.llm.plan_model import apply_dev_executor_model
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -236,8 +237,8 @@ async def execute_subagent_stream(
     """
     log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
     complete_message = ""
-    finish_task_result: str | None = None
     emitted_tool_calls: set[str] = set()
+    tool_ran = False
 
     # Inject the UUID subagent_id into configurable so nested spawn_subagent
     # tool calls can read the correct parent_subagent_id via
@@ -292,19 +293,26 @@ async def execute_subagent_stream(
             complete_message = _process_messages_payload(
                 payload, complete_message, stream_writer, subagent_id
             )
+            if isinstance(payload[0], ToolMessage):
+                tool_ran = True
             continue
 
         if stream_mode == "custom":
             if stream_writer:
                 stream_writer(normalize_custom_event(payload))
 
-    final_message = (
-        finish_task_result
-        if finish_task_result is not None
-        else complete_message
-        if complete_message
-        else "Task completed"
-    )
+    # A subagent that only narrated and never ran a tool didn't do the work — return
+    # an actionable signal so the parent re-issues the handoff instead of treating the
+    # planning text as the result.
+    if not tool_ran and not emitted_tool_calls and complete_message:
+        log.warning("subagent_returned_narration_only", subagent_name=ctx.agent_name)
+        final_message = (
+            f"The {ctx.agent_name} subagent ended without running any tool — it only "
+            f'produced planning text: "{complete_message}". Re-issue the handoff with an '
+            "explicit instruction to perform the action."
+        )
+    else:
+        final_message = complete_message if complete_message else "Task completed"
     log.set(
         subagent={
             "name": ctx.agent_name,
@@ -367,6 +375,11 @@ async def prepare_executor_execution(
         vfs_session_id=vfs_session_id,
     )
     new_configurable = config.get("configurable", {})
+
+    # DEV-ONLY: if the chat-header selector chose an executor model, pin it here —
+    # after the inherit-from-comms copy, so it overrides the comms model for the
+    # executor (and provider subagents that inherit from it). No-op in production.
+    apply_dev_executor_model(configurable, new_configurable)
 
     # Create system message (executor-specific)
     system_message = create_system_message(

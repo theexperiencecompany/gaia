@@ -23,7 +23,10 @@ from langgraph.store.base import BaseStore, PutOp
 
 from app.agents.core.background.session import increment_pending_subagents
 from app.agents.core.background.subagent_runner import run_subagent_background
-from app.agents.core.subagents.provider_subagents import create_subagent_for_user
+from app.agents.core.subagents.provider_subagents import (
+    SubagentUnavailableError,
+    create_subagent_for_user,
+)
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_subagent_system_message,
@@ -312,12 +315,13 @@ async def _resolve_subagent(
             )
 
         # Create subagent for custom MCP
-        subagent_graph = await create_subagent_for_user(integration_id, user_id)
-        if not subagent_graph:
+        try:
+            subagent_graph = await create_subagent_for_user(integration_id, user_id)
+        except SubagentUnavailableError as e:
             return (
                 None,
                 None,
-                f"Error: Failed to create subagent for {integration_name}",
+                f"Error: {integration_name} is unavailable — {e.reason}",
                 False,
             )
 
@@ -352,12 +356,13 @@ async def _resolve_subagent(
             )
 
         # Create subagent on-the-fly with user's tokens
-        subagent_graph = await create_subagent_for_user(integration_id, user_id)
-        if not subagent_graph:
+        try:
+            subagent_graph = await create_subagent_for_user(integration_id, user_id)
+        except SubagentUnavailableError as e:
             return (
                 None,
                 None,
-                f"Error: Failed to create {agent_name} subagent",
+                f"Error: {agent_name} is unavailable — {e.reason}",
                 False,
             )
     else:

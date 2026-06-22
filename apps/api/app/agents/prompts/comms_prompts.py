@@ -221,7 +221,8 @@ How it works: you write :::openui, then a simple expression like `root = DataCar
 
 **Surface policy (the full component library + a when-to-use guide is appended at the END of this prompt — that is the single source of truth for component names):**
 - Plain text / simple markdown is for casual replies, opinions, single answers, and short UNSTRUCTURED lists — there only.
-- The moment a reply contains structured or comparative data — a comparison of 2+ things, a real table, stats/KPIs, steps, a timeline, charts, a file tree, a key-value record — you MUST put that data in an :::openui component — the interactive, GAIA-native surface built for exactly this. This is a forcing rule, not a preference — "I'll just write markdown" leaves the richer surface unused whenever the data is structured.
+- Plain tabular / comparison / key-value data (rows × columns) → a MARKDOWN TABLE (GAIA renders these natively; there is no OpenUI table component). Links, or content where links are the point (URLs, sources, references) → clickable MARKDOWN links ([label](url)).
+- Data with a richer visual form — stats/KPIs, steps, a timeline, charts, a file tree, gauges, maps — you MUST put in an :::openui component, the interactive GAIA-native surface built for exactly this. For these visual types this is a forcing rule, not a preference.
 - OpenUI and prose are LAYERS, not a choice: keep your voice, lead-in, and takeaway in text AND embed the component for the data — together, in one reply. Never pick one over the other when there's structured data.
 - Copyable/pasteable text (a prompt, command, snippet) → CopyableContent. An editable document (report, letter, email body for review) → TextDocument. A long saved deliverable → an artifact.
 
@@ -449,6 +450,9 @@ re-voice [EXECUTOR_RESULT] / [EXECUTOR_ERROR] for the user:
   actual content.
 - Treat executor output as CANONICAL GROUND TRUTH.
 - Preserve facts exactly: names, counts, IDs, links, error reasons.
+- LINKS IN MARKDOWN: when the data has links, or links are the point (URLs,
+  sources, references), render them as clickable markdown links ([label](url)),
+  never as bare unlinked text. A link the user can't click is a dropped link.
 - Only change tone, warmth, and phrasing; never modify, infer, or correct
   the underlying content.
 - Copy technical identifiers verbatim.

@@ -110,6 +110,11 @@ query="what you want to do".
 Semantic search that returns tool names matching your intent. Tools are NOT loaded yet.
 
 Rules:
+- This is semantic vector search over tool names and descriptions. Phrase the query in
+  natural language using the INTEGRATION'S NAME ("github", "gmail", "notion") and the
+  action — NEVER an id, uuid, slug, or internal key. Ids carry no semantic meaning, so
+  they embed to noise and return irrelevant tools. Search "list github pull requests",
+  not the repo/connection id.
 - One well-formed query is enough for most tasks. Do not retry unless results are clearly irrelevant.
 - Do not search repeatedly to be thorough. If the first result looks right, move to binding.
 - Comma-separated intents work: "list pull requests, get repo info"
@@ -148,7 +153,9 @@ Internal tools follow snake_case: "plan_tasks", "vfs_read"
 —ARGS
 query:
     Natural language description of what you want to do.
-    Be specific about the action and the provider.
+    Be specific about the action and name the integration in plain words
+    ("github", "gmail", "notion") — NOT an id, uuid, or slug. This is semantic
+    vector search; ids do not embed and will not match.
     Example: "list pull requests", "send email", "create github issue"
 
 exact_tool_names:
@@ -563,6 +570,7 @@ def get_retrieve_tools_function(
     tool_space: str = "general",
     include_subagents: bool = True,
     limit: int = 25,
+    bindable_tool_names: set[str] | None = None,
 ) -> Callable[..., Awaitable[RetrieveToolsResult]]:
     """Get a retrieve_tools function configured for specific context.
 
@@ -574,6 +582,11 @@ def get_retrieve_tools_function(
         tool_space: Namespace to search for tools
         include_subagents: Whether to include subagent results in search
         limit: Maximum number of tool results for semantic search
+        bindable_tool_names: The set of tool names this agent's graph can actually
+            bind and execute. When set (scoped agents like provider subagents),
+            binding validates against it instead of the global registry, so a tool
+            the graph can't execute is never reported as a successful bind. None ->
+            validate against the global registry (main executor/comms carry it).
 
     Returns:
         Configured retrieve_tools coroutine that returns RetrieveToolsResult
@@ -645,15 +658,20 @@ def get_retrieve_tools_function(
 
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
-            available_tool_names_set = set(available_tool_names)
+            global_tool_names_set = set(available_tool_names)
+            # Validate against the agent's scoped set, not the global registry —
+            # else an out-of-scope tool reports a fake bind the graph then rejects,
+            # looping the model bind->reject.
+            bindable_set = (
+                bindable_tool_names if bindable_tool_names is not None else global_tool_names_set
+            )
 
             mcp_tool_names_set = await _user_mcp_tool_names(user_id)
-            known_by_canonical = canonical_tool_name_map(
-                available_tool_names_set | mcp_tool_names_set
-            )
+            known_by_canonical = canonical_tool_name_map(bindable_set | mcp_tool_names_set)
 
             validated_tool_names: list[str] = []
             unknown_tool_names: list[str] = []
+            out_of_scope_tool_names: list[str] = []
             requested_subagents: list[str] = []
             for tool_name in exact_tool_names:
                 if tool_name.startswith("subagent:"):
@@ -673,10 +691,13 @@ def get_retrieve_tools_function(
                     # Desktop tools must not bind outside desktop sessions —
                     # the tools also re-check the source at execution time.
                     unknown_tool_names.append(tool_name)
-                elif tool_name in available_tool_names_set or tool_name in mcp_tool_names_set:
+                elif tool_name in bindable_set or tool_name in mcp_tool_names_set:
                     validated_tool_names.append(tool_name)
                 elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
                     validated_tool_names.append(canonical)
+                elif tool_name in global_tool_names_set:
+                    # Known globally, but not in this agent's scope.
+                    out_of_scope_tool_names.append(tool_name)
                 else:
                     unknown_tool_names.append(tool_name)
 
@@ -687,7 +708,13 @@ def get_retrieve_tools_function(
                     f"{LogTag.TOOL} retrieve_tools binding dropped unknown tools",
                     tool_space=tool_space,
                     unknown=unknown_tool_names,
-                    available_count=len(available_tool_names_set),
+                    available_count=len(bindable_set),
+                )
+            if out_of_scope_tool_names:
+                log.warning(
+                    "retrieve_tools binding rejected out-of-scope tools",
+                    tool_space=tool_space,
+                    out_of_scope=out_of_scope_tool_names,
                 )
 
             log.set(
@@ -699,15 +726,21 @@ def get_retrieve_tools_function(
                 )
             )
 
-            # Bind the valid tools regardless; a co-requested subagent doesn't void
-            # them. Append corrective guidance for any subagent name so the model
-            # learns to hand off instead of seeing it echoed back as a bind.
+            # Bind valid tools regardless; add corrective guidance for subagent /
+            # out-of-scope names so the model takes the right path.
             response = list(validated_tool_names)
             if requested_subagents:
                 response.append(
                     "Subagents are not bound with retrieve_tools. Call "
                     "handoff(subagent_id='<id>', task='...') directly, using the "
                     "part after 'subagent:'."
+                )
+            if out_of_scope_tool_names:
+                response.append(
+                    "These tools are not available inside this subagent and cannot be "
+                    f"bound here: {', '.join(out_of_scope_tool_names)}. They belong to the "
+                    "main executor, not this subagent — do not retry binding them; finish "
+                    "your task here and let the executor handle them."
                 )
 
             return RetrieveToolsResult(

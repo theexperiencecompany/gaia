@@ -22,6 +22,8 @@ from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
+    OPENROUTER_APP_CATEGORIES,
+    OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
 )
@@ -140,8 +142,8 @@ def init_openrouter_llm():
         # these as dedicated params (NOT `default_headers`, which it forwards to
         # send_async and crashes on). https://openrouter.ai/docs/app-attribution
         app_url=settings.FRONTEND_URL,
-        app_title="GAIA",
-        app_categories=["personal-agent", "general-chat"],
+        app_title=OPENROUTER_APP_TITLE,
+        app_categories=OPENROUTER_APP_CATEGORIES,
         reasoning=OPENROUTER_REASONING,
     ).configurable_fields(
         model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
