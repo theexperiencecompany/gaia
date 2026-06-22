@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { ConnectIcon, MessageFavourite02Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
@@ -41,6 +41,7 @@ const CONNECTION_CALLBACK_PARAMS = [
 export default function IntegrationsPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isMac } = usePlatform();
   const { setHeader } = useHeader();
 
@@ -256,33 +257,38 @@ export default function IntegrationsPage() {
     [openRightSidebar],
   );
 
-  // Handle standalone id param (from slash command dropdown navigation)
-  // Separated from the main useEffect to avoid using handleIntegrationClick before declaration
+  // Handle standalone id param (slash-command navigation, marketplace add, and
+  // custom-integration create). Reactive to searchParams so it fires even when
+  // we're already on /integrations and the URL is updated via router.replace
+  // (a soft navigation that doesn't remount the page).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const status = params.get("status");
-    const integrationId = params.get("id");
-    const oauthSuccess = params.get("oauth_success");
-    const needsRefresh = params.get("refresh") === "true";
+    const status = searchParams.get("status");
+    const integrationId = searchParams.get("id");
+    const oauthSuccess = searchParams.get("oauth_success");
+    const needsRefresh = searchParams.get("refresh") === "true";
 
     // Only process if we have an id and no status/oauth params (to avoid double-processing)
-    if (integrationId && !status && !oauthSuccess) {
-      // Clear the URL param first to prevent re-triggering
-      clearConnectionParams();
+    if (!integrationId || status || oauthSuccess) return;
 
-      // If refresh param is set (coming from marketplace add), invalidate cache and wait for fresh data
-      if (needsRefresh) {
-        // Set pending integration and trigger refetch
-        setPendingIntegrationId(integrationId);
-        queryClient.invalidateQueries({ queryKey: ["integrations"] });
-        queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
-      } else {
-        // Normal navigation - open sidebar immediately
-        handleIntegrationClick(integrationId);
-      }
+    // Clear the URL param first to prevent re-triggering
+    clearConnectionParams();
+
+    if (needsRefresh) {
+      // Coming from marketplace add or custom create — the integration isn't in
+      // the cached list yet, so refresh and open once it lands.
+      setPendingIntegrationId(integrationId);
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+    } else {
+      // Normal navigation - open sidebar immediately
+      handleIntegrationClick(integrationId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    searchParams,
+    clearConnectionParams,
+    handleIntegrationClick,
+    queryClient,
+  ]);
 
   // Open sidebar once pending integration data is available after refresh
   useEffect(() => {
