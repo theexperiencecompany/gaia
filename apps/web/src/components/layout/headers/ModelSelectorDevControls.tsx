@@ -9,7 +9,7 @@ import {
   SelectItem,
   Switch,
 } from "@heroui/react";
-import { Brain02Icon } from "@icons";
+import { CpuIcon } from "@icons";
 import Image from "next/image";
 
 import { DEV_MODEL_OPTIONS } from "@/features/chat/constants/devModels";
@@ -132,7 +132,7 @@ export default function ModelSelectorDevControls() {
               : "text-primary"
           }
         >
-          <Brain02Icon width={20} height={20} />
+          <CpuIcon width={20} height={20} />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[260px] bg-zinc-900 p-3">
