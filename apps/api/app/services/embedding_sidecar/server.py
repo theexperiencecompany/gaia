@@ -15,14 +15,24 @@ The API and worker then set ``MEMORY_EMBEDDING_SIDECAR_URL`` to its address and
 call it instead of loading their own copy.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from app.constants.memory import EMBEDDING_SIDECAR_MAX_CONCURRENCY
 from app.memory.embeddings import _embed_query_sync, _embed_sync, _rerank_sync
 from shared.py.wide_events import log
+
+# fastembed is sync and CPU-bound. Running it directly in these async handlers
+# would block the single uvicorn event loop, so one batch embed would freeze
+# every other request AND the /health check — which is what made Swarm kill the
+# container as unhealthy under load. Offload to a thread (like the in-process
+# path in app.memory.embeddings) and bound concurrency so the CPU isn't
+# oversubscribed. /health deliberately takes neither, so it always responds.
+_inference_slots = asyncio.Semaphore(EMBEDDING_SIDECAR_MAX_CONCURRENCY)
 
 
 class EmbedRequest(BaseModel):
@@ -58,14 +68,21 @@ async def health() -> dict[str, str]:
 
 @app.post("/embed")
 async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
-    return {"vectors": _embed_sync(request.texts) if request.texts else []}
+    if not request.texts:
+        return {"vectors": []}
+    async with _inference_slots:
+        return {"vectors": await asyncio.to_thread(_embed_sync, request.texts)}
 
 
 @app.post("/embed_query")
 async def embed_query(request: EmbedQueryRequest) -> dict[str, list[float]]:
-    return {"vector": _embed_query_sync(request.text)}
+    async with _inference_slots:
+        return {"vector": await asyncio.to_thread(_embed_query_sync, request.text)}
 
 
 @app.post("/rerank")
 async def rerank(request: RerankRequest) -> dict[str, list[float]]:
-    return {"scores": _rerank_sync(request.query, request.documents) if request.documents else []}
+    if not request.documents:
+        return {"scores": []}
+    async with _inference_slots:
+        return {"scores": await asyncio.to_thread(_rerank_sync, request.query, request.documents)}
