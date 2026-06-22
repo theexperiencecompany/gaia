@@ -52,12 +52,16 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
 
     for cfg in config.integrations:
         ui = added_by_id.get(cfg.id.lower())
-        if ui is not None:
-            status = ui.status
-            tool_count = len(ui.integration.tools) or counts.get(cfg.id.lower(), 0)
-        else:
-            status = "connected" if status_map.get(cfg.id) else "not_connected"
-            tool_count = counts.get(cfg.id.lower(), 0)
+        status = (
+            ui.status
+            if ui is not None
+            else ("connected" if status_map.get(cfg.id) else "not_connected")
+        )
+        tool_count = (
+            (len(ui.integration.tools) or counts.get(cfg.id.lower(), 0))
+            if ui is not None
+            else counts.get(cfg.id.lower(), 0)
+        )
         items.append(
             MyIntegrationItem(
                 id=cfg.id,

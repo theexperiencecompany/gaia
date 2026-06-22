@@ -220,7 +220,7 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
         if category_obj.internal or name.lower() != integration_id.lower():
             continue
         return [
-            IntegrationTool(name=tool.name, description=tool.description)
+            IntegrationTool(name=tool.name, description=tool.tool.description)
             for tool in category_obj.tools
         ]
 
