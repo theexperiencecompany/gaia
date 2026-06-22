@@ -12,6 +12,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -58,10 +59,11 @@ def wrap_tool_with_null_filter(
     Three behaviors:
     1. Filter `None`-valued args before calling the underlying tool (MCP servers
        reject `null` for optional fields; they want them omitted).
-    2. On a connection-loss error, evict the stale session via `on_connection_error`
-       and — if `reconnect_and_retry` is provided — silently rebuild the connector
-       and retry the call once. The user sees latency, not an error.
-    3. Re-raise auth errors (401/unauthorized) so the OAuth refresh layer can handle them.
+    2. On a connection-loss OR 401/unauthorized error (both mean a dead/expired
+       session), evict the stale session via `on_connection_error` and — if
+       `reconnect_and_retry` is provided — rebuild the connector (refreshing the
+       token) and retry once. A 401 that survives the refresh is re-raised so the
+       user can re-authenticate.
 
     The underlying tool's `_arun` is stashed on the wrapped tool as `_original_arun`
     so the reconnect path can bypass this wrapper when invoking the fresh tool
@@ -81,40 +83,52 @@ def wrap_tool_with_null_filter(
     async def filtered_arun(**kwargs: Any) -> Any:
         filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
         log.set(operation="mcp_tool_call", tool_name=tool.name)
-        log.debug(f"MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}")
+        log.debug(
+            f"{LogTag.MCP} MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}"
+        )
         try:
             return await original_arun(**filtered_kwargs)
         except Exception as e:
             error_msg = str(e)
             error_lower = error_msg.lower()
-            log.error(f"MCP tool '{tool.name}' failed: {error_msg}")
+            log.error(f"{LogTag.MCP} MCP tool '{tool.name}' failed: {error_msg}")
 
-            # Re-raise auth errors so the orchestrator can handle token refresh.
-            if "401" in error_msg or "unauthorized" in error_lower:
-                raise
-
+            is_auth_error = "401" in error_msg or "unauthorized" in error_lower
             is_connection_error = any(pat in error_lower for pat in _CONNECTION_ERROR_PATTERNS)
 
-            if is_connection_error and on_connection_error:
-                if inspect.iscoroutinefunction(on_connection_error):
-                    raise TypeError(
-                        "on_connection_error must be a synchronous callable, not a coroutine function"
-                    )
-                log.warning(f"MCP tool '{tool.name}' hit connection error, evicting session")
-                on_connection_error()
-
-            if is_connection_error and reconnect_and_retry:
-                try:
+            # A dropped session surfaces as a connection error OR a 401 (the vendored
+            # client reconnects in place with a now-expired token). Both heal the same
+            # way: evict + reconnect, which refreshes the token. Try once.
+            if is_auth_error or is_connection_error:
+                if on_connection_error:
+                    if inspect.iscoroutinefunction(on_connection_error):
+                        raise TypeError(
+                            "on_connection_error must be a synchronous callable, not a coroutine function"
+                        )
                     log.warning(
-                        f"MCP tool '{tool.name}' attempting transparent reconnect-and-retry"
+                        f"{LogTag.MCP} MCP tool '{tool.name}' session error, evicting session"
                     )
-                    return await reconnect_and_retry(tool.name, filtered_kwargs)
-                except Exception as retry_err:
-                    log.error(
-                        f"MCP tool '{tool.name}' reconnect-retry failed: "
-                        f"{type(retry_err).__name__}: {retry_err}"
-                    )
-                    return f"MCP tool error after reconnect: {retry_err}"
+                    on_connection_error()
+
+                if reconnect_and_retry:
+                    try:
+                        log.warning(
+                            f"{LogTag.MCP} MCP tool '{tool.name}' attempting transparent reconnect-and-retry"
+                        )
+                        return await reconnect_and_retry(tool.name, filtered_kwargs)
+                    except Exception as retry_err:
+                        log.error(
+                            f"{LogTag.MCP} MCP tool '{tool.name}' reconnect-retry failed: "
+                            f"{type(retry_err).__name__}: {retry_err}"
+                        )
+                        # A 401 that survives a fresh token = server rejecting a valid
+                        # token; surface it so the user can re-authenticate.
+                        if "401" in str(retry_err) or "unauthorized" in str(retry_err).lower():
+                            raise
+                        return f"MCP tool error after reconnect: {retry_err}"
+
+                if is_auth_error:
+                    raise
 
             if "Cannot read properties of undefined" in error_msg:
                 return (

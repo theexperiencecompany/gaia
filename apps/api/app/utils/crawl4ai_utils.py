@@ -7,6 +7,7 @@ from urllib.parse import urlsplit, urlunsplit
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.constants.search import CRAWL4AI_CLOSE_TIMEOUT_SECONDS, CRAWL4AI_WAIT_UNTIL
 from shared.py.wide_events import log
 
@@ -43,7 +44,7 @@ async def _close_crawler(crawler: AsyncWebCrawler, context_name: str) -> None:
     try:
         await crawler.close()
     except Exception as e:
-        log.warning(f"{context_name} browser close failed: {e}")
+        log.warning(f"{LogTag.TOOL} {context_name} browser close failed: {e}")
 
 
 def _spawn_shielded_close(crawler: AsyncWebCrawler, context_name: str) -> asyncio.Task[None]:
@@ -88,7 +89,7 @@ async def managed_crawler(
             # close() is wedged; it keeps running detached and the reaper
             # collects the driver if it never finishes.
             log.warning(
-                f"{context_name} browser close still running after "
+                f"{LogTag.TOOL} {context_name} browser close still running after "
                 f"{CRAWL4AI_CLOSE_TIMEOUT_SECONDS:.0f}s; leaving it to finish in background"
             )
 
@@ -271,7 +272,7 @@ async def batch_fetch_with_crawl4ai(
             )
     except TimeoutError:
         log.warning(
-            f"{context_name} batch timed out after {total_timeout_seconds:.0f}s; "
+            f"{LogTag.TOOL} {context_name} batch timed out after {total_timeout_seconds:.0f}s; "
             "retrying URLs individually"
         )
         return await _recover_with_single_url_crawls(
@@ -285,7 +286,7 @@ async def batch_fetch_with_crawl4ai(
         raise
     except Exception as e:
         error = f"{context_name} batch error: {e}"
-        log.warning(error)
+        log.warning(f"{LogTag.TOOL} {error}")
         return {}, dict.fromkeys(urls, error)
 
     requested_by_exact: dict[str, deque[int]] = defaultdict(deque)
@@ -338,12 +339,14 @@ async def batch_fetch_with_crawl4ai(
 
     if len(results) > len(urls):
         log.warning(
-            f"{context_name} returned {len(results)} results for {len(urls)} URLs; ignoring extras"
+            f"{LogTag.TOOL} {context_name} returned {len(results)} results for {len(urls)} URLs; ignoring extras"
         )
 
     unmatched_count = max(len(unmatched_results) - len(matched_results), 0)
     if unmatched_count:
-        log.warning(f"{context_name} could not map {unmatched_count} results to requested URLs")
+        log.warning(
+            f"{LogTag.TOOL} {context_name} could not map {unmatched_count} results to requested URLs"
+        )
 
     for url in urls:
         if url not in contents and url not in errors:

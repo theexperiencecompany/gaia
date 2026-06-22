@@ -11,6 +11,7 @@ from typing import Annotated, Any
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.services.composio.custom_tools.context_tool import (
     PROVIDER_TOOLS,
@@ -62,7 +63,9 @@ async def gather_context(
     )
 
     total_time = time.time() - start_time
-    log.info(f"Context fetched from {len(resolved_providers)} providers in {total_time:.2f}s")
+    log.info(
+        f"{LogTag.TOOL} Context fetched from {len(resolved_providers)} providers in {total_time:.2f}s"
+    )
 
     return {
         "date": date_str,

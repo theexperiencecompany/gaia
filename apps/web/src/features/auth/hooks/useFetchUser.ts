@@ -10,6 +10,7 @@ import {
   SESSION_RESUMED_KEY,
 } from "@/features/auth/constants";
 import { useUserActions } from "@/features/auth/hooks/useUser";
+import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
 import { usePathname } from "@/i18n/navigation";
 import {
   ANALYTICS_EVENTS,
@@ -83,6 +84,9 @@ const useFetchUser = () => {
     const accessToken = searchParams.get("access_token");
     const refreshToken = searchParams.get("refresh_token");
     if (!accessToken || !refreshToken) return;
+
+    // A pending checkout takes priority; useCheckoutResume redirects to Dodo.
+    if (readPendingCheckout()) return;
 
     const needsOnboarding = !data.onboarding?.completed;
     const phase = data.onboarding?.phase;

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from bson import ObjectId
 from fastapi import HTTPException, status
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import todos_collection
 from app.db.redis import delete_cache
 from app.db.utils import serialize_document
@@ -100,14 +101,14 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
             if todo.get("project_id"):
                 await delete_cache(f"todos:{user_id}:project:{todo['project_id']}")
 
-        log.info(f"Bulk completed {total_modified} todos for user {user_id}")
+        log.info(f"{LogTag.TODO} Bulk completed {total_modified} todos for user {user_id}")
 
         return [TodoResponse(**serialize_document(todo)) for todo in todos]
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error bulk completing todos: {e!s}")
+        log.error(f"{LogTag.TODO} Error bulk completing todos: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk complete todos: {e!s}",
@@ -188,7 +189,7 @@ async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) ->
             await delete_cache(f"todo:{user_id}:{todo_id}")
 
         log.info(
-            f"Bulk moved {result.modified_count} todos to project {project_id} for user {user_id}"
+            f"{LogTag.TODO} Bulk moved {result.modified_count} todos to project {project_id} for user {user_id}"
         )
 
         return [TodoResponse(**serialize_document(todo)) for todo in todos]
@@ -196,7 +197,7 @@ async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) ->
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error bulk moving todos: {e!s}")
+        log.error(f"{LogTag.TODO} Error bulk moving todos: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk move todos: {e!s}",
@@ -271,12 +272,12 @@ async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
         for todo_id in todo_ids:
             await delete_cache(f"todo:{user_id}:{todo_id}")
 
-        log.info(f"Bulk deleted {result.deleted_count} todos for user {user_id}")
+        log.info(f"{LogTag.TODO} Bulk deleted {result.deleted_count} todos for user {user_id}")
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error bulk deleting todos: {e!s}")
+        log.error(f"{LogTag.TODO} Error bulk deleting todos: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk delete todos: {e!s}",

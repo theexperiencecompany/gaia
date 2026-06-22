@@ -37,6 +37,7 @@ from app.agents.prompts.onboarding_prompts import (
 )
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
+from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.lazy_loader import providers
 from app.core.websocket_manager import websocket_manager
@@ -108,11 +109,11 @@ async def _emit_stage(
         )
         status_text = (payload or {}).get("status_text")
         if status_text:
-            log.info(f"[intelligence:stage] {stage.value} — {status_text}")
+            log.info(f"{LogTag.ONBOARDING} stage {stage.value} — {status_text}")
         else:
-            log.info(f"[intelligence:stage] {stage.value}")
+            log.info(f"{LogTag.ONBOARDING} stage {stage.value}")
     except Exception as e:
-        log.warning(f"[intelligence] Failed to emit stage {stage.value}: {e}")
+        log.warning(f"{LogTag.ONBOARDING} Failed to emit stage {stage.value}: {e}")
 
 
 T = TypeVar("T")
@@ -122,7 +123,7 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
     try:
         return await coro
     except Exception as e:
-        log.error(f"[intelligence] Node '{name}' failed: {e}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Node '{name}' failed: {e}", exc_info=True)
         return default
 
 
@@ -202,12 +203,12 @@ async def _scan_then_enqueue_memory(user_id: str, ctx: InboxScanContext) -> None
         pool = await RedisPoolManager.get_pool()
         await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
         log.info(
-            "[intelligence] queued gmail->memory ingestion",
+            f"{LogTag.ONBOARDING} queued gmail->memory ingestion",
             user_id=user_id,
         )
     except Exception as e:
         log.warning(
-            "[intelligence] failed to queue gmail->memory ingestion",
+            f"{LogTag.ONBOARDING} failed to queue gmail->memory ingestion",
             user_id=user_id,
             error=str(e)[:200],
             error_type=type(e).__name__,
@@ -283,7 +284,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     log.set(user={"id": user_id})
     pipeline_start = time.monotonic()
     log.info(
-        "[intelligence] pipeline start",
+        f"{LogTag.ONBOARDING} pipeline start",
         user_id=user_id,
         phase="start",
     )
@@ -306,7 +307,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
     if not user_doc:
         log.error(
-            "[intelligence] user not found",
+            f"{LogTag.ONBOARDING} user not found",
             user_id=user_id,
             outcome="aborted",
             reason="user_not_found",
@@ -325,13 +326,13 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     connection_status = await composio_service.check_connection_status(["gmail"], user_id)
     has_gmail: bool = connection_status.get("gmail", False)
     log.info(
-        "[intelligence] gmail check",
+        f"{LogTag.ONBOARDING} gmail check",
         user_id=user_id,
         has_gmail=has_gmail,
         duration_s=round(time.monotonic() - t_gmail_check, 2),
     )
     log.info(
-        "[intelligence] inputs",
+        f"{LogTag.ONBOARDING} inputs",
         user_id=user_id,
         has_gmail=has_gmail,
         profession_set=bool(profession),
@@ -382,7 +383,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         writing_style_future,
     )
     log.info(
-        "[intelligence] critical_path gathered",
+        f"{LogTag.ONBOARDING} critical_path gathered",
         user_id=user_id,
         phase="critical_path_gather",
         duration_s=round(time.monotonic() - t_gather, 2),
@@ -406,7 +407,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         default="Welcome to GAIA. I'm here to help — what's on your mind?",
     )
     log.info(
-        "[intelligence] first_message generated",
+        f"{LogTag.ONBOARDING} first_message generated",
         user_id=user_id,
         message_chars=len(first_message),
         duration_s=round(time.monotonic() - t_msg, 2),
@@ -436,7 +437,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         ),
     )
     log.info(
-        "[intelligence] finalize gathered",
+        f"{LogTag.ONBOARDING} finalize gathered",
         user_id=user_id,
         phase="finalize_gather",
         duration_s=round(time.monotonic() - t_final, 2),
@@ -453,7 +454,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     )
 
     log.info(
-        "[intelligence] pipeline done",
+        f"{LogTag.ONBOARDING} pipeline done",
         user_id=user_id,
         phase="done",
         has_gmail=has_gmail,
@@ -483,7 +484,7 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
             {"status_text": f"Loaded {len(cached)} cached emails"},
         )
         log.info(
-            "[intelligence] inbox_scanning cache_hit",
+            f"{LogTag.ONBOARDING} inbox_scanning cache_hit",
             user_id=user_id,
             step="inbox_scanning",
             outcome="ok",
@@ -525,7 +526,7 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
         fetch_ok = True
     except Exception as e:
         log.error(
-            "[intelligence] inbox_scanning failed",
+            f"{LogTag.ONBOARDING} inbox_scanning failed",
             user_id=user_id,
             step="inbox_scanning",
             outcome="failed",
@@ -541,7 +542,7 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
             await inbox_scan_cache.put(user_id, "metadata", list(ctx.emails))
 
     log.info(
-        "[intelligence] inbox_scanning done",
+        f"{LogTag.ONBOARDING} inbox_scanning done",
         user_id=user_id,
         step="inbox_scanning",
         outcome="ok",
@@ -555,7 +556,7 @@ async def _run_provision_gmail(user_id: str) -> None:
     try:
         await provision_system_workflows(user_id, "gmail", "Gmail", notify=False)
         log.info(
-            "[intelligence] provision_gmail done",
+            f"{LogTag.ONBOARDING} provision_gmail done",
             user_id=user_id,
             step="provision_gmail",
             outcome="ok",
@@ -563,7 +564,7 @@ async def _run_provision_gmail(user_id: str) -> None:
         )
     except Exception as e:
         log.warning(
-            "[intelligence] provision_gmail failed",
+            f"{LogTag.ONBOARDING} provision_gmail failed",
             user_id=user_id,
             step="provision_gmail",
             outcome="failed",
@@ -581,7 +582,7 @@ async def _run_writing_style(
     """Learn writing style from the user's last 50 sent emails. Gmail-only."""
     if not has_gmail:
         log.info(
-            "[intelligence] writing_style skipped",
+            f"{LogTag.ONBOARDING} writing_style skipped",
             user_id=user_id,
             step="writing_style",
             outcome="skipped",
@@ -602,7 +603,7 @@ async def _run_writing_style(
         result = await learn_writing_style(user_id, profession=profession, on_status=_on_status)
     except Exception as e:
         log.error(
-            "[intelligence] writing_style failed",
+            f"{LogTag.ONBOARDING} writing_style failed",
             user_id=user_id,
             step="writing_style",
             outcome="failed",
@@ -614,7 +615,7 @@ async def _run_writing_style(
         result = None
 
     log.info(
-        "[intelligence] writing_style done",
+        f"{LogTag.ONBOARDING} writing_style done",
         user_id=user_id,
         step="writing_style",
         outcome="ok" if result else "empty",
@@ -641,7 +642,7 @@ async def _run_triage(
 ) -> InboxTriage | None:
     if inbox_ctx is None:
         log.info(
-            "[intelligence] triage skipped",
+            f"{LogTag.ONBOARDING} triage skipped",
             user_id=user_id,
             step="triage",
             outcome="skipped",
@@ -652,7 +653,7 @@ async def _run_triage(
     emails = list(inbox_ctx.emails)
     if not emails:
         log.info(
-            "[intelligence] triage skipped",
+            f"{LogTag.ONBOARDING} triage skipped",
             user_id=user_id,
             step="triage",
             outcome="skipped",
@@ -671,7 +672,7 @@ async def _run_triage(
         result = await triage_inbox(user_id, emails, profession=profession, focus=focus)
     except Exception as e:
         log.error(
-            "[intelligence] triage failed",
+            f"{LogTag.ONBOARDING} triage failed",
             user_id=user_id,
             step="triage",
             outcome="failed",
@@ -682,7 +683,7 @@ async def _run_triage(
         )
         result = None
     log.info(
-        "[intelligence] triage done",
+        f"{LogTag.ONBOARDING} triage done",
         user_id=user_id,
         step="triage",
         outcome="ok" if result else "empty",
@@ -750,7 +751,7 @@ async def _run_social_profiles_background(
             profiles = dedup_profiles_by_platform(raw)
             await _persist_social_profiles(user_id, profiles)
             log.info(
-                "[intelligence] social_profiles done",
+                f"{LogTag.ONBOARDING} social_profiles done",
                 user_id=user_id,
                 step="social_profiles",
                 outcome="ok",
@@ -761,7 +762,7 @@ async def _run_social_profiles_background(
             )
     except Exception as e:
         log.error(
-            "[intelligence] social_profiles failed",
+            f"{LogTag.ONBOARDING} social_profiles failed",
             user_id=user_id,
             step="social_profiles",
             outcome="failed",
@@ -817,7 +818,7 @@ async def _run_todos(
             todos = await _create_focus_todos(user_id, name, profession, focus, clarify_answers)
     except Exception as e:
         log.error(
-            "[intelligence] todos failed",
+            f"{LogTag.ONBOARDING} todos failed",
             user_id=user_id,
             step="todos",
             outcome="failed",
@@ -830,7 +831,7 @@ async def _run_todos(
         todos = []
 
     log.info(
-        "[intelligence] todos done",
+        f"{LogTag.ONBOARDING} todos done",
         user_id=user_id,
         step="todos",
         outcome="ok" if todos else "empty",
@@ -884,7 +885,7 @@ async def _run_workflows(
         )
     except Exception as e:
         log.error(
-            "[intelligence] workflows failed",
+            f"{LogTag.ONBOARDING} workflows failed",
             user_id=user_id,
             step="workflows",
             outcome="failed",
@@ -896,7 +897,7 @@ async def _run_workflows(
         workflows = []
 
     log.info(
-        "[intelligence] workflows done",
+        f"{LogTag.ONBOARDING} workflows done",
         user_id=user_id,
         step="workflows",
         outcome="ok" if workflows else "empty",
@@ -915,7 +916,7 @@ async def _run_workflows(
             )
     except Exception as e:
         log.warning(
-            "[intelligence] persist suggested_workflows failed",
+            f"{LogTag.ONBOARDING} persist suggested_workflows failed",
             user_id=user_id,
             step="workflows",
             error=str(e)[:200],
@@ -993,7 +994,7 @@ async def _run_holo_card(
             card_design["overlay_opacity"],
         )
         log.info(
-            "[intelligence] holo_card done",
+            f"{LogTag.ONBOARDING} holo_card done",
             user_id=user_id,
             step="holo_card",
             outcome="ok",
@@ -1007,7 +1008,7 @@ async def _run_holo_card(
         )
     except Exception as e:
         log.error(
-            "[intelligence] holo_card failed",
+            f"{LogTag.ONBOARDING} holo_card failed",
             user_id=user_id,
             step="holo_card",
             outcome="failed",
@@ -1026,7 +1027,7 @@ async def _seed_conversation(user_id: str) -> str | None:
         cid = await seed_onboarding_conversation(user_id=user_id)
     except Exception as e:
         log.error(
-            "[intelligence] seed_conversation failed",
+            f"{LogTag.ONBOARDING} seed_conversation failed",
             user_id=user_id,
             step="seed_conversation",
             outcome="failed",
@@ -1037,7 +1038,7 @@ async def _seed_conversation(user_id: str) -> str | None:
         )
         return None
     log.info(
-        "[intelligence] seed_conversation done",
+        f"{LogTag.ONBOARDING} seed_conversation done",
         user_id=user_id,
         step="seed_conversation",
         outcome="ok",
@@ -1065,7 +1066,7 @@ async def _persist_social_profiles(user_id: str, social_profiles: list[SocialPro
             {"$set": {"onboarding.social_profiles": [p.model_dump() for p in social_profiles]}},
         )
     except Exception as e:
-        log.error(f"[intelligence] persist social_profiles failed: {e}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} persist social_profiles failed: {e}", exc_info=True)
 
 
 async def _persist_profiles(
@@ -1100,10 +1101,10 @@ async def _persist_profiles(
         try:
             await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": update_fields})
         except Exception as e:
-            log.error(f"[intelligence] persist update_fields failed: {e}", exc_info=True)
+            log.error(f"{LogTag.ONBOARDING} persist update_fields failed: {e}", exc_info=True)
 
     log.info(
-        "[intelligence] persist_profiles done",
+        f"{LogTag.ONBOARDING} persist_profiles done",
         user_id=user_id,
         step="persist_profiles",
         writing_style_persisted=writing_style is not None,
@@ -1152,7 +1153,7 @@ async def _create_focus_todos(
                 return {"id": str(result.id), "title": safe_title}
             except Exception as e:
                 log.warning(
-                    "[intelligence] focus todo create failed",
+                    f"{LogTag.ONBOARDING} focus todo create failed",
                     user_id=user_id,
                     step="todos_focus_create_one",
                     title=title[:60],
@@ -1167,7 +1168,7 @@ async def _create_focus_todos(
         )
         created = [r for r in results if r is not None]
         log.info(
-            "[intelligence] focus_todos done",
+            f"{LogTag.ONBOARDING} focus_todos done",
             user_id=user_id,
             step="todos_focus",
             outcome="ok",
@@ -1181,7 +1182,7 @@ async def _create_focus_todos(
 
     except Exception as e:
         log.warning(
-            "[intelligence] focus_todos failed",
+            f"{LogTag.ONBOARDING} focus_todos failed",
             user_id=user_id,
             step="todos_focus",
             outcome="failed",
@@ -1246,12 +1247,12 @@ async def _create_todos_from_triage(
                     }
                 elif spec.source_sender or spec.source_subject:
                     log.warning(
-                        "[intelligence] Dropped hallucinated source_email "
+                        f"{LogTag.ONBOARDING} Dropped hallucinated source_email "
                         f"sender={spec.source_sender!r} subject={spec.source_subject!r}"
                     )
                 return todo_dict
             except Exception as e:
-                log.warning(f"[intelligence] Failed to create todo: {e}")
+                log.warning(f"{LogTag.ONBOARDING} Failed to create todo: {e}")
                 return None
 
         t_create = time.monotonic()
@@ -1260,7 +1261,7 @@ async def _create_todos_from_triage(
         )
         created = [r for r in results if r is not None]
         log.info(
-            "[intelligence] triage_todos done",
+            f"{LogTag.ONBOARDING} triage_todos done",
             user_id=user_id,
             step="todos_triage",
             outcome="ok",
@@ -1274,7 +1275,7 @@ async def _create_todos_from_triage(
 
     except Exception as e:
         log.warning(
-            "[intelligence] triage_todos failed",
+            f"{LogTag.ONBOARDING} triage_todos failed",
             user_id=user_id,
             step="todos_triage",
             outcome="failed",
@@ -1382,7 +1383,7 @@ async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
             if len(candidate.workflows) == 4:
                 return candidate
             log.warning(
-                "[intelligence] workflow specs wrong count, retrying",
+                f"{LogTag.ONBOARDING} workflow specs wrong count, retrying",
                 user_id=user_id,
                 step="workflows_specs_llm",
                 attempt=attempt,
@@ -1391,7 +1392,7 @@ async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
         except Exception as e:
             last_error = e
             log.warning(
-                "[intelligence] workflow specs llm failed, retrying",
+                f"{LogTag.ONBOARDING} workflow specs llm failed, retrying",
                 user_id=user_id,
                 step="workflows_specs_llm",
                 attempt=attempt,
@@ -1436,7 +1437,7 @@ async def _build_one_workflow(
         )
         create_duration_s = round(time.monotonic() - t_create, 2)
         log.info(
-            "[intelligence] workflow spec done",
+            f"{LogTag.ONBOARDING} workflow spec done",
             user_id=user_id,
             step="workflows_spec",
             spec_index=idx,
@@ -1456,7 +1457,7 @@ async def _build_one_workflow(
         }
     except Exception as e:
         log.warning(
-            "[intelligence] workflow spec failed",
+            f"{LogTag.ONBOARDING} workflow spec failed",
             user_id=user_id,
             step="workflows_spec",
             spec_index=idx,
@@ -1494,7 +1495,7 @@ async def _create_onboarding_workflows(
         parsed = await _generate_workflow_specs(user_id, prompt)
         specs_llm_duration_s = round(time.monotonic() - t_specs_llm, 2)
         log.info(
-            "[intelligence] workflow specs generated",
+            f"{LogTag.ONBOARDING} workflow specs generated",
             user_id=user_id,
             step="workflows_specs_llm",
             specs_count=len(parsed.workflows),
@@ -1511,7 +1512,7 @@ async def _create_onboarding_workflows(
         created: list[dict] = [r for r in results if r is not None]
         specs_failed = specs_total - len(created)
         log.info(
-            "[intelligence] workflows specs done",
+            f"{LogTag.ONBOARDING} workflows specs done",
             user_id=user_id,
             step="workflows_specs",
             specs_total=specs_total,
@@ -1524,7 +1525,7 @@ async def _create_onboarding_workflows(
         return created
     except Exception as e:
         log.warning(
-            "[intelligence] workflow LLM failed, using fallback",
+            f"{LogTag.ONBOARDING} workflow LLM failed, using fallback",
             user_id=user_id,
             step="workflows",
             error=str(e)[:200],
@@ -1568,5 +1569,5 @@ async def _create_fallback_workflow(
             }
         ]
     except Exception as e:
-        log.warning(f"[intelligence] Fallback workflow creation failed: {e}")
+        log.warning(f"{LogTag.ONBOARDING} Fallback workflow creation failed: {e}")
         return []

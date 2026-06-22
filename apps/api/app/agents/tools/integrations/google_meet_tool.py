@@ -5,6 +5,7 @@ from typing import Any
 
 from composio import Composio
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from shared.py.wide_events import log
@@ -39,7 +40,7 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
                 or {}
             )
         except Exception as e:
-            log.debug(f"Google Meet userinfo fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Google Meet userinfo fetch failed: {e}")
 
         # The calendar fetch may fail if the GOOGLEMEET connection lacks
         # calendar scope. The legacy tool gated on status_code == 200 and
@@ -65,7 +66,7 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
                 or {}
             )
         except Exception as e:
-            log.debug(f"Google Meet calendar fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Google Meet calendar fetch failed: {e}")
 
         upcoming_meets: list[dict[str, Any]] = []
         for event in events_data.get("items", []):

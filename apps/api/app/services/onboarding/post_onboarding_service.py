@@ -5,6 +5,7 @@ from typing import Any
 
 from bson import ObjectId
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import BioStatus, OnboardingPhase
 from app.utils.seeding_utils import seed_onboarding_todo
@@ -57,19 +58,19 @@ async def save_personalization_data(
             {"_id": ObjectId(user_id)},
             {"$set": update_fields},
         )
-        log.info(f"Saved personalization data for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Saved personalization data for user {user_id}")
 
     except Exception as e:
-        log.error(f"Error saving personalization data: {e}", exc_info=True)
+        log.error(f"{LogTag.ONBOARDING} Error saving personalization data: {e}", exc_info=True)
 
 
 async def seed_initial_user_data(user_id: str) -> None:
     """Seed the onboarding todo. The welcome conversation is seeded by the
     intelligence pipeline, not here."""
     try:
-        log.info(f"Starting data seeding for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Starting data seeding for user {user_id}")
         await seed_onboarding_todo(user_id)
-        log.info(f"Completed data seeding for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Completed data seeding for user {user_id}")
 
     except Exception as e:
-        log.error(f"Error in seed_initial_user_data for user {user_id}: {e}")
+        log.error(f"{LogTag.ONBOARDING} Error in seed_initial_user_data for user {user_id}: {e}")

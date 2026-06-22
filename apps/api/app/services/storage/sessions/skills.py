@@ -23,6 +23,7 @@ from app.agents.workspace.skill_loader import (
 from app.agents.workspace.system_docs import (
     INTEGRATIONS_GUIDE_MD,
 )
+from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID, SKILL_BODY_FILENAME
 from app.services.storage._vfs_common import matches_text
 from app.services.storage.juicefs import ensure_safe_path_id
@@ -159,7 +160,9 @@ def materialize_instructions(user_root: Path, instructions: dict[str, str]) -> i
         try:
             ensure_safe_path_id(iid, label="integration_id")
         except ValueError:
-            log.warning(f"Skipping unsafe integration_id in instructions projection: {iid!r}")
+            log.warning(
+                f"{LogTag.STORAGE} Skipping unsafe integration_id in instructions projection: {iid!r}"
+            )
             continue
         agent_dir = integrations_root / iid / "agent"
         agent_dir.mkdir(parents=True, exist_ok=True)

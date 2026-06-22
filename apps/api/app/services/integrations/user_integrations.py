@@ -9,6 +9,7 @@ from bson import ObjectId
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
@@ -64,7 +65,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
         try:
             parsed.append(UserIntegration(**doc))
         except Exception as e:
-            log.warning(f"Failed to parse user integration: {e}")
+            log.warning(f"{LogTag.INTEGRATION} Failed to parse user integration: {e}")
 
     ids = [ui.integration_id for ui in parsed]
 
@@ -247,7 +248,9 @@ async def add_user_integration(
     )
 
     await user_integrations_collection.insert_one(user_integration.model_dump())
-    log.info(f"User {user_id} added integration {integration_id} with status {status}")
+    log.info(
+        f"{LogTag.INTEGRATION} User {user_id} added integration {integration_id} with status {status}"
+    )
 
     return user_integration
 
@@ -264,7 +267,7 @@ async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     )
 
     if result.deleted_count > 0:
-        log.info(f"User {user_id} removed integration {integration_id}")
+        log.info(f"{LogTag.INTEGRATION} User {user_id} removed integration {integration_id}")
         return True
 
     return False

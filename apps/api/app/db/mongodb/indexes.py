@@ -14,6 +14,7 @@ import asyncio
 
 from pymongo.errors import OperationFailure
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     ai_models_collection,
     blog_collection,
@@ -52,7 +53,7 @@ async def create_all_indexes():
     """Create all database indexes. Called during application startup."""
     try:
         log.set(db={"operation": "create_indexes", "collection": "all"})
-        log.info("Starting comprehensive database index creation...")
+        log.info(f"{LogTag.MONGO} Starting comprehensive database index creation...")
 
         # Create all indexes concurrently for better performance
         index_tasks = [
@@ -117,7 +118,9 @@ async def create_all_indexes():
         index_results = {}
         for i, (collection_name, result) in enumerate(zip(collection_names, results)):
             if isinstance(result, Exception):
-                log.error(f"Failed to create indexes for {collection_name}: {result!s}")
+                log.error(
+                    f"{LogTag.MONGO} Failed to create indexes for {collection_name}: {result!s}"
+                )
                 index_results[collection_name] = f"FAILED: {result!s}"
             else:
                 index_results[collection_name] = "SUCCESS"
@@ -126,15 +129,19 @@ async def create_all_indexes():
         successful = sum(1 for result in index_results.values() if result == "SUCCESS")
         total = len(index_results)
 
-        log.info(f"Database index creation completed: {successful}/{total} collections successful")
+        log.info(
+            f"{LogTag.MONGO} Database index creation completed: {successful}/{total} collections successful"
+        )
 
         # Log any failures
         failed_collections = [name for name, result in index_results.items() if result != "SUCCESS"]
         if failed_collections:
-            log.warning(f"Failed to create indexes for collections: {failed_collections}")
+            log.warning(
+                f"{LogTag.MONGO} Failed to create indexes for collections: {failed_collections}"
+            )
 
     except Exception as e:
-        log.error(f"Critical error during database index creation: {e!s}")
+        log.error(f"{LogTag.MONGO} Critical error during database index creation: {e!s}")
         raise
 
 
@@ -162,7 +169,7 @@ async def create_user_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating user indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating user indexes: {e!s}")
         raise
 
 
@@ -186,7 +193,7 @@ async def create_conversation_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating conversation indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating conversation indexes: {e!s}")
         raise
 
 
@@ -251,7 +258,7 @@ async def create_todo_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating todo indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating todo indexes: {e!s}")
         raise
 
 
@@ -269,7 +276,7 @@ async def create_project_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating project indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating project indexes: {e!s}")
         raise
 
 
@@ -288,7 +295,7 @@ async def create_goal_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating goal indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating goal indexes: {e!s}")
         raise
 
 
@@ -308,7 +315,7 @@ async def create_note_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating note indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating note indexes: {e!s}")
         raise
 
 
@@ -328,7 +335,7 @@ async def create_file_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating file indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating file indexes: {e!s}")
         raise
 
 
@@ -344,7 +351,7 @@ async def create_mail_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating mail indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating mail indexes: {e!s}")
         raise
 
 
@@ -362,7 +369,7 @@ async def create_calendar_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating calendar indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating calendar indexes: {e!s}")
         raise
 
 
@@ -393,7 +400,7 @@ async def create_blog_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating blog indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating blog indexes: {e!s}")
         raise
 
 
@@ -413,7 +420,7 @@ async def create_notification_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating notification indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating notification indexes: {e!s}")
         raise
 
 
@@ -430,7 +437,7 @@ async def create_reminder_indexes():
             reminders_collection.create_index([("user_id", 1), ("type", 1)]),
         )
     except Exception as e:
-        log.error(f"Error creating reminder indexes: {e}")
+        log.error(f"{LogTag.MONGO} Error creating reminder indexes: {e}")
         raise
 
 
@@ -524,12 +531,12 @@ async def create_workflow_indexes():
             )
         except OperationFailure as e:
             log.warning(
-                f"Failed to create slug_public_unique_idx: {e}. "
+                f"{LogTag.MONGO} Failed to create slug_public_unique_idx: {e}. "
                 "Likely duplicate public slugs in workflows; de-dup and restart."
             )
 
     except Exception as e:
-        log.error(f"Error creating workflow indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating workflow indexes: {e!s}")
         raise
 
 
@@ -545,7 +552,7 @@ async def create_workflow_execution_indexes():
             workflow_executions_collection.create_index([("workflow_id", 1), ("status", 1)]),
         )
     except Exception as e:
-        log.error(f"Error creating workflow execution indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating workflow execution indexes: {e!s}")
         raise
 
 
@@ -577,7 +584,7 @@ async def create_payment_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating payment indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating payment indexes: {e!s}")
         raise
 
 
@@ -599,7 +606,7 @@ async def create_processed_webhook_indexes():
             ),
         )
     except Exception as e:
-        log.error(f"Error creating processed webhook indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating processed webhook indexes: {e!s}")
         raise
 
 
@@ -638,7 +645,7 @@ async def create_usage_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating usage indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating usage indexes: {e!s}")
         raise
 
 
@@ -674,7 +681,7 @@ async def create_ai_models_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating AI models indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating AI models indexes: {e!s}")
         raise
 
 
@@ -764,7 +771,7 @@ async def create_integration_indexes():
         await _backfill_integration_slugs()
 
     except Exception as e:
-        log.error(f"Error creating integration indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating integration indexes: {e!s}")
         raise
 
 
@@ -781,7 +788,7 @@ async def _backfill_integration_slugs() -> None:
             if not docs:
                 break
 
-            log.info(f"Backfilling slugs for {len(docs)} public integrations")
+            log.info(f"{LogTag.MONGO} Backfilling slugs for {len(docs)} public integrations")
             for doc in docs:
                 slug = await generate_unique_integration_slug(
                     name=doc.get("name", ""),
@@ -796,9 +803,11 @@ async def _backfill_integration_slugs() -> None:
             total_backfilled += len(docs)
 
         if total_backfilled:
-            log.info(f"Slug backfill complete: {total_backfilled} integrations updated")
+            log.info(
+                f"{LogTag.MONGO} Slug backfill complete: {total_backfilled} integrations updated"
+            )
     except Exception as e:
-        log.warning(f"Slug backfill failed (non-fatal): {e}")
+        log.warning(f"{LogTag.MONGO} Slug backfill failed (non-fatal): {e}")
 
 
 async def create_user_integration_indexes():
@@ -840,7 +849,7 @@ async def create_user_integration_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating user integration indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating user integration indexes: {e!s}")
         raise
 
 
@@ -861,7 +870,7 @@ async def create_integration_instructions_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating integration instructions indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating integration instructions indexes: {e!s}")
         raise
 
 
@@ -878,7 +887,7 @@ async def create_device_token_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating device token indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating device token indexes: {e!s}")
         raise
 
 
@@ -900,7 +909,7 @@ async def create_bot_session_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating bot session indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating bot session indexes: {e!s}")
         raise
 
 
@@ -946,7 +955,7 @@ async def create_installed_skills_indexes() -> None:
         )
 
     except Exception as e:
-        log.error(f"Error creating installed_skills indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating installed_skills indexes: {e!s}")
         raise
 
 
@@ -973,5 +982,5 @@ async def create_e2b_sandbox_indexes() -> None:
             ),
         )
     except Exception as e:
-        log.error(f"Error creating e2b sandbox indexes: {e!s}")
+        log.error(f"{LogTag.MONGO} Error creating e2b sandbox indexes: {e!s}")
         raise

@@ -25,6 +25,7 @@ from app.agents.tools.workflow_shared_tools import (
     list_workflows,
     search_triggers,
 )
+from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow import WorkflowService
@@ -138,7 +139,7 @@ async def create_workflow(
                 f"Unknown mode: {mode}. Use 'new' or 'from_conversation'.",
             )
 
-        log.info(f"[create_workflow] Executing with mode={mode}")
+        log.info(f"{LogTag.TOOL} create_workflow: Executing with mode={mode}")
 
         # Execute workflow subagent
         subagent_response = await WorkflowSubagentRunner.execute(
@@ -152,14 +153,16 @@ async def create_workflow(
 
         # Parse the response
         result = parse_subagent_response(subagent_response)
-        log.info(f"[create_workflow] Parsed mode={result.mode}")
+        log.info(f"{LogTag.TOOL} create_workflow: Parsed mode={result.mode}")
 
         if result.mode == "finalized" and result.draft:
             draft = result.draft
 
             # Check if we can create directly (simple, unambiguous workflows)
             if can_create_directly(draft):
-                log.info(f"[create_workflow] Attempting direct creation for: {draft.title}")
+                log.info(
+                    f"{LogTag.TOOL} create_workflow: Attempting direct creation for: {draft.title}"
+                )
 
                 # Try to create the workflow directly
                 direct_result = await create_workflow_directly(
@@ -174,11 +177,13 @@ async def create_workflow(
                     return direct_result
 
                 # Fall through to draft card if direct creation failed
-                log.info("[create_workflow] Direct creation failed, falling back to draft")
+                log.info(
+                    f"{LogTag.TOOL} create_workflow: Direct creation failed, falling back to draft"
+                )
 
             # Stream workflow draft to frontend for user confirmation
             writer(result.draft.to_stream_payload())
-            log.info(f"[create_workflow] Streamed draft: {result.draft.title}")
+            log.info(f"{LogTag.TOOL} create_workflow: Streamed draft: {result.draft.title}")
 
             return success_response(
                 {"status": "draft_sent", "mode": mode},
@@ -202,7 +207,7 @@ async def create_workflow(
         if result.mode == "parse_error":
             # Subagent returned something we couldn't parse.
             # Let the executor know so it can inform the user or retry.
-            log.warning(f"[create_workflow] Parse error: {result.parse_error}")
+            log.warning(f"{LogTag.TOOL} create_workflow: Parse error: {result.parse_error}")
             return error_response(
                 "parse_error",
                 f"Failed to process the workflow assistant's response: {result.parse_error}. "
@@ -215,7 +220,7 @@ async def create_workflow(
         )
 
     except Exception as e:
-        log.error(f"[create_workflow] Exception: {e}", exc_info=True)
+        log.error(f"{LogTag.TOOL} create_workflow: Exception: {e}", exc_info=True)
         return error_response("subagent_failed", str(e))
 
 
@@ -239,7 +244,7 @@ async def get_workflow(
         return success_response(workflow.model_dump())
 
     except Exception as e:
-        log.error(f"Error getting workflow {workflow_id}: {e}")
+        log.error(f"{LogTag.TOOL} Error getting workflow {workflow_id}: {e}")
         return error_response("fetch_failed", str(e))
 
 
@@ -269,7 +274,7 @@ async def execute_workflow(
         return success_response(data)
 
     except Exception as e:
-        log.error(f"Error executing workflow {workflow_id}: {e}")
+        log.error(f"{LogTag.TOOL} Error executing workflow {workflow_id}: {e}")
         return error_response("execution_failed", str(e))
 
 

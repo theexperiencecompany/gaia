@@ -5,6 +5,7 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { pricingApi } from "../api/pricingApi";
+import { LAST_CHECKOUT_PRODUCT_KEY } from "../constants";
 
 export const useDodoPayments = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -28,6 +29,8 @@ export const useDodoPayments = () => {
 
         // Redirect user to Dodo payment link
         if (result.payment_link) {
+          // Remember the plan so the result page can restart checkout on retry.
+          localStorage.setItem(LAST_CHECKOUT_PRODUCT_KEY, productId);
           window.location.href = result.payment_link;
         } else {
           throw new Error("Payment link not received");

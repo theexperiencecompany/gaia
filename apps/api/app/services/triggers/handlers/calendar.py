@@ -9,6 +9,7 @@ Handles all calendar-specific trigger logic including:
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     GoogleCalendarEventCreatedPayload,
@@ -21,7 +22,7 @@ from app.models.trigger_configs import (
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
-from shared.py.wide_events import log
+from shared.py.wide_events import TriggerContext, log
 
 
 class CalendarTriggerHandler(TriggerHandler):
@@ -129,6 +130,11 @@ class CalendarTriggerHandler(TriggerHandler):
                 if isinstance(trigger_data, CalendarEventStartingSoonConfig)
                 else None
             ),
+            trigger=TriggerContext(
+                operation="register",
+                trigger_type=trigger_name,
+                integration_id="google_calendar",
+            ),
         )
 
         # Use the base class helper for parallel registration with rollback
@@ -139,13 +145,14 @@ class CalendarTriggerHandler(TriggerHandler):
             composio_slug=composio_slug,
         )
         log.set(composio_trigger_ids=trigger_ids, trigger_ids_count=len(trigger_ids))
+        log.set_ns("trigger", result_count=len(trigger_ids))
         return trigger_ids
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching a calendar trigger event."""
-        log.set(trigger={"provider": "google_calendar", "event": event_type})
+        log.set_ns("trigger", integration_id="google_calendar", trigger_type=event_type)
         try:
             query = {
                 "activated": True,
@@ -160,12 +167,16 @@ class CalendarTriggerHandler(TriggerHandler):
                 try:
                     GoogleCalendarEventCreatedPayload.model_validate(data)
                 except Exception as e:
-                    log.debug(f"Calendar event created payload validation failed: {e}")
+                    log.debug(
+                        f"{LogTag.TRIGGER} Calendar event created payload validation failed: {e}"
+                    )
             elif "event_starting_soon" in event_type.lower():
                 try:
                     GoogleCalendarEventStartingSoonPayload.model_validate(data)
                 except Exception as e:
-                    log.debug(f"Calendar event starting soon payload validation failed: {e}")
+                    log.debug(
+                        f"{LogTag.TRIGGER} Calendar event starting soon payload validation failed: {e}"
+                    )
 
             cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
@@ -180,13 +191,13 @@ class CalendarTriggerHandler(TriggerHandler):
                     workflows.append(workflow)
 
                 except Exception as e:
-                    log.error(f"Error processing workflow document: {e}")
+                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
                     continue
 
             return workflows
 
         except Exception as e:
-            log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
     async def _fetch_user_calendars(self, user_id: str) -> list[str]:
@@ -205,7 +216,7 @@ class CalendarTriggerHandler(TriggerHandler):
             return ["primary"]
 
         except Exception as e:
-            log.error(f"Failed to fetch calendars for user {user_id}: {e}")
+            log.error(f"{LogTag.TRIGGER} Failed to fetch calendars for user {user_id}: {e}")
             return ["primary"]  # Fallback to primary calendar
 
 

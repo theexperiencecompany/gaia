@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
@@ -95,7 +96,7 @@ async def disconnect_integration_endpoint(
         # For "no active connected account" or other cases, return 400
         raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
-        log.error(f"Error disconnecting {integration_id}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error disconnecting {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to disconnect integration")
 
 
@@ -199,7 +200,7 @@ async def connect_integration_endpoint(
             error=f"Unsupported integration type: {resolved.managed_by}",
         )
     except Exception as e:
-        log.error(f"Failed to connect {integration_id}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Failed to connect {integration_id}: {e}")
         log.set(integration={"id": integration_id, "status": "error"})
         return ConnectIntegrationResponse(
             status="error",

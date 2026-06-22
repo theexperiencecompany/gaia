@@ -7,6 +7,7 @@ for all Composio tools.
 
 from composio.types import ToolExecuteParams
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 from .registry import register_before_hook
@@ -48,7 +49,7 @@ def extract_user_id_from_params(
     # The Composio API requires entity_id for connected account authentication
     params["user_id"] = user_id
     params["entity_id"] = user_id
-    log.debug(f"Extracted user_id/entity_id '{user_id}' for {toolkit}:{tool}")
+    log.debug(f"{LogTag.COMPOSIO} Extracted user_id/entity_id '{user_id}' for {toolkit}:{tool}")
     return params
 
 

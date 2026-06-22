@@ -2,12 +2,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as dotenv from "dotenv";
 import type { BotConfig } from "../types";
+import { createBotLogger } from "../utils/logger";
 import { injectInfisicalSecrets } from "./secrets";
 
 export { injectInfisicalSecrets } from "./secrets";
 
-const log = (msg: string) => console.log(`[config] ${msg}`);
-const warn = (msg: string) => console.warn(`[config] ${msg}`);
+const logger = createBotLogger("shared", "config");
 
 /**
  * Loads and validates the bot configuration from environment variables.
@@ -26,16 +26,16 @@ export async function loadConfig(): Promise<BotConfig> {
   const sharedEnvPath = path.resolve(process.cwd(), "..", ".env");
   if (fs.existsSync(sharedEnvPath)) {
     dotenv.config({ path: sharedEnvPath });
-    log(`Loaded shared env from ${sharedEnvPath}`);
+    logger.info("env_loaded", { source: "shared", path: sharedEnvPath });
   } else {
-    warn(`No shared .env found at ${sharedEnvPath}`);
+    logger.warn("env_not_found", { source: "shared", path: sharedEnvPath });
   }
 
   // 2. Local .env in cwd — Docker / standalone fallback
   const localEnvPath = path.resolve(process.cwd(), ".env");
   if (fs.existsSync(localEnvPath)) {
     dotenv.config({ path: localEnvPath });
-    log(`Loaded local env from ${localEnvPath}`);
+    logger.info("env_loaded", { source: "local", path: localEnvPath });
   }
 
   // 3. Infisical — fills any vars not already set
@@ -76,15 +76,21 @@ export async function loadConfig(): Promise<BotConfig> {
 
   const posthogApiKey = process.env.POSTHOG_API_KEY;
   if (!posthogApiKey) {
-    warn("POSTHOG_API_KEY not set — bot analytics will be disabled");
+    logger.warn("config_optional_missing", {
+      key: "POSTHOG_API_KEY",
+      effect: "bot_analytics_disabled",
+    });
   }
 
   const rabbitmqUrl = process.env.RABBITMQ_URL;
   if (!rabbitmqUrl) {
-    warn("RABBITMQ_URL not set — outbound message consumer will be disabled");
+    logger.warn("config_optional_missing", {
+      key: "RABBITMQ_URL",
+      effect: "outbound_consumer_disabled",
+    });
   }
 
-  log("Configuration loaded successfully");
+  logger.info("config_loaded");
   return {
     gaiaApiUrl: gaiaApiUrl!,
     gaiaApiKey: gaiaApiKey!,

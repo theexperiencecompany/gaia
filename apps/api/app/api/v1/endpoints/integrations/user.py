@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
+from app.constants.log_tags import LogTag
 from app.models.integration_instructions_models import InstructionsEditor
 from app.schemas.integrations.requests import (
     AddUserIntegrationRequest,
@@ -52,7 +53,7 @@ async def add_integration_to_workspace(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        log.error(f"Error adding integration: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error adding integration: {e}")
         raise HTTPException(status_code=500, detail="Failed to add integration")
 
 
@@ -80,7 +81,7 @@ async def remove_integration_from_workspace(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error removing integration: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error removing integration: {e}")
         raise HTTPException(status_code=500, detail="Failed to remove integration")
 
 
@@ -119,7 +120,7 @@ async def get_integration_instructions(
             updated_at=record.updated_at,
         )
     except Exception as e:
-        log.error(f"Error fetching integration instructions: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error fetching integration instructions: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch integration instructions")
 
 
@@ -164,5 +165,5 @@ async def update_integration_instructions(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        log.error(f"Error updating integration instructions: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error updating integration instructions: {e}")
         raise HTTPException(status_code=500, detail="Failed to update integration instructions")

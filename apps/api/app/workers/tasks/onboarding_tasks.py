@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from bson import ObjectId
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import OnboardingPhase
 from app.services.onboarding.intelligence_job import clear_active_intelligence_job
@@ -23,7 +24,7 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
             await process_onboarding_intelligence(user_id)
         except Exception as e:
             log.error(
-                f"Onboarding intelligence failed for user {user_id}: {e}",
+                f"{LogTag.WORKER} Onboarding intelligence failed for user {user_id}: {e}",
                 exc_info=True,
             )
             try:
@@ -36,10 +37,12 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
                         }
                     },
                 )
-                log.info(f"Set phase to PERSONALIZATION_COMPLETE after failure for user {user_id}")
+                log.info(
+                    f"{LogTag.WORKER} Set phase to PERSONALIZATION_COMPLETE after failure for user {user_id}"
+                )
             except Exception as db_err:
                 log.error(
-                    f"Failed to update onboarding phase after error for user {user_id}: {db_err}",
+                    f"{LogTag.WORKER} Failed to update onboarding phase after error for user {user_id}: {db_err}",
                     exc_info=True,
                 )
             return f"Onboarding intelligence failed for user {user_id}: {e}"
@@ -49,9 +52,9 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
                     await clear_active_intelligence_job(user_id, job_id)
                 except Exception as clear_err:
                     log.warning(
-                        f"Failed to clear intelligence job id for user {user_id}: {clear_err}"
+                        f"{LogTag.WORKER} Failed to clear intelligence job id for user {user_id}: {clear_err}"
                     )
 
         message = f"Onboarding intelligence completed for user {user_id}"
-        log.info(message)
+        log.info(f"{LogTag.WORKER} {message}")
         return message

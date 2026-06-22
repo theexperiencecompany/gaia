@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.models.reminder_models import (
     AgentType,
@@ -103,10 +104,10 @@ async def create_reminder_tool(
         return "Reminder created successfully"
 
     except ValueError as e:
-        log.error(f"Validation error: {e}")
+        log.error(f"{LogTag.TOOL} Validation error: {e}")
         return {"error": str(e)}
     except Exception as e:
-        log.exception("Exception occurred while creating reminder")
+        log.exception(f"{LogTag.TOOL} Exception occurred while creating reminder")
         return {"error": str(e)}
 
 
@@ -132,7 +133,7 @@ async def list_user_reminders_tool(
         )
         return [r.model_dump() for r in reminders]
     except Exception as e:
-        log.exception("Exception occurred while listing reminders")
+        log.exception(f"{LogTag.TOOL} Exception occurred while listing reminders")
         return {"error": str(e)}
 
 
@@ -156,7 +157,7 @@ async def get_reminder_tool(
             return reminder.model_dump()
         return {"error": "Reminder not found"}
     except Exception as e:
-        log.exception("Exception occurred while getting reminder")
+        log.exception(f"{LogTag.TOOL} Exception occurred while getting reminder")
         return {"error": str(e)}
 
 
@@ -173,7 +174,7 @@ async def delete_reminder_tool(
         log.set(tool={"name": "delete_reminder_tool", "action": "delete"})
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
-            log.error("Missing user_id in config")
+            log.error(f"{LogTag.TOOL} Missing user_id in config")
             return {"error": "User ID is required to delete reminder"}
 
         success = await reminder_scheduler.cancel_task(reminder_id, user_id)
@@ -181,7 +182,7 @@ async def delete_reminder_tool(
             return {"status": "cancelled"}
         return {"error": "Failed to cancel reminder"}
     except Exception as e:
-        log.exception("Exception occurred while deleting reminder")
+        log.exception(f"{LogTag.TOOL} Exception occurred while deleting reminder")
         return {"error": str(e)}
 
 
@@ -235,7 +236,7 @@ async def update_reminder_tool(
 
                 update_data["stop_after"] = processed_stop_after
             except ValueError as e:
-                log.error(f"Invalid stop_after format: {stop_after}, error: {e}")
+                log.error(f"{LogTag.TOOL} Invalid stop_after format: {stop_after}, error: {e}")
                 return {
                     "error": f"Invalid stop_after format: {stop_after}. Use YYYY-MM-DD HH:MM:SS format."
                 }
@@ -245,10 +246,10 @@ async def update_reminder_tool(
         success = await reminder_scheduler.update_reminder(reminder_id, update_data, user_id)
         if success:
             return {"status": "updated"}
-        log.error("Failed to update reminder")
+        log.error(f"{LogTag.TOOL} Failed to update reminder")
         return {"error": "Failed to update reminder"}
     except Exception as e:
-        log.exception("Exception occurred while updating reminder")
+        log.exception(f"{LogTag.TOOL} Exception occurred while updating reminder")
         return {"error": str(e)}
 
 
@@ -265,7 +266,7 @@ async def search_reminders_tool(
         log.set(tool={"name": "search_reminders_tool", "action": "search"})
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
-            log.error("Missing user_id in config")
+            log.error(f"{LogTag.TOOL} Missing user_id in config")
             return {"error": "User ID is required to search reminders"}
 
         reminders = await reminder_scheduler.list_user_reminders(user_id=user_id, limit=100, skip=0)
@@ -278,7 +279,7 @@ async def search_reminders_tool(
 
         return results
     except Exception as e:
-        log.exception("Exception occurred while searching reminders")
+        log.exception(f"{LogTag.TOOL} Exception occurred while searching reminders")
         return {"error": str(e)}
 
 

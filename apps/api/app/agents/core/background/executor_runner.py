@@ -41,6 +41,7 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
 )
 from app.constants.executor import MESSAGE_ID_KEY, VOICE_TTS_KEY
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.utils.agent_utils import format_sse_data
 from shared.py.wide_events import log
@@ -72,7 +73,11 @@ async def run_executor_background(
 
     try:
         result_text, result_type = await _execute_executor(task, configurable, run.stream_id)
-        log.info("Background executor completed", task_id=run.task_id, stream_id=run.stream_id)
+        log.info(
+            f"{LogTag.AGENT} Background executor completed",
+            task_id=run.task_id,
+            stream_id=run.stream_id,
+        )
     finally:
         await _finalize_executor_run(run, result_text, result_type)
 
@@ -98,13 +103,13 @@ async def _execute_executor(
             stream_id=stream_id,
         )
         if error or ctx is None:
-            log.error("Executor prep failed", error=error)
+            log.error(f"{LogTag.AGENT} Executor prep failed", error=error)
             return (error or "Executor agent not available"), "error"
         writer = make_redis_stream_writer(stream_id)
         result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
         return result_text, "final"
     except Exception as e:
-        log.error("Executor run failed", stream_id=stream_id, error=str(e))
+        log.error(f"{LogTag.AGENT} Executor run failed", stream_id=stream_id, error=str(e))
         return str(e), "error"
 
 
@@ -133,7 +138,7 @@ async def _finalize_executor_run(
         await _close_queued_stream(run, was_cancelled)
     except Exception as e:  # noqa: BLE001 — never let delivery failure strand the queue
         log.error(
-            "Executor finalize delivery/close failed",
+            f"{LogTag.AGENT} Executor finalize delivery/close failed",
             stream_id=run.stream_id,
             task_id=run.task_id,
             error=str(e),
@@ -163,7 +168,7 @@ async def _deliver_terminal_outcome(
             await persist_cancelled_run(run)
         else:
             log.info(
-                "Live executor cancelled; comms stream owns tool_data persistence",
+                f"{LogTag.AGENT} Live executor cancelled; comms stream owns tool_data persistence",
                 task_id=run.task_id,
                 stream_id=run.stream_id,
             )
@@ -261,7 +266,7 @@ def _spawn_queued_run(run: ExecutorRun, prepared: PreparedQueuedTask) -> None:
     bg_task.add_done_callback(_queued_executor_tasks.discard)
 
     log.info(
-        "Queued executor task spawned",
+        f"{LogTag.AGENT} Queued executor task spawned",
         task_id=prepared.run.task_id,
         conversation_id=run.conversation_id,
         stream_id=prepared.run.stream_id,

@@ -29,6 +29,8 @@ import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
 import { toast } from "@/lib/toast";
 import { IntegrationRichContent } from "./IntegrationRichContent";
+import { IntegrationUseCases } from "./IntegrationUseCases";
+import { ToolCard } from "./ToolCard";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
@@ -285,7 +287,7 @@ export function IntegrationDetailClient({
 
             {isNative ? (
               <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-zinc-800 p-0.5">
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden">
                   <Image
                     src="/brand/gaia_logo.svg"
                     alt="GAIA"
@@ -378,6 +380,9 @@ export function IntegrationDetailClient({
             )}
           </div>
 
+          {/* What you can do: value prop above the technical tool list */}
+          <IntegrationUseCases integration={integration} />
+
           <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
             {integration.tools && integration.tools.length > 0 && (
               <CardHeader>
@@ -391,22 +396,11 @@ export function IntegrationDetailClient({
                 <ScrollShadow className="max-h-100">
                   <div className="grid grid-cols-2 gap-4">
                     {integration.tools.map((tool) => (
-                      <div
+                      <ToolCard
                         key={tool.name}
-                        className="bg-zinc-800/50 p-3 rounded-xl"
-                      >
-                        <p className="font-medium text-zinc-200">
-                          {tool.name
-                            .replace(/_/g, " ")
-                            .replace(/-/g, " ")
-                            .replace(/\b\w/g, (c) => c.toUpperCase())}
-                        </p>
-                        {tool.description && (
-                          <p className="text-sm text-zinc-400">
-                            {tool.description}
-                          </p>
-                        )}
-                      </div>
+                        name={tool.name}
+                        description={tool.description}
+                      />
                     ))}
                   </div>
                 </ScrollShadow>

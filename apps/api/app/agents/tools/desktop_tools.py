@@ -13,6 +13,7 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
 from app.agents.llm.client import init_llm
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.chat_models import ConversationSource
 from app.services.desktop.bridge import DesktopToolOutcome, request_desktop_action
@@ -53,13 +54,13 @@ async def _run_desktop_action(
     configurable = config.get("configurable", {})
     source = ConversationSource.coerce(configurable.get("conversation_source"))
     if source is not ConversationSource.DESKTOP:
-        log.warning(f"Desktop tool '{tool_name}' refused for source '{source}'")
+        log.warning(f"{LogTag.TOOL} Desktop tool '{tool_name}' refused for source '{source}'")
         return _NOT_DESKTOP_ERROR
 
     stream_id = configurable.get("stream_id")
     user_id = configurable.get("user_id")
     if not stream_id or not user_id:
-        log.warning(f"Desktop tool '{tool_name}' missing stream_id/user_id in config")
+        log.warning(f"{LogTag.TOOL} Desktop tool '{tool_name}' missing stream_id/user_id in config")
         return _MISSING_CONTEXT_ERROR
 
     return await request_desktop_action(
@@ -114,7 +115,7 @@ async def _describe_screenshot(image_b64: str, query: str) -> str | None:
             ],
         )
     except Exception as exc:  # noqa: BLE001 - any provider failure degrades gracefully
-        log.warning(f"Screenshot vision call failed: {exc}")
+        log.warning(f"{LogTag.TOOL} Screenshot vision call failed: {exc}")
         return None
     content = getattr(response, "content", response)
     return content if isinstance(content, str) else str(content)

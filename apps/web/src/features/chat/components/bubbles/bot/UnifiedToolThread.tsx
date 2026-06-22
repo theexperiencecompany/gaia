@@ -9,7 +9,7 @@ import type {
   ToolCallEntry,
 } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import { StepRow, SubagentRow } from "./SubagentRow";
 
 /**
@@ -45,30 +45,23 @@ export default function UnifiedToolThread({
   isStreaming,
 }: Readonly<UnifiedToolThreadProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { integrations } = useIntegrations();
-
-  const integrationLookup = useMemo(() => {
-    const lookup = new Map<string, { iconUrl?: string; name?: string }>();
-    for (const int of integrations) {
-      if (int.id) lookup.set(int.id, { iconUrl: int.iconUrl, name: int.name });
-    }
-    return lookup;
-  }, [integrations]);
+  const { getIntegrationName: lookupName, getIntegrationIconUrl } =
+    useIntegrationLookup();
 
   const getIconUrl = useCallback(
     (call: ToolCallEntry): string | undefined => {
       if (call.icon_url) return call.icon_url;
-      return integrationLookup.get(call.tool_category)?.iconUrl;
+      return getIntegrationIconUrl(call.tool_category);
     },
-    [integrationLookup],
+    [getIntegrationIconUrl],
   );
 
   const getIntegrationName = useCallback(
     (call: ToolCallEntry): string | undefined => {
       if (call.integration_name) return call.integration_name;
-      return integrationLookup.get(call.tool_category)?.name;
+      return lookupName(call.tool_category);
     },
-    [integrationLookup],
+    [lookupName],
   );
 
   // Total tool count (root-level + all nested subagent tool calls)

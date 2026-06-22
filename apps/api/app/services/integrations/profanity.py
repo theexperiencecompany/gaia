@@ -24,6 +24,7 @@ import re
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from shared.py.wide_events import log
 
@@ -157,7 +158,7 @@ async def contains_profanity(**fields: str | None) -> bool:
         return bool(result.is_offensive)
     except TimeoutError:
         log.warning(
-            "[profanity] LLM moderation timed out; falling back to wordlist",
+            f"{LogTag.INTEGRATION} LLM moderation timed out; falling back to wordlist",
             timeout_s=_MODERATION_TIMEOUT_SECONDS,
         )
         return _wordlist_any(non_empty.values())
@@ -166,7 +167,7 @@ async def contains_profanity(**fields: str | None) -> bool:
         # fixed message and attach only the exception type as context so we
         # don't leak user-submitted publish content into logs.
         log.warning(
-            "[profanity] LLM moderation failed; falling back to wordlist",
+            f"{LogTag.INTEGRATION} LLM moderation failed; falling back to wordlist",
             error_type=type(e).__name__,
         )
         return _wordlist_any(non_empty.values())

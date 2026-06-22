@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import json
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
 from app.utils.agent_utils import IntegrationMetadata, format_tool_call_entry
@@ -303,7 +304,7 @@ async def recover_stream_state(
         and not tool_data.get("tool_data")
     ):
         tool_data = progress_tool_data
-    log.debug(f"Recovered {len(complete_message)} chars from Redis progress")
+    log.debug(f"{LogTag.CHAT} Recovered {len(complete_message)} chars from Redis progress")
     return complete_message, tool_data
 
 
