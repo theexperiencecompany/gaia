@@ -25,8 +25,14 @@ def build_create_agent_tool_kwargs(
     tool_runtime_config: ToolRuntimeConfig,
     *,
     tool_space: str,
+    bindable_tool_names: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Build create_agent kwargs from shared tool runtime config."""
+    """Build create_agent kwargs from shared tool runtime config.
+
+    `bindable_tool_names` is the set of tools the agent's graph can actually bind
+    (its scoped registry). Pass it for scoped agents so retrieve_tools validates
+    binding against what the graph honors; leave None for full-registry agents.
+    """
     kwargs: dict[str, Any] = {
         "initial_tool_ids": tool_runtime_config.initial_tool_names,
     }
@@ -34,6 +40,7 @@ def build_create_agent_tool_kwargs(
         kwargs["retrieve_tools_coroutine"] = get_retrieve_tools_function(
             tool_space=tool_space,
             include_subagents=tool_runtime_config.include_subagents_in_retrieve,
+            bindable_tool_names=bindable_tool_names,
         )
     else:
         kwargs["disable_retrieve_tools"] = True

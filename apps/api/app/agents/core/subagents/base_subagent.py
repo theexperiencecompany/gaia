@@ -207,6 +207,8 @@ class SubAgentFactory:
             build_create_agent_tool_kwargs(
                 parent_tool_runtime,
                 tool_space=tool_space,
+                # Validate binding against exactly what this graph executes.
+                bindable_tool_names=set(scoped_tool_dict.keys()),
             )
         )
 

@@ -366,7 +366,6 @@ def _format_tracked_todo_full(doc: dict, now: datetime) -> str:
     detail_parts = _build_list_detail_parts(doc, now)
     if detail_parts:
         parts.append(f"  {' | '.join(detail_parts)}")
-    parts.append(f"  VFS: {doc.get('vfs_path', 'none')}")
     return "\n".join(parts)
 
 
@@ -394,9 +393,8 @@ def _format_create_output(
     out = (
         f"Tracked todo created: {result.id}\n"
         f"Title: {result.title}\n"
-        f"VFS: {result.vfs_path}\n"
-        f"Canvas: {result.vfs_path}/canvas.md\n"
-        f"Log: {result.vfs_path}/log.md"
+        "Canvas + activity log are stored on this todo — edit them ONLY via "
+        f"update_tracked_todo_canvas(todo_id='{result.id}', ...), never with filesystem tools."
     )
     if parsed_scheduled_at:
         out += _format_first_fire_note(parsed_scheduled_at, user_tz_name)
@@ -598,13 +596,17 @@ async def update_tracked_todo_canvas(
         "If the section does not exist, it is appended as a new section.",
     ] = None,
 ) -> str:
-    """Update canvas.md for a tracked todo.
+    """Append GAIA's working notes to an EXISTING tracked todo's canvas.
 
-    Three modes — pick the right one to avoid unnecessary reads:
+    PRECONDITION: only call this when you already have a tracked todo for THIS initiative —
+    one you created this turn (you hold its todo_id) or the run's "🎯 ACTIVE TODO". If no
+    tracked todo exists for the task (a one-off fetch / deploy / build / lookup / edit), do
+    NOT call this. The canvas lives on the todo, not the filesystem — never use read/write/edit.
 
-    append  → Add activity log entries, timeline events, new context. No read needed.
-    section → Update a single named section (e.g. Current State). Tool patches internally. No read needed.
-    replace → Full rewrite. Only use when restructuring the entire canvas.
+    Modes (once you have a todo_id):
+    append  → activity log entries, timeline events, new context. No read needed.
+    section → update a single named section (e.g. Current State). No read needed.
+    replace → full rewrite. Only when restructuring the entire canvas.
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
