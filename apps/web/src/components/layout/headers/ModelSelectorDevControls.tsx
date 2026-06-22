@@ -1,6 +1,15 @@
 "use client";
 
-import { Select, SelectItem, Switch } from "@heroui/react";
+import {
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  SelectItem,
+  Switch,
+} from "@heroui/react";
+import { Brain02Icon } from "@icons";
 import Image from "next/image";
 
 import { DEV_MODEL_OPTIONS } from "@/features/chat/constants/devModels";
@@ -42,7 +51,7 @@ function ModelSelect({
   const current = DEV_MODEL_OPTIONS.find((m) => m.id === selectedId);
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-col gap-1">
       <span className="text-[10px] font-medium tracking-wide text-zinc-500 uppercase">
         {label}
       </span>
@@ -57,13 +66,11 @@ function ModelSelect({
         isDisabled={isDisabled}
         disallowEmptySelection
         variant="flat"
-        className="w-[185px]"
-        popoverProps={{
-          classNames: { content: "min-w-[230px] bg-zinc-800" },
-        }}
+        className="w-full"
+        popoverProps={{ classNames: { content: "bg-zinc-800" } }}
         classNames={{
           trigger:
-            "h-8 min-h-8 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700",
+            "h-9 min-h-9 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700",
           value: "text-xs font-medium text-zinc-200",
           selectorIcon: "text-zinc-500",
         }}
@@ -104,33 +111,60 @@ export default function ModelSelectorDevControls() {
     setExecutorModel,
   } = useComposerModelSelection();
 
-  // NODE_ENV is build-time constant, so the hook above always runs in the same
+  // NODE_ENV is a build-time constant, so the hook above always runs in the same
   // order — gating after it keeps the rules-of-hooks contract intact.
   if (!isDevelopment()) return null;
 
   return (
-    <div className="flex items-center gap-3">
-      <Switch
-        size="sm"
-        isSelected={useDefaultModels}
-        onValueChange={setUseDefaultModels}
-        aria-label="Use plan-default models"
-        classNames={{ label: "text-[10px] text-zinc-400" }}
-      >
-        Defaults
-      </Switch>
-      <ModelSelect
-        label="Comms"
-        selectedId={commsModel}
-        onSelect={setCommsModel}
-        isDisabled={useDefaultModels}
-      />
-      <ModelSelect
-        label="Executor"
-        selectedId={executorModel}
-        onSelect={setExecutorModel}
-        isDisabled={useDefaultModels}
-      />
-    </div>
+    <Popover placement="bottom-end" offset={8}>
+      <PopoverTrigger>
+        <Button
+          isIconOnly
+          size="sm"
+          radius="full"
+          variant="light"
+          aria-label="Dev model selector"
+          // Tint primary when a non-default model is pinned, so it's obvious at a
+          // glance that the dev override is active.
+          className={
+            useDefaultModels
+              ? "text-zinc-400 hover:text-primary"
+              : "text-primary"
+          }
+        >
+          <Brain02Icon width={20} height={20} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[260px] bg-zinc-900 p-3">
+        <div className="flex w-full flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold tracking-wide text-zinc-300 uppercase">
+              Dev models
+            </span>
+            <Switch
+              size="sm"
+              isSelected={useDefaultModels}
+              onValueChange={setUseDefaultModels}
+              aria-label="Use plan-default models"
+              classNames={{ label: "text-[11px] text-zinc-400" }}
+            >
+              Defaults
+            </Switch>
+          </div>
+          <ModelSelect
+            label="Comms"
+            selectedId={commsModel}
+            onSelect={setCommsModel}
+            isDisabled={useDefaultModels}
+          />
+          <ModelSelect
+            label="Executor"
+            selectedId={executorModel}
+            onSelect={setExecutorModel}
+            isDisabled={useDefaultModels}
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

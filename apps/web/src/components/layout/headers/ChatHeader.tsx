@@ -30,9 +30,9 @@ export default function ChatHeader() {
   };
 
   return (
-    <div className="flex w-full items-center justify-between">
-      <ModelSelectorDevControls />
+    <div className="flex w-full justify-between">
       <div className="relative ml-auto flex items-center">
+        <ModelSelectorDevControls />
         <SidebarHeaderButton
           onClick={handleSearchClick}
           onMouseEnter={preloadCommandMenu}
