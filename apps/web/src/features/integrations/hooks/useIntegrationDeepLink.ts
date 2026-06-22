@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
  * params (oauth_success/oauth_error/integration) are owned by the global
  * useOAuthSuccessToast hook instead, so they're intentionally not cleared here.
  */
-export const MCP_CALLBACK_PARAMS = [
+const MCP_CALLBACK_PARAMS = [
   "status",
   "id",
   "name",
