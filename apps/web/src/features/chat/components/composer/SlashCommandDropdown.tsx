@@ -366,6 +366,18 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     return map;
   }, [matches]);
 
+  // Locked-tool count per category across all matches (drives the category tab
+  // lock indicator independent of the currently selected category filter).
+  const lockedCountByCategory = useMemo(() => {
+    const counts: Record<string, number> = {};
+    matches.forEach((match) => {
+      if (match.enhancedTool?.isLocked) {
+        counts[match.tool.category] = (counts[match.tool.category] ?? 0) + 1;
+      }
+    });
+    return counts;
+  }, [matches]);
+
   // Filter matches based on selected category and search query
   const filteredMatches = useMemo(() => {
     let filtered = matches;
@@ -623,7 +635,10 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                               category,
                           )}
                     </span>
-                    <CategoryIntegrationStatus category={category} />
+                    <CategoryIntegrationStatus
+                      category={category}
+                      lockedCount={lockedCountByCategory[category] ?? 0}
+                    />
                   </button>
                 ))}
               </div>

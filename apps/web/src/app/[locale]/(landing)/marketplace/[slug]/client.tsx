@@ -50,20 +50,24 @@ export function IntegrationDetailClient({
   // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
 
-  // Fetch user's integrations (only when authenticated) to check for duplicates
-  const { data: userIntegrationsData } = useQuery({
-    queryKey: ["integrations", "user"],
-    queryFn: integrationsApi.getUserIntegrations,
+  // Fetch the user's personalized catalog (only when authenticated) to check
+  // whether they have already added this integration.
+  const { data: myIntegrationsData } = useQuery({
+    queryKey: ["integrations", "me"],
+    queryFn: integrationsApi.getMyIntegrations,
     enabled: isAuthenticated,
   });
 
-  // Check if user already has this integration (match by integrationId)
+  // The /me catalog lists every integration with a connection status; the user
+  // "has" one once its status is anything other than not_connected.
   const alreadyHasIntegration = useMemo(() => {
-    if (!userIntegrationsData?.integrations) return false;
-    return userIntegrationsData.integrations.some(
-      (ui) => ui.integration.integrationId === integration.integrationId,
+    if (!myIntegrationsData?.integrations) return false;
+    return myIntegrationsData.integrations.some(
+      (item) =>
+        item.id === integration.integrationId &&
+        item.status !== "not_connected",
     );
-  }, [userIntegrationsData, integration.integrationId]);
+  }, [myIntegrationsData, integration.integrationId]);
 
   const isNative = integration.source === "platform";
 

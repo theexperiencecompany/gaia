@@ -3,25 +3,18 @@ import { SquareLock01Icon } from "@icons";
 import type React from "react";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
-import { useToolsWithIntegrations } from "../../hooks/useToolsWithIntegrations";
-
 interface CategoryIntegrationStatusProps {
   category: string;
+  // Number of locked tools shown under this category in the dropdown.
+  lockedCount: number;
 }
 
 export const CategoryIntegrationStatus: React.FC<
   CategoryIntegrationStatusProps
-> = ({ category }) => {
-  const { getToolsForCategory } = useToolsWithIntegrations();
+> = ({ category, lockedCount }) => {
   const { integrations } = useIntegrations();
 
   if (category === "all") return null;
-
-  const categoryTools = getToolsForCategory(category);
-  const lockedCount = categoryTools.filter((tool) => tool.isLocked).length;
-  const totalCount = categoryTools.length;
-
-  if (totalCount === 0) return null;
 
   // Check integration status using category as integration ID
   const integration = integrations?.find(

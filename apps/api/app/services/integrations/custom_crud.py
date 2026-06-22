@@ -15,7 +15,7 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
 )
 from app.db.postgresql import get_db_session
-from app.db.redis import delete_cache
+from app.db.redis import delete_cache, delete_cache_by_pattern
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.db_oauth import MCPCredential
 from app.models.integration_models import (
@@ -135,10 +135,11 @@ async def update_custom_integration(
         {"$set": update_data},
     )
 
-    # A name/description change makes every connected user's cached connected list
-    # (which embeds the display name) stale. Bust them so the rename shows on the
-    # next turn instead of lingering for the 24h cache TTL.
-    if "name" in update_data or "description" in update_data:
+    # name / description / is_public all embed into every connected user's cached
+    # catalog item (MyIntegrationItem + connected-list). Bust those users so the
+    # change shows next turn instead of lingering for the 24h cache TTL.
+    catalog_fields = {"name", "description", "is_public"}
+    if catalog_fields & update_data.keys():
         async for ui in user_integrations_collection.find(
             {"integration_id": integration_id}, {"user_id": 1}
         ):
@@ -168,6 +169,8 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
                 await remove_public_integration(integration_id)
             except Exception as e:
                 log.warning(f"{LogTag.INTEGRATION} Failed to remove from public integrations: {e}")
+            # Drop the deleted integration from the cached community marketplace list.
+            await delete_cache_by_pattern("marketplace:community:*")
 
         result = await integrations_collection.delete_one(
             {

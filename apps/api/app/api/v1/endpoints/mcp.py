@@ -12,13 +12,12 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
-from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import (
     get_api_base_url,
     get_frontend_url,
-    invalidate_mcp_status_cache,
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import get_mcp_client
 from shared.py.wide_events import McpContext, log
 
@@ -78,13 +77,13 @@ async def test_mcp_connection(
         try:
             tools = await client.connect(integration_id)
             # Note: status update now handled in connect()
-            await invalidate_mcp_status_cache(str(user_id))
+            await invalidate_user_integration_caches(str(user_id))
             log.set(outcome="connected")
             log.set_ns(
                 "mcp",
                 operation="connect",
                 success=True,
-                tool_count=len(tools) if tools else 0,
+                tools_count=len(tools) if tools else 0,
             )
             return JSONResponse(
                 content={
@@ -260,14 +259,7 @@ async def mcp_oauth_callback(
                 f"{integration_id}: {clear_err}"
             )
 
-        try:
-            await delete_cache("api:get_available_tools:*")
-        except Exception as cache_err:
-            log.warning(
-                f"{LogTag.MCP} Failed to invalidate tools cache: {type(cache_err).__name__}: {cache_err}"
-            )
-
-        await invalidate_mcp_status_cache(str(user_id))
+        await invalidate_user_integration_caches(str(user_id))
 
         frontend_url = get_frontend_url()
         log.set(outcome="connected")

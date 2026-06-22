@@ -60,7 +60,7 @@ export function useOAuthSuccessToast() {
 
       // Invalidate integration-related queries so they refresh
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
-      queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+      queryClient.invalidateQueries({ queryKey: ["tools"] });
 
       // Automatically send a message to continue the chat (only on chat routes)
       // Only send the message if we're on a chat page to avoid creating unwanted conversations

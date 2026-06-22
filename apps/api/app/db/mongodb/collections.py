@@ -22,6 +22,8 @@ Performance:
     - Runtime: First access initializes, subsequent access is cached
 """
 
+from typing import Any
+
 import pymongo
 from pymongo.server_api import ServerApi
 
@@ -29,11 +31,11 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # Cache for async (Motor) collections
-_collections_cache = {}
+_collections_cache: dict[str, Any] = {}
 _mongodb_instance = None
 
 # Cache for sync (PyMongo) collections
-_sync_collections_cache = {}
+_sync_collections_cache: dict[str, Any] = {}
 _sync_client = None
 _sync_db = None
 

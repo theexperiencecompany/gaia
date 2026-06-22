@@ -60,6 +60,7 @@ from app.services.integrations.user_integration_status import (
 )
 from app.services.integrations.user_integrations import (
     get_user_integration_records,
+    invalidate_user_integration_caches,
 )
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -758,6 +759,12 @@ class MCPClient:
                     )
                 else:
                     log.info(f"{LogTag.MCP} [{integration_id}] post-connect task '{label}' ok")
+
+            # The status mutator's decorator invalidates before its write and runs
+            # concurrently with store_tools above; bust once more now that tools are
+            # actually persisted, so a concurrent /tools read can't cache an
+            # empty-but-connected catalog for the TTL.
+            await invalidate_user_integration_caches(self.user_id)
 
             return tools
 

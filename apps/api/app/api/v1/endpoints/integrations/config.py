@@ -1,4 +1,4 @@
-"""Integration config, status, and connection routes."""
+"""Integration config, catalog, and connection routes."""
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
-from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
@@ -14,9 +13,9 @@ from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationsConfigResponse,
-    IntegrationsStatusResponse,
-    IntegrationStatusItem,
     IntegrationSuccessResponse,
+    IntegrationToolsResponse,
+    MyIntegrationsResponse,
 )
 from app.services.connect_link_service import verify_and_consume_connect_link_token
 from app.services.integrations.integration_connection_service import (
@@ -28,7 +27,10 @@ from app.services.integrations.integration_connection_service import (
     initiate_integration_connection,
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
-from app.services.oauth.oauth_service import get_all_integrations_status
+from app.services.integrations.my_integrations import (
+    get_integration_tools,
+    get_my_integrations,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -42,30 +44,33 @@ async def get_integrations_config() -> IntegrationsConfigResponse:
     return result
 
 
-@router.get("/status", response_model=IntegrationsStatusResponse)
-async def get_integrations_status(
+@router.get("/me")
+async def get_my_integrations_endpoint(
     user_id: str = Depends(get_user_id),
-) -> IntegrationsStatusResponse:
-    try:
-        log.set(operation="get_integrations_status", user={"id": user_id})
-        status_map = await get_all_integrations_status(user_id)
-        log.set(result_count=len(status_map))
-        log.set(outcome="success")
-        return IntegrationsStatusResponse(
-            integrations=[
-                IntegrationStatusItem(integration_id=iid, connected=connected)
-                for iid, connected in status_map.items()
-            ]
-        )
-    except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error checking integration status: {e}")
-        return IntegrationsStatusResponse(
-            integrations=[
-                IntegrationStatusItem(integration_id=i.id, connected=False)
-                for i in OAUTH_INTEGRATIONS
-                if i.managed_by != "internal"
-            ]
-        )
+) -> MyIntegrationsResponse:
+    """The current user's full integration catalog (platform + their custom),
+    each with connection status and tool count. One call replaces the old
+    /config + /status + /users/me/integrations merge."""
+    log.set(operation="get_my_integrations", user={"id": user_id})
+    result = await get_my_integrations(user_id)
+    log.set(result_count=result.total, outcome="success")
+    return result
+
+
+@router.get("/{integration_id}/tools")
+async def get_integration_tools_endpoint(
+    integration_id: str,
+    user_id: str = Depends(get_user_id),
+) -> IntegrationToolsResponse:
+    """Full tool list for one integration, fetched on demand (sidebar, mentions).
+
+    A private custom integration the caller can't access raises AppError(403),
+    handled by the global exception handler.
+    """
+    log.set(operation="get_integration_tools", integration={"id": integration_id})
+    result = await get_integration_tools(integration_id, user_id)
+    log.set(result_count=result.count, outcome="success")
+    return result
 
 
 @router.delete("/{integration_id}", response_model=IntegrationSuccessResponse)
