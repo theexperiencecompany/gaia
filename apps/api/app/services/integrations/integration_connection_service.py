@@ -520,11 +520,6 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
 
 async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str) -> None:
     """Invalidate relevant caches after disconnect."""
-    # Busts the full per-user integration cache set (status + tools:user:*) so the
-    # disconnect is reflected everywhere at once, regardless of which record path
-    # below runs.
-    await invalidate_user_integration_caches(user_id)
-
     # Provider metadata cache (24h TTL) is keyed by integration.provider, not
     # integration_id. Without this clear, disconnected integrations keep
     # injecting stale metadata into subagent prompts until the TTL expires.
@@ -559,3 +554,7 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
                 log.info(f"Updated status to 'created' for custom integration {integration_id}")
             except pymongo.errors.PyMongoError as e:
                 log.warning(f"Failed to update status: {e}")
+
+    # Bust the full per-user integration cache set AFTER the record mutation above,
+    # so a cache hiccup can't leave the record stale. Best-effort (never raises).
+    await invalidate_user_integration_caches(user_id)

@@ -69,9 +69,14 @@ export const IntegrationDetailSheet = forwardRef<
     if (!isOpen || !integration) return;
 
     let cancelled = false;
-    void getIntegrationTools(integration.id).then((fetched) => {
-      if (!cancelled) setTools(fetched);
-    });
+    getIntegrationTools(integration.id)
+      .then((fetched) => {
+        if (!cancelled) setTools(fetched);
+      })
+      .catch((error) => {
+        // Keep the previous list rather than masking the failure as "no tools".
+        console.error("Failed to load integration tools:", error);
+      });
 
     return () => {
       cancelled = true;

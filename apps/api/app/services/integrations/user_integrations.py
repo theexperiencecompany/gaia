@@ -186,17 +186,25 @@ async def invalidate_user_integration_caches(user_id: str) -> None:
     going through them (e.g. direct ``user_integrations_collection`` writes). Uses
     the SAME pattern list so no caller can bust a partial set and let one cache
     (e.g. OAUTH_STATUS) drift out of sync with the others.
+
+    Best-effort: this is called at connect/disconnect/publish boundaries where the
+    user-facing operation has already succeeded, so a Redis hiccup must NOT flip a
+    successful flow into an error. On failure the stale entry self-heals at its TTL
+    (≤ 1 day). gather(return_exceptions) so one failing pattern never skips the rest.
     """
-    # gather (not a sequential loop) so one failing delete doesn't skip the
-    # rest — every pattern is attempted. Mirrors the @CacheInvalidator decorator
-    # exactly, and still propagates the error (fail loud, never a partial silent
-    # success).
-    await asyncio.gather(
+    results = await asyncio.gather(
         *(
             delete_cache(pattern.format(user_id=user_id))
             for pattern in USER_INTEGRATION_CACHE_PATTERNS
-        )
+        ),
+        return_exceptions=True,
     )
+    for pattern, result in zip(USER_INTEGRATION_CACHE_PATTERNS, results):
+        if isinstance(result, Exception):
+            log.warning(
+                f"Failed to invalidate user-integration cache "
+                f"'{pattern.format(user_id=user_id)}': {type(result).__name__}: {result}"
+            )
 
 
 @CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)

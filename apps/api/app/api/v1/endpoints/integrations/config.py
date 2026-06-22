@@ -43,7 +43,7 @@ async def get_integrations_config() -> IntegrationsConfigResponse:
     return result
 
 
-@router.get("/me", response_model=MyIntegrationsResponse)
+@router.get("/me")
 async def get_my_integrations_endpoint(
     user_id: str = Depends(get_user_id),
 ) -> MyIntegrationsResponse:
@@ -56,17 +56,18 @@ async def get_my_integrations_endpoint(
     return result
 
 
-@router.get("/{integration_id}/tools", response_model=IntegrationToolsResponse)
+@router.get("/{integration_id}/tools")
 async def get_integration_tools_endpoint(
     integration_id: str,
     user_id: str = Depends(get_user_id),
 ) -> IntegrationToolsResponse:
-    """Full tool list for one integration, fetched on demand (sidebar, mentions)."""
+    """Full tool list for one integration, fetched on demand (sidebar, mentions).
+
+    A private custom integration the caller can't access raises AppError(403),
+    handled by the global exception handler.
+    """
     log.set(operation="get_integration_tools", integration={"id": integration_id})
-    try:
-        result = await get_integration_tools(integration_id, user_id)
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="Integration not accessible")
+    result = await get_integration_tools(integration_id, user_id)
     log.set(result_count=result.count, outcome="success")
     return result
 

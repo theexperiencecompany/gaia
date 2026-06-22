@@ -24,6 +24,7 @@ from app.services.integrations.user_integrations import (
 )
 from app.services.oauth.oauth_service import get_all_integrations_status
 from app.services.tools.tools_service import get_integration_tool_list, get_tool_categories
+from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 
@@ -114,7 +115,7 @@ async def get_integration_tools(integration_id: str, user_id: str) -> Integratio
     Authorization: platform integrations are always readable; a custom integration
     is readable only when it is public, owned by the caller, or already in the
     caller's workspace — so one user can't read another's private MCP tools. Raises
-    PermissionError otherwise (the route maps it to 403).
+    AppError(403) otherwise.
     """
     resolved = await IntegrationResolver.resolve(integration_id)
     if resolved is None:
@@ -128,7 +129,11 @@ async def get_integration_tools(integration_id: str, user_id: str) -> Integratio
             or await check_user_has_integration(user_id, integration_id)
         )
         if not visible:
-            raise PermissionError(f"Integration {integration_id} is not accessible")
+            raise create_error(
+                message="Integration not accessible",
+                why="This integration is private and not in your workspace",
+                status_code=403,
+            )
 
     tools = await get_integration_tool_list(integration_id)
     return IntegrationToolsResponse(integration_id=integration_id, tools=tools, count=len(tools))

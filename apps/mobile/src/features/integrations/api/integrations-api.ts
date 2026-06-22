@@ -80,15 +80,10 @@ export async function fetchIntegrations(): Promise<Integration[]> {
 export async function getIntegrationTools(
   integrationId: string,
 ): Promise<IntegrationTool[]> {
-  try {
-    const response = await apiService.get<IntegrationToolsResponse>(
-      `/integrations/${integrationId}/tools`,
-    );
-    return response.tools;
-  } catch (error) {
-    console.error("Error fetching integration tools:", error);
-    return [];
-  }
+  const response = await apiService.get<IntegrationToolsResponse>(
+    `/integrations/${integrationId}/tools`,
+  );
+  return response.tools;
 }
 
 export interface ConnectIntegrationResult {
