@@ -21,6 +21,7 @@ from app.constants.cache import (
     DESKTOP_REQUEST_TTL_GRACE_SECONDS,
     DESKTOP_RESULT_CHANNEL_PREFIX,
 )
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.utils.errors import AppError
@@ -78,7 +79,7 @@ async def request_desktop_action(
     ``DESKTOP_TOOL_TIMEOUT_SECONDS``) on the per-request Redis result channel.
     """
     if not redis_cache.redis:
-        log.error("Desktop bridge: Redis unavailable")
+        log.error(f"{LogTag.DESKTOP} Desktop bridge: Redis unavailable")
         return DesktopToolOutcome(ok=False, error=ERROR_REDIS_UNAVAILABLE)
 
     request_id = str(uuid4())
@@ -121,7 +122,9 @@ async def request_desktop_action(
             async with asyncio.timeout(DESKTOP_TOOL_TIMEOUT_SECONDS):
                 outcome = await _await_result(pubsub)
         except TimeoutError:
-            log.warning(f"Desktop tool '{tool}' timed out after {DESKTOP_TOOL_TIMEOUT_SECONDS}s")
+            log.warning(
+                f"{LogTag.DESKTOP} Desktop tool '{tool}' timed out after {DESKTOP_TOOL_TIMEOUT_SECONDS}s"
+            )
             return DesktopToolOutcome(ok=False, error=ERROR_TIMEOUT)
 
         return outcome
@@ -157,7 +160,7 @@ async def _await_result(pubsub: Any) -> DesktopToolOutcome:
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError:
-            log.warning("Desktop bridge: discarding malformed result payload")
+            log.warning(f"{LogTag.DESKTOP} Desktop bridge: discarding malformed result payload")
             continue
 
         return DesktopToolOutcome(
@@ -176,7 +179,7 @@ async def publish_desktop_result(
 ) -> None:
     """Relay a result POSTed by the desktop app to the awaiting tool."""
     if not redis_cache.redis:
-        log.error("Desktop bridge: Redis unavailable, dropping result")
+        log.error(f"{LogTag.DESKTOP} Desktop bridge: Redis unavailable, dropping result")
         return
     await redis_cache.redis.publish(
         f"{DESKTOP_RESULT_CHANNEL_PREFIX}{request_id}",

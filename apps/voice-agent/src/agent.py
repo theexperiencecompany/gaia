@@ -28,7 +28,7 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from shared.py.logging import configure_file_logging
 from shared.py.secrets import inject_infisical_secrets
-from shared.py.wide_events import log
+from shared.py.wide_events import VoiceContext, log
 from src.config import bootstrap_settings
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
@@ -36,6 +36,7 @@ from src.constants import (
     PROMETHEUS_METRICS_PORT,
     PROMETHEUS_MULTIPROC_DIR,
     VOICE_SYSTEM_PROMPT,
+    LogTag,
 )
 from src.llm import CustomLLM
 from src.utils import extract_meta_data, ms_since, user_id_from_room
@@ -54,20 +55,20 @@ def prewarm(proc: JobProcess) -> None:
     not affected by model I/O. MultilingualModel is created per-room in entrypoint()
     because its constructor requires a job context.
     """
-    log.info("prewarm start")
+    log.info(f"{LogTag.AGENT} prewarm start")
     t0 = time.monotonic()
 
     settings = bootstrap_settings()
     proc.userdata["settings"] = settings
-    log.info("settings loaded", elapsed_ms=ms_since(t0))
+    log.info(f"{LogTag.AGENT} settings loaded", elapsed_ms=ms_since(t0))
 
     t_vad = time.monotonic()
     proc.userdata["vad"] = silero.VAD.load()
-    log.info("VAD loaded", elapsed_ms=ms_since(t_vad))
+    log.info(f"{LogTag.AGENT} VAD loaded", elapsed_ms=ms_since(t_vad))
 
     # MultilingualModel cannot be instantiated here — its __init__ calls
     # get_job_context().inference_executor which only exists inside entrypoint().
-    log.info("prewarm done", phase="prewarm_done", total_ms=ms_since(t0))
+    log.info(f"{LogTag.AGENT} prewarm done", phase="prewarm_done", total_ms=ms_since(t0))
 
 
 def _register_session_logging(
@@ -85,11 +86,13 @@ def _register_session_logging(
     def _on_user_state_changed(ev: UserStateChangedEvent) -> None:
         if ev.new_state == "speaking":
             _speaking_start["t"] = time.monotonic()
-            log.debug("user speaking start", phase="user_speaking_start", **identity)
+            log.debug(
+                f"{LogTag.AGENT} user speaking start", phase="user_speaking_start", **identity
+            )
         elif ev.old_state == "speaking":
             duration_ms = ms_since(_speaking_start.get("t", time.monotonic()))
             log.debug(
-                "user speaking end",
+                f"{LogTag.AGENT} user speaking end",
                 phase="user_speaking_end",
                 duration_ms=duration_ms,
                 **identity,
@@ -100,7 +103,7 @@ def _register_session_logging(
         stt_latency_ms = ms_since(_speaking_start.get("t", time.monotonic()))
         if ev.is_final:
             log.info(
-                "STT final",
+                f"{LogTag.AGENT} STT final",
                 phase="stt_final",
                 transcript=ev.transcript,
                 language=ev.language,
@@ -109,7 +112,7 @@ def _register_session_logging(
             )
         else:
             log.debug(
-                "STT interim",
+                f"{LogTag.AGENT} STT interim",
                 phase="stt_interim",
                 transcript=ev.transcript,
                 **identity,
@@ -118,17 +121,19 @@ def _register_session_logging(
     @session.on("agent_state_changed")
     def _on_agent_state_changed(ev: AgentStateChangedEvent) -> None:
         if ev.new_state == "thinking":
-            log.debug("agent thinking", phase="agent_thinking", **identity)
+            log.debug(f"{LogTag.AGENT} agent thinking", phase="agent_thinking", **identity)
         elif ev.new_state == "speaking":
-            log.debug("agent speaking start", phase="agent_speaking_start", **identity)
+            log.debug(
+                f"{LogTag.AGENT} agent speaking start", phase="agent_speaking_start", **identity
+            )
         elif ev.old_state == "speaking":
-            log.debug("agent speaking end", phase="agent_speaking_end", **identity)
+            log.debug(f"{LogTag.AGENT} agent speaking end", phase="agent_speaking_end", **identity)
 
     @session.on("agent_false_interruption")
     def _on_agent_false_interruption(ev: AgentFalseInterruptionEvent) -> None:
         # Framework handles automatic resume when ev.resumed is True
         log.info(
-            "false interruption",
+            f"{LogTag.AGENT} false interruption",
             phase="false_interruption",
             resumed=ev.resumed,
             **identity,
@@ -146,7 +151,9 @@ def _register_session_logging(
     async def log_usage() -> None:  # NOSONAR python:S7503
         """Emit the session's aggregated STT/TTS/LLM usage at shutdown."""
         summary = usage_collector.get_summary()
-        log.info("session usage", phase="session_usage", summary=str(summary), **identity)
+        log.info(
+            f"{LogTag.AGENT} session usage", phase="session_usage", summary=str(summary), **identity
+        )
 
     ctx.add_shutdown_callback(log_usage)
 
@@ -167,7 +174,7 @@ async def _apply_participant_credentials(
     if token:
         custom_llm.set_agent_token(token)
         log.debug(
-            "token set",
+            f"{LogTag.AGENT} token set",
             phase="token_set",
             participant=who,
             origin=origin,
@@ -178,7 +185,7 @@ async def _apply_participant_credentials(
         # each session's metadata names the API that minted it.
         custom_llm.set_backend_url(meta.backend_url)
         log.info(
-            "backend url set",
+            f"{LogTag.AGENT} backend url set",
             phase="backend_url_set",
             backend_url=meta.backend_url,
             participant=who,
@@ -191,7 +198,7 @@ async def _apply_participant_credentials(
         applied_voice["id"] = voice_id
         tts.update_options(voice_id=voice_id)
         log.info(
-            "voice set",
+            f"{LogTag.AGENT} voice set",
             phase="voice_set",
             voice_id=voice_id,
             participant=who,
@@ -200,7 +207,7 @@ async def _apply_participant_credentials(
     if conv_id:
         await custom_llm.set_conversation_id(conv_id)
         log.debug(
-            "conversation id set",
+            f"{LogTag.AGENT} conversation id set",
             phase="conv_id_set",
             conversation_id=conv_id,
             participant=who,
@@ -221,7 +228,7 @@ def _spawn_credential_task(
         tasks.discard(t)
         if not t.cancelled() and t.exception():
             log.error(
-                "Background credential task failed",
+                f"{LogTag.AGENT} Background credential task failed",
                 exc_info=t.exception(),
                 **identity,
             )
@@ -246,9 +253,10 @@ async def entrypoint(ctx: JobContext) -> None:
         "job_id": getattr(ctx.job, "id", None),
     }
     log.set(**identity)
+    log.set(voice=VoiceContext(operation="session_start", room=ctx.room.name))
 
     room_start = time.monotonic()
-    log.info("room start", phase="room_start", **identity)
+    log.info(f"{LogTag.AGENT} room start", phase="room_start", **identity)
 
     custom_llm = CustomLLM(
         base_url=settings.GAIA_BACKEND_URL,
@@ -296,7 +304,7 @@ async def entrypoint(ctx: JobContext) -> None:
     @ctx.room.on("participant_connected")
     def _on_participant_connected(p: rtc.RemoteParticipant) -> None:
         log.info(
-            "participant joined",
+            f"{LogTag.AGENT} participant joined",
             phase="participant_joined",
             participant=p.identity,
             **identity,
@@ -336,7 +344,7 @@ async def entrypoint(ctx: JobContext) -> None:
     # STT away, so the token lands long before it is needed.
     for p in ctx.room.remote_participants.values():
         log.info(
-            "existing participant",
+            f"{LogTag.AGENT} existing participant",
             phase="existing_participant",
             participant=p.identity,
             **identity,
@@ -348,7 +356,7 @@ async def entrypoint(ctx: JobContext) -> None:
         )
 
     log.info(
-        "session start",
+        f"{LogTag.AGENT} session start",
         phase="session_start",
         setup_ms=ms_since(room_start),
         **identity,

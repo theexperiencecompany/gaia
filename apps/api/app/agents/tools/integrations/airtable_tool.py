@@ -4,6 +4,7 @@ from typing import Any
 
 from composio import Composio
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 from shared.py.wide_events import log
@@ -32,7 +33,7 @@ def register_airtable_custom_tools(composio: Composio) -> list[str]:
             data = execute_tool("AIRTABLE_LIST_BASES", {}, user_id)
             bases_raw = data.get("bases", [])
         except Exception as e:
-            log.debug(f"Airtable bases fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Airtable bases fetch failed: {e}")
 
         bases: list[dict[str, Any]] = []
         for base in bases_raw[:3]:
@@ -49,7 +50,7 @@ def register_airtable_custom_tools(composio: Composio) -> list[str]:
                     for t in schema_data.get("tables", [])
                 ]
             except Exception as e:
-                log.debug(f"Airtable tables fetch for {base_id} failed: {e}")
+                log.debug(f"{LogTag.TOOL} Airtable tables fetch for {base_id} failed: {e}")
             bases.append({"id": base_id, "name": base.get("name", ""), "tables": tables})
 
         return {"bases": bases, "base_count": len(bases_raw)}

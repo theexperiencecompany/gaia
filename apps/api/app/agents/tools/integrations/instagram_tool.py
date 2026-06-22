@@ -4,6 +4,7 @@ from typing import Any
 
 from composio import Composio
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from shared.py.wide_events import log
@@ -73,7 +74,7 @@ def register_instagram_custom_tools(composio: Composio) -> list[str]:
                 for m in media_data.get("data", [])
             ]
         except Exception as e:
-            log.warning(f"Instagram media fetch failed for user {user_id}: {e}")
+            log.warning(f"{LogTag.TOOL} Instagram media fetch failed for user {user_id}: {e}")
 
         return {
             "user": {

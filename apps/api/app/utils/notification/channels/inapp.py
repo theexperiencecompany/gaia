@@ -1,5 +1,6 @@
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
@@ -77,8 +78,12 @@ class InAppChannelAdapter(ChannelAdapter):
                     "notification": content,
                 },
             )
-            log.info(f"In-app notification delivered to user {user_id}: {content.get('title')}")
+            log.info(
+                f"{LogTag.NOTIFICATION} In-app notification delivered to user {user_id}: {content.get('title')}"
+            )
             return self._success()
         except Exception as e:
-            log.error(f"Failed to deliver in-app notification to user {user_id}: {e}")
+            log.error(
+                f"{LogTag.NOTIFICATION} Failed to deliver in-app notification to user {user_id}: {e}"
+            )
             return self._error(str(e))

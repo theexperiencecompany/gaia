@@ -28,6 +28,7 @@ from app.config.rate_limits import (
     get_reset_time,
     get_time_window_key,
 )
+from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.models.usage_models import (
@@ -225,7 +226,7 @@ class TieredRateLimiter:
         except Exception as e:
             # Log error but don't raise - this shouldn't break the main request
             log.error(
-                f"Real-time usage sync failed for user {user_id}, feature {feature_key}: {e!s}"
+                f"{LogTag.API} Real-time usage sync failed for user {user_id}, feature {feature_key}: {e!s}"
             )
 
     async def _collect_feature_usage(self, user_id: str, user_plan: PlanType) -> list[FeatureUsage]:

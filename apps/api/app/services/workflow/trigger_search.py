@@ -12,6 +12,7 @@ Triggers are indexed in ChromaDB by chroma_triggers_store.py at startup.
 from typing import Any
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.log_tags import LogTag
 from app.db.chroma.chroma_triggers_store import (
     TRIGGERS_NAMESPACE,
     get_triggers_store,
@@ -59,7 +60,9 @@ class TriggerSearchService:
                     is_connected = await check_integration_status(integration_id, user_id)
                     checked_integrations[integration_id] = is_connected
                 except Exception as e:
-                    log.warning(f"Failed to check connection for {integration_id}: {e}")
+                    log.warning(
+                        f"{LogTag.WORKFLOW} Failed to check connection for {integration_id}: {e}"
+                    )
                     checked_integrations[integration_id] = False
 
             # Get config schema for this trigger (embedded in results)

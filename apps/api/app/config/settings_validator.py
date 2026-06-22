@@ -19,6 +19,7 @@ Add env vars
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -375,7 +376,7 @@ class SettingsValidator:
             if group.affected_features:
                 warning_msg += f"\n  → Affected: {group.affected_features}"
 
-            log.warning(warning_msg)
+            log.warning(f"{LogTag.STARTUP} {warning_msg}")
 
 
 settings_validator = SettingsValidator()

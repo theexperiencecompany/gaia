@@ -31,6 +31,7 @@ from app.agents.tools.core.registry import (
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.models.chat_models import ConversationSource
 from app.services.integrations.integration_service import (
@@ -64,7 +65,9 @@ async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
             names.update(t.name for t in integration_tools)
         return names
     except Exception as e:
-        log.warning(f"_user_mcp_tool_names: failed for user {user_id}: {type(e).__name__}: {e}")
+        log.warning(
+            f"{LogTag.TOOL} _user_mcp_tool_names: failed for user {user_id}: {type(e).__name__}: {e}"
+        )
         return set()
 
 
@@ -275,11 +278,13 @@ async def _get_user_context(
 
         if include_subagents:
             connected_integrations = await _resolve_connected_subagents(user_id)
-            log.info(f"User {user_id} connected subagents: {set(connected_integrations)}")
+            log.info(
+                f"{LogTag.TOOL} User {user_id} connected subagents: {set(connected_integrations)}"
+            )
 
-        log.info(f"User {user_id} namespaces: {user_namespaces}")
+        log.info(f"{LogTag.TOOL} User {user_id} namespaces: {user_namespaces}")
     except Exception as e:
-        log.warning(f"Failed to get user namespaces: {e}")
+        log.warning(f"{LogTag.TOOL} Failed to get user namespaces: {e}")
 
     return user_namespaces, connected_integrations, internal_subagents
 
@@ -306,14 +311,14 @@ def _build_search_tasks(
 
     # Search in tool_space
     if tool_space in user_namespaces or tool_space == "general":
-        log.info(f"Adding search for tool_space: {tool_space}")
+        log.info(f"{LogTag.TOOL} Adding search for tool_space: {tool_space}")
         search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
     else:
         # Caller is in a subagent whose namespace they don't own. This is
         # unusual — usually it means a stale cache or a misrouted handoff.
         # We refuse the search rather than leak another user's tool index.
         log.warning(
-            "retrieve_tools refused search: tool_space not in user_namespaces",
+            f"{LogTag.TOOL} retrieve_tools refused search: tool_space not in user_namespaces",
             tool_space=tool_space,
             user_namespaces=sorted(user_namespaces),
         )
@@ -321,18 +326,18 @@ def _build_search_tasks(
     # For subagents, also search 'general' namespace with a small limit
     # so core tools (e.g. webpage tools) are still discoverable.
     if tool_space != "general":
-        log.info("Adding search for general namespace (limited to 5 for core tools)")
+        log.info(f"{LogTag.TOOL} Adding search for general namespace (limited to 5 for core tools)")
         search_tasks.append(store.asearch(("general",), query=query, limit=5))
 
     # Desktop-executed tools are only discoverable for desktop-app sessions
     # (include_desktop is derived from conversation_source upstream).
     if include_desktop:
-        log.info("Adding search for desktop namespace")
+        log.info(f"{LogTag.TOOL} Adding search for desktop namespace")
         search_tasks.append(store.asearch((DESKTOP_TOOL_SPACE,), query=query, limit=10))
 
     # Search subagents namespace
     if include_subagents:
-        log.info("Adding search for subagents namespace")
+        log.info(f"{LogTag.TOOL} Adding search for subagents namespace")
         search_tasks.append(store.asearch(("subagents",), query=query, limit=15))
         search_tasks.append(search_public_integrations(query=query, limit=15))
 
@@ -439,7 +444,7 @@ async def _process_search_results(
 
     for idx, result in enumerate(results):
         if isinstance(result, BaseException):
-            log.warning(f"Task {idx}: Search error - {result}")
+            log.warning(f"{LogTag.TOOL} Task {idx}: Search error - {result}")
             continue
 
         if not result:
@@ -461,11 +466,11 @@ async def _process_search_results(
                     for item in result[:20]
                 ]
                 log.debug(
-                    f"Chroma search raw hits (task={idx}, tool_space={tool_space}): "
+                    f"{LogTag.TOOL} Chroma search raw hits (task={idx}, tool_space={tool_space}): "
                     f"{len(result)} items, preview={preview}"
                 )
             except Exception as e:
-                log.debug(f"Chroma search raw hits log failed (task={idx}): {e}")
+                log.debug(f"{LogTag.TOOL} Chroma search raw hits log failed (task={idx}): {e}")
             processed = _process_chroma_search_result(
                 result,
                 available_tool_names,
@@ -599,7 +604,7 @@ def get_retrieve_tools_function(
         exact_tool_names: list[str] = Field(default_factory=list),
     ) -> RetrieveToolsResult:
         log.info(
-            "retrieve_tools called",
+            f"{LogTag.TOOL} retrieve_tools called",
             query=query,
             exact_tool_names=exact_tool_names,
             tool_space=tool_space,
@@ -626,7 +631,7 @@ def get_retrieve_tools_function(
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
-        log.info(f"Registry has {len(available_tool_names)} available tools")
+        log.info(f"{LogTag.TOOL} Registry has {len(available_tool_names)} available tools")
 
         # Desktop tools only surface for desktop-app conversations, and only
         # in the main agent context (subagents keep their own tool space).
@@ -647,7 +652,9 @@ def get_retrieve_tools_function(
                 config["configurable"]["user_id"] = user_id
 
         if not user_id:
-            log.warning("retrieve_tools called with NO user_id (not in configurable or metadata)")
+            log.warning(
+                f"{LogTag.TOOL} retrieve_tools called with NO user_id (not in configurable or metadata)"
+            )
 
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
@@ -698,7 +705,7 @@ def get_retrieve_tools_function(
                 # Surfacing this is important: silently dropping requested tools
                 # makes registry-population bugs invisible to operators.
                 log.warning(
-                    "retrieve_tools binding dropped unknown tools",
+                    f"{LogTag.TOOL} retrieve_tools binding dropped unknown tools",
                     tool_space=tool_space,
                     unknown=unknown_tool_names,
                     available_count=len(bindable_set),
@@ -841,7 +848,7 @@ def get_retrieve_tools_function(
         )
         if chroma_hits == 0 and tool_space != "general":
             log.warning(
-                f"retrieve_tools: 0 ChromaDB hits for tool_space='{tool_space}' "
+                f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits for tool_space='{tool_space}' "
                 f"user={user_id} query={query!r}. Check that index_tools_to_store "
                 f"actually wrote docs for this namespace."
             )

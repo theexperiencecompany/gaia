@@ -34,5 +34,5 @@ export const NOTIFICATION_CHANNEL_LABELS: Record<string, string> = {
 
 export const NOTIFICATION_CHANNEL_ICONS: Record<string, string> = {
   ...NOTIFICATION_PLATFORM_ICONS,
-  inapp: "/images/logos/logo.webp",
+  inapp: "/images/logos/macos.webp",
 };

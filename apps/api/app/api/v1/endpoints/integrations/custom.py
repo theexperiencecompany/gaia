@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
+from app.constants.log_tags import LogTag
 from app.models.integration_models import (
     CreateCustomIntegrationRequest as RequestModel,
     UpdateCustomIntegrationRequest as UpdateCustomIntegrationRequestModel,
@@ -77,7 +78,7 @@ async def create_custom_mcp_integration(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        log.error(f"Error creating custom integration: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error creating custom integration: {e}")
         raise HTTPException(status_code=500, detail="Failed to create integration")
 
 
@@ -119,7 +120,7 @@ async def update_custom_mcp_integration(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error updating integration {integration_id}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error updating integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update integration")
 
 
@@ -148,7 +149,7 @@ async def delete_custom_mcp_integration(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error deleting integration {integration_id}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error deleting integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete integration")
 
 
@@ -174,7 +175,7 @@ async def publish_integration(
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
-        log.error(f"Error publishing integration {integration_id}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error publishing integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to publish integration")
 
 
@@ -199,5 +200,5 @@ async def unpublish_integration(
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
-        log.error(f"Error unpublishing integration {integration_id}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error unpublishing integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to unpublish integration")

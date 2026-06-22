@@ -30,6 +30,7 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
@@ -74,7 +75,7 @@ async def build_executor_graph(
     )
     if subagent_mw is None:
         log.warning(
-            "SubagentMiddleware not found in middleware stack; spawn_subagent will be unavailable"
+            f"{LogTag.AGENT} SubagentMiddleware not found in middleware stack; spawn_subagent will be unavailable"
         )
     else:
         subagent_mw.set_llm(chat_llm)
@@ -149,10 +150,10 @@ async def build_executor_graph(
 )
 async def build_executor_agent():
     """Build and return the executor agent with full tool access."""
-    log.debug("Building executor agent with lazy providers")
+    log.debug(f"{LogTag.AGENT} Building executor agent with lazy providers")
 
     async with build_executor_graph() as graph:
-        log.info("Executor agent built successfully")
+        log.info(f"{LogTag.AGENT} Executor agent built successfully")
     return graph
 
 
@@ -208,13 +209,13 @@ async def build_comms_graph(
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
         graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
-        log.debug("Comms graph compiled with in-memory checkpointer")
+        log.debug(f"{LogTag.AGENT} Comms graph compiled with in-memory checkpointer")
         log.set(agent={"model": model_name})
         yield graph
     else:
         postgres_checkpointer = checkpointer_manager.get_checkpointer()
         graph = builder.compile(checkpointer=postgres_checkpointer, store=store)
-        log.debug("Comms graph compiled with PostgreSQL checkpointer")
+        log.debug(f"{LogTag.AGENT} Comms graph compiled with PostgreSQL checkpointer")
         log.set(agent={"model": model_name})
         yield graph
 
@@ -227,19 +228,19 @@ async def build_comms_graph(
 )
 async def build_comms_agent():
     """Build and return the comms agent using lazy providers."""
-    log.debug("Building comms agent with lazy providers")
+    log.debug(f"{LogTag.AGENT} Building comms agent with lazy providers")
 
     async with build_comms_graph() as graph:
-        log.info("Comms agent built successfully")
+        log.info(f"{LogTag.AGENT} Comms agent built successfully")
     return graph
 
 
 def build_graphs():
     """Build comms and executor agents and register subagent providers."""
-    log.info("Building core agent graphs...")
+    log.info(f"{LogTag.AGENT} Building core agent graphs...")
 
     register_subagent_providers()
     build_executor_agent()
     build_comms_agent()
 
-    log.info("Core agent graphs built and registered successfully")
+    log.info(f"{LogTag.AGENT} Core agent graphs built and registered successfully")

@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage
 
 from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
 from app.constants.cache import SIX_HOUR_TTL
+from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
 from shared.py.wide_events import log
 
@@ -65,7 +66,7 @@ async def decompose_research_queries(
             if valid:
                 return valid
     except Exception as e:
-        log.warning(f"Query decomposition LLM call failed: {e}")
+        log.warning(f"{LogTag.TOOL} Query decomposition LLM call failed: {e}")
 
     # Fallback: heuristic sub-queries matching n_queries contract (depth 1→3, 2→6, 3→9)
     base = [

@@ -25,6 +25,7 @@ from app.agents.core.messages import construct_langchain_messages
 from app.agents.llm.plan_model import apply_dev_model_override, apply_plan_model
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     build_agent_config,
     build_initial_state,
@@ -211,7 +212,7 @@ async def call_agent(
         return execute_graph_streaming(graph, initial_state, config)
 
     except Exception as exc:
-        log.error(f"Error when calling agent: {exc}")
+        log.error(f"{LogTag.AGENT} Error when calling agent: {exc}")
         error_message = f"Error when calling agent: {exc!s}"
 
         async def error_generator():
@@ -291,7 +292,7 @@ async def call_agent_silent(
         return complete_message, tool_data
 
     except Exception as exc:
-        log.error(f"Error when calling silent agent: {exc}")
+        log.error(f"{LogTag.AGENT} Error when calling silent agent: {exc}")
         return f"Error when calling silent agent: {exc!s}", {}
     finally:
         teardown_executor_capture(stream_id)

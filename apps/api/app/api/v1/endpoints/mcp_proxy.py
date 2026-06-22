@@ -7,6 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.log_tags import LogTag
 from app.schemas.mcp import (
     MCPProxyPromptsListRequest,
     MCPProxyPromptsListResponse,
@@ -20,7 +21,7 @@ from app.schemas.mcp import (
     MCPProxyToolCallResponse,
 )
 from app.services.mcp.mcp_client import get_mcp_client
-from shared.py.wide_events import log
+from shared.py.wide_events import McpContext, log
 
 router = APIRouter()
 
@@ -46,7 +47,7 @@ async def proxy_mcp_tool_call(
     log.set(
         user={"id": user_id},
         operation="mcp_proxy_tool_call",
-        tool_name=request.tool_name,
+        mcp=McpContext(operation="call_tool", tool_name=request.tool_name),
     )
 
     try:
@@ -57,7 +58,8 @@ async def proxy_mcp_tool_call(
             arguments=request.arguments,
         )
         is_error = result.get("is_error") or result.get("isError") or False
-        log.set(outcome="success", is_error=is_error)
+        log.set(outcome="success")
+        log.set_ns("mcp", success=not is_error)
         return MCPProxyToolCallResponse(
             content=result.get("content", []),
             is_error=is_error,
@@ -65,7 +67,7 @@ async def proxy_mcp_tool_call(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"MCP proxy tool call failed: {e}")
+        log.error(f"{LogTag.MCP} MCP proxy tool call failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Tool call failed: {e!s}",
@@ -98,7 +100,8 @@ async def proxy_mcp_resources_list(
             server_url=request.server_url,
             cursor=request.cursor,
         )
-        log.set(outcome="success", result_count=len(result.get("resources", [])))
+        log.set(outcome="success")
+        log.set(mcp=McpContext(success=True, result_count=len(result.get("resources", []))))
         return MCPProxyResourcesListResponse(
             resources=result.get("resources", []),
             next_cursor=result.get("next_cursor") or result.get("nextCursor"),
@@ -106,7 +109,7 @@ async def proxy_mcp_resources_list(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"MCP proxy resources/list failed: {e}")
+        log.error(f"{LogTag.MCP} MCP proxy resources/list failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/list failed: {e!s}",
@@ -139,11 +142,14 @@ async def proxy_mcp_resource_templates_list(
             server_url=request.server_url,
             cursor=request.cursor,
         )
+        log.set(outcome="success")
         log.set(
-            outcome="success",
-            result_count=len(
-                result.get("resource_templates") or result.get("resourceTemplates") or []
-            ),
+            mcp=McpContext(
+                success=True,
+                result_count=len(
+                    result.get("resource_templates") or result.get("resourceTemplates") or []
+                ),
+            )
         )
         return MCPProxyResourceTemplatesListResponse(
             resource_templates=result.get("resource_templates")
@@ -154,7 +160,7 @@ async def proxy_mcp_resource_templates_list(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"MCP proxy resources/templates/list failed: {e}")
+        log.error(f"{LogTag.MCP} MCP proxy resources/templates/list failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/templates/list failed: {e!s}",
@@ -191,14 +197,15 @@ async def proxy_mcp_resource_read(
             server_url=request.server_url,
             uri=request.uri,
         )
-        log.set(outcome="success", result_count=len(result.get("contents", [])))
+        log.set(outcome="success")
+        log.set(mcp=McpContext(success=True, result_count=len(result.get("contents", []))))
         return MCPProxyResourceReadResponse(
             contents=result.get("contents", []),
         )
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"MCP proxy resources/read failed: {e}")
+        log.error(f"{LogTag.MCP} MCP proxy resources/read failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/read failed: {e!s}",
@@ -231,7 +238,8 @@ async def proxy_mcp_prompts_list(
             server_url=request.server_url,
             cursor=request.cursor,
         )
-        log.set(outcome="success", result_count=len(result.get("prompts", [])))
+        log.set(outcome="success")
+        log.set(mcp=McpContext(success=True, result_count=len(result.get("prompts", []))))
         return MCPProxyPromptsListResponse(
             prompts=result.get("prompts", []),
             next_cursor=result.get("next_cursor") or result.get("nextCursor"),
@@ -239,7 +247,7 @@ async def proxy_mcp_prompts_list(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"MCP proxy prompts/list failed: {e}")
+        log.error(f"{LogTag.MCP} MCP proxy prompts/list failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"prompts/list failed: {e!s}",

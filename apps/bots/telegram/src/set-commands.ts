@@ -8,13 +8,17 @@
  * Run with: `pnpm set-commands` or `tsx src/set-commands.ts`
  */
 
-import { allCommands } from "@gaia/shared";
+import { allCommands, createBotLogger } from "@gaia/shared";
 import { Bot } from "grammy";
+
+const setCommandsLogger = createBotLogger("telegram", "set-commands");
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
 if (!token) {
-  console.error("Missing TELEGRAM_BOT_TOKEN");
+  setCommandsLogger.error("set_commands_missing_env", {
+    missing: ["TELEGRAM_BOT_TOKEN"],
+  });
   process.exit(1);
 }
 
@@ -32,14 +36,12 @@ const commands = [
 (async () => {
   try {
     await bot.api.setMyCommands(commands);
-    console.log(
-      `Successfully registered ${commands.length} Telegram bot commands:`,
-    );
-    for (const cmd of commands) {
-      console.log(`  /${cmd.command} — ${cmd.description}`);
-    }
+    setCommandsLogger.info("set_commands_succeeded", {
+      command_count: commands.length,
+      commands: commands.map((cmd) => `/${cmd.command}`),
+    });
   } catch (error) {
-    console.error("Failed to register Telegram bot commands:", error);
+    setCommandsLogger.error("set_commands_failed", undefined, error);
     process.exit(1);
   }
 })();

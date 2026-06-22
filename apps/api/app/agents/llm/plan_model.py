@@ -12,6 +12,7 @@ from app.constants.llm import (
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
 )
+from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
@@ -33,7 +34,7 @@ async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:
         # A transient lookup failure must not fail the turn — keep the default model.
-        log.warning("plan_model lookup failed; keeping default model", error=str(e))
+        log.warning(f"{LogTag.AGENT} plan_model lookup failed; keeping default model", error=str(e))
         return
 
     # Free runs the default model; every other (paid) tier gets the better model,

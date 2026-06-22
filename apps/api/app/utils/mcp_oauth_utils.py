@@ -38,6 +38,7 @@ from mcp.types import (
 )
 from pydantic import AnyHttpUrl
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # Sent in the MCP-Protocol-Version header on OAuth discovery/token requests for
@@ -110,7 +111,7 @@ def validate_https_url(url: str, allow_localhost: bool = True) -> None:
         hostname = parsed.hostname or ""
         hostname_lower = hostname.lower()
         if hostname_lower in ("localhost", "127.0.0.1", "::1"):
-            log.debug(f"Allowing HTTP for localhost URL: {url}")
+            log.debug(f"{LogTag.MCP} Allowing HTTP for localhost URL: {url}")
             return
 
     raise OAuthSecurityError(
@@ -234,30 +235,30 @@ async def extract_auth_challenge(server_url: str) -> dict:
                 if error_desc_value:
                     result["error_description"] = error_desc_value
 
-                log.info(f"[TIMING] Probe {server_url}: 401 OAuth required, {elapsed_ms:.0f}ms")
-                log.debug(f"Parsed WWW-Authenticate for {server_url}: {result}")
+                log.info(f"{LogTag.MCP} Probe {server_url}: 401 OAuth required, {elapsed_ms:.0f}ms")
+                log.debug(f"{LogTag.MCP} Parsed WWW-Authenticate for {server_url}: {result}")
                 return result
 
             log.info(
-                f"[TIMING] Probe {server_url}: {response.status_code} (no auth), {elapsed_ms:.0f}ms"
+                f"{LogTag.MCP} Probe {server_url}: {response.status_code} (no auth), {elapsed_ms:.0f}ms"
             )
             return {}
 
     except httpx.ConnectError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         # Re-raise connection errors so caller can handle them appropriately
-        log.warning(f"[TIMING] Probe {server_url}: ConnectError after {elapsed_ms:.0f}ms - {e}")
+        log.warning(f"{LogTag.MCP} Probe {server_url}: ConnectError after {elapsed_ms:.0f}ms - {e}")
         raise
 
     except httpx.TimeoutException as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        log.warning(f"[TIMING] Probe {server_url}: Timeout after {elapsed_ms:.0f}ms - {e}")
+        log.warning(f"{LogTag.MCP} Probe {server_url}: Timeout after {elapsed_ms:.0f}ms - {e}")
         return {}
 
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         log.warning(
-            f"[TIMING] Probe {server_url}: Error after {elapsed_ms:.0f}ms - {type(e).__name__}: {e}"
+            f"{LogTag.MCP} Probe {server_url}: Error after {elapsed_ms:.0f}ms - {type(e).__name__}: {e}"
         )
         return {}
 
@@ -287,13 +288,13 @@ async def find_protected_resource_metadata(server_url: str) -> str | None:
                     data = response.json()
                     if "authorization_servers" in data or "resource" in data:
                         elapsed_ms = (time.perf_counter() - start_time) * 1000
-                        log.info(f"[TIMING] Found PRM at {url} in {elapsed_ms:.0f}ms")
+                        log.info(f"{LogTag.MCP} Found PRM at {url} in {elapsed_ms:.0f}ms")
                         return url
             except Exception as e:
-                log.debug(f"PRM not found at {url}: {e}")
+                log.debug(f"{LogTag.MCP} PRM not found at {url}: {e}")
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
-    log.debug(f"[TIMING] PRM discovery failed for {server_url} after {elapsed_ms:.0f}ms")
+    log.debug(f"{LogTag.MCP} PRM discovery failed for {server_url} after {elapsed_ms:.0f}ms")
     return None
 
 
@@ -311,7 +312,7 @@ async def fetch_protected_resource_metadata(prm_url: str) -> ProtectedResourceMe
         response = await client.get(prm_url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT)
         response.raise_for_status()
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        log.info(f"[TIMING] Fetched PRM from {prm_url} in {elapsed_ms:.0f}ms")
+        log.info(f"{LogTag.MCP} Fetched PRM from {prm_url} in {elapsed_ms:.0f}ms")
         return ProtectedResourceMetadata.model_validate(response.json())
 
 
@@ -345,10 +346,12 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> OAuthMetadata:
                 response = await client.send(create_oauth_metadata_request(url))
                 if response.status_code == 200:
                     elapsed_ms = (time.perf_counter() - start_time) * 1000
-                    log.info(f"[TIMING] Found auth server metadata at {url} in {elapsed_ms:.0f}ms")
+                    log.info(
+                        f"{LogTag.MCP} Found auth server metadata at {url} in {elapsed_ms:.0f}ms"
+                    )
                     return OAuthMetadata.model_validate(response.json())
             except Exception as e:
-                log.debug(f"Auth metadata not found at {url}: {e}")
+                log.debug(f"{LogTag.MCP} Auth metadata not found at {url}: {e}")
 
     # MCP Spec Fallback: If metadata discovery fails, use default URL pattern
     # Per MCP Authorization spec (2025-03-26): fallback URLs use the
@@ -362,7 +365,7 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> OAuthMetadata:
     # /token is correct for server.smithery.ai/excalidraw).
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     log.info(
-        f"[TIMING] Metadata discovery failed for {auth_server_url} after {elapsed_ms:.0f}ms, "
+        f"{LogTag.MCP} Metadata discovery failed for {auth_server_url} after {elapsed_ms:.0f}ms, "
         "using MCP spec fallback URLs (origin-only, per spec)"
     )
 
@@ -430,18 +433,20 @@ async def revoke_token(
             # - 400: Invalid request (e.g., unsupported token_type_hint)
             # - 503: Service unavailable
             if response.status_code == 200:
-                log.info(f"Token revoked successfully at {revocation_endpoint}")
+                log.info(f"{LogTag.MCP} Token revoked successfully at {revocation_endpoint}")
                 return True
 
             # Log error but don't raise - revocation is best-effort
-            log.warning(f"Token revocation returned {response.status_code}: {response.text}")
+            log.warning(
+                f"{LogTag.MCP} Token revocation returned {response.status_code}: {response.text}"
+            )
             return False
 
     except httpx.TimeoutException:
-        log.warning(f"Token revocation timed out at {revocation_endpoint}")
+        log.warning(f"{LogTag.MCP} Token revocation timed out at {revocation_endpoint}")
         return False
     except Exception as e:
-        log.warning(f"Token revocation failed: {e}")
+        log.warning(f"{LogTag.MCP} Token revocation failed: {e}")
         return False
 
 
@@ -497,17 +502,19 @@ async def introspect_token(
 
             if response.status_code == 200:
                 result = response.json()
-                log.debug(f"Token introspection result: active={result.get('active')}")
+                log.debug(f"{LogTag.MCP} Token introspection result: active={result.get('active')}")
                 return result
 
-            log.warning(f"Token introspection returned {response.status_code}: {response.text}")
+            log.warning(
+                f"{LogTag.MCP} Token introspection returned {response.status_code}: {response.text}"
+            )
             return None
 
     except httpx.TimeoutException:
-        log.warning(f"Token introspection timed out at {introspection_endpoint}")
+        log.warning(f"{LogTag.MCP} Token introspection timed out at {introspection_endpoint}")
         return None
     except Exception as e:
-        log.warning(f"Token introspection failed: {e}")
+        log.warning(f"{LogTag.MCP} Token introspection failed: {e}")
         return None
 
 
@@ -539,7 +546,7 @@ def parse_oauth_error_response(response: Any) -> dict:
                 # Fall back to raw text
                 result["error_description"] = response.text[:500]  # Truncate long errors
     except Exception as e:
-        log.debug(f"Failed to parse OAuth error response: {e}")
+        log.debug(f"{LogTag.MCP} Failed to parse OAuth error response: {e}")
         result["error_description"] = str(e)
 
     return result
@@ -619,7 +626,7 @@ def validate_jwt_issuer(
 
             if normalized_token != normalized_expected:
                 log.warning(
-                    f"JWT issuer mismatch for {integration_id}: "
+                    f"{LogTag.MCP} JWT issuer mismatch for {integration_id}: "
                     f"expected '{expected_issuer}', got '{token_issuer}'"
                 )
                 return False
@@ -627,7 +634,7 @@ def validate_jwt_issuer(
         return True
 
     except Exception as e:
-        log.debug(f"Could not validate JWT issuer for {integration_id}: {e}")
+        log.debug(f"{LogTag.MCP} Could not validate JWT issuer for {integration_id}: {e}")
         # Don't fail on validation errors - token may be opaque
         return True
 
@@ -644,5 +651,7 @@ def select_authorization_server(servers: list[str]) -> str:
     if len(servers) == 1:
         return servers[0]
 
-    log.info(f"Multiple auth servers available ({len(servers)}), using first: {servers[0]}")
+    log.info(
+        f"{LogTag.MCP} Multiple auth servers available ({len(servers)}), using first: {servers[0]}"
+    )
     return servers[0]

@@ -23,9 +23,11 @@
 // This GlobalAuth file is required because it requires the ReduxProvider wrapped around it
 
 import useFetchUser from "@/features/auth/hooks/useFetchUser";
+import { useCheckoutResume } from "@/features/pricing/hooks/useCheckoutResume";
 
 const GlobalAuth = () => {
   useFetchUser();
+  useCheckoutResume();
   return null;
 };
 

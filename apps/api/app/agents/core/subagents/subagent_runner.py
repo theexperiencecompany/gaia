@@ -23,6 +23,7 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.message_helpers import (
@@ -258,7 +259,7 @@ async def execute_subagent_stream(
     ):
         # Check for cancellation
         if ctx.stream_id and await stream_manager.is_cancelled(ctx.stream_id):
-            log.info(f"Subagent stream {ctx.stream_id} cancelled by user")
+            log.info(f"{LogTag.AGENT} Subagent stream {ctx.stream_id} cancelled by user")
             break
 
         # Handle 2-tuple format only (no subgraphs)

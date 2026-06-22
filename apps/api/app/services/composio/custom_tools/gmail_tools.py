@@ -11,6 +11,7 @@ from typing import Any
 from composio import Composio
 from pydantic import BaseModel, Field
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from app.services.contact_service import build_contact_index
@@ -329,11 +330,11 @@ def register_gmail_custom_tools(composio: Composio):
                     messages.append(full)
             except Exception as exc:
                 fetch_failures += 1
-                log.warning(f"Gmail message fetch failed for {message_id}: {exc}")
+                log.warning(f"{LogTag.COMPOSIO} Gmail message fetch failed for {message_id}: {exc}")
 
         if message_ids and not messages:
             log.error(
-                f"Gmail contact list: all {len(message_ids)} message fetches failed "
+                f"{LogTag.COMPOSIO} Gmail contact list: all {len(message_ids)} message fetches failed "
                 f"for user {user_id}"
             )
             return {

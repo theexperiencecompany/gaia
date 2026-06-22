@@ -17,6 +17,7 @@ from app.agents.middleware.summarization import (
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
     MAX_OUTPUT_CHARS,
@@ -44,7 +45,9 @@ def get_summarization_llm() -> BaseChatModel | None:
         return _summarization_llm
 
     if not settings.GOOGLE_API_KEY:
-        log.warning("Google API key not configured. Summarization middleware disabled.")
+        log.warning(
+            f"{LogTag.AGENT} Google API key not configured. Summarization middleware disabled."
+        )
         return None
 
     _summarization_llm = ChatGoogleGenerativeAI(
@@ -115,7 +118,7 @@ def create_middleware_stack(
     # so we can compare state.messages before vs. after other middleware.
     if enable_accounting:
         middleware.append(LLMAccountingMiddleware(agent_name=agent_name))
-        log.debug(f"LLMAccountingMiddleware enabled for {agent_name}")
+        log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled for {agent_name}")
         log.set(
             middleware_stack={
                 "agent_name": agent_name,
@@ -134,7 +137,7 @@ def create_middleware_stack(
             tool_runtime_config=subagent_tool_runtime_config,
         )
         middleware.append(subagent)
-        log.debug("SubagentMiddleware enabled with spawn_subagent tool")
+        log.debug(f"{LogTag.AGENT} SubagentMiddleware enabled with spawn_subagent tool")
 
     # Summarization middleware (requires Gemini API key)
     if enable_summarization:
@@ -149,7 +152,7 @@ def create_middleware_stack(
             )
             middleware.append(summarization)
             log.debug(
-                f"Summarization middleware enabled: trigger={summarization_trigger}, keep={summarization_keep}"
+                f"{LogTag.AGENT} Summarization middleware enabled: trigger={summarization_trigger}, keep={summarization_keep}"
             )
 
     # Compaction middleware (always available, but respects enable flag)
@@ -160,7 +163,7 @@ def create_middleware_stack(
             excluded_tools=compaction_excluded_tools,
         )
         middleware.append(compaction)
-        log.debug(f"Compaction middleware enabled: threshold={compaction_threshold}")
+        log.debug(f"{LogTag.AGENT} Compaction middleware enabled: threshold={compaction_threshold}")
 
     return middleware
 

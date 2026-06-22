@@ -36,6 +36,21 @@ except ValueError:
 EMBEDDING_SIDECAR_URL_ENV = "MEMORY_EMBEDDING_SIDECAR_URL"
 EMBEDDING_SIDECAR_TIMEOUT_SECONDS = 30.0
 
+# Max in-flight inferences the sidecar runs at once. Each inference uses
+# ONNX_INTRA_OP_THREADS cores, so more than (cores / threads) concurrent calls
+# oversubscribe the CPU and inflate every caller's latency past the client
+# timeout above. Default to that ratio (>= 1); env-overridable for hosts with a
+# different core/thread budget.
+_default_sidecar_concurrency = max(
+    1, (os.cpu_count() or ONNX_INTRA_OP_THREADS) // ONNX_INTRA_OP_THREADS
+)
+try:
+    EMBEDDING_SIDECAR_MAX_CONCURRENCY = max(
+        1, int(os.getenv("MEMORY_EMBEDDING_SIDECAR_CONCURRENCY", str(_default_sidecar_concurrency)))
+    )
+except ValueError:
+    EMBEDDING_SIDECAR_MAX_CONCURRENCY = _default_sidecar_concurrency
+
 # Persistent on-disk cache for the fastembed model weights. Set in prod (on the
 # embedding sidecar) to a mounted volume so the ~1.85GB download happens ONCE
 # rather than on every restart/redeploy (measured ~148s cold-load). Unset falls

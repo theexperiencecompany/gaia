@@ -308,6 +308,126 @@ class BotContext(TypedDict, total=False):
     operation: str
 
 
+class SandboxContext(TypedDict, total=False):
+    """Per-user E2B sandbox lifecycle context.
+
+    Accumulated across the multi-step acquire path (cache reuse → resume →
+    create → mount → canary), so callers must MERGE into this namespace rather
+    than overwrite it. ``source`` is the headline field: how the live sandbox
+    serving this request was obtained. Per-stage latency lives separately on the
+    ``fs`` field (``fs.sbx_create``, ``fs.sbx_connect_resume`` …).
+    """
+
+    operation: str  # "acquire"|"pause"|"evict"|"mark_dead"|"sweep"
+    sandbox_id: str
+    shard_id: int
+    source: str  # "cache"|"resume"|"create"
+    created: bool
+    template_id: str
+    workspace_version: int
+    refcount: int
+    mount_status: str  # "mounted"|"ephemeral_fallback"
+    resume_status: str  # "ok"|"unhealthy"|"failed"
+    cache_evicted: str  # "unhealthy"|"canary_stale"
+    health_ok: bool
+    watcher_active: bool
+    artifact_mode: str  # artifact watcher detection mode: "watch_dir"|"accesslog"
+    marked_dead: bool
+    rate_limited: bool
+    rate_limit_reset: str
+    rate_limit_plan: str
+    evicted_count: int  # sweep task: number of idle sandboxes evicted
+
+
+class McpContext(TypedDict, total=False):
+    """Model Context Protocol server/tool operation context."""
+
+    operation: str  # "connect"|"disconnect"|"list_tools"|"call_tool"|"discover"|"health"
+    server_id: str
+    server_name: str
+    tool_name: str
+    tool_count: int
+    transport: str  # "stdio"|"sse"|"http"
+    success: bool
+    error_type: str
+    result_count: int
+
+
+class TriggerContext(TypedDict, total=False):
+    """Integration trigger / event-routing operation context."""
+
+    operation: str  # "register"|"evaluate"|"fire"|"list"|"delete"|"dispatch"
+    trigger_id: str
+    trigger_type: str
+    integration_id: str
+    matched_count: int
+    fired: bool
+    result_count: int
+
+
+class MailContext(TypedDict, total=False):
+    """Email sync / send / classification operation context."""
+
+    operation: str  # "sync"|"fetch"|"send"|"classify"|"summarize"|"watch"
+    provider: str  # "gmail"|"outlook"|...
+    account_id: str
+    folder: str
+    message_count: int
+    result_count: int
+    success: bool
+
+
+class OAuthContext(TypedDict, total=False):
+    """OAuth / connection-lifecycle operation context."""
+
+    operation: str  # "authorize"|"callback"|"refresh"|"revoke"|"status"|"connect"
+    provider: str
+    integration_id: str
+    success: bool
+    error_type: str
+
+
+class NotificationContext(TypedDict, total=False):
+    """Notification dispatch operation context."""
+
+    operation: str  # "send"|"schedule"|"dispatch"|"read"|"mark_all_read"|"list"
+    channel: str  # "push"|"email"|"in_app"
+    notification_id: str
+    result_count: int
+    success: bool
+
+
+class SkillContext(TypedDict, total=False):
+    """Agent skill management operation context."""
+
+    operation: str  # "install"|"list"|"run"|"sync"|"delete"|"get"
+    skill_id: str
+    skill_name: str
+    result_count: int
+    success: bool
+
+
+class VectorContext(TypedDict, total=False):
+    """Vector-store (ChromaDB) operation context."""
+
+    operation: str  # "query"|"upsert"|"delete"|"get"|"embed"|"create_collection"
+    collection: str
+    n_results: int
+    result_count: int
+    embedded_count: int
+
+
+class VoiceContext(TypedDict, total=False):
+    """Voice-agent (LiveKit) session/turn operation context."""
+
+    operation: str  # "session_start"|"turn"|"tts"|"stt"|"tool_call"|"session_end"
+    room: str
+    participant: str
+    model: str
+    provider: str
+    turn_index: int
+
+
 class WideEventFields(TypedDict, total=False):
     """Canonical schema for wide event fields set via log.set().
 
@@ -334,6 +454,15 @@ class WideEventFields(TypedDict, total=False):
     integration: IntegrationContext
     image: ImageContext
     bot: BotContext
+    sandbox: SandboxContext
+    mcp: McpContext
+    trigger: TriggerContext
+    mail: MailContext
+    oauth: OAuthContext
+    notification: NotificationContext
+    skill: SkillContext
+    vector: VectorContext
+    voice: VoiceContext
     # Top-level convenience fields used across endpoints
     operation: str
     outcome: str
@@ -370,6 +499,19 @@ class WideEventLogger:
         """Merge structured context into the current request's wide event."""
         current = _wide_event.get() or {}
         _wide_event.set({**current, **kwargs})
+
+    def set_ns(self, namespace: str, **kwargs: Any) -> None:
+        """Merge ``kwargs`` into a nested ``namespace`` dict on the wide event.
+
+        ``set`` shallow-merges at the top level, so re-setting a nested dict
+        (e.g. ``set(sandbox={...})``) clobbers keys from earlier calls. ``set_ns``
+        read-merges into ``event[namespace]`` instead, preserving every field
+        accumulated across a multi-step path (the sandbox acquire path is the
+        canonical case — see ``SandboxContext``).
+        """
+        current = _wide_event.get() or {}
+        ns = {**current.get(namespace, {}), **kwargs}
+        _wide_event.set({**current, namespace: ns})
 
     # --- Loguru-compatible message methods ---
 
@@ -579,5 +721,14 @@ __all__ = [
     "IntegrationContext",
     "ImageContext",
     "BotContext",
+    "SandboxContext",
+    "McpContext",
+    "TriggerContext",
+    "MailContext",
+    "OAuthContext",
+    "NotificationContext",
+    "SkillContext",
+    "VectorContext",
+    "VoiceContext",
     "get_trace_id",
 ]

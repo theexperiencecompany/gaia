@@ -16,6 +16,9 @@ import type {
   ChatRequest,
   SettingsResponse,
 } from "../types";
+import { createBotLogger } from "../utils/logger";
+
+const logger = createBotLogger("shared", "gaia-client");
 
 export class GaiaApiError extends Error {
   status?: number;
@@ -207,9 +210,12 @@ export class GaiaClient {
         // Wait before retrying (exponential backoff)
         const delayMs = Math.min(1000 * 2 ** attempt, 5000);
         attemptedRetries++;
-        console.log(
-          `Retrying stream (attempt ${attemptedRetries}/${maxRetries}) after ${delayMs}ms...`,
-        );
+        logger.warn("chat_stream_retrying", {
+          attempt: attemptedRetries,
+          max_retries: maxRetries,
+          delay_ms: delayMs,
+          error_message: lastError.message,
+        });
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }

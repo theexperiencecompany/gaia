@@ -1,6 +1,22 @@
 """Voice agent constants — SSE protocol tokens, TTS flush thresholds, compiled regexes."""
 
 import re
+from typing import Final
+
+
+class LogTag:
+    """Greppable bracketed prefixes for real-time log lines, one per area.
+
+    Mirrors ``app.constants.log_tags.LogTag`` in the API: prefix every
+    ``log.info`` / ``log.warning`` / ``log.error`` / ``log.debug`` message so a
+    single token filters the area's logs (``grep '\\[VOICE-LLM\\]'`` /
+    ``|= "[VOICE-AGENT]"``). Structured context still goes in ``log.set`` fields.
+    """
+
+    VOICE: Final[str] = "[VOICE]"  # config, utils, general worker
+    LLM: Final[str] = "[VOICE-LLM]"  # llm.py — backend SSE streaming + TTS chunking
+    AGENT: Final[str] = "[VOICE-AGENT]"  # agent.py — session/turn lifecycle
+
 
 SSE_DATA_PREFIX = "data:"
 DONE_SENTINEL = "[DONE]"
@@ -94,6 +110,7 @@ VOICE_SYSTEM_PROMPT = (
 )
 
 __all__ = [
+    "LogTag",
     "SSE_DATA_PREFIX",
     "DONE_SENTINEL",
     "FRONTEND_STREAM_TOPIC",

@@ -6,6 +6,7 @@ from composio.types import Tool
 
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.trigger_config import TriggerConfig
 
@@ -85,13 +86,13 @@ class ComposioService:
                 "connection_id": connection_request.id,
             }
         except Exception as e:
-            log.error(f"Error connecting {provider} for {user_id}: {e}")
+            log.error(f"{LogTag.COMPOSIO} Error connecting {provider} for {user_id}: {e}")
             raise
 
     async def get_tools(self, tool_kit: str, exclude_tools: list[str] | None = None):
         """Get tools for a toolkit with unified master hooks."""
         log.set(composio_toolkit=tool_kit)
-        log.info(f"Loading {tool_kit} toolkit...")
+        log.info(f"{LogTag.COMPOSIO} Loading {tool_kit} toolkit...")
 
         tools = await asyncio.to_thread(
             lambda: self.composio.tools.get(  # type: ignore[call-overload]
@@ -158,9 +159,13 @@ class ComposioService:
 
             store = get_mcp_tools_store()
             await store.store_tools(toolkit_name.lower(), tool_metadata)
-            log.debug(f"Stored {len(tool_metadata)} Composio tool metadata for {toolkit_name}")
+            log.debug(
+                f"{LogTag.COMPOSIO} Stored {len(tool_metadata)} Composio tool metadata for {toolkit_name}"
+            )
         except Exception as e:
-            log.warning(f"Failed to store Composio tool metadata for {toolkit_name}: {e}")
+            log.warning(
+                f"{LogTag.COMPOSIO} Failed to store Composio tool metadata for {toolkit_name}: {e}"
+            )
 
     async def get_tools_by_name(
         self,
@@ -195,7 +200,7 @@ class ComposioService:
         )
 
         tools_time = time.time() - start_time
-        log.info(f"Tools loaded: {len(result)} tools in {tools_time:.3f}s")
+        log.info(f"{LogTag.COMPOSIO} Tools loaded: {len(result)} tools in {tools_time:.3f}s")
         existing = log.get().get("composio", {})
         log.set(
             composio={
@@ -264,7 +269,7 @@ class ComposioService:
 
             return tools[0] if tools else None
         except Exception as e:
-            log.error(f"Error getting tool {tool_name}: {e}")
+            log.error(f"{LogTag.COMPOSIO} Error getting tool {tool_name}: {e}")
             return None
 
     async def check_connection_status(self, providers: list[str], user_id: str) -> dict[str, bool]:
@@ -305,7 +310,7 @@ class ComposioService:
 
         except Exception as e:
             log.error(
-                f"Error checking connection status for providers {providers} and user {user_id}: {e}"
+                f"{LogTag.COMPOSIO} Error checking connection status for providers {providers} and user {user_id}: {e}"
             )
             return result
 
@@ -316,7 +321,9 @@ class ComposioService:
             )
             return connected_account
         except Exception as e:
-            log.error(f"Error retrieving connected account {connected_account_id}: {e}")
+            log.error(
+                f"{LogTag.COMPOSIO} Error retrieving connected account {connected_account_id}: {e}"
+            )
             return None
 
     async def delete_connected_account(self, user_id: str, provider: str) -> dict[str, str]:
@@ -345,7 +352,7 @@ class ComposioService:
 
             if not active_accounts:
                 log.info(
-                    f"No active connected account found for {provider} and user {user_id}, nothing to delete"
+                    f"{LogTag.COMPOSIO} No active connected account found for {provider} and user {user_id}, nothing to delete"
                 )
                 return {
                     "status": "success",
@@ -363,7 +370,7 @@ class ComposioService:
             await asyncio.gather(*delete_tasks)
 
             log.info(
-                f"Deleted {len(active_accounts)} connected account(s) for {provider} and user {user_id}"
+                f"{LogTag.COMPOSIO} Deleted {len(active_accounts)} connected account(s) for {provider} and user {user_id}"
             )
             return {
                 "status": "success",
@@ -373,7 +380,9 @@ class ComposioService:
         except ValueError:
             raise
         except Exception as e:
-            log.error(f"Error deleting connected account for {provider} and user {user_id}: {e}")
+            log.error(
+                f"{LogTag.COMPOSIO} Error deleting connected account for {provider} and user {user_id}: {e}"
+            )
             raise
         finally:
             # Always flush the proxy connected_account_id cache: on success the
@@ -391,10 +400,12 @@ class ComposioService:
         active_triggers = [t for t in triggers if t.auto_activate]
 
         if not active_triggers:
-            log.info(f"No auto-active triggers to subscribe for user {user_id}")
+            log.info(f"{LogTag.COMPOSIO} No auto-active triggers to subscribe for user {user_id}")
             return []
 
-        log.info(f"Subscribing to {len(active_triggers)} auto-active triggers for user {user_id}")
+        log.info(
+            f"{LogTag.COMPOSIO} Subscribing to {len(active_triggers)} auto-active triggers for user {user_id}"
+        )
 
         try:
 
@@ -412,7 +423,7 @@ class ComposioService:
 
             return await asyncio.gather(*tasks)
         except Exception as e:
-            log.error(f"Error handling subscribe trigger for {user_id}: {e}")
+            log.error(f"{LogTag.COMPOSIO} Error handling subscribe trigger for {user_id}: {e}")
 
 
 @lazy_provider(

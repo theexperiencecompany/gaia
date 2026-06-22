@@ -4,6 +4,7 @@ Asana trigger handler.
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
 from app.models.trigger_configs import AsanaTaskTriggerConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
@@ -79,7 +80,7 @@ class AsanaTriggerHandler(TriggerHandler):
         self, event_type: str, trigger_id: str, data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching an Asana trigger event."""
-        log.set(trigger={"provider": "asana", "event": event_type})
+        log.set_ns("trigger", integration_id="asana", trigger_type=event_type)
         try:
             query = {
                 "activated": True,
@@ -99,13 +100,13 @@ class AsanaTriggerHandler(TriggerHandler):
                     workflow = Workflow(**workflow_doc)
                     workflows.append(workflow)
                 except Exception as e:
-                    log.error(f"Error processing workflow document: {e}")
+                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
                     continue
 
             return workflows
 
         except Exception as e:
-            log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
 

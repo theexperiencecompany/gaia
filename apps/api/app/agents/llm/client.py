@@ -27,6 +27,7 @@ from app.constants.llm import (
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
 )
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
@@ -318,8 +319,10 @@ async def invoke_with_fallback(
             provider_name = type(llm).__name__
             last_error = e
             if i < len(llm_chain) - 1:
-                log.warning(f"LLM {provider_name} failed, falling back to next provider: {e}")
+                log.warning(
+                    f"{LogTag.AGENT} LLM {provider_name} failed, falling back to next provider: {e}"
+                )
             else:
-                log.error(f"All LLM providers failed. Last error: {e}")
+                log.error(f"{LogTag.AGENT} All LLM providers failed. Last error: {e}")
 
     raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")

@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.services.storage import (
     delete_session_dir,
     flush_fs_metrics,
@@ -34,7 +35,7 @@ async def prune_inactive_sessions(_ctx: dict[str, Any]) -> str:
                 pruned += 1
             except Exception as e:
                 log.warning(
-                    "[prune] failed",
+                    f"{LogTag.WORKER} prune failed",
                     user_id=user_id,
                     conv=conv_id,
                     error=str(e),

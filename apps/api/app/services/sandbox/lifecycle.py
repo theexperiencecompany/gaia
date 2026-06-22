@@ -33,6 +33,7 @@ from e2b import AsyncSandbox
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
     HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS,
     HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
@@ -75,6 +76,16 @@ class SandboxRateLimitError(SandboxAcquisitionError):
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _record(**fields: Any) -> None:
+    """Merge ``fields`` into the wide event's ``sandbox`` namespace.
+
+    Thin wrapper over ``log.set_ns`` so the multi-step acquire path accumulates
+    into one ``sandbox`` dict instead of clobbering it. Valid keys are the
+    ``SandboxContext`` schema in ``shared.py.wide_events``.
+    """
+    log.set_ns("sandbox", **fields)
 
 
 def _split_meta_url(url: str) -> tuple[str, str]:
@@ -150,12 +161,12 @@ async def _enforce_creation_limit(user_id: str) -> None:
         await enforce_rate_limit(user_id, SANDBOX_CREATION_FEATURE_KEY)
     except RateLimitExceededException as e:
         detail: dict[str, Any] = e.detail if isinstance(e.detail, dict) else {}
-        log.set(
-            sandbox_rate_limited=True,
-            sandbox_rate_limit_reset=detail.get("reset_time"),
-            sandbox_rate_limit_plan=detail.get("plan_required"),
+        _record(
+            rate_limited=True,
+            rate_limit_reset=detail.get("reset_time"),
+            rate_limit_plan=detail.get("plan_required"),
         )
-        log.warning(f"[sandbox] creation rate limit hit for user {user_id}")
+        log.warning(f"{LogTag.SANDBOX} creation rate limit hit user={user_id}")
         message = "sandbox creation limit reached"
         if detail.get("reset_time"):
             message += f"; resets at {detail['reset_time']}"
@@ -163,7 +174,7 @@ async def _enforce_creation_limit(user_id: str) -> None:
             message += f" (upgrade to {detail['plan_required'].upper()} for higher limits)"
         raise SandboxRateLimitError(message) from e
     except Exception as e:
-        log.error(f"[sandbox] creation limit check failed for user {user_id}: {e}")
+        log.error(f"{LogTag.SANDBOX} creation limit check failed user={user_id}: {e}")
         raise SandboxAcquisitionError(f"sandbox creation limit check failed: {e}") from e
 
 
@@ -179,17 +190,25 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
     # Sandbox-wide env is deliberately empty of credentials — see _mount_env
     # docstring. USER_ID is not a secret but we still scope it per-call so
     # there's no implicit reliance on sandbox-wide identity for security.
+    log.info(
+        f"{LogTag.SANDBOX} creating fresh sandbox user={user_id} shard={shard_id} "
+        f"template={settings.E2B_TEMPLATE_ID}"
+    )
     async with fs_timer(FsOps.SBX_CREATE):
         sbx = await async_sandbox_cls.create(
             template=settings.E2B_TEMPLATE_ID,
             timeout=SANDBOX_LIFETIME_SECONDS,
             metadata={"user_id": user_id, "shard_id": str(shard_id)},
         )
-    log.set(
-        sandbox_created=True,
-        sandbox_id=getattr(sbx, "sandbox_id", None),
-        sandbox_template_id=settings.E2B_TEMPLATE_ID,
-        sandbox_shard_id=shard_id,
+    sandbox_id = getattr(sbx, "sandbox_id", None)
+    _record(
+        created=True,
+        sandbox_id=sandbox_id,
+        template_id=settings.E2B_TEMPLATE_ID,
+        shard_id=shard_id,
+    )
+    log.info(
+        f"{LogTag.SANDBOX} provisioned sandbox {sandbox_id} user={user_id}; mounting workspace"
     )
     await _run_mount_script(sbx, _mount_env(user_id, shard_id))
     return sbx
@@ -237,10 +256,11 @@ async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
     # surface that so we know the sandbox FS isn't durable.
     stderr = getattr(result, "stderr", "") or ""
     if "WARN:" in stderr:
-        log.set(sandbox_mount_status="ephemeral_fallback")
-        log.warning(f"[sandbox] ephemeral /workspace fallback: {stderr.strip()}")
+        _record(mount_status="ephemeral_fallback")
+        log.warning(f"{LogTag.SANDBOX} ephemeral /workspace fallback: {stderr.strip()}")
     else:
-        log.set(sandbox_mount_status="mounted")
+        _record(mount_status="mounted")
+        log.info(f"{LogTag.SANDBOX} workspace mounted")
 
 
 # NOSONAR python:S7483 — `timeout` is the E2B server-side command-stream
@@ -333,7 +353,7 @@ async def _connect_sandbox(sandbox_id: str) -> Any | None:
                 timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS,
             )
         except Exception as e:
-            log.info(f"AsyncSandbox.connect({sandbox_id}) failed: {e}")
+            log.info(f"{LogTag.SANDBOX} connect failed sandbox={sandbox_id}: {e}")
             return None
 
 
@@ -365,7 +385,7 @@ async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
         return
     with contextlib.suppress(Exception):
         entry.watcher = await start_watcher_for(user_id, entry.sandbox)
-    log.set(sandbox_watcher_active=entry.watcher is not None)
+    _record(watcher_active=entry.watcher is not None)
 
 
 async def _stop_watcher(entry: PooledSandbox) -> None:
@@ -414,8 +434,8 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
     # was paused / killed since we last touched it), evict and create
     # fresh. Otherwise we'd hang for the full command timeout below.
     if not await _health_probe(entry.sandbox):
-        log.set(sandbox_cache_evicted="unhealthy")
-        log.info(f"[sandbox] cached handle unhealthy for {user_id}; evicting")
+        _record(cache_evicted="unhealthy")
+        log.info(f"{LogTag.SANDBOX} cached sandbox unhealthy user={user_id}; evicting")
         await _hard_evict(user_id, entry)
         return None
 
@@ -431,8 +451,8 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
 
     await _ensure_mounted(entry.sandbox, mount_env)
     if not await _verify_canary_or_die(entry):
-        log.set(sandbox_cache_evicted="canary_stale")
-        log.warning(f"Canary stale for user {user_id}; recreating sandbox")
+        _record(cache_evicted="canary_stale")
+        log.warning(f"{LogTag.SANDBOX} canary stale user={user_id}; recreating sandbox")
         await _hard_evict(user_id, entry)
         return None
 
@@ -442,19 +462,22 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
 
 async def _resume_existing_sandbox(doc: dict[str, Any], mount_env: dict[str, str]) -> Any | None:
     """Connect to a recorded sandbox (auto-resuming if paused); None if unusable."""
-    sbx = await _connect_sandbox(doc["sandbox_id"])
+    sandbox_id = doc["sandbox_id"]
+    log.info(f"{LogTag.SANDBOX} resuming sandbox {sandbox_id}")
+    sbx = await _connect_sandbox(sandbox_id)
     if sbx is None:
-        log.set(sandbox_resume_status="failed")
+        _record(resume_status="failed")
         return None
     if not await _health_probe(sbx):
-        log.set(sandbox_resume_status="unhealthy")
+        _record(resume_status="unhealthy")
         log.info(
-            f"[sandbox] resumed sandbox {doc['sandbox_id']} still unhealthy "
+            f"{LogTag.SANDBOX} resumed sandbox {sandbox_id} still unhealthy "
             f"after connect; falling through to fresh create"
         )
         return None
-    log.set(sandbox_resume_status="ok")
+    _record(resume_status="ok")
     await _ensure_mounted(sbx, mount_env)
+    log.info(f"{LogTag.SANDBOX} resumed sandbox {sandbox_id}")
     return sbx
 
 
@@ -462,15 +485,15 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     """Return a PooledSandbox for the user, creating/resuming as needed."""
     pool = get_sandbox_pool()
     shard_id = shard_for(user_id)
-    log.set(sandbox_shard_id=shard_id)
+    _record(operation="acquire", shard_id=shard_id)
     # Built once per acquire so _ensure_mounted can re-run mount.sh on a
     # stale FUSE without resorting to sandbox-wide credential env vars.
     mount_env = _mount_env(user_id, shard_id)
 
     cached = await _reuse_cached_entry(user_id, mount_env)
     if cached is not None:
-        log.set(
-            sandbox_source="cache",
+        _record(
+            source="cache",
             sandbox_id=getattr(cached.sandbox, "sandbox_id", None),
         )
         return cached
@@ -497,10 +520,10 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         sbx = await _create_fresh_sandbox(user_id, shard_id)
         workspace_version += 1
 
-    log.set(
-        sandbox_source=source,
+    _record(
+        source=source,
         sandbox_id=getattr(sbx, "sandbox_id", None),
-        sandbox_workspace_version=workspace_version,
+        workspace_version=workspace_version,
     )
 
     canary_ts = await _write_canary(sbx)
@@ -557,9 +580,10 @@ async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
             {"user_id": user_id},
             {"$set": {"state": "paused", "paused_at": _now()}},
         )
+        log.info(f"{LogTag.SANDBOX} paused idle sandbox user={user_id}")
         return True
     except Exception as e:
-        log.warning(f"Pause failed for user {user_id}: {e}")
+        log.warning(f"{LogTag.SANDBOX} pause failed user={user_id}: {e}")
         return False
 
 
@@ -584,6 +608,7 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
 
 async def _hard_evict(user_id: str, entry: PooledSandbox) -> None:
     """Drop a sandbox from the pool and best-effort kill it."""
+    log.info(f"{LogTag.SANDBOX} evicting sandbox user={user_id}")
     get_sandbox_pool().evict(user_id)
     await _cancel_pause_task(entry)
     await _stop_watcher(entry)
@@ -595,7 +620,8 @@ async def _hard_evict(user_id: str, entry: PooledSandbox) -> None:
 async def mark_sandbox_dead(user_id: str) -> None:
     """Forcibly drop the cached sandbox and mark it dead in Mongo. Caller's
     next acquire will create a fresh one."""
-    log.set(sandbox_marked_dead=True)
+    _record(marked_dead=True)
+    log.info(f"{LogTag.SANDBOX} marking sandbox dead user={user_id}")
     entry = get_sandbox_pool().get(user_id)
     if entry is not None:
         await _hard_evict(user_id, entry)
@@ -632,6 +658,7 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[Any]:
         async with fs_timer(FsOps.SBX_ACQUIRE):
             entry = await _acquire_or_create(user_id)
         entry.refcount += 1
+        _record(refcount=entry.refcount)
         sandbox_dead = False
         try:
             yield entry.sandbox
@@ -643,6 +670,8 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[Any]:
             # here means every tool (bash/read/write/edit) gets death-eviction
             # uniformly; none need their own detection.
             sandbox_dead = not await _health_probe(entry.sandbox)
+            if sandbox_dead:
+                _record(health_ok=False)
             raise
         finally:
             entry.refcount -= 1

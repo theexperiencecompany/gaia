@@ -7,6 +7,7 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
 from app.constants.cache import ONE_HOUR_TTL
+from app.constants.log_tags import LogTag
 from app.constants.search import (
     CRAWL4AI_PAGE_TIMEOUT_MS,
     DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
@@ -187,7 +188,9 @@ async def deep_research(
                 fetch_counter += 1
                 snippet = url_info.get("snippet", "").strip()
                 if snippet:
-                    log.warning(f"All fetchers failed for {url[:60]}, using search snippet")
+                    log.warning(
+                        f"{LogTag.TOOL} All fetchers failed for {url[:60]}, using search snippet"
+                    )
                     return {
                         **url_info,
                         "content": f"[Snippet only — full page unavailable]\n\n{snippet}",
@@ -245,5 +248,5 @@ async def deep_research(
         }
 
     except Exception as e:
-        log.error(f"Deep research error: {e}", exc_info=True)
+        log.error(f"{LogTag.TOOL} Deep research error: {e}", exc_info=True)
         return {"error": str(e), "query": query, "data": None}

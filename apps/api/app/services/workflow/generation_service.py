@@ -12,6 +12,7 @@ from app.agents.prompts.workflow_prompts import (
 from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.log_tags import LogTag
 from app.models.workflow_models import (
     GeneratedPromptOutput,
     GeneratedStep,
@@ -155,9 +156,9 @@ class WorkflowGenerationService:
         Raises:
             RuntimeError: If generation fails after all retry attempts.
         """
-        log.info(f"[WorkflowGen] ========== START: {title} ==========")
+        log.info(f"{LogTag.WORKFLOW} ========== START: {title} ==========")
 
-        log.info("[WorkflowGen] Getting tool registry...")
+        log.info(f"{LogTag.WORKFLOW} Getting tool registry...")
         tool_registry = await get_tool_registry()
 
         normalized_slugs = _normalize_slugs(selected_integrations)
@@ -199,7 +200,7 @@ class WorkflowGenerationService:
         )
 
         log.info(
-            f"[WorkflowGen] Categories: {len(category_names)} "
+            f"{LogTag.WORKFLOW} Categories: {len(category_names)} "
             f"(filtered={filter_active}, slugs={normalized_slugs})"
         )
 
@@ -217,11 +218,11 @@ class WorkflowGenerationService:
                 structured_llm = llm.with_structured_output(GeneratedWorkflow)
             except (NotImplementedError, TypeError):
                 log.info(
-                    "[WorkflowGen] LLM does not support with_structured_output, "
+                    f"{LogTag.WORKFLOW} LLM does not support with_structured_output, "
                     "using text parsing fallback"
                 )
 
-        log.info("[WorkflowGen] Formatting prompt...")
+        log.info(f"{LogTag.WORKFLOW} Formatting prompt...")
         prompt_context = prompt
         if description:
             prompt_context = (
@@ -243,15 +244,15 @@ class WorkflowGenerationService:
             tools="\n".join(tools_with_categories),
             categories=", ".join(category_names),
         )
-        log.info(f"[WorkflowGen] Prompt: {len(formatted_prompt)} chars")
+        log.info(f"{LogTag.WORKFLOW} Prompt: {len(formatted_prompt)} chars")
 
         last_error: Exception | None = None
         for attempt in range(_MAX_GENERATION_ATTEMPTS):
             try:
                 if attempt > 0:
-                    log.info(f"[WorkflowGen] Retry attempt {attempt} for: {title}")
+                    log.info(f"{LogTag.WORKFLOW} Retry attempt {attempt} for: {title}")
 
-                log.info("[WorkflowGen] === CALLING LLM ===")
+                log.info(f"{LogTag.WORKFLOW} === CALLING LLM ===")
 
                 if structured_llm:
                     result = await structured_llm.ainvoke(formatted_prompt)
@@ -268,10 +269,10 @@ class WorkflowGenerationService:
                     )
                     llm_response = await llm.ainvoke(fallback_prompt)
                     response_content = getattr(llm_response, "content", str(llm_response))
-                    log.debug(f"[WorkflowGen] Raw response ({len(response_content)} chars)")
+                    log.debug(f"{LogTag.WORKFLOW} Raw response ({len(response_content)} chars)")
                     result = _parse_workflow_response(response_content)
 
-                log.info("[WorkflowGen] === LLM RESPONDED ===")
+                log.info(f"{LogTag.WORKFLOW} === LLM RESPONDED ===")
 
                 if not result or not result.steps:
                     raise ValueError(
@@ -281,17 +282,17 @@ class WorkflowGenerationService:
 
                 steps_data = enrich_steps(result.steps)
 
-                log.info(f"[WorkflowGen] ========== DONE: {len(steps_data)} steps ==========")
+                log.info(f"{LogTag.WORKFLOW} ========== DONE: {len(steps_data)} steps ==========")
                 return steps_data
 
             except Exception as e:
                 last_error = e
                 log.warning(
-                    f"[WorkflowGen] Attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS} failed: {e}"
+                    f"{LogTag.WORKFLOW} Attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS} failed: {e}"
                 )
 
         log.error(
-            f"[WorkflowGen] ========== FAILED after {_MAX_GENERATION_ATTEMPTS} "
+            f"{LogTag.WORKFLOW} ========== FAILED after {_MAX_GENERATION_ATTEMPTS} "
             f"attempts: {last_error} =========="
         )
         raise RuntimeError(

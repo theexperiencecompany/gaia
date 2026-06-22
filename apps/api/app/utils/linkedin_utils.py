@@ -10,6 +10,7 @@ upload endpoint with the authenticated headers.
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.services.composio.proxy_client import proxy_request_sync
 from shared.py.wide_events import log
 
@@ -63,7 +64,7 @@ def get_author_urn(user_id: str, organization_id: str | None = None) -> str:
         if sub:
             return f"urn:li:person:{sub}"
     except Exception as e:
-        log.error(f"Error getting user info: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error getting user info: {e}")
 
     raise ValueError("Could not determine author URN")
 
@@ -92,7 +93,7 @@ def upload_image_from_url(
         image_urn = (init_result or {}).get("value", {}).get("image")
 
         if not upload_url or not image_urn:
-            log.error("Failed to get upload URL from LinkedIn")
+            log.error(f"{LogTag.INTEGRATION} Failed to get upload URL from LinkedIn")
             return None
 
         _proxy(
@@ -104,7 +105,7 @@ def upload_image_from_url(
         return image_urn
 
     except Exception as e:
-        log.error(f"Error uploading image: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error uploading image: {e}")
         return None
 
 
@@ -132,7 +133,7 @@ def upload_document_from_url(
         document_urn = (init_result or {}).get("value", {}).get("document")
 
         if not upload_url or not document_urn:
-            log.error("Failed to get upload URL from LinkedIn")
+            log.error(f"{LogTag.INTEGRATION} Failed to get upload URL from LinkedIn")
             return None
 
         _proxy(
@@ -144,5 +145,5 @@ def upload_document_from_url(
         return document_urn
 
     except Exception as e:
-        log.error(f"Error uploading document: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error uploading document: {e}")
         return None

@@ -156,12 +156,31 @@ export META_PASSWORD="${META_PASSWORD:-}"
 # future change re-grants sudo to the sandbox user, the daemon's environ
 # and cmdline stay locked down.
 JFS_LAUNCHER="/etc/gaia/jfs_launcher.py"
+JFS_LOG=/var/log/juicefs.log
 
-# Poll until $1 is a real mountpoint, up to $2 seconds (default 45). JuiceFS's
-# own --background readiness probe gives up after ~10s, but a remote meta (Neon
-# / cloud Postgres) often needs longer while the daemon finishes mounting.
-# Trusting the mount command's exit code would drop a slow-but-successful mount
-# to the ephemeral fallback, leaving /workspace unshared from the host.
+# Launch a juicefs mount as a detached FOREGROUND daemon (NO --background).
+#
+# Why not --background: in background mode juicefs forks a child daemon and the
+# parent runs an internal readiness self-check that gives up after ~10s, printing
+# `<FATAL>: mount point is not ready in 10 seconds` AND tearing the child down —
+# so a mount that just needs longer never completes. From an E2B sandbox the
+# metadata engine (remote CockroachDB) needs ~13s+ for the cold handshake +
+# per-table schema introspection, so --background turned a slow-but-fine mount
+# into a guaranteed FATAL → ephemeral fallback → canary-stale → recreate loop.
+#
+# Foreground juicefs has no such self-abort; `setsid ... &` detaches it into its
+# own session so the daemon survives this script exiting, and wait_mounted below
+# is the only readiness gate. fds are redirected so nothing ties the daemon to
+# mount.sh's stdio. The jfs_launcher PR_SET_DUMPABLE hardening still applies
+# (it runs before exec, inside setsid).
+launch_juicefs() {
+    setsid "$JFS_LAUNCHER" mount "$@" </dev/null >>"$JFS_LOG" 2>&1 &
+}
+
+# Poll until $1 is a real mountpoint, up to $2 seconds (default 45). The juicefs
+# daemon is launched detached-foreground (see launch_juicefs), so this poll —
+# not the mount command's exit code — is the real readiness gate: a slow-but-
+# successful cold mount is no longer dropped to the ephemeral fallback.
 wait_mounted() {
     local secs="${2:-45}"
     while [ "$secs" -gt 0 ]; do
@@ -172,64 +191,59 @@ wait_mounted() {
     return 1
 }
 
-mount_user_subdir() {
-    if mountpoint -q "$JFS_MOUNT"; then
-        return 0
-    fi
+# Each launch_*_subdir only STARTS the juicefs daemon (launch_juicefs is
+# setsid+&, non-blocking) — it does NOT wait for readiness. The three are all
+# independent clients of the same volume on different mountpoints, and each pays
+# ~13s of connect + SQL schema-sync. Launching them together lets that overlap,
+# so the whole mount waits ~once (~14s) instead of summing (~47s). The
+# wait_mounted + bind for each happens in the main flow below.
+#
+# Memory: the E2B sandbox has only ~1 GB RAM and runs all THREE daemons at once.
+# --buffer-size is an in-RAM read/write buffer, so the old 600+300+300 MB OOM-
+# killed the mount ~2/3 of the time. Keep the buffers small (128+32+32) so they
+# coexist in ~1 GB; reads go host-side in prod so a big sandbox buffer buys little.
+launch_user_subdir() {
+    mountpoint -q "$JFS_MOUNT" && return 0
     mkdir -p "$JFS_MOUNT" /var/cache/juicefs
-    # --subdir scopes the kernel-visible tree to the user's prefix — every
-    # path under $JFS_MOUNT inside the sandbox is rooted at /users/$USER_ID,
-    # and there is no way to navigate up to a sibling user.
-    # --backup-meta=0 : R2 ListObjects is unsorted; auto-backup would fail.
-    # no --writeback  : writeback loses data on sandbox kill — keep durable.
-    "$JFS_LAUNCHER" mount \
+    # --subdir scopes the kernel-visible tree to /users/$USER_ID — no parent
+    # navigation to a sibling user. --backup-meta=0: R2 ListObjects is unsorted.
+    # no --writeback: writeback loses data on sandbox kill — keep durable.
+    launch_juicefs \
         --subdir "/users/$USER_ID" \
         --backup-meta=0 \
         --cache-dir=/var/cache/juicefs \
-        --cache-size=8192 \
+        --cache-size=2048 \
         --max-uploads=20 \
-        --buffer-size=600 \
-        --background \
-        "$JFS_META_URL" "$JFS_MOUNT" 2>&1 || true
-    wait_mounted "$JFS_MOUNT" 45
+        --buffer-size=128 \
+        "$JFS_META_URL" "$JFS_MOUNT"
 }
 
-mount_skills_subdir() {
-    if mountpoint -q "$JFS_SKILLS_MOUNT"; then
-        return 0
-    fi
+launch_skills_subdir() {
+    mountpoint -q "$JFS_SKILLS_MOUNT" && return 0
     mkdir -p "$JFS_SKILLS_MOUNT"
     # Read-only mount of /skills/$USER_ID — backs /workspace/skills.
-    "$JFS_LAUNCHER" mount \
+    launch_juicefs \
         --subdir "/skills/$USER_ID" \
         --read-only \
         --backup-meta=0 \
         --cache-dir=/var/cache/juicefs \
-        --cache-size=1024 \
-        --buffer-size=300 \
-        --background \
-        "$JFS_META_URL" "$JFS_SKILLS_MOUNT" 2>&1 || true
-    wait_mounted "$JFS_SKILLS_MOUNT" 30
+        --cache-size=512 \
+        --buffer-size=32 \
+        "$JFS_META_URL" "$JFS_SKILLS_MOUNT"
 }
 
-mount_system_subdir() {
-    if mountpoint -q "$JFS_SYSTEM_MOUNT"; then
-        return 0
-    fi
+launch_system_subdir() {
+    mountpoint -q "$JFS_SYSTEM_MOUNT" && return 0
     mkdir -p "$JFS_SYSTEM_MOUNT"
-    # Read-only mount of the SHARED /_system subtree (same for every user) —
-    # backs /workspace/.system. Per-user workspaces symlink INDEX.md / GUIDE.md
-    # / builtin skills into here instead of holding their own copies.
-    "$JFS_LAUNCHER" mount \
+    # Read-only mount of the SHARED /_system subtree — backs /workspace/.system.
+    launch_juicefs \
         --subdir "/_system" \
         --read-only \
         --backup-meta=0 \
         --cache-dir=/var/cache/juicefs \
-        --cache-size=1024 \
-        --buffer-size=300 \
-        --background \
-        "$JFS_META_URL" "$JFS_SYSTEM_MOUNT" 2>&1 || true
-    wait_mounted "$JFS_SYSTEM_MOUNT" 30
+        --cache-size=512 \
+        --buffer-size=32 \
+        "$JFS_META_URL" "$JFS_SYSTEM_MOUNT"
 }
 
 # The per-user subtrees ``/users/$USER_ID`` and ``/skills/$USER_ID`` are
@@ -239,7 +253,14 @@ mount_system_subdir() {
 # visible" window out of the sandbox entirely; we never need an unrestricted
 # mount in here.
 
-if ! mount_user_subdir; then
+# Start all three daemons CONCURRENTLY so their ~13s connect+schema-sync overlaps
+# (waits ~once, not 3×). Then wait for + bind each below.
+launch_user_subdir
+launch_skills_subdir
+launch_system_subdir
+
+# Primary /workspace is required. Wait for it; on failure take the ephemeral path.
+if ! wait_mounted "$JFS_MOUNT" 45; then
     echo "WARN: juicefs user --subdir mount failed (metadata DB or R2 " \
          "unreachable) — falling back to ephemeral /workspace" >&2
     ensure_workspace_writable
@@ -260,28 +281,27 @@ fi
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE" 2>/dev/null || true
 chmod 0750 "$WORKSPACE" 2>/dev/null || true
 
-# Optional skills overlay — best-effort. If /skills/$USER_ID doesn't exist or
-# the second mount fails, /workspace/skills falls back to the user's own
-# materialized executor-skills subdir under /workspace/skills/.
+# Optional skills overlay — best-effort. Its daemon was already launched above,
+# so this only waits for readiness + binds. If /skills/$USER_ID doesn't exist or
+# the mount fails, /workspace/skills falls back to the materialized subdir.
 mkdir -p "$WORKSPACE/skills"
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/skills" 2>/dev/null || true
 # `mount --bind ... -o ro` is honoured on the bind itself only on newer
 # kernels; older kernels silently ignore the flag and require a remount to
 # actually mark the bind read-only. The underlying FUSE is `--read-only`
-# already (mount_skills_subdir uses --read-only), so writes still fail in
-# either case — but pin the bind itself ro explicitly so the read-only
-# surface is consistent at every layer.
-if mount_skills_subdir && mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills"; then
+# already, so writes still fail in either case — but pin the bind itself ro
+# explicitly so the read-only surface is consistent at every layer.
+if wait_mounted "$JFS_SKILLS_MOUNT" 30 && mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills"; then
     mount -o remount,bind,ro "$WORKSPACE/skills" 2>/dev/null || true
 fi
 
-# Optional shared-system overlay — best-effort. Backs /workspace/.system with the
-# single /_system subtree (INDEX.md, GUIDE.md docs, builtin skills). Per-user
-# symlinks point here so the bodies aren't copied per user. If /_system doesn't
-# exist or the mount fails, per-user workspaces simply keep their own copies.
+# Optional shared-system overlay — best-effort (daemon already launched). Backs
+# /workspace/.system with the single /_system subtree (INDEX.md, GUIDE.md docs,
+# builtin skills). If /_system doesn't exist or the mount fails, per-user
+# workspaces simply keep their own copies.
 mkdir -p "$WORKSPACE/.system"
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/.system" 2>/dev/null || true
-if mount_system_subdir && mount --bind "$JFS_SYSTEM_MOUNT" "$WORKSPACE/.system"; then
+if wait_mounted "$JFS_SYSTEM_MOUNT" 30 && mount --bind "$JFS_SYSTEM_MOUNT" "$WORKSPACE/.system"; then
     mount -o remount,bind,ro "$WORKSPACE/.system" 2>/dev/null || true
 fi
 

@@ -21,6 +21,7 @@ from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.model_pricing import calculate_token_cost
 from app.config.settings import settings
 from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
+from app.constants.log_tags import LogTag
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
@@ -125,7 +126,7 @@ async def save_conversation_async(
         try:
             await process_token_usage_and_cost(user_id, metadata)
         except Exception as e:  # noqa: BLE001 — billing failure must not block save
-            log.error(f"Failed to process token usage: {e}")
+            log.error(f"{LogTag.CHAT} Failed to process token usage: {e}")
 
     bot_timestamp = bot_timestamp or datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
@@ -217,4 +218,4 @@ async def process_token_usage_and_cost(user_id: str, metadata: dict[str, Any]) -
         )
 
     except Exception as e:  # noqa: BLE001 — billing failure must not block save
-        log.debug(f"Token usage processing failed: {e}")
+        log.debug(f"{LogTag.CHAT} Token usage processing failed: {e}")

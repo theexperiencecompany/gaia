@@ -5,6 +5,7 @@ from typing import Any
 
 from composio import Composio
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 from shared.py.wide_events import log
@@ -47,7 +48,7 @@ def register_slack_custom_tools(composio: Composio) -> list[str]:
             )
             mentions = mention_data.get("messages", {}).get("matches", [])
         except Exception as e:
-            log.debug(f"Slack mentions fetch skipped: {e}")
+            log.debug(f"{LogTag.TOOL} Slack mentions fetch skipped: {e}")
 
         mention_ts = {m.get("ts") for m in mentions}
         other_messages = [m for m in messages if m.get("ts") not in mention_ts]

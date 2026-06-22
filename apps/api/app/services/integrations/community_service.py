@@ -3,6 +3,7 @@
 from typing import Any
 
 from app.constants.cache import COMMUNITY_CACHE_TTL
+from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
@@ -72,7 +73,9 @@ async def _search_community_integrations(
         )
 
     # Fallback to MongoDB regex search
-    log.info(f"ChromaDB returned no results for '{query}', falling back to MongoDB")
+    log.info(
+        f"{LogTag.INTEGRATION} ChromaDB returned no results for '{query}', falling back to MongoDB"
+    )
     search_regex = {"$regex": query, "$options": "i"}
     mongo_query: dict[str, Any] = {
         "is_public": True,
