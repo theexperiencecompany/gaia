@@ -184,12 +184,11 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       );
       if (result.status === "connected") {
         toast.success(`Connected to ${integration.name}`, { id: toastId });
-        // Refetch all data to update sidebar
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["integrations"] }),
-          queryClient.invalidateQueries({ queryKey: ["tools", "available"] }),
-          queryClient.invalidateQueries({ queryKey: ["tools"] }),
-        ]);
+        // Invalidate in the background so the modal closes immediately;
+        // awaiting the refetches here held the modal open until they settled.
+        queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+        queryClient.invalidateQueries({ queryKey: ["tools"] });
       } else {
         toast.error(`Connection failed: ${result.status}`, { id: toastId });
       }
@@ -211,12 +210,14 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
   const confirmDisconnect = async () => {
     if (!onDisconnect) return;
+    // Dismiss the dialog immediately — the action runs in the background and
+    // surfaces any failure via toast.
+    setShowDisconnectDialog(false);
     setIsDisconnecting(true);
     try {
       await onDisconnect(integration.id);
     } finally {
       setIsDisconnecting(false);
-      setShowDisconnectDialog(false);
     }
   };
 
@@ -227,12 +228,14 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
   const confirmDelete = async () => {
     if (!onDelete) return;
+    // Dismiss the dialog immediately — the action runs in the background and
+    // surfaces any failure via toast.
+    setShowDeleteDialog(false);
     setIsDeleting(true);
     try {
       await onDelete(integration.id);
     } finally {
       setIsDeleting(false);
-      setShowDeleteDialog(false);
     }
   };
 

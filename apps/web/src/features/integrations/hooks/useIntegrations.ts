@@ -195,11 +195,10 @@ export const useIntegrations = (): UseIntegrationsReturn => {
             source: "integration_settings",
           });
           toast.success(`Connected to ${result.name}`, { id: toastId });
-          // Refetch all data
-          await Promise.all([
-            queryClient.refetchQueries({ queryKey: ["integrations"] }),
-            queryClient.refetchQueries({ queryKey: ["tools", "available"] }),
-          ]);
+          // Invalidate (not awaited refetch) so the button/sidebar update in the
+          // background instead of blocking on two integration/tools GETs.
+          queryClient.invalidateQueries({ queryKey: ["integrations"] });
+          queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
         } else if (result.status === "redirecting") {
           // OAuth redirect in progress - dismiss toast, browser will navigate
           toast.dismiss(toastId);
