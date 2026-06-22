@@ -1,55 +1,18 @@
 "use client";
 
-import { Avatar } from "@heroui/avatar";
-import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
-import { Spinner } from "@heroui/spinner";
-import { Tooltip } from "@heroui/tooltip";
-import {
-  ConnectIcon,
-  GlobalIcon,
-  LinkSquareIcon,
-  RedoIcon,
-  RemoveCircleIcon,
-  Share08Icon,
-  Unlink04Icon,
-  UserCircle02Icon,
-} from "@icons";
-import { useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
-import React, { useState } from "react";
-import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { RaisedButton } from "@/components/ui/raised-button";
+
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { integrationsApi } from "@/features/integrations/api/integrationsApi";
-import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
+import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type { Integration } from "@/features/integrations/types";
-import { toast } from "@/lib/toast";
-import { useUserStore } from "@/stores/userStore";
 
-// Confirmation copy for the disconnect/remove action. Custom integrations are
-// deleted (own) or removed from the workspace (forked); native integrations are
-// disconnected (revoke access) or removed when not yet connected.
-function getDisconnectDialogMessage(
-  name: string,
-  isCustom: boolean,
-  isOwnIntegration: boolean,
-  isConnected: boolean,
-): string {
-  if (isCustom) {
-    return isOwnIntegration
-      ? `Remove ${name}? This permanently deletes the integration and its tools, and can't be undone.`
-      : `Remove ${name} from your workspace? You can add it again from the marketplace later.`;
-  }
-  return isConnected
-    ? `Are you sure you want to disconnect ${name}? This will revoke access and you'll need to reconnect to use this integration again.`
-    : `Remove ${name} from your workspace? You can add it again anytime.`;
-}
+import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
+import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
 
 // Placeholder chip widths shown while an integration's tools load (on-demand
 // fetch or post-connect discovery). Distinct values double as React keys.
@@ -80,293 +43,19 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   isSettling = false,
 }) => {
   const isConnected = integration.status === "connected";
-  const showRetry = integration.status === "created";
-  const queryClient = useQueryClient();
-
   const {
     tools: integrationTools,
     mentionNames: toolMentionNames,
     isLoading: isLoadingTools,
   } = useIntegrationTools(integration, category);
+  const { isOwnIntegration, isForkedIntegration } =
+    useIntegrationOwnership(integration);
 
   // Show the tool skeleton both on the initial on-demand fetch and while a
   // just-connected integration is still discovering tools in the background —
   // either way the list is empty and would otherwise flash in.
   const showToolsSkeleton =
     integrationTools.length === 0 && (isLoadingTools || isSettling);
-
-  const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showPublishDialog, setShowPublishDialog] = useState(false);
-  const [showBearerModal, setShowBearerModal] = useState(false);
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isPublishing, setIsPublishing] = useState(false);
-
-  const currentUserId = useUserStore((state) => state.userId);
-  const currentUserName = useUserStore((state) => state.name);
-  const currentUserPicture = useUserStore((state) => state.profilePicture);
-
-  // Determine if this is a custom integration created by the current user
-  const isOwnIntegration = React.useMemo(() => {
-    if (integration.source !== "custom") return false;
-    if (!integration.createdBy) return false;
-    return integration.createdBy === currentUserId;
-  }, [integration.source, integration.createdBy, currentUserId]);
-
-  // Determine if this is a forked integration (added from marketplace, created by someone else)
-  const isForkedIntegration = React.useMemo(() => {
-    if (integration.source !== "custom") return false;
-    if (!integration.createdBy) return false;
-    return integration.createdBy !== currentUserId;
-  }, [integration.source, integration.createdBy, currentUserId]);
-
-  // Show delete/remove button for non-connected custom integrations
-  const showDeleteButton =
-    !isConnected && integration.source === "custom" && onDelete;
-
-  // Calculate how many buttons will be shown to determine icon-only mode
-  const buttonCount = [
-    !!onDisconnect,
-    integration.isPublic, // View on Marketplace
-    isOwnIntegration && integration.isPublic, // Unpublish
-    isOwnIntegration && !integration.isPublic, // Publish
-    integration.isPublic, // Share
-  ].filter(Boolean).length;
-
-  const useIconOnly = buttonCount >= 3;
-
-  // For custom integrations "Disconnect" actually removes them — deleting the
-  // integration outright if you created it, or removing it from your workspace
-  // if you added it from the marketplace. Word the action honestly per case.
-  const isCustom = integration.source === "custom";
-  // A not-yet-connected (created) integration is "removed" from the workspace,
-  // not "disconnected" — there's no active access to revoke.
-  const disconnectLabel = isCustom || !isConnected ? "Remove" : "Disconnect";
-  const disconnectDialogTitle =
-    isCustom || !isConnected ? "Remove Integration" : "Disconnect Integration";
-  const disconnectDialogMessage = getDisconnectDialogMessage(
-    integration.name,
-    isCustom,
-    isOwnIntegration,
-    isConnected,
-  );
-
-  const handleConnect = async () => {
-    if (isConnected || isConnecting) return;
-
-    // For bearer-auth integrations, show modal instead of direct connect
-    if (integration.authType === "bearer" && integration.requiresAuth) {
-      setShowBearerModal(true);
-      return;
-    }
-
-    setIsConnecting(true);
-    try {
-      const result = await onConnect(integration.id);
-      // On an OAuth redirect the browser is navigating away — keep the button in
-      // its loading state instead of flashing back to idle for a split second.
-      if (result?.status === "redirecting") {
-        return;
-      }
-      setIsConnecting(false);
-    } catch {
-      // Error toast is handled in the hook
-      setIsConnecting(false);
-    }
-  };
-
-  const handleBearerSubmit = async (_id: string, token: string) => {
-    const toastId = toast.loading(`Connecting to ${integration.name}...`);
-    try {
-      const result = await integrationsApi.connectIntegration(
-        integration.id,
-        token,
-      );
-      if (result.status === "connected") {
-        toast.success(`Connected to ${integration.name}`, { id: toastId });
-        // Refetch all data to update sidebar
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["integrations"] }),
-          queryClient.invalidateQueries({ queryKey: ["tools"] }),
-        ]);
-      } else {
-        toast.error(`Connection failed: ${result.status}`, { id: toastId });
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Connection failed",
-        { id: toastId },
-      );
-      throw error;
-    }
-  };
-
-  const handleDisconnect = () => {
-    // Allow removing a not-yet-connected (created) integration from the
-    // workspace too, not just disconnecting a connected one.
-    if (!onDisconnect) return;
-    setShowDisconnectDialog(true);
-  };
-
-  const confirmDisconnect = async () => {
-    if (!onDisconnect) return;
-    setIsDisconnecting(true);
-    try {
-      await onDisconnect(integration.id);
-    } finally {
-      setIsDisconnecting(false);
-      setShowDisconnectDialog(false);
-    }
-  };
-
-  const handleDelete = () => {
-    if (!onDelete) return;
-    setShowDeleteDialog(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!onDelete) return;
-    setIsDeleting(true);
-    try {
-      await onDelete(integration.id);
-    } finally {
-      setIsDeleting(false);
-      setShowDeleteDialog(false);
-    }
-  };
-
-  const handlePublish = () => {
-    if (isPublishing) return;
-    setShowPublishDialog(true);
-  };
-
-  const handleShare = async () => {
-    try {
-      await navigator.clipboard.writeText(
-        `${window.location.origin}/marketplace/${integration.slug}`,
-      );
-      toast.success("Link copied to clipboard!");
-    } catch {
-      toast.error("Failed to copy link to clipboard");
-    }
-  };
-
-  const confirmPublish = async () => {
-    setIsPublishing(true);
-    try {
-      if (integration.isPublic && onUnpublish) {
-        await onUnpublish(integration.id);
-      } else if (!integration.isPublic && onPublish) {
-        await onPublish(integration.id);
-      } else {
-        toast.error("Unable to publish: handler not available");
-      }
-    } catch {
-      // Error toast is handled in the hook
-    } finally {
-      setIsPublishing(false);
-      setShowPublishDialog(false);
-    }
-  };
-
-  // Dynamic text based on ownership (icon conveys the rest, keep it short)
-  const deleteButtonText = isForkedIntegration ? "Remove" : "Delete";
-  const deleteDialogTitle = isForkedIntegration
-    ? "Remove Integration"
-    : "Delete Integration";
-  const deleteDialogMessage = isForkedIntegration
-    ? `Are you sure you want to remove ${integration.name} from your GAIA? You can add it again from the marketplace.`
-    : `Are you sure you want to delete ${integration.name}? This action cannot be undone.`;
-  const deleteDialogConfirmText = isForkedIntegration ? "Remove" : "Delete";
-
-  const disconnectIcon = isCustom ? (
-    <RemoveCircleIcon width={18} height={18} className="outline-0!" />
-  ) : (
-    <Unlink04Icon width={18} height={18} className="outline-0!" />
-  );
-
-  let connectButtonContent: React.ReactNode;
-  if (isConnecting) {
-    connectButtonContent = (
-      <>
-        <Spinner size="sm" color="default" />
-        Connecting...
-      </>
-    );
-  } else if (showRetry) {
-    connectButtonContent = (
-      <>
-        <RedoIcon width={18} height={18} />
-        Retry
-      </>
-    );
-  } else {
-    connectButtonContent = (
-      <>
-        <ConnectIcon width={18} height={18} />
-        Connect
-      </>
-    );
-  }
-
-  // Not-connected (created) integration: Retry + a way to remove it (delete for
-  // custom, remove for native) when those actions exist; otherwise a single
-  // Connect/Retry button. Warning colour signals a retry, blue a first connect.
-  const notConnectedAction =
-    showRetry && (showDeleteButton || onDisconnect) ? (
-      <ButtonGroup variant="flat" className="w-full" fullWidth>
-        <Button
-          className="w-full"
-          color="warning"
-          onPress={handleConnect}
-          isLoading={isConnecting}
-          isDisabled={isConnecting}
-          startContent={
-            isConnecting ? undefined : <RedoIcon width={18} height={18} />
-          }
-        >
-          Retry
-        </Button>
-        {showDeleteButton ? (
-          <Button
-            className="w-full"
-            color="danger"
-            onPress={handleDelete}
-            isLoading={isDeleting}
-            isDisabled={isDeleting}
-            startContent={
-              <RemoveCircleIcon width={18} height={18} className="outline-0!" />
-            }
-          >
-            {deleteButtonText}
-          </Button>
-        ) : (
-          <Button
-            className="w-full"
-            color="danger"
-            onPress={handleDisconnect}
-            isLoading={isDisconnecting}
-            isDisabled={isDisconnecting}
-            startContent={
-              <RemoveCircleIcon width={18} height={18} className="outline-0!" />
-            }
-          >
-            {disconnectLabel}
-          </Button>
-        )}
-      </ButtonGroup>
-    ) : (
-      <RaisedButton
-        color={showRetry ? "#f5a524" : "#00bbff"}
-        className="font-medium text-black!"
-        onClick={handleConnect}
-        disabled={isConnecting}
-      >
-        {connectButtonContent}
-      </RaisedButton>
-    );
 
   return (
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
@@ -384,62 +73,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           )}
         </div>
         <div className="mb-0 mt-2 flex flex-col items-start gap-1">
-          <div className="flex items-center gap-2 flex-row mb-2">
-            {isConnected && (
-              <Chip size="sm" variant="flat" color="success" radius="sm">
-                Connected
-              </Chip>
-            )}
-            {integration.source === "custom" && (
-              <div className="flex items-center gap-1">
-                {isForkedIntegration && integration.creator && (
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    radius="sm"
-                    className="text-xs font-light relative text-foreground-500"
-                    startContent={
-                      integration.creator.picture ? (
-                        <Avatar
-                          src={integration.creator.picture || undefined}
-                          name={integration.creator.name || undefined}
-                          size="sm"
-                          className="h-4 w-4"
-                        />
-                      ) : (
-                        <UserCircle02Icon width={16} height={16} />
-                      )
-                    }
-                  >
-                    <div className="flex items-center gap-1.5 text-xs pl-0.5">
-                      <span>
-                        Created by {integration.creator.name || "Unknown"}
-                      </span>
-                    </div>
-                  </Chip>
-                )}
-                {isOwnIntegration && (
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    color="default"
-                    radius="sm"
-                    className="text-xs text-zinc-400 font-light relative right-1"
-                    startContent={
-                      <Avatar
-                        src={currentUserPicture || undefined}
-                        name={currentUserName || undefined}
-                        size="sm"
-                        className="h-4 w-4"
-                      />
-                    }
-                  >
-                    Created by You
-                  </Chip>
-                )}
-              </div>
-            )}
-          </div>
+          <IntegrationHeaderChips
+            integration={integration}
+            isConnected={isConnected}
+            isOwnIntegration={isOwnIntegration}
+            isForkedIntegration={isForkedIntegration}
+          />
 
           <h1 className="text-2xl font-semibold text-zinc-100">
             {integration.name}
@@ -449,112 +88,17 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             {integration.description}
           </p>
         </div>
-        {/* Connect/Disconnect buttons */}
-        {!isConnected ? (
-          notConnectedAction
-        ) : (
-          <ButtonGroup variant="flat" className="w-full" fullWidth>
-            {onDisconnect && (
-              <Tooltip content={`${disconnectLabel} this integration`}>
-                <Button
-                  isIconOnly={useIconOnly}
-                  className="w-full"
-                  color="danger"
-                  onPress={handleDisconnect}
-                  isLoading={isDisconnecting}
-                  isDisabled={isDisconnecting}
-                  aria-label={disconnectLabel}
-                  startContent={isDisconnecting ? undefined : disconnectIcon}
-                >
-                  {!useIconOnly && disconnectLabel}
-                </Button>
-              </Tooltip>
-            )}
 
-            {integration.isPublic && (
-              <Tooltip content="View on Marketplace">
-                <Button
-                  className="w-full"
-                  isIconOnly={useIconOnly}
-                  as={Link}
-                  href={`/marketplace/${integration.slug}`}
-                  color="primary"
-                  aria-label="View on Marketplace"
-                  startContent={
-                    <LinkSquareIcon
-                      width={18}
-                      height={18}
-                      className="outline-none!"
-                    />
-                  }
-                >
-                  {!useIconOnly && "View"}
-                </Button>
-              </Tooltip>
-            )}
+        <IntegrationActions
+          integration={integration}
+          isConnected={isConnected}
+          onConnect={onConnect}
+          onDisconnect={onDisconnect}
+          onDelete={onDelete}
+          onPublish={onPublish}
+          onUnpublish={onUnpublish}
+        />
 
-            {isOwnIntegration && integration.isPublic && (
-              <Tooltip content="Unpublish from Marketplace">
-                <Button
-                  isIconOnly={useIconOnly}
-                  color="warning"
-                  className="w-full"
-                  onPress={handlePublish}
-                  isLoading={isPublishing}
-                  isDisabled={isPublishing}
-                  aria-label="Unpublish"
-                  startContent={
-                    !isPublishing ? (
-                      <RemoveCircleIcon
-                        width={18}
-                        height={18}
-                        className="outline-none!"
-                      />
-                    ) : undefined
-                  }
-                >
-                  {!useIconOnly && "Unpublish"}
-                </Button>
-              </Tooltip>
-            )}
-
-            {isOwnIntegration && !integration.isPublic && (
-              <Tooltip content="Publish to Community Marketplace">
-                <Button
-                  isIconOnly={useIconOnly}
-                  className="w-full"
-                  color="primary"
-                  onPress={handlePublish}
-                  isLoading={isPublishing}
-                  isDisabled={isPublishing}
-                  aria-label="Publish"
-                  startContent={
-                    !isPublishing ? (
-                      <GlobalIcon width={18} height={18} />
-                    ) : undefined
-                  }
-                >
-                  {!useIconOnly && "Publish"}
-                </Button>
-              </Tooltip>
-            )}
-
-            {integration.isPublic && (
-              <Tooltip content="Copy share link to clipboard">
-                <Button
-                  isIconOnly={useIconOnly}
-                  className="w-full"
-                  color="default"
-                  onPress={handleShare}
-                  aria-label="Share"
-                  startContent={<Share08Icon width={18} height={18} />}
-                >
-                  {!useIconOnly && "Share"}
-                </Button>
-              </Tooltip>
-            )}
-          </ButtonGroup>
-        )}
         {isConnected && (
           <div className="mt-3">
             <IntegrationInstructionsEditor
@@ -607,56 +151,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           <IntegrationRelatedWorkflows integrationId={integration.id} />
         </div>
       </SidebarContent>
-
-      <ConfirmationDialog
-        isOpen={showDisconnectDialog}
-        title={disconnectDialogTitle}
-        message={disconnectDialogMessage}
-        confirmText={disconnectLabel}
-        cancelText="Cancel"
-        variant="destructive"
-        isLoading={isDisconnecting}
-        onConfirm={confirmDisconnect}
-        onCancel={() => setShowDisconnectDialog(false)}
-      />
-
-      <ConfirmationDialog
-        isOpen={showDeleteDialog}
-        title={deleteDialogTitle}
-        message={deleteDialogMessage}
-        confirmText={deleteDialogConfirmText}
-        cancelText="Cancel"
-        variant="destructive"
-        isLoading={isDeleting}
-        onConfirm={confirmDelete}
-        onCancel={() => setShowDeleteDialog(false)}
-      />
-
-      <ConfirmationDialog
-        isOpen={showPublishDialog}
-        title={
-          integration.isPublic ? "Unpublish Integration" : "Publish Integration"
-        }
-        message={
-          integration.isPublic
-            ? `Are you sure you want to unpublish ${integration.name}? It will no longer be visible in the community marketplace.`
-            : `Are you sure you want to publish ${integration.name} to the community marketplace? Your integration name, description, and tool list will be publicly visible.`
-        }
-        confirmText={integration.isPublic ? "Unpublish" : "Publish"}
-        cancelText="Cancel"
-        variant={integration.isPublic ? "destructive" : "default"}
-        isLoading={isPublishing}
-        onConfirm={confirmPublish}
-        onCancel={() => setShowPublishDialog(false)}
-      />
-
-      <BearerTokenModal
-        isOpen={showBearerModal}
-        onClose={() => setShowBearerModal(false)}
-        integrationId={integration.id}
-        integrationName={integration.name}
-        onSubmit={handleBearerSubmit}
-      />
     </div>
   );
 };

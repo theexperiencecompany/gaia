@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { integrationsApi } from "../api/integrationsApi";
+import { integrationKeys, toolKeys } from "../api/queryKeys";
 import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
@@ -56,7 +57,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["integrations", "me"],
+    queryKey: integrationKeys.me,
     queryFn: integrationsApi.getMyIntegrations,
     staleTime: 0, // Always refetch - status changes externally (OAuth callbacks)
     enabled: isAuthenticated,
@@ -106,6 +107,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     });
   }, [myIntegrationsData]);
 
+  // Read the latest integrations inside callbacks without making the callbacks
+  // depend on the array — otherwise every refetch changes their identity and
+  // churns consumers (e.g. the sidebar content rebuilt on every poll tick).
+  const integrationsRef = useRef(integrations);
+  integrationsRef.current = integrations;
+
   // Get status for a specific integration, derived from the /me catalog.
   const getIntegrationStatus = useCallback(
     (integrationId: string): IntegrationStatus | undefined => {
@@ -126,7 +133,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     async (
       integrationId: string,
     ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
-      const integration = integrations.find(
+      const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
       const integrationName = integration?.name || "Integration";
@@ -142,11 +149,10 @@ export const useIntegrations = (): UseIntegrationsReturn => {
             source: "integration_settings",
           });
           toast.success(`Connected to ${result.name}`, { id: toastId });
-          // Refetch all data
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ["integrations"] }),
-            queryClient.invalidateQueries({ queryKey: ["tools"] }),
-          ]);
+          // Invalidate (not awaited refetch) so the button/sidebar update in the
+          // background instead of blocking on the catalog + tools GETs.
+          queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+          queryClient.invalidateQueries({ queryKey: toolKeys.all });
         } else if (result.status === "redirecting") {
           // OAuth redirect in progress - dismiss toast, browser will navigate
           toast.dismiss(toastId);
@@ -168,7 +174,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         throw error;
       }
     },
-    [queryClient, integrations],
+    [queryClient],
   );
 
   // Disconnect integration
@@ -182,8 +188,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         toast.success("Integration disconnected");
         // Invalidate (not refetch) so the UI updates in the background while
         // the modal closes immediately.
-        queryClient.invalidateQueries({ queryKey: ["integrations"] });
-        queryClient.invalidateQueries({ queryKey: ["tools"] });
+        queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+        queryClient.invalidateQueries({ queryKey: toolKeys.all });
       } catch (error) {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -204,8 +210,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     mutationFn: integrationsApi.createCustomIntegration,
     onSuccess: () => {
       // Backend auto-connects and discovers tools, so refresh both caches.
-      queryClient.invalidateQueries({ queryKey: ["integrations"] });
-      queryClient.invalidateQueries({ queryKey: ["tools"] });
+      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+      queryClient.invalidateQueries({ queryKey: toolKeys.all });
     },
   });
 
@@ -220,8 +226,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const deleteMutation = useMutation({
     mutationFn: integrationsApi.deleteCustomIntegration,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["integrations"] });
-      queryClient.invalidateQueries({ queryKey: ["tools"] });
+      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+      queryClient.invalidateQueries({ queryKey: toolKeys.all });
     },
   });
 
@@ -235,7 +241,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   // Publish custom integration
   const publishIntegration = useCallback(
     async (integrationId: string): Promise<void> => {
-      const integration = integrations.find(
+      const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
       const integrationName = integration?.name || integrationId;
@@ -243,15 +249,16 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       const toastId = toast.loading(`Publishing ${integrationName}...`);
 
       try {
-        await integrationsApi.publishIntegration(integrationId);
+        const { publicUrl } =
+          await integrationsApi.publishIntegration(integrationId);
         toast.success(`${integrationName} published to community`, {
           id: toastId,
         });
-        await queryClient.invalidateQueries({ queryKey: ["integrations"] });
 
         if (typeof window !== "undefined") {
-          // Navigate to marketplace with refresh parameter to show published integration
-          window.location.href = "/marketplace?refresh=true";
+          // Navigate to the published integration's marketplace page. The full
+          // reload refetches data, so an explicit refetch here would be wasted.
+          window.location.href = publicUrl;
         }
       } catch (error) {
         toast.error(
@@ -261,13 +268,13 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         throw error;
       }
     },
-    [queryClient, integrations],
+    [],
   );
 
   // Unpublish custom integration
   const unpublishIntegration = useCallback(
     async (integrationId: string): Promise<void> => {
-      const integration = integrations.find(
+      const integration = integrationsRef.current.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
       const integrationName = integration?.name || integrationId;
@@ -277,7 +284,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       try {
         await integrationsApi.unpublishIntegration(integrationId);
         toast.success(`${integrationName} unpublished`, { id: toastId });
-        await queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        queryClient.invalidateQueries({ queryKey: integrationKeys.all });
       } catch (error) {
         toast.error(
           `Failed to unpublish: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -286,12 +293,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         throw error;
       }
     },
-    [queryClient, integrations],
+    [queryClient],
   );
 
   // Simple refetch all
   const refetch = useCallback(async () => {
-    await queryClient.refetchQueries({ queryKey: ["integrations"] });
+    await queryClient.refetchQueries({ queryKey: integrationKeys.all });
   }, [queryClient]);
 
   return {

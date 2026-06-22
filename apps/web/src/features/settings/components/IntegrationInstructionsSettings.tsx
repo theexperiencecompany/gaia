@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { integrationKeys } from "@/features/integrations/api/queryKeys";
 import { IntegrationInstructionsModal } from "@/features/integrations/components/IntegrationInstructionsModal";
 import { useIntegrationInstructions } from "@/features/integrations/hooks/useIntegrationInstructions";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -75,7 +76,7 @@ export function IntegrationInstructionsSettings() {
   // row is an instant cache hit.
   const instructionQueries = useQueries({
     queries: connected.map((integration) => ({
-      queryKey: ["integrations", "instructions", integration.id],
+      queryKey: integrationKeys.instructions(integration.id),
       queryFn: () => integrationsApi.getIntegrationInstructions(integration.id),
       staleTime: 0,
     })),

@@ -173,48 +173,6 @@ export const integrationsApi = {
   },
 
   /**
-   * Add an integration to user's workspace
-   */
-  addToWorkspace: async (
-    integrationId: string,
-  ): Promise<{
-    status: string;
-    integration_id: string;
-    connection_status: string;
-  }> => {
-    try {
-      const response = await apiService.post(
-        "/integrations/users/me/integrations",
-        {
-          integration_id: integrationId,
-        },
-      );
-      return response as {
-        status: string;
-        integration_id: string;
-        connection_status: string;
-      };
-    } catch (error) {
-      console.error(`Failed to add integration ${integrationId}:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Remove an integration from user's workspace
-   */
-  removeFromWorkspace: async (integrationId: string): Promise<void> => {
-    try {
-      await apiService.delete(
-        `/integrations/users/me/integrations/${integrationId}`,
-      );
-    } catch (error) {
-      console.error(`Failed to remove integration ${integrationId}:`, error);
-      throw error;
-    }
-  },
-
-  /**
    * Create a custom MCP integration.
    */
   createCustomIntegration: async (

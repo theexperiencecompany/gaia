@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { formatToolName, toTitleCase } from "@/features/chat/utils/chatUtils";
 
 import { integrationsApi } from "../api/integrationsApi";
+import { integrationKeys } from "../api/queryKeys";
 import type { Integration } from "../types";
 import { escapeRegExp } from "../utils/toolMentions";
 
@@ -28,7 +29,7 @@ export const useIntegrationTools = (
   categoryPrefix?: string,
 ): UseIntegrationToolsReturn => {
   const { data, isLoading } = useQuery({
-    queryKey: ["integrations", integration.id, "tools"],
+    queryKey: integrationKeys.tools(integration.id),
     queryFn: () => integrationsApi.getIntegrationTools(integration.id),
   });
 

@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { toast } from "@/lib/toast";
 
 import { integrationsApi } from "../api/integrationsApi";
+import { integrationKeys } from "../api/queryKeys";
 import type { IntegrationInstructions } from "../types";
 
 /**
@@ -13,7 +14,7 @@ import type { IntegrationInstructions } from "../types";
  */
 export const useIntegrationInstructions = (integrationId: string) => {
   const queryClient = useQueryClient();
-  const queryKey = ["integrations", "instructions", integrationId];
+  const queryKey = integrationKeys.instructions(integrationId);
 
   const { data, isLoading } = useQuery({
     queryKey,
