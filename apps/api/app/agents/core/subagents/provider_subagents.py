@@ -28,6 +28,19 @@ from shared.py.wide_events import log
 from .base_subagent import SubAgentFactory
 
 
+class SubagentUnavailableError(Exception):
+    """Raised when a per-user subagent graph cannot be built.
+
+    Carries a user-facing reason (e.g. the MCP server returned 402) so the
+    handoff layer can surface *why* instead of a generic "failed to create"
+    message. Without this the real cause is logged but lost to the caller.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
     """
     Create a provider subagent graph on-demand.
@@ -119,7 +132,7 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
     return graph
 
 
-async def create_subagent_for_user(integration_id: str, user_id: str) -> CompiledStateGraph | None:
+async def create_subagent_for_user(integration_id: str, user_id: str) -> CompiledStateGraph:
     """Build a per-user subagent graph.
 
     No memoization — every handoff rebuilds the graph from live MCPClient
@@ -130,7 +143,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str) -> Compile
     return await _build_user_subagent(integration_id, user_id)
 
 
-async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledStateGraph | None:
+async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledStateGraph:
     """Build a per-user subagent graph for an MCP integration.
 
     Pulls live tools from MCPClient. Lazy-connects on first use per integration;
@@ -147,7 +160,7 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
     mcp_config = subagent.mcp_config
     if not (subagent.managed_by == "mcp" and mcp_config):
         log.error(f"{LogTag.AGENT} {integration_id} is not an MCP integration")
-        return None
+        raise SubagentUnavailableError(f"{integration_id} is not an MCP integration")
 
     config = subagent.config
     mcp_client = await get_mcp_client(user_id=user_id)
@@ -170,14 +183,14 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
                 f"{LogTag.AGENT} _build_user_subagent: integration={integration_id} user={user_id} "
                 f"connect FAILED: {type(e).__name__}: {e}"
             )
-            return None
+            raise SubagentUnavailableError(str(e)) from e
 
     if not tools:
         log.error(
             f"{LogTag.AGENT} _build_user_subagent: integration={integration_id} user={user_id} "
             f"got 0 tools — cannot create subagent"
         )
-        return None
+        raise SubagentUnavailableError(f"{integration_id} exposed no usable tools")
 
     llm = init_llm()
 
@@ -203,9 +216,7 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
     return graph
 
 
-async def _create_custom_mcp_subagent(
-    integration_id: str, user_id: str
-) -> CompiledStateGraph | None:
+async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> CompiledStateGraph:
     """Build a subagent graph for a custom MCP integration from MongoDB.
 
     Pulls live tools from MCPClient (lazy-connects on first use). Namespace
@@ -214,7 +225,7 @@ async def _create_custom_mcp_subagent(
     custom_doc = await integrations_collection.find_one({"integration_id": integration_id})
     if not custom_doc:
         log.error(f"{LogTag.AGENT} Custom integration {integration_id} not found in MongoDB")
-        return None
+        raise SubagentUnavailableError(f"Custom integration {integration_id} not found")
 
     mcp_config = custom_doc.get("mcp_config", {})
     server_url = mcp_config.get("server_url", "")
@@ -229,11 +240,11 @@ async def _create_custom_mcp_subagent(
             tools = await mcp_client.connect(integration_id)
         except Exception as e:
             log.error(f"{LogTag.AGENT} Failed to get MCP tools for {integration_id}: {e}")
-            return None
+            raise SubagentUnavailableError(str(e)) from e
 
     if not tools:
         log.error(f"{LogTag.AGENT} No tools available for {integration_id}")
-        return None
+        raise SubagentUnavailableError(f"{integration_id} exposed no usable tools")
 
     llm = init_llm()
     agent_name = f"custom_mcp_{integration_id}"

@@ -596,7 +596,7 @@ async def update_tracked_todo_canvas(
         "If the section does not exist, it is appended as a new section.",
     ] = None,
 ) -> str:
-    """Append GAIA's working notes to an EXISTING tracked todo's canvas.
+    """Update GAIA's working notes on an EXISTING tracked todo's canvas.
 
     PRECONDITION: only call this when you already have a tracked todo for THIS initiative —
     one you created this turn (you hold its todo_id) or the run's "🎯 ACTIVE TODO". If no

@@ -16,15 +16,13 @@ import { DEV_MODEL_OPTIONS } from "@/features/chat/constants/devModels";
 import { isDevelopment } from "@/lib/fetchAll";
 import { useComposerModelSelection } from "@/stores/composerStore";
 
-function ModelLogo({
-  src,
-  alt,
-  size,
-}: {
-  src: string;
-  alt: string;
-  size: number;
-}) {
+interface ModelLogoProps {
+  readonly src: string;
+  readonly alt: string;
+  readonly size: number;
+}
+
+function ModelLogo({ src, alt, size }: ModelLogoProps) {
   return (
     <Image
       src={src}
@@ -37,17 +35,19 @@ function ModelLogo({
   );
 }
 
+interface ModelSelectProps {
+  readonly label: string;
+  readonly selectedId: string;
+  readonly onSelect: (id: string) => void;
+  readonly isDisabled: boolean;
+}
+
 function ModelSelect({
   label,
   selectedId,
   onSelect,
   isDisabled,
-}: {
-  label: string;
-  selectedId: string;
-  onSelect: (id: string) => void;
-  isDisabled: boolean;
-}) {
+}: ModelSelectProps) {
   const current = DEV_MODEL_OPTIONS.find((m) => m.id === selectedId);
 
   return (

@@ -237,7 +237,6 @@ async def execute_subagent_stream(
     """
     log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
     complete_message = ""
-    finish_task_result: str | None = None
     emitted_tool_calls: set[str] = set()
     tool_ran = False
 
@@ -305,7 +304,7 @@ async def execute_subagent_stream(
     # A subagent that only narrated and never ran a tool didn't do the work — return
     # an actionable signal so the parent re-issues the handoff instead of treating the
     # planning text as the result.
-    if finish_task_result is None and not tool_ran and not emitted_tool_calls and complete_message:
+    if not tool_ran and not emitted_tool_calls and complete_message:
         log.warning("subagent_returned_narration_only", subagent_name=ctx.agent_name)
         final_message = (
             f"The {ctx.agent_name} subagent ended without running any tool — it only "
@@ -313,13 +312,7 @@ async def execute_subagent_stream(
             "explicit instruction to perform the action."
         )
     else:
-        final_message = (
-            finish_task_result
-            if finish_task_result is not None
-            else complete_message
-            if complete_message
-            else "Task completed"
-        )
+        final_message = complete_message if complete_message else "Task completed"
     log.set(
         subagent={
             "name": ctx.agent_name,
