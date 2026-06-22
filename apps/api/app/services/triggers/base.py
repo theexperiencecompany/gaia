@@ -10,13 +10,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
-from shared.py.wide_events import log
+from shared.py.wide_events import TriggerContext, log
 
 
 def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
@@ -60,7 +61,7 @@ def _log_event_timing(data: dict[str, Any], now_utc: datetime) -> None:
     )
     if abs(webhook_lag) > 300:
         log.warning(
-            "webhook fired far from expected time — "
+            f"{LogTag.TRIGGER} webhook fired far from expected time — "
             f"lag={webhook_lag}s (positive = late, negative = early)",
         )
 
@@ -129,6 +130,7 @@ class TriggerHandler(ABC):
             operation="unregister",
             user_id=user_id,
             trigger_count=len(trigger_ids),
+            trigger=TriggerContext(operation="delete", result_count=len(trigger_ids)),
         )
         if not trigger_ids:
             return True
@@ -142,9 +144,9 @@ class TriggerHandler(ABC):
                     composio.composio.triggers.delete,
                     trigger_id=trigger_id,
                 )
-                log.debug(f"Deleted trigger: {trigger_id}")
+                log.debug(f"{LogTag.TRIGGER} Deleted trigger: {trigger_id}")
             except Exception as e:
-                log.error(f"Failed to delete trigger {trigger_id}: {e}")
+                log.error(f"{LogTag.TRIGGER} Failed to delete trigger {trigger_id}: {e}")
                 success = False
 
         return success
@@ -211,18 +213,22 @@ class TriggerHandler(ABC):
                 config_desc = (
                     config_description_fn(configs[i]) if config_description_fn else str(configs[i])
                 )
-                log.error(f"Trigger registration failed for {config_desc}: {result}")
+                log.error(
+                    f"{LogTag.TRIGGER} Trigger registration failed for {config_desc}: {result}"
+                )
             elif result is not None:
                 successful_ids.append(result)
 
         # If any failed, rollback all successful ones
         if has_failure:
             if successful_ids:
-                log.warning(f"Rolling back {len(successful_ids)} triggers due to partial failure")
+                log.warning(
+                    f"{LogTag.TRIGGER} Rolling back {len(successful_ids)} triggers due to partial failure"
+                )
                 rollback_ok = await self.unregister(user_id, successful_ids)
                 if not rollback_ok:
                     log.error(
-                        f"Rollback FAILED — orphaned Composio triggers: {successful_ids}. "
+                        f"{LogTag.TRIGGER} Rollback FAILED — orphaned Composio triggers: {successful_ids}. "
                         "Manual cleanup may be required."
                     )
 
@@ -247,7 +253,9 @@ class TriggerHandler(ABC):
                     del workflow_doc["_id"]
                 workflows.append(Workflow(**workflow_doc))
             except Exception as e:
-                log.error(f"Error processing workflow document ({log_context}): {e}")
+                log.error(
+                    f"{LogTag.TRIGGER} Error processing workflow document ({log_context}): {e}"
+                )
 
         return workflows
 
@@ -324,6 +332,9 @@ class TriggerHandler(ABC):
             Dict with 'status' and 'message' keys
         """
         now_utc = datetime.now(UTC)
+        trigger_ctx = TriggerContext(operation="dispatch", trigger_type=event_type)
+        if trigger_id:
+            trigger_ctx["trigger_id"] = trigger_id
         log.set(
             service="trigger_handler",
             operation="process_event",
@@ -331,6 +342,7 @@ class TriggerHandler(ABC):
             trigger_id=trigger_id,
             user_id=user_id,
             now_utc=now_utc.isoformat(),
+            trigger=trigger_ctx,
         )
 
         _log_event_timing(data, now_utc)
@@ -338,8 +350,10 @@ class TriggerHandler(ABC):
         # Find matching workflows using handler's find_workflows method
         # Each handler decides what identifiers it needs (trigger_id, user_id, etc.)
         workflows = await self.find_workflows(event_type, trigger_id or "", data)
+        log.set_ns("trigger", matched_count=len(workflows))
 
         if not workflows:
+            log.set_ns("trigger", fired=False)
             log.info(
                 "trigger_no_matching_workflows",
                 outcome="no_match",
@@ -359,6 +373,8 @@ class TriggerHandler(ABC):
                 workflow, data, signal_context_by_user, event_type, trigger_id
             ):
                 queued_count += 1
+
+        log.set_ns("trigger", fired=queued_count > 0, result_count=queued_count)
 
         return {
             "status": "success",

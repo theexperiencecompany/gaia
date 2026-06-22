@@ -40,120 +40,62 @@ export interface UseIntegrationsReturn {
   refetch: () => Promise<void>;
 }
 
-type UseFetchIntegrationStatusParams = {
-  refetchOnMount?: boolean | "always";
-};
-
-/**
- * Helper hook to fetch integration status with refetch options.
- * Used by pages that need to force-refresh status on mount.
- */
-export const useFetchIntegrationStatus = ({
-  refetchOnMount,
-}: UseFetchIntegrationStatusParams = {}) => {
-  return useQuery({
-    queryKey: integrationKeys.status,
-    queryFn: integrationsApi.getIntegrationStatus,
-    refetchOnMount: refetchOnMount,
-  });
-};
-
 /**
  * Single hook for managing all integrations (platform + custom).
- * No caching - always fetches fresh data.
+ * Backed by GET /integrations/me — the full catalog personalized for the user,
+ * each entry carrying its connection status.
  */
 export const useIntegrations = (): UseIntegrationsReturn => {
   const queryClient = useQueryClient();
-  // The platform catalog (/config) is public, but a user's own integrations
-  // and connection status require auth. Gate those on isAuthenticated so public
-  // pages (marketplace, use-cases) don't fire 401s for anonymous visitors.
+  // /integrations/me is personalized and requires auth, so gate it on
+  // isAuthenticated — public pages (marketplace, use-cases) must not fire 401s
+  // for anonymous visitors.
   const { isAuthenticated } = useAuth();
 
-  // Query for platform integration configuration
-  const { data: configData, isLoading: configLoading } = useQuery({
-    queryKey: integrationKeys.config,
-    queryFn: integrationsApi.getIntegrationConfig,
-  });
-
-  // Query for user's integrations (includes custom integrations with status)
   const {
-    data: userIntegrationsData,
-    isLoading: userIntegrationsLoading,
+    data: myIntegrationsData,
+    isLoading,
     error,
   } = useQuery({
-    queryKey: integrationKeys.user,
-    queryFn: integrationsApi.getUserIntegrations,
-    staleTime: 0, // Always refetch - user integrations are mutable state
+    queryKey: integrationKeys.me,
+    queryFn: integrationsApi.getMyIntegrations,
+    staleTime: 0, // Always refetch - status changes externally (OAuth callbacks)
     enabled: isAuthenticated,
   });
 
-  // Query for platform integration status
-  const { data: statusData, isLoading: statusLoading } = useQuery({
-    queryKey: integrationKeys.status,
-    queryFn: integrationsApi.getIntegrationStatus,
-    staleTime: 0, // Always refetch - status can change externally (OAuth callbacks)
-    enabled: isAuthenticated,
-  });
+  // Map the personalized catalog into the Integration shape the app consumes,
+  // sorted by status (created → connected → not_connected) then name.
+  const integrations = useMemo((): Integration[] => {
+    const items = myIntegrationsData?.integrations ?? [];
 
-  // Merge platform integrations with user's custom integrations
-  const integrations = useMemo(() => {
-    const platformConfigs = configData?.integrations || [];
-    const userIntegrations = userIntegrationsData?.integrations || [];
-    const statuses = statusData?.integrations || [];
-
-    // Build integration list from user's integrations (includes custom)
-    const userIntegrationsList: Integration[] = userIntegrations.map((ui) => ({
-      id: ui.integrationId,
-      name: ui.integration.name,
-      description: ui.integration.description,
-      category: ui.integration.category as Integration["category"],
-      status: ui.status as Integration["status"],
-      managedBy: ui.integration.managedBy,
-      source: ui.integration.source,
-      requiresAuth: ui.integration.requiresAuth,
-      authType: ui.integration.authType,
-      tools: ui.integration.tools,
-      iconUrl: ui.integration.iconUrl ?? undefined,
-      isPublic: ui.integration.isPublic ?? undefined,
-      createdBy: ui.integration.createdBy ?? undefined,
-      creator: ui.integration.creator ?? undefined,
-      slug: ui.integration.slug, // Always provided by backend
+    const mapped: Integration[] = items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      category: item.category as Integration["category"],
+      status: item.status,
+      managedBy: item.managedBy,
+      source: item.source,
+      requiresAuth: item.requiresAuth,
+      authType: item.authType ?? undefined,
+      isFeatured: item.isFeatured,
+      displayPriority: item.displayPriority,
+      available: item.available,
+      toolCount: item.toolCount,
+      iconUrl: item.iconUrl ?? undefined,
+      isPublic: item.isPublic ?? undefined,
+      createdBy: item.createdBy ?? undefined,
+      creator: item.creator ?? undefined,
+      slug: item.slug ?? "",
     }));
 
-    // Get IDs of integrations user already has
-    const userIntegrationIds = new Set(
-      userIntegrations.map((ui) => ui.integrationId),
-    );
-
-    // Build a Map for O(1) status lookups
-    const statusMap = new Map(statuses.map((s) => [s.integrationId, s]));
-
-    // Add platform integrations that user hasn't added yet
-    const availablePlatformIntegrations: Integration[] = platformConfigs
-      .filter((pi) => !userIntegrationIds.has(pi.id))
-      .map((pi) => {
-        const status = statusMap.get(pi.id);
-        return {
-          ...pi,
-          source: "platform" as const,
-          status: status?.connected ? "connected" : ("not_connected" as const),
-        };
-      });
-
-    // Sort by status: pending (created) first, then connected, then not_connected
-    // Within each status group, sort alphabetically by name
     const statusPriority: Record<string, number> = {
       created: 0,
       connected: 1,
       not_connected: 2,
     };
 
-    const allIntegrations = [
-      ...userIntegrationsList,
-      ...availablePlatformIntegrations,
-    ];
-
-    return allIntegrations.toSorted((a, b) => {
+    return mapped.toSorted((a, b) => {
       const priorityA = statusPriority[a.status] ?? 3;
       const priorityB = statusPriority[b.status] ?? 3;
 
@@ -163,7 +105,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
       return a.name.localeCompare(b.name);
     });
-  }, [configData, userIntegrationsData, statusData]);
+  }, [myIntegrationsData]);
 
   // Read the latest integrations inside callbacks without making the callbacks
   // depend on the array — otherwise every refetch changes their identity and
@@ -171,14 +113,19 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const integrationsRef = useRef(integrations);
   integrationsRef.current = integrations;
 
-  // Get status for a specific integration
+  // Get status for a specific integration, derived from the /me catalog.
   const getIntegrationStatus = useCallback(
     (integrationId: string): IntegrationStatus | undefined => {
-      return statusData?.integrations.find(
-        (s) => s.integrationId.toLowerCase() === integrationId.toLowerCase(),
+      const item = myIntegrationsData?.integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
+      if (!item) return undefined;
+      return {
+        integrationId: item.id,
+        connected: item.status === "connected",
+      };
     },
-    [statusData],
+    [myIntegrationsData],
   );
 
   // Connect integration
@@ -203,9 +150,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           });
           toast.success(`Connected to ${result.name}`, { id: toastId });
           // Invalidate (not awaited refetch) so the button/sidebar update in the
-          // background instead of blocking on two integration/tools GETs.
+          // background instead of blocking on the catalog + tools GETs.
           queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-          queryClient.invalidateQueries({ queryKey: toolKeys.available });
+          queryClient.invalidateQueries({ queryKey: toolKeys.all });
         } else if (result.status === "redirecting") {
           // OAuth redirect in progress - dismiss toast, browser will navigate
           toast.dismiss(toastId);
@@ -240,9 +187,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         });
         toast.success("Integration disconnected");
         // Invalidate (not refetch) so the UI updates in the background while
-        // the modal closes immediately. Awaiting refetch here blocked the
-        // sidebar for the duration of three integration GETs.
+        // the modal closes immediately.
         queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+        queryClient.invalidateQueries({ queryKey: toolKeys.all });
       } catch (error) {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -262,10 +209,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const createMutation = useMutation({
     mutationFn: integrationsApi.createCustomIntegration,
     onSuccess: () => {
-      // Refetch integrations to update connection status
-      queryClient.refetchQueries({ queryKey: integrationKeys.all });
-      // Refetch tools since backend auto-connects and discovers tools
-      queryClient.refetchQueries({ queryKey: toolKeys.available });
+      // Backend auto-connects and discovers tools, so refresh both caches.
+      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+      queryClient.invalidateQueries({ queryKey: toolKeys.all });
     },
   });
 
@@ -280,7 +226,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const deleteMutation = useMutation({
     mutationFn: integrationsApi.deleteCustomIntegration,
     onSuccess: () => {
-      queryClient.refetchQueries({ queryKey: integrationKeys.all });
+      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+      queryClient.invalidateQueries({ queryKey: toolKeys.all });
     },
   });
 
@@ -337,7 +284,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       try {
         await integrationsApi.unpublishIntegration(integrationId);
         toast.success(`${integrationName} unpublished`, { id: toastId });
-        await queryClient.refetchQueries({ queryKey: integrationKeys.all });
+        queryClient.invalidateQueries({ queryKey: integrationKeys.all });
       } catch (error) {
         toast.error(
           `Failed to unpublish: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -356,7 +303,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
   return {
     integrations,
-    isLoading: configLoading || userIntegrationsLoading || statusLoading,
+    isLoading,
     error: error as Error | null,
     getIntegrationStatus,
     connectIntegration,

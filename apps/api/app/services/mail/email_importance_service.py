@@ -4,9 +4,10 @@ from typing import Any
 
 from langchain_core.output_parsers import PydanticOutputParser
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import mail_collection
 from app.models.mail_models import EmailComprehensiveAnalysis
-from shared.py.wide_events import log
+from shared.py.wide_events import MailContext, log
 
 email_comprehensive_parser = PydanticOutputParser(pydantic_object=EmailComprehensiveAnalysis)
 
@@ -15,7 +16,7 @@ async def get_email_importance_summaries(
     user_id: str, limit: int = 50, important_only: bool = False
 ) -> dict[str, Any]:
     """Get email importance summaries for a user."""
-    log.set(mail_user_id=user_id, mail_limit=limit, mail_important_only=important_only)
+    log.set(user={"id": user_id}, mail=MailContext(operation="summarize"))
     try:
         # Build query filter
         query_filter: dict[str, Any] = {"user_id": user_id}
@@ -33,6 +34,7 @@ async def get_email_importance_summaries(
             if "analyzed_at" in email:
                 email["analyzed_at"] = email["analyzed_at"].isoformat()
 
+        log.set_ns("mail", result_count=len(emails), success=True)
         return {
             "status": "success",
             "emails": emails,
@@ -40,7 +42,7 @@ async def get_email_importance_summaries(
             "filtered_by_importance": important_only,
         }
     except Exception as e:
-        log.error(f"Error retrieving email summaries for user {user_id}: {e}")
+        log.error(f"{LogTag.MAIL} Error retrieving email summaries for user {user_id}: {e}")
         raise
 
 
@@ -48,12 +50,13 @@ async def get_single_email_importance_summary(
     user_id: str, message_id: str
 ) -> dict[str, Any] | None:
     """Get the importance summary for a specific email."""
-    log.set(mail_user_id=user_id, mail_message_id=message_id)
+    log.set(user={"id": user_id}, mail=MailContext(operation="summarize"))
     try:
         # Find the email in database
         email = await mail_collection.find_one({"user_id": user_id, "message_id": message_id})
 
         if not email:
+            log.set_ns("mail", result_count=0, success=True)
             return None
 
         # Convert ObjectId to string for JSON serialization
@@ -62,9 +65,12 @@ async def get_single_email_importance_summary(
         if "analyzed_at" in email:
             email["analyzed_at"] = email["analyzed_at"].isoformat()
 
+        log.set_ns("mail", result_count=1, success=True)
         return {"status": "success", "email": email}
     except Exception as e:
-        log.error(f"Error retrieving email summary for user {user_id}, message {message_id}: {e}")
+        log.error(
+            f"{LogTag.MAIL} Error retrieving email summary for user {user_id}, message {message_id}: {e}"
+        )
         raise
 
 
@@ -73,8 +79,8 @@ async def get_bulk_email_importance_summaries(
 ) -> dict[str, Any]:
     """Get importance summaries for multiple emails in bulk, indexed by message_id."""
     log.set(
-        mail_user_id=user_id,
-        mail_bulk_message_count=len(message_ids),
+        user={"id": user_id},
+        mail=MailContext(operation="summarize", message_count=len(message_ids)),
     )
     try:
         # Query for all emails matching the message IDs
@@ -98,6 +104,7 @@ async def get_bulk_email_importance_summaries(
         found_message_ids = set(email_summaries.keys())
         missing_message_ids = set(message_ids) - found_message_ids
 
+        log.set_ns("mail", result_count=len(found_message_ids), success=True)
         return {
             "status": "success",
             "emails": email_summaries,
@@ -107,5 +114,5 @@ async def get_bulk_email_importance_summaries(
             "missing_message_ids": list(missing_message_ids),
         }
     except Exception as e:
-        log.error(f"Error retrieving bulk email summaries for user {user_id}: {e}")
+        log.error(f"{LogTag.MAIL} Error retrieving bulk email summaries for user {user_id}: {e}")
         raise

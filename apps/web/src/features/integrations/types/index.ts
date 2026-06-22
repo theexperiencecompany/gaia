@@ -1,6 +1,18 @@
 /**
- * Integration system types and interfaces
+ * Integration system types and interfaces.
+ *
+ * The personalized-catalog and per-integration-tools shapes are backend-driven
+ * and shared with mobile — they live in `@shared/types` (the canonical source
+ * mirroring the API models). Re-exported here so feature code keeps importing
+ * from `../types`.
  */
+
+export type {
+  IntegrationStatusRecord as IntegrationStatus,
+  IntegrationToolsResponse,
+  MyIntegrationItem,
+  MyIntegrationsResponse,
+} from "@shared/types";
 
 /**
  * Integration category values - synced with backend INTEGRATION_CATEGORIES
@@ -31,9 +43,7 @@ export interface Integration {
   description: string;
   category: IntegrationCategoryValue;
   status: "connected" | "not_connected" | "created" | "error";
-  isSpecial?: boolean;
   displayPriority?: number;
-  includedIntegrations?: string[];
   isFeatured?: boolean;
   managedBy?: "self" | "composio" | "mcp" | "internal";
   available?: boolean;
@@ -43,64 +53,13 @@ export interface Integration {
   isPublic?: boolean;
   createdBy?: string;
   tools?: Array<{ name: string; description?: string }>;
+  toolCount?: number;
   iconUrl?: string;
   creator?: {
     name: string | null;
     picture: string | null;
   } | null;
   slug: string;
-}
-
-export interface IntegrationStatus {
-  integrationId: string;
-  connected: boolean;
-  lastConnected?: string;
-  error?: string;
-  metadata?: Record<string, unknown>;
-}
-
-// Marketplace API Types - matches backend IntegrationResponse with camelCase aliases
-export interface MarketplaceIntegration {
-  integrationId: string;
-  name: string;
-  description: string;
-  category: string;
-  managedBy: "self" | "composio" | "mcp" | "internal";
-  source: "platform" | "custom";
-  isFeatured: boolean;
-  displayPriority: number;
-  requiresAuth: boolean;
-  authType?: "oauth" | "bearer" | "none";
-  tools?: Array<{ name: string; description?: string }>;
-  iconUrl?: string;
-  isPublic?: boolean;
-  createdBy?: string;
-  // Publishing metadata
-  publishedAt?: string;
-  cloneCount?: number;
-  slug: string; // Always provided by backend
-  // Creator info (populated from users collection)
-  creator?: {
-    name: string | null;
-    picture: string | null;
-  } | null;
-}
-
-// Matches backend UserIntegrationResponse with camelCase aliases
-// Note: status is restricted to "created" | "connected" because this represents
-// the database record state. The broader Integration.status ("not_connected" | "error")
-// is derived at the API layer based on whether a UserIntegration record exists.
-export interface UserIntegration {
-  integrationId: string;
-  status: "created" | "connected";
-  createdAt: string;
-  connectedAt?: string;
-  integration: MarketplaceIntegration;
-}
-
-export interface UserIntegrationsResponse {
-  integrations: UserIntegration[];
-  total: number;
 }
 
 export interface CreateCustomIntegrationRequest {

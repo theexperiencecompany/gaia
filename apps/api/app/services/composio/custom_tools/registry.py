@@ -68,6 +68,7 @@ from app.agents.tools.integrations.twitter_tool import (
 from app.agents.tools.integrations.urgency_tool import (
     register_urgency_custom_tools,
 )
+from app.constants.log_tags import LogTag
 from app.services.composio.custom_tools.gmail_tools import (
     register_gmail_custom_tools,
 )
@@ -174,7 +175,9 @@ class CustomToolsRegistry:
             custom_tools_registered_count=len(tool_names),
             custom_tools_names=tool_names,
         )
-        log.info(f"Registered {len(tool_names)} custom tools for {normalized_toolkit} toolkit")
+        log.info(
+            f"{LogTag.COMPOSIO} Registered {len(tool_names)} custom tools for {normalized_toolkit} toolkit"
+        )
 
     def get_tool_names(self, toolkit: str) -> list[str]:
         """Get the custom tool names for a toolkit, or an empty list if none exist."""

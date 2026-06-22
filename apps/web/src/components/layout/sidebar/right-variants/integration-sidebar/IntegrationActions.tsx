@@ -86,7 +86,6 @@ export function IntegrationActions({
       toast.success(`Connected to ${integration.name}`);
       // Refresh data in the background so the sidebar reflects the new tools.
       queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-      queryClient.invalidateQueries({ queryKey: toolKeys.available });
       queryClient.invalidateQueries({ queryKey: toolKeys.all });
     },
   });

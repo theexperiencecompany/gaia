@@ -31,6 +31,8 @@ import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
 import { toast } from "@/lib/toast";
 import { IntegrationRichContent } from "./IntegrationRichContent";
+import { IntegrationUseCases } from "./IntegrationUseCases";
+import { ToolCard } from "./ToolCard";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
@@ -62,20 +64,24 @@ export function IntegrationDetailClient({
   // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
 
-  // Fetch user's integrations (only when authenticated) to check for duplicates
-  const { data: userIntegrationsData } = useQuery({
-    queryKey: integrationKeys.user,
-    queryFn: integrationsApi.getUserIntegrations,
+  // Fetch the user's personalized catalog (only when authenticated) to check
+  // whether they have already added this integration.
+  const { data: myIntegrationsData } = useQuery({
+    queryKey: integrationKeys.me,
+    queryFn: integrationsApi.getMyIntegrations,
     enabled: isAuthenticated,
   });
 
-  // Check if user already has this integration (match by integrationId)
+  // The /me catalog lists every integration with a connection status; the user
+  // "has" one once its status is anything other than not_connected.
   const alreadyHasIntegration = useMemo(() => {
-    if (!userIntegrationsData?.integrations) return false;
-    return userIntegrationsData.integrations.some(
-      (ui) => ui.integration.integrationId === integration.integrationId,
+    if (!myIntegrationsData?.integrations) return false;
+    return myIntegrationsData.integrations.some(
+      (item) =>
+        item.id === integration.integrationId &&
+        item.status !== "not_connected",
     );
-  }, [userIntegrationsData, integration.integrationId]);
+  }, [myIntegrationsData, integration.integrationId]);
 
   const isNative = integration.source === "platform";
 
@@ -263,7 +269,7 @@ export function IntegrationDetailClient({
 
             {isNative ? (
               <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-zinc-800 p-0.5">
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden">
                   <Image
                     src="/brand/gaia_logo.svg"
                     alt="GAIA"
@@ -356,6 +362,9 @@ export function IntegrationDetailClient({
             )}
           </div>
 
+          {/* What you can do: value prop above the technical tool list */}
+          <IntegrationUseCases integration={integration} />
+
           <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
             {integration.tools && integration.tools.length > 0 && (
               <CardHeader>
@@ -369,22 +378,11 @@ export function IntegrationDetailClient({
                 <ScrollShadow className="max-h-100">
                   <div className="grid grid-cols-2 gap-4">
                     {integration.tools.map((tool) => (
-                      <div
+                      <ToolCard
                         key={tool.name}
-                        className="bg-zinc-800/50 p-3 rounded-xl"
-                      >
-                        <p className="font-medium text-zinc-200">
-                          {tool.name
-                            .replace(/_/g, " ")
-                            .replace(/-/g, " ")
-                            .replace(/\b\w/g, (c) => c.toUpperCase())}
-                        </p>
-                        {tool.description && (
-                          <p className="text-sm text-zinc-400">
-                            {tool.description}
-                          </p>
-                        )}
-                      </div>
+                        name={tool.name}
+                        description={tool.description}
+                      />
                     ))}
                   </div>
                 </ScrollShadow>

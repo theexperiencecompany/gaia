@@ -8,12 +8,14 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { TextMorph } from "torph/react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { ShineBorder } from "@/components/ui/shine-border";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
+import { writePendingCheckout } from "../lib/pendingCheckout";
 
 interface PricingCardProps {
   title: string;
@@ -114,13 +116,15 @@ export function PricingCard({
     });
 
     if (price === 0) {
-      if (user) router.push("/c");
+      if (user.userId) router.push("/c");
       else router.push("/signup");
       return;
     }
 
-    if (!user) {
-      toast.error("Please sign in to subscribe to a plan");
+    if (!user.userId) {
+      // Carry the chosen plan across OAuth signup; useCheckoutResume picks it
+      // up once authenticated and goes straight to the Dodo checkout.
+      if (planId) writePendingCheckout(planId);
       router.push("/login");
       return;
     }
@@ -188,13 +192,16 @@ export function PricingCard({
   return (
     <div
       className={[
-        "flex h-full w-full flex-col overflow-hidden rounded-3xl",
+        "relative flex h-full w-full flex-col overflow-hidden rounded-3xl",
         "bg-zinc-800/50 backdrop-blur-lg",
         className,
       ]
         .filter(Boolean)
         .join(" ")}
     >
+      {isPro && (
+        <ShineBorder borderWidth={1} shineColor={["#00bbff", "#A7F3FF"]} />
+      )}
       {/* Header: plan name + current plan badge */}
       <div className="flex flex-col gap-1.5 p-6 pb-4">
         {/* Reserve the same vertical space on both cards for the label row */}

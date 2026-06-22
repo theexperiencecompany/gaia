@@ -8,8 +8,9 @@ import type {
   CreateCustomIntegrationResponse,
   Integration,
   IntegrationInstructions,
+  IntegrationToolsResponse,
+  MyIntegrationsResponse,
   PublicIntegrationResponse,
-  UserIntegrationsResponse,
 } from "../types";
 
 /**
@@ -38,13 +39,6 @@ function sanitizeRedirectUrl(url: string): string | null {
   }
 }
 
-export interface IntegrationStatusResponse {
-  integrations: Array<{
-    integrationId: string;
-    connected: boolean;
-  }>;
-}
-
 export interface IntegrationConfigResponse {
   integrations: Integration[];
 }
@@ -66,31 +60,25 @@ export const integrationsApi = {
   },
 
   /**
-   * Get integration status (connected/disconnected) for all platform integrations
+   * Get the full catalog personalized for the user: every platform integration
+   * plus the user's own custom ones, each annotated with connection status.
+   * Per-tool schemas are not included — only `toolCount`. Fetch one
+   * integration's tools on demand via `getIntegrationTools`.
    */
-  getIntegrationStatus: async (): Promise<IntegrationStatusResponse> => {
-    try {
-      const response = await apiService.get("/integrations/status");
-      return response as IntegrationStatusResponse;
-    } catch (error) {
-      console.error("Failed to get integration status:", error);
-      return { integrations: [] };
-    }
+  getMyIntegrations: async (): Promise<MyIntegrationsResponse> => {
+    return await apiService.get<MyIntegrationsResponse>("/integrations/me");
   },
 
   /**
-   * Get user's integrations with status
+   * Get the full tool list for a single integration, on demand.
    */
-  getUserIntegrations: async (): Promise<UserIntegrationsResponse> => {
-    try {
-      const response = await apiService.get(
-        "/integrations/users/me/integrations",
-      );
-      return response as UserIntegrationsResponse;
-    } catch (error) {
-      console.error("Failed to get user integrations:", error);
-      return { integrations: [], total: 0 };
-    }
+  getIntegrationTools: async (
+    integrationId: string,
+  ): Promise<IntegrationToolsResponse> => {
+    return await apiService.get<IntegrationToolsResponse>(
+      `/integrations/${integrationId}/tools`,
+      { silent: true },
+    );
   },
 
   /**

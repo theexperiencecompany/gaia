@@ -8,6 +8,7 @@ from app.agents.prompts.onboarding_prompts import (
     FIRST_MESSAGE_GENERATION_PROMPT_GMAIL,
     FIRST_MESSAGE_GENERATION_PROMPT_NO_GMAIL,
 )
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.models.onboarding_models import (
     InboxTriage,
@@ -98,7 +99,7 @@ async def generate_first_message(
         message = content.strip()
 
         log.info(
-            "[first_message] generated",
+            f"{LogTag.ONBOARDING} first_message generated",
             user_id=user_id,
             step="first_message",
             outcome="ok",
@@ -115,7 +116,7 @@ async def generate_first_message(
 
     except Exception as e:
         log.error(
-            "[first_message] failed",
+            f"{LogTag.ONBOARDING} first_message failed",
             user_id=user_id,
             step="first_message",
             outcome="failed",

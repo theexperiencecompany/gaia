@@ -17,6 +17,7 @@ from workos import WorkOSClient
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import UserUpdateResponse
 from app.services.analytics_service import track_logout
@@ -130,7 +131,7 @@ async def update_user_name(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"Error updating user name: {e!s}", exc_info=True)
+        log.error(f"{LogTag.API} Error updating user name: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update name")
 
 
@@ -181,7 +182,7 @@ async def update_user_timezone(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"Error updating timezone: {e!s}", exc_info=True)
+        log.error(f"{LogTag.API} Error updating timezone: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update timezone")
 
 
@@ -242,7 +243,7 @@ async def get_public_holo_card(card_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error fetching holo card: {e!s}", exc_info=True)
+        log.error(f"{LogTag.API} Error fetching holo card: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch holo card data")
 
 
@@ -296,7 +297,7 @@ async def update_holo_card_colors(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error updating holo card colors: {e!s}", exc_info=True)
+        log.error(f"{LogTag.API} Error updating holo card colors: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update holo card colors")
 
 
@@ -331,7 +332,9 @@ async def logout(
             try:
                 track_logout(user_id=user_id or user_email, email=user_email)
             except Exception as analytics_error:
-                log.warning(f"Failed to track logout analytics for {user_email}: {analytics_error}")
+                log.warning(
+                    f"{LogTag.API} Failed to track logout analytics for {user_email}: {analytics_error}"
+                )
 
         logout_url = session.get_logout_url()
 
@@ -351,5 +354,5 @@ async def logout(
         return response
 
     except Exception as e:
-        log.error(f"Logout error: {e}")
+        log.error(f"{LogTag.API} Logout error: {e}")
         raise HTTPException(status_code=500, detail="Logout failed")

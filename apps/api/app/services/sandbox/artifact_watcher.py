@@ -38,6 +38,7 @@ from app.agents.workspace.paths import (
     session_artifacts,
 )
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
 from app.services.artifact_events import (
     publish_artifact_event,
@@ -124,9 +125,9 @@ class ArtifactWatcher:
             else:
                 await self._start_watch_dir()
             self._stopped = False
-            log.set(sandbox_artifact_mode=self._mode)
+            log.set_ns("sandbox", artifact_mode=self._mode)
             log.info(
-                "[artifact-watcher] started",
+                f"{LogTag.ARTIFACT_WATCHER} started",
                 user_id=self.user_id,
                 mode=self._mode,
             )
@@ -134,7 +135,7 @@ class ArtifactWatcher:
             # Watcher is a latency optimization; never block sandbox acquire.
             self._stopped = True
             log.warning(
-                "[artifact-watcher] start failed",
+                f"{LogTag.ARTIFACT_WATCHER} start failed",
                 user_id=self.user_id,
                 mode=self._mode,
                 error=str(e),
@@ -218,7 +219,7 @@ class ArtifactWatcher:
         except JuiceFSUnavailable:
             return
         except Exception as e:
-            log.debug(f"[artifact-watcher] event dispatch failed: {e}")
+            log.debug(f"{LogTag.ARTIFACT_WATCHER} event dispatch failed: {e}")
 
     # -- accesslog mode ---------------------------------------------------
 
@@ -269,7 +270,7 @@ class ArtifactWatcher:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.debug(f"[artifact-watcher] rescan failed: {e}")
+            log.debug(f"{LogTag.ARTIFACT_WATCHER} rescan failed: {e}")
 
     async def _rescan_all(self) -> None:
         async with fs_timer(FsOps.WATCHER_RESCAN):

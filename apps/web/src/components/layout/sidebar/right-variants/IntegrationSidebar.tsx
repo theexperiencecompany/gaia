@@ -14,16 +14,9 @@ import type { Integration } from "@/features/integrations/types";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
 
-// Placeholder chip widths shown while a just-connected integration's tools are
-// still being discovered in the background. Distinct values double as React keys.
-const SETTLING_SKELETON_WIDTHS = [
-  "w-24",
-  "w-20",
-  "w-28",
-  "w-16",
-  "w-32",
-  "w-14",
-];
+// Placeholder chip widths shown while an integration's tools load (on-demand
+// fetch or post-connect discovery). Distinct values double as React keys.
+const TOOL_SKELETON_WIDTHS = ["w-24", "w-20", "w-28", "w-16", "w-32", "w-14"];
 
 interface IntegrationSidebarProps {
   integration: Integration;
@@ -50,13 +43,19 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   isSettling = false,
 }) => {
   const isConnected = integration.status === "connected";
-  const { tools: integrationTools, mentionNames: toolMentionNames } =
-    useIntegrationTools(integration, category);
+  const {
+    tools: integrationTools,
+    mentionNames: toolMentionNames,
+    isLoading: isLoadingTools,
+  } = useIntegrationTools(integration, category);
   const { isOwnIntegration, isForkedIntegration } =
     useIntegrationOwnership(integration);
 
-  const isDiscoveringTools =
-    isSettling && isConnected && integrationTools.length === 0;
+  // Show the tool skeleton both on the initial on-demand fetch and while a
+  // just-connected integration is still discovering tools in the background —
+  // either way the list is empty and would otherwise flash in.
+  const showToolsSkeleton =
+    integrationTools.length === 0 && (isLoadingTools || isSettling);
 
   return (
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
@@ -113,9 +112,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             Available tools ({integrationTools.length})
           </h2>
         )}
-        {isDiscoveringTools && (
+        {showToolsSkeleton && (
           <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">
-            Setting up tools
+            {isSettling ? "Setting up tools" : "Available tools"}
           </h2>
         )}
       </SidebarHeader>
@@ -138,10 +137,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             </div>
           </div>
         )}
-        {isDiscoveringTools && (
+        {showToolsSkeleton && (
           <div className="flex-1 min-h-0 overflow-y-auto pb-2">
             <div className="flex flex-wrap gap-2 content-start">
-              {SETTLING_SKELETON_WIDTHS.map((width) => (
+              {TOOL_SKELETON_WIDTHS.map((width) => (
                 <Skeleton key={width} className={`h-7 ${width} rounded-full`} />
               ))}
             </div>

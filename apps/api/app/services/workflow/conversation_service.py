@@ -2,6 +2,7 @@
 Workflow conversation service for managing single conversations per workflow.
 """
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import MessageModel, SystemPurpose, UpdateMessagesRequest
 from app.services.conversation_service import (
@@ -88,5 +89,7 @@ async def add_workflow_execution_messages(
         await update_messages(messages_request, user_dict)
 
     except Exception as e:
-        log.error(f"Failed to store messages in conversation {conversation_id}: {e!s}")
+        log.error(
+            f"{LogTag.WORKFLOW} Failed to store messages in conversation {conversation_id}: {e!s}"
+        )
         raise

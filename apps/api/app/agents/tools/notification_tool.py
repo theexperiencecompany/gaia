@@ -4,6 +4,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
+from app.constants.log_tags import LogTag
 from app.constants.notifications import ALL_AUTO_INJECTED_CHANNELS, CHANNEL_TYPE_INAPP
 from app.decorators import with_doc, with_rate_limiting
 from app.models.notification.notification_models import (
@@ -66,7 +67,7 @@ async def get_notifications(
         return {"notifications": notifications}
 
     except Exception as e:
-        log.error(f"Error getting notifications: {e!s}")
+        log.error(f"{LogTag.TOOL} Error getting notifications: {e!s}")
         return {"error": str(e), "notifications": []}
 
 
@@ -119,7 +120,7 @@ async def search_notifications(
         return {"notifications": matching_notifications}
 
     except Exception as e:
-        log.error(f"Error searching notifications: {e!s}")
+        log.error(f"{LogTag.TOOL} Error searching notifications: {e!s}")
         return {"error": str(e), "notifications": []}
 
 
@@ -144,7 +145,7 @@ async def get_notification_count(
         return {"count": total_count}
 
     except Exception as e:
-        log.error(f"Error getting notification count: {e!s}")
+        log.error(f"{LogTag.TOOL} Error getting notification count: {e!s}")
         return {"error": str(e), "count": 0}
 
 
@@ -181,7 +182,7 @@ async def mark_notifications_read(
         return {"success": success}
 
     except Exception as e:
-        log.error(f"Error marking notifications as read: {e!s}")
+        log.error(f"{LogTag.TOOL} Error marking notifications as read: {e!s}")
         return {"error": str(e), "success": False}
 
 
@@ -197,10 +198,12 @@ async def send_notification(
         "'Build failed'). Always write a meaningful title — never a generic app name.",
     ],
     channels: Annotated[
-        list[str] | None,
+        list[str],
         "Channel names to target ('whatsapp', 'telegram', 'discord', 'slack', 'inapp'). "
-        "Omit to use all user-enabled channels.",
-    ] = None,
+        "REQUIRED — pass exactly the channel(s) the user named. If the user did not name a "
+        "channel, ASK them which channel(s) they want before calling this tool. Never guess "
+        "and never broadcast to channels the user did not ask for.",
+    ],
     notification_type: Annotated[
         NotificationType | None,
         "Notification type: 'info', 'success', 'warning', or 'error'",
@@ -223,23 +226,32 @@ async def send_notification(
         resolved_message = message.strip()
         resolved_type = notification_type or NotificationType.INFO
 
-        # Build channel configs when specific channels are requested. Unknown
-        # channel names would otherwise be accepted and silently skipped at
-        # delivery, so reject them here where the LLM can read the error and
+        # Channels must be explicit: an empty list would auto-inject every
+        # user-enabled channel in the orchestrator, which over-notifies. Force
+        # the agent to name channels (and to ask the user when they didn't).
+        if not channels:
+            return {
+                "error": (
+                    "channels is required — specify which channel(s) to notify "
+                    f"({', '.join(ALL_AUTO_INJECTED_CHANNELS)}). If the user did not name a "
+                    "channel, ask them which one(s) they want before sending."
+                ),
+                "success": False,
+            }
+
+        # Unknown channel names would otherwise be accepted and silently skipped
+        # at delivery, so reject them here where the LLM can read the error and
         # self-correct.
-        channel_configs: list[ChannelConfig] = []
-        if channels:
-            unknown_channels = [ch for ch in channels if ch not in ALL_AUTO_INJECTED_CHANNELS]
-            if unknown_channels:
-                return {
-                    "error": (
-                        f"Unknown channel(s): {', '.join(unknown_channels)}. "
-                        f"Valid channels: {', '.join(ALL_AUTO_INJECTED_CHANNELS)}."
-                    ),
-                    "success": False,
-                }
-            channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
-        # Empty list triggers auto-injection of all user-enabled channels in the orchestrator
+        unknown_channels = [ch for ch in channels if ch not in ALL_AUTO_INJECTED_CHANNELS]
+        if unknown_channels:
+            return {
+                "error": (
+                    f"Unknown channel(s): {', '.join(unknown_channels)}. "
+                    f"Valid channels: {', '.join(ALL_AUTO_INJECTED_CHANNELS)}."
+                ),
+                "success": False,
+            }
+        channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
 
         request = NotificationRequest(
             user_id=user_id,
@@ -285,7 +297,7 @@ async def send_notification(
         return result
 
     except Exception as e:
-        log.error(f"Error sending notification: {e!s}")
+        log.error(f"{LogTag.TOOL} Error sending notification: {e!s}")
         return {"error": str(e), "success": False}
 
 
@@ -315,7 +327,7 @@ async def get_notification_preferences(
         }
 
     except Exception as e:
-        log.error(f"Error fetching notification preferences: {e!s}")
+        log.error(f"{LogTag.TOOL} Error fetching notification preferences: {e!s}")
         return {"error": str(e), "preferences": {}}
 
 

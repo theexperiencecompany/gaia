@@ -5,6 +5,7 @@ import asyncio
 from bson import ObjectId
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import integrations_collection, users_collection
 from app.models.integration_models import (
     Integration,
@@ -44,7 +45,7 @@ async def get_all_integrations(
                 integration = Integration(**doc)
                 custom_integrations.append(IntegrationResponse.from_integration(integration))
             except Exception as e:
-                log.warning(f"Failed to parse custom integration: {e}")
+                log.warning(f"{LogTag.INTEGRATION} Failed to parse custom integration: {e}")
 
         return custom_integrations
 
@@ -106,7 +107,7 @@ def assemble_integration_response(
         try:
             response = IntegrationResponse.from_integration(Integration(**custom_doc))
         except Exception as e:
-            log.error(f"Failed to parse integration: {e}")
+            log.error(f"{LogTag.INTEGRATION} Failed to parse integration: {e}")
             return None
     else:
         return None
@@ -145,7 +146,7 @@ async def get_integration_details(integration_id: str) -> IntegrationResponse | 
                 {"name": 1, "picture": 1},
             )
         except Exception as e:
-            log.debug(f"Failed to fetch creator info for {created_by}: {e}")
+            log.debug(f"{LogTag.INTEGRATION} Failed to fetch creator info for {created_by}: {e}")
 
     return assemble_integration_response(
         resolved.platform_integration, resolved.custom_doc, stored_tools, creator_doc

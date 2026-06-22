@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 from shared.py.settings import BaseAppSettings
 from shared.py.wide_events import log
+from src.constants import LogTag
 
 # Load API's .env for shared Infisical bootstrap vars
 _api_env_path = Path(__file__).parent.parent.parent / "api" / ".env"
@@ -48,7 +49,7 @@ def bootstrap_settings() -> VoiceAgentSettings:
     its config from the inherited env without re-fetching from Infisical.
     """
     settings = get_settings()
-    log.info("Voice agent settings initialized")
+    log.info(f"{LogTag.VOICE} Voice agent settings initialized")
     return settings
 
 

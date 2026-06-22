@@ -9,6 +9,7 @@ import resend
 
 from app.config.settings import settings
 from app.constants.email import MAILTO_PREFIX
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from shared.py.wide_events import log
@@ -76,11 +77,11 @@ async def send_support_team_notification(
                         "reply_to": notification_data.user_email,
                     }
                 )
-                log.info(f"Support notification sent to {support_email}")
+                log.info(f"{LogTag.MAIL} Support notification sent to {support_email}")
             except Exception as e:
-                log.error(f"Failed to send support email to {support_email}: {e!s}")
+                log.error(f"{LogTag.MAIL} Failed to send support email to {support_email}: {e!s}")
     except Exception as e:
-        log.error(f"Error sending support team notifications: {e!s}")
+        log.error(f"{LogTag.MAIL} Error sending support team notifications: {e!s}")
         raise
 
 
@@ -100,9 +101,9 @@ async def send_support_to_user_email(
                 "html": html_content,
             }
         )
-        log.info(f"Confirmation email sent to user {notification_data.user_email}")
+        log.info(f"{LogTag.MAIL} Confirmation email sent to user {notification_data.user_email}")
     except Exception as e:
-        log.error(f"Failed to send confirmation email to user: {e!s}")
+        log.error(f"{LogTag.MAIL} Failed to send confirmation email to user: {e!s}")
         raise
 
 
@@ -129,7 +130,7 @@ def generate_support_team_email_html(data: SupportEmailNotification) -> str:
 
         return html_content
     except Exception as e:
-        log.error(f"Error generating support team email HTML: {e!s}")
+        log.error(f"{LogTag.MAIL} Error generating support team email HTML: {e!s}")
         raise
 
 
@@ -155,7 +156,7 @@ def generate_support_to_user_email_html(data: SupportEmailNotification) -> str:
 
         return html_content
     except Exception as e:
-        log.error(f"Error generating support to user email HTML: {e!s}")
+        log.error(f"{LogTag.MAIL} Error generating support to user email HTML: {e!s}")
         raise
 
 
@@ -185,9 +186,9 @@ async def send_pro_subscription_email(
                 "reply_to": CONTACT_EMAIL,
             }
         )
-        log.info(f"Pro subscription welcome email sent to {user_email}")
+        log.info(f"{LogTag.MAIL} Pro subscription welcome email sent to {user_email}")
     except Exception as e:
-        log.error(f"Failed to send pro subscription email to {user_email}: {e!s}")
+        log.error(f"{LogTag.MAIL} Failed to send pro subscription email to {user_email}: {e!s}")
         raise
 
 
@@ -209,9 +210,9 @@ async def send_welcome_email(user_email: str, user_name: str | None = None) -> N
                 "reply_to": CONTACT_EMAIL,
             }
         )
-        log.info(f"Welcome email sent to {user_email}")
+        log.info(f"{LogTag.MAIL} Welcome email sent to {user_email}")
     except Exception as e:
-        log.error(f"Failed to send welcome email to {user_email}: {e!s}")
+        log.error(f"{LogTag.MAIL} Failed to send welcome email to {user_email}: {e!s}")
         raise
 
 
@@ -238,9 +239,9 @@ async def add_contact_to_resend(user_email: str, user_name: str | None = None) -
         }
 
         resend.Contacts.create(params)
-        log.info(f"Contact added to Resend audience: {user_email}")
+        log.info(f"{LogTag.MAIL} Contact added to Resend audience: {user_email}")
     except Exception as e:
-        log.error(f"Failed to add contact to Resend audience for {user_email}: {e!s}")
+        log.error(f"{LogTag.MAIL} Failed to add contact to Resend audience for {user_email}: {e!s}")
         # Don't raise exception - user creation should still succeed even if contact addition fails
 
 
@@ -260,7 +261,7 @@ def generate_welcome_email_html(user_name: str | None = None) -> str | None:
 
         return html_content
     except Exception as e:
-        log.error(f"Error generating welcome email HTML: {e!s}")
+        log.error(f"{LogTag.MAIL} Error generating welcome email HTML: {e!s}")
         raise
 
 
@@ -277,7 +278,7 @@ async def send_inactive_user_email(
         if user_id:
             user = await users_collection.find_one({"_id": ObjectId(user_id)})
             if not user:
-                log.error(f"User {user_id} not found")
+                log.error(f"{LogTag.MAIL} User {user_id} not found")
                 return False
 
             now = datetime.now(UTC)
@@ -323,11 +324,11 @@ async def send_inactive_user_email(
                 {"$set": {"last_inactive_email_sent": datetime.now(UTC)}},
             )
 
-        log.info(f"Inactive user email sent to {user_email}")
+        log.info(f"{LogTag.MAIL} Inactive user email sent to {user_email}")
         return True
 
     except Exception as e:
-        log.error(f"Failed to send inactive user email to {user_email}: {e!s}")
+        log.error(f"{LogTag.MAIL} Failed to send inactive user email to {user_email}: {e!s}")
         raise
 
 
@@ -345,7 +346,7 @@ def generate_pro_subscription_html(
         )
         return html_content
     except Exception as e:
-        log.error(f"Error generating pro subscription email HTML: {e!s}")
+        log.error(f"{LogTag.MAIL} Error generating pro subscription email HTML: {e!s}")
         raise
 
 
@@ -362,5 +363,5 @@ def generate_inactive_user_email_html(user_name: str | None = None) -> str:
 
         return html_content
     except Exception as e:
-        log.error(f"Error generating inactive user email HTML: {e!s}")
+        log.error(f"{LogTag.MAIL} Error generating inactive user email HTML: {e!s}")
         raise

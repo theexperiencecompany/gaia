@@ -16,7 +16,10 @@ import type {
   BotWorkflow,
   PlatformName,
 } from "../types";
+import { createBotLogger } from "./logger";
 import { isTableRow, isTableSeparator } from "./text";
+
+const logger = createBotLogger("shared", "formatters");
 
 /**
  * Formats a workflow for display in a bot message.
@@ -554,6 +557,6 @@ export function formatBotError(error: unknown): string {
     return "⚠️ Response was incomplete. Please try again.";
   }
 
-  console.error("Unhandled bot error:", error);
+  logger.error("unhandled_bot_error", undefined, error);
   return "❌ Something went wrong. Please try again later.";
 }

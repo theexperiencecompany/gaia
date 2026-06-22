@@ -14,6 +14,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     tiered_limiter,
 )
+from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.services.payments.payment_service import payment_service
@@ -73,7 +74,9 @@ def with_rate_limiting(
 
                 # Skip rate limiting for system operations if configured
                 if bypass_for_system and initiator == "backend":
-                    log.debug(f"Bypassing rate limiting for system operation: {actual_feature_key}")
+                    log.debug(
+                        f"{LogTag.API} Bypassing rate limiting for system operation: {actual_feature_key}"
+                    )
                 else:
                     try:
                         user_plan = await payment_service.get_cached_plan_type(user_id)
@@ -99,13 +102,13 @@ def with_rate_limiting(
                         )
 
                         log.debug(
-                            f"Rate limit check passed for user {user_id}, feature {actual_feature_key}"
+                            f"{LogTag.API} Rate limit check passed for user {user_id}, feature {actual_feature_key}"
                         )
 
                     except RateLimitExceededException as e:
                         # Convert to agent-friendly exception
                         log.warning(
-                            f"Rate limit exceeded for user {user_id}, feature {actual_feature_key}"
+                            f"{LogTag.API} Rate limit exceeded for user {user_id}, feature {actual_feature_key}"
                         )
                         detail_dict = {}
                         reset_time = None
@@ -150,11 +153,13 @@ def with_rate_limiting(
                         )
                     except Exception as e:
                         log.error(
-                            f"Rate limiting failed for user {user_id}, feature {actual_feature_key}: {e!s}"
+                            f"{LogTag.API} Rate limiting failed for user {user_id}, feature {actual_feature_key}: {e!s}"
                         )
                         raise
             else:
-                log.warning(f"No user context for {actual_feature_key}, skipping rate limiting")
+                log.warning(
+                    f"{LogTag.API} No user context for {actual_feature_key}, skipping rate limiting"
+                )
 
             # Execute the original function
             result = await func(*args, **kwargs)
@@ -188,7 +193,7 @@ def with_rate_limiting(
                 tokens_used = result.get("tokens_used", 0)
                 if tokens_used > 0:
                     log.debug(
-                        f"Token usage recorded: {tokens_used} tokens for feature {actual_feature_key}"
+                        f"{LogTag.API} Token usage recorded: {tokens_used} tokens for feature {actual_feature_key}"
                     )
 
             return result
@@ -303,7 +308,7 @@ def set_user_context(user_id: str, initiator: str = "frontend", **kwargs):
     """Set user context to avoid parameter pollution."""
     context = {"user_id": user_id, "initiator": initiator, **kwargs}
     user_context.set(context)
-    log.debug(f"Set user context for {user_id} (initiator: {initiator})")
+    log.debug(f"{LogTag.API} Set user context for {user_id} (initiator: {initiator})")
     return context
 
 
@@ -311,7 +316,7 @@ def clear_user_context():
     """Clear user context."""
     user_context.set(None)
     rate_limit_context.set(None)
-    log.debug("Cleared user context")
+    log.debug(f"{LogTag.API} Cleared user context")
 
 
 def get_current_rate_limit_info() -> dict[str, Any] | None:

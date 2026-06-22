@@ -14,6 +14,7 @@ import anyio
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 TIMEOUT_EXCLUDE_PREFIXES: tuple[str, ...] = (
@@ -78,6 +79,6 @@ class RequestTimeoutMiddleware:
                 await response(scope, receive, send)
             else:
                 log.warning(
-                    f"Request to {path} timed out after {self.timeout}s "
+                    f"{LogTag.API} Request to {path} timed out after {self.timeout}s "
                     "but response already started — connection may be broken"
                 )

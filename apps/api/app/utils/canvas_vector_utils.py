@@ -7,6 +7,7 @@ tracked todos. Follows the same pattern as todo_vector_utils.py.
 
 from datetime import UTC, datetime
 
+from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from shared.py.wide_events import log
 
@@ -43,7 +44,7 @@ async def store_canvas_embedding(
         )
         return True
     except Exception as e:
-        log.error(f"Failed to index canvas for todo {todo_id}: {e}")
+        log.error(f"{LogTag.CHROMA} Failed to index canvas for todo {todo_id}: {e}")
         return False
 
 
@@ -89,7 +90,7 @@ async def delete_canvas_embedding(todo_id: str) -> bool:
         await chroma_collection.adelete(ids=[f"canvas_{todo_id}"])
         return True
     except Exception as e:
-        log.error(f"Failed to delete canvas index for todo {todo_id}: {e}")
+        log.error(f"{LogTag.CHROMA} Failed to delete canvas index for todo {todo_id}: {e}")
         return False
 
 
@@ -164,5 +165,5 @@ async def search_canvas_context(
             )
         return matches
     except Exception as e:
-        log.error(f"Canvas search failed for user {user_id}: {e}")
+        log.error(f"{LogTag.CHROMA} Canvas search failed for user {user_id}: {e}")
         return []

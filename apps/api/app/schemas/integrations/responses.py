@@ -51,15 +51,6 @@ class IntegrationsConfigResponse(BaseModel):
     integrations: list[IntegrationConfigItem]
 
 
-class IntegrationStatusItem(CamelModel):
-    integration_id: str
-    connected: bool
-
-
-class IntegrationsStatusResponse(BaseModel):
-    integrations: list[IntegrationStatusItem]
-
-
 class IntegrationSuccessResponse(SuccessResponse, CamelModel):
     integration_id: str
 
@@ -122,23 +113,56 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     creator: Optional["CommunityIntegrationCreator"] = None
 
 
-class UserIntegrationResponse(CamelModel):
-    integration_id: str
-    status: Literal["created", "connected"]
-    created_at: datetime
-    connected_at: datetime | None = None
-    integration: IntegrationResponse
-
-
 class MarketplaceResponse(BaseModel):
     featured: list[IntegrationResponse] = []
     integrations: list[IntegrationResponse] = []
     total: int = 0
 
 
-class UserIntegrationsListResponse(BaseModel):
-    integrations: list[UserIntegrationResponse] = []
+class MyIntegrationItem(CamelModel, CloneCountMixin):
+    """One integration as it pertains to the current user: catalog metadata plus
+    their connection `status`, without the heavy per-tool schemas (only `tool_count`).
+    Fetch full tools on demand from `GET /integrations/{id}/tools`.
+    """
+
+    id: str
+    name: str
+    description: str
+    category: str
+    source: Literal["platform", "custom"]
+    managed_by: Literal["self", "composio", "mcp", "internal"]
+    status: Literal["connected", "created", "not_connected"]
+    requires_auth: bool = False
+    auth_type: Literal["none", "oauth", "bearer"] | None = None
+    is_featured: bool = False
+    display_priority: int = 0
+    available: bool = True
+    icon_url: str | None = None
+    slug: str | None = None
+    tool_count: int = 0
+    # Custom-integration fields (None/0 for platform entries).
+    is_public: bool | None = None
+    created_by: str | None = None
+    published_at: datetime | None = None
+    clone_count: int = 0
+    creator: Optional["CommunityIntegrationCreator"] = None
+
+
+class MyIntegrationsResponse(BaseModel):
+    """The full integration catalog personalized for one user (platform + their
+    own custom integrations), each carrying connection status. Replaces the
+    client-side merge of /config + /status + /users/me/integrations."""
+
+    integrations: list[MyIntegrationItem] = []
     total: int = 0
+
+
+class IntegrationToolsResponse(CamelModel):
+    """Full tool list for a single integration (catalog data, on demand)."""
+
+    integration_id: str
+    tools: list[IntegrationTool] = []
+    count: int = 0
 
 
 class ConnectIntegrationResponse(CamelModel):

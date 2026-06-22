@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from fastapi import Request
 import httpx
 
+from app.constants.log_tags import LogTag
 from app.models.notification.notification_models import (
     ActionResult,
     ActionType,
@@ -56,17 +57,13 @@ class ApiCallActionHandler(ActionHandler):
         request: Request | None,
     ) -> ActionResult:
         api_config = action.config.api_call
-        log.set(
-            operation="execute_api_call_action",
-            action_id=action.id,
-            notification_id=notification.id,
-            user_id=user_id,
-        )
-        log.info("Resolved API call action config", api_config=api_config)
+        log.set(user={"id": user_id})
+        log.set_ns("notification", operation="dispatch", notification_id=notification.id)
+        log.info(f"{LogTag.NOTIFICATION} Resolved API call action config", api_config=api_config)
 
         if api_config is None:
             log.error(
-                f"API call configuration missing for action {action.id} in notification {notification.id}"
+                f"{LogTag.NOTIFICATION} API call configuration missing for action {action.id} in notification {notification.id}"
             )
             return ActionResult(
                 success=False,
@@ -125,7 +122,7 @@ class ApiCallActionHandler(ActionHandler):
 
         except httpx.HTTPError as e:
             log.error(
-                f"API call failed for action {action.id} in notification {notification.id}: {e!s}"
+                f"{LogTag.NOTIFICATION} API call failed for action {action.id} in notification {notification.id}: {e!s}"
             )
             return ActionResult(
                 success=False,
@@ -134,7 +131,7 @@ class ApiCallActionHandler(ActionHandler):
             )
         except Exception as e:
             log.error(
-                f"Unexpected error during API call for action {action.id} in notification {notification.id}: {e!s}"
+                f"{LogTag.NOTIFICATION} Unexpected error during API call for action {action.id} in notification {notification.id}: {e!s}"
             )
             return ActionResult(
                 success=False,
@@ -164,7 +161,7 @@ class RedirectActionHandler(ActionHandler):
 
         if redirect_config is None:
             log.error(
-                f"Redirect configuration missing for action {action.id} in notification {notification.id}"
+                f"{LogTag.NOTIFICATION} Redirect configuration missing for action {action.id} in notification {notification.id}"
             )
             return ActionResult(
                 success=False,
@@ -206,7 +203,7 @@ class ModalActionHandler(ActionHandler):
 
         if modal_config is None:
             log.error(
-                f"Modal configuration missing for action {action.id} in notification {notification.id}"
+                f"{LogTag.NOTIFICATION} Modal configuration missing for action {action.id} in notification {notification.id}"
             )
             return ActionResult(
                 success=False,

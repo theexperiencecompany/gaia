@@ -5,6 +5,7 @@ import time
 from langchain_core.messages import HumanMessage
 
 from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.models.onboarding_models import InboxTriage, InboxTriageOutput
 from shared.py.wide_events import log
@@ -102,7 +103,7 @@ async def triage_inbox(
         )
 
         log.info(
-            "[inbox_triage] done",
+            f"{LogTag.ONBOARDING} inbox_triage done",
             user_id=user_id,
             step="triage_llm",
             outcome="ok",
@@ -121,7 +122,7 @@ async def triage_inbox(
 
     except Exception as e:
         log.error(
-            "[inbox_triage] failed",
+            f"{LogTag.ONBOARDING} inbox_triage failed",
             user_id=user_id,
             step="triage_llm",
             outcome="failed",

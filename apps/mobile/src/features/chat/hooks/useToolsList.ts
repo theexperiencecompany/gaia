@@ -7,6 +7,9 @@ export interface ToolInfo {
   display_name: string;
   icon_url?: string;
   requires_integration: boolean;
+  // True when the tool's integration was added but is not connected (or failed).
+  // Core platform tools are never locked.
+  locked: boolean;
 }
 
 export interface ToolsListResponse {

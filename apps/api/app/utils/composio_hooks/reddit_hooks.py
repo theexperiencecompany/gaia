@@ -10,6 +10,7 @@ from typing import Any
 from composio.types import ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 from .registry import register_after_hook, register_before_hook
@@ -49,7 +50,7 @@ def process_reddit_post(post_data: dict) -> dict:
             "stickied": data.get("stickied", False),
         }
     except Exception as e:
-        log.error(f"Error processing Reddit post: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error processing Reddit post: {e}")
         return {}
 
 
@@ -83,7 +84,7 @@ def process_reddit_search_results(response_data: dict) -> dict:
             "result_count": len(processed_posts),
         }
     except Exception as e:
-        log.error(f"Error processing Reddit search results: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error processing Reddit search results: {e}")
         return response_data
 
 
@@ -116,7 +117,7 @@ def process_reddit_comment(comment_data: dict) -> dict:
             "edited": data.get("edited", False),
         }
     except Exception as e:
-        log.error(f"Error processing Reddit comment: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error processing Reddit comment: {e}")
         return {}
 
 
@@ -151,7 +152,7 @@ def reddit_content_before_hook(
 
             writer(payload)
     except Exception as e:
-        log.error(f"Error in reddit_content_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in reddit_content_before_hook: {e}")
 
     return params
 
@@ -168,7 +169,7 @@ def reddit_delete_before_hook(
             payload = {"progress": f"Deleting {content_type}..."}
             writer(payload)
     except Exception as e:
-        log.error(f"Error in reddit_delete_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in reddit_delete_before_hook: {e}")
 
     return params
 
@@ -190,7 +191,7 @@ def reddit_retrieve_before_hook(
 
             writer(payload)
     except Exception as e:
-        log.error(f"Error in reddit_retrieve_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in reddit_retrieve_before_hook: {e}")
 
     return params
 
@@ -244,7 +245,7 @@ def reddit_search_after_hook(tool: str, toolkit: str, response: ToolExecutionRes
         return processed_response
 
     except Exception as e:
-        log.error(f"Error in reddit_search_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in reddit_search_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -293,7 +294,7 @@ def reddit_post_detail_after_hook(tool: str, toolkit: str, response: ToolExecuti
         return processed_post
 
     except Exception as e:
-        log.error(f"Error in reddit_post_detail_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in reddit_post_detail_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -359,7 +360,7 @@ def reddit_comments_after_hook(tool: str, toolkit: str, response: ToolExecutionR
         }
 
     except Exception as e:
-        log.error(f"Error in reddit_comments_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in reddit_comments_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -419,5 +420,5 @@ def reddit_content_created_after_hook(
         }
 
     except Exception as e:
-        log.error(f"Error in reddit_content_created_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in reddit_content_created_after_hook: {e}")
         return response.get("data", {})

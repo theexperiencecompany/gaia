@@ -20,6 +20,7 @@ import httpx
 import tldextract
 
 from app.constants.cache import FAVICON_CACHE_TTL
+from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
 from shared.py.wide_events import log
 
@@ -321,5 +322,5 @@ async def fetch_favicon_from_url(server_url: str) -> str | None:
         return result
 
     except Exception as e:
-        log.warning(f"Failed to fetch favicon for {server_url}: {e}")
+        log.warning(f"{LogTag.TOOL} Failed to fetch favicon for {server_url}: {e}")
         return None

@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage.metrics import set_sandbox_pool_size
@@ -139,7 +140,7 @@ def init_sandbox_pool() -> SandboxPool:
     """
     global _pool_singleton
     if _pool_singleton is None:
-        log.info("Initializing E2B sandbox pool")
+        log.info(f"{LogTag.SANDBOX} initializing pool")
         _pool_singleton = SandboxPool()
     return _pool_singleton
 
@@ -152,6 +153,6 @@ def get_sandbox_pool() -> SandboxPool:
     """
     global _pool_singleton
     if _pool_singleton is None:
-        log.info("Initializing E2B sandbox pool")
+        log.info(f"{LogTag.SANDBOX} initializing pool")
         _pool_singleton = SandboxPool()
     return _pool_singleton

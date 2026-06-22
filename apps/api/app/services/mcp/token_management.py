@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.constants.log_tags import LogTag
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.mcp_oauth_utils import oauth_token_expiry
@@ -59,7 +60,7 @@ async def try_refresh_token(
     refresh_token = await token_store.get_refresh_token(integration_id)
     if not refresh_token:
         log.warning(
-            f"try_refresh_token: no refresh_token stored for {integration_id} "
+            f"{LogTag.MCP} try_refresh_token: no refresh_token stored for {integration_id} "
             f"user={token_store.user_id}; user must re-OAuth"
         )
         return False
@@ -76,7 +77,7 @@ async def try_refresh_token(
 
         if not client_id:
             log.warning(
-                f"try_refresh_token: no client_id resolved for {integration_id} "
+                f"{LogTag.MCP} try_refresh_token: no client_id resolved for {integration_id} "
                 f"user={token_store.user_id} (no pre-configured creds, no DCR "
                 f"registration); user must re-authorize"
             )
@@ -116,7 +117,7 @@ async def try_refresh_token(
                     pass
 
                 log.warning(
-                    f"try_refresh_token: token endpoint returned "
+                    f"{LogTag.MCP} try_refresh_token: token endpoint returned "
                     f"{response.status_code} for {integration_id} "
                     f"user={token_store.user_id} "
                     f"(oauth_error={error_code!r}, desc={error_description!r}) "
@@ -130,7 +131,7 @@ async def try_refresh_token(
             # as a failure rather than storing a blank credential.
             if not token.access_token:
                 log.warning(
-                    f"try_refresh_token: token endpoint returned an empty "
+                    f"{LogTag.MCP} try_refresh_token: token endpoint returned an empty "
                     f"access_token for {integration_id} user={token_store.user_id}"
                 )
                 return False
@@ -145,7 +146,7 @@ async def try_refresh_token(
             )
 
             log.info(
-                f"try_refresh_token: refreshed token for {integration_id} "
+                f"{LogTag.MCP} try_refresh_token: refreshed token for {integration_id} "
                 f"user={token_store.user_id} "
                 f"(new_access_token_length={len(token.access_token)}, "
                 f"refresh_token_rotated={token.refresh_token is not None}, "
@@ -155,7 +156,7 @@ async def try_refresh_token(
 
     except Exception as e:
         log.warning(
-            f"try_refresh_token: exception during refresh for "
+            f"{LogTag.MCP} try_refresh_token: exception during refresh for "
             f"{integration_id} user={token_store.user_id}: "
             f"{type(e).__name__}: {e}"
         )
@@ -205,4 +206,4 @@ async def revoke_tokens(
 
                 await http_client.post(revocation_endpoint, data=data, headers=headers, timeout=10)
     except Exception as e:
-        log.warning(f"Token revocation failed for {integration_id}: {e}")
+        log.warning(f"{LogTag.MCP} Token revocation failed for {integration_id}: {e}")
