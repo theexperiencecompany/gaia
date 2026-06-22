@@ -12,6 +12,7 @@ import asyncio
 from app.constants.cache import ONE_DAY_TTL
 from app.decorators.caching import Cacheable
 from app.schemas.integrations.responses import (
+    CommunityIntegrationCreator,
     IntegrationToolsResponse,
     MyIntegrationItem,
     MyIntegrationsResponse,
@@ -105,7 +106,9 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
                 created_by=integ.created_by,
                 published_at=integ.published_at,
                 clone_count=integ.clone_count,
-                creator=integ.creator,
+                creator=CommunityIntegrationCreator.model_validate(integ.creator)
+                if integ.creator
+                else None,
             )
         )
 
