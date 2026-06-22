@@ -33,10 +33,19 @@ export function useOAuthSuccessToast() {
     // Skip if no OAuth params
     if (!oauthSuccess && !oauthError) return;
 
+    // Always strip the OAuth params from the URL, even when the toast is
+    // deduped below. Otherwise a stale ?oauth_success=... lingers and re-fires
+    // the toast the next time the page mounts (the dedupe Set is per-page-load).
+    const url = new URL(window.location.href);
+    url.searchParams.delete("oauth_success");
+    url.searchParams.delete("oauth_error");
+    url.searchParams.delete("integration");
+    router.replace(url.pathname + url.search, { scroll: false });
+
     // For success, use a simpler key without timestamp to dedupe properly
     const dedupeKey = `${oauthSuccess}-${integrationName}`;
 
-    // Skip if we've already processed this exact OAuth callback
+    // Skip the toast/side-effects if we've already processed this exact callback
     if (processedOAuthCallbacks.has(dedupeKey)) {
       return;
     }
@@ -89,14 +98,5 @@ export function useOAuthSuccessToast() {
           `Authentication failed: ${oauthError}. Please try again.`,
       );
     }
-
-    // Clean up the URL by removing OAuth params
-    const url = new URL(window.location.href);
-    url.searchParams.delete("oauth_success");
-    url.searchParams.delete("oauth_error");
-    url.searchParams.delete("integration");
-
-    // Replace URL without the OAuth params, keeping other params intact
-    router.replace(url.pathname + url.search, { scroll: false });
   }, [searchParams, router, pathname, queryClient]);
 }

@@ -296,15 +296,16 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       const toastId = toast.loading(`Publishing ${integrationName}...`);
 
       try {
-        await integrationsApi.publishIntegration(integrationId);
+        const { publicUrl } =
+          await integrationsApi.publishIntegration(integrationId);
         toast.success(`${integrationName} published to community`, {
           id: toastId,
         });
-        await queryClient.refetchQueries({ queryKey: ["integrations"] });
 
         if (typeof window !== "undefined") {
-          // Navigate to marketplace with refresh parameter to show published integration
-          window.location.href = "/marketplace?refresh=true";
+          // Navigate to the published integration's marketplace page. The full
+          // reload refetches data, so an explicit refetch here would be wasted.
+          window.location.href = publicUrl;
         }
       } catch (error) {
         toast.error(
@@ -314,7 +315,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         throw error;
       }
     },
-    [queryClient, integrations],
+    [integrations],
   );
 
   // Unpublish custom integration

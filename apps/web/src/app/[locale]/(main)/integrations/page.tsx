@@ -27,6 +27,16 @@ import { toast } from "@/lib/toast";
 import { useIntegrationsStore } from "@/stores/integrationsStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
+// Query params appended by MCP connect redirects (oauth_* params are owned and
+// cleared by the global useOAuthSuccessToast hook instead).
+const CONNECTION_CALLBACK_PARAMS = [
+  "status",
+  "id",
+  "name",
+  "error",
+  "refresh",
+] as const;
+
 export default function IntegrationsPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -84,6 +94,22 @@ export default function IntegrationsPage() {
   const [bearerModalOpen, setBearerModalOpen] = useState(false);
   const [bearerIntegrationId, setBearerIntegrationId] = useState("");
   const [bearerIntegrationName, setBearerIntegrationName] = useState("");
+
+  // Strip MCP connect-callback params from the URL (locale-safe, preserves any
+  // unrelated params). No-op when none are present so it's cheap to call often.
+  const clearConnectionParams = useCallback(() => {
+    const url = new URL(window.location.href);
+    let changed = false;
+    for (const param of CONNECTION_CALLBACK_PARAMS) {
+      if (url.searchParams.has(param)) {
+        url.searchParams.delete(param);
+        changed = true;
+      }
+    }
+    if (changed) {
+      router.replace(url.pathname + url.search, { scroll: false });
+    }
+  }, [router]);
 
   // Update sidebar content when selected integration status changes
   useEffect(() => {
@@ -164,7 +190,7 @@ export default function IntegrationsPage() {
     }
 
     if (status && integrationId) {
-      router.replace("/integrations", { scroll: false });
+      clearConnectionParams();
 
       if (status === "connected") {
         const nameParam = params.get("name");
@@ -248,7 +274,7 @@ export default function IntegrationsPage() {
     // Only process if we have an id and no status/oauth params (to avoid double-processing)
     if (integrationId && !status && !oauthSuccess) {
       // Clear the URL param first to prevent re-triggering
-      router.replace("/integrations", { scroll: false });
+      clearConnectionParams();
 
       // If refresh param is set (coming from marketplace add), invalidate cache and wait for fresh data
       if (needsRefresh) {
@@ -362,9 +388,12 @@ export default function IntegrationsPage() {
     return useRightSidebar.subscribe((state, prevState) => {
       if (prevState.isOpen && !state.isOpen && selectedIntegrationId) {
         setSelectedIntegrationId(null);
+        // Clear any lingering connect-callback params so reopening the page
+        // later doesn't re-trigger the success toast from a stale URL.
+        clearConnectionParams();
       }
     });
-  }, [selectedIntegrationId]);
+  }, [selectedIntegrationId, clearConnectionParams]);
 
   // Cleanup right sidebar on unmount
   useEffect(() => {

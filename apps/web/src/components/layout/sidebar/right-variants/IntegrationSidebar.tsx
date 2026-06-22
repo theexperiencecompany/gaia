@@ -253,6 +253,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   };
 
   const confirmPublish = async () => {
+    // Dismiss the dialog immediately — progress is conveyed by the loading
+    // toast, and publishing navigates away on success.
+    setShowPublishDialog(false);
     setIsPublishing(true);
     try {
       if (integration.isPublic && onUnpublish) {
@@ -266,7 +269,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       // Error toast is handled in the hook
     } finally {
       setIsPublishing(false);
-      setShowPublishDialog(false);
     }
   };
 
