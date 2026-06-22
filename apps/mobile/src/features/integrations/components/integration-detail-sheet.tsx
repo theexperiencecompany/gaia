@@ -2,6 +2,7 @@ import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useState,
@@ -11,7 +12,8 @@ import { AppIcon, Delete02Icon, Edit02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
-import type { Integration } from "../types";
+import { getIntegrationTools } from "../api/integrations-api";
+import type { Integration, IntegrationTool } from "../types";
 import { IntegrationDetailHeader } from "./IntegrationDetailHeader";
 import { IntegrationToolsPanel } from "./IntegrationToolsPanel";
 
@@ -37,6 +39,7 @@ export const IntegrationDetailSheet = forwardRef<
 
   const [isOpen, setIsOpen] = useState(false);
   const [integration, setIntegration] = useState<Integration | null>(null);
+  const [tools, setTools] = useState<IntegrationTool[]>([]);
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -53,11 +56,27 @@ export const IntegrationDetailSheet = forwardRef<
   useImperativeHandle(ref, () => ({
     open: (next: Integration) => {
       setIntegration(next);
+      setTools([]);
       reset();
       setIsOpen(true);
     },
     close: () => setIsOpen(false),
   }));
+
+  // Tool names/descriptions are not part of the catalog payload — load them on
+  // demand once the sheet opens for an integration.
+  useEffect(() => {
+    if (!isOpen || !integration) return;
+
+    let cancelled = false;
+    void getIntegrationTools(integration.id).then((fetched) => {
+      if (!cancelled) setTools(fetched);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, integration]);
 
   const handleConnect = useCallback(async () => {
     if (!integration || !onConnect) return;
@@ -129,10 +148,8 @@ export const IntegrationDetailSheet = forwardRef<
   }
 
   const isConnected = integration.status === "connected";
-  const isError = integration.status === "error";
   const showRetry = integration.status === "created";
   const isCustom = integration.source === "custom";
-  const tools = integration.tools ?? [];
 
   return (
     <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
@@ -169,7 +186,7 @@ export const IntegrationDetailSheet = forwardRef<
             ) : null}
 
             {/* Primary connect / disconnect action */}
-            {isConnected || isError ? (
+            {isConnected ? (
               <Pressable
                 onPress={handleDisconnect}
                 disabled={isDisconnecting}

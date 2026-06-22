@@ -6,9 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.models.integration_instructions_models import InstructionsEditor
-from app.models.integration_models import (
-    UserIntegrationsListResponse as UserIntegrationsListResponseModel,
-)
 from app.schemas.integrations.requests import (
     AddUserIntegrationRequest,
     UpdateIntegrationInstructionsRequest,
@@ -17,7 +14,6 @@ from app.schemas.integrations.responses import (
     AddUserIntegrationResponse,
     IntegrationInstructionsResponse,
     IntegrationSuccessResponse,
-    UserIntegrationsListResponse,
 )
 from app.services.integration_instructions_service import (
     get_instructions_record,
@@ -26,29 +22,12 @@ from app.services.integration_instructions_service import (
 from app.services.integrations.user_integrations import (
     add_user_integration as add_user_integration_service,
     check_user_has_integration,
-    get_user_integrations,
     remove_user_integration,
 )
 from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.wide_events import log
 
 router = APIRouter()
-
-
-@router.get("", response_model=UserIntegrationsListResponse)
-async def list_user_integrations(
-    user_id: str = Depends(get_user_id),
-) -> UserIntegrationsListResponseModel:
-    """List the integrations the current user has added to their workspace."""
-    try:
-        log.set(operation="list_user_integrations", user={"id": user_id})
-        result = await get_user_integrations(user_id)
-        log.set(result_count=len(result.integrations) if hasattr(result, "integrations") else 0)
-        log.set(outcome="success")
-        return result
-    except Exception as e:
-        log.error(f"Error fetching user integrations: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch user integrations")
 
 
 @router.post("", response_model=AddUserIntegrationResponse)

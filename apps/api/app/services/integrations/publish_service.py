@@ -16,6 +16,7 @@ from app.services.integrations.category_inference_service import (
     infer_integration_category,
 )
 from app.services.integrations.publish_validator import PublishIntegrationValidator
+from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from shared.py.wide_events import log
 
 
@@ -115,6 +116,8 @@ async def publish_custom_integration(
     )
 
     await delete_cache_by_pattern("marketplace:community:*")
+    # is_public / published_at feed the creator's MyIntegrationItem (tools:user:*:my).
+    await invalidate_user_integration_caches(user_id)
     log.info(f"Published integration {integration_id}")
 
     return {
@@ -156,6 +159,7 @@ async def unpublish_custom_integration(
 
     await remove_public_integration(integration_id)
     await delete_cache_by_pattern("marketplace:community:*")
+    await invalidate_user_integration_caches(user_id)
     log.info(f"Unpublished integration {integration_id}")
 
     return {"integration_id": integration_id}

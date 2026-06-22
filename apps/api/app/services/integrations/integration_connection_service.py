@@ -13,9 +13,8 @@ from app.config.oauth_config import (
     get_integration_scopes,
 )
 from app.config.token_repository import token_repository
-from app.constants.cache import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
-from app.helpers.mcp_helpers import get_api_base_url, invalidate_mcp_status_cache
+from app.helpers.mcp_helpers import get_api_base_url
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationConfigItem,
@@ -28,7 +27,10 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
-from app.services.integrations.user_integrations import remove_user_integration
+from app.services.integrations.user_integrations import (
+    invalidate_user_integration_caches,
+    remove_user_integration,
+)
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -224,7 +226,7 @@ async def connect_mcp_integration(
         )
 
     tools_count = len(tools) if tools else 0
-    await invalidate_mcp_status_cache(user_id)
+    await invalidate_user_integration_caches(user_id)
 
     log.set(
         integration={
@@ -257,8 +259,8 @@ async def _connect_with_bearer_token(
 
     try:
         tools = await mcp_client.connect(integration_id)
+        # Busts the full per-user integration cache set (status + tools:user:*).
         await update_user_integration_status(user_id, integration_id, "connected")
-        await invalidate_mcp_status_cache(user_id)
         tools_count = len(tools) if tools else 0
         log.set(
             integration={
@@ -279,7 +281,7 @@ async def _connect_with_bearer_token(
     except Exception as e:
         # Rollback: clean up stored credentials on connection failure
         await token_store.delete_credentials(integration_id)
-        await invalidate_mcp_status_cache(user_id)
+        await invalidate_user_integration_caches(user_id)
         log.set(
             integration={
                 "provider": integration_name,
@@ -518,12 +520,10 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
 
 async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str) -> None:
     """Invalidate relevant caches after disconnect."""
-    try:
-        cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
-        await delete_cache(cache_key)
-        log.info(f"OAuth status cache invalidated for user {user_id}")
-    except redis.RedisError as e:
-        log.warning(f"Failed to invalidate OAuth status cache: {e}")
+    # Busts the full per-user integration cache set (status + tools:user:*) so the
+    # disconnect is reflected everywhere at once, regardless of which record path
+    # below runs.
+    await invalidate_user_integration_caches(user_id)
 
     # Provider metadata cache (24h TTL) is keyed by integration.provider, not
     # integration_id. Without this clear, disconnected integrations keep

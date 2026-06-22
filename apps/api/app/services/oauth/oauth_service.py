@@ -21,7 +21,6 @@ from app.constants.integrations import (
 )
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import user_integrations_collection, users_collection
-from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.analytics_service import track_login, track_signup
@@ -362,17 +361,9 @@ async def handle_oauth_connection(
                 f"completes for user {user_id}"
             )
 
-    # Invalidate OAuth status cache for this user
-    try:
-        cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
-        await delete_cache(cache_key)
-        log.info(f"OAuth status cache invalidated for user {user_id}")
-    except Exception as e:
-        log.warning(f"Failed to invalidate OAuth status cache: {e}")
-
-    # Update user_integrations status in MongoDB
-    # The @CacheInvalidator on update_user_integration_status invalidates
-    # `tools:user:{user_id}:*` and `tool_namespaces:{user_id}` automatically.
+    # Update user_integrations status in MongoDB. The @CacheInvalidator on
+    # update_user_integration_status busts the full USER_INTEGRATION_CACHE_PATTERNS
+    # set (OAUTH_STATUS + tools:user:* + tool_namespaces), so no manual delete here.
     try:
         await update_user_integration_status(
             user_id, integration_config.id, INTEGRATION_STATUS_CONNECTED

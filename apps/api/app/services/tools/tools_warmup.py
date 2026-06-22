@@ -1,57 +1,27 @@
-"""
-Tools cache warmup service.
+"""Tools registry warmup.
 
-Pre-loads provider tools and warms the global cache at startup,
-eliminating cold-start latency for the /tools endpoint.
+Indexes the provider-tool catalog at startup so the first `/tools` and
+`retrieve_tools` calls don't pay the Composio-catalog cold start. Per-user
+`/tools` responses cache on demand under `tools:user:{user_id}:*`, so there is
+no global response to pre-warm.
 """
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.constants.cache import GLOBAL_TOOLS_CACHE_KEY, GLOBAL_TOOLS_CACHE_TTL
-from app.db.redis import set_cache
-from app.services.tools.tools_service import get_available_tools
 from shared.py.wide_events import log
 
 
 async def warmup_tools_cache() -> None:
-    """
-    Pre-load tools and warm the global cache at startup.
+    """Index provider-tool metadata (name + description) into the registry.
 
-    This function:
-    1. Loads provider tools into registry (Composio integrations)
-    2. Builds and caches the global tools response
-
-    Called from lifespan to ensure tools are ready before serving requests.
+    Does NOT materialize the ~1.6k catalog tools into StructuredTools — that eager
+    wrapping was the dominant source of resident memory. Executable tools are built
+    lazily per provider when a subagent is first created. Non-fatal: on failure the
+    catalog is indexed on first use instead.
     """
     log.set(service="tools_warmup", operation="warmup_tools_cache")
-    log.info("Warming up tools cache...")
-
     try:
-        # 1. Index provider-tool METADATA (name + description) for retrieval and
-        #    the /tools catalog. Crucially this does NOT wrap the ~1.6k catalog
-        #    tools into StructuredTools (Pydantic model + closure per tool) — that
-        #    eager materialization was the dominant source of resident memory.
-        #    Executable tools are built lazily per provider when a subagent is
-        #    first created (register_provider_tools).
         tool_registry = await get_tool_registry()
         await tool_registry.populate_provider_catalog()
         log.info("Provider catalog metadata indexed (tools materialized lazily on use)")
-
-        # 2. Build and cache global tools response
-        # Pass None for user_id to get only global tools (no user-specific overlays)
-        global_tools = await get_available_tools(user_id=None)
-
-        # Cache the serialized response for fast retrieval
-        await set_cache(
-            GLOBAL_TOOLS_CACHE_KEY,
-            global_tools.model_dump(),
-            ttl=GLOBAL_TOOLS_CACHE_TTL,
-        )
-
-        log.info(
-            f"Tools cache warmed with {global_tools.total_count} tools "
-            f"across {len(global_tools.categories)} categories"
-        )
-
     except Exception as e:
-        # Don't fail startup if warmup fails - tools will be loaded on first request
-        log.warning(f"Tools cache warmup failed (non-fatal): {e}")
+        log.warning(f"Tools catalog warmup failed (non-fatal): {e}")

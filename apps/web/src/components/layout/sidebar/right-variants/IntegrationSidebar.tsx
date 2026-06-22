@@ -51,16 +51,9 @@ function getDisconnectDialogMessage(
     : `Remove ${name} from your workspace? You can add it again anytime.`;
 }
 
-// Placeholder chip widths shown while a just-connected integration's tools are
-// still being discovered in the background. Distinct values double as React keys.
-const SETTLING_SKELETON_WIDTHS = [
-  "w-24",
-  "w-20",
-  "w-28",
-  "w-16",
-  "w-32",
-  "w-14",
-];
+// Placeholder chip widths shown while an integration's tools load (on-demand
+// fetch or post-connect discovery). Distinct values double as React keys.
+const TOOL_SKELETON_WIDTHS = ["w-24", "w-20", "w-28", "w-16", "w-32", "w-14"];
 
 interface IntegrationSidebarProps {
   integration: Integration;
@@ -90,8 +83,17 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const showRetry = integration.status === "created";
   const queryClient = useQueryClient();
 
-  const { tools: integrationTools, mentionNames: toolMentionNames } =
-    useIntegrationTools(integration, category);
+  const {
+    tools: integrationTools,
+    mentionNames: toolMentionNames,
+    isLoading: isLoadingTools,
+  } = useIntegrationTools(integration, category);
+
+  // Show the tool skeleton both on the initial on-demand fetch and while a
+  // just-connected integration is still discovering tools in the background —
+  // either way the list is empty and would otherwise flash in.
+  const showToolsSkeleton =
+    integrationTools.length === 0 && (isLoadingTools || isSettling);
 
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -187,7 +189,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         // Refetch all data to update sidebar
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["integrations"] }),
-          queryClient.invalidateQueries({ queryKey: ["tools", "available"] }),
           queryClient.invalidateQueries({ queryKey: ["tools"] }),
         ]);
       } else {
@@ -567,9 +568,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             Available tools ({integrationTools.length})
           </h2>
         )}
-        {isSettling && isConnected && integrationTools.length === 0 && (
+        {showToolsSkeleton && (
           <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">
-            Setting up tools
+            {isSettling ? "Setting up tools" : "Available tools"}
           </h2>
         )}
       </SidebarHeader>
@@ -592,10 +593,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             </div>
           </div>
         )}
-        {isSettling && isConnected && integrationTools.length === 0 && (
+        {showToolsSkeleton && (
           <div className="flex-1 min-h-0 overflow-y-auto pb-2">
             <div className="flex flex-wrap gap-2 content-start">
-              {SETTLING_SKELETON_WIDTHS.map((width) => (
+              {TOOL_SKELETON_WIDTHS.map((width) => (
                 <Skeleton key={width} className={`h-7 ${width} rounded-full`} />
               ))}
             </div>

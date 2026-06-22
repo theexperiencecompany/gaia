@@ -2,69 +2,45 @@
 Tools API router for retrieving available tools and their metadata.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.db.redis import get_cache
 from app.decorators.caching import Cacheable
+from app.models.chat_models import ConversationSource
 from app.models.tools_models import ToolsCategoryResponse, ToolsListResponse
 from app.services.tools.tools_service import (
+    filter_tools_response,
     get_available_tools,
     get_tool_categories,
     get_tools_by_category,
-    get_user_mcp_tools,
-    merge_tools_responses,
 )
-from app.services.tools.tools_warmup import GLOBAL_TOOLS_CACHE_KEY
 from shared.py.wide_events import log
 
 router = APIRouter()
 
+_CLIENT_TYPE_HEADER = "X-Client-Type"
+
 
 @router.get("/tools", response_model=ToolsListResponse)
 async def list_available_tools(
+    request: Request,
     user: dict = Depends(get_current_user),
 ) -> ToolsListResponse:
-    """
-    Get a list of all available tools with their metadata.
-
-    Includes:
-    - Platform tools (always available)
-    - Global MCP tools (stored when any user first connects to an MCP integration)
-
-    Performance optimization:
-    - Global tools are cached for 6 hours (shared across all users)
-    - User-specific custom tools are fetched on-demand
-
-    Note: This endpoint returns global tool metadata for fast frontend visibility.
-    User-specific tool connections are validated separately via integration status.
-
-    Returns:
-        ToolsListResponse: List of tools with descriptions, parameters, and categories
-    """
+    """Tools the current user can use: core tools plus the tools of integrations
+    in their workspace, each tagged with server-computed `locked` (added but not
+    connected). Leak-safe — never another user's integrations. Desktop-only tools
+    are included only for the desktop client (`X-Client-Type: desktop`)."""
     log.set(operation="list_tools")
     try:
         user_id = user.get("user_id")
+        include_desktop = (
+            request.headers.get(_CLIENT_TYPE_HEADER, "").strip().lower()
+            == ConversationSource.DESKTOP.value
+        )
 
-        # Try global cache first (warmed at startup, 6 hour TTL)
-        cached_global = await get_cache(GLOBAL_TOOLS_CACHE_KEY, model=ToolsListResponse)
-        if cached_global is not None:
-            # Overlay user's MCP tools on top of cached global tools
-            if user_id:
-                mcp_tools = await get_user_mcp_tools(user_id)
-                if mcp_tools:
-                    result = merge_tools_responses(cached_global, mcp_tools)
-                    log.set(result_count=result.total_count)
-                    log.set(outcome="success")
-                    return result
-            log.set(result_count=cached_global.total_count)
-            log.set(outcome="success")
-            return cached_global
-
-        # Cache miss - build tools response (will also populate cache)
-        result = await get_available_tools(user_id=user_id)
-        log.set(result_count=result.total_count)
-        log.set(outcome="success")
+        catalog = await get_available_tools(user_id=user_id)
+        result = filter_tools_response(catalog, include_desktop=include_desktop)
+        log.set(result_count=result.total_count, outcome="success")
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve tools: {e!s}")

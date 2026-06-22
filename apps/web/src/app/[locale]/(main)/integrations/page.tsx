@@ -9,7 +9,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
-import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
@@ -46,10 +45,6 @@ export default function IntegrationsPage() {
     unpublishIntegration,
     refetch,
   } = useIntegrations();
-
-  // Pre-fetch tools on page load; also used to detect when a just-connected
-  // integration's tools have finished discovering in the background.
-  const { tools: toolsWithIntegrations } = useToolsWithIntegrations();
 
   // Right sidebar store
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
@@ -172,7 +167,7 @@ export default function IntegrationsPage() {
           toast.success(`Connected to ${nameParam}`);
         }
         refetch();
-        queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+        queryClient.invalidateQueries({ queryKey: ["tools"] });
         // Open the sidebar for the freshly-connected integration and poll until
         // its tools finish discovering in the background (see the poller below).
         setPendingIntegrationId(integrationId);
@@ -201,7 +196,7 @@ export default function IntegrationsPage() {
       if (result.status === "connected") {
         toast.success(`Connected to ${result.name}`, { id: toastId });
         refetch();
-        queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+        queryClient.invalidateQueries({ queryKey: ["tools"] });
       } else if (result.status === "error") {
         toast.error(result.message || "Connection failed", { id: toastId });
       } else {
@@ -255,7 +250,7 @@ export default function IntegrationsPage() {
         // Set pending integration and trigger refetch
         setPendingIntegrationId(integrationId);
         queryClient.invalidateQueries({ queryKey: ["integrations"] });
-        queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+        queryClient.invalidateQueries({ queryKey: ["tools"] });
       } else {
         // Normal navigation - open sidebar immediately
         handleIntegrationClick(integrationId);
@@ -277,41 +272,34 @@ export default function IntegrationsPage() {
 
   // The OAuth callback redirects as soon as tokens are stored; the MCP handshake
   // and tools/list run in the background, so a connected integration's tools land
-  // a few seconds later. Poll until they appear (or give up) instead of forcing a
-  // page reload. Re-runs whenever a refetch updates `integrations`/tools data.
+  // a few seconds later. Poll the personalized /integrations/me catalog until the
+  // integration reports connected with discovered tools (or give up) instead of
+  // forcing a page reload. Re-runs whenever a refetch updates `integrations`.
   useEffect(() => {
     if (!settlingIntegrationId) return;
 
     const integration = integrations.find(
       (i) => i.id === settlingIntegrationId,
     );
-    const hasEndpointTools = toolsWithIntegrations.some(
-      (t) => t.category.toLowerCase() === settlingIntegrationId.toLowerCase(),
-    );
-    const hasTools = hasEndpointTools || (integration?.tools?.length ?? 0) > 0;
+    const hasSettled =
+      integration?.status === "connected" && (integration?.toolCount ?? 0) > 0;
 
-    // Stop once the tools land, or after the attempt ceiling (covers a failed
-    // background connect). Note: keep polling even while the integration isn't
-    // in the list yet — the post-connect refetch may still be in flight.
-    if (hasTools || settleTick >= POST_CONNECT_POLL_MAX_ATTEMPTS) {
+    // Stop once the integration connects with tools, or after the attempt
+    // ceiling (covers a failed background connect). Keep polling while the
+    // integration isn't in the list yet — the post-connect refetch may still
+    // be in flight.
+    if (hasSettled || settleTick >= POST_CONNECT_POLL_MAX_ATTEMPTS) {
       setSettlingIntegrationId(null);
       return;
     }
 
     const timer = setTimeout(() => {
       refetch();
-      queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+      queryClient.invalidateQueries({ queryKey: ["tools"] });
       setSettleTick((tick) => tick + 1);
     }, POST_CONNECT_POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
-  }, [
-    settlingIntegrationId,
-    settleTick,
-    integrations,
-    toolsWithIntegrations,
-    refetch,
-    queryClient,
-  ]);
+  }, [settlingIntegrationId, settleTick, integrations, refetch, queryClient]);
 
   // Handler for pressing Enter in search input
   const handleEnterSearch = useCallback(() => {

@@ -1,7 +1,8 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName, toTitleCase } from "@/features/chat/utils/chatUtils";
 
+import { integrationsApi } from "../api/integrationsApi";
 import type { Integration } from "../types";
 import { escapeRegExp } from "../utils/toolMentions";
 
@@ -13,39 +14,30 @@ export interface IntegrationToolEntry {
 export interface UseIntegrationToolsReturn {
   tools: IntegrationToolEntry[];
   mentionNames: string[];
+  isLoading: boolean;
 }
 
 /**
  * Tools belonging to one integration, with readable display labels
- * (formatted, category-prefix-stripped). `mentionNames` is the deduped label
- * list driving `@` mention autocomplete in custom instructions.
+ * (formatted, category-prefix-stripped). Fetched on demand from
+ * GET /integrations/{id}/tools. `mentionNames` is the deduped label list
+ * driving `@` mention autocomplete in custom instructions.
  */
 export const useIntegrationTools = (
   integration: Integration,
   categoryPrefix?: string,
 ): UseIntegrationToolsReturn => {
-  const { tools } = useToolsWithIntegrations();
+  const { data, isLoading } = useQuery({
+    queryKey: ["integrations", integration.id, "tools"],
+    queryFn: () => integrationsApi.getIntegrationTools(integration.id),
+  });
 
-  return useMemo(() => {
+  const { tools, mentionNames } = useMemo(() => {
     const prefixRegex = categoryPrefix
       ? new RegExp(`^${escapeRegExp(categoryPrefix)}\\s*`, "i")
       : null;
 
-    const integrationIds = [
-      integration.id,
-      ...(integration.includedIntegrations || []),
-    ].map((id) => id.toLowerCase());
-
-    const fromToolsEndpoint = tools.filter((tool) =>
-      integrationIds.includes(tool.category.toLowerCase()),
-    );
-
-    // Fallback: if the /tools endpoint doesn't know about this integration's
-    // tools yet, use the tools array from the integration record itself.
-    const names =
-      fromToolsEndpoint.length > 0
-        ? fromToolsEndpoint.map((tool) => tool.name)
-        : (integration.tools ?? []).map((tool) => tool.name);
+    const names = (data?.tools ?? []).map((tool) => tool.name);
 
     const entries: IntegrationToolEntry[] = names.map((name) => {
       const formatted = formatToolName(name);
@@ -64,11 +56,7 @@ export const useIntegrationTools = (
     );
 
     return { tools: entries, mentionNames };
-  }, [
-    tools,
-    integration.id,
-    integration.includedIntegrations,
-    integration.tools,
-    categoryPrefix,
-  ]);
+  }, [data, categoryPrefix]);
+
+  return { tools, mentionNames, isLoading };
 };

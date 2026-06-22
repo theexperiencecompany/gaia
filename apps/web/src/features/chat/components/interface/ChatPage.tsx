@@ -16,7 +16,7 @@ import {
   VoiceControlBarSlot,
 } from "@/features/chat/components/voice-agent/VoiceControlBarContainer";
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
-import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -58,9 +58,9 @@ const ChatPage = React.memo(function MainChat() {
   const autoSend = useWorkflowSelectionStore((s) => s.autoSend);
   const autoSendFiredRef = useRef(false);
 
-  useFetchIntegrationStatus({
-    refetchOnMount: "always",
-  });
+  // Mounting useIntegrations refreshes the personalized catalog (staleTime: 0)
+  // so the composer's tool lock state is current when a chat opens.
+  useIntegrations();
 
   useEffect(() => {
     if (!(selectedWorkflow && autoSend)) return;
