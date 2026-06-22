@@ -5,6 +5,7 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { integrationsApi } from "../api/integrationsApi";
+import { integrationKeys, toolKeys } from "../api/queryKeys";
 import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
@@ -51,7 +52,7 @@ export const useFetchIntegrationStatus = ({
   refetchOnMount,
 }: UseFetchIntegrationStatusParams = {}) => {
   return useQuery({
-    queryKey: ["integrations", "status"],
+    queryKey: integrationKeys.status,
     queryFn: integrationsApi.getIntegrationStatus,
     refetchOnMount: refetchOnMount,
   });
@@ -70,7 +71,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
   // Query for platform integration configuration
   const { data: configData, isLoading: configLoading } = useQuery({
-    queryKey: ["integrations", "config"],
+    queryKey: integrationKeys.config,
     queryFn: integrationsApi.getIntegrationConfig,
   });
 
@@ -80,7 +81,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     isLoading: userIntegrationsLoading,
     error,
   } = useQuery({
-    queryKey: ["integrations", "user"],
+    queryKey: integrationKeys.user,
     queryFn: integrationsApi.getUserIntegrations,
     staleTime: 0, // Always refetch - user integrations are mutable state
     enabled: isAuthenticated,
@@ -88,7 +89,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
   // Query for platform integration status
   const { data: statusData, isLoading: statusLoading } = useQuery({
-    queryKey: ["integrations", "status"],
+    queryKey: integrationKeys.status,
     queryFn: integrationsApi.getIntegrationStatus,
     staleTime: 0, // Always refetch - status can change externally (OAuth callbacks)
     enabled: isAuthenticated,
@@ -203,8 +204,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           toast.success(`Connected to ${result.name}`, { id: toastId });
           // Invalidate (not awaited refetch) so the button/sidebar update in the
           // background instead of blocking on two integration/tools GETs.
-          queryClient.invalidateQueries({ queryKey: ["integrations"] });
-          queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+          queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+          queryClient.invalidateQueries({ queryKey: toolKeys.available });
         } else if (result.status === "redirecting") {
           // OAuth redirect in progress - dismiss toast, browser will navigate
           toast.dismiss(toastId);
@@ -241,7 +242,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         // Invalidate (not refetch) so the UI updates in the background while
         // the modal closes immediately. Awaiting refetch here blocked the
         // sidebar for the duration of three integration GETs.
-        queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        queryClient.invalidateQueries({ queryKey: integrationKeys.all });
       } catch (error) {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -262,9 +263,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     mutationFn: integrationsApi.createCustomIntegration,
     onSuccess: () => {
       // Refetch integrations to update connection status
-      queryClient.refetchQueries({ queryKey: ["integrations"] });
+      queryClient.refetchQueries({ queryKey: integrationKeys.all });
       // Refetch tools since backend auto-connects and discovers tools
-      queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+      queryClient.refetchQueries({ queryKey: toolKeys.available });
     },
   });
 
@@ -279,7 +280,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const deleteMutation = useMutation({
     mutationFn: integrationsApi.deleteCustomIntegration,
     onSuccess: () => {
-      queryClient.refetchQueries({ queryKey: ["integrations"] });
+      queryClient.refetchQueries({ queryKey: integrationKeys.all });
     },
   });
 
@@ -336,7 +337,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       try {
         await integrationsApi.unpublishIntegration(integrationId);
         toast.success(`${integrationName} unpublished`, { id: toastId });
-        await queryClient.refetchQueries({ queryKey: ["integrations"] });
+        await queryClient.refetchQueries({ queryKey: integrationKeys.all });
       } catch (error) {
         toast.error(
           `Failed to unpublish: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -350,7 +351,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
   // Simple refetch all
   const refetch = useCallback(async () => {
-    await queryClient.refetchQueries({ queryKey: ["integrations"] });
+    await queryClient.refetchQueries({ queryKey: integrationKeys.all });
   }, [queryClient]);
 
   return {
