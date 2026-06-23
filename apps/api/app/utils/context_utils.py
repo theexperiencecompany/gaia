@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # ── Performance tuning ───────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ def execute_tool(
             validated = output_model.model_validate(data)
             return validated.model_dump()
         except Exception as e:
-            log.warning(f"Schema validation warning for {tool_name}: {e}")
+            log.warning(f"{LogTag.AGENT} Schema validation warning for {tool_name}: {e}")
             return data
 
     return data
@@ -85,7 +86,7 @@ def fetch_all_providers(
             data = execute_tool(tool_slug, {}, user_id)
             return provider, data
         except Exception as e:
-            log.warning(f"Provider {provider} ({tool_slug}) failed: {e}")
+            log.warning(f"{LogTag.AGENT} Provider {provider} ({tool_slug}) failed: {e}")
             return provider, None
 
     results: dict[str, Any] = {}
@@ -100,10 +101,10 @@ def fetch_all_providers(
                 results[provider] = data
         except FuturesTimeout:
             provider = futures[future]
-            log.warning(f"Provider {provider} timed out")
+            log.warning(f"{LogTag.AGENT} Provider {provider} timed out")
         except Exception as e:
             provider = futures[future]
-            log.error(f"Unexpected error for {provider}: {e}")
+            log.error(f"{LogTag.AGENT} Unexpected error for {provider}: {e}")
     return results
 
 
@@ -136,13 +137,15 @@ async def resolve_providers(
     try:
         connected = await get_user_available_tool_namespaces(user_id)
     except Exception as e:
-        log.warning(f"Could not get connected namespaces: {e}")
+        log.warning(f"{LogTag.AGENT} Could not get connected namespaces: {e}")
 
     if connected:
         filtered = [p for p, slug in provider_tools.items() if namespace_fn(slug) in connected]
         if filtered:
-            log.info(f"Auto-selected {len(filtered)} connected providers: {filtered}")
+            log.info(
+                f"{LogTag.AGENT} Auto-selected {len(filtered)} connected providers: {filtered}"
+            )
             return filtered
 
-    log.warning("No connected providers detected — returning empty list")
+    log.warning(f"{LogTag.AGENT} No connected providers detected — returning empty list")
     return []

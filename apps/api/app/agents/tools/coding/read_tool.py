@@ -23,6 +23,7 @@ from app.agents.tools.coding._context import (
 )
 from app.agents.workspace.paths import WORKSPACE_ROOT
 from app.agents.workspace.system_files import system_file_body
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
@@ -91,7 +92,7 @@ async def read(
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
-        log.error(f"read tool failed: {e}", exc_info=True)
+        log.error(f"{LogTag.SANDBOX} read tool failed: {e}", exc_info=True)
         return f"Error reading file: {e}"
 
 

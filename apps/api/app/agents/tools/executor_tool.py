@@ -34,6 +34,7 @@ from app.constants.cache import (
     EXECUTOR_QUEUE_TTL,
 )
 from app.constants.general import CALL_EXECUTOR_NAME
+from app.constants.log_tags import LogTag
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
@@ -129,7 +130,7 @@ async def call_executor(
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:
-        log.error("call_executor: missing thread_id in configurable")
+        log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
 
     task_id = str(uuid4())
@@ -144,7 +145,7 @@ async def call_executor(
     except (LangChainRateLimitException, RateLimitExceededException) as e:
         return _rate_limit_message(e)
     except Exception as e:  # noqa: BLE001
-        log.error("Error dispatching executor", error=str(e))
+        log.error(f"{LogTag.TOOL} Error dispatching executor", error=str(e))
         await redis_cache.delete(
             f"{EXECUTOR_BUSY_PREFIX}{conversation_id}",
         )
@@ -158,7 +159,7 @@ def _rate_limit_message(e: LangChainRateLimitException | RateLimitExceededExcept
     else:
         detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
         feature = detail.get("feature", "")
-    log.warning("Rate limit exceeded for executor task", feature=feature)
+    log.warning(f"{LogTag.TOOL} Rate limit exceeded for executor task", feature=feature)
     return (
         f"Rate limit exceeded for {feature or 'this feature'}. "
         "The user has already been notified of this limit; "
@@ -199,7 +200,7 @@ async def _dispatch_executor(
         held_stream_id = parse_lock_value(decode_raw_item(held_value))[0] if held_value else ""
         if stream_id and held_stream_id == stream_id:
             log.warning(
-                "Duplicate call_executor in same turn — ignored, not queued",
+                f"{LogTag.TOOL} Duplicate call_executor in same turn — ignored, not queued",
                 task_id=task_id,
                 stream_id=stream_id,
                 conversation_id=conversation_id,
@@ -216,7 +217,7 @@ async def _dispatch_executor(
         # one. Only waits when a cancel is actually in flight (see helper).
         if await _acquire_lock_through_redirect(lock_key, lock_value, held_stream_id):
             log.info(
-                "Acquired executor lock after redirect cancel — running live",
+                f"{LogTag.TOOL} Acquired executor lock after redirect cancel — running live",
                 task_id=task_id,
                 conversation_id=conversation_id,
             )
@@ -232,7 +233,7 @@ async def _dispatch_executor(
                 user_message_id=user_message_id,
             )
             log.info(
-                "Executor busy — task queued",
+                f"{LogTag.TOOL} Executor busy — task queued",
                 task_id=task_id,
                 conversation_id=conversation_id,
             )
@@ -268,7 +269,7 @@ async def _dispatch_executor(
     bg_task.add_done_callback(_executor_tasks.discard)
 
     log.info(
-        "Executor dispatched to background",
+        f"{LogTag.TOOL} Executor dispatched to background",
         task_id=task_id,
         stream_id=stream_id,
     )
@@ -356,7 +357,7 @@ async def cancel_executor(
         return result
 
     except Exception as e:  # noqa: BLE001
-        log.error("cancel_executor failed", error=str(e))
+        log.error(f"{LogTag.TOOL} cancel_executor failed", error=str(e))
         await redis_cache.delete(lock_key)
         return f"Cancellation attempted but hit an error: {e}"
 
@@ -380,7 +381,7 @@ async def _broadcast_executor_cancelled(
             },
         )
     except Exception as e:  # noqa: BLE001 — best-effort UI signal
-        log.warning("Failed to broadcast executor.cancelled", error=str(e))
+        log.warning(f"{LogTag.TOOL} Failed to broadcast executor.cancelled", error=str(e))
 
 
 async def _cancel_running_task(
@@ -406,7 +407,7 @@ async def _cancel_running_task(
     await redis_cache.delete(lock_key)
 
     log.info(
-        "cancel_executor: stopped running task",
+        f"{LogTag.TOOL} cancel_executor: stopped running task",
         task_id=active_task_id,
         stream_id=active_stream_id,
         conversation_id=conversation_id,
@@ -431,7 +432,7 @@ async def _cancel_queued_tasks(
     if cancel_all:
         await redis_cache.client.delete(queue_key)
         log.info(
-            "cancel_executor: cleared entire queue",
+            f"{LogTag.TOOL} cancel_executor: cleared entire queue",
             queue_len=queue_len,
             conversation_id=conversation_id,
         )
@@ -477,7 +478,7 @@ async def _remove_queued_by_ids(
                 EXECUTOR_QUEUE_TTL,
             )
         log.info(
-            "cancel_executor: removed queued tasks",
+            f"{LogTag.TOOL} cancel_executor: removed queued tasks",
             removed=len(cancelled),
             remaining=len(keep),
             conversation_id=conversation_id,

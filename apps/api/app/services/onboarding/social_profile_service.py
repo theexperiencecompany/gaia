@@ -6,6 +6,7 @@ from bson import ObjectId
 from langchain_core.messages import HumanMessage
 
 from app.agents.prompts.onboarding_prompts import SOCIAL_PROFILE_FILTER_PROMPT
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import SocialProfile, SocialProfileFilterOutput
@@ -187,7 +188,7 @@ async def extract_social_profiles_from_emails(
                 )
 
     if not candidates:
-        log.info("[social_profiles_smart] No social URL candidates found in emails")
+        log.info(f"{LogTag.ONBOARDING} No social URL candidates found in emails")
         return []
 
     by_platform: dict[str, list[dict]] = {}
@@ -207,14 +208,14 @@ async def extract_social_profiles_from_emails(
         capped.extend(sorted_entries[:8])
 
     log.info(
-        f"[social_profiles_smart] Harvested {len(capped)} candidates "
+        f"{LogTag.ONBOARDING} Harvested {len(capped)} social URL candidates "
         f"across {len(by_platform)} platforms from {len(emails)} emails"
     )
 
     for entry in capped:
         sent_label = "SENT" if entry["is_sent"] else "recv"
         log.info(
-            f"[social_profiles_smart] candidate: {entry['platform']}/{entry['handle']} "
+            f"{LogTag.ONBOARDING} social profile candidate: {entry['platform']}/{entry['handle']} "
             f"freq={entry['frequency']} {sent_label}"
         )
 
@@ -246,7 +247,9 @@ async def extract_social_profiles_from_emails(
     try:
         llm = await providers.aget("gemini_llm")
         if llm is None:
-            log.warning("[social_profiles_smart] LLM not available, using sent-email fallback")
+            log.warning(
+                f"{LogTag.ONBOARDING} social_profiles LLM not available, using sent-email fallback"
+            )
             return dedup_profiles_by_platform(sent_fallback)
 
         structured_llm = llm.with_structured_output(SocialProfileFilterOutput)
@@ -272,22 +275,22 @@ async def extract_social_profiles_from_emails(
                 owned.append(SocialProfile(platform=item_platform, url=canonical_url))
 
         log.info(
-            f"[social_profiles_smart] LLM filtered to {len(owned)} owned profiles "
+            f"{LogTag.ONBOARDING} social_profiles LLM filtered to {len(owned)} owned profiles "
             f"from {len(capped)} candidates"
         )
         if owned:
             for p in owned:
-                log.info(f"[social_profiles_smart] accepted: {p.platform} → {p.url}")
+                log.info(f"{LogTag.ONBOARDING} social_profiles accepted: {p.platform} -> {p.url}")
         else:
             log.info(
-                f"[social_profiles_smart] LLM returned 0 owned. "
+                f"{LogTag.ONBOARDING} social_profiles LLM returned 0 owned. "
                 f"Raw output: {result.owned_profiles!r}"
             )
         return dedup_profiles_by_platform(owned)
 
     except Exception as e:
         log.error(
-            f"[social_profiles_smart] LLM filter failed, using sent-email fallback: {e}",
+            f"{LogTag.ONBOARDING} social_profiles LLM filter failed, using sent-email fallback: {e}",
             exc_info=True,
         )
         return dedup_profiles_by_platform(sent_fallback)
@@ -309,4 +312,4 @@ async def save_confirmed_profiles(user_id: str, profiles: list[dict]) -> None:
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.social_profiles": profiles}},
     )
-    log.info(f"[social_profiles] Saved {len(profiles)} confirmed profiles for {user_id}")
+    log.info(f"{LogTag.ONBOARDING} Saved {len(profiles)} confirmed social profiles for {user_id}")

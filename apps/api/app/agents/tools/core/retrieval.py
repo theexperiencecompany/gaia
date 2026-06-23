@@ -31,6 +31,7 @@ from app.agents.tools.core.registry import (
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.models.chat_models import ConversationSource
 from app.services.integrations.integration_service import (
@@ -64,7 +65,9 @@ async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
             names.update(t.name for t in integration_tools)
         return names
     except Exception as e:
-        log.warning(f"_user_mcp_tool_names: failed for user {user_id}: {type(e).__name__}: {e}")
+        log.warning(
+            f"{LogTag.TOOL} _user_mcp_tool_names: failed for user {user_id}: {type(e).__name__}: {e}"
+        )
         return set()
 
 
@@ -107,6 +110,11 @@ query="what you want to do".
 Semantic search that returns tool names matching your intent. Tools are NOT loaded yet.
 
 Rules:
+- This is semantic vector search over tool names and descriptions. Phrase the query in
+  natural language using the INTEGRATION'S NAME ("github", "gmail", "notion") and the
+  action — NEVER an id, uuid, slug, or internal key. Ids carry no semantic meaning, so
+  they embed to noise and return irrelevant tools. Search "list github pull requests",
+  not the repo/connection id.
 - One well-formed query is enough for most tasks. Do not retry unless results are clearly irrelevant.
 - Do not search repeatedly to be thorough. If the first result looks right, move to binding.
 - Comma-separated intents work: "list pull requests, get repo info"
@@ -145,7 +153,9 @@ Internal tools follow snake_case: "plan_tasks", "vfs_read"
 —ARGS
 query:
     Natural language description of what you want to do.
-    Be specific about the action and the provider.
+    Be specific about the action and name the integration in plain words
+    ("github", "gmail", "notion") — NOT an id, uuid, or slug. This is semantic
+    vector search; ids do not embed and will not match.
     Example: "list pull requests", "send email", "create github issue"
 
 exact_tool_names:
@@ -268,11 +278,13 @@ async def _get_user_context(
 
         if include_subagents:
             connected_integrations = await _resolve_connected_subagents(user_id)
-            log.info(f"User {user_id} connected subagents: {set(connected_integrations)}")
+            log.info(
+                f"{LogTag.TOOL} User {user_id} connected subagents: {set(connected_integrations)}"
+            )
 
-        log.info(f"User {user_id} namespaces: {user_namespaces}")
+        log.info(f"{LogTag.TOOL} User {user_id} namespaces: {user_namespaces}")
     except Exception as e:
-        log.warning(f"Failed to get user namespaces: {e}")
+        log.warning(f"{LogTag.TOOL} Failed to get user namespaces: {e}")
 
     return user_namespaces, connected_integrations, internal_subagents
 
@@ -299,14 +311,14 @@ def _build_search_tasks(
 
     # Search in tool_space
     if tool_space in user_namespaces or tool_space == "general":
-        log.info(f"Adding search for tool_space: {tool_space}")
+        log.info(f"{LogTag.TOOL} Adding search for tool_space: {tool_space}")
         search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
     else:
         # Caller is in a subagent whose namespace they don't own. This is
         # unusual — usually it means a stale cache or a misrouted handoff.
         # We refuse the search rather than leak another user's tool index.
         log.warning(
-            "retrieve_tools refused search: tool_space not in user_namespaces",
+            f"{LogTag.TOOL} retrieve_tools refused search: tool_space not in user_namespaces",
             tool_space=tool_space,
             user_namespaces=sorted(user_namespaces),
         )
@@ -314,18 +326,18 @@ def _build_search_tasks(
     # For subagents, also search 'general' namespace with a small limit
     # so core tools (e.g. webpage tools) are still discoverable.
     if tool_space != "general":
-        log.info("Adding search for general namespace (limited to 5 for core tools)")
+        log.info(f"{LogTag.TOOL} Adding search for general namespace (limited to 5 for core tools)")
         search_tasks.append(store.asearch(("general",), query=query, limit=5))
 
     # Desktop-executed tools are only discoverable for desktop-app sessions
     # (include_desktop is derived from conversation_source upstream).
     if include_desktop:
-        log.info("Adding search for desktop namespace")
+        log.info(f"{LogTag.TOOL} Adding search for desktop namespace")
         search_tasks.append(store.asearch((DESKTOP_TOOL_SPACE,), query=query, limit=10))
 
     # Search subagents namespace
     if include_subagents:
-        log.info("Adding search for subagents namespace")
+        log.info(f"{LogTag.TOOL} Adding search for subagents namespace")
         search_tasks.append(store.asearch(("subagents",), query=query, limit=15))
         search_tasks.append(search_public_integrations(query=query, limit=15))
 
@@ -432,7 +444,7 @@ async def _process_search_results(
 
     for idx, result in enumerate(results):
         if isinstance(result, BaseException):
-            log.warning(f"Task {idx}: Search error - {result}")
+            log.warning(f"{LogTag.TOOL} Task {idx}: Search error - {result}")
             continue
 
         if not result:
@@ -454,11 +466,11 @@ async def _process_search_results(
                     for item in result[:20]
                 ]
                 log.debug(
-                    f"Chroma search raw hits (task={idx}, tool_space={tool_space}): "
+                    f"{LogTag.TOOL} Chroma search raw hits (task={idx}, tool_space={tool_space}): "
                     f"{len(result)} items, preview={preview}"
                 )
             except Exception as e:
-                log.debug(f"Chroma search raw hits log failed (task={idx}): {e}")
+                log.debug(f"{LogTag.TOOL} Chroma search raw hits log failed (task={idx}): {e}")
             processed = _process_chroma_search_result(
                 result,
                 available_tool_names,
@@ -558,6 +570,7 @@ def get_retrieve_tools_function(
     tool_space: str = "general",
     include_subagents: bool = True,
     limit: int = 25,
+    bindable_tool_names: set[str] | None = None,
 ) -> Callable[..., Awaitable[RetrieveToolsResult]]:
     """Get a retrieve_tools function configured for specific context.
 
@@ -569,6 +582,11 @@ def get_retrieve_tools_function(
         tool_space: Namespace to search for tools
         include_subagents: Whether to include subagent results in search
         limit: Maximum number of tool results for semantic search
+        bindable_tool_names: The set of tool names this agent's graph can actually
+            bind and execute. When set (scoped agents like provider subagents),
+            binding validates against it instead of the global registry, so a tool
+            the graph can't execute is never reported as a successful bind. None ->
+            validate against the global registry (main executor/comms carry it).
 
     Returns:
         Configured retrieve_tools coroutine that returns RetrieveToolsResult
@@ -586,7 +604,7 @@ def get_retrieve_tools_function(
         exact_tool_names: list[str] = Field(default_factory=list),
     ) -> RetrieveToolsResult:
         log.info(
-            "retrieve_tools called",
+            f"{LogTag.TOOL} retrieve_tools called",
             query=query,
             exact_tool_names=exact_tool_names,
             tool_space=tool_space,
@@ -613,7 +631,7 @@ def get_retrieve_tools_function(
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
-        log.info(f"Registry has {len(available_tool_names)} available tools")
+        log.info(f"{LogTag.TOOL} Registry has {len(available_tool_names)} available tools")
 
         # Desktop tools only surface for desktop-app conversations, and only
         # in the main agent context (subagents keep their own tool space).
@@ -634,19 +652,26 @@ def get_retrieve_tools_function(
                 config["configurable"]["user_id"] = user_id
 
         if not user_id:
-            log.warning("retrieve_tools called with NO user_id (not in configurable or metadata)")
+            log.warning(
+                f"{LogTag.TOOL} retrieve_tools called with NO user_id (not in configurable or metadata)"
+            )
 
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
-            available_tool_names_set = set(available_tool_names)
+            global_tool_names_set = set(available_tool_names)
+            # Validate against the agent's scoped set, not the global registry —
+            # else an out-of-scope tool reports a fake bind the graph then rejects,
+            # looping the model bind->reject.
+            bindable_set = (
+                bindable_tool_names if bindable_tool_names is not None else global_tool_names_set
+            )
 
             mcp_tool_names_set = await _user_mcp_tool_names(user_id)
-            known_by_canonical = canonical_tool_name_map(
-                available_tool_names_set | mcp_tool_names_set
-            )
+            known_by_canonical = canonical_tool_name_map(bindable_set | mcp_tool_names_set)
 
             validated_tool_names: list[str] = []
             unknown_tool_names: list[str] = []
+            out_of_scope_tool_names: list[str] = []
             requested_subagents: list[str] = []
             for tool_name in exact_tool_names:
                 if tool_name.startswith("subagent:"):
@@ -666,10 +691,13 @@ def get_retrieve_tools_function(
                     # Desktop tools must not bind outside desktop sessions —
                     # the tools also re-check the source at execution time.
                     unknown_tool_names.append(tool_name)
-                elif tool_name in available_tool_names_set or tool_name in mcp_tool_names_set:
+                elif tool_name in bindable_set or tool_name in mcp_tool_names_set:
                     validated_tool_names.append(tool_name)
                 elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
                     validated_tool_names.append(canonical)
+                elif tool_name in global_tool_names_set:
+                    # Known globally, but not in this agent's scope.
+                    out_of_scope_tool_names.append(tool_name)
                 else:
                     unknown_tool_names.append(tool_name)
 
@@ -677,10 +705,16 @@ def get_retrieve_tools_function(
                 # Surfacing this is important: silently dropping requested tools
                 # makes registry-population bugs invisible to operators.
                 log.warning(
-                    "retrieve_tools binding dropped unknown tools",
+                    f"{LogTag.TOOL} retrieve_tools binding dropped unknown tools",
                     tool_space=tool_space,
                     unknown=unknown_tool_names,
-                    available_count=len(available_tool_names_set),
+                    available_count=len(bindable_set),
+                )
+            if out_of_scope_tool_names:
+                log.warning(
+                    "retrieve_tools binding rejected out-of-scope tools",
+                    tool_space=tool_space,
+                    out_of_scope=out_of_scope_tool_names,
                 )
 
             log.set(
@@ -692,15 +726,21 @@ def get_retrieve_tools_function(
                 )
             )
 
-            # Bind the valid tools regardless; a co-requested subagent doesn't void
-            # them. Append corrective guidance for any subagent name so the model
-            # learns to hand off instead of seeing it echoed back as a bind.
+            # Bind valid tools regardless; add corrective guidance for subagent /
+            # out-of-scope names so the model takes the right path.
             response = list(validated_tool_names)
             if requested_subagents:
                 response.append(
                     "Subagents are not bound with retrieve_tools. Call "
                     "handoff(subagent_id='<id>', task='...') directly, using the "
                     "part after 'subagent:'."
+                )
+            if out_of_scope_tool_names:
+                response.append(
+                    "These tools are not available inside this subagent and cannot be "
+                    f"bound here: {', '.join(out_of_scope_tool_names)}. They belong to the "
+                    "main executor, not this subagent — do not retry binding them; finish "
+                    "your task here and let the executor handle them."
                 )
 
             return RetrieveToolsResult(
@@ -808,7 +848,7 @@ def get_retrieve_tools_function(
         )
         if chroma_hits == 0 and tool_space != "general":
             log.warning(
-                f"retrieve_tools: 0 ChromaDB hits for tool_space='{tool_space}' "
+                f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits for tool_space='{tool_space}' "
                 f"user={user_id} query={query!r}. Check that index_tools_to_store "
                 f"actually wrote docs for this namespace."
             )

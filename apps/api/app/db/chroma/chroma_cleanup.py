@@ -1,11 +1,12 @@
 """ChromaDB cleanup utilities for integration lifecycle management."""
 
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX, SUBAGENT_CACHE_PREFIX
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import delete_tools_by_namespace
 from app.db.redis import delete_cache
 from app.helpers.namespace_utils import derive_integration_namespace
-from shared.py.wide_events import log
+from shared.py.wide_events import VectorContext, log
 
 
 async def cleanup_integration_chroma_data(
@@ -29,6 +30,8 @@ async def cleanup_integration_chroma_data(
         - "tools": Whether tools were deleted
         - "cache": Whether cache was invalidated
     """
+    log.set(vector=VectorContext(operation="delete", collection="langgraph_tools_store"))
+
     results = {"subagent": False, "tools": False, "cache": False}
 
     namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
@@ -39,17 +42,17 @@ async def cleanup_integration_chroma_data(
         if store:
             await store.adelete(namespace=("subagents",), key=integration_id)
             results["subagent"] = True
-            log.debug(f"Deleted subagent entry for {integration_id}")
+            log.debug(f"{LogTag.CHROMA} Deleted subagent entry for {integration_id}")
     except Exception as e:
-        log.warning(f"Failed to delete subagent entry for {integration_id}: {e}")
+        log.warning(f"{LogTag.CHROMA} Failed to delete subagent entry for {integration_id}: {e}")
 
     # 2. Delete indexed tools
     try:
         deleted_count = await delete_tools_by_namespace(namespace)
         results["tools"] = True
-        log.info(f"Deleted {deleted_count} tools for namespace '{namespace}'")
+        log.info(f"{LogTag.CHROMA} Deleted {deleted_count} tools for namespace '{namespace}'")
     except Exception as e:
-        log.warning(f"Failed to delete tools for namespace '{namespace}': {e}")
+        log.warning(f"{LogTag.CHROMA} Failed to delete tools for namespace '{namespace}': {e}")
 
     # 3. Invalidate caches: namespace hash + the per-integration name caches
     # (subagent_info and handoff_name both embed the display name).
@@ -59,6 +62,6 @@ async def cleanup_integration_chroma_data(
         await delete_cache(f"{HANDOFF_NAME_CACHE_PREFIX}:{integration_id}")
         results["cache"] = True
     except Exception as e:
-        log.warning(f"Failed to invalidate cache for namespace '{namespace}': {e}")
+        log.warning(f"{LogTag.CHROMA} Failed to invalidate cache for namespace '{namespace}': {e}")
 
     return results

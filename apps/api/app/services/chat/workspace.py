@@ -13,6 +13,7 @@ Artifact-event forwarding lives in :mod:`app.services.chat.artifact_forwarder`.
 
 import asyncio
 
+from app.constants.log_tags import LogTag
 from app.services.storage import JuiceFSUnavailable, touch_session_last_active
 from shared.py.wide_events import log
 
@@ -35,7 +36,7 @@ def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
         except JuiceFSUnavailable:
             return  # dev mode — no mount, nothing to touch
         except Exception as e:  # noqa: BLE001 — last_active bump must not affect chat
-            log.warning(f"[chat] last_active touch failed: {e}")
+            log.warning(f"{LogTag.CHAT} last_active touch failed: {e}")
 
     task = loop.create_task(_touch())
     _last_active_tasks.add(task)

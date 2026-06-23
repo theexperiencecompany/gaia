@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.rate_limiter import limiter
+from app.constants.log_tags import LogTag
 from app.models.payment_models import (
     CreateSubscriptionRequest,
     PaymentVerificationResponse,
@@ -30,7 +31,7 @@ async def get_plans_endpoint(request: Request, active_only: bool = True):
     try:
         return await payment_service.get_plans(active_only=active_only)
     except Exception as e:
-        log.error(f"Error getting plans: {e!s}")
+        log.error(f"{LogTag.PAYMENT} Error getting plans: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get plans")
 
 
@@ -60,7 +61,7 @@ async def create_subscription_endpoint(
             user_id, subscription_data.product_id, subscription_data.quantity
         )
     except Exception as e:
-        log.error(f"Error creating subscription: {e!s}")
+        log.error(f"{LogTag.PAYMENT} Error creating subscription: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to create subscription")
 
 
@@ -83,7 +84,7 @@ async def verify_payment_endpoint(
         result = await payment_service.verify_payment_completion(user_id)
         return PaymentVerificationResponse(**result)
     except Exception as e:
-        log.error(f"Error verifying payment: {e!s}")
+        log.error(f"{LogTag.PAYMENT} Error verifying payment: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to verify payment")
 
 
@@ -105,7 +106,7 @@ async def get_subscription_status_endpoint(
     try:
         return await payment_service.get_user_subscription_status(user_id)
     except Exception as e:
-        log.error(f"Error getting subscription status: {e!s}")
+        log.error(f"{LogTag.PAYMENT} Error getting subscription status: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get subscription status")
 
 
@@ -131,7 +132,7 @@ async def handle_dodo_webhook(
 
         # Verify webhook signature using Standard Webhooks library
         if not payment_webhook_service.verify_webhook_signature(payload, headers):
-            log.warning("Invalid webhook signature")
+            log.warning(f"{LogTag.PAYMENT} Invalid webhook signature")
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
         # Parse webhook data
@@ -148,7 +149,7 @@ async def handle_dodo_webhook(
         # Process the webhook with idempotency check using webhook_id
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
 
-        log.info(f"Webhook processed: {result.event_type} - {result.status}")
+        log.info(f"{LogTag.PAYMENT} Webhook processed: {result.event_type} - {result.status}")
         return {
             "status": "success",
             "event_type": result.event_type,
@@ -159,8 +160,8 @@ async def handle_dodo_webhook(
     except HTTPException:
         raise
     except json.JSONDecodeError:
-        log.error("Invalid JSON in webhook payload")
+        log.error(f"{LogTag.PAYMENT} Invalid JSON in webhook payload")
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
     except Exception as e:
-        log.error(f"Error processing webhook: {e}")
+        log.error(f"{LogTag.PAYMENT} Error processing webhook: {e}")
         raise HTTPException(status_code=500, detail="Webhook processing failed")

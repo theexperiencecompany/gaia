@@ -7,6 +7,7 @@ from typing import Any
 
 from arq.connections import RedisSettings
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
 from app.models.scheduler_models import (
     BaseScheduledTask,
@@ -106,7 +107,7 @@ class WorkflowScheduler(BaseSchedulerService):
 
             workflow_doc = await workflows_collection.find_one(query)
             if not workflow_doc:
-                log.warning(f"Workflow {task_id} not found")
+                log.warning(f"{LogTag.WORKFLOW} Workflow {task_id} not found")
                 return None
 
             # Transform MongoDB document to Workflow object
@@ -116,7 +117,7 @@ class WorkflowScheduler(BaseSchedulerService):
 
             return Workflow(**workflow_doc)
         except Exception as e:
-            log.error(f"Error fetching workflow {task_id}: {e}")
+            log.error(f"{LogTag.WORKFLOW} Error fetching workflow {task_id}: {e}")
             return None
 
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
@@ -134,7 +135,7 @@ class WorkflowScheduler(BaseSchedulerService):
             from app.workers.tasks import execute_workflow_as_chat
 
             log.set(workflow={"id": workflow.id, "status": "executing"})
-            log.info(f"Executing workflow {workflow.id}")
+            log.info(f"{LogTag.WORKFLOW} Executing workflow {workflow.id}")
 
             if not workflow.id:
                 raise ValueError("Workflow ID is required for execution")
@@ -148,7 +149,7 @@ class WorkflowScheduler(BaseSchedulerService):
                 message="Workflow executed via scheduler",
             )
         except Exception as e:
-            log.error(f"Error executing workflow {task.id}: {e}")
+            log.error(f"{LogTag.WORKFLOW} Error executing workflow {task.id}: {e}")
             return TaskExecutionResult(success=False, message=f"Workflow execution failed: {e!s}")
 
     async def update_task_status(
@@ -184,13 +185,13 @@ class WorkflowScheduler(BaseSchedulerService):
 
             if result.modified_count > 0:
                 log.set(workflow={"id": task_id, "status": status.value})
-                log.info(f"Updated workflow {task_id} status to {status.value}")
+                log.info(f"{LogTag.WORKFLOW} Updated workflow {task_id} status to {status.value}")
                 return True
-            log.warning(f"No workflow updated for {task_id}")
+            log.warning(f"{LogTag.WORKFLOW} No workflow updated for {task_id}")
             return False
 
         except Exception as e:
-            log.error(f"Error updating workflow {task_id}: {e}")
+            log.error(f"{LogTag.WORKFLOW} Error updating workflow {task_id}: {e}")
             return False
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
@@ -242,16 +243,16 @@ class WorkflowScheduler(BaseSchedulerService):
 
             if success:
                 log.info(
-                    f"Scheduled workflow {workflow_id} for execution at {scheduled_at}"
+                    f"{LogTag.WORKFLOW} Scheduled workflow {workflow_id} for execution at {scheduled_at}"
                     + (f" with repeat '{repeat}'" if repeat else "")
                 )
             else:
-                log.error(f"Failed to schedule workflow {workflow_id}")
+                log.error(f"{LogTag.WORKFLOW} Failed to schedule workflow {workflow_id}")
 
             return success
 
         except Exception as e:
-            log.error(f"Error scheduling workflow {workflow_id}: {e!s}")
+            log.error(f"{LogTag.WORKFLOW} Error scheduling workflow {workflow_id}: {e!s}")
             return False
 
     async def reschedule_workflow(
@@ -274,21 +275,25 @@ class WorkflowScheduler(BaseSchedulerService):
             )
 
             if not db_success:
-                log.error(f"Failed to update workflow {workflow_id} in database")
+                log.error(f"{LogTag.WORKFLOW} Failed to update workflow {workflow_id} in database")
                 return False
 
             # Actually reschedule in ARQ queue
             arq_success = await self.reschedule_task(workflow_id, new_scheduled_at)
 
             if arq_success:
-                log.info(f"Rescheduled workflow {workflow_id} for {new_scheduled_at}")
+                log.info(
+                    f"{LogTag.WORKFLOW} Rescheduled workflow {workflow_id} for {new_scheduled_at}"
+                )
             else:
-                log.error(f"Failed to reschedule workflow {workflow_id} in ARQ queue")
+                log.error(
+                    f"{LogTag.WORKFLOW} Failed to reschedule workflow {workflow_id} in ARQ queue"
+                )
 
             return arq_success
 
         except Exception as e:
-            log.error(f"Error rescheduling workflow {workflow_id}: {e!s}")
+            log.error(f"{LogTag.WORKFLOW} Error rescheduling workflow {workflow_id}: {e!s}")
             return False
 
     async def reap_stale_executing(self) -> int:
@@ -333,7 +338,7 @@ class WorkflowScheduler(BaseSchedulerService):
                 await self.reschedule_task(workflow_id, next_run)
 
             log.warning(
-                f"Reaped workflow {workflow_id} stuck in EXECUTING for {stuck_seconds}s; "
+                f"{LogTag.WORKFLOW} Reaped workflow {workflow_id} stuck in EXECUTING for {stuck_seconds}s; "
                 f"reset to SCHEDULED (next run {next_run})"
             )
             reaped += 1

@@ -4,6 +4,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.services.image_service import api_generate_image
 from app.templates.docstrings.image_tool_docs import GENERATE_IMAGE
@@ -38,6 +39,6 @@ async def generate_image(
 
     except Exception as e:
         writer = get_stream_writer()
-        log.error(f"Error generating image: {e!s}")
+        log.error(f"{LogTag.TOOL} Error generating image: {e!s}")
         writer({"error": f"Error generating image: {e!s}"})
         return {"status": "error", "message": f"Error generating image: {e!s}"}

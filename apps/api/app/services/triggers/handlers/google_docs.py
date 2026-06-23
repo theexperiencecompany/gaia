@@ -4,6 +4,7 @@ Google Docs trigger handler.
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import GoogleDocsPageAddedPayload
 from app.models.trigger_configs import (
@@ -93,7 +94,7 @@ class GoogleDocsTriggerHandler(TriggerHandler):
         self, event_type: str, trigger_id: str, data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching a Google Docs trigger event."""
-        log.set(trigger={"provider": "google_docs", "event": event_type})
+        log.set_ns("trigger", integration_id="google_docs", trigger_type=event_type)
         try:
             query = {
                 "activated": True,
@@ -106,7 +107,7 @@ class GoogleDocsTriggerHandler(TriggerHandler):
             try:
                 GoogleDocsPageAddedPayload.model_validate(data)
             except Exception as e:
-                log.debug(f"Google Docs payload validation failed: {e}")
+                log.debug(f"{LogTag.TRIGGER} Google Docs payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
@@ -119,13 +120,13 @@ class GoogleDocsTriggerHandler(TriggerHandler):
                     workflow = Workflow(**workflow_doc)
                     workflows.append(workflow)
                 except Exception as e:
-                    log.error(f"Error processing workflow document: {e}")
+                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
                     continue
 
             return workflows
 
         except Exception as e:
-            log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
 

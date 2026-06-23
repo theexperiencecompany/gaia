@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
+from app.constants.log_tags import LogTag
 from app.schemas.integrations.responses import CommunityListResponse
 from app.services.integrations.community_service import (
     list_community_integrations as list_community,
@@ -26,5 +27,5 @@ async def list_community_integrations(
         log.set(outcome="success")
         return result
     except Exception as e:
-        log.error(f"Error fetching community integrations: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error fetching community integrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch community integrations")

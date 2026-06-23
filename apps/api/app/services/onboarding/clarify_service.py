@@ -20,6 +20,7 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
 from app.agents.prompts.onboarding_prompts import CLARIFY_QUESTIONS_PROMPT
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from shared.py.wide_events import log
 
@@ -123,20 +124,20 @@ async def generate_clarify_questions(
 
         if len(questions) < 3:
             log.warning(
-                "[clarify] LLM returned incomplete set, falling back",
+                f"{LogTag.ONBOARDING} LLM returned incomplete set, falling back",
                 received=len(questions),
             )
             return _fallback_questions()
 
         log.info(
-            "[clarify] questions generated",
+            f"{LogTag.ONBOARDING} questions generated",
             duration_s=round(time.monotonic() - t0, 2),
         )
         return questions
 
     except Exception as e:
         log.warning(
-            "[clarify] generation failed, using fallback",
+            f"{LogTag.ONBOARDING} generation failed, using fallback",
             error=str(e)[:200],
             error_type=type(e).__name__,
             duration_s=round(time.monotonic() - t0, 2),

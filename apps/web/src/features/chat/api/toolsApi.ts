@@ -6,6 +6,7 @@ export interface ToolInfo {
   display_name: string; // REQUIRED - human-readable name
   icon_url?: string;
   requires_integration: boolean; // false for core platform tools (search, memory, etc.)
+  locked: boolean; // true for added-but-not-connected integrations; false for connected + core tools
 }
 
 export interface ToolsListResponse {

@@ -5,6 +5,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.files import CHROMA_DOCUMENTS_COLLECTION
+from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.decorators import with_doc, with_rate_limiting
@@ -32,7 +33,7 @@ async def search_uploaded_files(
         configurable = config.get("configurable")
 
         if not configurable:
-            log.error("Configurable is not set in the config.")
+            log.error(f"{LogTag.TOOL} Configurable is not set in the config.")
             raise ValueError("Configurable is not set in the config.")
 
         conversation_id = configurable["thread_id"]
@@ -44,13 +45,13 @@ async def search_uploaded_files(
             user_id=configurable["user_id"],
         )
 
-        log.info(f"Similar documents found: {similar_documents}")
+        log.info(f"{LogTag.TOOL} Similar documents found: {similar_documents}")
 
         document_ids = list(
             set([document.metadata.get("file_id") for document, score in similar_documents])
         )
 
-        log.info(f"Document IDs: {document_ids}")
+        log.info(f"{LogTag.TOOL} Document IDs: {document_ids}")
 
         documents = await files_collection.find(
             filter={
@@ -59,7 +60,7 @@ async def search_uploaded_files(
             },
         ).to_list(length=None)
 
-        log.info(f"Documents found: {documents}")
+        log.info(f"{LogTag.TOOL} Documents found: {documents}")
 
         return _construct_content(
             documents=documents,
@@ -67,7 +68,7 @@ async def search_uploaded_files(
         )
 
     except Exception as e:
-        log.error(f"Error in querying document: {e!s}")
+        log.error(f"{LogTag.TOOL} Error in querying document: {e!s}")
         raise e
 
 
@@ -88,7 +89,7 @@ async def _get_similar_documents(
     )
 
     if not chroma_documents_collection:
-        log.error("ChromaDB client is not available.")
+        log.error(f"{LogTag.TOOL} ChromaDB client is not available.")
         return []
 
     conversation_files = await files_collection.find(
@@ -146,7 +147,7 @@ def _construct_content(documents: list, similar_documents: list[tuple[Document, 
         )
 
         if not document:
-            log.error(f"Document with ID {document_id} not found.")
+            log.error(f"{LogTag.TOOL} Document with ID {document_id} not found.")
             continue
 
         document_content = document["page_wise_summary"]
@@ -170,10 +171,12 @@ def _construct_content(documents: list, similar_documents: list[tuple[Document, 
             content += f"Document ID: {document_id}\n"
             content += f"Description: {document_content.get('data', {}).get('content', 'Description not available!')}\n\n"
         else:
-            log.error(f"Unexpected document description type: {type(document['description'])}")
+            log.error(
+                f"{LogTag.TOOL} Unexpected document description type: {type(document['description'])}"
+            )
             content += f"Document ID: {document_id}\n"
             content += "Description: Invalid format\n\n"
 
-    log.info(f"Constructed content: {content}")
+    log.info(f"{LogTag.TOOL} Constructed content: {content}")
 
     return content

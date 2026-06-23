@@ -12,6 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import MessagesState
 from langgraph.store.base import BaseStore
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 T = TypeVar("T", bound=MessagesState)
@@ -66,5 +67,5 @@ def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> 
         return {**state, "messages": filtered_messages}  # type: ignore[return-value]
 
     except Exception as e:
-        log.error(f"Error in filter messages node: {e}")
+        log.error(f"{LogTag.AGENT} Error in filter messages node: {e}")
         return state

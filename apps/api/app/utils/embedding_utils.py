@@ -3,6 +3,7 @@ from typing import Any
 from bson import ObjectId
 from langchain_core.documents import Document
 
+from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection, notes_collection
 from shared.py.wide_events import log
@@ -112,7 +113,7 @@ async def search_by_similarity(
         return result_items
     except Exception as e:
         log.error(
-            f"Error searching in ChromaDB collection '{collection_name}': {e!s}",
+            f"{LogTag.CHROMA} Error searching in ChromaDB collection '{collection_name}': {e!s}",
             exc_info=True,
         )
         return []

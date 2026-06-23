@@ -4,28 +4,30 @@ Provides type-safe event tracking with consistent naming conventions.
 """
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.core.lazy_loader import providers
+from app.models.payment_models import PlanType, SubscriptionStatus
 from shared.py.wide_events import log
 
 
 # Event name constants for consistent tracking
-class AnalyticsEvents:
-    """Analytics event names matching frontend conventions."""
+class AnalyticsEvents(StrEnum):
+    """Backend-relevant analytics event names (matching frontend conventions)."""
 
-    # Keep only backend-relevant events (auth signup, payments, subscriptions)
+    # Auth
     USER_SIGNED_UP = "user:signed_up"
     USER_LOGGED_IN = "user:logged_in"
     USER_LOGGED_OUT = "user:logged_out"
 
-    # Payment events (used by payment webhook processing)
+    # Payments (used by payment webhook processing)
     PAYMENT_SUCCEEDED = "payment:succeeded"
     PAYMENT_FAILED = "payment:failed"
     PAYMENT_REFUNDED = "payment:refunded"
 
-    # Subscription events (used by payment webhook processing)
+    # Subscription lifecycle (used by payment webhook processing)
     SUBSCRIPTION_ACTIVATED = "subscription:activated"
     SUBSCRIPTION_RENEWED = "subscription:renewed"
     SUBSCRIPTION_CANCELLED = "subscription:cancelled"
@@ -209,7 +211,7 @@ def track_logout(
 
 def track_subscription_event(
     user_id: str,
-    event_type: str,
+    event_type: AnalyticsEvents,
     subscription_id: str | None = None,
     plan_name: str | None = None,
     amount: float | None = None,
@@ -248,21 +250,42 @@ def track_subscription_event(
 
     capture_event(user_id, event_type, event_properties)
 
-    # Update user properties for subscription status
-    if event_type == AnalyticsEvents.SUBSCRIPTION_ACTIVATED:
-        client = _get_posthog_client()
-        if client:
-            try:
-                client.set(
-                    distinct_id=user_id,
-                    properties={
-                        "plan": plan_name,
-                        "subscription_status": "active",
-                        "subscription_activated_at": datetime.now(UTC).isoformat(),
-                    },
-                )
-            except Exception as e:
-                log.error(f"Failed to update user subscription properties: {e}")
+    # Update the user's subscription metadata (person properties, not an emitted
+    # event) so any chart can segment pro vs free. `is_subscribed` is the
+    # canonical flag; a cancellation keeps access until the plan actually expires.
+    match event_type:
+        case AnalyticsEvents.SUBSCRIPTION_ACTIVATED:
+            metadata = {
+                "plan": PlanType.PRO,
+                "is_subscribed": True,
+                "subscription_status": SubscriptionStatus.ACTIVE,
+                "subscription_activated_at": datetime.now(UTC).isoformat(),
+            }
+        case AnalyticsEvents.SUBSCRIPTION_RENEWED:
+            metadata = {
+                "plan": PlanType.PRO,
+                "is_subscribed": True,
+                "subscription_status": SubscriptionStatus.ACTIVE,
+            }
+        case AnalyticsEvents.SUBSCRIPTION_CANCELLED:
+            metadata = {"subscription_status": SubscriptionStatus.CANCELLED}
+        case AnalyticsEvents.SUBSCRIPTION_EXPIRED:
+            metadata = {
+                "plan": PlanType.FREE,
+                "is_subscribed": False,
+                "subscription_status": SubscriptionStatus.EXPIRED,
+            }
+        case _:
+            # Non-subscription or no-metadata events (e.g. FAILED) are ignored.
+            return
+
+    client = _get_posthog_client()
+    if client is None:
+        return
+    try:
+        client.set(distinct_id=user_id, properties=metadata)
+    except Exception as e:
+        log.error(f"Failed to update user subscription properties: {e}")
 
 
 def track_payment_event(

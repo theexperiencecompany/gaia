@@ -121,28 +121,35 @@ async function deleteByExtension(dir, ext) {
   }
 }
 
+// The onnxruntime-web artifacts the wake-word engine actually fetches at
+// runtime. `libs/wake-word/src/web/runtime.ts` imports `onnxruntime-web/wasm`
+// and runs the plain "wasm" execution provider, which loads the CPU wasm binary
+// plus its Emscripten glue. The JSEP/WebGPU, asyncify, and JSPI flavors are
+// never loaded — and the JSEP binary alone (25 MiB) exceeds Cloudflare Workers'
+// per-asset cap, so it is deliberately kept out of the synced runtime. Keep this
+// in lockstep with RUNTIME_FILES in apps/web/scripts/sync-wake-word-runtime.mjs.
+const ORT_RUNTIME_FILES = new Set([
+  "ort-wasm-simd-threaded.wasm",
+  "ort-wasm-simd-threaded.mjs",
+]);
+const ORT_CANARY_FILE = "ort-wasm-simd-threaded.wasm";
+
 /**
- * Strip onnxruntime-web wasm variants the wake-word engine never requests.
- * libs/wake-word imports `onnxruntime-web/wasm` and runs the "wasm" execution
- * provider, which loads the CPU build `ort-wasm-simd-threaded.{wasm,mjs}`. The
- * web sync step (sync-wake-word-runtime.mjs) already copies only that CPU pair,
- * but drop the JSEP/asyncify/jspi variants defensively in case the upstream
- * package layout changes, then assert the CPU binary survived — the canary
- * fails the build loudly if the wake-word runtime ever goes missing.
+ * Strip onnxruntime-web wasm variants the wake-word engine never requests,
+ * keeping only the CPU wasm pair the "wasm" provider loads. The canary fails
+ * the build loudly if that load-bearing binary ever goes missing — a packaged
+ * build without it leaves the engine with "no available backend found" and the
+ * wake word silently dead.
  */
 async function pruneOnnxRuntime(ortDir) {
   if (!existsSync(ortDir)) return;
   for (const name of await readdir(ortDir)) {
-    const unused =
-      name.includes(".jsep.") ||
-      name.includes(".asyncify.") ||
-      name.includes(".jspi.");
-    if (unused) await rm(resolve(ortDir, name), { force: true });
+    if (!ORT_RUNTIME_FILES.has(name)) await rm(resolve(ortDir, name), { force: true });
   }
-  const cpuWasm = resolve(ortDir, "ort-wasm-simd-threaded.wasm");
-  if (!existsSync(cpuWasm)) {
+  const canaryWasm = resolve(ortDir, ORT_CANARY_FILE);
+  if (!existsSync(canaryWasm)) {
     throw new Error(
-      `wake-word runtime '${cpuWasm}' missing after prune. The onnxruntime-web ` +
+      `wake-word runtime '${canaryWasm}' missing after prune. The onnxruntime-web ` +
         "wasm flavor the engine loads may have changed — update pruneOnnxRuntime().",
     );
   }

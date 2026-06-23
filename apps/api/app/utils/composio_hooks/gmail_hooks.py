@@ -17,6 +17,7 @@ from app.agents.templates.mail_templates import (
     process_get_thread_response,
     process_list_drafts_response,
 )
+from app.constants.log_tags import LogTag
 from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
@@ -150,7 +151,7 @@ def gmail_compose_before_hook(
             if "to" in arguments and "recipient_email" not in arguments:
                 arguments["recipient_email"] = arguments["to"]
                 params["arguments"] = arguments
-                log.info(f"Mapped 'to' argument to 'recipient_email' for {tool}")
+                log.info(f"{LogTag.COMPOSIO} Mapped 'to' argument to 'recipient_email' for {tool}")
 
             # Check if at least one recipient type is provided
             recipient = arguments.get("recipient_email") or arguments.get("to")
@@ -168,7 +169,7 @@ def gmail_compose_before_hook(
             # If validation fails, return params immediately to skip streaming
             if not has_recipient or not has_content:
                 log.warning(
-                    f"Skipping streaming for {tool}: Missing required fields. "
+                    f"{LogTag.COMPOSIO} Skipping streaming for {tool}: Missing required fields. "
                     f"Has recipient: {has_recipient}, Has content: {has_content}"
                 )
                 return params
@@ -222,7 +223,7 @@ def gmail_compose_before_hook(
         return params
 
     except Exception as e:
-        log.error(f"Error in gmail_compose_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_compose_before_hook: {e}")
         return params
 
 
@@ -244,7 +245,7 @@ def gmail_message_detail_after_hook(
         return processed_response
 
     except Exception as e:
-        log.error(f"Error in gmail_message_detail_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_message_detail_after_hook: {e}")
         return response["data"]
 
 
@@ -290,7 +291,7 @@ def gmail_thread_after_hook(tool: str, toolkit: str, response: ToolExecutionResp
         return processed_response
 
     except Exception as e:
-        log.error(f"Error in gmail_thread_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_thread_after_hook: {e}")
         return response["data"]
 
 
@@ -306,7 +307,7 @@ def gmail_drafts_after_hook(tool: str, toolkit: str, response: ToolExecutionResp
         return processed_response
 
     except Exception as e:
-        log.error(f"Error in gmail_drafts_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_drafts_after_hook: {e}")
         return response["data"]
 
 
@@ -322,7 +323,7 @@ def gmail_draft_detail_after_hook(tool: str, toolkit: str, response: ToolExecuti
         return processed_response
 
     except Exception as e:
-        log.error(f"Error in gmail_draft_detail_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_draft_detail_after_hook: {e}")
         return response["data"]
 
 
@@ -348,7 +349,7 @@ def gmail_attachment_after_hook(tool: str, toolkit: str, response: ToolExecution
         return processed_response
 
     except Exception as e:
-        log.error(f"Error in gmail_attachment_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_attachment_after_hook: {e}")
         return response["data"]
 
 
@@ -367,7 +368,7 @@ def gmail_send_draft_before_hook(tool: str, toolkit: str, params: Any) -> Any:
         writer(payload)
 
     except Exception as e:
-        log.error(f"Error in gmail_send_draft_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_send_draft_before_hook: {e}")
 
     return params
 
@@ -386,7 +387,7 @@ def gmail_trash_before_hook(tool: str, toolkit: str, params: Any) -> Any:
         writer(payload)
 
     except Exception as e:
-        log.error(f"Error in gmail_trash_before_hook for {tool}: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_trash_before_hook for {tool}: {e}")
 
     return params
 
@@ -414,7 +415,7 @@ def gmail_label_before_hook(tool: str, toolkit: str, params: Any) -> Any:
         writer(payload)
 
     except Exception as e:
-        log.error(f"Error in gmail_label_before_hook for {tool}: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_label_before_hook for {tool}: {e}")
 
     return params
 
@@ -442,7 +443,7 @@ def gmail_modify_labels_before_hook(tool: str, toolkit: str, params: Any) -> Any
         writer(payload)
 
     except Exception as e:
-        log.error(f"Error in gmail_modify_labels_before_hook for {tool}: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_modify_labels_before_hook for {tool}: {e}")
 
     return params
 
@@ -460,7 +461,7 @@ def gmail_draft_management_before_hook(tool: str, toolkit: str, params: Any) -> 
         writer(payload)
 
     except Exception as e:
-        log.error(f"Error in gmail_draft_management_before_hook for {tool}: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_draft_management_before_hook for {tool}: {e}")
 
     return params
 
@@ -480,7 +481,7 @@ def gmail_list_drafts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
         writer(payload)
 
     except Exception as e:
-        log.error(f"Error in gmail_list_drafts_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_list_drafts_before_hook: {e}")
 
     return params
 
@@ -497,7 +498,7 @@ def gmail_get_draft_before_hook(tool: str, toolkit: str, params: Any) -> Any:
         writer(payload)
 
     except Exception as e:
-        log.error(f"Error in gmail_get_draft_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_get_draft_before_hook: {e}")
 
     return params
 
@@ -520,7 +521,7 @@ def gmail_get_contacts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
             writer(payload)
 
     except Exception as e:
-        log.error(f"Error in gmail_get_contacts_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_get_contacts_before_hook: {e}")
 
     return params
 
@@ -537,7 +538,7 @@ def gmail_search_people_before_hook(tool: str, toolkit: str, params: Any) -> Any
             writer(payload)
 
     except Exception as e:
-        log.error(f"Error in gmail_search_people_before_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_search_people_before_hook: {e}")
 
     return params
 
@@ -557,7 +558,7 @@ def gmail_fetch_by_id_after_hook(tool: str, toolkit: str, response: ToolExecutio
         return processed_response
 
     except Exception as e:
-        log.error(f"Error in gmail_fetch_by_id_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_fetch_by_id_after_hook: {e}")
         return response["data"]
 
 
@@ -594,7 +595,7 @@ def gmail_send_draft_after_hook(tool: str, toolkit: str, response: ToolExecution
         return response["data"]
 
     except Exception as e:
-        log.error(f"Error in gmail_send_draft_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_send_draft_after_hook: {e}")
         return response["data"]
 
 
@@ -674,7 +675,7 @@ def gmail_get_contacts_after_hook(tool: str, toolkit: str, response: ToolExecuti
         }
 
     except Exception as e:
-        log.error(f"Error in gmail_get_contacts_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_get_contacts_after_hook: {e}")
         return response["data"]
 
 
@@ -753,5 +754,5 @@ def gmail_search_people_after_hook(tool: str, toolkit: str, response: ToolExecut
         }
 
     except Exception as e:
-        log.error(f"Error in gmail_search_people_after_hook: {e}")
+        log.error(f"{LogTag.COMPOSIO} Error in gmail_search_people_after_hook: {e}")
         return response["data"]

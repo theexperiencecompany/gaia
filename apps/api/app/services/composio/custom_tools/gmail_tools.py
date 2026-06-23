@@ -18,6 +18,7 @@ from langgraph.config import get_config, get_stream_writer
 from pydantic import BaseModel, Field
 
 from app.agents.templates.mail_templates import build_message_view
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.services.composio.custom_tools.gmail_constants import (
@@ -815,9 +816,10 @@ def register_gmail_custom_tools(composio: Composio):
         ]
 
         messages, fetch_failures = _fetch_messages_for_contacts(user_id, message_ids)
+
         if message_ids and not messages:
             log.error(
-                f"Gmail contact list: all {len(message_ids)} message fetches failed "
+                f"{LogTag.COMPOSIO} Gmail contact list: all {len(message_ids)} message fetches failed "
                 f"for user {user_id}"
             )
             return {
@@ -997,5 +999,5 @@ def _fetch_messages_for_contacts(
                 messages.append(full)
         except Exception as exc:
             fetch_failures += 1
-            log.warning(f"Gmail message fetch failed for {message_id}: {exc}")
+            log.warning(f"{LogTag.COMPOSIO} Gmail message fetch failed for {message_id}: {exc}")
     return messages, fetch_failures

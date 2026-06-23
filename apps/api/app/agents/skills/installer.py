@@ -27,13 +27,14 @@ from app.agents.skills.registry import (
     update_skill,
 )
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
+from app.constants.log_tags import LogTag
 from app.services.storage import (
     JuiceFSUnavailable,
     delete_user_skill,
     ensure_user_skills_dir,
     write_skill_file,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import SkillContext, log
 
 
 def _skill_storage_path(user_id: str, name: str) -> str:
@@ -101,7 +102,7 @@ async def _fetch_github_contents(
         raise ValueError(f"Path not found: {owner}/{repo}/{path}")
 
     if resp.status_code == 403:
-        log.warning("GitHub API rate limit exceeded. Try again later.")
+        log.warning(f"{LogTag.SKILLS} GitHub API rate limit exceeded. Try again later.")
         raise ValueError(
             "GitHub API rate limit exceeded. Please try again later, or set GITHUB_TOKEN for higher limits (5000/hr vs 60/hr)."
         )
@@ -165,15 +166,8 @@ async def install_from_github(
 
     source_url = f"https://github.com/{owner}/{repo}/tree/main/{base_path}"
 
-    log.set(
-        user_id=user_id,
-        github_owner=owner,
-        github_repo=repo,
-        github_skill_path=base_path,
-        skill_op="install_from_github",
-        skill_target=target_override,
-    )
-    log.info(f"[skills] Fetching from GitHub: {owner}/{repo}/{base_path}")
+    log.set(user_id=user_id, skill=SkillContext(operation="install"))
+    log.info(f"{LogTag.SKILLS} Fetching from GitHub: {owner}/{repo}/{base_path}")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Fetch the directory contents
@@ -202,6 +196,7 @@ async def install_from_github(
 
         # Parse frontmatter → metadata + body
         metadata, body = parse_skill_md(skill_md_content)
+        log.set_ns("skill", skill_name=metadata.name)
 
         # Apply target override, then validate the effective target so a repo's
         # frontmatter can't scope a skill to an unconnected/invalid agent.
@@ -252,7 +247,7 @@ async def install_from_github(
     )
 
     log.info(
-        f"[skills] Installed '{metadata.name}' from GitHub "
+        f"{LogTag.SKILLS} Installed '{metadata.name}' from GitHub "
         f"({len(file_list)} files, target={target})"
     )
     return installed
@@ -322,9 +317,7 @@ async def install_from_inline(
     """
     log.set(
         user_id=user_id,
-        skill_name=name,
-        skill_target=target,
-        skill_op="install_from_inline",
+        skill=SkillContext(operation="install", skill_name=name),
     )
     # Generate SKILL.md content (with frontmatter for validation)
     skill_md_content = generate_skill_md(
@@ -364,7 +357,7 @@ async def install_from_inline(
         allowed_tools=metadata.allowed_tools,
     )
 
-    log.info(f"[skills] Created inline skill '{name}' (target={target})")
+    log.info(f"{LogTag.SKILLS} Created inline skill '{name}' (target={target})")
     return installed
 
 
@@ -436,7 +429,7 @@ async def update_skill_inline(
         },
     )
 
-    log.info(f"[skills] Updated inline skill '{skill.name}' (target={metadata.target})")
+    log.info(f"{LogTag.SKILLS} Updated inline skill '{skill.name}' (target={metadata.target})")
     return updated
 
 
@@ -456,19 +449,16 @@ async def uninstall_skill_full(user_id: str, skill_id: str) -> bool:
 
     log.set(
         user_id=user_id,
-        skill_id=skill_id,
-        skill_name=skill.name,
-        skill_storage_path=skill.vfs_path,
-        skill_op="uninstall_skill_full",
+        skill=SkillContext(operation="delete", skill_id=skill_id, skill_name=skill.name),
     )
 
     # Delete the skill directory from JuiceFS
     try:
         await delete_user_skill(user_id, skill.name)
     except JuiceFSUnavailable as e:
-        log.warning(f"[skills] storage cleanup skipped (mount unavailable): {e}")
+        log.warning(f"{LogTag.SKILLS} storage cleanup skipped (mount unavailable): {e}")
     except Exception as e:
-        log.warning(f"[skills] storage cleanup failed for {skill_id}: {e}")
+        log.warning(f"{LogTag.SKILLS} storage cleanup failed for {skill_id}: {e}")
 
     # Remove from registry
     return await uninstall_skill(user_id, skill_id)

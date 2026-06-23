@@ -32,14 +32,6 @@ export function IntegrationStatusPill({
     );
   }
 
-  if (status === "error") {
-    return (
-      <View className="rounded-full bg-red-500/10 px-2.5 py-1">
-        <Text className="text-[11px] font-semibold text-red-500">Error</Text>
-      </View>
-    );
-  }
-
   if (status === "created") {
     return (
       <View className="rounded-full bg-amber-500/10 px-2.5 py-1">

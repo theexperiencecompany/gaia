@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from openai import AsyncOpenAI
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # Fixed list of valid integration categories
@@ -104,7 +105,7 @@ async def infer_integration_category(
         content = response.choices[0].message.content
         if content is None:
             log.warning(
-                f"LLM returned empty content for integration '{name}', falling back to 'other'"
+                f"{LogTag.INTEGRATION} LLM returned empty content for integration '{name}', falling back to 'other'"
             )
             return "other"
 
@@ -113,17 +114,17 @@ async def infer_integration_category(
         # Validate response is a known category
         if category not in INTEGRATION_CATEGORIES:
             log.warning(
-                f"LLM returned invalid category '{category}' for integration '{name}', "
+                f"{LogTag.INTEGRATION} LLM returned invalid category '{category}' for integration '{name}', "
                 f"falling back to 'other'"
             )
             return "other"
 
-        log.info(f"Inferred category '{category}' for integration '{name}'")
+        log.info(f"{LogTag.INTEGRATION} Inferred category '{category}' for integration '{name}'")
         return category
 
     except Exception as e:
         log.error(
-            f"Failed to infer category for integration '{name}': {e}",
+            f"{LogTag.INTEGRATION} Failed to infer category for integration '{name}': {e}",
             exc_info=True,
         )
         return "other"

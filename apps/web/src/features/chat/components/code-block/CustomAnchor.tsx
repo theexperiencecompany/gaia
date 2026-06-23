@@ -7,6 +7,15 @@ import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
+import { cn } from "@/lib/utils";
+
+// Link chip styling. The bot bubble is dark (bg-zinc-800), so the brand-blue
+// `text-primary` link reads fine there. The user bubble is `#00bbff` (the same
+// value as `--color-primary`), so blue-on-blue is invisible — there we switch
+// to the bubble's black-text treatment with a translucent-black chip.
+const DARK_BUBBLE_LINK =
+  "bg-primary/20 text-primary hover:text-white hover:underline";
+const LIGHT_BUBBLE_LINK = "bg-black/10 text-black underline hover:bg-black/20";
 
 // Global set to track failed image URLs across all instances
 const globalFailedUrls = new Set<string>();
@@ -281,10 +290,12 @@ const CustomAnchor = memo(
     href,
     children,
     isStreaming,
+    lightBackground,
   }: {
     href: string | undefined;
     children: ReactNode | string | null;
     isStreaming?: boolean;
+    lightBackground?: boolean;
   }) => {
     const elementRef = useRef<HTMLAnchorElement>(null);
     const [isInView, setIsInView] = useState(false);
@@ -365,7 +376,10 @@ const CustomAnchor = memo(
         <a
           ref={elementRef}
           href={href}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-sm bg-primary/20 px-1 text-sm font-medium text-primary transition-all hover:text-white hover:underline"
+          className={cn(
+            "inline-flex cursor-pointer items-center gap-1 rounded-sm px-1 text-sm font-medium transition-all",
+            lightBackground ? LIGHT_BUBBLE_LINK : DARK_BUBBLE_LINK,
+          )}
           rel="noopener noreferrer"
           target="_blank"
           onMouseEnter={handleMouseEnter}
@@ -388,11 +402,12 @@ const CustomAnchor = memo(
     );
   },
   (prevProps, nextProps) => {
-    // Only re-render if href, children, or isStreaming actually change
+    // Only re-render if href, children, isStreaming, or lightBackground change
     return (
       prevProps.href === nextProps.href &&
       prevProps.children === nextProps.children &&
-      prevProps.isStreaming === nextProps.isStreaming
+      prevProps.isStreaming === nextProps.isStreaming &&
+      prevProps.lightBackground === nextProps.lightBackground
     );
   },
 );

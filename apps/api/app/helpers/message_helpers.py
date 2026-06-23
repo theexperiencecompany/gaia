@@ -236,14 +236,12 @@ def build_workspace_session_banner(session_id: str) -> str:
 
 
 def _format_active_todo_banner(todo: dict) -> str:
-    vfs_path = todo.get("vfs_path") or "(no vfs)"
     title = todo.get("title", "Untitled")
     todo_id = str(todo.get("_id") or todo.get("id") or "")
     return (
         "🎯 ACTIVE TODO (this run is bound to this todo)\n"
         f"   id: {todo_id}\n"
         f"   title: {title}\n"
-        f"   canvas: {vfs_path}/canvas.md\n"
         "\n"
         "   Default write target for this turn: this todo's canvas.\n"
         f'   - Use `update_tracked_todo_canvas(todo_id="{todo_id}", ...)` for any progress, outcome, or learning from this run.\n'

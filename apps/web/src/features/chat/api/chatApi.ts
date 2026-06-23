@@ -8,6 +8,7 @@ import { apiService } from "@/lib/api/service";
 import { desktopClientHeaders } from "@/lib/electron/api";
 import { getBrowserTimezone } from "@/lib/timezone";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
+import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
@@ -295,6 +296,12 @@ export const chatApi = {
     // flag both would call onClose, causing duplicate cleanup / persistence.
     let doneReceived = false;
 
+    // DEV-ONLY: per-request model overrides from the chat-header selector. Read
+    // at send time from the composer store. The backend ignores these unless
+    // ENV=development; `use_default_models` keeps the plan-routed default.
+    const { useDefaultModels, commsModel, executorModel } =
+      useComposerStore.getState();
+
     await fetchEventSource(
       `${process.env.NEXT_PUBLIC_API_BASE_URL}chat-stream`,
       {
@@ -319,6 +326,9 @@ export const chatApi = {
           selectedCalendarEvent,
           replyToMessage,
           is_onboarding_demo: isOnboardingDemo,
+          use_default_models: useDefaultModels,
+          comms_model: useDefaultModels ? null : commsModel,
+          executor_model: useDefaultModels ? null : executorModel,
           messages: convoMessages
             .slice(-30)
             .filter(({ response }) => response.trim().length > 0)

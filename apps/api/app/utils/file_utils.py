@@ -14,6 +14,7 @@ from llama_cloud_services.parse.utils import ResultType
 
 from app.agents.llm.client import init_llm
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 from shared.py.wide_events import log
 
@@ -61,7 +62,7 @@ class DocumentProcessor:
             ext = os.path.splitext(filename)[1].lower()
             return f"File of type {ext} (no content extraction available)"
         except Exception as e:
-            log.error(f"Failed to process file {filename}: {e!s}", exc_info=True)
+            log.error(f"{LogTag.TOOL} Failed to process file {filename}: {e!s}", exc_info=True)
             return f"File processing failed for {filename}"
 
     async def process_image(self, image_data: bytes) -> str:
@@ -106,7 +107,7 @@ class DocumentProcessor:
             return description
 
         except Exception as e:
-            log.error(f"Failed to process image: {e!s}", exc_info=True)
+            log.error(f"{LogTag.TOOL} Failed to process image: {e!s}", exc_info=True)
             return "Image description could not be generated."
 
     async def process_doc(
@@ -173,7 +174,7 @@ class DocumentProcessor:
             ]
 
         except Exception as e:
-            log.error(f"Failed to process PDF: {e!s}", exc_info=True)
+            log.error(f"{LogTag.TOOL} Failed to process PDF: {e!s}", exc_info=True)
             return []
 
     async def process_text(self, text_data: bytes) -> DocumentSummaryModel:
@@ -204,7 +205,7 @@ class DocumentProcessor:
             )
 
         except Exception as e:
-            log.error(f"Failed to process text: {e!s}", exc_info=True)
+            log.error(f"{LogTag.TOOL} Failed to process text: {e!s}", exc_info=True)
             raise e
 
     async def _generate_text_summary(self, text: str) -> str:
@@ -226,7 +227,7 @@ class DocumentProcessor:
             return str(response)
 
         except Exception as e:
-            log.error(f"Failed to generate summary: {e!s}", exc_info=True)
+            log.error(f"{LogTag.TOOL} Failed to generate summary: {e!s}", exc_info=True)
             return "Summary could not be generated."
 
 

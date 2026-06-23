@@ -24,6 +24,7 @@ from langgraph.runtime import Runtime, get_config
 
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import ModelContext, log
 
 
@@ -193,7 +194,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             )
             total_cost = float(cost.get("total_cost", 0.0))
         except Exception as e:
-            log.warning(f"Token cost calc failed for {model_name}: {e}")
+            log.warning(f"{LogTag.AGENT} Token cost calc failed for {model_name}: {e}")
             total_cost = 0.0
 
         step_index = self._next_step(thread_id)

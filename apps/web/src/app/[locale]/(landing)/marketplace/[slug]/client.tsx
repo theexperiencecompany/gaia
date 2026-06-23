@@ -22,13 +22,17 @@ import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { integrationKeys } from "@/features/integrations/api/queryKeys";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationRelatedIntegrations } from "@/features/integrations/components/IntegrationRelatedIntegrations";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
+import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
 import { toast } from "@/lib/toast";
 import { IntegrationRichContent } from "./IntegrationRichContent";
+import { IntegrationUseCases } from "./IntegrationUseCases";
+import { ToolCard } from "./ToolCard";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
@@ -43,25 +47,41 @@ export function IntegrationDetailClient({
   const queryClient = useQueryClient();
   const [isAdding, setIsAdding] = useState(false);
   const [isAdded, setIsAdded] = useState(false);
-  const [bearerModalOpen, setBearerModalOpen] = useState(false);
+  const bearer = useBearerTokenModal({
+    connect: (id, token) => integrationsApi.addIntegration(id, token),
+    onConnected: () => {
+      toast.success(`Successfully added ${integration.name}!`);
+      setIsAdded(true);
+      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+      setTimeout(() => {
+        router.push(
+          `/integrations?id=${integration.integrationId}&refresh=true`,
+        );
+      }, 1000);
+    },
+  });
 
   // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
 
-  // Fetch user's integrations (only when authenticated) to check for duplicates
-  const { data: userIntegrationsData } = useQuery({
-    queryKey: ["integrations", "user"],
-    queryFn: integrationsApi.getUserIntegrations,
+  // Fetch the user's personalized catalog (only when authenticated) to check
+  // whether they have already added this integration.
+  const { data: myIntegrationsData } = useQuery({
+    queryKey: integrationKeys.me,
+    queryFn: integrationsApi.getMyIntegrations,
     enabled: isAuthenticated,
   });
 
-  // Check if user already has this integration (match by integrationId)
+  // The /me catalog lists every integration with a connection status; the user
+  // "has" one once its status is anything other than not_connected.
   const alreadyHasIntegration = useMemo(() => {
-    if (!userIntegrationsData?.integrations) return false;
-    return userIntegrationsData.integrations.some(
-      (ui) => ui.integration.integrationId === integration.integrationId,
+    if (!myIntegrationsData?.integrations) return false;
+    return myIntegrationsData.integrations.some(
+      (item) =>
+        item.id === integration.integrationId &&
+        item.status !== "not_connected",
     );
-  }, [userIntegrationsData, integration.integrationId]);
+  }, [myIntegrationsData, integration.integrationId]);
 
   const isNative = integration.source === "platform";
 
@@ -118,7 +138,7 @@ export function IntegrationDetailClient({
 
         if (result.status === "bearer_required") {
           toast.dismiss(loadingToast);
-          setBearerModalOpen(true);
+          bearer.open(integration.integrationId, integration.name);
           setIsAdding(false);
           return;
         }
@@ -137,38 +157,6 @@ export function IntegrationDetailClient({
       toast.dismiss(loadingToast);
       toast.error("Failed to add integration.");
       setIsAdding(false);
-    }
-  };
-
-  const handleBearerSubmit = async (_id: string, token: string) => {
-    const loadingToast = toast.loading("Connecting...");
-    try {
-      const result = await integrationsApi.addIntegration(
-        integration.integrationId,
-        token,
-      );
-      if (result.status === "connected") {
-        toast.success(`Successfully added ${integration.name}!`, {
-          id: loadingToast,
-        });
-        setIsAdded(true);
-        queryClient.invalidateQueries({ queryKey: ["integrations"] });
-        setTimeout(() => {
-          router.push(
-            `/integrations?id=${integration.integrationId}&refresh=true`,
-          );
-        }, 1000);
-      } else {
-        toast.error(result.message || "Connection failed", {
-          id: loadingToast,
-        });
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Connection failed",
-        { id: loadingToast },
-      );
-      throw error;
     }
   };
 
@@ -281,7 +269,7 @@ export function IntegrationDetailClient({
 
             {isNative ? (
               <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-zinc-800 p-0.5">
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden">
                   <Image
                     src="/brand/gaia_logo.svg"
                     alt="GAIA"
@@ -374,6 +362,9 @@ export function IntegrationDetailClient({
             )}
           </div>
 
+          {/* What you can do: value prop above the technical tool list */}
+          <IntegrationUseCases integration={integration} />
+
           <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
             {integration.tools && integration.tools.length > 0 && (
               <CardHeader>
@@ -387,22 +378,11 @@ export function IntegrationDetailClient({
                 <ScrollShadow className="max-h-100">
                   <div className="grid grid-cols-2 gap-4">
                     {integration.tools.map((tool) => (
-                      <div
+                      <ToolCard
                         key={tool.name}
-                        className="bg-zinc-800/50 p-3 rounded-xl"
-                      >
-                        <p className="font-medium text-zinc-200">
-                          {tool.name
-                            .replace(/_/g, " ")
-                            .replace(/-/g, " ")
-                            .replace(/\b\w/g, (c) => c.toUpperCase())}
-                        </p>
-                        {tool.description && (
-                          <p className="text-sm text-zinc-400">
-                            {tool.description}
-                          </p>
-                        )}
-                      </div>
+                        name={tool.name}
+                        description={tool.description}
+                      />
                     ))}
                   </div>
                 </ScrollShadow>
@@ -446,11 +426,11 @@ export function IntegrationDetailClient({
       </div>
 
       <BearerTokenModal
-        isOpen={bearerModalOpen}
-        onClose={() => setBearerModalOpen(false)}
-        integrationId={integration.integrationId}
-        integrationName={integration.name}
-        onSubmit={handleBearerSubmit}
+        isOpen={bearer.isOpen}
+        onClose={bearer.close}
+        integrationId={bearer.integrationId}
+        integrationName={bearer.integrationName}
+        onSubmit={bearer.submit}
       />
     </div>
   );

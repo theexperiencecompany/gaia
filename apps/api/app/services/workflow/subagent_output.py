@@ -15,6 +15,7 @@ from typing import Literal
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # =============================================================================
@@ -175,7 +176,7 @@ def parse_subagent_response(response: str) -> ParseResult:
                     try:
                         draft = FinalizedOutput(**data)
                     except Exception as e:
-                        log.warning(f"Failed to parse finalized output: {e}")
+                        log.warning(f"{LogTag.WORKFLOW} Failed to parse finalized output: {e}")
                         return ParseResult(
                             mode="parse_error",
                             parse_error=f"Invalid finalized output: {e!s}",
@@ -197,7 +198,9 @@ def parse_subagent_response(response: str) -> ParseResult:
                             raw_response=response,
                         )
 
-                    log.info(f"Successfully parsed finalized workflow: {draft.title}")
+                    log.info(
+                        f"{LogTag.WORKFLOW} Successfully parsed finalized workflow: {draft.title}"
+                    )
                     return ParseResult(
                         mode="finalized",
                         draft=draft,
@@ -207,7 +210,7 @@ def parse_subagent_response(response: str) -> ParseResult:
                 if output_type == "clarifying":
                     try:
                         clarifying = ClarifyingOutput(**data)
-                        log.info("Successfully parsed clarifying response")
+                        log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
                         return ParseResult(
                             mode="clarifying",
                             message=clarifying.message,
@@ -226,7 +229,9 @@ def parse_subagent_response(response: str) -> ParseResult:
             continue
 
     # No structured output found - treat as conversational message
-    log.debug("No structured JSON found in subagent response, treating as message")
+    log.debug(
+        f"{LogTag.WORKFLOW} No structured JSON found in subagent response, treating as message"
+    )
     return ParseResult(
         mode="clarifying",
         message=response,

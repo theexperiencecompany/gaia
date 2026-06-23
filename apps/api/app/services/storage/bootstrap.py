@@ -38,6 +38,7 @@ import threading
 import time
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.services.storage.metrics import FsOps, record_fs_op  # noqa: F401
 from shared.py.wide_events import log
@@ -199,11 +200,11 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
         outcome="ok" if status.returncode == 0 else "miss",
     )
     if status.returncode == 0:
-        log.info("[juicefs] filesystem already formatted")
+        log.info(f"{LogTag.STORAGE} filesystem already formatted")
         return "ok"
     if _classify(status.stderr) == "fatal":
         log.warning(
-            "[juicefs] permanent error during status",
+            f"{LogTag.STORAGE} permanent error during status",
             meta=_mask_meta(meta_url),
             detail=status.stderr.strip()[:300],
         )
@@ -213,7 +214,7 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     # R2 credentials ride in env (the JuiceFS CLI honours the standard AWS
     # variables when --access-key/--secret-key are absent), so they do not
     # appear in argv visible to `ps auxww` during the format window.
-    log.info(f"[juicefs] formatting filesystem against {_bucket_url()}")
+    log.info(f"{LogTag.STORAGE} formatting filesystem against {_bucket_url()}")
     r2_key = (settings.R2_ACCESS_KEY or "").strip()
     r2_secret = (settings.R2_SECRET_KEY or "").strip()
     cmd: list[str] = [
@@ -249,16 +250,16 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     # Shared volume already initialized (the normal case: E2B/prod formatted
     # it) or a concurrent-format race — the volume is usable.
     if any(m in low for m in ("is not empty", "already exists", "already formatted")):
-        log.info("[juicefs] volume already initialized; proceeding to mount")
+        log.info(f"{LogTag.STORAGE} volume already initialized; proceeding to mount")
         return "ok"
     if _classify(err) == "fatal":
         log.warning(
-            "[juicefs] permanent error during format",
+            f"{LogTag.STORAGE} permanent error during format",
             meta=_mask_meta(meta_url),
             detail=err[:300],
         )
         return "fatal"
-    log.warning(f"[juicefs] format failed (transient; will retry): {err[:300]}")
+    log.warning(f"{LogTag.STORAGE} format failed (transient; will retry): {err[:300]}")
     return "transient"
 
 
@@ -275,7 +276,7 @@ def _mount(meta_url: str, mount_path: Path) -> str:
     Returns "ok" | "transient" | "fatal".
     """
     if _is_mounted(mount_path):
-        log.info(f"[juicefs] already mounted at {mount_path}")
+        log.info(f"{LogTag.STORAGE} already mounted at {mount_path}")
         return "ok"
 
     # If the directory exists but is a broken/stale FUSE mountpoint (left over
@@ -311,7 +312,7 @@ def _mount(meta_url: str, mount_path: Path) -> str:
             elapsed_ms = (time.monotonic() - started) * 1000.0
             record_fs_op(FsOps.JUICEFS_MOUNT, duration_ms=elapsed_ms, outcome="ok")
             log.info(
-                "[juicefs] mounted",
+                f"{LogTag.STORAGE} mounted",
                 mount=str(mount_path),
                 elapsed_s=round(elapsed_ms / 1000.0, 1),
             )
@@ -323,7 +324,7 @@ def _mount(meta_url: str, mount_path: Path) -> str:
     kind = _classify(detail)  # transient unless an explicit permanent error
     record_fs_op(FsOps.JUICEFS_MOUNT, duration_ms=elapsed_ms, outcome=kind)
     log.warning(
-        f"[juicefs] mount not ready within {timeout}s ({kind})",
+        f"{LogTag.STORAGE} mount not ready within {timeout}s ({kind})",
         meta=_mask_meta(meta_url),
         detail=detail.strip()[:300],
     )
@@ -334,7 +335,7 @@ def _bootstrap_once() -> str:
     """One full attempt. Returns "ok" | "transient" | "skip" | "fatal"."""
     mount_path = Path(settings.JUICEFS_HOST_MOUNT_PATH)
     if _is_mounted(mount_path):
-        log.info(f"[juicefs] mount already healthy at {mount_path}")
+        log.info(f"{LogTag.STORAGE} mount already healthy at {mount_path}")
         return "ok"
     encrypt_key = _materialize_encryption_key()
     meta_url = _meta_url()
@@ -352,26 +353,26 @@ def _bootstrap_loop() -> None:
         try:
             result = _bootstrap_once()
         except Exception as e:  # noqa: BLE001 - never let the thread die silently
-            log.warning(f"[juicefs] bootstrap attempt errored: {e}")
+            log.warning(f"{LogTag.STORAGE} bootstrap attempt errored: {e}")
             result = "transient"
         if result in ("ok", "skip", "fatal"):
             if result == "fatal":
                 log.warning(
-                    "[juicefs] bootstrap gave up (non-transient failure); "
+                    f"{LogTag.STORAGE} bootstrap gave up (non-transient failure); "
                     "storage helpers will soft-fail until reconfigured"
                 )
             return
         if attempt < attempts:
             delay = min(base_backoff * (2 ** (attempt - 1)), 15)
             log.info(
-                "[juicefs] transient mount failure; backing off",
+                f"{LogTag.STORAGE} transient mount failure; backing off",
                 attempt=attempt,
                 of=attempts,
                 retry_in_s=delay,
             )
             time.sleep(delay)
     log.warning(
-        f"[juicefs] mount still unavailable after {attempts} attempts; "
+        f"{LogTag.STORAGE} mount still unavailable after {attempts} attempts; "
         "storage helpers will soft-fail (next app start retries)"
     )
 
@@ -391,12 +392,12 @@ async def init_juicefs_mount() -> str:
     global _bootstrap_thread
 
     if shutil.which("juicefs") is None:
-        log.warning("[juicefs] CLI not found on PATH — skipping bootstrap")
+        log.warning(f"{LogTag.STORAGE} CLI not found on PATH — skipping bootstrap")
         return settings.JUICEFS_HOST_MOUNT_PATH
 
     missing = _missing_settings()
     if missing:
-        log.info("[juicefs] skipping bootstrap; missing settings: " + ", ".join(missing))
+        log.info(f"{LogTag.STORAGE} skipping bootstrap; missing settings: " + ", ".join(missing))
         return settings.JUICEFS_HOST_MOUNT_PATH
 
     # Probe off the event loop with a timeout — a wedged FUSE mount blocks forever
@@ -409,13 +410,13 @@ async def init_juicefs_mount() -> str:
         )
     except TimeoutError:
         log.warning(
-            f"[juicefs] mount probe timed out after {_MOUNT_PROBE_TIMEOUT_SECONDS}s — "
+            f"{LogTag.STORAGE} mount probe timed out after {_MOUNT_PROBE_TIMEOUT_SECONDS}s — "
             "mount likely unresponsive; (re)starting bootstrap"
         )
         already_mounted = False
 
     if already_mounted:
-        log.info("[juicefs] mount already healthy")
+        log.info(f"{LogTag.STORAGE} mount already healthy")
         return settings.JUICEFS_HOST_MOUNT_PATH
 
     with _bootstrap_lock:

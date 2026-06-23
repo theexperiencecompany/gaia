@@ -14,9 +14,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import e2b_sandboxes_collection
 from app.services.sandbox import mark_sandbox_dead
-from shared.py.wide_events import log, wide_task
+from shared.py.wide_events import SandboxContext, log, wide_task
 
 
 async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
@@ -39,6 +40,7 @@ async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
                 await mark_sandbox_dead(user_id)
                 evicted += 1
             except Exception as e:
-                log.warning(f"Failed to mark sandbox dead for {user_id}: {e}")
-        log.set(evicted=evicted)
+                log.warning(f"{LogTag.SANDBOX} failed to mark dead user={user_id}: {e}")
+        log.set(sandbox=SandboxContext(operation="sweep", evicted_count=evicted))
+        log.info(f"{LogTag.SANDBOX} sweep evicted {evicted} idle sandboxes")
         return f"Evicted {evicted} idle sandboxes (cutoff={cutoff.isoformat()})"

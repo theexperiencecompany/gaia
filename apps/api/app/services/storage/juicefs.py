@@ -9,6 +9,7 @@ import re
 import shutil
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.services.storage.metrics import FsOps, add_fs_bytes, fs_timer
 from shared.py.wide_events import log
 
@@ -270,7 +271,7 @@ async def delete_user_workspace(user_id: str) -> None:
     def _delete() -> None:
         if not _is_mounted():
             log.warning(
-                "delete_user_workspace called but JuiceFS mount missing",
+                f"{LogTag.STORAGE} delete_user_workspace called but JuiceFS mount missing",
                 user_id=user_id,
             )
             return

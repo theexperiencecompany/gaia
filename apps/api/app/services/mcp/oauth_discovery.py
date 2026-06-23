@@ -6,6 +6,7 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 - RFC 8414 Authorization Server Metadata discovery
 """
 
+from app.constants.log_tags import LogTag
 from app.constants.mcp import COMPOSIO_MCP_HOST
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -49,7 +50,7 @@ async def discover_oauth_config(
     try:
         validate_https_url(server_url)
     except OAuthSecurityError as e:
-        log.warning(f"Server URL security warning for {integration_id}: {e}")
+        log.warning(f"{LogTag.MCP} Server URL security warning for {integration_id}: {e}")
 
     challenge = challenge_data or await extract_auth_challenge(server_url)
     initial_scope = challenge.get("scope")
@@ -87,7 +88,7 @@ async def discover_oauth_config(
         try:
             validate_oauth_endpoints(as_metadata)
         except OAuthSecurityError as e:
-            log.warning(f"OAuth endpoint security warning: {e}")
+            log.warning(f"{LogTag.MCP} OAuth endpoint security warning: {e}")
 
         await token_store.store_oauth_discovery(integration_id, discovery)
         return discovery
@@ -106,7 +107,7 @@ async def discover_oauth_config(
         try:
             validate_oauth_endpoints(as_metadata)
         except OAuthSecurityError as e:
-            log.warning(f"OAuth endpoint security warning: {e}")
+            log.warning(f"{LogTag.MCP} OAuth endpoint security warning: {e}")
 
         await token_store.store_oauth_discovery(integration_id, discovery)
         return discovery

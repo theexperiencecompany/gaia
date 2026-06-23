@@ -6,6 +6,7 @@ from loguru import logger as _loguru
 import sentry_sdk
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -51,10 +52,10 @@ def init_sentry():
     """Initialize Sentry error tracking if DSN is configured."""
 
     if not settings.SENTRY_DSN:
-        log.info("SENTRY_DSN is not configured, skipping Sentry initialization.")
+        log.info(f"{LogTag.STARTUP} SENTRY_DSN is not configured, skipping Sentry initialization.")
         return
 
-    log.info("SENTRY_DSN is configured, initializing Sentry.")
+    log.info(f"{LogTag.STARTUP} SENTRY_DSN is configured, initializing Sentry.")
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         # Add data like request headers and IP for users,

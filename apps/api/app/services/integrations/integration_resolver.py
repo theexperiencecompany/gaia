@@ -9,6 +9,7 @@ across mcp_client.py, integrations.py, and integration_service.py.
 from dataclasses import dataclass
 
 from app.config.oauth_config import get_integration_by_id
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import integrations_collection
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
@@ -94,7 +95,7 @@ class IntegrationResolver:
                 # Warn about inconsistencies and fix them
                 if doc_requires_auth != mcp_requires_auth:
                     log.info(
-                        f"Integration {integration_id}: syncing requires_auth "
+                        f"{LogTag.INTEGRATION} Integration {integration_id}: syncing requires_auth "
                         f"from {doc_requires_auth} to {mcp_requires_auth} (mcp_config is authoritative)"
                     )
                     # Sync MongoDB document to match authoritative mcp_config
@@ -110,7 +111,7 @@ class IntegrationResolver:
                         )
                     except Exception as sync_err:
                         log.warning(
-                            f"Failed to sync requires_auth for {integration_id}: {sync_err}"
+                            f"{LogTag.INTEGRATION} Failed to sync requires_auth for {integration_id}: {sync_err}"
                         )
 
                 requires_auth = mcp_requires_auth

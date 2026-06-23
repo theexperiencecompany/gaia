@@ -3,6 +3,7 @@
 import hashlib
 import json
 
+from app.constants.log_tags import LogTag
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
 
@@ -20,13 +21,17 @@ class WorkflowQueueService:
 
             if job:
                 log.set(workflow={"id": workflow_id, "status": "generation_queued"})
-                log.info(f"Queued workflow generation for {workflow_id} with job ID {job.job_id}")
+                log.info(
+                    f"{LogTag.WORKFLOW} Queued workflow generation for {workflow_id} with job ID {job.job_id}"
+                )
                 return True
-            log.error(f"Failed to queue workflow generation for {workflow_id}")
+            log.error(f"{LogTag.WORKFLOW} Failed to queue workflow generation for {workflow_id}")
             return False
 
         except Exception as e:
-            log.error(f"Error queuing workflow generation for {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error queuing workflow generation for {workflow_id}: {e!s}"
+            )
             return False
 
     @staticmethod
@@ -60,7 +65,7 @@ class WorkflowQueueService:
                 # A job with this id is already queued or running — the duplicate
                 # enqueue was deduped. That's the intended outcome, not a failure.
                 log.info(
-                    f"Workflow execution already queued for {workflow_id}; "
+                    f"{LogTag.WORKFLOW} Workflow execution already queued for {workflow_id}; "
                     f"deduped duplicate enqueue (job ID {job_id})"
                 )
                 return True
@@ -71,11 +76,15 @@ class WorkflowQueueService:
                 queue_mode="immediate",
                 defer_seconds=0,
             )
-            log.info(f"Queued workflow execution for {workflow_id} with job ID {job.job_id}")
+            log.info(
+                f"{LogTag.WORKFLOW} Queued workflow execution for {workflow_id} with job ID {job.job_id}"
+            )
             return True
 
         except Exception as e:
-            log.error(f"Error queuing workflow execution for {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error queuing workflow execution for {workflow_id}: {e!s}"
+            )
             return False
 
     @staticmethod
@@ -110,13 +119,17 @@ class WorkflowQueueService:
                     ex=300,  # 5 minute TTL
                 )
 
-                log.info(f"Queued todo workflow generation for {todo_id} with job ID {job.job_id}")
+                log.info(
+                    f"{LogTag.WORKFLOW} Queued todo workflow generation for {todo_id} with job ID {job.job_id}"
+                )
                 return True
-            log.error(f"Failed to queue todo workflow generation for {todo_id}")
+            log.error(f"{LogTag.WORKFLOW} Failed to queue todo workflow generation for {todo_id}")
             return False
 
         except Exception as e:
-            log.error(f"Error queuing todo workflow generation for {todo_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error queuing todo workflow generation for {todo_id}: {e!s}"
+            )
             return False
 
     @staticmethod
@@ -136,4 +149,4 @@ class WorkflowQueueService:
             pool = await RedisPoolManager.get_pool()
             await pool.delete(f"todo_workflow_generating:{todo_id}")
         except Exception as e:
-            log.warning(f"Failed to clear generating flag for {todo_id}: {e}")
+            log.warning(f"{LogTag.WORKFLOW} Failed to clear generating flag for {todo_id}: {e}")

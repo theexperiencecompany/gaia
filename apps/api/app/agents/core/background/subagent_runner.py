@@ -19,6 +19,7 @@ from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
 )
+from app.constants.log_tags import LogTag
 from app.utils.agent_utils import (
     IntegrationMetadata,
     format_subagent_end_event,
@@ -81,14 +82,14 @@ async def run_subagent_background(
                 }
             )
         log.info(
-            "Background subagent completed",
+            f"{LogTag.AGENT} Background subagent completed",
             agent_name=ctx.agent_name,
             stream_id=stream_id,
         )
         append_bg_subagent_result(stream_id, ctx.agent_name, result)
     except Exception as e:
         log.error(
-            "Background subagent failed",
+            f"{LogTag.AGENT} Background subagent failed",
             agent_name=ctx.agent_name,
             stream_id=stream_id,
             error=str(e),

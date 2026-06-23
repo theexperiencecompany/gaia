@@ -163,6 +163,12 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1/}
+    environment:
+      # Server-side (SSR/ISR) fetches reach the API over the private network.
+      # The public NEXT_PUBLIC_API_BASE_URL is browser-only and is unreachable
+      # (or has an untrusted TLS cert) from inside this container, which would
+      # otherwise turn every server-rendered page into a "not found".
+      API_BASE_URL_INTERNAL: ${API_BASE_URL_INTERNAL:-http://gaia-backend:8000/api/v1/}
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
     restart: on-failure

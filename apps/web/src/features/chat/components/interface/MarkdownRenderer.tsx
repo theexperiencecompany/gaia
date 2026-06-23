@@ -131,6 +131,7 @@ const MarkdownImageNode: React.FC<{ src?: string | Blob; alt?: string }> = ({
 function buildMarkdownComponents(
   hideCodeToolbar: boolean | undefined,
   isStreaming: boolean | undefined,
+  lightBackground: boolean | undefined,
   overrides: Components | undefined,
 ): Components {
   return {
@@ -151,7 +152,11 @@ function buildMarkdownComponents(
     ul: ({ ...props }) => <ul className="mb-4 list-disc pl-6" {...props} />,
     ol: ({ ...props }) => <ol className="mb-4 list-decimal pl-6" {...props} />,
     a: ({ href, children }) => (
-      <CustomAnchor href={href} isStreaming={isStreaming}>
+      <CustomAnchor
+        href={href}
+        isStreaming={isStreaming}
+        lightBackground={lightBackground}
+      >
         {children}
       </CustomAnchor>
     ),
@@ -245,8 +250,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   // components object each render defeats streamdown's per-block memoization,
   // forcing every block (math, code, tables) to re-render on every token.
   const mergedComponents = useMemo<Components>(
-    () => buildMarkdownComponents(hideCodeToolbar, isStreaming, components),
-    [hideCodeToolbar, isStreaming, components],
+    () =>
+      buildMarkdownComponents(
+        hideCodeToolbar,
+        isStreaming,
+        lightBackground,
+        components,
+      ),
+    [hideCodeToolbar, isStreaming, lightBackground, components],
   );
 
   return (

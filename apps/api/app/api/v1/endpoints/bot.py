@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
@@ -235,7 +236,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         """Drop the finished background task from the registry and log failures."""
         _background_tasks.discard(t)
         if t.exception():
-            log.error(f"Background stream task failed: {t.exception()}")
+            log.error(f"{LogTag.API} Background stream task failed: {t.exception()}")
 
     task.add_done_callback(task_done_callback)
     _background_tasks.add(task)
@@ -306,7 +307,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                 except json.JSONDecodeError:
                     continue
         except Exception as e:
-            log.error(f"Bot stream subscription error: {e}")
+            log.error(f"{LogTag.API} Bot stream subscription error: {e}")
             yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
 
     return StreamingResponse(stream_from_redis(), media_type="text/event-stream")
@@ -417,7 +418,7 @@ async def get_settings(
                         )
                     )
     except Exception as e:
-        log.error(f"Error fetching integrations for settings: {e}")
+        log.error(f"{LogTag.API} Error fetching integrations for settings: {e}")
 
     user_name = user.get("name") or user.get("username")
     profile_image_url = user.get("profile_image_url") or user.get("avatar_url")
@@ -523,7 +524,7 @@ async def transcribe_bot_audio(
             content_type=normalized,
         )
     except Exception as e:
-        log.error(f"Transcription failed: {e}", exc_info=True)
+        log.error(f"{LogTag.API} Transcription failed: {e}", exc_info=True)
         raise HTTPException(status_code=502, detail="Transcription failed")
 
     return {"text": text}
