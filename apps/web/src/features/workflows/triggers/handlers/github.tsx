@@ -12,6 +12,10 @@ import { useState } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
+import {
+  TriggerSettingRow,
+  TriggerSettingsCard,
+} from "../components/TriggerSettingsCard";
 import { TriggerTagInput } from "../components/TriggerTagInput";
 import { useInfiniteTriggerOptions } from "../hooks/useInfiniteTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
@@ -119,109 +123,111 @@ function GitHubSettings({
   const currentSelectedKeys = triggerData?.repos || [];
 
   return (
-    <div className="space-y-3 rounded-2xl bg-zinc-800/40 p-4">
-      {!useManualInput ? (
-        <>
-          <Select
-            label="Repositories"
-            placeholder="Select repositories"
-            selectionMode="multiple"
-            selectedKeys={new Set(currentSelectedKeys)}
-            onSelectionChange={handleSelectionChange}
-            isLoading={isLoading}
-            scrollRef={(ref) => {
-              if (ref) {
-                ref.onscroll =
-                  handleScroll as unknown as GlobalEventHandlers["onscroll"];
+    <TriggerSettingsCard>
+      <TriggerSettingRow label="Repositories" wide>
+        {!useManualInput ? (
+          <div className="space-y-2">
+            <Select
+              aria-label="Repositories"
+              placeholder="Select repositories"
+              selectionMode="multiple"
+              selectedKeys={new Set(currentSelectedKeys)}
+              onSelectionChange={handleSelectionChange}
+              isLoading={isLoading}
+              scrollRef={(ref) => {
+                if (ref) {
+                  ref.onscroll =
+                    handleScroll as unknown as GlobalEventHandlers["onscroll"];
+                }
+              }}
+              className="w-full"
+              items={[
+                ...repoOptions,
+                ...(hasNextPage
+                  ? [
+                      {
+                        value: "loading-more",
+                        label: "Loading more...",
+                        isLoader: true,
+                      },
+                    ]
+                  : []),
+              ]}
+              renderValue={(items) => {
+                const count = items.filter(
+                  (item) => item.key !== "loading-more",
+                ).length;
+                if (count === 0) return "Select repositories";
+                if (count === 1) return items[0]?.textValue || "1 repository";
+                return `${count} repositories selected`;
+              }}
+              description={
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-zinc-500">
+                    {repoOptions.length} loaded
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setUseManualInput(true)}
+                    className="text-xs text-primary hover:underline cursor-pointer"
+                  >
+                    Or enter manually
+                  </button>
+                </div>
               }
-            }}
-            className="w-full max-w-xl"
-            items={[
-              ...repoOptions,
-              ...(hasNextPage
-                ? [
-                    {
-                      value: "loading-more",
-                      label: "Loading more...",
-                      isLoader: true,
-                    },
-                  ]
-                : []),
-            ]}
-            renderValue={(items) => {
-              const count = items.filter(
-                (item) => item.key !== "loading-more",
-              ).length;
-              if (count === 0) return "Select repositories";
-              if (count === 1) return items[0]?.textValue || "1 repository";
-              return `${count} repositories selected`;
-            }}
-            description={
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-zinc-500">
-                  {repoOptions.length} loaded
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setUseManualInput(true)}
-                  className="text-xs text-primary hover:underline cursor-pointer"
+            >
+              {(item) => (
+                <SelectItem
+                  key={item.value}
+                  textValue={item.label}
+                  isReadOnly={item.isLoader}
+                  className={item.isLoader ? "h-unit-8" : ""}
                 >
-                  Or enter manually
-                </button>
-              </div>
-            }
-          >
-            {(item) => (
-              <SelectItem
-                key={item.value}
-                textValue={item.label}
-                isReadOnly={item.isLoader}
-                className={item.isLoader ? "h-unit-8" : ""}
+                  {item.isLoader ? (
+                    <div className="flex justify-center w-full">
+                      <span className="text-xs text-zinc-500">
+                        Loading more...
+                      </span>
+                    </div>
+                  ) : (
+                    item.label
+                  )}
+                </SelectItem>
+              )}
+            </Select>
+            {hasNextPage && !isLoading && (
+              <Button
+                size="sm"
+                variant="light"
+                className="w-full text-xs"
+                onPress={() => fetchNextPage()}
+                isLoading={isFetchingNextPage}
               >
-                {item.isLoader ? (
-                  <div className="flex justify-center w-full">
-                    <span className="text-xs text-zinc-500">
-                      Loading more...
-                    </span>
-                  </div>
-                ) : (
-                  item.label
-                )}
-              </SelectItem>
+                Load more repositories
+              </Button>
             )}
-          </Select>
-          {hasNextPage && !isLoading && (
-            <Button
-              size="sm"
-              variant="light"
-              className="w-full text-xs"
-              onPress={() => fetchNextPage()}
-              isLoading={isFetchingNextPage}
-            >
-              Load more repositories
-            </Button>
-          )}
-        </>
-      ) : (
-        <TriggerTagInput
-          label="Repositories"
-          values={triggerData?.repos || []}
-          onChange={(repos) => updateTriggerData({ repos })}
-          validate={isValidRepo}
-          placeholder="Add another..."
-          emptyPlaceholder="e.g., octocat/hello-world"
-          description={
-            <button
-              type="button"
-              onClick={() => setUseManualInput(false)}
-              className="cursor-pointer font-medium text-primary hover:underline"
-            >
-              Back to list
-            </button>
-          }
-        />
-      )}
-    </div>
+          </div>
+        ) : (
+          <TriggerTagInput
+            values={triggerData?.repos || []}
+            onChange={(repos) => updateTriggerData({ repos })}
+            validate={isValidRepo}
+            prefix="github.com/"
+            placeholder="octocat/hello-world"
+            emptyPlaceholder="octocat/hello-world"
+            description={
+              <button
+                type="button"
+                onClick={() => setUseManualInput(false)}
+                className="cursor-pointer font-medium text-primary hover:underline"
+              >
+                Back to list
+              </button>
+            }
+          />
+        )}
+      </TriggerSettingRow>
+    </TriggerSettingsCard>
   );
 }
 

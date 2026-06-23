@@ -10,6 +10,7 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
 import {
+  TriggerSettingRow,
   TriggerSettingsCard,
   TriggerToggleRow,
 } from "../components/TriggerSettingsCard";
@@ -103,7 +104,7 @@ function SlackSettings({
 
   return (
     <TriggerSettingsCard>
-      <div className="px-4 py-3.5">
+      <TriggerSettingRow label="Channels" wide>
         <TriggerSelectToggle
           label="Channels"
           selectProps={{
@@ -132,7 +133,7 @@ function SlackSettings({
           }}
           allowManualInput={true}
         />
-      </div>
+      </TriggerSettingRow>
 
       <TriggerToggleRow
         label="Exclude bot messages"

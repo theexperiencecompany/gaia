@@ -9,7 +9,6 @@
 
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
-import { Kbd } from "@heroui/kbd";
 import { useId, useState } from "react";
 
 import type { TriggerTagInputProps } from "./types";
@@ -20,6 +19,7 @@ export function TriggerTagInput({
   onChange,
   placeholder = "Add item...",
   emptyPlaceholder = "Add items",
+  prefix,
   validate,
   formatTag,
   description,
@@ -53,11 +53,12 @@ export function TriggerTagInput({
   };
 
   return (
-    <div className="flex w-full max-w-xl flex-col gap-2">
+    <div className="flex w-full flex-col gap-2">
       <Input
         id={inputId}
         label={label}
-        labelPlacement="outside"
+        labelPlacement={label ? "outside" : undefined}
+        aria-label={label ?? "Add value"}
         size="sm"
         variant="flat"
         value={input}
@@ -65,6 +66,13 @@ export function TriggerTagInput({
         onKeyDown={handleKeyDown}
         onBlur={handleAdd}
         placeholder={values.length > 0 ? placeholder : emptyPlaceholder}
+        startContent={
+          prefix ? (
+            <span className="pointer-events-none shrink-0 text-sm text-zinc-500">
+              {prefix}
+            </span>
+          ) : undefined
+        }
       />
 
       {values.length > 0 && (
@@ -82,12 +90,9 @@ export function TriggerTagInput({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2 px-1 text-xs text-zinc-500">
-        <span className="flex items-center gap-1.5">
-          Press <Kbd keys={["enter"]}>Enter</Kbd> to add
-        </span>
-        {description}
-      </div>
+      {description ? (
+        <div className="flex justify-end px-1 text-xs">{description}</div>
+      ) : null}
     </div>
   );
 }

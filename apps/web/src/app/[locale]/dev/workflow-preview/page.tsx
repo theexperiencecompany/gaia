@@ -55,6 +55,30 @@ const MOCK_TRIGGER_SCHEMAS: TriggerSchema[] = [
     "New commit",
     "Runs when a new commit is pushed to a repository.",
   ),
+  triggerSchema(
+    "linear_issue_created",
+    "linear",
+    "Issue created",
+    "Runs when a new issue is created.",
+  ),
+  triggerSchema(
+    "notion_new_page_in_db",
+    "notion",
+    "New database item",
+    "Runs when a new item is added to a database.",
+  ),
+  triggerSchema(
+    "asana_task_trigger",
+    "asana",
+    "Task added",
+    "Runs when a task is added to a project.",
+  ),
+  triggerSchema(
+    "google_sheets_new_row",
+    "googlesheets",
+    "New row added",
+    "Runs when a row is added to a spreadsheet.",
+  ),
 ];
 
 const connectedIntegration = (id: string, name: string): MyIntegrationItem => ({
@@ -80,8 +104,12 @@ const MOCK_MY_INTEGRATIONS = {
     connectedIntegration("googlecalendar", "Google Calendar"),
     connectedIntegration("slack", "Slack"),
     connectedIntegration("github", "GitHub"),
+    connectedIntegration("linear", "Linear"),
+    connectedIntegration("notion", "Notion"),
+    connectedIntegration("asana", "Asana"),
+    connectedIntegration("googlesheets", "Google Sheets"),
   ],
-  total: 4,
+  total: 8,
 };
 
 const MOCK_STEPS = [
@@ -198,6 +226,38 @@ const GITHUB_COMMIT = triggerWorkflow("wf_github", "Commit digest", {
   trigger_data: { trigger_name: "github_commit_event", repos: [] },
 });
 
+const LINEAR_ISSUE = triggerWorkflow("wf_linear", "Issue triage", {
+  type: "integration",
+  enabled: true,
+  trigger_name: "linear_issue_created",
+  trigger_data: { trigger_name: "linear_issue_created", team_id: "" },
+});
+
+const NOTION_ITEM = triggerWorkflow("wf_notion", "Doc watcher", {
+  type: "integration",
+  enabled: true,
+  trigger_name: "notion_new_page_in_db",
+  trigger_data: { trigger_name: "notion_new_page_in_db", database_ids: [] },
+});
+
+const ASANA_TASK = triggerWorkflow("wf_asana", "Task tracker", {
+  type: "integration",
+  enabled: true,
+  trigger_name: "asana_task_trigger",
+  trigger_data: { trigger_name: "asana_task_trigger" },
+});
+
+const SHEETS_ROW = triggerWorkflow("wf_sheets", "Row logger", {
+  type: "integration",
+  enabled: true,
+  trigger_name: "google_sheets_new_row",
+  trigger_data: {
+    trigger_name: "google_sheets_new_row",
+    spreadsheet_ids: [],
+    sheet_names: [],
+  },
+});
+
 type Scenario =
   | "create"
   | "create-steps"
@@ -207,7 +267,11 @@ type Scenario =
   | "trig-gmail"
   | "trig-calendar"
   | "trig-slack"
-  | "trig-github";
+  | "trig-github"
+  | "trig-linear"
+  | "trig-notion"
+  | "trig-asana"
+  | "trig-sheets";
 
 const SCENARIOS: { key: Scenario; label: string }[] = [
   { key: "create", label: "Create" },
@@ -219,6 +283,10 @@ const SCENARIOS: { key: Scenario; label: string }[] = [
   { key: "trig-calendar", label: "Event · Calendar" },
   { key: "trig-slack", label: "Event · Slack" },
   { key: "trig-github", label: "Event · GitHub" },
+  { key: "trig-linear", label: "Event · Linear" },
+  { key: "trig-notion", label: "Event · Notion" },
+  { key: "trig-asana", label: "Event · Asana" },
+  { key: "trig-sheets", label: "Event · Sheets" },
 ];
 
 type ModalProps = Omit<
@@ -236,6 +304,10 @@ const SCENARIO_PROPS: Record<Scenario, ModalProps> = {
   "trig-calendar": { mode: "edit", existingWorkflow: CALENDAR_SOON },
   "trig-slack": { mode: "edit", existingWorkflow: SLACK_MESSAGE },
   "trig-github": { mode: "edit", existingWorkflow: GITHUB_COMMIT },
+  "trig-linear": { mode: "edit", existingWorkflow: LINEAR_ISSUE },
+  "trig-notion": { mode: "edit", existingWorkflow: NOTION_ITEM },
+  "trig-asana": { mode: "edit", existingWorkflow: ASANA_TASK },
+  "trig-sheets": { mode: "edit", existingWorkflow: SHEETS_ROW },
 };
 
 export default function WorkflowPreviewPage() {

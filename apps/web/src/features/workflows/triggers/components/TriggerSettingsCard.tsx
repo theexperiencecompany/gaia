@@ -21,12 +21,16 @@ export function TriggerSettingsCard({ children }: { children: ReactNode }) {
 interface TriggerSettingRowProps {
   label: string;
   hint?: string;
+  /** Let the control fill the remaining row width (for selects, tag inputs,
+      anything richer than a compact picker) instead of a fixed column. */
+  wide?: boolean;
   children: ReactNode;
 }
 
 export function TriggerSettingRow({
   label,
   hint,
+  wide,
   children,
 }: TriggerSettingRowProps) {
   return (
@@ -38,7 +42,11 @@ export function TriggerSettingRow({
         <span className="text-sm font-medium text-zinc-200">{label}</span>
         {hint ? <span className="text-xs text-zinc-500">{hint}</span> : null}
       </div>
-      <div className="w-[19rem] shrink-0">{children}</div>
+      <div
+        className={wide ? "min-w-0 max-w-[26rem] flex-1" : "w-[19rem] shrink-0"}
+      >
+        {children}
+      </div>
     </div>
   );
 }

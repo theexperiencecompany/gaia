@@ -60,22 +60,13 @@ export function TimezoneAutocomplete({
         return (
           <AutocompleteItem
             key={tz.value}
-            // textValue is the selected input text and the search key; the city
-            // keeps the trigger compact while the region below gives the
-            // canonical context ("Kolkata" under "Asia", not bare "Calcutta").
+            // textValue (the search key + selected input text) is the city; the
+            // region is HeroUI's native description line, the offset its endContent.
             textValue={city}
-            endContent={
-              <span className="shrink-0 text-xs text-zinc-500">
-                {tz.offset}
-              </span>
-            }
+            description={region || undefined}
+            endContent={tz.offset}
           >
-            <div className="flex flex-col">
-              <span className="text-small">{city}</span>
-              {region ? (
-                <span className="text-tiny text-default-400">{region}</span>
-              ) : null}
-            </div>
+            {city}
           </AutocompleteItem>
         );
       }}

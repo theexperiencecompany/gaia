@@ -15,11 +15,14 @@ export interface TriggerConnectionPromptProps {
 }
 
 export interface TriggerTagInputProps {
-  label: string;
+  /** Visible label. Omit when a parent row already provides one. */
+  label?: string;
   values: string[];
   onChange: (values: string[]) => void;
   placeholder?: string;
   emptyPlaceholder?: string;
+  /** Static prefix shown inside the input (e.g. "github.com/"). */
+  prefix?: string;
   validate?: (value: string) => boolean;
   formatTag?: (value: string) => string;
   description?: React.ReactNode;
