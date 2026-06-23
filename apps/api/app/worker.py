@@ -21,7 +21,6 @@ from app.workers.tasks import (
     process_reminder,
     process_workflow_generation_task,
     prune_inactive_sessions,
-    prune_langgraph_checkpoints,
     regenerate_workflow_steps,
     sweep_idle_sandboxes,
 )
@@ -53,8 +52,6 @@ _execute_tracked_todo = instrument_task(execute_tracked_todo)
 _safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = instrument_task(rescan_pending_scheduled_tasks)
-_prune_langgraph_checkpoints = instrument_task(prune_langgraph_checkpoints)
-
 WorkerSettings.functions = [
     _process_reminder,
     _cleanup_expired_reminders,
@@ -71,7 +68,6 @@ WorkerSettings.functions = [
     _execute_tracked_todo,
     _backfill_active_users,
     _backfill_user_memories,
-    _prune_langgraph_checkpoints,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -119,12 +115,6 @@ WorkerSettings.cron_jobs = [
         _backfill_active_users,
         hour=4,  # Daily at 04:00 UTC (low traffic)
         minute=0,
-        second=0,
-    ),
-    cron(
-        _prune_langgraph_checkpoints,
-        hour=2,  # Daily at 02:30 UTC (low traffic)
-        minute=30,
         second=0,
     ),
 ]
