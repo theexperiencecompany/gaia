@@ -3,7 +3,7 @@
 import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
 import { Input } from "@heroui/input";
-import { Kbd } from "@heroui/kbd";
+import { NumberInput } from "@heroui/number-input";
 import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
 import { Tab, Tabs } from "@heroui/tabs";
@@ -35,14 +35,13 @@ type Field =
       label: string;
       presets: number[];
       defaultValue: number;
-      unit: "min";
     }
   | {
       type: "tags";
       key: string;
       label: string;
       placeholder: string;
-      empty: string;
+      prefix?: string;
     }
   | { type: "toggle"; key: string; label: string; hint?: string };
 
@@ -65,7 +64,6 @@ const TRIGGERS: TriggerSpec[] = [
         label: "Check my inbox every",
         presets: [5, 15, 30, 60],
         defaultValue: 15,
-        unit: "min",
       },
     ],
   },
@@ -93,7 +91,6 @@ const TRIGGERS: TriggerSpec[] = [
         label: "Remind me before",
         presets: [5, 15, 30, 60],
         defaultValue: 15,
-        unit: "min",
       },
       {
         type: "toggle",
@@ -144,8 +141,8 @@ const TRIGGERS: TriggerSpec[] = [
         type: "tags",
         key: "repos",
         label: "Repositories",
-        placeholder: "Add another...",
-        empty: "e.g., octocat/hello-world",
+        placeholder: "octocat/hello-world",
+        prefix: "github.com/",
       },
     ],
   },
@@ -224,10 +221,17 @@ const TRIGGERS: TriggerSpec[] = [
   },
 ];
 
+const UNIT_FACTOR = { minutes: 1, hours: 60, days: 1440 } as const;
+type TimeUnit = keyof typeof UNIT_FACTOR;
+
+function plural(n: number, word: string): string {
+  return `${n} ${n === 1 ? word : `${word}s`}`;
+}
+
 function describeMinutes(mins: number): string {
-  if (mins === 60) return "1 hour";
-  if (mins % 60 === 0) return `${mins / 60} hours`;
-  return `${mins} ${mins === 1 ? "minute" : "minutes"}`;
+  if (mins % 1440 === 0) return plural(mins / 1440, "day");
+  if (mins % 60 === 0) return plural(mins / 60, "hour");
+  return plural(mins, "minute");
 }
 
 function triggerIcon(integrationId: string, size = 24) {
@@ -274,7 +278,15 @@ function SegmentedControl({
   const [customMode, setCustomMode] = useState(
     !field.presets.includes(field.defaultValue),
   );
-  const [customInput, setCustomInput] = useState(String(field.defaultValue));
+  const [amount, setAmount] = useState(field.defaultValue);
+  const [unit, setUnit] = useState<TimeUnit>("minutes");
+
+  const applyCustom = (nextAmount: number, nextUnit: TimeUnit) => {
+    const amt = Number.isNaN(nextAmount) ? 1 : Math.max(1, nextAmount);
+    setAmount(amt);
+    setUnit(nextUnit);
+    setValue(amt * UNIT_FACTOR[nextUnit]);
+  };
 
   return (
     <div className="space-y-2">
@@ -305,28 +317,30 @@ function SegmentedControl({
         <Tab key="custom" title="Custom" />
       </Tabs>
       {customMode && (
-        <Input
-          type="number"
-          aria-label={`Custom ${field.label}`}
-          min={1}
-          max={1440}
-          className="w-full"
-          classNames={{
-            input:
-              "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
-          }}
-          value={customInput}
-          onValueChange={(raw) => {
-            setCustomInput(raw);
-            const n = parseInt(raw, 10);
-            if (!Number.isNaN(n) && n >= 1 && n <= 1440) setValue(n);
-          }}
-          endContent={
-            <span className="pointer-events-none text-sm text-zinc-500">
-              minutes
-            </span>
-          }
-        />
+        <div className="flex items-center gap-2">
+          <NumberInput
+            aria-label={`Custom ${field.label}`}
+            minValue={1}
+            hideStepper
+            value={amount}
+            onValueChange={(n) => applyCustom(n, unit)}
+            className="flex-1"
+          />
+          <Select
+            aria-label="Unit"
+            selectedKeys={new Set([unit])}
+            onSelectionChange={(keys) =>
+              applyCustom(amount, Array.from(keys)[0] as TimeUnit)
+            }
+            disallowEmptySelection
+            className="w-32 shrink-0"
+            classNames={{ popoverContent: "min-w-fit" }}
+          >
+            <SelectItem key="minutes">minutes</SelectItem>
+            <SelectItem key="hours">hours</SelectItem>
+            <SelectItem key="days">days</SelectItem>
+          </Select>
+        </div>
       )}
       {withHelper && (
         <p className="text-xs text-zinc-500">Every {describeMinutes(value)}.</p>
@@ -358,7 +372,14 @@ function TagsControl({ field }: { field: Extract<Field, { type: "tags" }> }) {
           }
         }}
         onBlur={add}
-        placeholder={values.length ? field.placeholder : field.empty}
+        placeholder={field.placeholder}
+        startContent={
+          field.prefix ? (
+            <span className="pointer-events-none shrink-0 text-sm text-zinc-500">
+              {field.prefix}
+            </span>
+          ) : undefined
+        }
       />
       {values.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -374,9 +395,6 @@ function TagsControl({ field }: { field: Extract<Field, { type: "tags" }> }) {
           ))}
         </div>
       )}
-      <span className="flex items-center gap-1.5 px-1 text-xs text-zinc-500">
-        Press <Kbd keys={["enter"]}>Enter</Kbd> to add
-      </span>
     </div>
   );
 }
@@ -509,8 +527,11 @@ function CardRow({ field }: { field: Field }) {
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3.5">
-      <div className="flex min-w-0 flex-col gap-0.5">
+    <div className="flex items-start justify-between gap-4 px-4 py-3.5">
+      {/* min-h matches the control's first row so the label sits centered when
+          the control is a single row, and stays top-aligned when it grows
+          (e.g. the custom input expands below the presets). */}
+      <div className="flex min-h-10 min-w-0 flex-col justify-center gap-0.5">
         <span className="text-sm font-medium text-zinc-200">{field.label}</span>
         {field.type === "multiselect" && field.hint ? (
           <span className="text-xs text-zinc-500">{field.hint}</span>
