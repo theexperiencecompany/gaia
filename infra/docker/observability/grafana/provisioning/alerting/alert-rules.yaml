@@ -544,3 +544,171 @@ groups:
         labels:
           severity: critical
           service: api
+
+  # Extended coverage: failure modes that historically went unmonitored
+  # (cert expiry, OOM kills, Redis memory pressure, stuck queues). All metrics
+  # verified present in prod Prometheus before adding.
+  - orgId: 1
+    name: gaia-extended
+    folder: GAIA
+    interval: 1m
+    rules:
+      # 15. TLS cert for api.heygaia.io expires in < 14 days
+      - uid: gaia-ssl-cert-expiry
+        title: TLS certificate expiring soon
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: min(probe_ssl_earliest_cert_expiry{job="blackbox_api"}) - time()
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1209600] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "api.heygaia.io TLS cert expires in < 14 days ({{ $values.B }}s left)"
+        labels:
+          severity: critical
+          service: api
+
+      # 16. A container was OOM-killed in the last 15m
+      - uid: gaia-container-oom
+        title: Container OOM killed
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(container_oom_events_total[15m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: OK
+        for: 0m
+        annotations:
+          summary: "{{ $values.B }} container OOM-kill event(s) in the last 15m"
+        labels:
+          severity: critical
+          service: host
+
+      # 17. Redis memory > 85% of maxmemory (eviction risk for SSE/cache/rate-limit)
+      - uid: gaia-redis-memory
+        title: Redis memory pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.85] }
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: Redis is using {{ $values.B | humanizePercentage }} of maxmemory
+        labels:
+          severity: warning
+          service: redis
+
+      # 18. Redis evicting keys (memory full — data being dropped)
+      - uid: gaia-redis-evictions
+        title: Redis evicting keys
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: increase(redis_evicted_keys_total[10m])
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: "Redis evicted {{ $values.B }} keys in 10m — memory full"
+        labels:
+          severity: warning
+          service: redis
+
+      # 19. RabbitMQ backlog with NO consumers (a consumer died; work stuck)
+      - uid: gaia-rabbitmq-no-consumers
+        title: RabbitMQ backlog with no consumers
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (sum(rabbitmq_queue_messages_ready) > 100) and (sum(rabbitmq_queue_consumers) == 0)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: "RabbitMQ has {{ $values.B }} ready messages but zero consumers"
+        labels:
+          severity: critical
+          service: rabbitmq
