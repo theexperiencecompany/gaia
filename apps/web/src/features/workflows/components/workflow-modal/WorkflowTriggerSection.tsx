@@ -66,7 +66,7 @@ export default function WorkflowTriggerSection({
     if (key === "manual") {
       return (
         <p className="text-sm text-zinc-400">
-          This workflow runs only when you start it — from here, the Workflows
+          This workflow runs only when you start it from here, the Workflows
           page, or chat.
         </p>
       );
@@ -146,7 +146,7 @@ export default function WorkflowTriggerSection({
                 </span>
               }
             >
-              <div className="pt-3">{renderTabBody(tab.key)}</div>
+              <div className="pt-1.5">{renderTabBody(tab.key)}</div>
             </Tab>
           )) as ReactElement[]
         }

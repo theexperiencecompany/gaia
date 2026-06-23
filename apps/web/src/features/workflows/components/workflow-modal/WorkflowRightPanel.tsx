@@ -4,6 +4,9 @@ import { Clock04Icon } from "@icons";
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowExecutionHistory from "../WorkflowExecutionHistory";
 import WorkflowStepsPanel from "./WorkflowStepsPanel";
+import WorkflowStepsPreviewCard, {
+  STEPS_CARD_SURFACE,
+} from "./WorkflowStepsPreviewCard";
 
 interface WorkflowRightPanelProps {
   workflow: Workflow | null;
@@ -17,9 +20,6 @@ interface WorkflowRightPanelProps {
   isPreview?: boolean;
 }
 
-const PANEL_SURFACE =
-  "flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-zinc-800/50 p-4";
-
 export default function WorkflowRightPanel({
   workflow,
   workflowId,
@@ -32,29 +32,11 @@ export default function WorkflowRightPanel({
   isPreview = false,
 }: WorkflowRightPanelProps) {
   if (isPreview) {
-    return (
-      <div className={PANEL_SURFACE}>
-        <div className="mb-1 flex items-center gap-2 px-2 pt-1">
-          <span className="text-sm font-medium text-zinc-200">Steps</span>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-          <WorkflowStepsPanel
-            workflow={workflow}
-            isGenerating={isGenerating}
-            isRegenerating={isRegenerating}
-            regenerationError={regenerationError}
-            onRegenerateWithReason={onRegenerateWithReason}
-            onInitialGeneration={onInitialGeneration}
-            onClearError={onClearError}
-            isPreview
-          />
-        </div>
-      </div>
-    );
+    return <WorkflowStepsPreviewCard steps={workflow?.steps ?? []} />;
   }
 
   return (
-    <div className={PANEL_SURFACE}>
+    <div className={STEPS_CARD_SURFACE}>
       <Tabs
         aria-label="Workflow info tabs"
         defaultSelectedKey="steps"

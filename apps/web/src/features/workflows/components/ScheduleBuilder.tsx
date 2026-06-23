@@ -10,6 +10,7 @@ import {
   describeCron,
   parseCronExpression,
 } from "../utils/cronUtils";
+import { TimezoneAutocomplete } from "./TimezoneAutocomplete";
 
 interface ScheduleBuilderProps {
   value?: string; // cron expression
@@ -116,9 +117,10 @@ export const ScheduleBuilder = ({
     const options = getTimezoneList(true).map((tz) => ({
       value: tz.value,
       label: tz.label,
+      offset: tz.offset,
     }));
     if (timezone && !options.some((tz) => tz.value === timezone)) {
-      options.unshift({ value: timezone, label: timezone });
+      options.unshift({ value: timezone, label: timezone, offset: "" });
     }
     return options;
   }, [timezone]);
@@ -364,32 +366,12 @@ export const ScheduleBuilder = ({
               </Select>
             </div>
             <span className="shrink-0 text-nowrap text-zinc-500">in</span>
-            <Select
-              aria-label="Select timezone"
-              size="sm"
-              selectedKeys={timezone ? new Set([timezone]) : undefined}
-              onSelectionChange={(keys) => {
-                const next = Array.from(keys)[0] as string | undefined;
-                if (next) onTimezoneChange(next);
-              }}
-              className="w-32 shrink-0"
-              renderValue={(items) => {
-                const key = items[0]?.key as string | undefined;
-                if (!key) return null;
-                const parts = key.split("/");
-                const city = (parts[parts.length - 1] ?? key).replace(
-                  /_/g,
-                  " ",
-                );
-                return <span className="truncate text-sm">{city}</span>;
-              }}
-            >
-              {timezoneOptions.map((tz) => (
-                <SelectItem key={tz.value} textValue={tz.label}>
-                  {tz.label}
-                </SelectItem>
-              ))}
-            </Select>
+            <TimezoneAutocomplete
+              timezone={timezone}
+              options={timezoneOptions}
+              onChange={onTimezoneChange}
+              className="w-44 shrink-0"
+            />
           </>
         )}
       </div>
@@ -410,32 +392,12 @@ export const ScheduleBuilder = ({
             <span className="shrink-0 text-nowrap text-xs text-zinc-500">
               in
             </span>
-            <Select
-              aria-label="Select timezone"
-              size="sm"
-              selectedKeys={timezone ? new Set([timezone]) : undefined}
-              onSelectionChange={(keys) => {
-                const next = Array.from(keys)[0] as string | undefined;
-                if (next) onTimezoneChange(next);
-              }}
-              className="w-28 shrink-0"
-              renderValue={(items) => {
-                const key = items[0]?.key as string | undefined;
-                if (!key) return null;
-                const parts = key.split("/");
-                const city = (parts[parts.length - 1] ?? key).replace(
-                  /_/g,
-                  " ",
-                );
-                return <span className="truncate text-sm">{city}</span>;
-              }}
-            >
-              {timezoneOptions.map((tz) => (
-                <SelectItem key={tz.value} textValue={tz.label}>
-                  {tz.label}
-                </SelectItem>
-              ))}
-            </Select>
+            <TimezoneAutocomplete
+              timezone={timezone}
+              options={timezoneOptions}
+              onChange={onTimezoneChange}
+              className="w-44 shrink-0"
+            />
           </div>
           <p className="text-xs text-zinc-500">
             Format: minute hour day-of-month month day-of-week

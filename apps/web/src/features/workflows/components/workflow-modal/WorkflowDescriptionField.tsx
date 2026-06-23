@@ -1,5 +1,6 @@
 import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
+import { Tooltip } from "@heroui/tooltip";
 import { SparklesIcon } from "@icons";
 import { useState } from "react";
 import {
@@ -14,29 +15,22 @@ import { getUserHomeTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import { workflowApi } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
-import IntegrationChipsSelector from "./IntegrationChipsSelector";
 import WorkflowSection from "./WorkflowSection";
 
 interface WorkflowDescriptionFieldProps {
   control: Control<WorkflowFormData>;
   errors: FieldErrors<WorkflowFormData>;
   setValue?: UseFormSetValue<WorkflowFormData>;
-  mode?: "create" | "edit" | "preview";
   isPreview?: boolean;
   selectedIntegrationSlugs: string[];
-  onIntegrationSlugsChange: (slugs: string[]) => void;
-  showIntegrationSelector?: boolean;
 }
 
 export default function WorkflowDescriptionField({
   control,
   errors,
   setValue,
-  mode = "create",
   isPreview = false,
   selectedIntegrationSlugs,
-  onIntegrationSlugsChange,
-  showIntegrationSelector = true,
 }: WorkflowDescriptionFieldProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -97,21 +91,38 @@ export default function WorkflowDescriptionField({
     }
   };
 
+  // Generation needs something to work from — a title, a description, or an
+  // existing prompt to improve. With a blank form there's nothing to generate.
+  const canGenerate = !!(
+    title?.trim() ||
+    description?.trim() ||
+    currentPrompt?.trim()
+  );
+
   const generateButton = !isPreview ? (
-    <Button
-      size="sm"
-      variant="light"
-      color="primary"
-      className="h-7 px-2 text-xs"
-      startContent={!isGenerating && <SparklesIcon className="h-4 w-4" />}
-      isLoading={isGenerating}
-      isDisabled={isGenerating}
-      onPress={handleGenerate}
+    <Tooltip
+      content="Add a title, description, or instructions first"
+      placement="top"
+      isDisabled={canGenerate}
     >
-      <TextMorph duration={300}>
-        {hasExistingPrompt ? "Improve with AI" : "Generate with AI"}
-      </TextMorph>
-    </Button>
+      {/* span wrapper keeps the tooltip hoverable while the button is disabled */}
+      <span className="inline-flex">
+        <Button
+          size="sm"
+          variant="light"
+          color="primary"
+          className="h-7 px-2 text-xs"
+          startContent={!isGenerating && <SparklesIcon className="h-4 w-4" />}
+          isLoading={isGenerating}
+          isDisabled={isGenerating || !canGenerate}
+          onPress={handleGenerate}
+        >
+          <TextMorph duration={300}>
+            {hasExistingPrompt ? "Improve with AI" : "Generate with AI"}
+          </TextMorph>
+        </Button>
+      </span>
+    </Tooltip>
   ) : undefined;
 
   return (
@@ -123,11 +134,7 @@ export default function WorkflowDescriptionField({
           <Textarea
             {...field}
             aria-label="Workflow instructions"
-            placeholder={
-              mode === "edit"
-                ? "E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via Slack"
-                : "E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via Slack"
-            }
+            placeholder="E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via Slack"
             minRows={4}
             variant="flat"
             isRequired
@@ -148,12 +155,6 @@ export default function WorkflowDescriptionField({
           />
         )}
       />
-      {showIntegrationSelector && !isPreview && (
-        <IntegrationChipsSelector
-          selectedSlugs={selectedIntegrationSlugs}
-          onChange={onIntegrationSlugsChange}
-        />
-      )}
     </WorkflowSection>
   );
 }

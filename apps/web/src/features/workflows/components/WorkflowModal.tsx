@@ -12,12 +12,12 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
 import WorkflowFooter from "@/features/workflows/components/workflow-modal/WorkflowFooter";
 import WorkflowHeader from "@/features/workflows/components/workflow-modal/WorkflowHeader";
 import WorkflowLoadingState from "@/features/workflows/components/workflow-modal/WorkflowLoadingState";
 import WorkflowRightPanel from "@/features/workflows/components/workflow-modal/WorkflowRightPanel";
+import WorkflowStepsPreviewCard from "@/features/workflows/components/workflow-modal/WorkflowStepsPreviewCard";
 import WorkflowTriggerSection from "@/features/workflows/components/workflow-modal/WorkflowTriggerSection";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -28,6 +28,7 @@ import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 import { type Workflow, workflowApi } from "../api/workflowApi";
+import { REGENERATION_REASONS } from "../constants/regeneration";
 import {
   getDefaultFormValues,
   type WorkflowFormData,
@@ -764,34 +765,12 @@ export default function WorkflowModal({
     router.push(`/use-cases/${currentWorkflow.slug}`);
   };
 
-  // Handle regeneration with specific instruction
-  // Keys must match WorkflowStepsPanel regenerationReasons
+  // Handle regeneration with a specific reason. The reason's instruction is the
+  // single source of truth in constants/regeneration.ts (shared with the panel).
   const handleRegenerateWithReason = (instructionKey: string) => {
-    const regenerationReasons = [
-      {
-        key: "too_complex",
-        label: "Simplify workflow",
-        description: "Simplify with fewer steps",
-      },
-      {
-        key: "missing_functionality",
-        label: "Add missing functionality",
-        description: "Add specific features",
-      },
-      {
-        key: "wrong_tools",
-        label: "Use different tools",
-        description: "Use different integrations",
-      },
-      {
-        key: "alternative_approach",
-        label: "Generate alternative approach",
-        description: "Try a completely different strategy",
-      },
-    ];
-    const reason = regenerationReasons.find((r) => r.key === instructionKey);
+    const reason = REGENERATION_REASONS.find((r) => r.key === instructionKey);
     if (reason) {
-      handleRegenerateSteps(reason.label, true); // Always force different tools for regeneration
+      handleRegenerateSteps(reason.instruction, true); // Always force different tools
     }
   };
 
@@ -911,11 +890,8 @@ export default function WorkflowModal({
                           control={control}
                           errors={errors}
                           setValue={setValue}
-                          mode={mode === "preview" ? "edit" : mode}
                           isPreview={mode === "preview"}
                           selectedIntegrationSlugs={selectedIntegrationSlugs}
-                          onIntegrationSlugsChange={setSelectedIntegrationSlugs}
-                          showIntegrationSelector={!hasPredefinedSteps}
                         />
 
                         <WorkflowTriggerSection
@@ -960,25 +936,15 @@ export default function WorkflowModal({
 
                   {/* Side panel — predefined steps preview */}
                   {mode === "create" && hasPredefinedSteps && (
-                    <div className="flex max-h-[45vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl bg-zinc-900/60 p-3 lg:max-h-none lg:w-[22rem]">
-                      <div className="mb-2 flex items-center gap-2 px-1 pt-1">
-                        <span className="text-sm font-medium text-zinc-200">
-                          Steps
-                        </span>
-                        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary">
-                          {predefinedSteps?.length}
-                        </span>
-                      </div>
-                      <div className="min-h-0 flex-1 overflow-y-auto px-1">
-                        <WorkflowSteps
-                          steps={(predefinedSteps ?? []).map((step) => ({
-                            id: step.id ?? "",
-                            title: step.title,
-                            description: step.description,
-                            category: step.category,
-                          }))}
-                        />
-                      </div>
+                    <div className="flex max-h-[45vh] min-h-0 shrink-0 flex-col lg:max-h-none lg:w-[22rem] lg:pb-6">
+                      <WorkflowStepsPreviewCard
+                        steps={(predefinedSteps ?? []).map((step) => ({
+                          id: step.id ?? "",
+                          title: step.title,
+                          description: step.description,
+                          category: step.category,
+                        }))}
+                      />
                     </div>
                   )}
 

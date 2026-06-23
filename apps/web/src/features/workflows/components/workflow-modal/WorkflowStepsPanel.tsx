@@ -6,47 +6,14 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Skeleton } from "@heroui/skeleton";
-import {
-  AlertCircleIcon,
-  Minimize01Icon,
-  PlusSignIcon,
-  RedoIcon,
-  ShuffleIcon,
-  Wrench01Icon,
-} from "@icons";
+import { AlertCircleIcon, RedoIcon } from "@icons";
 import { ChevronDown } from "@/components/shared/icons";
 import type { Workflow } from "../../api/workflowApi";
+import { REGENERATION_REASONS } from "../../constants/regeneration";
 import WorkflowSteps from "../shared/WorkflowSteps";
 import PanelHeader from "./PanelHeader";
 
 const DROPDOWN_ICON = "size-5 text-default-500 pointer-events-none shrink-0";
-
-const regenerationReasons = [
-  {
-    key: "too_complex",
-    label: "Too complex",
-    description: "Simplify with fewer steps",
-    icon: Minimize01Icon,
-  },
-  {
-    key: "missing_functionality",
-    label: "Missing functionality",
-    description: "Add specific features",
-    icon: PlusSignIcon,
-  },
-  {
-    key: "wrong_tools",
-    label: "Wrong tools",
-    description: "Use different integrations",
-    icon: Wrench01Icon,
-  },
-  {
-    key: "alternative_approach",
-    label: "Alternative approach",
-    description: "Try a completely different strategy",
-    icon: ShuffleIcon,
-  },
-] as const;
 
 interface WorkflowStepsPanelProps {
   workflow: Workflow | null;
@@ -56,7 +23,6 @@ interface WorkflowStepsPanelProps {
   onRegenerateWithReason: (reasonKey: string) => void;
   onInitialGeneration: () => void;
   onClearError: () => void;
-  isPreview?: boolean;
 }
 
 export default function WorkflowStepsPanel({
@@ -67,19 +33,7 @@ export default function WorkflowStepsPanel({
   onRegenerateWithReason,
   onInitialGeneration,
   onClearError,
-  isPreview = false,
 }: WorkflowStepsPanelProps) {
-  if (isPreview) {
-    if (!workflow?.steps || workflow.steps.length === 0) {
-      return (
-        <div className="py-6 text-center text-sm text-zinc-500">
-          Steps will be generated when this workflow runs.
-        </div>
-      );
-    }
-    return <WorkflowSteps steps={workflow.steps} />;
-  }
-
   if (regenerationError) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
@@ -152,7 +106,7 @@ export default function WorkflowStepsPanel({
               onAction={(key) => onRegenerateWithReason(key as string)}
               disabledKeys={isRegenerating ? ["all"] : []}
             >
-              {regenerationReasons.map((reason) => (
+              {REGENERATION_REASONS.map((reason) => (
                 <DropdownItem
                   key={reason.key}
                   textValue={reason.label}
