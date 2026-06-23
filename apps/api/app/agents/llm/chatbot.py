@@ -8,7 +8,7 @@ from shared.py.wide_events import log
 async def chatbot(
     messages: list[AnyMessage],
     use_free_llm: bool = True,
-):
+) -> dict[str, list[AnyMessage]]:
     """
     One-shot LLM call over a message list (no graph, no checkpointer).
 

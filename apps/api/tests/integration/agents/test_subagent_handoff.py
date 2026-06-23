@@ -32,6 +32,8 @@ from langgraph.graph import END, StateGraph
 from langgraph.store.memory import InMemoryStore
 import pytest
 
+from app.agents.core.subagents.handoff_tools import _resolve_subagent
+from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -682,7 +684,7 @@ class TestSubagentRunnerHelpers:
 class TestBuildInitialMessages:
     """Verify build_initial_messages produces the expected [system, context, human] list."""
 
-    async def test_build_initial_messages_returns_four_messages(self):
+    async def test_build_initial_messages_returns_four_messages(self) -> None:
         """build_initial_messages must return exactly 4 messages:
         system, context, current-time, and human."""
         system_msg = SystemMessage(content="You are a Gmail agent.")
@@ -751,7 +753,13 @@ class TestBuildInitialMessages:
 
         captured_queries: list[str] = []
 
-        async def capture_context(configurable, user_id, query, subagent_id=None, **kwargs):
+        async def capture_context(
+            configurable: dict[str, object],
+            user_id: str | None,
+            query: str,
+            subagent_id: str | None = None,
+            **kwargs: object,
+        ) -> SystemMessage:
             captured_queries.append(query)
             return SystemMessage(content="ctx")
 
@@ -882,7 +890,12 @@ class TestHandoffFunctionDirectly:
         thread_id = str(uuid4())
         captured_states: list[dict] = []
 
-        async def capture_execute(ctx, stream_writer=None, integration_metadata=None, **kwargs):
+        async def capture_execute(
+            ctx: object,
+            stream_writer: object | None = None,
+            integration_metadata: object | None = None,
+            **kwargs: object,
+        ) -> str:
             captured_states.append(ctx.initial_state)
             return "ok"
 
@@ -957,7 +970,6 @@ class TestCustomMCPPath:
     async def test_custom_mcp_path_calls_create_subagent_for_user(self):
         """When the integration resolved is a plain dict (custom MCP from MongoDB),
         _resolve_subagent must call create_subagent_for_user and return is_custom=True."""
-        from app.agents.core.subagents.handoff_tools import _resolve_subagent
 
         custom_integration_id = "fb9dfd7e05f8"
         fake_graph = MagicMock()
@@ -1083,7 +1095,6 @@ class TestCustomMCPPath:
     async def test_custom_mcp_path_requires_user_id(self):
         """If user_id is None, the custom MCP path must return an error tuple
         without calling create_subagent_for_user."""
-        from app.agents.core.subagents.handoff_tools import _resolve_subagent
 
         custom_id = "deadbeef0000"
 
@@ -1121,8 +1132,6 @@ class TestCustomMCPPath:
     async def test_custom_mcp_path_returns_error_when_create_fails(self):
         """If create_subagent_for_user raises SubagentUnavailableError,
         _resolve_subagent must return an error tuple (not a graph)."""
-        from app.agents.core.subagents.handoff_tools import _resolve_subagent
-        from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
 
         custom_id = "failfail1234"
 
