@@ -1,4 +1,14 @@
 DEFAULT_LLM_PROVIDER = "gemini"
+
+# Maximum number of non-system messages kept in the checkpoint messages list.
+# Older messages are evicted via RemoveMessage before each model call so that
+# per-checkpoint storage stays bounded regardless of conversation length.
+MAX_CONTEXT_MESSAGES = 60
+
+# Checkpoint pruning: keep this many checkpoints per (thread_id, checkpoint_ns);
+# older ones are deleted by the daily prune_langgraph_checkpoints cron job.
+# 2 gives one rollback point without keeping unbounded history.
+CHECKPOINT_KEEP_LATEST = 2
 # Runaway loops are the main driver of long, expensive traces; capping tail
 # risk keeps p95 cost predictable. Legitimate tasks that need more steps
 # should split work across handoffs rather than chew through recursion budget.

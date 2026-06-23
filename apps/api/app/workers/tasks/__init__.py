@@ -2,6 +2,7 @@
 Task modules for ARQ worker.
 """
 
+from .checkpoint_tasks import prune_langgraph_checkpoints
 from .cleanup_tasks import cleanup_stuck_personalization
 from .memory_backfill_tasks import backfill_active_users, backfill_user_memories
 from .memory_email_tasks import process_gmail_emails_to_memory
@@ -19,6 +20,7 @@ from .workflow_tasks import (
 )
 
 __all__ = [
+    "prune_langgraph_checkpoints",
     "process_gmail_emails_to_memory",
     "process_onboarding_intelligence_task",
     "process_reminder",
