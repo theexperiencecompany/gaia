@@ -555,6 +555,11 @@ services:
       # Slack webhook consumed by contact-points.yaml (leave empty to disable alerts)
       SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
       SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
+      # Destination for the email contact point ($__env{GRAFANA_ALERT_EMAIL} in
+      # contact-points.yaml). SMTP is disabled in dev, so email won't actually
+      # send — this default just keeps the contact point's address non-empty so
+      # alerting provisioning loads cleanly.
+      GRAFANA_ALERT_EMAIL: ${GRAFANA_ALERT_EMAIL:-alerts@example.com}
     restart: unless-stopped
     depends_on:
       loki:

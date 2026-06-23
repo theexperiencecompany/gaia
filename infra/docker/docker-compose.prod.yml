@@ -19,6 +19,8 @@ secrets:
     external: true
   gaia_grafana_slack_webhook:
     external: true
+  gaia_grafana_smtp_password:
+    external: true
   gaia_postgres_password:
     external: true
     name: gaia_postgres_password_v2
@@ -806,9 +808,29 @@ services:
       # links in Slack, share links, dashboard URLs). Without this the default
       # resolves to localhost:4000 and Slack alerts link nowhere.
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://logs.heygaia.io}
+      # SMTP for email alerts (critical/down events). Gmail / Google Workspace:
+      # GRAFANA_SMTP_USER is the sending account, the app password is the
+      # gaia_grafana_smtp_password secret (Grafana reads the __FILE variant), and
+      # GRAFANA_ALERT_EMAIL is the destination the email contact point sends to
+      # (see provisioning/alerting/contact-points.yaml → $__env{GRAFANA_ALERT_EMAIL}).
+      #
+      # REQUIRED (no default): GRAFANA_SMTP_USER must be set in the deploy env before
+      # `docker stack deploy` — it's the full Gmail/Workspace sending address (e.g.
+      # alerts@heygaia.io) that owns the app password. If unset, GF_SMTP_USER is empty
+      # and Gmail rejects auth with `535 Username and Password not accepted`, so email
+      # alerts silently never send (Slack still works). The app password must belong to
+      # this same account. See internal-docs → Production → Grafana → Alerting.
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-smtp.gmail.com:587}
+      GF_SMTP_USER: ${GRAFANA_SMTP_USER}
+      GF_SMTP_PASSWORD__FILE: /run/secrets/gaia_grafana_smtp_password
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM_ADDRESS:-${GRAFANA_SMTP_USER}}
+      GF_SMTP_FROM_NAME: "GAIA Alerts"
+      GRAFANA_ALERT_EMAIL: ${GRAFANA_ALERT_EMAIL:-aryan@heygaia.io}
     secrets:
       - gaia_grafana_admin_password
       - gaia_grafana_slack_webhook
+      - gaia_grafana_smtp_password
     networks:
       - gaia-prod-shared
     healthcheck:
