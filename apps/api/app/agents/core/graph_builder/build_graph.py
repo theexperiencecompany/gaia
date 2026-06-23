@@ -12,7 +12,6 @@ from app.agents.core.nodes import (
     follow_up_actions_node,
     manage_system_prompts_node,
     memory_node,
-    trim_messages_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
@@ -85,7 +84,6 @@ async def build_executor_graph(
 
     pre_model_hooks: list[HookType] = [
         cast(HookType, filter_messages_node),
-        cast(HookType, trim_messages_node),
         manage_system_prompts_node,
         todo_hook,
     ]
@@ -179,7 +177,6 @@ async def build_comms_graph(
 
     pre_model_hooks: list[HookType] = [
         cast(HookType, filter_messages_node),
-        cast(HookType, trim_messages_node),
         manage_system_prompts_node,
     ]
 

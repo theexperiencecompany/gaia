@@ -1,10 +1,5 @@
 DEFAULT_LLM_PROVIDER = "gemini"
 
-# Maximum number of non-system messages kept in the checkpoint messages list.
-# Older messages are evicted via RemoveMessage before each model call so that
-# per-checkpoint storage stays bounded regardless of conversation length.
-MAX_CONTEXT_MESSAGES = 60
-
 # Runaway loops are the main driver of long, expensive traces; capping tail
 # risk keeps p95 cost predictable. Legitimate tasks that need more steps
 # should split work across handoffs rather than chew through recursion budget.

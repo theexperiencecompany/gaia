@@ -17,7 +17,6 @@ from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_
 from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
-    trim_messages_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.llm.retry_policies import SUBAGENT_RETRY_POLICY
@@ -186,7 +185,6 @@ class SubAgentFactory:
             "middleware": middleware,
             "pre_model_hooks": [
                 cast(HookType, filter_messages_node),
-                cast(HookType, trim_messages_node),
                 manage_system_prompts_node,
                 todo_hook,
             ],
