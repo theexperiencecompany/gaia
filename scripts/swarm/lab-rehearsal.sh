@@ -239,6 +239,9 @@ else
   create_secret gaia_infisical_machine_identity_client_secret "$INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET"
   create_secret gaia_infisical_project_id                     "$INFISICAL_PROJECT_ID"
   create_secret gaia_metrics_token                            "$METRICS_TOKEN"
+  # Grafana email alerting (Gmail app password). Real value in prod; placeholder
+  # for the lab so the grafana service can start with GF_SMTP_PASSWORD__FILE set.
+  create_secret gaia_grafana_smtp_password                    "${GRAFANA_SMTP_PASSWORD:-lab-placeholder-smtp-password}"
 
   ok "Secrets created"
   docker --context "$CONTEXT_NAME" secret ls
