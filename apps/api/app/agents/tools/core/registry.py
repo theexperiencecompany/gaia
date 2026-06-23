@@ -256,7 +256,7 @@ class ToolRegistry:
 
         self._add_category(
             "documents",
-            tools=[file_tools.query_file],
+            tools=[file_tools.search_uploaded_files],
         )
 
         self._add_category("notifications", tools=[*notification_tool.tools])

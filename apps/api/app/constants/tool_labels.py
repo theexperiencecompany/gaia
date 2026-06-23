@@ -109,7 +109,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "web_search_tool": "Searching the web",
     "deep_research": "Doing deep research",
     "fetch_webpages": "Reading the page",
-    "query_file": "Searching your files",
+    "search_uploaded_files": "Searching your files",
     # ── Native: daily context ──────────────────────────────────────────
     "gather_context": "Catching up on your day",
     "get_weather": "Checking the weather",

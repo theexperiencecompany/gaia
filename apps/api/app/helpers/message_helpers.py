@@ -23,6 +23,7 @@ from app.agents.workspace.paths import (
     safe_upload_filename,
     session_dir,
 )
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.db.mongodb.collections import (
     conversations_collection,
     todos_collection,
@@ -722,13 +723,12 @@ def format_files_list(
     file_ids: list[str] | None = None,
     conversation_id: str | None = None,
 ) -> str:
-    """Surface uploaded files to the agent as concrete FS paths.
+    """Surface uploaded files to the agent with path, summary, and summary file.
 
-    The agent reads/writes files via bash/read/write/edit; the upload
-    pipeline mirrors every attachment into the session's read-only
-    `user-uploaded/` dir. Tell the agent the on-disk path explicitly and
-    point at the session GUIDE for the action conventions — no
-    `query_files` tool indirection, no path guessing.
+    Each attachment is shown with its on-disk path, a truncated summary (so the
+    comms agent knows what the file is without a tool call), and the path to its
+    full `<file>.summary.md` sidecar. The summary text is enriched server-side by
+    the caller; this helper only formats. Pure — no DB/FS access.
     """
     if not files_data or (file_ids is not None and not file_ids):
         return ""
@@ -748,6 +748,13 @@ def format_files_list(
         else:
             path = f"./user-uploaded/{on_disk}"
         lines.append(f"- {file.filename}  →  `{path}`")
+        if file.description:
+            summary = file.description.strip()
+            if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
+                summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
+            lines.append(f"    summary: {summary}")
+            if conversation_id:
+                lines.append(f"    full summary: `{path}.summary.md`")
 
     if not lines:
         return ""
@@ -757,10 +764,14 @@ def format_files_list(
 [Attached files for this turn]
 {file_block}
 
-These files are on the conversation filesystem in `./user-uploaded/`
-(read-only). To process them: copy into `./scratch/`, do your work,
-and write any user-visible output into `./artifacts/` — files written
-there render as cards in the chat immediately.
+How to work with these files:
+- What is it? — the `summary` above already says; read the `full summary` file
+  for the complete write-up.
+- Need the raw content? — read the file at its path with read/bash.
+- Searching across several uploaded files? — use `search_uploaded_files`.
+The files live in `./user-uploaded/` (read-only). To process them: copy into
+`./scratch/`, do your work, and write user-visible output into `./artifacts/`
+— files written there render as cards in the chat immediately.
 
 See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
 full layout and conventions, and `/workspace/INDEX.md` for the top level.

@@ -308,6 +308,19 @@ class BotContext(TypedDict, total=False):
     operation: str
 
 
+class FileContext(TypedDict, total=False):
+    """User-uploaded file operation context."""
+
+    operation: str  # "upload"|"delete"|"update"|"seed"|"descriptions"
+    file_id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    conversation_id: str
+    has_summary: bool
+    page_count: int
+
+
 class WideEventFields(TypedDict, total=False):
     """Canonical schema for wide event fields set via log.set().
 
@@ -334,6 +347,7 @@ class WideEventFields(TypedDict, total=False):
     integration: IntegrationContext
     image: ImageContext
     bot: BotContext
+    file: FileContext
     # Top-level convenience fields used across endpoints
     operation: str
     outcome: str
@@ -579,5 +593,6 @@ __all__ = [
     "IntegrationContext",
     "ImageContext",
     "BotContext",
+    "FileContext",
     "get_trace_id",
 ]

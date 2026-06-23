@@ -21,6 +21,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { useLoadingStore } from "@/stores/loadingStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { TodoProgressSnapshot } from "@/types/features/todoProgressTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import { hasExecutorDelegation } from "./executorDelegation";
 import { updateSubagentInToolData } from "./subagentTree";
 import type { StreamContext } from "./types";
@@ -133,9 +134,41 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
     setLoadingText(message, options);
   };
 
+  // Live artifact events carry full data so the conversation map populates
+  // instantly; the message itself keeps only a lightweight path reference that
+  // resolves back to full data at render time (see FileArtifactSection).
+  const handleArtifactData = (toolData: ToolDataEntry) => {
+    const artifact = toolData.data as ArtifactData;
+    const conversationId = artifact?.session_id;
+    if (!conversationId || !artifact.path) return;
+
+    const store = useChatStore.getState();
+    if (artifact.event === "remove") {
+      store.removeConversationArtifact(conversationId, artifact.path);
+    } else {
+      store.upsertConversationArtifact(conversationId, artifact);
+    }
+
+    const reference = {
+      session_id: conversationId,
+      path: artifact.path,
+      event: artifact.event,
+    } as unknown as ToolDataEntry["data"];
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    updateBotMessage({
+      tool_data: [...existingToolData, { ...toolData, data: reference }],
+    });
+    persistIfReady();
+  };
+
   const handleToolData = (
     toolData: ToolDataEntry & { subagent_id?: string },
   ) => {
+    if (toolData.tool_name === "artifact_data") {
+      handleArtifactData(toolData);
+      return;
+    }
+
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
 
     // Route tool_calls_data entries into the matching subagent group by event's own subagent_id.

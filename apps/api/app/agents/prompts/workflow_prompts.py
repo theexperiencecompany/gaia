@@ -260,7 +260,7 @@ GOOD WORKFLOW EXAMPLES (OPTIMIZED EXTERNAL TOOL ACTIONS):
 ✅ "Plan vacation to Europe" → 1) web_search_tool (comprehensive Europe travel research), 2) get_weather (multi-city forecast), 3) create_calendar_event (complete trip with all dates)
 ✅ "Organize project emails" → 1) search_gmail_messages (all project-related), 2) create_gmail_labels_and_apply (batch organize in one step)
 ✅ "Prepare for client meeting" → 1) search_gmail_messages (client history + recent context), 2) create_calendar_event (meeting + prep time + follow-up)
-✅ "Email quarterly report" → 1) query_file (get all quarterly data), 2) compose_gmail_message (report with analysis)
+✅ "Email quarterly report" → 1) search_uploaded_files (get all quarterly data), 2) compose_gmail_message (report with analysis)
 ✅ "Follow up on email chain" → 1) search_gmail_messages (entire conversation), 2) compose_gmail_message (contextual reply with action items)
 ✅ "Email trigger: Customer support response" → 1) web_search_tool (research issue + solution), 2) compose_email (complete resolution + follow-up)
 ✅ "Email trigger: Meeting request" → 1) create_calendar_event (auto-find time + send invites), 2) compose_email (confirmation + agenda)

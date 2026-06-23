@@ -360,8 +360,14 @@ export const useChatStream = () => {
 
           await db.putMessage(finalMessage);
 
+          // Coalesce the artifact registry write to end-of-stream (one write,
+          // not per token) so an immediate reload resolves message references
+          // before the next server sync.
+          const artifactMap =
+            useChatStore.getState().artifactsByConversation[conversationId];
           await db.updateConversationFields(conversationId, {
             updatedAt: new Date(),
+            ...(artifactMap ? { artifacts: Object.values(artifactMap) } : {}),
           });
         } catch (error) {
           console.error("Failed to persist final message:", error);

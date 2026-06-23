@@ -5,6 +5,7 @@ import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalenda
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
 import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
@@ -30,6 +31,11 @@ export interface OptimisticMessage {
 interface ChatState {
   conversations: IConversation[];
   messagesByConversation: Record<string, IMessage[]>;
+  // Per-conversation artifact registry, keyed by path. The runtime lookup layer
+  // for resolving a message's path references to full ArtifactData. Hydrated
+  // from IConversation.artifacts on load/sync and updated live by SSE; persisted
+  // back to IndexedDB at end-of-stream.
+  artifactsByConversation: Record<string, Record<string, ArtifactData>>;
   activeConversationId: string | null;
   streamingConversationId: string | null; // ID of conversation currently streaming
   // Conversation whose SSE stream has closed but is still awaiting a background
@@ -54,6 +60,15 @@ interface ChatState {
   addOrUpdateMessage: (message: IMessage) => void;
   removeConversation: (conversationId: string) => void;
   removeMessage: (messageId: string, conversationId: string) => void;
+  setConversationArtifacts: (
+    conversationId: string,
+    artifacts: ArtifactData[],
+  ) => void;
+  upsertConversationArtifact: (
+    conversationId: string,
+    artifact: ArtifactData,
+  ) => void;
+  removeConversationArtifact: (conversationId: string, path: string) => void;
   setActiveConversationId: (id: string | null) => void;
   setStreamingConversationId: (id: string | null) => void;
   setExecutorPendingConversationId: (id: string | null) => void;
@@ -66,6 +81,7 @@ interface ChatState {
 export const useChatStore = create<ChatState>((set) => ({
   conversations: [],
   messagesByConversation: {},
+  artifactsByConversation: {},
   activeConversationId: null,
   streamingConversationId: null, // Track which conversation is streaming
   executorPendingConversationId: null, // Awaiting a background executor's result
@@ -182,6 +198,40 @@ export const useChatStore = create<ChatState>((set) => ({
       };
     }),
 
+  setConversationArtifacts: (conversationId, artifacts) =>
+    set((state) => ({
+      artifactsByConversation: {
+        ...state.artifactsByConversation,
+        [conversationId]: Object.fromEntries(
+          artifacts.filter((a) => a?.path).map((a) => [a.path, a]),
+        ),
+      },
+    })),
+
+  upsertConversationArtifact: (conversationId, artifact) =>
+    set((state) => ({
+      artifactsByConversation: {
+        ...state.artifactsByConversation,
+        [conversationId]: {
+          ...(state.artifactsByConversation[conversationId] ?? {}),
+          [artifact.path]: artifact,
+        },
+      },
+    })),
+
+  removeConversationArtifact: (conversationId, path) =>
+    set((state) => {
+      const existing = state.artifactsByConversation[conversationId];
+      if (!existing || !(path in existing)) return state;
+      const { [path]: _removed, ...rest } = existing;
+      return {
+        artifactsByConversation: {
+          ...state.artifactsByConversation,
+          [conversationId]: rest,
+        },
+      };
+    }),
+
   setActiveConversationId: (id) => set({ activeConversationId: id }),
 
   setStreamingConversationId: (id) => set({ streamingConversationId: id }),
@@ -215,6 +265,15 @@ const startHydration = async () => {
 
     useChatStore.getState().setConversations(conversations);
 
+    // Seed the artifact lookup map from each conversation's persisted registry.
+    for (const conversation of conversations) {
+      if (conversation.artifacts?.length) {
+        useChatStore
+          .getState()
+          .setConversationArtifacts(conversation.id, conversation.artifacts);
+      }
+    }
+
     // Group messages by conversationId client-side (instant, no I/O)
     const messagesByConversation = allMessages.reduce(
       (acc, msg) => {
@@ -244,6 +303,17 @@ const startHydration = async () => {
 if (typeof window !== "undefined") {
   startHydration();
 }
+
+// Stable empty reference so conversations with no artifacts don't trigger
+// re-renders by returning a fresh object each call.
+const EMPTY_ARTIFACT_MAP: Record<string, ArtifactData> = {};
+
+/** Path→ArtifactData map for a conversation, for resolving message references. */
+export const useConversationArtifacts = (conversationId: string) =>
+  useChatStore(
+    (state) =>
+      state.artifactsByConversation[conversationId] ?? EMPTY_ARTIFACT_MAP,
+  );
 
 // Event-driven synchronization with IndexedDB
 // Hydration happens at module load (above), this just sets up event listeners

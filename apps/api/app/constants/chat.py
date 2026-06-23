@@ -2,6 +2,11 @@
 
 import re
 
+# Max characters of an uploaded file's summary inlined into the agent's turn
+# context. The full summary lives in the `<file>.summary.md` sidecar; this is a
+# defensive cap so a long page-wise summary can't bloat the prompt.
+UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS = 600
+
 # Matches bot-emitted artifact references in three shapes — ``./artifacts/x``,
 # ``/artifacts/x``, and plain ``artifacts/x`` — so each can be rewritten to an
 # absolute backend URL. The reference must sit at the start of the string or

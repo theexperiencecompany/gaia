@@ -150,23 +150,8 @@ async def create_todo(
 
 ## Service Layer
 
-Services are async module-level functions, not classes.
-
-- No service classes with `__init__`, instance methods, or injected dependencies. If grouping is needed, use a class with `@staticmethod` methods only — never `self`.
 - Services access MongoDB collections directly via `app.db.mongodb.collections` — no repository layer.
 - Keep one-off query logic in the service function where it is used; return domain models, not raw DB documents.
-
-```python
-# wrong
-class TodoService:
-    def __init__(self, db):
-        self.db = db
-    async def get_todo(self, todo_id: str): ...
-
-# correct
-async def get_todo(todo_id: str, user_id: str) -> TodoModel | None:
-    return await todos_collection.find_one({"_id": todo_id, "user_id": user_id})
-```
 
 ## Anti-Patterns
 

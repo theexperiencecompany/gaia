@@ -4,29 +4,31 @@ from langchain_core.documents import Document
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.constants.files import CHROMA_DOCUMENTS_COLLECTION
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.decorators import with_doc, with_rate_limiting
-from app.templates.docstrings.file_tool_docs import QUERY_FILE
+from app.templates.docstrings.file_tool_docs import SEARCH_UPLOADED_FILES
 from shared.py.wide_events import log
 
 
 @tool
 @with_rate_limiting("file_analysis")
-@with_doc(QUERY_FILE)
-async def query_file(
+@with_doc(SEARCH_UPLOADED_FILES)
+async def search_uploaded_files(
     query: Annotated[
         str,
         "",
     ],
     file_id: Annotated[
         str | None,
-        "The ID of the file to query. If not provided, it will search all files.",
+        "Optional: restrict the search to one uploaded file by its ID. "
+        "Omit to search across all files uploaded in this conversation.",
     ],
     config: RunnableConfig,
 ) -> str:
     try:
-        log.set(tool={"name": "query_file", "action": "query"})
+        log.set(tool={"name": "search_uploaded_files", "action": "query"})
         configurable = config.get("configurable")
 
         if not configurable:
@@ -75,39 +77,41 @@ async def _get_similar_documents(
     user_id: str,
     file_id: str | None = None,
 ) -> list[tuple[Document, float]]:
-    """
-    Helper function to retrieve documents similar to the query from ChromaDB.
+    """Semantic search over files uploaded in this conversation, scored by similarity.
 
-    This function performs a semantic similarity search within ChromaDB to find documents
-    that match the provided query. It uses filters to limit results to the user's documents
-    and specific conversation context.
-
-    Args:
-        query: The search query string to find similar documents
-        conversation_id: The ID of the current conversation to filter documents
-        user_id: The ID of the user who owns the documents
-        file_id: Optional file ID to limit search to a specific file
-
-    Returns:
-        list: List of similar documents with their metadata and similarity scores
+    Scope is resolved from MongoDB (files carrying this ``conversation_id``) and
+    applied as a ``file_id`` filter on the vector search — so the tool can never
+    surface a file from another conversation, regardless of ChromaDB metadata.
     """
     chroma_documents_collection = await ChromaClient.get_langchain_client(
-        collection_name="documents"
+        collection_name=CHROMA_DOCUMENTS_COLLECTION
     )
 
     if not chroma_documents_collection:
         log.error("ChromaDB client is not available.")
         return []
 
+    conversation_files = await files_collection.find(
+        {"user_id": user_id, "conversation_id": conversation_id},
+        projection={"_id": 0, "file_id": 1},
+    ).to_list(length=None)
+    conversation_file_ids = [doc["file_id"] for doc in conversation_files if doc.get("file_id")]
+    if not conversation_file_ids:
+        return []
+
+    if file_id is not None:
+        if file_id not in conversation_file_ids:
+            return []
+        target_file_ids = [file_id]
+    else:
+        target_file_ids = conversation_file_ids
+
     filters = {
         "$and": [
             {"user_id": user_id},
-            # {"conversation_id": conversation_id},
+            {"file_id": {"$in": target_file_ids}},
         ]
     }
-
-    if file_id:
-        filters["$and"].append({"file_id": file_id})
 
     return await chroma_documents_collection.asimilarity_search_with_score(
         query=query,

@@ -16,11 +16,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.mongodb.collections import conversations_collection
 from app.decorators import tiered_rate_limit
 from app.models.message_models import FileData
-from app.services.file_service import (
-    delete_file_service,
-    update_file_service,
-    upload_file_service,
-)
+from app.services.files import FileService
 from app.services.storage import SAFE_PATH_ID_PATTERN
 from shared.py.wide_events import log
 
@@ -57,7 +53,7 @@ async def upload_file_endpoint(
             )
 
     try:
-        result = await upload_file_service(
+        result = await FileService.upload(
             file=file,
             user_id=user_id,
             conversation_id=conversation_id,
@@ -78,6 +74,7 @@ async def upload_file_endpoint(
             filename=result["filename"],
             message="File uploaded successfully",
             type=result.get("type", "file"),
+            description=result.get("description"),
         )
     except HTTPException:
         # Preserve 4xx from the upload service (413 oversize, 415 bad type, …).
@@ -102,7 +99,7 @@ async def update_file_endpoint(
         return {"error": "User ID is required"}
 
     try:
-        result = await update_file_service(
+        result = await FileService.update(
             file_id=file_id,
             user_id=user_id,
             update_data=update_data,
@@ -125,7 +122,7 @@ async def delete_file_endpoint(
 ):
     """Delete a file from Cloudinary, MongoDB, and ChromaDB."""
     try:
-        result = await delete_file_service(
+        result = await FileService.delete(
             file_id=file_id,
             user_id=user.get("user_id"),
         )

@@ -6,6 +6,7 @@ import {
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
+import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
 // When a remote message overwrites an existing local one, carry forward a
@@ -274,6 +275,7 @@ export const batchSyncConversations = async (): Promise<void> => {
       freshConversations.map(async (conversation) => {
         const conversationId = conversation.conversation_id;
         const messages = conversation.messages ?? [];
+        const artifacts = conversation.artifacts ?? [];
 
         // Skip syncing if streaming or pending save (e.g., after abort)
         if (streamState.shouldBlockSync(conversationId)) return;
@@ -288,11 +290,19 @@ export const batchSyncConversations = async (): Promise<void> => {
             conversation.is_onboarding_conversation ?? false,
           systemPurpose: conversation.system_purpose ?? null,
           isUnread: conversation.is_unread ?? false,
+          artifacts,
           createdAt: new Date(conversation.createdAt),
           updatedAt: conversation.updatedAt
             ? new Date(conversation.updatedAt)
             : new Date(conversation.createdAt),
         };
+
+        // Refresh the runtime lookup map from the server-authoritative registry.
+        // Safe from clobbering a live turn: streaming conversations are filtered
+        // out by shouldBlockSync above.
+        useChatStore
+          .getState()
+          .setConversationArtifacts(conversationId, artifacts);
 
         const remoteMessages = mapApiMessagesToStored(messages, conversationId);
         const localMessages =
@@ -365,6 +375,7 @@ export const syncSingleConversation = async (
 
     const conversation = freshConversations[0];
     const messages = conversation.messages ?? [];
+    const artifacts = conversation.artifacts ?? [];
 
     // Map conversation to IndexedDB format
     const mappedConversation: IConversation = {
@@ -377,11 +388,14 @@ export const syncSingleConversation = async (
         conversation.is_onboarding_conversation ?? false,
       systemPurpose: conversation.system_purpose ?? null,
       isUnread: conversation.is_unread ?? false,
+      artifacts,
       createdAt: new Date(conversation.createdAt),
       updatedAt: conversation.updatedAt
         ? new Date(conversation.updatedAt)
         : new Date(conversation.createdAt),
     };
+
+    useChatStore.getState().setConversationArtifacts(conversationId, artifacts);
 
     // Map messages
     const remoteMessages = mapApiMessagesToStored(messages, conversationId);

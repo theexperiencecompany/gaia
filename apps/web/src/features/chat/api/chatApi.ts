@@ -9,6 +9,7 @@ import { desktopClientHeaders } from "@/lib/electron/api";
 import { getBrowserTimezone } from "@/lib/timezone";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import type { MessageType } from "@/types/features/convoTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
@@ -107,6 +108,7 @@ export const chatApi = {
       createdAt: string;
       updatedAt?: string;
       messages: MessageType[];
+      artifacts?: ArtifactData[];
     }[];
   }> => {
     return apiService.post(

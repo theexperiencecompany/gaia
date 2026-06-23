@@ -42,6 +42,7 @@ async def create_conversation_service(conversation: ConversationModel, user: dic
         # matches the literals used by the web list query's $nin source filter.
         "source": conversation.source.value if conversation.source else None,
         "messages": [],
+        "artifacts": [],
         "createdAt": created_at,
     }
 
@@ -342,6 +343,7 @@ async def create_system_conversation(
 
     conversation_data["user_id"] = user_id
     conversation_data["messages"] = []
+    conversation_data["artifacts"] = []
     conversation_data["createdAt"] = created_at
 
     try:
@@ -503,6 +505,7 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
                 "createdAt": 1,
                 "updatedAt": 1,
                 "messages": 1,
+                "artifacts": 1,
             }
         },
     ]
