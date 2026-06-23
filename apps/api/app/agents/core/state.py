@@ -2,7 +2,6 @@ from collections.abc import Iterator, MutableMapping
 from typing import Annotated, Literal
 
 from langchain_core.messages import AnyMessage
-from langgraph.channels.delta import DeltaChannel
 from langgraph.graph import add_messages
 from pydantic import BaseModel, Field
 
@@ -27,9 +26,7 @@ class DictLikeModel(BaseModel, MutableMapping):
 class State(DictLikeModel):
     query: str = ""
     intent: str | None = None
-    messages: Annotated[
-        list[AnyMessage], DeltaChannel(reducer=add_messages, snapshot_frequency=50)
-    ] = Field(default_factory=list)
+    messages: Annotated[list[AnyMessage], add_messages] = Field(default_factory=list)
     current_datetime: str | None = None
     memory_user_id: str | None = None
     memories: list[str] = Field(default_factory=list)

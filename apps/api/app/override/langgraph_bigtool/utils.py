@@ -7,9 +7,13 @@ Contains helper functions for tool selection formatting and type definitions.
 from collections.abc import Sequence
 from typing import Annotated, TypedDict
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AnyMessage, ToolMessage
 from langchain_core.tools import BaseTool
+from langgraph.channels.delta import DeltaChannel
+from langgraph.graph.message import _messages_delta_reducer
 from langgraph_bigtool.graph import State as _BigtoolState
+
+from app.constants.llm import MESSAGES_SNAPSHOT_FREQUENCY
 
 
 def _replace_todos(_left: list, right: list) -> list:
@@ -20,6 +24,21 @@ def _replace_todos(_left: list, right: list) -> list:
 class State(_BigtoolState):
     """Extended state with todos channel for agent task management."""
 
+    # Override MessagesState's plain add_messages channel with a DeltaChannel:
+    # a full-snapshot channel re-serializes the entire message list into every
+    # checkpoint, so a thread with N steps costs O(N²) storage (a single
+    # runaway thread reached 17 GB). DeltaChannel persists only the per-step
+    # delta and writes a full snapshot every MESSAGES_SNAPSHOT_FREQUENCY
+    # updates. `_messages_delta_reducer` is LangGraph's batching-invariant
+    # messages reducer (dedup by id + RemoveMessage tombstoning) built for
+    # DeltaChannel's `(state, list[writes]) -> state` batch contract — plain
+    # `add_messages` is a `(left, right)` reducer and is not compatible.
+    messages: Annotated[
+        list[AnyMessage],
+        DeltaChannel(
+            reducer=_messages_delta_reducer, snapshot_frequency=MESSAGES_SNAPSHOT_FREQUENCY
+        ),
+    ]
     todos: Annotated[list, _replace_todos]
     intent: str | None
     integration_usernames: dict[str, str]
