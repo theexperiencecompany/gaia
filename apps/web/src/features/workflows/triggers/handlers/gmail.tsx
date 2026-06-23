@@ -63,16 +63,20 @@ function GmailPollSettings({
     }
   };
 
+  const isCustom = !PRESET_INTERVALS.includes(
+    currentInterval as (typeof PRESET_INTERVALS)[number],
+  );
+
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 rounded-xl bg-zinc-800/60 p-1">
         {PRESET_INTERVALS.map((mins) => (
           <Button
             key={mins}
             size="sm"
-            variant={currentInterval === mins ? "flat" : "bordered"}
+            variant="flat"
             color={currentInterval === mins ? "primary" : "default"}
-            className="min-w-14 text-xs"
+            className={`flex-1 text-xs ${currentInterval === mins ? "" : "bg-transparent text-zinc-400"}`}
             onPress={() => updateInterval(mins)}
           >
             {mins}m
@@ -81,22 +85,19 @@ function GmailPollSettings({
         <Input
           type="number"
           aria-label="Custom poll interval in minutes"
-          placeholder="Custom"
           min={1}
           max={1440}
-          className="w-28"
           size="sm"
+          className="w-24"
           classNames={{
+            inputWrapper: isCustom
+              ? "bg-primary/15 text-primary h-8"
+              : "bg-transparent shadow-none h-8",
             input:
-              "text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+              "text-xs text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
           }}
-          value={
-            PRESET_INTERVALS.includes(
-              currentInterval as (typeof PRESET_INTERVALS)[number],
-            )
-              ? ""
-              : inputValue
-          }
+          value={isCustom ? inputValue : ""}
+          placeholder={isCustom ? undefined : "Custom"}
           onValueChange={handleInputChange}
           endContent={
             <span className="pointer-events-none text-xs text-zinc-500">
@@ -106,8 +107,8 @@ function GmailPollSettings({
         />
       </div>
       <p className="text-xs text-zinc-500">
-        Check inbox every {currentInterval}{" "}
-        {currentInterval === 1 ? "minute" : "minutes"} for new emails
+        Checks every {currentInterval}{" "}
+        {currentInterval === 1 ? "minute" : "minutes"}
       </p>
     </div>
   );

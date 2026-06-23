@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Divider } from "@heroui/divider";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { Switch } from "@heroui/switch";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -75,6 +76,9 @@ export default function WorkflowModal({
   createAndSend = false,
 }: WorkflowModalProps) {
   const hasPredefinedSteps = !!predefinedSteps && predefinedSteps.length > 0;
+  // Two-column (form + side panel) for edit/preview and community-step create;
+  // plain create is a single comfortable column.
+  const isTwoColumn = mode !== "create" || hasPredefinedSteps;
   const {
     isCreating,
     error: creationError,
@@ -839,189 +843,195 @@ export default function WorkflowModal({
         isOpen={isOpen}
         onOpenChange={onOpenChange}
         hideCloseButton
-        size={mode === "create" && !hasPredefinedSteps ? "3xl" : "4xl"}
-        className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" || hasPredefinedSteps ? "min-w-[80vw]" : ""}`}
+        size={isTwoColumn ? "5xl" : "2xl"}
+        className="max-h-[90vh] bg-secondary-bg"
         backdrop="blur"
       >
         <ModalContent>
-          <ModalBody className="min-h-0 overflow-hidden pr-2">
+          <ModalBody className="flex min-h-0 flex-col gap-0 p-0">
             {creationPhase === "form" ? (
-              <div className="flex min-h-0 flex-1 gap-8">
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <fieldset
-                    disabled={mode === "preview"}
-                    className="contents disabled:cursor-default"
-                  >
-                    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto ">
-                      {missingIntegration && (
-                        <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-3 py-2.5 text-sm text-amber-300">
-                          <span>
-                            This workflow is disabled because{" "}
-                            <span className="font-medium">
-                              {missingIntegration.name}
-                            </span>{" "}
-                            isn't connected. Connect it to start running.
-                          </span>
-                          <Button
-                            color="primary"
-                            size="sm"
-                            isLoading={isConnecting}
-                            onPress={handleConnectMissingIntegration}
-                          >
-                            Connect {missingIntegration.name}
-                          </Button>
-                        </div>
-                      )}
-                      <WorkflowHeader
-                        mode={mode}
-                        control={control}
-                        errors={errors}
-                        currentWorkflow={currentWorkflow}
-                        isActivated={isActivated}
-                        isTogglingActivation={isTogglingActivation}
-                        onToggleActivation={handleActivationToggle}
-                        isPublic={!!currentWorkflow?.is_public}
-                        onUnpublish={handlePublishToggle}
-                        onDelete={handleDelete}
-                        onResetToDefault={handleResetToDefault}
-                      />
-
-                      <WorkflowTriggerSection
-                        activeTab={formData.activeTab}
-                        selectedTrigger={formData.selectedTrigger}
-                        triggerConfig={formData.trigger_config}
-                        onActiveTabChange={handleActiveTabChange}
-                        onSelectedTriggerChange={(trigger) =>
-                          setValue("selectedTrigger", trigger)
-                        }
-                        onTriggerConfigChange={(config) =>
-                          setValue("trigger_config", config)
-                        }
-                        isPreview={mode === "preview"}
-                      />
-
-                      <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/60 px-4 py-3">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-zinc-100">
-                            Notify when runs finish
-                          </span>
-                          <span className="text-xs text-zinc-500">
-                            GAIA pings your channels with the result after each
-                            run
-                          </span>
-                        </div>
-                        <Switch
-                          size="sm"
-                          isSelected={formData.notify_on_completion}
-                          onValueChange={(enabled) =>
-                            setValue("notify_on_completion", enabled, {
-                              shouldDirty: true,
-                            })
-                          }
-                          isDisabled={mode === "preview"}
-                          aria-label="Notify when runs finish"
-                        />
-                      </div>
-
-                      <div>
-                        <div className="border-t border-zinc-800 mb-2" />
-                        <div className="space-y-4">
-                          <WorkflowDescriptionField
-                            control={control}
-                            errors={errors}
-                            setValue={setValue}
-                            mode={mode === "preview" ? "edit" : mode}
-                            isPreview={mode === "preview"}
-                            selectedIntegrationSlugs={selectedIntegrationSlugs}
-                            onIntegrationSlugsChange={
-                              setSelectedIntegrationSlugs
-                            }
-                            showIntegrationSelector={!hasPredefinedSteps}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </fieldset>
-
-                  {mode === "preview" ? (
-                    <PreviewFooter onClose={handleClose} />
-                  ) : (
-                    <WorkflowFooter
-                      existingWorkflow={!!existingWorkflow}
-                      hasSteps={
-                        !!currentWorkflow?.steps &&
-                        currentWorkflow.steps.length > 0
-                      }
-                      onRunWorkflow={handleRunWorkflow}
-                      onCancel={handleClose}
-                      onSave={() => handleSubmit(handleSave)()}
-                      isSaveDisabled={isSaveDisabled()}
-                      isCreating={isCreating}
-                      modifierKeyName={modifierKeyName}
-                      buttonText={getButtonText()}
-                      isPublic={!!currentWorkflow?.is_public}
-                      onPublishToggle={handlePublishToggle}
-                      onViewMarketplace={
-                        currentWorkflow?.slug
-                          ? handleMarketplaceView
-                          : undefined
-                      }
-                    />
-                  )}
-                </div>
-
-                {mode === "create" && hasPredefinedSteps && (
-                  <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
-                    <div className="mb-2 flex items-center justify-between px-1">
-                      <span className="text-sm font-medium text-zinc-300">
-                        Steps
-                      </span>
-                      <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-xs text-primary">
-                        {predefinedSteps?.length}
-                      </span>
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-y-auto">
-                      <WorkflowSteps
-                        steps={(predefinedSteps ?? []).map((step) => ({
-                          id: step.id ?? "",
-                          title: step.title,
-                          description: step.description,
-                          category: step.category,
-                        }))}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {(mode === "edit" || mode === "preview") &&
-                  existingWorkflow && (
+              <>
+                <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6 lg:flex-row lg:gap-8 lg:overflow-hidden">
+                  {/* Form column — the single scroll region on desktop */}
+                  <div className="flex min-h-0 flex-1 flex-col lg:overflow-hidden">
                     <fieldset
                       disabled={mode === "preview"}
                       className="contents disabled:cursor-default"
                     >
-                      <WorkflowRightPanel
-                        workflow={currentWorkflow}
-                        workflowId={existingWorkflow.id}
-                        isGenerating={isGeneratingSteps}
-                        isRegenerating={isRegeneratingSteps}
-                        regenerationError={regenerationError}
-                        onRegenerateWithReason={handleRegenerateWithReason}
-                        onInitialGeneration={handleInitialGeneration}
-                        onClearError={() => setRegenerationError(null)}
-                        isPreview={mode === "preview"}
-                      />
+                      <div className="space-y-8 pb-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3">
+                        {missingIntegration && (
+                          <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
+                            <span>
+                              This workflow is paused because{" "}
+                              <span className="font-medium">
+                                {missingIntegration.name}
+                              </span>{" "}
+                              isn't connected.
+                            </span>
+                            <Button
+                              color="primary"
+                              size="sm"
+                              isLoading={isConnecting}
+                              onPress={handleConnectMissingIntegration}
+                            >
+                              Connect
+                            </Button>
+                          </div>
+                        )}
+
+                        <WorkflowHeader
+                          mode={mode}
+                          control={control}
+                          errors={errors}
+                          currentWorkflow={currentWorkflow}
+                          isActivated={isActivated}
+                          isTogglingActivation={isTogglingActivation}
+                          onToggleActivation={handleActivationToggle}
+                          isPublic={!!currentWorkflow?.is_public}
+                          onPublish={handlePublishToggle}
+                          onUnpublish={handlePublishToggle}
+                          onViewMarketplace={
+                            currentWorkflow?.slug
+                              ? handleMarketplaceView
+                              : undefined
+                          }
+                          onDelete={handleDelete}
+                          onResetToDefault={handleResetToDefault}
+                        />
+
+                        <WorkflowDescriptionField
+                          control={control}
+                          errors={errors}
+                          setValue={setValue}
+                          mode={mode === "preview" ? "edit" : mode}
+                          isPreview={mode === "preview"}
+                          selectedIntegrationSlugs={selectedIntegrationSlugs}
+                          onIntegrationSlugsChange={setSelectedIntegrationSlugs}
+                          showIntegrationSelector={!hasPredefinedSteps}
+                        />
+
+                        <WorkflowTriggerSection
+                          activeTab={formData.activeTab}
+                          selectedTrigger={formData.selectedTrigger}
+                          triggerConfig={formData.trigger_config}
+                          onActiveTabChange={handleActiveTabChange}
+                          onSelectedTriggerChange={(trigger) =>
+                            setValue("selectedTrigger", trigger)
+                          }
+                          onTriggerConfigChange={(config) =>
+                            setValue("trigger_config", config)
+                          }
+                          isPreview={mode === "preview"}
+                        />
+
+                        <div className="flex items-center justify-between gap-4 pb-1 pt-2">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-medium text-zinc-200">
+                              Notify when runs finish
+                            </span>
+                            <span className="text-xs text-zinc-500">
+                              GAIA shares the result in your channels after each
+                              run
+                            </span>
+                          </div>
+                          <Switch
+                            size="sm"
+                            isSelected={formData.notify_on_completion}
+                            onValueChange={(enabled) =>
+                              setValue("notify_on_completion", enabled, {
+                                shouldDirty: true,
+                              })
+                            }
+                            isDisabled={mode === "preview"}
+                            aria-label="Notify when runs finish"
+                          />
+                        </div>
+                      </div>
                     </fieldset>
+                  </div>
+
+                  {/* Side panel — predefined steps preview */}
+                  {mode === "create" && hasPredefinedSteps && (
+                    <div className="flex max-h-[45vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl bg-zinc-900/60 p-3 lg:max-h-none lg:w-[22rem]">
+                      <div className="mb-2 flex items-center gap-2 px-1 pt-1">
+                        <span className="text-sm font-medium text-zinc-200">
+                          Steps
+                        </span>
+                        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary">
+                          {predefinedSteps?.length}
+                        </span>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-y-auto px-1">
+                        <WorkflowSteps
+                          steps={(predefinedSteps ?? []).map((step) => ({
+                            id: step.id ?? "",
+                            title: step.title,
+                            description: step.description,
+                            category: step.category,
+                          }))}
+                        />
+                      </div>
+                    </div>
                   )}
-              </div>
+
+                  {/* Side panel — steps + history (edit / preview) */}
+                  {(mode === "edit" || mode === "preview") &&
+                    existingWorkflow && (
+                      <fieldset
+                        disabled={mode === "preview"}
+                        className="flex max-h-[45vh] min-h-0 shrink-0 flex-col disabled:cursor-default lg:max-h-none lg:w-[22rem]"
+                      >
+                        <WorkflowRightPanel
+                          workflow={currentWorkflow}
+                          workflowId={existingWorkflow.id}
+                          isGenerating={isGeneratingSteps}
+                          isRegenerating={isRegeneratingSteps}
+                          regenerationError={regenerationError}
+                          onRegenerateWithReason={handleRegenerateWithReason}
+                          onInitialGeneration={handleInitialGeneration}
+                          onClearError={() => setRegenerationError(null)}
+                          isPreview={mode === "preview"}
+                        />
+                      </fieldset>
+                    )}
+                </div>
+
+                {/* Full-width footer */}
+                <div className="shrink-0">
+                  <Divider className="bg-zinc-700" />
+                  <div className="px-6 py-4">
+                    {mode === "preview" ? (
+                      <PreviewFooter onClose={handleClose} />
+                    ) : (
+                      <WorkflowFooter
+                        existingWorkflow={!!existingWorkflow}
+                        hasSteps={
+                          !!currentWorkflow?.steps &&
+                          currentWorkflow.steps.length > 0
+                        }
+                        onRunWorkflow={handleRunWorkflow}
+                        onCancel={handleClose}
+                        onSave={() => handleSubmit(handleSave)()}
+                        isSaveDisabled={isSaveDisabled()}
+                        isCreating={isCreating}
+                        modifierKeyName={modifierKeyName}
+                        buttonText={getButtonText()}
+                      />
+                    )}
+                  </div>
+                </div>
+              </>
             ) : (
-              <WorkflowLoadingState
-                phase={creationPhase}
-                mode={mode}
-                error={creationError}
-                workflow={currentWorkflow}
-                onClose={handleClose}
-                onRetry={() => setCreationPhase("form")}
-              />
+              <div className="px-6 py-4">
+                <WorkflowLoadingState
+                  phase={creationPhase}
+                  mode={mode}
+                  error={creationError}
+                  workflow={currentWorkflow}
+                  onClose={handleClose}
+                  onRetry={() => setCreationPhase("form")}
+                />
+              </div>
             )}
           </ModalBody>
         </ModalContent>
@@ -1045,22 +1055,16 @@ export default function WorkflowModal({
 
 function PreviewFooter({ onClose }: { onClose: () => void }) {
   return (
-    <div className="mt-6 pt-4 pb-3">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-start gap-2 rounded-2xl bg-zinc-800 px-3 py-2.5 text-xs text-zinc-300">
-          <InformationCircleIcon
-            height={16}
-            className="mt-0.5 shrink-0 text-zinc-400"
-          />
-          <span>
-            Don't worry, you can customise all the details later from the
-            Workflows page.
-          </span>
-        </div>
-        <Button color="primary" onPress={onClose}>
-          Close
-        </Button>
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center gap-2 text-xs text-zinc-400">
+        <InformationCircleIcon height={16} className="shrink-0 text-zinc-500" />
+        <span>
+          You can customise every detail later from the Workflows page.
+        </span>
       </div>
+      <Button color="primary" onPress={onClose}>
+        Close
+      </Button>
     </div>
   );
 }

@@ -73,55 +73,44 @@ export default function WorkflowStepsPanel({
 
   if (regenerationError) {
     return (
-      <div className="space-y-4">
-        <div className="flex flex-col items-center justify-center py-8">
-          <div className="text-center">
-            <div className="mb-4">
-              <AlertCircleIcon className="mx-auto h-12 w-12 text-danger" />
-            </div>
-            <h3 className="text-lg font-medium text-danger">
-              Generation Failed
-            </h3>
-            <p className="mb-4 text-sm text-zinc-400">{regenerationError}</p>
-            <Button variant="flat" size="sm" onPress={onClearError}>
-              Try Again
-            </Button>
-          </div>
+      <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+        <div className="rounded-full bg-danger/15 p-3">
+          <AlertCircleIcon className="h-5 w-5 text-danger" />
         </div>
+        <div>
+          <p className="text-sm font-medium text-danger">Generation failed</p>
+          <p className="mt-0.5 text-xs text-zinc-500">{regenerationError}</p>
+        </div>
+        <Button variant="flat" size="sm" onPress={onClearError}>
+          Try again
+        </Button>
       </div>
     );
   }
 
   if (!workflow?.steps || workflow.steps.length === 0) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h4 className="font-medium text-zinc-200">Workflow Steps</h4>
-            <p className="text-xs text-zinc-500">No steps generated yet</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="flat"
-              size="sm"
-              color="primary"
-              isLoading={isRegenerating}
-              isDisabled={isRegenerating}
-              startContent={<RedoIcon className="h-4 w-4" />}
-              onPress={onInitialGeneration}
-            >
-              Generate Steps
-            </Button>
-          </div>
+      <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+        <div className="rounded-full bg-zinc-800/60 p-3">
+          <RedoIcon className="h-5 w-5 text-zinc-500" />
         </div>
-        <div className="flex flex-col items-center justify-center py-8 text-center">
-          <div className="mb-4 rounded-full bg-zinc-800/50 p-3">
-            <RedoIcon className="h-6 w-6 text-zinc-500" />
-          </div>
-          <p className="text-sm text-zinc-400">
-            Click "Generate Steps" to create your first workflow plan
+        <div>
+          <p className="text-sm font-medium text-zinc-300">No steps yet</p>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            Generate a plan for this workflow
           </p>
         </div>
+        <Button
+          variant="flat"
+          size="sm"
+          color="primary"
+          isLoading={isRegenerating}
+          isDisabled={isRegenerating}
+          startContent={!isRegenerating && <RedoIcon className="h-4 w-4" />}
+          onPress={onInitialGeneration}
+        >
+          Generate steps
+        </Button>
       </div>
     );
   }
@@ -136,7 +125,6 @@ export default function WorkflowStepsPanel({
               <Button
                 variant="flat"
                 size="sm"
-                color="primary"
                 isLoading={isRegenerating}
                 isDisabled={isRegenerating}
                 endContent={

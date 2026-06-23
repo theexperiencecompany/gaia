@@ -1,12 +1,11 @@
-import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tab, Tabs } from "@heroui/tabs";
-import { Tooltip } from "@heroui/tooltip";
-import { InformationCircleIcon } from "@icons";
+import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
 import type { ReactElement } from "react";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
+import WorkflowSection from "./WorkflowSection";
 
 interface WorkflowTriggerSectionProps {
   activeTab: WorkflowFormData["activeTab"];
@@ -20,6 +19,12 @@ interface WorkflowTriggerSectionProps {
   isPreview?: boolean;
 }
 
+const TRIGGER_TABS = [
+  { key: "manual", label: "Manual", icon: Cursor02Icon },
+  { key: "schedule", label: "Schedule", icon: Clock01Icon },
+  { key: "trigger", label: "Event", icon: FlashIcon },
+] as const;
+
 export default function WorkflowTriggerSection({
   activeTab,
   selectedTrigger,
@@ -32,10 +37,9 @@ export default function WorkflowTriggerSection({
   const handleTabChange = (tabKey: "manual" | "schedule" | "trigger") => {
     onActiveTabChange(tabKey);
 
-    // Set appropriate trigger config based on tab
-    // Only change trigger_config if the current config doesn't match the tab
+    // Set appropriate trigger config based on tab. Only change trigger_config
+    // when the current config doesn't already match the selected tab.
     if (tabKey === "schedule") {
-      // Only reset if not already a schedule type
       if (triggerConfig.type !== "schedule") {
         onTriggerConfigChange({
           type: "schedule",
@@ -45,162 +49,108 @@ export default function WorkflowTriggerSection({
         });
       }
     } else if (tabKey === "trigger") {
-      // Preserve existing trigger selection if it's a trigger type
-      // Only reset if current type is schedule or manual
       const currentType = triggerConfig.type;
       const isTriggerType =
         currentType !== "schedule" && currentType !== "manual";
 
-      if (!isTriggerType) {
-        // Check if we have a previously selected trigger
-        if (selectedTrigger) {
-          // Don't change config - let TriggerConfigForm handle it
-          // The selectedTrigger is preserved in form state
-        } else {
-          // No previous selection, set to email as default
-          onTriggerConfigChange({
-            type: "email",
-            enabled: true,
-          });
-        }
+      if (!isTriggerType && !selectedTrigger) {
+        // No previous event selection — default to email.
+        onTriggerConfigChange({ type: "email", enabled: true });
       }
-      // If already a trigger type, keep current config
-    } else {
-      // Manual tab - only reset if not already manual
-      if (triggerConfig.type !== "manual") {
-        onTriggerConfigChange({
-          type: "manual",
-          enabled: true,
-        });
-      }
+    } else if (triggerConfig.type !== "manual") {
+      onTriggerConfigChange({ type: "manual", enabled: true });
     }
   };
 
-  const renderTriggerTab = () => (
-    <TriggerConfigForm
-      selectedTrigger={selectedTrigger}
-      triggerConfig={triggerConfig}
-      onTriggerChange={onSelectedTriggerChange}
-      onConfigChange={onTriggerConfigChange}
-    />
-  );
+  const renderTabBody = (key: "manual" | "schedule" | "trigger") => {
+    if (key === "manual") {
+      return (
+        <p className="text-sm text-zinc-400">
+          This workflow runs only when you start it — from here, the Workflows
+          page, or chat.
+        </p>
+      );
+    }
 
-  const renderManualTab = () => (
-    <div className="w-full">
-      <p className="text-sm text-zinc-500">
-        This workflow will be triggered manually when you run it.
-      </p>
-    </div>
-  );
+    if (key === "schedule") {
+      return (
+        <ScheduleBuilder
+          value={
+            triggerConfig.type === "schedule"
+              ? (triggerConfig.cron_expression as string) || ""
+              : ""
+          }
+          timezone={
+            triggerConfig.type === "schedule"
+              ? (triggerConfig.timezone as string) || getUserHomeTimezone()
+              : getUserHomeTimezone()
+          }
+          onChange={(cronExpression) => {
+            if (triggerConfig.type === "schedule") {
+              onTriggerConfigChange({
+                ...triggerConfig,
+                cron_expression: cronExpression,
+              });
+            }
+          }}
+          onTimezoneChange={(tz) => {
+            if (triggerConfig.type === "schedule") {
+              onTriggerConfigChange({ ...triggerConfig, timezone: tz });
+            }
+          }}
+        />
+      );
+    }
 
-  const renderScheduleTab = () => (
-    <div className="w-full">
-      <ScheduleBuilder
-        value={
-          triggerConfig.type === "schedule"
-            ? (triggerConfig.cron_expression as string) || ""
-            : ""
-        }
-        timezone={
-          triggerConfig.type === "schedule"
-            ? (triggerConfig.timezone as string) || getUserHomeTimezone()
-            : getUserHomeTimezone()
-        }
-        onChange={(cronExpression) => {
-          if (triggerConfig.type === "schedule") {
-            onTriggerConfigChange({
-              ...triggerConfig,
-              cron_expression: cronExpression,
-            });
-          }
-        }}
-        onTimezoneChange={(tz) => {
-          if (triggerConfig.type === "schedule") {
-            onTriggerConfigChange({
-              ...triggerConfig,
-              timezone: tz,
-            });
-          }
-        }}
+    return (
+      <TriggerConfigForm
+        selectedTrigger={selectedTrigger}
+        triggerConfig={triggerConfig}
+        onTriggerChange={onSelectedTriggerChange}
+        onConfigChange={onTriggerConfigChange}
       />
-    </div>
-  );
+    );
+  };
+
+  // In preview only the active mode is shown; otherwise all three are selectable.
+  const visibleTabs = isPreview
+    ? TRIGGER_TABS.filter((t) => t.key === activeTab)
+    : TRIGGER_TABS;
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-start gap-3">
-        <div className="mt-2.5 flex min-w-26 items-center justify-between gap-1.5 text-sm font-medium text-zinc-400">
-          <span className="text-nowrap">When to Run</span>
-          <Tooltip
-            content={
-              <div className="px-1 py-2">
-                <p className="text-sm font-medium">When to Run</p>
-                <p className="mt-1 text-xs text-zinc-400">
-                  Choose how your workflow will be activated:
-                </p>
-                <ul className="mt-2 space-y-1 text-xs text-zinc-400">
-                  <li>
-                    • <span className="font-medium">Manual:</span> Run the
-                    workflow manually when you need it
-                  </li>
-                  <li>
-                    • <span className="font-medium">Schedule:</span> Run at
-                    specific times or intervals
-                  </li>
-                  <li>
-                    • <span className="font-medium">Trigger:</span> Run when
-                    external events occur (coming soon)
-                  </li>
-                </ul>
-              </div>
-            }
-            placement="top"
-            delay={500}
-          >
-            <InformationCircleIcon className="h-3.5 w-3.5 cursor-help text-zinc-500 hover:text-zinc-300" />
-          </Tooltip>
-        </div>
-        <div className="w-full">
-          <Tabs
-            color="default"
-            classNames={{
-              tabList: "flex flex-row",
-              base: "flex items-start",
-              tabWrapper: "w-full",
-              panel: "min-w-full",
-            }}
-            className="w-full"
-            selectedKey={activeTab}
-            onSelectionChange={(key) => {
-              handleTabChange(key as "manual" | "schedule" | "trigger");
-            }}
-          >
-            {
-              [
-                !isPreview || activeTab === "schedule" ? (
-                  <Tab key="schedule" title="Schedule">
-                    <ScrollShadow className="max-h-64 min-h-10">
-                      {renderScheduleTab()}
-                    </ScrollShadow>
-                  </Tab>
-                ) : null,
-                !isPreview || activeTab === "trigger" ? (
-                  <Tab key="trigger" title="Trigger">
-                    <ScrollShadow className="max-h-40 min-h-10">
-                      {renderTriggerTab()}
-                    </ScrollShadow>
-                  </Tab>
-                ) : null,
-                !isPreview || activeTab === "manual" ? (
-                  <Tab key="manual" title="Manual">
-                    {renderManualTab()}
-                  </Tab>
-                ) : null,
-              ].filter(Boolean) as ReactElement[]
-            }
-          </Tabs>
-        </div>
-      </div>
-    </div>
+    <WorkflowSection label="When should this run?">
+      <Tabs
+        aria-label="Trigger type"
+        selectedKey={activeTab}
+        onSelectionChange={(key) =>
+          handleTabChange(key as "manual" | "schedule" | "trigger")
+        }
+        fullWidth
+        radius="lg"
+        classNames={{
+          tabList: "rounded-xl bg-zinc-800/60 p-1",
+          cursor: "rounded-lg bg-zinc-700 shadow-sm",
+          tab: "h-9",
+          tabContent:
+            "text-zinc-400 group-data-[selected=true]:text-zinc-100 font-medium",
+        }}
+      >
+        {
+          visibleTabs.map((tab) => (
+            <Tab
+              key={tab.key}
+              title={
+                <span className="flex items-center gap-1.5">
+                  <tab.icon className="h-4 w-4" />
+                  {tab.label}
+                </span>
+              }
+            >
+              <div className="pt-3">{renderTabBody(tab.key)}</div>
+            </Tab>
+          )) as ReactElement[]
+        }
+      </Tabs>
+    </WorkflowSection>
   );
 }

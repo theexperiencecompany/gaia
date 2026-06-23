@@ -23,23 +23,25 @@ export default function WorkflowLoadingState({
 }: WorkflowLoadingStateProps) {
   if (phase === "error") {
     return (
-      <div className="flex flex-col items-center justify-center space-y-4 py-8">
-        <AlertCircleIcon className="h-12 w-12 text-danger" />
-        <div className="text-center">
-          <h3 className="text-lg font-medium text-danger">
-            {mode === "create" ? "Creation" : "Update"} Failed
+      <div className="flex min-h-[280px] flex-col items-center justify-center gap-4 py-8 text-center">
+        <div className="rounded-full bg-danger/15 p-4">
+          <AlertCircleIcon className="h-8 w-8 text-danger" />
+        </div>
+        <div>
+          <h3 className="text-base font-semibold text-zinc-100">
+            {mode === "create" ? "Couldn't create workflow" : "Couldn't update"}
           </h3>
-          <p className="text-sm text-zinc-400">
+          <p className="mt-1 max-w-sm text-sm text-zinc-400">
             {error ||
-              `Something went wrong while ${mode === "create" ? "creating" : "updating"} the workflow`}
+              `Something went wrong while ${mode === "create" ? "creating" : "updating"} the workflow.`}
           </p>
         </div>
-        <div className="flex gap-3">
-          <Button variant="flat" onPress={onClose}>
+        <div className="flex gap-2">
+          <Button variant="light" onPress={onClose}>
             Cancel
           </Button>
           <Button color="primary" onPress={onRetry}>
-            Try Again
+            Try again
           </Button>
         </div>
       </div>
@@ -48,16 +50,16 @@ export default function WorkflowLoadingState({
 
   if (phase === "creating" || phase === "generating") {
     return (
-      <div className="flex flex-col items-center justify-center space-y-4 py-8">
+      <div className="flex min-h-[280px] flex-col items-center justify-center gap-4 py-8 text-center">
         <CustomSpinner variant="logo" />
-        <div className="text-center">
-          <h3 className="text-lg font-medium">
-            {phase === "generating" ? "Generating Steps" : "Creating Workflow"}
+        <div>
+          <h3 className="text-base font-semibold text-zinc-100">
+            {phase === "generating" ? "Generating steps" : "Creating workflow"}
           </h3>
-          <p className="text-sm text-zinc-400">
+          <p className="mt-1 text-sm text-zinc-400">
             {phase === "generating"
-              ? "Generating workflow steps..."
-              : "Setting up your workflow and generating steps..."}
+              ? "Building the plan for your workflow..."
+              : "Setting things up and generating steps..."}
           </p>
         </div>
       </div>
@@ -66,39 +68,33 @@ export default function WorkflowLoadingState({
 
   if (phase === "success") {
     return (
-      <div className="flex flex-col space-y-6 py-6">
-        <div className="flex flex-col items-center justify-center space-y-4">
-          <CheckmarkCircle02Icon className="h-16 w-16 text-success" />
-          <div className="text-center">
-            <h3 className="text-lg font-medium text-success">
-              Workflow {mode === "create" ? "Created" : "Updated"}!
-            </h3>
-            <p className="text-sm text-zinc-400">
-              "{workflow?.title || "Untitled Workflow"}" is ready to use
-            </p>
-            {workflow && (
-              <p className="mt-2 text-xs text-zinc-500">
-                {workflow?.steps?.length || 0} steps generated
-              </p>
-            )}
+      <div className="flex flex-col gap-6 py-6">
+        <div className="flex flex-col items-center justify-center gap-3 text-center">
+          <div className="rounded-full bg-success/15 p-4">
+            <CheckmarkCircle02Icon className="h-8 w-8 text-success" />
           </div>
-          <Button
-            color="primary"
-            variant="flat"
-            onPress={onClose}
-            className="mt-4"
-          >
-            Close
+          <div>
+            <h3 className="text-base font-semibold text-zinc-100">
+              Workflow {mode === "create" ? "created" : "updated"}
+            </h3>
+            <p className="mt-1 text-sm text-zinc-400">
+              "{workflow?.title || "Untitled Workflow"}" is ready to use
+              {workflow?.steps?.length
+                ? ` · ${workflow.steps.length} steps`
+                : ""}
+            </p>
+          </div>
+          <Button color="primary" variant="flat" onPress={onClose}>
+            Done
           </Button>
         </div>
 
-        {/* Generated Steps Preview */}
         {workflow?.steps && workflow.steps.length > 0 && (
           <div className="space-y-3">
-            <h4 className="text-sm font-medium text-zinc-300">
-              Generated Steps:
+            <h4 className="text-sm font-medium text-zinc-200">
+              Generated steps
             </h4>
-            <div className="max-h-48 overflow-y-auto">
+            <div className="max-h-48 overflow-y-auto rounded-2xl bg-zinc-900/60 p-3">
               <WorkflowSteps steps={workflow.steps} />
             </div>
           </div>

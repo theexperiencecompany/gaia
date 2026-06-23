@@ -1,6 +1,5 @@
 import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
-import { Tooltip } from "@heroui/tooltip";
 import { SparklesIcon } from "@icons";
 import { useState } from "react";
 import {
@@ -10,11 +9,13 @@ import {
   type UseFormSetValue,
   useWatch,
 } from "react-hook-form";
+import { TextMorph } from "torph/react";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import { workflowApi } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import IntegrationChipsSelector from "./IntegrationChipsSelector";
+import WorkflowSection from "./WorkflowSection";
 
 interface WorkflowDescriptionFieldProps {
   control: Control<WorkflowFormData>;
@@ -46,14 +47,8 @@ export default function WorkflowDescriptionField({
 
   const hasExistingPrompt = !!currentPrompt?.trim();
 
-  const tooltipText = isGenerating
-    ? "Generating..."
-    : hasExistingPrompt
-      ? "Improve instructions and triggers with AI"
-      : "Generate instructions and triggers with AI";
-
-  const handleGenerate = async (onChange: (val: string) => void) => {
-    if (isGenerating) return;
+  const handleGenerate = async () => {
+    if (isGenerating || !setValue) return;
     setIsGenerating(true);
     try {
       const result = await workflowApi.generatePrompt({
@@ -66,10 +61,10 @@ export default function WorkflowDescriptionField({
             ? selectedIntegrationSlugs
             : undefined,
       });
-      onChange(result.prompt);
+      setValue("prompt", result.prompt, { shouldDirty: true });
 
       // Auto-fill trigger config from AI suggestion
-      if (result.suggested_trigger && setValue) {
+      if (result.suggested_trigger) {
         const { type, cron_expression, trigger_name } =
           result.suggested_trigger;
 
@@ -84,17 +79,15 @@ export default function WorkflowDescriptionField({
         } else if (type === "manual") {
           setValue("activeTab", "manual");
           setValue("trigger_config", { type: "manual", enabled: true });
-        } else if (type === "integration") {
+        } else if (type === "integration" && trigger_name) {
           setValue("activeTab", "trigger");
-          if (trigger_name) {
-            setValue("selectedTrigger", trigger_name);
-            setValue("trigger_config", {
-              type: "integration",
-              enabled: true,
-              trigger_name,
-              trigger_data: { trigger_name },
-            });
-          }
+          setValue("selectedTrigger", trigger_name);
+          setValue("trigger_config", {
+            type: "integration",
+            enabled: true,
+            trigger_name,
+            trigger_data: { trigger_name },
+          });
         }
       }
     } catch {
@@ -104,68 +97,63 @@ export default function WorkflowDescriptionField({
     }
   };
 
+  const generateButton = !isPreview ? (
+    <Button
+      size="sm"
+      variant="light"
+      color="primary"
+      className="h-7 px-2 text-xs"
+      startContent={!isGenerating && <SparklesIcon className="h-4 w-4" />}
+      isLoading={isGenerating}
+      isDisabled={isGenerating}
+      onPress={handleGenerate}
+    >
+      <TextMorph duration={300}>
+        {hasExistingPrompt ? "Improve with AI" : "Generate with AI"}
+      </TextMorph>
+    </Button>
+  ) : undefined;
+
   return (
-    <div className="space-y-2">
+    <WorkflowSection label="Instructions" action={generateButton}>
       <Controller
         name="prompt"
         control={control}
         render={({ field }) => (
-          <div className="relative group">
-            <Textarea
-              {...field}
-              aria-label="Workflow instructions"
-              placeholder={
-                mode === "edit"
-                  ? "Detailed instructions for what this workflow should do"
-                  : "Describe in detail what this workflow should do when triggered"
+          <Textarea
+            {...field}
+            aria-label="Workflow instructions"
+            placeholder={
+              mode === "edit"
+                ? "E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via Slack"
+                : "E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via Slack"
+            }
+            minRows={4}
+            variant="flat"
+            isRequired
+            isInvalid={!!errors.prompt}
+            errorMessage={errors.prompt?.message}
+            classNames={{ input: "text-sm leading-relaxed" }}
+            onKeyDown={(e) => {
+              if (
+                !isPreview &&
+                (e.metaKey || e.ctrlKey) &&
+                e.shiftKey &&
+                e.key === "Enter"
+              ) {
+                e.preventDefault();
+                handleGenerate();
               }
-              minRows={5}
-              variant="flat"
-              className="text-base"
-              isRequired
-              isInvalid={!!errors.prompt}
-              errorMessage={errors.prompt?.message}
-              onKeyDown={(e) => {
-                if (
-                  !isPreview &&
-                  (e.metaKey || e.ctrlKey) &&
-                  e.shiftKey &&
-                  e.key === "Enter"
-                ) {
-                  e.preventDefault();
-                  handleGenerate(field.onChange);
-                }
-              }}
-            />
-            {!isPreview && (
-              <div className="absolute top-1 right-0 z-10">
-                <Tooltip content={tooltipText} placement="top">
-                  <Button
-                    size="sm"
-                    variant="light"
-                    isIconOnly
-                    isDisabled={isGenerating}
-                    isLoading={isGenerating}
-                    onPress={() => handleGenerate(field.onChange)}
-                    aria-label={tooltipText}
-                    className="text-foreground-400 hover:text-primary"
-                  >
-                    {!isGenerating && <SparklesIcon className="h-4 w-4" />}
-                  </Button>
-                </Tooltip>
-              </div>
-            )}
-          </div>
+            }}
+          />
         )}
       />
       {showIntegrationSelector && !isPreview && (
-        <div className="pt-1">
-          <IntegrationChipsSelector
-            selectedSlugs={selectedIntegrationSlugs}
-            onChange={onIntegrationSlugsChange}
-          />
-        </div>
+        <IntegrationChipsSelector
+          selectedSlugs={selectedIntegrationSlugs}
+          onChange={onIntegrationSlugsChange}
+        />
       )}
-    </div>
+    </WorkflowSection>
   );
 }

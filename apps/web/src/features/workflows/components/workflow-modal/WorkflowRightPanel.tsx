@@ -17,6 +17,9 @@ interface WorkflowRightPanelProps {
   isPreview?: boolean;
 }
 
+const PANEL_SURFACE =
+  "flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-zinc-800/30 p-4";
+
 export default function WorkflowRightPanel({
   workflow,
   workflowId,
@@ -30,16 +33,16 @@ export default function WorkflowRightPanel({
 }: WorkflowRightPanelProps) {
   if (isPreview) {
     return (
-      <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
-        <div className="mb-2 px-1 text-sm font-medium text-zinc-200">
-          Steps
+      <div className={PANEL_SURFACE}>
+        <div className="mb-1 flex items-center gap-2 px-2 pt-1">
+          <span className="text-sm font-medium text-zinc-200">Steps</span>
           {workflow?.steps?.length ? (
-            <span className="ml-2 rounded-full bg-primary/20 px-1.5 py-0.5 text-xs text-primary">
+            <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary">
               {workflow.steps.length}
             </span>
           ) : null}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
           <WorkflowStepsPanel
             workflow={workflow}
             isGenerating={isGenerating}
@@ -56,15 +59,19 @@ export default function WorkflowRightPanel({
   }
 
   return (
-    <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
+    <div className={PANEL_SURFACE}>
       <Tabs
         aria-label="Workflow info tabs"
         defaultSelectedKey="steps"
         fullWidth
         classNames={{
-          base: "flex flex-col",
+          base: "flex h-full min-h-0 flex-col",
+          tabList: "rounded-xl bg-zinc-800/60 p-1 shrink-0",
+          cursor: "rounded-lg bg-zinc-700 shadow-sm",
+          tabContent:
+            "text-zinc-400 group-data-[selected=true]:text-zinc-100 font-medium",
           tabWrapper: "shrink-0",
-          panel: "min-h-0 flex-1 overflow-y-auto py-2",
+          panel: "min-h-0 flex-1 overflow-y-auto px-1 py-2",
         }}
       >
         <Tab
@@ -73,7 +80,7 @@ export default function WorkflowRightPanel({
             <div className="flex items-center gap-2">
               <span>Steps</span>
               {workflow?.steps?.length ? (
-                <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-xs text-primary">
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary">
                   {workflow.steps.length}
                 </span>
               ) : null}

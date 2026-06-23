@@ -3,6 +3,7 @@ import {
   AutocompleteItem,
   AutocompleteSection,
 } from "@heroui/autocomplete";
+import { Skeleton } from "@heroui/skeleton";
 import Fuse from "fuse.js";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -136,16 +137,20 @@ export function TriggerAutocomplete({
   };
 
   if (isLoading) {
-    return <div className="animate-pulse h-12 bg-zinc-800 rounded-lg" />;
+    return (
+      <div className="space-y-2">
+        <Skeleton className="h-10 w-full rounded-xl" />
+      </div>
+    );
   }
 
   return (
     <div className="w-full space-y-2">
       <Autocomplete
-        aria-label="Choose a trigger"
-        label="Trigger"
-        placeholder="Search or select a trigger..."
-        className="w-full max-w-sm"
+        aria-label="Choose an event"
+        label="Event"
+        placeholder="Search apps and events..."
+        className="w-full"
         selectedKey={normalizedSelectedKey}
         onSelectionChange={handleSelectionChange}
         onInputChange={handleInputChange}
