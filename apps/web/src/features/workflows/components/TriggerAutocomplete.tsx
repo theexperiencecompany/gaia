@@ -4,7 +4,6 @@ import {
   AutocompleteSection,
 } from "@heroui/autocomplete";
 import { Skeleton } from "@heroui/skeleton";
-import { Link01Icon } from "@icons";
 import Fuse from "fuse.js";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -19,7 +18,6 @@ interface TriggerAutocompleteProps {
   triggerSchemas: TriggerSchema[] | undefined;
   isLoading?: boolean;
   integrationStatusMap: Map<string, boolean>;
-  onConnectIntegration: (integrationId: string) => void;
 }
 
 function formatIntegrationName(integrationId: string): string {
@@ -35,7 +33,6 @@ export function TriggerAutocomplete({
   triggerSchemas,
   isLoading,
   integrationStatusMap,
-  onConnectIntegration,
 }: TriggerAutocompleteProps) {
   const [filterValue, setFilterValue] = useState("");
 
@@ -106,23 +103,9 @@ export function TriggerAutocomplete({
 
     const trigger = String(key);
 
-    if (trigger.startsWith("connect-")) {
-      const integrationId = trigger.replace("connect-", "");
-      if (
-        integrationStatusMap.has(integrationId) &&
-        integrationStatusMap.get(integrationId) === false
-      ) {
-        onConnectIntegration(integrationId);
-      }
-      return;
-    }
-
+    // Any trigger can be selected; if its integration isn't connected, the
+    // settings panel shows the inline connection prompt for it.
     const schema = triggerSchemas?.find((s) => s.slug === trigger);
-
-    if (schema?.integration_id) {
-      const isConnected = integrationStatusMap.get(schema.integration_id);
-      if (!isConnected) return;
-    }
 
     onTriggerChange(trigger);
     if (schema) {
@@ -188,8 +171,6 @@ export function TriggerAutocomplete({
           })
           .map(([integrationId, schemas]) => {
             const schemaList = schemas || [];
-            const isConnected =
-              integrationStatusMap.get(integrationId) ?? false;
 
             const triggerItems = schemaList.map((schema) => (
               <AutocompleteItem
@@ -200,7 +181,7 @@ export function TriggerAutocomplete({
                   height: 20,
                   showBackground: false,
                 })}
-                className={`group ${isConnected ? "" : "opacity-50"}`}
+                className="group"
               >
                 <div className="flex flex-col">
                   <span className="text-small">{schema.name}</span>
@@ -211,34 +192,12 @@ export function TriggerAutocomplete({
               </AutocompleteItem>
             ));
 
-            const connectionItem =
-              integrationStatusMap.has(integrationId) &&
-              integrationStatusMap.get(integrationId) === false ? (
-                <AutocompleteItem
-                  key={`connect-${integrationId}`}
-                  textValue={`Connect ${formatIntegrationName(integrationId)}`}
-                  startContent={
-                    <Link01Icon className="h-4 w-4 shrink-0 text-primary" />
-                  }
-                  classNames={{
-                    title: "text-small font-medium text-primary",
-                  }}
-                >
-                  {`Connect ${formatIntegrationName(integrationId)} to use`}
-                </AutocompleteItem>
-              ) : null;
-
-            if (connectionItem) {
-              triggerItems.unshift(connectionItem);
-            }
-
             return (
               <AutocompleteSection
                 key={integrationId}
                 classNames={{
                   base: "mb-1",
-                  heading:
-                    "px-2 py-1 text-tiny font-medium uppercase tracking-wide text-zinc-500",
+                  heading: "px-2 py-1 text-tiny font-medium text-zinc-500",
                 }}
                 title={formatIntegrationName(integrationId)}
               >

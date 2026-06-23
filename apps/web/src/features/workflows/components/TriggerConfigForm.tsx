@@ -27,7 +27,7 @@ export function TriggerConfigForm({
 }: TriggerConfigFormProps) {
   const { data: triggerSchemas, isLoading: schemasLoading } =
     useTriggerSchemas();
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations } = useIntegrations();
 
   const integrationStatusMap = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -93,7 +93,6 @@ export function TriggerConfigForm({
         triggerSchemas={triggerSchemas}
         isLoading={schemasLoading}
         integrationStatusMap={integrationStatusMap}
-        onConnectIntegration={connectIntegration}
       />
 
       {SettingsComponent && (
