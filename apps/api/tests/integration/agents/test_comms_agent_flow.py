@@ -20,6 +20,9 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 import pytest
 
 from app.agents.core.graph_builder.build_graph import build_comms_graph
+from app.constants.memory import ReconcileOutcome
+from app.memory.ingestion import RetainedMemory
+from app.models.memory_models import MemoryEntry
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 
 # ---------------------------------------------------------------------------
@@ -41,10 +44,17 @@ def _make_chroma_store_mock() -> MagicMock:
 
 
 def _make_memory_mock() -> MagicMock:
-    """Create a memory_service mock. Callers can hold a reference to assert on it."""
+    """Create a memory_engine mock. Callers can hold a reference to assert on it.
+
+    add_memory -> memory_engine.retain_single(...) -> RetainedMemory(entry, outcome);
+    search_memory -> memory_engine.recall(...).
+    """
     memory_mock = MagicMock()
-    memory_mock.store_memory = AsyncMock(return_value=MagicMock())
-    memory_mock.search_memories = AsyncMock(return_value=MagicMock(memories=[]))
+    entry = MemoryEntry(id="mem-test-001", content="test memory", category_path="general")
+    memory_mock.retain_single = AsyncMock(
+        return_value=RetainedMemory(entry=entry, outcome=ReconcileOutcome.NEW)
+    )
+    memory_mock.recall = AsyncMock(return_value=MagicMock(entries=[], episodes=[]))
     return memory_mock
 
 
@@ -86,12 +96,12 @@ def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
             return_value=lambda _: None,
         ),
         patch(
-            "app.agents.tools.executor_tool.prepare_executor_execution",
+            "app.agents.core.background.executor_runner.prepare_executor_execution",
             new_callable=AsyncMock,
             return_value=(None, "executor not available in tests"),
         ),
         patch(
-            "app.agents.tools.memory_tools.memory_service",
+            "app.agents.tools.memory_tools.memory_engine",
             memory_mock,
         ),
     ]
@@ -425,12 +435,12 @@ class TestCommsAgentFlow:
         )
         assert tool_messages[0].tool_call_id == "call_add_memory_001"
 
-        # Verify the tool actually called memory_service — not just that it's registered.
-        # If store_memory is never awaited, the most likely cause is that user_id was not
+        # Verify the tool actually called the memory engine — not just that it's registered.
+        # If retain_single is never awaited, the most likely cause is that user_id was not
         # found in config["metadata"] (the key the tool actually reads).
-        memory_mock.store_memory.assert_awaited_once()
-        call_args_str = str(memory_mock.store_memory.call_args)
+        memory_mock.retain_single.assert_awaited_once()
+        call_args_str = str(memory_mock.retain_single.call_args)
         assert "User likes dark mode" in call_args_str, (
-            "store_memory must be called with content 'User likes dark mode'. "
+            "retain_single must be called with content 'User likes dark mode'. "
             f"Actual call args: {call_args_str}"
         )
