@@ -8,13 +8,17 @@
 
 "use client";
 
-import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Switch } from "@heroui/switch";
 import { useEffect, useState } from "react";
 
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 
+import { IntervalPicker } from "../components/IntervalPicker";
+import {
+  TriggerSettingRow,
+  TriggerSettingsCard,
+  TriggerToggleRow,
+} from "../components/TriggerSettingsCard";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
@@ -142,58 +146,47 @@ function CalendarSettings({
     config.trigger_name === "calendar_event_starting_soon";
 
   return (
-    <div className="space-y-3">
-      <Select
-        aria-label="Select calendars"
+    <TriggerSettingsCard>
+      <TriggerSettingRow
         label="Calendars"
-        placeholder="Select calendars to monitor"
-        selectionMode="multiple"
-        fullWidth
-        className="w-full max-w-xl"
-        isLoading={calendarsLoading}
-        selectedKeys={selectedCalendars}
-        onSelectionChange={(keys) => handleSelectionChange(keys as Set<string>)}
+        hint="Leave empty to watch all calendars"
       >
-        {calendarItems.map((item) => (
-          <SelectItem key={item.id} textValue={item.name}>
-            {item.name}
-          </SelectItem>
-        ))}
-      </Select>
+        <Select
+          aria-label="Select calendars"
+          placeholder="Select calendars to monitor"
+          selectionMode="multiple"
+          className="w-full"
+          isLoading={calendarsLoading}
+          selectedKeys={selectedCalendars}
+          onSelectionChange={(keys) =>
+            handleSelectionChange(keys as Set<string>)
+          }
+        >
+          {calendarItems.map((item) => (
+            <SelectItem key={item.id} textValue={item.name}>
+              {item.name}
+            </SelectItem>
+          ))}
+        </Select>
+      </TriggerSettingRow>
 
-      {/* Event starting soon config */}
       {isEventStartingSoon && (
         <>
-          <Input
-            type="number"
-            label="Minutes before event"
-            placeholder="10"
-            min={1}
-            max={1440}
-            className="w-full max-w-xl"
-            classNames={{
-              input:
-                "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
-            }}
-            value={String(triggerData?.minutes_before_start || 10)}
-            onChange={(e) => {
-              const val = parseInt(e.target.value, 10);
-              if (!Number.isNaN(val) && val >= 1 && val <= 1440) {
-                handleMinutesChange(val);
-              }
-            }}
-            description="How many minutes before event start (1-1440)"
-          />
-          <Switch
+          <TriggerSettingRow label="Remind me before">
+            <IntervalPicker
+              value={triggerData?.minutes_before_start ?? 10}
+              onChange={handleMinutesChange}
+            />
+          </TriggerSettingRow>
+          <TriggerToggleRow
+            label="Include all-day events"
+            hint="Trigger for events without a set time"
             isSelected={triggerData?.include_all_day ?? false}
             onValueChange={handleAllDayChange}
-            size="sm"
-          >
-            <span className="text-sm">Include all-day events</span>
-          </Switch>
+          />
         </>
       )}
-    </div>
+    </TriggerSettingsCard>
   );
 }
 
