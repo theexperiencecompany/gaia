@@ -813,6 +813,13 @@ services:
       # gaia_grafana_smtp_password secret (Grafana reads the __FILE variant), and
       # GRAFANA_ALERT_EMAIL is the destination the email contact point sends to
       # (see provisioning/alerting/contact-points.yaml → $__env{GRAFANA_ALERT_EMAIL}).
+      #
+      # REQUIRED (no default): GRAFANA_SMTP_USER must be set in the deploy env before
+      # `docker stack deploy` — it's the full Gmail/Workspace sending address (e.g.
+      # alerts@heygaia.io) that owns the app password. If unset, GF_SMTP_USER is empty
+      # and Gmail rejects auth with `535 Username and Password not accepted`, so email
+      # alerts silently never send (Slack still works). The app password must belong to
+      # this same account. See internal-docs → Production → Grafana → Alerting.
       GF_SMTP_ENABLED: "true"
       GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-smtp.gmail.com:587}
       GF_SMTP_USER: ${GRAFANA_SMTP_USER}
