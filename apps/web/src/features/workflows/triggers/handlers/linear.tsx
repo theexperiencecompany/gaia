@@ -89,12 +89,12 @@ function LinearSettings({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 rounded-2xl bg-zinc-800/40 p-4">
       {isLoading ? (
         <Select
           label="Team"
           placeholder="Loading teams..."
-          className="w-full max-w-xl"
+          className="w-full"
           isDisabled
           isLoading
           selectedKeys={[]}

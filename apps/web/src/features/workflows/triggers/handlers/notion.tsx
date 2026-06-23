@@ -112,7 +112,7 @@ function NotionSettings({
   const selectedPageValues = triggerData?.page_ids || [];
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 rounded-2xl bg-zinc-800/40 p-4">
       {isDbTrigger && (
         <TriggerSelectToggle
           label="Databases"

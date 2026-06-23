@@ -178,7 +178,7 @@ function GoogleSheetsSettings({
     );
   }
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 rounded-2xl bg-zinc-800/40 p-4">
       {/* Spreadsheet Selection */}
       <TriggerSelectToggle
         label="Spreadsheets"
