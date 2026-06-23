@@ -3,7 +3,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { Clock01Icon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 
-import { getTimezoneList } from "@/utils/timezoneUtils";
+import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
 import {
   buildCronExpression,
   type CronSchedule,
@@ -83,6 +83,12 @@ const initializeCustomCron = (cronExpression?: string): string => {
     : "";
 };
 
+// Keep the compact inline triggers, but let each dropdown popover grow to fit
+// its option labels instead of inheriting the narrow trigger width (which
+// truncates "Custom", "Month", "Wednesday", …). min-width beats the inline
+// trigger-width style HeroUI sets on the popover.
+const SELECT_CLASSNAMES = { popoverContent: "min-w-fit" } as const;
+
 // Helper to convert 24h to 12h for display
 const to12Hour = (hour24: number): { hour12: number; ampm: "AM" | "PM" } => {
   if (hour24 === 0) return { hour12: 12, ampm: "AM" };
@@ -111,6 +117,10 @@ export const ScheduleBuilder = ({
     initializeCustomCron(value),
   );
 
+  // Normalise legacy aliases (e.g. "Asia/Calcutta" -> "Asia/Kolkata") so the
+  // active zone matches a canonical option and shows its city + offset.
+  const normalizedTimezone = normalizeTimezone(timezone);
+
   // Every IANA zone (not just the popular shortlist) so any user can pick their
   // exact zone; the active one is guaranteed to be present.
   const timezoneOptions = useMemo(() => {
@@ -119,11 +129,18 @@ export const ScheduleBuilder = ({
       label: tz.label,
       offset: tz.offset,
     }));
-    if (timezone && !options.some((tz) => tz.value === timezone)) {
-      options.unshift({ value: timezone, label: timezone, offset: "" });
+    if (
+      normalizedTimezone &&
+      !options.some((tz) => tz.value === normalizedTimezone)
+    ) {
+      options.unshift({
+        value: normalizedTimezone,
+        label: normalizedTimezone,
+        offset: "",
+      });
     }
     return options;
-  }, [timezone]);
+  }, [normalizedTimezone]);
 
   // Update state when value prop changes (e.g., when switching between workflow cards)
   useEffect(() => {
@@ -220,6 +237,7 @@ export const ScheduleBuilder = ({
             })
           }
           className="w-[5.5rem] shrink-0"
+          classNames={SELECT_CLASSNAMES}
         >
           <SelectItem key="every" textValue="Every">
             Every
@@ -244,6 +262,7 @@ export const ScheduleBuilder = ({
                 })
               }
               className="w-[4.5rem] shrink-0"
+              classNames={SELECT_CLASSNAMES}
             >
               <SelectItem key="day" textValue="Day">
                 Day
@@ -268,6 +287,7 @@ export const ScheduleBuilder = ({
                     })
                   }
                   className="w-28 shrink-0"
+                  classNames={SELECT_CLASSNAMES}
                 >
                   <SelectItem key="1" textValue="Monday">
                     Monday
@@ -311,6 +331,7 @@ export const ScheduleBuilder = ({
                     });
                   }}
                   className="w-16 shrink-0"
+                  classNames={SELECT_CLASSNAMES}
                   placeholder="Day"
                 >
                   {Array.from({ length: 31 }, (_, i) => (
@@ -356,6 +377,7 @@ export const ScheduleBuilder = ({
                   handleAmpmChange(Array.from(keys)[0] as "AM" | "PM")
                 }
                 className="w-[4.25rem]"
+                classNames={SELECT_CLASSNAMES}
               >
                 <SelectItem key="AM" textValue="AM">
                   AM
@@ -367,10 +389,10 @@ export const ScheduleBuilder = ({
             </div>
             <span className="shrink-0 text-nowrap text-zinc-500">in</span>
             <TimezoneAutocomplete
-              timezone={timezone}
+              timezone={normalizedTimezone}
               options={timezoneOptions}
               onChange={onTimezoneChange}
-              className="w-44 shrink-0"
+              className="w-48 shrink-0"
             />
           </>
         )}
@@ -393,10 +415,10 @@ export const ScheduleBuilder = ({
               in
             </span>
             <TimezoneAutocomplete
-              timezone={timezone}
+              timezone={normalizedTimezone}
               options={timezoneOptions}
               onChange={onTimezoneChange}
-              className="w-44 shrink-0"
+              className="w-48 shrink-0"
             />
           </div>
           <p className="text-xs text-zinc-500">

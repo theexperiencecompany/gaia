@@ -823,14 +823,15 @@ export default function WorkflowModal({
         onOpenChange={onOpenChange}
         hideCloseButton
         size={isTwoColumn ? "5xl" : "2xl"}
-        // Two-column mode gets a definite height so the side panel's internal
-        // flex/overflow chain (h-full → min-h-0 → overflow-y-auto) resolves
-        // cleanly; without it the Steps panel collapses to its content and the
-        // tab content gets clipped. Single-column create stays auto-height.
+        // Width is widened past HeroUI's 5xl/2xl presets (via max-w-*) so the
+        // inline schedule sentence ("Run every … in <timezone>") fits on one
+        // line without overflowing. Two-column mode also gets a definite height
+        // so the side panel's flex/overflow chain (h-full → min-h-0 →
+        // overflow-y-auto) resolves and the Steps panel doesn't clip.
         className={
           isTwoColumn
-            ? "h-[85vh] max-h-[52rem] bg-secondary-bg"
-            : "max-h-[90vh] bg-secondary-bg"
+            ? "h-[85vh] max-h-[52rem] max-w-6xl bg-secondary-bg"
+            : "max-h-[90vh] max-w-3xl bg-secondary-bg"
         }
         backdrop="blur"
       >
