@@ -840,8 +840,12 @@ export default function WorkflowModal({
             {creationPhase === "form" ? (
               <>
                 <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6 lg:flex-row lg:gap-8 lg:overflow-hidden">
-                  {/* Form column — the single scroll region on desktop */}
-                  <div className="flex min-h-0 flex-1 flex-col lg:overflow-hidden">
+                  {/* Form column — the single scroll region on desktop. Below
+                      lg the row stacks and scrolls as a whole, so the column
+                      keeps its full content height (shrink-0) instead of being
+                      compressed by the fixed row height and overflowing onto the
+                      panel below. lg:flex-1 restores fill-and-scroll on desktop. */}
+                  <div className="flex min-h-0 shrink-0 flex-col lg:flex-1 lg:shrink lg:overflow-hidden">
                     <fieldset
                       disabled={mode === "preview"}
                       className="contents disabled:cursor-default"
@@ -937,7 +941,7 @@ export default function WorkflowModal({
 
                   {/* Side panel — predefined steps preview */}
                   {mode === "create" && hasPredefinedSteps && (
-                    <div className="flex max-h-[45vh] min-h-0 shrink-0 flex-col lg:max-h-none lg:w-[22rem] lg:pb-6">
+                    <div className="flex min-h-0 shrink-0 flex-col lg:w-[22rem] lg:pb-6">
                       <WorkflowStepsPreviewCard
                         steps={(predefinedSteps ?? []).map((step) => ({
                           id: step.id ?? "",
@@ -958,7 +962,7 @@ export default function WorkflowModal({
                     existingWorkflow && (
                       <fieldset
                         disabled={mode === "preview"}
-                        className="flex max-h-[45vh] min-h-0 shrink-0 flex-col disabled:cursor-default lg:max-h-none lg:w-[22rem] lg:pb-6"
+                        className="flex min-h-0 shrink-0 flex-col disabled:cursor-default lg:w-[22rem] lg:pb-6"
                       >
                         <WorkflowRightPanel
                           workflow={currentWorkflow}
