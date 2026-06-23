@@ -1,4 +1,4 @@
-from langchain_core.messages import AIMessage, AnyMessage
+from langchain_core.messages import AIMessage, AnyMessage, BaseMessage
 
 from app.agents.llm.client import get_free_llm_chain, init_llm, invoke_with_fallback
 from app.constants.log_tags import LogTag
@@ -8,7 +8,7 @@ from shared.py.wide_events import log
 async def chatbot(
     messages: list[AnyMessage],
     use_free_llm: bool = True,
-) -> dict[str, list[AnyMessage]]:
+) -> dict[str, list[BaseMessage]]:
     """
     One-shot LLM call over a message list (no graph, no checkpointer).
 
