@@ -1,11 +1,88 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { type ComponentProps, useState } from "react";
+import type { MyIntegrationItem } from "@shared/types";
+import { useQueryClient } from "@tanstack/react-query";
+import { type ComponentProps, useEffect, useState } from "react";
+import { integrationKeys } from "@/features/integrations/api/queryKeys";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowModal from "@/features/workflows/components/WorkflowModal";
 import type { TriggerConfig } from "@/features/workflows/triggers/types";
+import type { TriggerSchema } from "@/features/workflows/triggers/types/base";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
+
+// The preview runs without a backend, so the trigger-schema and "my
+// integrations" endpoints fail. Seed both query caches with realistic mocks so
+// the Event tab renders the trigger selector and its connected config instead
+// of an endless skeleton.
+const triggerSchema = (
+  slug: string,
+  integrationId: string,
+  name: string,
+  description: string,
+): TriggerSchema => ({
+  slug,
+  composio_slug: slug.toUpperCase(),
+  name,
+  description,
+  provider: integrationId,
+  integration_id: integrationId,
+  config_schema: {},
+});
+
+const MOCK_TRIGGER_SCHEMAS: TriggerSchema[] = [
+  triggerSchema(
+    "gmail_poll_inbox",
+    "gmail",
+    "New email in inbox",
+    "Runs whenever new email arrives in your inbox.",
+  ),
+  triggerSchema(
+    "calendar_event_starting_soon",
+    "googlecalendar",
+    "Event starting soon",
+    "Runs shortly before a calendar event begins.",
+  ),
+  triggerSchema(
+    "slack_new_message",
+    "slack",
+    "New Slack message",
+    "Runs when a new message is posted in a channel.",
+  ),
+  triggerSchema(
+    "github_commit_event",
+    "github",
+    "New commit",
+    "Runs when a new commit is pushed to a repository.",
+  ),
+];
+
+const connectedIntegration = (id: string, name: string): MyIntegrationItem => ({
+  id,
+  name,
+  description: `${name} integration`,
+  category: "productivity",
+  source: "platform",
+  managedBy: "composio",
+  status: "connected",
+  requiresAuth: true,
+  isFeatured: false,
+  displayPriority: 0,
+  available: true,
+  toolCount: 5,
+  cloneCount: 0,
+  iconUrl: `/images/icons/${id}.webp`,
+});
+
+const MOCK_MY_INTEGRATIONS = {
+  integrations: [
+    connectedIntegration("gmail", "Gmail"),
+    connectedIntegration("googlecalendar", "Google Calendar"),
+    connectedIntegration("slack", "Slack"),
+    connectedIntegration("github", "GitHub"),
+  ],
+  total: 4,
+};
 
 const MOCK_STEPS = [
   {
@@ -164,6 +241,14 @@ const SCENARIO_PROPS: Record<Scenario, ModalProps> = {
 export default function WorkflowPreviewPage() {
   const [scenario, setScenario] = useState<Scenario>("create");
   const [isOpen, setIsOpen] = useState(true);
+  const queryClient = useQueryClient();
+
+  // Prime the caches the trigger UI depends on so the preview is self-contained
+  // (no backend required). A failed background refetch keeps this seeded data.
+  useEffect(() => {
+    queryClient.setQueryData(["triggerSchemas"], MOCK_TRIGGER_SCHEMAS);
+    queryClient.setQueryData(integrationKeys.me, MOCK_MY_INTEGRATIONS);
+  }, [queryClient]);
 
   const selectScenario = (next: Scenario) => {
     setScenario(next);

@@ -844,7 +844,15 @@ export default function WorkflowModal({
         onOpenChange={onOpenChange}
         hideCloseButton
         size={isTwoColumn ? "5xl" : "2xl"}
-        className="max-h-[90vh] bg-secondary-bg"
+        // Two-column mode gets a definite height so the side panel's internal
+        // flex/overflow chain (h-full → min-h-0 → overflow-y-auto) resolves
+        // cleanly; without it the Steps panel collapses to its content and the
+        // tab content gets clipped. Single-column create stays auto-height.
+        className={
+          isTwoColumn
+            ? "h-[85vh] max-h-[52rem] bg-secondary-bg"
+            : "max-h-[90vh] bg-secondary-bg"
+        }
         backdrop="blur"
       >
         <ModalContent>
@@ -974,12 +982,16 @@ export default function WorkflowModal({
                     </div>
                   )}
 
-                  {/* Side panel — steps + history (edit / preview) */}
+                  {/* Side panel — steps + history (edit / preview).
+                      The column stretches to the row's (now definite) height and
+                      the panel fills it via h-full, scrolling internally — so
+                      switching Steps↔History can't resize the modal. `lg:pb-6`
+                      matches the form column's bottom breathing room. */}
                   {(mode === "edit" || mode === "preview") &&
                     existingWorkflow && (
                       <fieldset
                         disabled={mode === "preview"}
-                        className="flex max-h-[45vh] min-h-0 shrink-0 flex-col disabled:cursor-default lg:max-h-none lg:w-[22rem]"
+                        className="flex max-h-[45vh] min-h-0 shrink-0 flex-col disabled:cursor-default lg:max-h-none lg:w-[22rem] lg:pb-6"
                       >
                         <WorkflowRightPanel
                           workflow={currentWorkflow}

@@ -205,8 +205,8 @@ export const ScheduleBuilder = ({
   return (
     <div className="w-full">
       {/* Natural Language Schedule Builder */}
-      <div className="flex w-full flex-row flex-wrap items-center gap-x-3 gap-y-2 text-sm">
-        <span>Run</span>
+      <div className="flex w-full flex-row items-center gap-x-2 gap-y-2 text-sm">
+        <span className="shrink-0 text-zinc-400">Run</span>
 
         <Select
           aria-label="Select every or once or custom"
@@ -217,7 +217,7 @@ export const ScheduleBuilder = ({
               frequency: Array.from(keys)[0] as SimpleSchedule["frequency"],
             })
           }
-          className="w-24"
+          className="w-[5.5rem] shrink-0"
         >
           <SelectItem key="every" textValue="Every">
             Every
@@ -241,7 +241,7 @@ export const ScheduleBuilder = ({
                   interval: Array.from(keys)[0] as SimpleSchedule["interval"],
                 })
               }
-              className="w-20"
+              className="w-[4.5rem] shrink-0"
             >
               <SelectItem key="day" textValue="Day">
                 Day
@@ -256,7 +256,7 @@ export const ScheduleBuilder = ({
 
             {simpleSchedule.interval === "week" && (
               <>
-                <span>on</span>
+                <span className="shrink-0 text-zinc-400">on</span>
                 <Select
                   size="sm"
                   selectedKeys={new Set([simpleSchedule.dayOfWeek])}
@@ -265,7 +265,7 @@ export const ScheduleBuilder = ({
                       dayOfWeek: Array.from(keys)[0] as string,
                     })
                   }
-                  className="w-28"
+                  className="w-28 shrink-0"
                 >
                   <SelectItem key="1" textValue="Monday">
                     Monday
@@ -294,7 +294,9 @@ export const ScheduleBuilder = ({
 
             {simpleSchedule.interval === "month" && (
               <>
-                <span className="text-nowrap">on the</span>
+                <span className="shrink-0 text-nowrap text-zinc-400">
+                  on the
+                </span>
                 <Select
                   aria-label="Select day of the month"
                   size="sm"
@@ -306,7 +308,7 @@ export const ScheduleBuilder = ({
                       dayOfMonth: selectedDay,
                     });
                   }}
-                  className="w-16"
+                  className="w-16 shrink-0"
                   placeholder="Day"
                 >
                   {Array.from({ length: 31 }, (_, i) => (
@@ -321,8 +323,8 @@ export const ScheduleBuilder = ({
               </>
             )}
 
-            <span>at</span>
-            <div className="flex items-center gap-1">
+            <span className="shrink-0 text-zinc-400">at</span>
+            <div className="flex shrink-0 items-center gap-1">
               <Input
                 size="sm"
                 type="number"
@@ -330,9 +332,9 @@ export const ScheduleBuilder = ({
                 max="12"
                 value={hour12.toString()}
                 onChange={(e) => handleHour12Change(e.target.value)}
-                className="w-14"
+                className="w-12"
               />
-              <span>:</span>
+              <span className="text-zinc-500">:</span>
               <Input
                 size="sm"
                 type="number"
@@ -342,7 +344,7 @@ export const ScheduleBuilder = ({
                 onChange={(e) =>
                   handleSimpleScheduleChange({ minute: e.target.value })
                 }
-                className="w-14"
+                className="w-12"
               />
               <Select
                 aria-label="Select AM or PM"
@@ -351,7 +353,7 @@ export const ScheduleBuilder = ({
                 onSelectionChange={(keys) =>
                   handleAmpmChange(Array.from(keys)[0] as "AM" | "PM")
                 }
-                className="w-16"
+                className="w-[4.25rem]"
               >
                 <SelectItem key="AM" textValue="AM">
                   AM
@@ -361,7 +363,7 @@ export const ScheduleBuilder = ({
                 </SelectItem>
               </Select>
             </div>
-            <span className="text-nowrap text-zinc-500">in</span>
+            <span className="shrink-0 text-nowrap text-zinc-500">in</span>
             <Select
               aria-label="Select timezone"
               size="sm"
@@ -370,7 +372,7 @@ export const ScheduleBuilder = ({
                 const next = Array.from(keys)[0] as string | undefined;
                 if (next) onTimezoneChange(next);
               }}
-              className="w-28"
+              className="w-32 shrink-0"
               renderValue={(items) => {
                 const key = items[0]?.key as string | undefined;
                 if (!key) return null;

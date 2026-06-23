@@ -9,7 +9,8 @@ export interface OptionItem {
 
 export interface TriggerConnectionPromptProps {
   integrationName: string;
-  _integrationId: string;
+  integrationId: string;
+  iconUrl?: string | null;
   onConnect: () => void;
 }
 

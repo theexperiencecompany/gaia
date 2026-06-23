@@ -6,32 +6,45 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Skeleton } from "@heroui/skeleton";
-import { AlertCircleIcon, RedoIcon } from "@icons";
+import {
+  AlertCircleIcon,
+  Minimize01Icon,
+  PlusSignIcon,
+  RedoIcon,
+  ShuffleIcon,
+  Wrench01Icon,
+} from "@icons";
 import { ChevronDown } from "@/components/shared/icons";
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowSteps from "../shared/WorkflowSteps";
 import PanelHeader from "./PanelHeader";
 
+const DROPDOWN_ICON = "size-5 text-default-500 pointer-events-none shrink-0";
+
 const regenerationReasons = [
   {
     key: "too_complex",
-    label: "Too Complex",
+    label: "Too complex",
     description: "Simplify with fewer steps",
+    icon: Minimize01Icon,
   },
   {
     key: "missing_functionality",
-    label: "Missing Functionality",
+    label: "Missing functionality",
     description: "Add specific features",
+    icon: PlusSignIcon,
   },
   {
     key: "wrong_tools",
-    label: "Wrong Tools",
+    label: "Wrong tools",
     description: "Use different integrations",
+    icon: Wrench01Icon,
   },
   {
     key: "alternative_approach",
-    label: "Alternative Approach",
+    label: "Alternative approach",
     description: "Try a completely different strategy",
+    icon: ShuffleIcon,
   },
 ] as const;
 
@@ -64,11 +77,7 @@ export default function WorkflowStepsPanel({
         </div>
       );
     }
-    return (
-      <div className="overflow-y-auto">
-        <WorkflowSteps steps={workflow.steps} />
-      </div>
-    );
+    return <WorkflowSteps steps={workflow.steps} />;
   }
 
   if (regenerationError) {
@@ -139,6 +148,7 @@ export default function WorkflowStepsPanel({
             </DropdownTrigger>
             <DropdownMenu
               aria-label="Regeneration reasons"
+              variant="faded"
               onAction={(key) => onRegenerateWithReason(key as string)}
               disabledKeys={isRegenerating ? ["all"] : []}
             >
@@ -147,6 +157,7 @@ export default function WorkflowStepsPanel({
                   key={reason.key}
                   textValue={reason.label}
                   description={reason.description}
+                  startContent={<reason.icon className={DROPDOWN_ICON} />}
                 >
                   {reason.label}
                 </DropdownItem>
@@ -155,7 +166,7 @@ export default function WorkflowStepsPanel({
           </Dropdown>
         }
       />
-      <div className="overflow-y-auto">
+      <div>
         <Skeleton
           className="rounded-2xl"
           isLoaded={!(isRegenerating || isGenerating)}

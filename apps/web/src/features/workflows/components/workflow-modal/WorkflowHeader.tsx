@@ -19,8 +19,11 @@ import {
 } from "@icons";
 import { type Control, Controller, type FieldErrors } from "react-hook-form";
 
+import { cn } from "@/lib/utils";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+
+const iconClasses = "size-5 text-default-500 pointer-events-none shrink-0";
 
 interface WorkflowHeaderProps {
   mode: "create" | "edit" | "preview";
@@ -77,9 +80,9 @@ export default function WorkflowHeader({
               classNames={{
                 base: "min-w-0 flex-1",
                 input:
-                  "text-2xl font-semibold text-white placeholder:font-normal placeholder:text-zinc-600 focus:outline-none",
+                  "text-2xl font-semibold text-white placeholder:font-normal placeholder:text-zinc-600 focus:outline-none focus-visible:outline-none",
                 inputWrapper:
-                  "h-auto min-h-0 bg-transparent! px-0! py-0! shadow-none! outline-none! ring-0! border-0! data-[hover=true]:bg-transparent! data-[focus=true]:bg-transparent! data-[focus=true]:shadow-none! data-[focus-visible=true]:ring-0! data-[focus-visible=true]:outline-none! data-[focus-visible=true]:border-transparent!",
+                  "h-auto min-h-0 border-none bg-transparent px-0 py-0 shadow-none outline-none ring-0 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus=true]:shadow-none group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
               }}
               isRequired
               isInvalid={!!errors.title}
@@ -109,6 +112,7 @@ export default function WorkflowHeader({
                 </Button>
               </DropdownTrigger>
               <DropdownMenu
+                variant="faded"
                 disabledKeys={isTogglingActivation ? ["activation"] : []}
                 onAction={(key) => {
                   if (key === "activation") onToggleActivation(!isActivated);
@@ -121,21 +125,17 @@ export default function WorkflowHeader({
               >
                 <DropdownItem
                   key="activation"
-                  startContent={
-                    isActivated ? (
-                      <ToggleOffIcon className="h-4 w-4" />
-                    ) : (
-                      <ToggleOnIcon className="h-4 w-4" />
-                    )
-                  }
-                  classNames={{
-                    description: "text-wrap",
-                    base: "items-start!",
-                  }}
                   description={
                     isActivated
                       ? "Stop this workflow from running"
                       : "Allow this workflow to run"
+                  }
+                  startContent={
+                    isActivated ? (
+                      <ToggleOffIcon className={iconClasses} />
+                    ) : (
+                      <ToggleOnIcon className={iconClasses} />
+                    )
                   }
                 >
                   {isActivated ? "Disable" : "Enable"}
@@ -144,12 +144,8 @@ export default function WorkflowHeader({
                 {showPublish ? (
                   <DropdownItem
                     key="publish"
-                    startContent={<GlobeIcon className="h-4 w-4" />}
-                    classNames={{
-                      description: "text-wrap",
-                      base: "items-start!",
-                    }}
-                    description="Share to the community marketplace"
+                    description="Share to the marketplace"
+                    startContent={<GlobeIcon className={iconClasses} />}
                   >
                     Publish
                   </DropdownItem>
@@ -158,12 +154,8 @@ export default function WorkflowHeader({
                 {showMarketplace ? (
                   <DropdownItem
                     key="marketplace"
-                    startContent={<LinkSquare02Icon className="h-4 w-4" />}
-                    classNames={{
-                      description: "text-wrap",
-                      base: "items-start!",
-                    }}
-                    description="Open this workflow on the marketplace"
+                    description="Open on the marketplace"
+                    startContent={<LinkSquare02Icon className={iconClasses} />}
                   >
                     View on marketplace
                   </DropdownItem>
@@ -172,12 +164,8 @@ export default function WorkflowHeader({
                 {showUnpublish ? (
                   <DropdownItem
                     key="unpublish"
-                    startContent={<Cancel01Icon className="h-4 w-4" />}
-                    classNames={{
-                      description: "text-wrap",
-                      base: "items-start!",
-                    }}
-                    description="Remove from community marketplace"
+                    description="Remove from the marketplace"
+                    startContent={<Cancel01Icon className={iconClasses} />}
                   >
                     Unpublish
                   </DropdownItem>
@@ -186,12 +174,8 @@ export default function WorkflowHeader({
                 {showReset ? (
                   <DropdownItem
                     key="reset"
-                    startContent={<ReloadIcon className="h-4 w-4" />}
-                    classNames={{
-                      description: "text-wrap",
-                      base: "items-start!",
-                    }}
-                    description="Restore this workflow to its original GAIA-provided definition"
+                    description="Restore the original GAIA definition"
+                    startContent={<ReloadIcon className={iconClasses} />}
                   >
                     Reset to default
                   </DropdownItem>
@@ -199,13 +183,12 @@ export default function WorkflowHeader({
 
                 <DropdownItem
                   key="delete"
+                  className="text-danger"
                   color="danger"
-                  startContent={<Delete02Icon className="h-4 w-4" />}
-                  classNames={{
-                    description: "text-wrap",
-                    base: "items-start!",
-                  }}
                   description="Permanently delete this workflow"
+                  startContent={
+                    <Delete02Icon className={cn(iconClasses, "text-danger")} />
+                  }
                 >
                   Delete workflow
                 </DropdownItem>
@@ -227,9 +210,10 @@ export default function WorkflowHeader({
             maxRows={2}
             variant="flat"
             classNames={{
-              input: "resize-none text-sm text-zinc-300",
+              input:
+                "resize-none text-sm text-zinc-300 focus:outline-none focus-visible:outline-none",
               inputWrapper:
-                "bg-transparent! px-0! py-0! shadow-none! outline-none! ring-0! border-0! data-[hover=true]:bg-transparent! data-[focus=true]:bg-transparent! data-[focus=true]:shadow-none! data-[focus-visible=true]:ring-0! data-[focus-visible=true]:outline-none! data-[focus-visible=true]:border-transparent!",
+                "border-none bg-transparent px-0 py-0 shadow-none outline-none ring-0 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus=true]:shadow-none group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
             }}
             isInvalid={!!errors.description}
             errorMessage={errors.description?.message}

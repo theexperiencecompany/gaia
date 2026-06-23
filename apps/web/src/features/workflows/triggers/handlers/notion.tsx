@@ -98,7 +98,8 @@ function NotionSettings({
     return (
       <TriggerConnectionPrompt
         integrationName="Notion"
-        _integrationId={integrationId}
+        integrationId={integrationId}
+        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
         onConnect={() => connectIntegration(integrationId)}
       />
     );

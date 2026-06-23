@@ -1,7 +1,6 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { Tooltip } from "@heroui/tooltip";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
@@ -31,7 +30,6 @@ export default function WorkflowStep({
   const iconSize = isLarge ? 22 : 17;
   const titleTextSize = isLarge ? "text-base" : "text-sm";
   const descriptionTextSize = isLarge ? "text-sm" : "text-xs";
-  const chipSize = isLarge ? "md" : "sm";
 
   const categoryLabel =
     step.category === "gaia"
@@ -52,30 +50,23 @@ export default function WorkflowStep({
 
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
-          <Tooltip
-            content={categoryLabel}
-            size={chipSize}
-            color="foreground"
-            showArrow
+          <Chip
+            radius="md"
+            variant="flat"
+            className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
+            startContent={
+              <div className="min-w-fit">
+                {getToolCategoryIcon(step.category, {
+                  size: iconSize,
+                  width: iconSize,
+                  height: iconSize,
+                  showBackground: false,
+                })}
+              </div>
+            }
           >
-            <Chip
-              radius="md"
-              variant="flat"
-              className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
-              startContent={
-                <div className="min-w-fit">
-                  {getToolCategoryIcon(step.category, {
-                    size: iconSize,
-                    width: iconSize,
-                    height: iconSize,
-                    showBackground: false,
-                  })}
-                </div>
-              }
-            >
-              {categoryLabel}
-            </Chip>
-          </Tooltip>
+            {categoryLabel}
+          </Chip>
         </div>
 
         <div className="flex flex-col items-start">
