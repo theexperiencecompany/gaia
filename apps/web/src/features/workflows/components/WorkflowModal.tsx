@@ -5,7 +5,7 @@ import { Divider } from "@heroui/divider";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { Switch } from "@heroui/switch";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { InformationCircleIcon } from "@icons";
+import { Alert02Icon, InformationCircleIcon } from "@icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -40,7 +40,7 @@ import { useWorkflowsStore } from "../stores/workflowsStore";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { createDefaultTriggerConfig } from "../triggers/registry";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
-import { findTriggerSchema, getTriggerDisplayInfo } from "../triggers/utils";
+import { findTriggerSchema } from "../triggers/utils";
 
 interface WorkflowModalProps {
   isOpen: boolean;
@@ -177,21 +177,31 @@ export default function WorkflowModal({
   // Watch form data for change detection
   const formData = watch();
 
-  // The integration backing the currently-selected event trigger, if it still
-  // needs connecting. Derived from the live form (not currentWorkflow) so it
-  // also covers create mode, where currentWorkflow is null. Drives both the
-  // inline banner and the save guard below.
+  // The integration backing the selected event trigger, if it still needs
+  // connecting. Resolved from the selected trigger slug (not trigger_config,
+  // which can briefly lag the selection) so this banner always agrees with the
+  // settings panel below — same slug, same integration.
+  // TODO: extend this to also surface integrations required by the workflow's
+  // steps once step-level integration metadata is available, so the banner
+  // covers the whole workflow, not just the trigger.
   const missingIntegration = useMemo(() => {
-    const triggerConfig = formData.trigger_config;
-    if (!triggerConfig || triggerConfig.type !== "integration") return null;
-    const integration = getTriggerDisplayInfo(
-      { trigger_config: triggerConfig } as Workflow,
-      integrations,
+    if (formData.activeTab !== "trigger" || !formData.selectedTrigger)
+      return null;
+    const integrationId = findTriggerSchema(
       triggerSchemas,
-    ).integration;
-    if (!integration || integration.status === "connected") return null;
-    return integration;
-  }, [formData.trigger_config, integrations, triggerSchemas]);
+      formData.selectedTrigger,
+    )?.integration_id;
+    if (!integrationId) return null;
+    const integration = integrations.find((i) => i.id === integrationId);
+    return integration && integration.status !== "connected"
+      ? integration
+      : null;
+  }, [
+    formData.activeTab,
+    formData.selectedTrigger,
+    integrations,
+    triggerSchemas,
+  ]);
 
   const handleConnectMissingIntegration = useCallback(async () => {
     if (!missingIntegration || isConnecting) return;
@@ -863,14 +873,18 @@ export default function WorkflowModal({
                       <div className="space-y-8 pb-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3">
                         {missingIntegration && (
                           <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
-                            <span>
-                              <span className="font-medium">
-                                {missingIntegration.name}
-                              </span>{" "}
-                              isn't connected — connect it to use this trigger.
+                            <span className="flex items-center gap-2">
+                              <Alert02Icon className="h-4 w-4 shrink-0" />
+                              <span>
+                                <span className="font-medium">
+                                  {missingIntegration.name}
+                                </span>{" "}
+                                isn't connected — connect it to use this
+                                trigger.
+                              </span>
                             </span>
                             <Button
-                              color="primary"
+                              color="danger"
                               size="sm"
                               isLoading={isConnecting}
                               onPress={handleConnectMissingIntegration}
