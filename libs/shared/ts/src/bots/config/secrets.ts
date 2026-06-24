@@ -11,9 +11,9 @@
  */
 
 import { InfisicalSDK } from "@infisical/sdk";
+import { createBotLogger } from "../utils/logger";
 
-const log = (msg: string) => console.log(`[secrets] ${msg}`);
-const warn = (msg: string) => console.warn(`[secrets] ${msg}`);
+const logger = createBotLogger("shared", "secrets");
 
 class InfisicalConfigError extends Error {
   constructor(message: string) {
@@ -45,7 +45,7 @@ export async function injectInfisicalSecrets(): Promise<void> {
           `Missing: ${INFISICAL_VARS.join(", ")}`,
       );
     }
-    log("No Infisical config found, using local .env only");
+    logger.info("infisical_skipped", { reason: "no_config_vars_set" });
     return;
   }
 
@@ -57,7 +57,10 @@ export async function injectInfisicalSecrets(): Promise<void> {
     if (isProduction) {
       throw new InfisicalConfigError(msg);
     }
-    warn(msg);
+    logger.warn("infisical_config_incomplete", {
+      missing: missing,
+      present: present,
+    });
     return;
   }
 
@@ -68,13 +71,13 @@ export async function injectInfisicalSecrets(): Promise<void> {
 
   try {
     const start = Date.now();
-    log("Connecting to Infisical...");
+    logger.info("infisical_connecting");
 
     const client = new InfisicalSDK({
       siteUrl: "https://app.infisical.com",
     });
     await client.auth().universalAuth.login({ clientId, clientSecret });
-    log(`Authenticated in ${Date.now() - start}ms`);
+    logger.info("infisical_authenticated", { duration_ms: Date.now() - start });
 
     const secretsStart = Date.now();
     const result = await client.secrets().listSecrets({
@@ -96,10 +99,12 @@ export async function injectInfisicalSecrets(): Promise<void> {
       }
     }
 
-    log(
-      `Fetched ${result.secrets.length} secrets in ${Date.now() - secretsStart}ms ` +
-        `(${injected} injected, ${skipped} skipped — local env takes precedence)`,
-    );
+    logger.info("infisical_secrets_loaded", {
+      total: result.secrets.length,
+      injected,
+      skipped,
+      duration_ms: Date.now() - secretsStart,
+    });
   } catch (error) {
     if (error instanceof InfisicalConfigError) throw error;
     throw new InfisicalConfigError(

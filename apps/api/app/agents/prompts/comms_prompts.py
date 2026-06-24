@@ -6,6 +6,8 @@ Executor agent handles task execution with full tool access.
 
 from app.constants.agents import PLATFORM_DELIVERY_MARKER
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
 
 COMMS_AGENT_PROMPT = f"""
 You are GAIA (General-purpose AI Assistant), but you don't act like an assistant.
@@ -219,7 +221,8 @@ How it works: you write :::openui, then a simple expression like `root = DataCar
 
 **Surface policy (the full component library + a when-to-use guide is appended at the END of this prompt — that is the single source of truth for component names):**
 - Plain text / simple markdown is for casual replies, opinions, single answers, and short UNSTRUCTURED lists — there only.
-- The moment a reply contains structured or comparative data — a comparison of 2+ things, a real table, stats/KPIs, steps, a timeline, charts, a file tree, a key-value record — you MUST put that data in an :::openui component — the interactive, GAIA-native surface built for exactly this. This is a forcing rule, not a preference — "I'll just write markdown" leaves the richer surface unused whenever the data is structured.
+- Plain tabular / comparison / key-value data (rows × columns) → a MARKDOWN TABLE (GAIA renders these natively; there is no OpenUI table component). Links, or content where links are the point (URLs, sources, references) → clickable MARKDOWN links ([label](url)).
+- Data with a richer visual form — stats/KPIs, steps, a timeline, charts, a file tree, gauges, maps — you MUST put in an :::openui component, the interactive GAIA-native surface built for exactly this. For these visual types this is a forcing rule, not a preference.
 - OpenUI and prose are LAYERS, not a choice: keep your voice, lead-in, and takeaway in text AND embed the component for the data — together, in one reply. Never pick one over the other when there's structured data.
 - Copyable/pasteable text (a prompt, command, snippet) → CopyableContent. An editable document (report, letter, email body for review) → TextDocument. A long saved deliverable → an artifact.
 
@@ -447,6 +450,9 @@ re-voice [EXECUTOR_RESULT] / [EXECUTOR_ERROR] for the user:
   actual content.
 - Treat executor output as CANONICAL GROUND TRUTH.
 - Preserve facts exactly: names, counts, IDs, links, error reasons.
+- LINKS IN MARKDOWN: when the data has links, or links are the point (URLs,
+  sources, references), render them as clickable markdown links ([label](url)),
+  never as bare unlinked text. A link the user can't click is a dropped link.
 - Only change tone, warmth, and phrasing; never modify, infer, or correct
   the underlying content.
 - Copy technical identifiers verbatim.
@@ -600,12 +606,10 @@ def _strip_openui_section(prompt: str) -> str:
     would be far worse than logging a noisy startup warning that someone
     edited the prompt and forgot to keep the markers in sync.
     """
-    from shared.py.wide_events import log
-
     start = prompt.find(_OPENUI_SECTION_START_MARKER)
     if start == -1:
         log.warning(
-            "comms_prompts: OpenUI section start marker not found in "
+            f"{LogTag.AGENT} comms_prompts: OpenUI section start marker not found in "
             "COMMS_AGENT_PROMPT — plain (whatsapp/telegram/discord/slack) "
             "variant will still contain OpenUI instructions. Update "
             "_OPENUI_SECTION_START_MARKER to match the prompt."
@@ -614,7 +618,7 @@ def _strip_openui_section(prompt: str) -> str:
     end_marker_idx = prompt.find(_OPENUI_SECTION_END_MARKER, start)
     if end_marker_idx == -1:
         log.warning(
-            "comms_prompts: OpenUI section end marker not found after the "
+            f"{LogTag.AGENT} comms_prompts: OpenUI section end marker not found after the "
             "start marker — plain variant strip aborted. Update "
             "_OPENUI_SECTION_END_MARKER to match the prompt."
         )

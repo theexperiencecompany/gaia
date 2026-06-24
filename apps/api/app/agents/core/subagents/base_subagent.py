@@ -36,6 +36,7 @@ from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
@@ -105,6 +106,7 @@ class SubAgentFactory:
         auto_bind_tools: list[str] | None = None,
         include_finish_task: bool = True,
         mcp_tools: list[BaseTool] | None = None,
+        source_label: str | None = None,
     ) -> CompiledStateGraph:
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
@@ -125,13 +127,16 @@ class SubAgentFactory:
                 captures as the final answer. Use False for answer-only
                 subagents (e.g. documentation fetchers) where finish_task adds
                 latency without value.
+            source_label: Human-readable name for the provider, streamed with
+                todo_progress events so the frontend shows the integration's
+                name instead of its raw id (provider).
 
         Returns:
             Compiled LangGraph agent with tool registry, retrieval, and checkpointer
         """
         log.set(subagent={"name": name, "provider": provider})
         log.info(
-            f"Creating {provider} sub-agent graph using tool space '{tool_space}' with "
+            f"{LogTag.AGENT} Creating {provider} sub-agent graph using tool space '{tool_space}' with "
             + ("direct tools binding" if use_direct_tools else "retrieve tools")
         )
 
@@ -163,7 +168,7 @@ class SubAgentFactory:
         )
 
         # Create todo tools and register them in the scoped tool registry
-        todo_tools: list[BaseTool] = create_todo_tools(source=provider)
+        todo_tools: list[BaseTool] = create_todo_tools(source=provider, source_label=source_label)
         todo_hook = create_todo_pre_model_hook(source=provider)
         todo_tool_names: list[str] = []
         for todo_tool in todo_tools:
@@ -193,7 +198,9 @@ class SubAgentFactory:
             else None
         )
         if valid_auto_bind:
-            log.info(f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}")
+            log.info(
+                f"{LogTag.AGENT} Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
+            )
 
         parent_tool_runtime = build_provider_parent_tool_runtime_config(
             provider_tool_names=initial_tool_ids,
@@ -207,6 +214,8 @@ class SubAgentFactory:
             build_create_agent_tool_kwargs(
                 parent_tool_runtime,
                 tool_space=tool_space,
+                # Validate binding against exactly what this graph executes.
+                bindable_tool_names=set(scoped_tool_dict.keys()),
             )
         )
 
@@ -233,14 +242,16 @@ class SubAgentFactory:
         try:
             checkpointer_manager = await get_checkpointer_manager()
             checkpointer = checkpointer_manager.get_checkpointer()
-            log.debug(f"Using PostgreSQL checkpointer for {provider} sub-agent")
+            log.debug(f"{LogTag.AGENT} Using PostgreSQL checkpointer for {provider} sub-agent")
         except Exception as e:
             log.warning(
-                f"PostgreSQL checkpointer unavailable for {provider} sub-agent: {e}. Using InMemorySaver."
+                f"{LogTag.AGENT} PostgreSQL checkpointer unavailable for {provider} sub-agent: {e}. Using InMemorySaver."
             )
             checkpointer = InMemorySaver()
 
         subagent_graph = builder.compile(store=store, name=name, checkpointer=checkpointer)
 
-        log.info(f"Successfully created {provider} sub-agent graph with checkpointer")
+        log.info(
+            f"{LogTag.AGENT} Successfully created {provider} sub-agent graph with checkpointer"
+        )
         return subagent_graph

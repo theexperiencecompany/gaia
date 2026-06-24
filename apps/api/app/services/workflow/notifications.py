@@ -10,6 +10,7 @@ their own module to keep the executor runner free of a circular import on
 from datetime import UTC, datetime
 
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.log_tags import LogTag
 from app.constants.notifications import pick_workflow_done_copy
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -86,9 +87,11 @@ async def send_workflow_completion_notification(
                 metadata={"workflow_id": workflow_id, "conversation_id": conversation_id},
             )
         )
-        log.info(f"Workflow completion notification sent for {workflow_id}")
+        log.info(f"{LogTag.WORKFLOW} Workflow completion notification sent for {workflow_id}")
     except Exception as e:
-        log.error(f"Failed to send workflow completion notification for {workflow_id}: {e}")
+        log.error(
+            f"{LogTag.WORKFLOW} Failed to send workflow completion notification for {workflow_id}: {e}"
+        )
 
 
 async def send_workflow_failure_notification(
@@ -114,6 +117,8 @@ async def send_workflow_failure_notification(
                 metadata={"workflow_id": workflow_id},
             )
         )
-        log.info(f"Workflow failure notification sent for {workflow_id}")
+        log.info(f"{LogTag.WORKFLOW} Workflow failure notification sent for {workflow_id}")
     except Exception as e:
-        log.error(f"Failed to send workflow failure notification for {workflow_id}: {e}")
+        log.error(
+            f"{LogTag.WORKFLOW} Failed to send workflow failure notification for {workflow_id}: {e}"
+        )

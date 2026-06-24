@@ -11,7 +11,7 @@ import aiohttp
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 
-from shared.py.wide_events import log, wide_task
+from shared.py.wide_events import VoiceContext, log, wide_task
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
     DONE_SENTINEL,
@@ -28,6 +28,7 @@ from src.constants import (
     TTS_MIN_EMIT_CHARS,
     TTS_MIN_SENTENCE_CHARS,
     VOICE_TTS_KEY,
+    LogTag,
 )
 from src.utils import (
     build_messages_from_ctx,
@@ -100,7 +101,7 @@ class CustomLLM(LLM):
                     conversation_id, topic="conversation-id"
                 )
             except Exception as e:
-                log.error("Failed to send conversation ID", error=str(e))
+                log.error(f"{LogTag.LLM} Failed to send conversation ID", error=str(e))
 
     async def set_conversation_description(self, description: str) -> None:
         """Store and broadcast conversation description to room participants."""
@@ -113,7 +114,7 @@ class CustomLLM(LLM):
                     description, topic="conversation-description"
                 )
             except Exception as e:
-                log.error("Failed to send conversation description", error=str(e))
+                log.error(f"{LogTag.LLM} Failed to send conversation description", error=str(e))
 
     async def forward_stream_event_to_frontend(self, raw_event: str) -> None:
         """Forward a raw backend SSE payload to the frontend via LiveKit data channel."""
@@ -125,14 +126,14 @@ class CustomLLM(LLM):
                 topic=FRONTEND_STREAM_TOPIC,
             )
             log.debug(
-                "forward to frontend",
+                f"{LogTag.LLM} forward to frontend",
                 phase="forward_frontend",
                 payload_len=len(raw_event),
                 payload_preview=raw_event[:300],
             )
         except Exception as e:
             log.warning(
-                "Failed to forward backend stream event to frontend",
+                f"{LogTag.LLM} Failed to forward backend stream event to frontend",
                 topic=FRONTEND_STREAM_TOPIC,
                 error=str(e),
             )
@@ -177,7 +178,7 @@ class CustomLLM(LLM):
                     break
                 await self._handle_drain_event(data)
         except Exception as e:
-            log.warning("Voice stream drain failed", error=str(e))
+            log.warning(f"{LogTag.LLM} Voice stream drain failed", error=str(e))
         finally:
             await resp.release()
 
@@ -206,7 +207,9 @@ class CustomLLM(LLM):
                 # forwarding a null id makes it fall through to the normal response
                 # path and append onto the active comms bubble. Skip the immediate
                 # bubble and let the backend's WebSocket push render it instead.
-                log.warning("Voice TTS frame missing message_id; skipping immediate bubble")
+                log.warning(
+                    f"{LogTag.LLM} Voice TTS frame missing message_id; skipping immediate bubble"
+                )
                 return
             await self.forward_stream_event_to_frontend(
                 json.dumps({RESPONSE_KEY: voice_tts, MESSAGE_ID_KEY: message_id})
@@ -239,7 +242,7 @@ class CustomLLM(LLM):
             if self._http_session and not self._http_session.closed:
                 await self._http_session.close()
         except Exception as e:
-            log.warning("Failed to close backend HTTP session", error=str(e))
+            log.warning(f"{LogTag.LLM} Failed to close backend HTTP session", error=str(e))
         finally:
             await super().aclose()
 
@@ -299,21 +302,26 @@ class _VoiceTurn:
         # identity + turn fields, so Loki can slice by any of them.
         async with wide_task(
             "voice_turn",
-            room=self.llm.room.name if self.llm.room else None,
             user_id=self.llm.user_id,
             conversation_id=self.llm.conversation_id,
-            turn_index=self.turn_index,
         ):
+            log.set(
+                voice=VoiceContext(
+                    operation="turn",
+                    room=self.llm.room.name if self.llm.room else None,
+                    turn_index=self.turn_index,
+                )
+            )
             async for chunk in self._run():
                 yield chunk
 
     async def _run(self) -> AsyncGenerator[ChatChunk, None]:
         if not self.user_message:
-            log.warning("empty user message, skipping LLM turn", phase="turn_skip")
+            log.warning(f"{LogTag.LLM} empty user message, skipping LLM turn", phase="turn_skip")
             return
 
         log.info(
-            "chat turn start",
+            f"{LogTag.LLM} chat turn start",
             phase="chat_turn_start",
             user_msg=self.user_message,
             user_msg_len=len(self.user_message),
@@ -321,7 +329,7 @@ class _VoiceTurn:
 
         payload = self._build_payload()
         log.debug(
-            "backend request",
+            f"{LogTag.LLM} backend request",
             phase="backend_request",
             elapsed_ms=ms_since(self.turn_start),
             conversation_id=self.llm.conversation_id,
@@ -341,7 +349,7 @@ class _VoiceTurn:
             if resp.status >= 400:
                 body = await resp.text()
                 log.error(
-                    "Backend returned error response",
+                    f"{LogTag.LLM} Backend returned error response",
                     status=resp.status,
                     body=body[:500],
                     conversation_id=self.llm.conversation_id,
@@ -361,7 +369,7 @@ class _VoiceTurn:
                 handed_off = True
 
             log.info(
-                "chat turn end",
+                f"{LogTag.LLM} chat turn end",
                 phase="chat_turn_end",
                 elapsed_ms=ms_since(self.turn_start),
             )
@@ -369,7 +377,7 @@ class _VoiceTurn:
             # turn so Loki can answer latency/volume/behaviour questions without
             # stitching DEBUG lines together.
             log.info(
-                "turn complete",
+                f"{LogTag.LLM} turn complete",
                 phase="turn_complete",
                 status="ok",
                 **self._turn_fields(),
@@ -379,7 +387,7 @@ class _VoiceTurn:
             # Same wide event on the failure path (status=error) so error
             # turns are queryable with the identical field set.
             log.error(
-                "turn failed",
+                f"{LogTag.LLM} turn failed",
                 phase="turn_complete",
                 status="error",
                 error=str(e),
@@ -395,7 +403,7 @@ class _VoiceTurn:
     def _emit(self, text: str, source: str) -> ChatChunk:
         """Log + wrap a TTS chunk so we can see exactly WHEN text is handed to TTS."""
         log.info(
-            "yield to TTS",
+            f"{LogTag.LLM} yield to TTS",
             phase="yield_tts",
             source=source,
             char_count=len(text),
@@ -413,7 +421,7 @@ class _VoiceTurn:
             if data == DONE_SENTINEL:
                 self.stream_done = True
                 log.info(
-                    "[DONE] received",
+                    f"{LogTag.LLM} [DONE] received",
                     phase="done_received",
                     elapsed_ms=ms_since(self.turn_start),
                 )
@@ -479,7 +487,7 @@ class _VoiceTurn:
     async def _on_stream_done(self) -> str | None:
         """Log stream end and flush whatever text is still buffered."""
         log.debug(
-            "stream done",
+            f"{LogTag.LLM} stream done",
             phase="stream_done",
             total_tokens=self.total_tokens,
             elapsed_ms=ms_since(self.turn_start),
@@ -506,7 +514,7 @@ class _VoiceTurn:
             await self.llm.forward_stream_event_to_frontend(data)
 
         log.info(
-            "backend event",
+            f"{LogTag.LLM} backend event",
             phase="backend_event",
             event_keys=list(event_keys),
             event_data=data[:300],
@@ -551,7 +559,7 @@ class _VoiceTurn:
         self.first_token_received = True
         self.ttfb_ms = ms_since(self.turn_start)
         log.debug(
-            "first token",
+            f"{LogTag.LLM} first token",
             phase="first_token",
             ttfb_ms=self.ttfb_ms,
         )
@@ -564,7 +572,7 @@ class _VoiceTurn:
         self.tts_enabled = False
         self.comms_complete = True
         log.info(
-            "main response complete, ending audio turn",
+            f"{LogTag.LLM} main response complete, ending audio turn",
             phase="main_response_complete",
             elapsed_ms=ms_since(self.turn_start),
             ack_flushed=bool(tail),
@@ -577,7 +585,7 @@ class _VoiceTurn:
             return None
         self.executor_tts_chars += len(spoken)
         log.info(
-            "executor answer arrived",
+            f"{LogTag.LLM} executor answer arrived",
             phase="tts_executor_answer",
             char_count=len(spoken),
             elapsed_ms=ms_since(self.turn_start),
@@ -600,7 +608,7 @@ class _VoiceTurn:
         self.text_buffer.append(piece)
         self.total_tokens += 1
         log.debug(
-            "token",
+            f"{LogTag.LLM} token",
             phase="token",
             token_index=self.total_tokens,
             token=piece,
@@ -667,7 +675,7 @@ class _VoiceTurn:
                 self.first_tts_flush_ms = ms_since(self.turn_start)
         if label:
             log.debug(
-                label,
+                f"{LogTag.LLM} {label}",
                 phase="tts_flush" if label == "TTS FLUSH" else "tts_final",
                 text_before_sanitize=raw,
                 text_after_sanitize=out,

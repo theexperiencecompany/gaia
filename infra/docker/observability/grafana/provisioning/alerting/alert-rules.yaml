@@ -341,3 +341,374 @@ groups:
         labels:
           severity: critical
           service: api
+
+  # Availability: a Prometheus scrape target being down means the container or
+  # its metrics endpoint is unreachable. This is the class of failure that went
+  # unnoticed when the arq_worker crash-looped to 0/1 replicas — `up` goes to 0
+  # for a static target whose container is gone, so this rule now catches it.
+  - orgId: 1
+    name: gaia-availability
+    folder: GAIA
+    interval: 1m
+    rules:
+      # 10. Any core service target down for 2m (multi-dimensional: one alert
+      # instance per failing job). voice_agent is intentionally excluded — it is
+      # scaled to 0 by default, so its target is legitimately down.
+      - uid: gaia-target-down
+        title: Service target down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up{job=~"gaia-api|arq_worker|postgres|redis|rabbitmq"}
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: "Target {{ $labels.job }} ({{ $labels.instance }}) is DOWN — container or metrics endpoint unreachable"
+        labels:
+          severity: critical
+          service: availability
+
+      # 11. ARQ worker has no running replica: the worker exports its own metrics
+      # on :9100, so `absent()` / up==0 on that job is a direct "background jobs
+      # are not processing" signal. Kept separate from rule 10 so it carries a
+      # worker-specific summary even if the regex above is ever narrowed.
+      - uid: gaia-arq-worker-down
+        title: ARQ worker down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up{job="arq_worker"}
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: ARQ worker is not reporting metrics — background tasks (reminders, workflows, memory) are not processing
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 12. A container in the stack is restarting repeatedly (crash loop). cadvisor
+      # exports container_start_time_seconds; `changes()` over 15m counts how many
+      # times a container's start time moved = its restart count. >3 in 15m flags a
+      # flapping service before it settles (or while it crash-loops like arq did).
+      - uid: gaia-container-restarts
+        title: Container restart loop
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: changes(container_start_time_seconds{name=~"gaia-prod_.*"}[15m])
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [3] }
+        noDataState: OK
+        execErrState: OK
+        for: 0m
+        annotations:
+          summary: "Container {{ $labels.name }} appears to be restarting repeatedly"
+        labels:
+          severity: warning
+          service: availability
+
+      # 13. A bot or the embedding sidecar is down. These export no native metrics,
+      # so prometheus.yml blackbox-probes their /health endpoints (job
+      # blackbox_internal); probe_success==0 means the container is down or its
+      # HTTP health endpoint is unreachable. Multi-dimensional: one instance per
+      # failing target, with the URL in $labels.instance.
+      - uid: gaia-internal-service-down
+        title: Bot or sidecar down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: probe_success{job="blackbox_internal"}
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: "{{ $labels.instance }} is DOWN — container or /health endpoint unreachable"
+        labels:
+          severity: critical
+          service: availability
+
+      # 14. API severely slow: p95 > 3s for 5m. The warning-tier latency rule
+      # (gaia-api-p95-latency, >1s) goes to Slack only; this critical tier also
+      # pages email so a real latency incident isn't missed.
+      - uid: gaia-api-p95-latency-critical
+        title: API p95 latency critical
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="gaia-api", handler!~"/metrics|/health.*|/favicon.ico"}[5m])))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [3] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: API p95 latency is {{ $values.B }}s (critical threshold 3s)
+        labels:
+          severity: critical
+          service: api
+
+  # Extended coverage: failure modes that historically went unmonitored
+  # (cert expiry, OOM kills, Redis memory pressure, stuck queues). All metrics
+  # verified present in prod Prometheus before adding.
+  - orgId: 1
+    name: gaia-extended
+    folder: GAIA
+    interval: 1m
+    rules:
+      # 15. TLS cert for api.heygaia.io expires in < 14 days
+      - uid: gaia-ssl-cert-expiry
+        title: TLS certificate expiring soon
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: min(probe_ssl_earliest_cert_expiry{job="blackbox_api"}) - time()
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1209600] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "api.heygaia.io TLS cert expires in < 14 days ({{ $values.B }}s left)"
+        labels:
+          severity: critical
+          service: api
+
+      # 16. A container was OOM-killed in the last 15m
+      - uid: gaia-container-oom
+        title: Container OOM killed
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(container_oom_events_total[15m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: OK
+        for: 0m
+        annotations:
+          summary: "{{ $values.B }} container OOM-kill event(s) in the last 15m"
+        labels:
+          severity: critical
+          service: host
+
+      # 17. Redis memory > 85% of maxmemory (eviction risk for SSE/cache/rate-limit)
+      - uid: gaia-redis-memory
+        title: Redis memory pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.85] }
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: Redis is using {{ $values.B | humanizePercentage }} of maxmemory
+        labels:
+          severity: warning
+          service: redis
+
+      # 18. Redis evicting keys (memory full — data being dropped)
+      - uid: gaia-redis-evictions
+        title: Redis evicting keys
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: increase(redis_evicted_keys_total[10m])
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: "Redis evicted {{ $values.B }} keys in 10m — memory full"
+        labels:
+          severity: warning
+          service: redis
+
+      # 19. RabbitMQ backlog with NO consumers (a consumer died; work stuck)
+      - uid: gaia-rabbitmq-no-consumers
+        title: RabbitMQ backlog with no consumers
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (sum(rabbitmq_queue_messages_ready) > 100) and (sum(rabbitmq_queue_consumers) == 0)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: "RabbitMQ has {{ $values.B }} ready messages but zero consumers"
+        labels:
+          severity: critical
+          service: rabbitmq

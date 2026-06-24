@@ -2,6 +2,7 @@ from langchain_core.messages import AIMessage
 
 from app.agents.core.state import State
 from app.agents.llm.client import get_free_llm_chain, init_llm, invoke_with_fallback
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -28,7 +29,7 @@ async def chatbot(
 
         return {"messages": [response]}
     except Exception as e:
-        log.error(f"Error in LLM API call: {e!s}")
+        log.error(f"{LogTag.AGENT} Error in LLM API call: {e!s}")
 
         return {
             "messages": [

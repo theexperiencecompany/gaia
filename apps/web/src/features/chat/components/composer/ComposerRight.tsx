@@ -6,7 +6,10 @@ import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useComposerSendMode } from "@/features/chat/hooks/useComposerSendMode";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { useComposerFiles } from "@/stores/composerStore";
+import {
+  useComposerFiles,
+  useComposerIsUploading,
+} from "@/stores/composerStore";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
@@ -27,6 +30,7 @@ export default function RightSide({
   const { selectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent } = useCalendarEventSelection();
   const { uploadedFiles } = useComposerFiles();
+  const isUploading = useComposerIsUploading();
   const hasText = (searchbarText || "").trim().length > 0;
   const hasSelectedTool = selectedTool != null;
   const hasSelectedWorkflow = selectedWorkflow != null;
@@ -46,6 +50,10 @@ export default function RightSide({
 
   const getTooltipContent = () => {
     if (showStop) return "Stop generation";
+
+    if (isUploading) {
+      return `Uploading file${uploadedFiles.length > 1 ? "s" : ""}...`;
+    }
 
     if (showQueue) {
       return (
@@ -118,7 +126,11 @@ export default function RightSide({
         color={showStop ? "danger" : "primary"}
         showArrow
       >
-        <SendStopButton hasContent={hasContent} onSend={handleFormSubmit} />
+        <SendStopButton
+          hasContent={hasContent}
+          isUploading={isUploading}
+          onSend={handleFormSubmit}
+        />
       </Tooltip>
     </div>
   );

@@ -12,6 +12,7 @@ from workos import AsyncWorkOSClient
 
 from app.api.v1.middleware.agent_auth import verify_agent_token
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
 from app.utils.auth_utils import authenticate_workos_session, build_user_context
 from shared.py.wide_events import log
@@ -103,7 +104,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
             except Exception as e:
                 log.error(
-                    "auth_middleware_error",
+                    f"{LogTag.API} auth_middleware_error",
                     auth_failure=type(e).__name__,
                     path=request.url.path,
                     method=request.method,
@@ -127,7 +128,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     try:
                         user_id = ObjectId(user_id)
                     except Exception as e:
-                        log.error(f"Invalid user_id format: {user_id} - {e}")
+                        log.error(f"{LogTag.API} Invalid user_id format: {user_id} - {e}")
                         user_data = None
                     else:
                         user_data = await users_collection.find_one({"_id": user_id})
@@ -179,5 +180,5 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             )
             return user_info, new_session
         except Exception as e:
-            log.error(f"Error in middleware additional processing: {e}")
+            log.error(f"{LogTag.API} Error in middleware additional processing: {e}")
             return None, new_session

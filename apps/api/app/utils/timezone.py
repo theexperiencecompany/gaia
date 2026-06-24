@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 
 from langchain_core.runnables import RunnableConfig
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # ``±HH:MM`` fixed-offset form (e.g. "+05:30", "-08:00").
@@ -88,7 +89,9 @@ class Timezone:
         if parsed is not None:
             return parsed
         if raw is not None and not isinstance(raw, (Timezone, _tzinfo)):
-            log.warning("Timezone.parse: unrecognized timezone, using UTC", timezone=raw)
+            log.warning(
+                f"{LogTag.STARTUP} Timezone.parse: unrecognized timezone, using UTC", timezone=raw
+            )
         return cls.utc()
 
     @classmethod
@@ -210,7 +213,9 @@ def home_timezone_from_config(config: RunnableConfig) -> Timezone:
         log.set(timezone_source=TimezoneSource.AGENT_CONFIG.value, user_timezone=raw)
         return Timezone.parse(raw)
     log.set(timezone_source=TimezoneSource.FALLBACK_UTC.value, user_timezone="+00:00")
-    log.warning("home_timezone_from_config: no user_timezone in config; using UTC")
+    log.warning(
+        f"{LogTag.STARTUP} home_timezone_from_config: no user_timezone in config; using UTC"
+    )
     return Timezone.utc()
 
 

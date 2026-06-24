@@ -8,6 +8,7 @@ from aio_pika import connect_robust
 from aio_pika.abc import AbstractIncomingMessage
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from shared.py.wide_events import log
 
@@ -34,10 +35,12 @@ class WebSocketEventConsumer:
             # Start consuming
             await self.queue.consume(self._handle_websocket_message)
 
-            log.info("WebSocket event consumer started on queue: websocket-events")
+            log.info(
+                f"{LogTag.STARTUP} WebSocket event consumer started on queue: websocket-events"
+            )
 
         except Exception as e:
-            log.error(f"Failed to start WebSocket event consumer: {e}")
+            log.error(f"{LogTag.STARTUP} Failed to start WebSocket event consumer: {e}")
             raise
 
     async def stop(self) -> None:
@@ -52,10 +55,10 @@ class WebSocketEventConsumer:
             if self.connection:
                 await self.connection.close()
 
-            log.info("WebSocket event consumer stopped")
+            log.info(f"{LogTag.STARTUP} WebSocket event consumer stopped")
 
         except Exception as e:
-            log.error(f"Error stopping WebSocket event consumer: {e}")
+            log.error(f"{LogTag.STARTUP} Error stopping WebSocket event consumer: {e}")
 
     async def _handle_websocket_message(self, message: AbstractIncomingMessage) -> None:
         """Handle incoming WebSocket broadcast messages from RabbitMQ"""
@@ -65,7 +68,9 @@ class WebSocketEventConsumer:
                 data = json.loads(message.body.decode())
 
                 if data.get("type") != "websocket_broadcast":
-                    log.warning(f"Received unknown WebSocket message type: {data.get('type')}")
+                    log.warning(
+                        f"{LogTag.STARTUP} Received unknown WebSocket message type: {data.get('type')}"
+                    )
                     return
 
                 user_id = data.get("user_id")
@@ -75,7 +80,9 @@ class WebSocketEventConsumer:
                     log.set(websocket={"user_id": user_id})
 
                 if not user_id or not ws_message:
-                    log.error("Invalid WebSocket broadcast message: missing user_id or message")
+                    log.error(
+                        f"{LogTag.STARTUP} Invalid WebSocket broadcast message: missing user_id or message"
+                    )
                     return
 
                 # Broadcast to WebSocket connections in the main app
@@ -85,21 +92,23 @@ class WebSocketEventConsumer:
                         try:
                             await websocket.send_json(ws_message)
                         except Exception as e:
-                            log.warning(f"Failed to send WebSocket message to user {user_id}: {e}")
+                            log.warning(
+                                f"{LogTag.STARTUP} Failed to send WebSocket message to user {user_id}: {e}"
+                            )
                             disconnected.add(websocket)
 
                     # Remove disconnected websockets
                     for ws in disconnected:
                         websocket_manager.connections[user_id].discard(ws)
 
-                    log.debug(f"Broadcasted WebSocket message to user {user_id}")
+                    log.debug(f"{LogTag.STARTUP} Broadcasted WebSocket message to user {user_id}")
                 else:
-                    log.debug(f"No WebSocket connections found for user {user_id}")
+                    log.debug(f"{LogTag.STARTUP} No WebSocket connections found for user {user_id}")
 
             except json.JSONDecodeError as e:
-                log.error(f"Failed to decode WebSocket message JSON: {e}")
+                log.error(f"{LogTag.STARTUP} Failed to decode WebSocket message JSON: {e}")
             except Exception as e:
-                log.error(f"Failed to process WebSocket message: {e}")
+                log.error(f"{LogTag.STARTUP} Failed to process WebSocket message: {e}")
 
 
 # Global instance

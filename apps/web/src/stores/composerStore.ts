@@ -1,8 +1,11 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
-
 import type { UploadedFilePreview } from "@/features/chat/components/files/FilePreview";
+import {
+  DEFAULT_DEV_COMMS_MODEL,
+  DEFAULT_DEV_EXECUTOR_MODEL,
+} from "@/features/chat/constants/devModels";
 import { stripLocalePrefix } from "@/i18n/config";
 import type { FileData } from "@/types/shared/fileTypes";
 import type { SearchMode } from "@/types/shared/searchTypes";
@@ -25,6 +28,11 @@ interface ComposerState {
 
   // UI state
   isSlashCommandDropdownOpen: boolean;
+
+  // DEV-ONLY model selection (chat-header selector; only used in development)
+  useDefaultModels: boolean;
+  commsModel: string;
+  executorModel: string;
 }
 
 interface ComposerActions {
@@ -56,6 +64,11 @@ interface ComposerActions {
   // UI actions
   setIsSlashCommandDropdownOpen: (open: boolean) => void;
 
+  // DEV-ONLY model selection actions
+  setUseDefaultModels: (use: boolean) => void;
+  setCommsModel: (model: string) => void;
+  setExecutorModel: (model: string) => void;
+
   // Reset actions
   resetComposer: () => void;
 }
@@ -80,6 +93,11 @@ const initialState: ComposerState = {
 
   // UI state
   isSlashCommandDropdownOpen: false,
+
+  // DEV-ONLY model selection
+  useDefaultModels: true,
+  commsModel: DEFAULT_DEV_COMMS_MODEL,
+  executorModel: DEFAULT_DEV_EXECUTOR_MODEL,
 };
 
 export const useComposerStore = create<ComposerStore>()(
@@ -218,6 +236,14 @@ export const useComposerStore = create<ComposerStore>()(
             "setIsSlashCommandDropdownOpen",
           ),
 
+        // DEV-ONLY model selection actions
+        setUseDefaultModels: (useDefaultModels) =>
+          set({ useDefaultModels }, false, "setUseDefaultModels"),
+        setCommsModel: (commsModel) =>
+          set({ commsModel }, false, "setCommsModel"),
+        setExecutorModel: (executorModel) =>
+          set({ executorModel }, false, "setExecutorModel"),
+
         // Reset actions
         resetComposer: () => {
           set(initialState, false, "resetComposer");
@@ -228,6 +254,9 @@ export const useComposerStore = create<ComposerStore>()(
         partialize: (state) => ({
           inputText: state.inputText,
           pendingPrompt: state.pendingPrompt,
+          useDefaultModels: state.useDefaultModels,
+          commsModel: state.commsModel,
+          executorModel: state.executorModel,
         }),
       },
     ),
@@ -285,10 +314,29 @@ export const useComposerFiles = () =>
     })),
   );
 
+// True while any composer file is still uploading. Send is blocked until this
+// clears so a message never goes out before its attachment finishes uploading.
+export const useComposerIsUploading = () =>
+  useComposerStore((state) =>
+    state.uploadedFiles.some((file) => file.isUploading),
+  );
+
 export const useComposerUI = () =>
   useComposerStore(
     useShallow((state) => ({
       isSlashCommandDropdownOpen: state.isSlashCommandDropdownOpen,
       setIsSlashCommandDropdownOpen: state.setIsSlashCommandDropdownOpen,
+    })),
+  );
+
+export const useComposerModelSelection = () =>
+  useComposerStore(
+    useShallow((state) => ({
+      useDefaultModels: state.useDefaultModels,
+      commsModel: state.commsModel,
+      executorModel: state.executorModel,
+      setUseDefaultModels: state.setUseDefaultModels,
+      setCommsModel: state.setCommsModel,
+      setExecutorModel: state.setExecutorModel,
     })),
   );

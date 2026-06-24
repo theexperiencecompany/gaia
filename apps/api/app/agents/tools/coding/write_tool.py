@@ -16,6 +16,7 @@ from app.agents.tools.coding._context import (
     safe_emit,
 )
 from app.agents.workspace.paths import MountRole
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, add_fs_bytes, fs_timer
@@ -61,7 +62,7 @@ async def write(
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
-        log.error(f"write tool failed: {e}", exc_info=True)
+        log.error(f"{LogTag.SANDBOX} write tool failed: {e}", exc_info=True)
         return f"Error writing file: {e}"
 
     safe_emit(

@@ -4,6 +4,7 @@ import re
 
 import markdown2
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -24,7 +25,7 @@ def convert_markdown_to_html(markdown_text: str) -> str:
         )
         return html
     except Exception as e:
-        log.error(f"Error converting markdown to HTML: {e}")
+        log.error(f"{LogTag.TOOL} Error converting markdown to HTML: {e}")
         return markdown_text
 
 

@@ -23,6 +23,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
+from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.storage import JuiceFSUnavailable, write_session_file
 from shared.py.wide_events import log
@@ -72,10 +73,10 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         try:
             return await self._persist(result, request, reason)
         except JuiceFSUnavailable as e:
-            log.warning(f"Compaction skipped (workspace unavailable): {e}")
+            log.warning(f"{LogTag.AGENT} Compaction skipped (workspace unavailable): {e}")
             return result
         except Exception as e:
-            log.error(f"Compaction failed for {tool_name}: {e}")
+            log.error(f"{LogTag.AGENT} Compaction failed for {tool_name}: {e}")
             return result
 
     def _get_context_usage(self, request: ToolCallRequest) -> float:
@@ -161,7 +162,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         )
 
         log.info(
-            f"Compacted {tool_name} output ({len(content_str)} chars) to {sandbox_path} ({reason})"
+            f"{LogTag.AGENT} Compacted {tool_name} output ({len(content_str)} chars) to {sandbox_path} ({reason})"
         )
         return ToolMessage(
             content=body,

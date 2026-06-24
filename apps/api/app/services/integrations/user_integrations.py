@@ -9,6 +9,7 @@ from bson import ObjectId
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
@@ -64,7 +65,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
         try:
             parsed.append(UserIntegration(**doc))
         except Exception as e:
-            log.warning(f"Failed to parse user integration: {e}")
+            log.warning(f"{LogTag.INTEGRATION} Failed to parse user integration: {e}")
 
     ids = [ui.integration_id for ui in parsed]
 
@@ -186,17 +187,28 @@ async def invalidate_user_integration_caches(user_id: str) -> None:
     going through them (e.g. direct ``user_integrations_collection`` writes). Uses
     the SAME pattern list so no caller can bust a partial set and let one cache
     (e.g. OAUTH_STATUS) drift out of sync with the others.
+
+    Best-effort: this is called at connect/disconnect/publish boundaries where the
+    user-facing operation has already succeeded, so a Redis hiccup must NOT flip a
+    successful flow into an error. On failure the stale entry self-heals at its TTL
+    (≤ 1 day). gather(return_exceptions) so one failing pattern never skips the rest.
     """
-    # gather (not a sequential loop) so one failing delete doesn't skip the
-    # rest — every pattern is attempted. Mirrors the @CacheInvalidator decorator
-    # exactly, and still propagates the error (fail loud, never a partial silent
-    # success).
-    await asyncio.gather(
+    results = await asyncio.gather(
         *(
             delete_cache(pattern.format(user_id=user_id))
             for pattern in USER_INTEGRATION_CACHE_PATTERNS
-        )
+        ),
+        return_exceptions=True,
     )
+    for pattern, result in zip(USER_INTEGRATION_CACHE_PATTERNS, results):
+        if isinstance(result, Exception):
+            log.warning(
+                "user_integration_cache_invalidation_failed",
+                user_id=user_id,
+                cache_key=pattern.format(user_id=user_id),
+                error_type=type(result).__name__,
+                error=str(result),
+            )
 
 
 @CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)
@@ -236,7 +248,9 @@ async def add_user_integration(
     )
 
     await user_integrations_collection.insert_one(user_integration.model_dump())
-    log.info(f"User {user_id} added integration {integration_id} with status {status}")
+    log.info(
+        f"{LogTag.INTEGRATION} User {user_id} added integration {integration_id} with status {status}"
+    )
 
     return user_integration
 
@@ -253,7 +267,7 @@ async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     )
 
     if result.deleted_count > 0:
-        log.info(f"User {user_id} removed integration {integration_id}")
+        log.info(f"{LogTag.INTEGRATION} User {user_id} removed integration {integration_id}")
         return True
 
     return False

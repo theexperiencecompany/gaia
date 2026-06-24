@@ -24,8 +24,9 @@ from app.constants.cache import (
     USER_SKILLS_CACHE_KEY,
     USER_SKILLS_CACHE_TTL,
 )
+from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable, CacheInvalidator
-from shared.py.wide_events import log
+from shared.py.wide_events import SkillContext, log
 
 COLLECTION_NAME = "skills"
 
@@ -104,10 +105,7 @@ async def install_skill(
     """
     log.set(
         user_id=user_id,
-        skill_name=name,
-        skill_target=target,
-        skill_source=source.value,
-        skill_op="install_skill",
+        skill=SkillContext(operation="install", skill_name=name),
     )
     collection = _get_collection()
 
@@ -148,7 +146,7 @@ async def install_skill(
     await collection.insert_one(doc)
 
     log.info(
-        f"[skills] Installed '{name}' for user {user_id} (target={target}, source={source.value})"
+        f"{LogTag.SKILLS} Installed '{name}' for user {user_id} (target={target}, source={source.value})"
     )
     return skill
 
@@ -166,11 +164,13 @@ async def uninstall_skill(user_id: str, skill_id: str) -> bool:
     Returns:
         True if deleted, False if not found
     """
-    log.set(user_id=user_id, skill_id=skill_id, skill_op="uninstall_skill")
+    log.set(user_id=user_id, skill=SkillContext(operation="delete", skill_id=skill_id))
     collection = _get_collection()
     result = await collection.delete_one({"_id": skill_id, "user_id": user_id})
-    if result.deleted_count > 0:
-        log.info(f"[skills] Uninstalled skill {skill_id} for user {user_id}")
+    deleted = result.deleted_count > 0
+    log.set_ns("skill", success=deleted)
+    if deleted:
+        log.info(f"{LogTag.SKILLS} Uninstalled skill {skill_id} for user {user_id}")
         return True
     return False
 
@@ -240,7 +240,7 @@ async def get_skills_for_agent(user_id: str, agent_name: str) -> list[Skill]:
     Returns:
         List of enabled skills available to this agent
     """
-    log.set(user_id=user_id, agent_name=agent_name, skill_op="get_skills_for_agent")
+    log.set(user_id=user_id, agent_name=agent_name, skill=SkillContext(operation="get"))
     collection = _get_collection()
 
     query = {
@@ -254,7 +254,9 @@ async def get_skills_for_agent(user_id: str, agent_name: str) -> list[Skill]:
 
     cursor = collection.find(query).sort("installed_at", -1)
     docs = await cursor.to_list(length=500)
-    return [_doc_to_skill(doc) for doc in docs]
+    skills = [_doc_to_skill(doc) for doc in docs]
+    log.set_ns("skill", result_count=len(skills))
+    return skills
 
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
@@ -296,7 +298,7 @@ async def update_skill(user_id: str, skill_id: str, fields: dict[str, Any]) -> S
     Always stamps ``updated_at``. Scoped to ``{_id, user_id}`` so a user can only
     edit their own skills. Returns None if no matching skill exists.
     """
-    log.set(user_id=user_id, skill_id=skill_id, skill_op="update_skill")
+    log.set(user_id=user_id, skill=SkillContext(skill_id=skill_id))
     collection = _get_collection()
     updates = {**fields, "updated_at": datetime.now(UTC).isoformat()}
     doc = await collection.find_one_and_update(
@@ -304,7 +306,8 @@ async def update_skill(user_id: str, skill_id: str, fields: dict[str, Any]) -> S
         {"$set": updates},
         return_document=ReturnDocument.AFTER,
     )
+    log.set_ns("skill", success=doc is not None)
     if not doc:
         return None
-    log.info(f"[skills] Updated skill {skill_id} for user {user_id}")
+    log.info(f"{LogTag.SKILLS} Updated skill {skill_id} for user {user_id}")
     return _doc_to_skill(doc)

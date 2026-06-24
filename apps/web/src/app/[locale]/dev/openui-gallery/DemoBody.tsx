@@ -29,7 +29,6 @@ import {
   ScatterChartView,
   StatView,
   StepsView,
-  TableView,
   TabsBlockView,
   TagBlockView,
   TagView,
@@ -218,53 +217,6 @@ export default function DemoBody() {
               <RadioView label="Enterprise" value="enterprise" />
             </div>
           </div>
-        </Section>
-
-        <Section title="Table">
-          <TableView
-            title="Team roster"
-            cols={
-              [
-                {
-                  props: {
-                    header: "Name",
-                    values: [
-                      "Alice Chen",
-                      "Bob Kim",
-                      "Carol Davis",
-                      "Dave Park",
-                    ],
-                  },
-                },
-                {
-                  props: {
-                    header: "Role",
-                    values: [
-                      "Lead Engineer",
-                      "Designer",
-                      "Product Manager",
-                      "DevOps",
-                    ],
-                  },
-                },
-                {
-                  props: {
-                    header: "Status",
-                    values: ["active", "active", "inactive", "active"],
-                    type: "badge",
-                  },
-                },
-                {
-                  props: {
-                    header: "PRs merged",
-                    values: [42, 17, 3, 28],
-                    type: "number",
-                    align: "end",
-                  },
-                },
-              ] as Parameters<typeof TableView>[0]["cols"]
-            }
-          />
         </Section>
 
         {/* ---------------------------------------------------------------- */}

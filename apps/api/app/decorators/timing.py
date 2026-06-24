@@ -8,6 +8,7 @@ import functools
 import inspect
 import time
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -20,7 +21,7 @@ def async_timer(func: Callable) -> Callable:
         try:
             result = await func(*args, **kwargs)
             execution_time = time.time() - start_time
-            log.info(f"⏱️  {func.__name__} completed in {execution_time:.3f}s")
+            log.info(f"{LogTag.API} ⏱️  {func.__name__} completed in {execution_time:.3f}s")
             if execution_time > 1.0:
                 log.warning(
                     "slow function",
@@ -30,7 +31,7 @@ def async_timer(func: Callable) -> Callable:
             return result
         except Exception as e:
             execution_time = time.time() - start_time
-            log.error(f"⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
+            log.error(f"{LogTag.API} ⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
             raise
 
     return wrapper
@@ -45,7 +46,7 @@ def sync_timer(func: Callable) -> Callable:
         try:
             result = func(*args, **kwargs)
             execution_time = time.time() - start_time
-            log.info(f"⏱️  {func.__name__} completed in {execution_time:.3f}s")
+            log.info(f"{LogTag.API} ⏱️  {func.__name__} completed in {execution_time:.3f}s")
             if execution_time > 1.0:
                 log.warning(
                     "slow function",
@@ -55,7 +56,7 @@ def sync_timer(func: Callable) -> Callable:
             return result
         except Exception as e:
             execution_time = time.time() - start_time
-            log.error(f"⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
+            log.error(f"{LogTag.API} ⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
             raise
 
     return wrapper

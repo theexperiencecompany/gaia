@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import (
     index_public_integration,
     remove_public_integration,
@@ -16,6 +17,7 @@ from app.services.integrations.category_inference_service import (
     infer_integration_category,
 )
 from app.services.integrations.publish_validator import PublishIntegrationValidator
+from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from shared.py.wide_events import log
 
 
@@ -115,7 +117,9 @@ async def publish_custom_integration(
     )
 
     await delete_cache_by_pattern("marketplace:community:*")
-    log.info(f"Published integration {integration_id}")
+    # is_public / published_at feed the creator's MyIntegrationItem (tools:user:*:my).
+    await invalidate_user_integration_caches(user_id)
+    log.info(f"{LogTag.INTEGRATION} Published integration {integration_id}")
 
     return {
         "integration_id": integration_id,
@@ -156,6 +160,7 @@ async def unpublish_custom_integration(
 
     await remove_public_integration(integration_id)
     await delete_cache_by_pattern("marketplace:community:*")
-    log.info(f"Unpublished integration {integration_id}")
+    await invalidate_user_integration_caches(user_id)
+    log.info(f"{LogTag.INTEGRATION} Unpublished integration {integration_id}")
 
     return {"integration_id": integration_id}

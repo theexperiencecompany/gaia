@@ -14,6 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.webhook_models import ComposioWebhookEvent
 from app.services.triggers import get_handler_by_event
@@ -43,11 +44,13 @@ async def _process_webhook_event(handler: Any, event_data: ComposioWebhookEvent)
         )
     except TimeoutError:
         log.error(
-            f"Webhook background processing timed out after {_WEBHOOK_TASK_TIMEOUT}s "
+            f"{LogTag.COMPOSIO} Webhook background processing timed out after {_WEBHOOK_TASK_TIMEOUT}s "
             f"for {event_data.type}"
         )
     except Exception as e:
-        log.error(f"Webhook background processing failed for {event_data.type}: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Webhook background processing failed for {event_data.type}: {e}"
+        )
 
 
 @router.post("/webhook/composio")
@@ -66,7 +69,7 @@ async def webhook_composio(request: Request) -> dict[str, str]:
             f"webhook:composio:{webhook_id}", "1", nx=True, ex=3600
         )
         if already_processed:
-            log.info(f"Duplicate webhook ignored: {webhook_id}")
+            log.info(f"{LogTag.COMPOSIO} Duplicate webhook ignored: {webhook_id}")
             return {"status": "success", "message": "Duplicate webhook ignored"}
 
     body = await request.json()
@@ -90,7 +93,7 @@ async def webhook_composio(request: Request) -> dict[str, str]:
     # Find handler for this event type
     handler = get_handler_by_event(event_data.type)
     if not handler:
-        log.debug(f"Unhandled webhook type: {event_data.type}")
+        log.debug(f"{LogTag.COMPOSIO} Unhandled webhook type: {event_data.type}")
         return {"status": "success", "message": "Webhook received"}
 
     # Fire-and-forget: return 200 immediately, process in background

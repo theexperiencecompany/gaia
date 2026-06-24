@@ -13,6 +13,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # Import pyinstrument with fallback
@@ -23,9 +24,9 @@ try:
 
     Profiler = _Profiler
     PYINSTRUMENT_AVAILABLE = True
-    log.info("PyInstrument profiling available")
+    log.info(f"{LogTag.API} PyInstrument profiling available")
 except ImportError:
-    log.info("PyInstrument not available. Profiling will be disabled.")
+    log.info(f"{LogTag.API} PyInstrument not available. Profiling will be disabled.")
 
 
 class ProfilingMiddleware(BaseHTTPMiddleware):
@@ -54,15 +55,17 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
     def _log_startup_info(self):
         """Log profiling configuration at startup."""
         if not PYINSTRUMENT_AVAILABLE:
-            log.warning("PyInstrument profiling is not available (package not installed)")
+            log.warning(
+                f"{LogTag.API} PyInstrument profiling is not available (package not installed)"
+            )
             return
 
         if settings.ENABLE_PROFILING:
             log.info(
-                f"PyInstrument profiling enabled: sample_rate={settings.PROFILING_SAMPLE_RATE}"
+                f"{LogTag.API} PyInstrument profiling enabled: sample_rate={settings.PROFILING_SAMPLE_RATE}"
             )
         else:
-            log.info("PyInstrument profiling disabled (ENABLE_PROFILING=false)")
+            log.info(f"{LogTag.API} PyInstrument profiling disabled (ENABLE_PROFILING=false)")
 
     async def dispatch(self, request: Request, call_next) -> Response:
         # Check if profiling is available and enabled
@@ -101,17 +104,21 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
                 # Get text output for logging
                 text_output = profiler.output_text()
                 log.info(
-                    f"Profiling Results for {request.method} {request.url.path}:\n{text_output}"
+                    f"{LogTag.API} Profiling Results for {request.method} {request.url.path}:\n{text_output}"
                 )
             except Exception as profile_error:
                 log.warning(
-                    f"Could not generate profiling output for {request.method} {request.url.path}: {profile_error}"
+                    f"{LogTag.API} Could not generate profiling output for {request.method} {request.url.path}: {profile_error}"
                 )
-                log.info(f"Profiled {request.method} {request.url.path} (output generation failed)")
+                log.info(
+                    f"{LogTag.API} Profiled {request.method} {request.url.path} (output generation failed)"
+                )
             return response
 
         except Exception as e:
             profiler.stop()
-            log.exception(f"Profiling error during {request.method} {request.url.path}: {e!s}")
+            log.exception(
+                f"{LogTag.API} Profiling error during {request.method} {request.url.path}: {e!s}"
+            )
             # Always return the original response on error
             return await call_next(request)

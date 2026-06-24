@@ -20,11 +20,7 @@ export type IntegrationCategory =
   | "capabilities"
   | "other";
 
-export type IntegrationStatusValue =
-  | "connected"
-  | "not_connected"
-  | "created"
-  | "error";
+export type IntegrationStatusValue = "connected" | "not_connected" | "created";
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";
 
@@ -117,33 +113,9 @@ export interface CommunityIntegration {
 }
 
 /**
- * The platform integrations config endpoint returns one of these per
- * integration. Status is layered on at the API service level via
- * IntegrationsStatusResponse. Field names are backend-driven.
+ * Per-user connection status for one integration, derived from the personalized
+ * catalog. Consumed by web's `useIntegrations.getIntegrationStatus`.
  */
-export interface IntegrationsConfigEntry {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  provider?: string;
-  available?: boolean;
-  loginEndpoint?: string;
-  isSpecial?: boolean;
-  displayPriority?: number;
-  includedIntegrations?: string[];
-  isFeatured?: boolean;
-  managedBy?: string;
-  source?: string;
-  authType?: string;
-  iconUrl?: string;
-  slug?: string;
-}
-
-export interface IntegrationsConfigResponse {
-  integrations: IntegrationsConfigEntry[];
-}
-
 export interface IntegrationStatusRecord {
   integrationId: string;
   connected: boolean;
@@ -152,13 +124,54 @@ export interface IntegrationStatusRecord {
   metadata?: Record<string, unknown>;
 }
 
-export interface IntegrationsStatusResponse {
-  integrations: IntegrationStatusRecord[];
+/**
+ * One integration as it pertains to the current user: catalog metadata plus
+ * their connection `status`, without the heavy per-tool schemas (only
+ * `toolCount`). Backed by `GET /integrations/me`; mirrors the backend
+ * `MyIntegrationItem`. Fetch full tools on demand from
+ * `GET /integrations/{id}/tools` (`IntegrationToolsResponse`).
+ */
+export interface MyIntegrationItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  source: "platform" | "custom";
+  managedBy: IntegrationManagedBy;
+  status: "connected" | "created" | "not_connected";
+  requiresAuth: boolean;
+  authType?: IntegrationAuthType | null;
+  isFeatured: boolean;
+  displayPriority: number;
+  available: boolean;
+  iconUrl?: string | null;
+  slug?: string | null;
+  toolCount: number;
+  isPublic?: boolean | null;
+  createdBy?: string | null;
+  publishedAt?: string | null;
+  cloneCount: number;
+  creator?: IntegrationCreator | null;
 }
 
-export interface UserIntegrationsResponse {
-  integrations: UserIntegration[];
+/**
+ * The full integration catalog personalized for one user (platform + their own
+ * custom integrations), each carrying connection status. Replaces the
+ * client-side merge of /config + /status + /users/me/integrations.
+ */
+export interface MyIntegrationsResponse {
+  integrations: MyIntegrationItem[];
   total: number;
+}
+
+/**
+ * Full tool list for a single integration, fetched on demand from
+ * `GET /integrations/{id}/tools`. Mirrors the backend `IntegrationToolsResponse`.
+ */
+export interface IntegrationToolsResponse {
+  integrationId: string;
+  tools: IntegrationTool[];
+  count: number;
 }
 
 export interface CommunityIntegrationsResponse {

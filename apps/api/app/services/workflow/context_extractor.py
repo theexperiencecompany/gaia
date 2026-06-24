@@ -12,6 +12,7 @@ from typing import Any
 
 from app.agents.core.subagents.registry import get_subagent_by_id, resolve_subagent_id
 from app.config.oauth_config import get_toolkit_to_integration_map
+from app.constants.log_tags import LogTag
 from app.utils.agent_utils import parse_subagent_id
 from shared.py.wide_events import log
 
@@ -74,13 +75,13 @@ class WorkflowContextExtractor:
         try:
             messages = await cls._fetch_messages(thread_id)
             if not messages:
-                log.warning(f"No messages found for thread {thread_id}")
+                log.warning(f"{LogTag.WORKFLOW} No messages found for thread {thread_id}")
                 return None
 
             return cls._build_context(messages, max_output_chars)
 
         except Exception as e:
-            log.error(f"Error extracting from thread {thread_id}: {e}")
+            log.error(f"{LogTag.WORKFLOW} Error extracting from thread {thread_id}: {e}")
             return None
 
     @classmethod

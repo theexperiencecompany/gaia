@@ -6,6 +6,7 @@ from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
 from app.constants.error_codes import NOT_AUTHENTICATED
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
 from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
 from shared.py.wide_events import log
@@ -21,12 +22,12 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
             {"$set": {"timezone": tz, "updated_at": datetime.now(UTC)}},
         )
         log.info(
-            "Backfilled user.timezone from x-timezone header",
+            f"{LogTag.OAUTH} Backfilled user.timezone from x-timezone header",
             user_id=user_id,
             timezone=tz,
         )
     except Exception as e:
-        log.warning(f"Failed to backfill user.timezone for {user_id}: {e}")
+        log.warning(f"{LogTag.OAUTH} Failed to backfill user.timezone for {user_id}: {e}")
 
 
 async def get_current_user(request: Request):
@@ -44,7 +45,7 @@ async def get_current_user(request: Request):
         HTTPException: On authentication failure
     """
     if not hasattr(request.state, "authenticated") or not request.state.authenticated:
-        log.info("No authenticated user found in request state")
+        log.info(f"{LogTag.OAUTH} No authenticated user found in request state")
         raise HTTPException(
             status_code=401,
             detail={
@@ -53,7 +54,7 @@ async def get_current_user(request: Request):
             },
         )
     if not request.state.user:
-        log.error("User marked as authenticated but no user data found")
+        log.error(f"{LogTag.OAUTH} User marked as authenticated but no user data found")
         raise HTTPException(
             status_code=401,
             detail={
@@ -116,7 +117,7 @@ async def get_current_user_ws(websocket: WebSocket):
             wos_session = protocol_header[8:]  # Extract token after "Bearer, "
 
     if not wos_session:
-        log.info("No session cookie or protocol token in WebSocket request")
+        log.info(f"{LogTag.OAUTH} No session cookie or protocol token in WebSocket request")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
 
@@ -124,7 +125,7 @@ async def get_current_user_ws(websocket: WebSocket):
     user_info, _ = await authenticate_workos_session(session_token=wos_session)
 
     if not user_info:
-        log.warning("WebSocket authentication failed")
+        log.warning(f"{LogTag.OAUTH} WebSocket authentication failed")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
 
@@ -146,7 +147,7 @@ def get_user_timezone(
     """
     tz = Timezone.parse(x_timezone)
     now = tz.now()
-    log.debug(f"User timezone: {tz.value}, Current time: {now}")
+    log.debug(f"{LogTag.OAUTH} User timezone: {tz.value}, Current time: {now}")
     return tz.value, now
 
 
@@ -179,7 +180,7 @@ async def get_user_timezone_from_preferences(
 
         if resolved.source is TimezoneSource.X_TIMEZONE_HEADER:
             log.warning(
-                "Healing user.timezone from x-timezone header",
+                f"{LogTag.OAUTH} Healing user.timezone from x-timezone header",
                 user_id=user_id,
                 stored_timezone=(user.get("timezone") or "").strip() or None,
                 header_timezone=resolved.timezone.value,
@@ -189,7 +190,7 @@ async def get_user_timezone_from_preferences(
             and not (user.get("timezone") or "").strip()
         ):
             log.warning(
-                "user.timezone missing and no valid x-timezone header; falling back to UTC",
+                f"{LogTag.OAUTH} user.timezone missing and no valid x-timezone header; falling back to UTC",
                 user_id=user_id,
                 header_value=(x_timezone or "").strip() or None,
             )
@@ -202,6 +203,6 @@ async def get_user_timezone_from_preferences(
         return resolved.timezone.value
 
     except Exception as e:
-        log.warning(f"Error resolving user timezone: {e}", user_id=user_id)
+        log.warning(f"{LogTag.OAUTH} Error resolving user timezone: {e}", user_id=user_id)
         log.set(timezone_source=TimezoneSource.FALLBACK_UTC.value, user_timezone="UTC")
         return "UTC"

@@ -36,6 +36,7 @@ from app.agents.prompts.todo_prompts import (
     TODO_SYSTEM_PROMPT,
     UPDATE_TASKS_DESCRIPTION,
 )
+from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
@@ -69,21 +70,25 @@ class TaskUpdate(TypedDict, total=False):
     status: Literal["in_progress", "completed", "cancelled"] | None  # required when updating
 
 
-def _emit_todo_progress(todos: list[Todo], source: str) -> None:
-    """Emit a todo_progress event via LangGraph stream_writer."""
-    payload = {
-        "todo_progress": {
-            "todos": [
-                {"id": t["id"], "content": t["content"], "status": t["status"]} for t in todos
-            ],
-            "source": source,
-        }
+def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None = None) -> None:
+    """Emit a todo_progress event via LangGraph stream_writer.
+
+    `source` is the stable grouping key (e.g. a custom MCP integration id);
+    `source_label` is its human-readable name, included so the frontend can
+    show the integration's name instead of reverse-mapping the id.
+    """
+    snapshot: dict[str, Any] = {
+        "todos": [{"id": t["id"], "content": t["content"], "status": t["status"]} for t in todos],
+        "source": source,
     }
+    if source_label:
+        snapshot["integration_name"] = source_label
+    payload = {"todo_progress": snapshot}
     try:
         writer = get_stream_writer()
         writer(payload)
     except Exception as e:
-        log.warning(f"Stream writer not available for todo_progress: {e}")
+        log.warning(f"{LogTag.TOOL} Stream writer not available for todo_progress: {e}")
 
 
 def _format_todos(todos: list[Todo]) -> str:
@@ -104,7 +109,7 @@ def _format_todos(todos: list[Todo]) -> str:
     return "\n".join(lines)
 
 
-def create_todo_tools(source: str = "executor") -> list[BaseTool]:
+def create_todo_tools(source: str = "executor", source_label: str | None = None) -> list[BaseTool]:
     """Create plan_tasks and update_tasks tools with `source` baked in.
 
     Each tool reads current todos via InjectedState("todos"), mutates,
@@ -112,6 +117,9 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
 
     Args:
         source: Identifier for todo_progress events (e.g. "executor", "gmail")
+        source_label: Human-readable name for the source (e.g. a custom MCP
+            integration's display name). Streamed so the frontend shows the
+            name instead of the raw id.
 
     Returns:
         List of two BaseTool instances
@@ -141,7 +149,7 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
                 )
             )
 
-        _emit_todo_progress(new_todos, source)
+        _emit_todo_progress(new_todos, source, source_label)
 
         first_task = new_todos[0]["content"] if new_todos else "none"
         return Command(
@@ -198,7 +206,7 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
             summary_parts.append(f"added: {', '.join(added)}")
 
         summary = "; ".join(summary_parts) if summary_parts else "no changes"
-        _emit_todo_progress(updated_todos, source)
+        _emit_todo_progress(updated_todos, source, source_label)
 
         return Command(
             update={

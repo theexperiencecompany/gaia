@@ -13,6 +13,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.api.v1.middleware.rate_limiter import limiter
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
 from app.decorators import tiered_rate_limit
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
@@ -99,7 +100,7 @@ async def create_workflow(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        log.error(f"Error creating workflow: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error creating workflow: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create workflow",
@@ -125,7 +126,7 @@ async def list_workflows(request: Request, user: dict = Depends(get_current_user
         return WorkflowListResponse(workflows=workflows)
 
     except Exception as e:
-        log.error(f"Error listing workflows for user {user['user_id']}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error listing workflows for user {user['user_id']}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list workflows",
@@ -160,7 +161,7 @@ async def execute_workflow(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        log.error(f"Error executing workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error executing workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute workflow",
@@ -201,7 +202,7 @@ async def get_workflow_executions(
         )
         return result
     except Exception as e:
-        log.error(f"Error getting executions for workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error getting executions for workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow executions",
@@ -231,7 +232,7 @@ async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
-        log.error(f"Error getting workflow status {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error getting workflow status {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow status",
@@ -272,7 +273,7 @@ async def activate_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error activating workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error activating workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to activate workflow",
@@ -307,7 +308,7 @@ async def deactivate_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error deactivating workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error deactivating workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to deactivate workflow",
@@ -346,7 +347,7 @@ async def regenerate_workflow_steps(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        log.error(f"Error regenerating workflow steps: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error regenerating workflow steps: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to regenerate workflow steps",
@@ -405,7 +406,7 @@ async def create_workflow_from_todo(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error creating workflow from todo: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error creating workflow from todo: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create workflow from todo",
@@ -469,7 +470,7 @@ async def publish_workflow(
             )
 
         log.set(outcome="success")
-        log.info(f"Published workflow {workflow_id} by user {user['user_id']}")
+        log.info(f"{LogTag.WORKFLOW} Published workflow {workflow_id} by user {user['user_id']}")
 
         return PublishWorkflowResponse(
             message="Workflow published successfully",
@@ -480,7 +481,7 @@ async def publish_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error publishing workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error publishing workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to publish workflow",
@@ -519,14 +520,14 @@ async def unpublish_workflow(
         )
 
         log.set(outcome="success")
-        log.info(f"Unpublished workflow {workflow_id} by user {user['user_id']}")
+        log.info(f"{LogTag.WORKFLOW} Unpublished workflow {workflow_id} by user {user['user_id']}")
 
         return {"message": "Workflow unpublished successfully"}
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error unpublishing workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error unpublishing workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to unpublish workflow",
@@ -545,7 +546,7 @@ async def get_explore_workflows(
     try:
         return await WorkflowService.get_explore_workflows(limit=limit, offset=offset)
     except Exception as e:
-        log.error(f"Error fetching explore workflows: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error fetching explore workflows: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch explore workflows",
@@ -566,7 +567,7 @@ async def get_public_workflows(
             limit=limit, offset=offset, user_id=None
         )
     except Exception as e:
-        log.error(f"Error fetching public workflows: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error fetching public workflows: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch public workflows",
@@ -598,7 +599,9 @@ async def get_public_workflow(request: Request, workflow_ref: str):
             break
 
         if not workflow_doc:
-            log.info(f"get_public_workflow: no public workflow for ref={workflow_ref}")
+            log.info(
+                f"{LogTag.WORKFLOW} get_public_workflow: no public workflow for ref={workflow_ref}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Public workflow not found",
@@ -626,7 +629,7 @@ async def get_public_workflow(request: Request, workflow_ref: str):
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error getting public workflow {workflow_ref}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error getting public workflow {workflow_ref}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
@@ -654,7 +657,7 @@ async def generate_workflow_prompt_endpoint(
         log.set(outcome="success")
         return GenerateWorkflowPromptResponse(**result)
     except Exception as e:
-        log.error(f"Error generating workflow prompt: {e}")
+        log.error(f"{LogTag.WORKFLOW} Error generating workflow prompt: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate workflow prompt",
@@ -693,7 +696,7 @@ async def get_workflow(request: Request, workflow_id: str, user: dict = Depends(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error getting workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error getting workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
@@ -735,7 +738,7 @@ async def update_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error updating workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error updating workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update workflow",
@@ -773,7 +776,7 @@ async def reset_workflow_to_default(workflow_id: str, user: dict = Depends(get_c
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error resetting workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error resetting workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to reset workflow",
@@ -802,7 +805,7 @@ async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_use
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error deleting workflow {workflow_id}: {e!s}")
+        log.error(f"{LogTag.WORKFLOW} Error deleting workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete workflow",

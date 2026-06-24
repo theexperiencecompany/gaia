@@ -4,6 +4,7 @@ from typing import Any
 
 from composio import Composio
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from shared.py.wide_events import log
@@ -48,7 +49,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 "email": me.get("mail") or me.get("userPrincipalName"),
             }
         except Exception as e:
-            log.debug(f"Teams /me fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Teams /me fetch failed: {e}")
 
         teams: list[dict[str, Any]] = []
         try:
@@ -71,7 +72,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 for t in data.get("value", [])
             ]
         except Exception as e:
-            log.debug(f"Teams joinedTeams fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Teams joinedTeams fetch failed: {e}")
 
         chats: list[dict[str, Any]] = []
         unread_count = 0
@@ -111,7 +112,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 for c in raw_chats
             ]
         except Exception as e:
-            log.debug(f"Teams chats fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Teams chats fetch failed: {e}")
 
         return {
             "user": user_info,

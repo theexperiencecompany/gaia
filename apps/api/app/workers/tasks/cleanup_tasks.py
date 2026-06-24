@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import OnboardingPhase
 from app.services.onboarding.intelligence_job import (
@@ -51,7 +52,7 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                 try:
                     if await is_intelligence_job_live(user_id):
                         log.info(
-                            "[cleanup] skipping live pipeline",
+                            f"{LogTag.WORKER} skipping live pipeline",
                             user_id=user_id,
                             last_update=str(updated_at),
                         )
@@ -61,7 +62,7 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                     job_id = await enqueue_intelligence_job(user_id)
                     if job_id:
                         log.info(
-                            "[cleanup] re-queued stuck user",
+                            f"{LogTag.WORKER} re-queued stuck user",
                             user_id=user_id,
                             last_update=str(updated_at),
                             job_id=job_id,
@@ -69,14 +70,14 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                         queued_count += 1
                     else:
                         log.warning(
-                            "[cleanup] enqueue returned no job",
+                            f"{LogTag.WORKER} enqueue returned no job",
                             user_id=user_id,
                         )
                         error_count += 1
 
                 except Exception as e:
                     log.exception(
-                        f"[cleanup] error re-queueing user {user_id}: {e}",
+                        f"{LogTag.WORKER} error re-queueing user {user_id}: {e}",
                     )
                     error_count += 1
 
@@ -93,5 +94,5 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
 
         except Exception as e:
             error_msg = f"Error in cleanup_stuck_personalization: {e}"
-            log.exception(error_msg)
+            log.exception(f"{LogTag.WORKER} {error_msg}")
             return error_msg

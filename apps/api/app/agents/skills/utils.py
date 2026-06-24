@@ -11,6 +11,7 @@ This module provides utility functions for:
 import os
 from urllib.parse import urlparse
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 GITHUB_API_BASE = "https://api.github.com"
@@ -153,6 +154,6 @@ def check_tree_truncated(tree_data: dict, owner: str, repo: str) -> None:
     """
     if tree_data.get("truncated"):
         log.warning(
-            f"[skills] Repository {owner}/{repo} tree is truncated. "
+            f"{LogTag.SKILLS} Repository {owner}/{repo} tree is truncated. "
             "Some skills may not be discovered."
         )

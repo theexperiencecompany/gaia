@@ -8,6 +8,7 @@ This module provides helper functions for Linear GraphQL API interactions:
 from difflib import SequenceMatcher
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.services.composio.proxy_client import proxy_request_sync
 from shared.py.wide_events import log
 
@@ -54,7 +55,9 @@ def graphql_request(
 
     if isinstance(result, dict) and "errors" in result:
         error_messages = [e.get("message", str(e)) for e in result["errors"]]
-        log.error(f"GraphQL Errors: {error_messages} Query: {query} Variables: {variables}")
+        log.error(
+            f"{LogTag.INTEGRATION} GraphQL Errors: {error_messages} Query: {query} Variables: {variables}"
+        )
         raise Exception(f"GraphQL errors: {'; '.join(error_messages)}")
 
     return result.get("data", {}) if isinstance(result, dict) else {}

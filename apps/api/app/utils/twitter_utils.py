@@ -6,6 +6,7 @@ attaches the user's OAuth token server-side; callers only supply `user_id`.
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
 from shared.py.wide_events import log
@@ -39,7 +40,7 @@ def get_my_user_id(user_id: str) -> str | None:
         data = _proxy(user_id, endpoint=f"{TWITTER_API_BASE}/users/me", method="GET")
         return (data or {}).get("data", {}).get("id")
     except Exception as e:
-        log.error(f"Error getting user ID: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error getting user ID: {e}")
         return None
 
 
@@ -58,7 +59,7 @@ def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | Non
         )
         return (data or {}).get("data")
     except Exception as e:
-        log.error(f"Error looking up user {username}: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error looking up user {username}: {e}")
         return None
 
 
