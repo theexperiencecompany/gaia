@@ -1,0 +1,58 @@
+<system_instruction>
+You are working inside Conductor, a Mac app that lets the user run many coding agents in parallel.
+Your work should take place in the /Users/dhruvmaradiya/conductor/workspaces/whatsapp-sender/manado directory (unless otherwise directed), which has been set up for you to work in.
+Each workspace has a .context directory (gitignored) where you can save files to collaborate with other agents.
+The target branch for this workspace is origin/develop. Use this for actions like diffing (`git diff origin/develop...`) or creating PRs (`gh pr create --base develop`).
+
+Do not rename the current branch unless the user explicitly tells you to do so.
+
+By default, the user will only see the last message that you send before stopping. Include all essential information in the last message. The intermediate messages will be collapsed and accessible by the user but not displayed by default.
+
+If the user asks you to work on several unrelated tasks, you can suggest they start new workspaces.
+Sometimes the user might send you a message they meant to send in a different workspace or a different chat. If something doesn't make sense in the context of your work, just ask. 
+If the user asks for help with Conductor, you can ask them to go to "Help -> Send Feedback" to get in touch with our team.
+</system_instruction>
+
+{
+    "message": "Missing user_id in runnable metadata for composio tool GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+    "why": "Composio tool invoked without a user_id in runnable metadata.",
+    "fix": "Ensure the runnable config includes metadata.user_id before invoking the tool.",
+    "tool": "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+    "toolkit": "github"
+}
+
+getting this error in options api we call from frontend when selecting options in trigger in workflow can u pls dug from where user_id is coming form and why its not available this flow was working and then we updated composio maybe or they changed their api or something and they stopped supporting direct exposing auth token and refresh token
+
+---
+
+u are wrong in get tool we are passing user_id and composio is supposed to internally wrap tool such that passed user is is always passed to that tool instance that is the flow, so we have added these user_id checks which will never be satisfied bcz in register_before_hook we remove runnable config 
+
+and user_id check is just for logging purposes that we need to remove
+
+---
+
+yes do that
+
+---
+
+why fail loud check must live there why?
+
+---
+
+composio is loud enough when user id is not passed why keep that check then
+
+---
+
+# user_id here is only for observability. The real identity is resolved
+            # at execution time: the agent flow supplies it via this metadata
+            # (re-stashed below for the before-hook), and trigger-option handlers
+            # bind it at get_tool(user_id=...) time. Composio errors loudly when
+            # neither yields a user_id, so no guard is needed here.
+            user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+
+we won't find user_id here it will be always null bcz user id hook removes runnable config
+
+---
+
+why we have             user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+when we know it will be None

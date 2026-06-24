@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "e73de78b5adf",
+  "strategy": "manual-commit",
+  "branch": "composio-missing-user-id-metadata",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "apps/api/app/services/composio/langchain_composio_service.py",
+    "apps/api/app/utils/composio_hooks/user_id_hooks.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e7/3de78b5adf/0/metadata.json",
+      "transcript": "/e7/3de78b5adf/0/full.jsonl",
+      "content_hash": "/e7/3de78b5adf/0/content_hash.txt",
+      "prompt": "/e7/3de78b5adf/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18812,
+    "cache_creation_tokens": 150058,
+    "cache_read_tokens": 7372345,
+    "output_tokens": 71108,
+    "api_call_count": 66
+  }
+}

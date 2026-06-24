@@ -1,0 +1,83 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "e73de78b5adf",
+  "session_id": "ae6d2cf6-d171-44d5-b9d3-4e637aae84d6",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-24T23:01:44.859137Z",
+  "branch": "composio-missing-user-id-metadata",
+  "checkpoints_count": 7,
+  "save_step_count": 5,
+  "files_touched": [
+    "apps/api/app/services/composio/langchain_composio_service.py",
+    "apps/api/app/utils/composio_hooks/user_id_hooks.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "cd26d3aed955",
+  "token_usage": {
+    "input_tokens": 18812,
+    "cache_creation_tokens": 150058,
+    "cache_read_tokens": 7372345,
+    "output_tokens": 71108,
+    "api_call_count": 66
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-24T23:01:44.835846Z",
+    "agent_lines": 11,
+    "agent_removed": 21,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 11,
+    "total_lines_changed": 32,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 21,
+      "agent_lines_removed": 13
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 21,
+      "agent_lines_removed": 13
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 10,
+      "agent_lines_removed": 21
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 11,
+      "agent_lines_removed": 21
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 11,
+      "agent_lines_removed": 21
+    }
+  ]
+}
