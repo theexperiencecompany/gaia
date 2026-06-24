@@ -76,7 +76,7 @@ async def test_exa_parses_results_and_drops_urlless() -> None:
     assert item.url == "https://example.com/a"
     assert item.title == "Result A"
     assert item.content == "Body of A"
-    assert item.score == 0.91
+    assert item.score == pytest.approx(0.91)
     assert item.published_date == "2026-01-02"
 
 
@@ -100,9 +100,9 @@ async def test_brave_parses_nested_web_results() -> None:
 async def test_searxng_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "app.utils.search.providers.searxng.settings.SEARXNG_BASE_URL",
-        "http://searxng:8080",
+        "https://searxng.internal",
     )
-    respx.get("http://searxng:8080/search").mock(
+    respx.get("https://searxng.internal/search").mock(
         return_value=httpx.Response(200, json=_SEARXNG_PAYLOAD)
     )
 
@@ -113,7 +113,7 @@ async def test_searxng_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
     item = response.results[0]
     assert item.url == "https://example.com/c"
     assert item.content == "Snippet C"
-    assert item.score == 1.4
+    assert item.score == pytest.approx(1.4)
 
 
 @respx.mock
