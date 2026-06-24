@@ -1,0 +1,15 @@
+# SearXNG settings for the self-hosted search fallback.
+# Only the overrides we need; everything else inherits the upstream defaults.
+# `secret_key` is the upstream placeholder — the real value is injected at
+# runtime from $SEARXNG_SECRET (prod: a Swarm secret; dev: an env var), so no
+# secret is committed here.
+use_default_settings: true
+server:
+  secret_key: "ultrasecretkey"
+  limiter: false
+  image_proxy: true
+search:
+  # JSON is required for programmatic access from the search provider.
+  formats:
+    - html
+    - json
