@@ -6,7 +6,7 @@ import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { Switch } from "@heroui/switch";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { InformationCircleIcon } from "@icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -132,29 +132,6 @@ export default function WorkflowModal({
 
   const { integrations, connectIntegration } = useIntegrations();
   const [isConnecting, setIsConnecting] = useState(false);
-  const missingIntegration = (() => {
-    if (!currentWorkflow) return null;
-    if (currentWorkflow.trigger_config.type !== "integration") return null;
-    const display = getTriggerDisplayInfo(
-      currentWorkflow,
-      integrations,
-      triggerSchemas,
-    );
-    if (!display.integration) return null;
-    if (display.integration.status === "connected") return null;
-    return display.integration;
-  })();
-  const handleConnectMissingIntegration = useCallback(async () => {
-    if (!missingIntegration || isConnecting) return;
-    setIsConnecting(true);
-    try {
-      await connectIntegration(missingIntegration.id);
-    } catch (err) {
-      console.error("Failed to connect integration", err);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [missingIntegration, isConnecting, connectIntegration]);
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -200,6 +177,34 @@ export default function WorkflowModal({
   // Watch form data for change detection
   const formData = watch();
 
+  // The integration backing the currently-selected event trigger, if it still
+  // needs connecting. Derived from the live form (not currentWorkflow) so it
+  // also covers create mode, where currentWorkflow is null. Drives both the
+  // inline banner and the save guard below.
+  const missingIntegration = useMemo(() => {
+    const triggerConfig = formData.trigger_config;
+    if (!triggerConfig || triggerConfig.type !== "integration") return null;
+    const integration = getTriggerDisplayInfo(
+      { trigger_config: triggerConfig } as Workflow,
+      integrations,
+      triggerSchemas,
+    ).integration;
+    if (!integration || integration.status === "connected") return null;
+    return integration;
+  }, [formData.trigger_config, integrations, triggerSchemas]);
+
+  const handleConnectMissingIntegration = useCallback(async () => {
+    if (!missingIntegration || isConnecting) return;
+    setIsConnecting(true);
+    try {
+      await connectIntegration(missingIntegration.id);
+    } catch (err) {
+      console.error("Failed to connect integration", err);
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [missingIntegration, isConnecting, connectIntegration]);
+
   // Platform detection for keyboard shortcuts
   const { modifierKeyName } = usePlatform();
 
@@ -231,6 +236,11 @@ export default function WorkflowModal({
       return true;
     }
 
+    if (missingIntegration) {
+      // Don't create/save a workflow whose trigger integration isn't connected
+      return true;
+    }
+
     if (mode === "edit" && !hasFormChanges()) {
       // Edit mode requires changes
       return true;
@@ -242,7 +252,7 @@ export default function WorkflowModal({
     }
 
     return false;
-  }, [formData, mode, isCreating, existingWorkflow]);
+  }, [formData, mode, isCreating, existingWorkflow, missingIntegration]);
 
   // Keyboard shortcut: Escape to close modal
   useHotkeys(
@@ -854,11 +864,10 @@ export default function WorkflowModal({
                         {missingIntegration && (
                           <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
                             <span>
-                              This workflow is paused because{" "}
                               <span className="font-medium">
                                 {missingIntegration.name}
                               </span>{" "}
-                              isn't connected.
+                              isn't connected — connect it to use this trigger.
                             </span>
                             <Button
                               color="primary"
