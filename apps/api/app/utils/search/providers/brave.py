@@ -15,13 +15,17 @@ _MAX_COUNT = 20
 
 
 class BraveProvider(SearchProvider):
+    """Brave Search API — booster on Brave's own index ($5 credit/mo)."""
+
     name = "brave"
     monthly_free_limit = 1_000
 
     def is_configured(self) -> bool:
+        """True when a Brave API key is configured."""
         return bool(settings.BRAVE_API_KEY)
 
     async def search(self, query: str, count: int) -> SearchResponse:
+        """Query Brave and map results to the shared search shape."""
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.get(
                 _ENDPOINT,

@@ -46,7 +46,7 @@ _NON_CONTENT_TAGS = ["script", "style", "nav", "footer", "aside", "iframe", "nos
 
 
 def _resolve_addresses(host: str, port: int) -> list[str]:
-    return [info[4][0] for info in socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)]
+    return [str(info[4][0]) for info in socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)]
 
 
 def _elapsed_ms(start: float) -> float:
@@ -99,18 +99,23 @@ class WebpageFetcher(ABC):
 
 
 class Crawl4aiFetcher(WebpageFetcher):
+    """Headless-Chromium fetcher (primary; free, renders JS)."""
+
     name = "crawl4ai"
 
     def is_configured(self) -> bool:
+        """Always available — no external credentials required."""
         return True
 
     async def fetch(self, url: str) -> str:
+        """Render the page with crawl4ai and return its markdown."""
         contents, errors = await batch_fetch_with_crawl4ai(
             [url],
             page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
             total_timeout_seconds=CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
             semaphore_count=1,
             context_name="webpage_fetch",
+            thorough=True,
         )
         content = contents.get(url, "")
         if content.strip():
@@ -119,12 +124,15 @@ class Crawl4aiFetcher(WebpageFetcher):
 
 
 class FirecrawlFetcher(WebpageFetcher):
+    """Managed scraper fallback (free credits; good against bot-walls)."""
+
     name = "firecrawl"
 
     def __init__(self) -> None:
         self._client: FirecrawlApp | None = None
 
     def is_configured(self) -> bool:
+        """True when a Firecrawl API key is configured."""
         return bool(settings.FIRECRAWL_API_KEY)
 
     def _get_client(self) -> FirecrawlApp:
@@ -133,6 +141,7 @@ class FirecrawlFetcher(WebpageFetcher):
         return self._client
 
     async def fetch(self, url: str) -> str:
+        """Scrape the page via Firecrawl, retrying once through the stealth proxy."""
         client = self._get_client()
         try:
             document = await asyncio.to_thread(client.scrape, url, formats=["markdown"])
@@ -150,12 +159,16 @@ class FirecrawlFetcher(WebpageFetcher):
 
 
 class HttpxFetcher(WebpageFetcher):
+    """Keyless last-resort fetcher (httpx + BeautifulSoup + html2text)."""
+
     name = "httpx"
 
     def is_configured(self) -> bool:
+        """Always available — pure-Python, no external service."""
         return True
 
     async def fetch(self, url: str) -> str:
+        """Fetch the page over HTTP and convert its main content to markdown."""
         async with httpx.AsyncClient(
             timeout=_HTTPX_TIMEOUT, follow_redirects=True, headers=_BROWSER_HEADERS
         ) as client:

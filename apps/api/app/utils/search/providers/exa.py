@@ -12,13 +12,17 @@ _MAX_TEXT_CHARS = 2000
 
 
 class ExaProvider(SearchProvider):
+    """Exa neural search — primary free workhorse (20k req/mo)."""
+
     name = "exa"
     monthly_free_limit = 20_000
 
     def is_configured(self) -> bool:
+        """True when an Exa API key is configured."""
         return bool(settings.EXA_API_KEY)
 
     async def search(self, query: str, count: int) -> SearchResponse:
+        """Query Exa and map results to the shared search shape."""
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.post(
                 _ENDPOINT,

@@ -20,13 +20,17 @@ _HEADERS = {
 
 
 class DuckDuckGoProvider(SearchProvider):
+    """DuckDuckGo Lite scrape — keyless, always-available fallback."""
+
     name = "duckduckgo"
     monthly_free_limit = None
 
     def is_configured(self) -> bool:
+        """Always available — no credentials required."""
         return True
 
     async def search(self, query: str, count: int) -> SearchResponse:
+        """Scrape DuckDuckGo Lite and map results to the shared shape."""
         async with httpx.AsyncClient(
             timeout=_TIMEOUT, follow_redirects=True, headers=_HEADERS
         ) as client:

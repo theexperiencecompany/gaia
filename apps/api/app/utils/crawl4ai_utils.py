@@ -2,6 +2,7 @@ import asyncio
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
@@ -43,6 +44,36 @@ def _build_markdown_generator(content_query: str | None = None) -> DefaultMarkdo
             "escape_html": False,
         },
     )
+
+
+def _build_run_config(
+    *,
+    page_timeout_ms: int,
+    semaphore_count: int,
+    content_query: str | None,
+    thorough: bool,
+) -> CrawlerRunConfig:
+    """Build a crawl run config.
+
+    ``thorough`` (single-page fetch) scrolls the whole page, lets late JS and
+    animations settle, and enables ``magic`` (overlay handling + light stealth)
+    so lazy-loaded / scroll-revealed content is captured. It is several times
+    slower, so batch crawls (deep research) leave it off. ``networkidle`` is
+    deliberately not used — it hangs on SPAs that hold persistent connections.
+    """
+    kwargs: dict[str, Any] = {
+        "page_timeout": page_timeout_ms,
+        "wait_until": CRAWL4AI_WAIT_UNTIL,
+        "semaphore_count": semaphore_count,
+        "markdown_generator": _build_markdown_generator(content_query),
+        "excluded_tags": _EXCLUDED_TAGS,
+        "word_count_threshold": 10,
+        "remove_overlay_elements": True,
+        "verbose": False,
+    }
+    if thorough:
+        kwargs.update(scan_full_page=True, magic=True, delay_before_return_html=1.0)
+    return CrawlerRunConfig(**kwargs)
 
 
 # Shared semaphore binding for the process-wide browser concurrency cap. The
@@ -226,19 +257,16 @@ async def _recover_with_single_url_crawls(
     context_name: str,
     max_content_chars: int | None,
     content_query: str | None = None,
+    thorough: bool = False,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Best-effort recovery path after batch timeout to avoid all-or-nothing failures."""
     recovery_timeout = max(10.0, min(total_timeout_seconds, page_timeout_ms / 1000 + 10.0))
 
-    run_config = CrawlerRunConfig(
-        page_timeout=page_timeout_ms,
-        wait_until=CRAWL4AI_WAIT_UNTIL,
+    run_config = _build_run_config(
+        page_timeout_ms=page_timeout_ms,
         semaphore_count=1,
-        markdown_generator=_build_markdown_generator(content_query),
-        excluded_tags=_EXCLUDED_TAGS,
-        word_count_threshold=10,
-        remove_overlay_elements=True,
-        verbose=False,
+        content_query=content_query,
+        thorough=thorough,
     )
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
 
@@ -297,24 +325,23 @@ async def batch_fetch_with_crawl4ai(
     max_content_chars: int | None = None,
     context_name: str = "crawl4ai",
     content_query: str | None = None,
+    thorough: bool = False,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Fetch multiple URLs with a single crawl4ai crawler via arun_many.
 
     Pass ``content_query`` to rank each page's content by relevance to a topic
-    (BM25) instead of generic boilerplate pruning — used by deep research.
+    (BM25) instead of returning the full raw markdown — used by deep research.
+    Pass ``thorough`` to scroll + settle + handle overlays for richer single-page
+    captures (see ``_build_run_config``).
     """
     if not urls:
         return {}, {}
 
-    run_config = CrawlerRunConfig(
-        page_timeout=page_timeout_ms,
-        wait_until=CRAWL4AI_WAIT_UNTIL,
+    run_config = _build_run_config(
+        page_timeout_ms=page_timeout_ms,
         semaphore_count=semaphore_count,
-        markdown_generator=_build_markdown_generator(content_query),
-        excluded_tags=_EXCLUDED_TAGS,
-        word_count_threshold=10,
-        remove_overlay_elements=True,
-        verbose=False,
+        content_query=content_query,
+        thorough=thorough,
     )
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
 
@@ -339,6 +366,7 @@ async def batch_fetch_with_crawl4ai(
             context_name=context_name,
             max_content_chars=max_content_chars,
             content_query=content_query,
+            thorough=thorough,
         )
     except asyncio.CancelledError:
         raise

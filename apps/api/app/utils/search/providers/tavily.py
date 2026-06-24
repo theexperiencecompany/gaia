@@ -13,6 +13,8 @@ from app.utils.search.providers.base import SearchProvider
 
 
 class TavilyProvider(SearchProvider):
+    """Tavily AI search — booster with an LLM-ready answer + images (1k req/mo)."""
+
     name = "tavily"
     monthly_free_limit = 1_000
 
@@ -20,6 +22,7 @@ class TavilyProvider(SearchProvider):
         self._client: TavilyClient | None = None
 
     def is_configured(self) -> bool:
+        """True when a Tavily API key is configured."""
         return bool(settings.TAVILY_API_KEY)
 
     def _get_client(self) -> TavilyClient:
@@ -28,6 +31,7 @@ class TavilyProvider(SearchProvider):
         return self._client
 
     async def search(self, query: str, count: int) -> SearchResponse:
+        """Query Tavily (off the event loop) and map results to the shared shape."""
         # tavily-python is synchronous; off-load it so the event loop keeps moving.
         payload = await asyncio.to_thread(
             self._get_client().search,

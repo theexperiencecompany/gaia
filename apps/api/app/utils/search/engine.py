@@ -35,6 +35,7 @@ class SearchEngine:
         )
 
     async def search(self, query: str, count: int) -> SearchResponse:
+        """Run the provider waterfall, returning the first non-empty response."""
         # A query hash (never the raw text) keeps the log high-cardinality but
         # leak-free; the hash still lets us correlate retries of the same query.
         query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]

@@ -15,13 +15,17 @@ _TIMEOUT = 15.0
 
 
 class SearxngProvider(SearchProvider):
+    """Self-hosted SearXNG — unlimited, free, last-resort metasearch."""
+
     name = "searxng"
     monthly_free_limit = None
 
     def is_configured(self) -> bool:
+        """True when a SearXNG base URL is configured."""
         return bool(settings.SEARXNG_BASE_URL)
 
     async def search(self, query: str, count: int) -> SearchResponse:
+        """Query the SearXNG JSON API and map results to the shared shape."""
         base_url = (settings.SEARXNG_BASE_URL or "").rstrip("/")
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.get(
