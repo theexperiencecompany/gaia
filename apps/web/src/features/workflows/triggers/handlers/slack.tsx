@@ -12,8 +12,8 @@ import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
 import {
   TriggerSettingRow,
   TriggerSettingsCard,
-  TriggerToggleRow,
 } from "../components/TriggerSettingsCard";
+import { TriggerToggleRow } from "../components/TriggerToggleRow";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
