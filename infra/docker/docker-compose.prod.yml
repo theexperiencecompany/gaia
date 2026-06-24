@@ -904,7 +904,8 @@ services:
   # SearXNG — self-hosted metasearch (unlimited last-resort search fallback)
   # ---------------------------------------------------------------------------
   searxng:
-    image: searxng/searxng:latest
+    # Pinned by digest for reproducible deploys (tag 2026.6.23); bump deliberately.
+    image: searxng/searxng@sha256:f66b296a6fdfe3f656a19e98ac999a9acffa780773e39b3cbbdf673e9c474deb
     configs:
       - source: searxng_settings
         target: /etc/searxng-template/settings.yml

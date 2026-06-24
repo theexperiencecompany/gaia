@@ -10,6 +10,8 @@ self-hosted floor means search can never incur a bill. ``perform_search`` and
 tools and the search API use.
 """
 
+from typing import Any
+
 from app.constants.cache import WEB_SEARCH_CACHE_TTL
 from app.decorators.caching import Cacheable
 from app.utils.search.engine import SearchEngine
@@ -19,7 +21,7 @@ __all__ = ["SearchResponse", "perform_search", "search_for_research"]
 
 
 @Cacheable(key_pattern="search:{query}:{count}", ttl=WEB_SEARCH_CACHE_TTL, namespace="search")
-async def perform_search(query: str, count: int) -> dict:
+async def perform_search(query: str, count: int) -> dict[str, Any]:
     """Run the waterfall and return the web/images/answer wire dict (cached)."""
     response = await SearchEngine().search(query, count)
     return {
@@ -36,7 +38,7 @@ async def perform_search(query: str, count: int) -> dict:
     ttl=WEB_SEARCH_CACHE_TTL,
     namespace="search",
 )
-async def search_for_research(query: str, count: int = 5) -> dict:
+async def search_for_research(query: str, count: int = 5) -> dict[str, Any]:
     """Run the waterfall for deep research; returns ``{"results": [...]}`` (cached)."""
     response = await SearchEngine().search(query, count)
     return {"results": [item.model_dump() for item in response.results]}
