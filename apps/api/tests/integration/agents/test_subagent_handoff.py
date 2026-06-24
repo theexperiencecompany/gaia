@@ -32,6 +32,8 @@ from langgraph.graph import END, StateGraph
 from langgraph.store.memory import InMemoryStore
 import pytest
 
+from app.agents.core.subagents.handoff_tools import _resolve_subagent
+from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -128,11 +130,13 @@ class TestSubAgentCanBeInstantiated:
         mock_registry = _make_mock_tool_registry()
 
         with (
-            # get_tool_registry, deep_research, web_search_tool, fetch_webpages are
-            # all imported *inside* create_provider_subagent (local imports), so they
-            # must be patched at their source modules rather than on base_subagent.
+            # get_tool_registry is imported at module top in base_subagent, so it
+            # must be patched on base_subagent (where the name is bound), not at its
+            # source module. deep_research / web_search_tool / fetch_webpages are
+            # only inserted into the tool dict (never invoked here), so patching them
+            # at their source modules is sufficient.
             patch(
-                "app.agents.tools.core.registry.get_tool_registry",
+                "app.agents.core.subagents.base_subagent.get_tool_registry",
                 new=AsyncMock(return_value=mock_registry),
             ),
             patch(
@@ -680,9 +684,9 @@ class TestSubagentRunnerHelpers:
 class TestBuildInitialMessages:
     """Verify build_initial_messages produces the expected [system, context, human] list."""
 
-    async def test_build_initial_messages_returns_three_messages(self):
-        """build_initial_messages must return exactly 3 messages:
-        system, context, and human."""
+    async def test_build_initial_messages_returns_four_messages(self) -> None:
+        """build_initial_messages must return exactly 4 messages:
+        system, context, current-time, and human."""
         system_msg = SystemMessage(content="You are a Gmail agent.")
         configurable = {
             "thread_id": str(uuid4()),
@@ -703,7 +707,7 @@ class TestBuildInitialMessages:
                 subagent_id="gmail_agent",
             )
 
-        assert len(messages) == 3
+        assert len(messages) == 4
 
     async def test_build_initial_messages_first_is_system(self):
         """First message must be the supplied system message."""
@@ -749,7 +753,13 @@ class TestBuildInitialMessages:
 
         captured_queries: list[str] = []
 
-        async def capture_context(configurable, user_id, query, subagent_id=None):
+        async def capture_context(
+            configurable: dict[str, object],
+            user_id: str | None,
+            query: str,
+            subagent_id: str | None = None,
+            **kwargs: object,
+        ) -> SystemMessage:
             captured_queries.append(query)
             return SystemMessage(content="ctx")
 
@@ -854,10 +864,6 @@ class TestHandoffFunctionDirectly:
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",
                 return_value=MagicMock(),
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
-                return_value=None,
-            ),
         ):
             result = await underlying(
                 subagent_id="gmail",
@@ -884,7 +890,12 @@ class TestHandoffFunctionDirectly:
         thread_id = str(uuid4())
         captured_states: list[dict] = []
 
-        async def capture_execute(ctx, stream_writer=None, integration_metadata=None):
+        async def capture_execute(
+            ctx: object,
+            stream_writer: object | None = None,
+            integration_metadata: object | None = None,
+            **kwargs: object,
+        ) -> str:
             captured_states.append(ctx.initial_state)
             return "ok"
 
@@ -920,10 +931,6 @@ class TestHandoffFunctionDirectly:
             patch(
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",
                 return_value=MagicMock(),
-            ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
-                return_value=None,
             ),
         ):
             await underlying(
@@ -963,7 +970,6 @@ class TestCustomMCPPath:
     async def test_custom_mcp_path_calls_create_subagent_for_user(self):
         """When the integration resolved is a plain dict (custom MCP from MongoDB),
         _resolve_subagent must call create_subagent_for_user and return is_custom=True."""
-        from app.agents.core.subagents.handoff_tools import _resolve_subagent
 
         custom_integration_id = "fb9dfd7e05f8"
         fake_graph = MagicMock()
@@ -1089,7 +1095,6 @@ class TestCustomMCPPath:
     async def test_custom_mcp_path_requires_user_id(self):
         """If user_id is None, the custom MCP path must return an error tuple
         without calling create_subagent_for_user."""
-        from app.agents.core.subagents.handoff_tools import _resolve_subagent
 
         custom_id = "deadbeef0000"
 
@@ -1125,9 +1130,8 @@ class TestCustomMCPPath:
         assert "requires authentication" in error_or_id.lower() or "sign in" in error_or_id.lower()
 
     async def test_custom_mcp_path_returns_error_when_create_fails(self):
-        """If create_subagent_for_user returns None, _resolve_subagent must
-        return an error tuple (not a graph)."""
-        from app.agents.core.subagents.handoff_tools import _resolve_subagent
+        """If create_subagent_for_user raises SubagentUnavailableError,
+        _resolve_subagent must return an error tuple (not a graph)."""
 
         custom_id = "failfail1234"
 
@@ -1148,7 +1152,7 @@ class TestCustomMCPPath:
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
-                new=AsyncMock(return_value=None),
+                new=AsyncMock(side_effect=SubagentUnavailableError("exposed no usable tools")),
             ),
         ):
             graph, _, error_or_id, _ = await _resolve_subagent(
@@ -1157,7 +1161,7 @@ class TestCustomMCPPath:
             )
 
         assert graph is None
-        assert "Failed to create" in (error_or_id or "")
+        assert "unavailable" in (error_or_id or "").lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1223,10 +1227,6 @@ class TestHandoffThreadIsolation:
             patch(
                 "app.agents.core.subagents.handoff_tools.build_agent_config",
                 side_effect=capture_build_agent_config,
-            ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
-                return_value=None,
             ),
         ):
             # Handoff to "gmail"
@@ -1316,10 +1316,6 @@ class TestHandoffThreadIsolation:
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",
                 return_value=MagicMock(),
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
-                return_value=None,
-            ),
         ):
             await underlying(
                 subagent_id="googlecalendar",
@@ -1402,10 +1398,6 @@ class TestHandoffWithToolCallArgs:
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",
                 return_value=MagicMock(),
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
-                return_value=None,
-            ),
         ):
             result = await underlying(
                 subagent_id=expected_subagent_id,
@@ -1475,10 +1467,6 @@ class TestHandoffWithToolCallArgs:
             patch(
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",
                 return_value=MagicMock(),
-            ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
-                return_value=None,
             ),
         ):
             await underlying(

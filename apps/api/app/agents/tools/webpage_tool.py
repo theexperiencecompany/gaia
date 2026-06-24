@@ -15,7 +15,8 @@ from app.templates.docstrings.search_tool_docs import (
     WEB_SEARCH_TOOL,
 )
 from app.templates.docstrings.webpage_tool_docs import FETCH_WEBPAGES
-from app.utils.search_utils import fetch_with_firecrawl, perform_search
+from app.utils.search import perform_search
+from app.utils.webpage_fetch import fetch_webpage
 from shared.py.wide_events import log
 
 _NO_URLS_RETRIEVED_MSG = (
@@ -48,7 +49,7 @@ async def fetch_webpages(
             else:
                 processed_urls.append(url)
 
-        fetch_tasks = [fetch_with_firecrawl(url) for url in processed_urls]
+        fetch_tasks = [fetch_webpage(url) for url in processed_urls]
         fetched_pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
 
         for i, page_content in enumerate(fetched_pages):

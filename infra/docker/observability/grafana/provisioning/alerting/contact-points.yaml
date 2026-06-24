@@ -1,11 +1,20 @@
 apiVersion: 1
 
-# Slack contact point. The webhook URL is NOT committed — Grafana reads it at
-# provision time from the `gaia_grafana_slack_webhook` swarm secret via the
-# $__file{} reference. The secret is mounted into the grafana service
-# (see docker-compose.prod.yml); create it once with:
-#   printf '%s' "$WEBHOOK" | docker secret create gaia_grafana_slack_webhook -
+# Contact points for GAIA alerting.
+#
+# Every alert routes to Slack (see notification-policies.yaml). Critical alerts
+# additionally go to email via the `critical-slack-email` contact point below,
+# which bundles BOTH a Slack and an email receiver under one name — Grafana fires
+# every receiver in a contact point, so a single critical alert lands in Slack
+# AND inbox without needing `continue` route trickery.
+#
+# Secrets are NOT committed. Grafana reads them at provision time from swarm
+# secrets via $__file{}; the destination email comes from an env var via
+# $__env{}. Both are wired into the grafana service in docker-compose.prod.yml.
+#   printf '%s' "$WEBHOOK"      | docker secret create gaia_grafana_slack_webhook -
+#   printf '%s' "$APP_PASSWORD" | docker secret create gaia_grafana_smtp_password -
 contactPoints:
+  # All alerts (Slack only). Root notification policy points here.
   - orgId: 1
     name: slack-alerts
     receivers:
@@ -15,4 +24,22 @@ contactPoints:
           url: $__file{/run/secrets/gaia_grafana_slack_webhook}
           title: "{{ template \"slack.default.title\" . }}"
           text: "{{ template \"slack.default.text\" . }}"
+        disableResolveMessage: false
+
+  # Critical alerts: Slack + email. The severity=critical route targets this.
+  - orgId: 1
+    name: critical-slack-email
+    receivers:
+      - uid: critical-slack
+        type: slack
+        settings:
+          url: $__file{/run/secrets/gaia_grafana_slack_webhook}
+          title: "{{ template \"slack.default.title\" . }}"
+          text: "{{ template \"slack.default.text\" . }}"
+        disableResolveMessage: false
+      - uid: critical-email
+        type: email
+        settings:
+          addresses: $__env{GRAFANA_ALERT_EMAIL}
+          singleEmail: true
         disableResolveMessage: false

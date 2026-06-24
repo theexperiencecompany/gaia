@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
-from app.agents.core.state import State
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
     _LLM_RETRYABLE_EXCEPTIONS,
@@ -579,12 +578,12 @@ class TestChatbot:
         mock_get_chain.return_value = mock_chain
         mock_invoke.return_value = AIMessage(content="free response")
 
-        state = State(messages=[HumanMessage(content="hello")])
+        messages = [HumanMessage(content="hello")]
 
-        result = await chatbot(state, use_free_llm=True)
+        result = await chatbot(messages, use_free_llm=True)
 
         mock_get_chain.assert_called_once()
-        mock_invoke.assert_called_once_with(mock_chain, state.messages)
+        mock_invoke.assert_called_once_with(mock_chain, messages)
         assert len(result["messages"]) == 1
         assert result["messages"][0].content == "free response"
 
@@ -594,12 +593,12 @@ class TestChatbot:
         mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="paid response"))
         mock_init_llm.return_value = mock_llm
 
-        state = State(messages=[HumanMessage(content="hello")])
+        messages = [HumanMessage(content="hello")]
 
-        result = await chatbot(state, use_free_llm=False)
+        result = await chatbot(messages, use_free_llm=False)
 
         mock_init_llm.assert_called_once_with()
-        mock_llm.ainvoke.assert_called_once_with(state.messages)
+        mock_llm.ainvoke.assert_called_once_with(messages)
         assert result["messages"][0].content == "paid response"
 
     @patch("app.agents.llm.chatbot.log")
@@ -611,9 +610,9 @@ class TestChatbot:
     ) -> None:
         mock_get_chain.side_effect = RuntimeError("no providers")
 
-        state = State(messages=[HumanMessage(content="hello")])
+        messages = [HumanMessage(content="hello")]
 
-        result = await chatbot(state, use_free_llm=True)
+        result = await chatbot(messages, use_free_llm=True)
 
         assert len(result["messages"]) == 1
         assert "trouble processing" in result["messages"][0].content
@@ -628,9 +627,9 @@ class TestChatbot:
     ) -> None:
         mock_init_llm.side_effect = RuntimeError("no providers")
 
-        state = State(messages=[HumanMessage(content="hello")])
+        messages = [HumanMessage(content="hello")]
 
-        result = await chatbot(state, use_free_llm=False)
+        result = await chatbot(messages, use_free_llm=False)
 
         assert "trouble processing" in result["messages"][0].content
 
@@ -646,8 +645,8 @@ class TestChatbot:
         mock_get_chain.return_value = [MagicMock()]
         mock_invoke.side_effect = RuntimeError("all failed")
 
-        state = State(messages=[HumanMessage(content="hello")])
+        messages = [HumanMessage(content="hello")]
 
-        result = await chatbot(state, use_free_llm=True)
+        result = await chatbot(messages, use_free_llm=True)
 
         assert "trouble processing" in result["messages"][0].content

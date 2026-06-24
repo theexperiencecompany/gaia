@@ -3,8 +3,6 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.agents.core.state import State
-
 
 def make_user(**overrides) -> dict:
     defaults = {
@@ -33,7 +31,13 @@ def make_conversation(user_id: str | None = None, **overrides) -> dict:
     return defaults
 
 
-def make_state(**overrides) -> State:
+def make_state(**overrides) -> dict:
+    """Build a dict-shaped agent state for tests.
+
+    The compiled graph state is a plain dict (TypedDict) at runtime, so a dict
+    with the messages channel plus a few representative extra keys is a faithful
+    stand-in and exercises middleware passthrough of non-schema keys.
+    """
     defaults = {
         "query": "Hello, how are you?",
         "messages": [],
@@ -44,7 +48,7 @@ def make_state(**overrides) -> State:
         "conversation_id": str(uuid4()),
     }
     defaults.update(overrides)
-    return State(**defaults)  # type: ignore[arg-type]
+    return defaults
 
 
 def make_tool_call(name: str, args: dict | None = None, id: str | None = None) -> dict:
