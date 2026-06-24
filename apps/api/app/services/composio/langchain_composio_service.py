@@ -69,7 +69,10 @@ def _reinstate_reserved_python_keywords(request: dict, keywords: dict) -> dict:
 
 
 class StructuredTool(BaseStructuredTool):
+    """StructuredTool that returns a structured failure instead of raising on invalid args."""
+
     def run(self, *args, **kwargs):
+        """Run the tool, converting argument validation errors into a failure result."""
         try:
             return super().run(*args, **kwargs)
         except pydantic.ValidationError as e:
@@ -187,6 +190,7 @@ class LangchainProvider(
         return action_func
 
     def wrap_tool(self, tool: Tool, execute_tool: AgenticProviderExecuteFn) -> StructuredTool:
+        """Wrap a single Composio tool as a LangChain StructuredTool."""
         # Replace reserved python keywords
         schema_params, keywords = _substitute_reserved_python_keywords(schema=tool.input_parameters)
 
