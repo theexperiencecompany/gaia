@@ -16,7 +16,6 @@ from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
 from app.constants.log_tags import LogTag
-from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
@@ -105,23 +104,13 @@ class LangchainProvider(
             metadata = (
                 runnable_config.get("metadata", {}) if isinstance(runnable_config, dict) else {}
             )
+            # user_id is read only for the observability log below. It is present
+            # for agent-flow calls (which pass it in config metadata) and None for
+            # trigger-option calls (which bind the user at get_tool(user_id=...)
+            # time — invisible here but still used for auth at execution). Identity
+            # is resolved at execution, not here, so a None is harmless; Composio
+            # errors loudly if no user_id reaches it either way.
             user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
-            if not user_id:
-                # Composio defaults a missing user_id to its "default" account,
-                # which would silently route this call to the wrong (or no)
-                # connected account. Fail loudly instead of hitting "default".
-                log.warning(
-                    f"{LogTag.COMPOSIO} composio tool {tool} (toolkit={toolkit}) invoked without a "
-                    "user_id in runnable metadata; refusing to fall back to the "
-                    "Composio 'default' account."
-                )
-                raise AppError(
-                    message=f"Missing user_id in runnable metadata for composio tool {tool}",
-                    why="Composio tool invoked without a user_id in runnable metadata.",
-                    fix="Ensure the runnable config includes metadata.user_id before invoking the tool.",
-                    status_code=400,
-                    meta={"tool": tool, "toolkit": toolkit},
-                )
 
             kwargs = _reinstate_reserved_python_keywords(
                 request=kwargs,
