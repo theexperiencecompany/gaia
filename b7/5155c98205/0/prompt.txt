@@ -1,0 +1,10 @@
+<system_instruction>
+The user has attached these files. Read them before proceeding.
+- .context/attachments/nHiPee/Python_docstring_coverage__interrogate___80___83320603000.log (33.8 KB)
+- .context/attachments/VAEdjY/Quality_gate__required__83320879498.log (19.3 KB)
+- .context/attachments/d5qwqo/Fix errors instructions.md (61 B)
+</system_instruction>
+
+
+
+Fix the failing CI actions. I've attached the failure logs. .context/attachments/nHiPee/Python_docstring_coverage__interrogate___80___83320603000.log .context/attachments/VAEdjY/Quality_gate__required__83320879498.log .context/attachments/d5qwqo/Fix errors instructions.md

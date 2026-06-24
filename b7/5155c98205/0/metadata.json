@@ -1,0 +1,51 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "b75155c98205",
+  "session_id": "ae6d2cf6-d171-44d5-b9d3-4e637aae84d6",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-24T23:08:45.743408Z",
+  "branch": "composio-missing-user-id-metadata",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/app/services/composio/langchain_composio_service.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e72fe89dc6c0",
+  "checkpoint_transcript_start": 368,
+  "transcript_lines_at_start": 368,
+  "token_usage": {
+    "input_tokens": 280,
+    "cache_creation_tokens": 37045,
+    "cache_read_tokens": 2128748,
+    "output_tokens": 5884,
+    "api_call_count": 11
+  },
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-24T23:08:45.719685Z",
+    "agent_lines": 4,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 4,
+    "total_lines_changed": 4,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".context/attachments/d5qwqo/Fix errors instructions.md": 2
+      }
+    }
+  ]
+}
