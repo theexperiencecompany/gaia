@@ -1,6 +1,7 @@
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Clock01Icon } from "@icons";
+import { Tooltip } from "@heroui/tooltip";
+import { Clock01Icon, InformationCircleIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
@@ -236,7 +237,7 @@ export const ScheduleBuilder = ({
               frequency: Array.from(keys)[0] as SimpleSchedule["frequency"],
             })
           }
-          className="w-[5.5rem] shrink-0"
+          className="w-28 shrink-0"
           classNames={SELECT_CLASSNAMES}
         >
           <SelectItem key="every" textValue="Every">
@@ -405,7 +406,6 @@ export const ScheduleBuilder = ({
               value={customCron}
               size="sm"
               isInvalid={showCronError}
-              errorMessage={cronPreview.error}
               onChange={(e) => handleCustomCronChange(e.target.value)}
               className="flex-1"
             />
@@ -421,15 +421,28 @@ export const ScheduleBuilder = ({
       </div>
 
       {simpleSchedule.frequency === "custom" && (
-        <div className="mt-2 w-full space-y-2">
-          <p className="text-xs text-zinc-500">
-            Format: minute hour day-of-month month day-of-week
-          </p>
-          {cronPreview.isValid && cronPreview.description && (
-            <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+        <div className="mt-2 flex items-center gap-1.5 text-xs">
+          <Tooltip
+            content="Format: minute hour day-of-month month day-of-week"
+            placement="top"
+          >
+            <span className="cursor-help text-zinc-500">
+              <InformationCircleIcon className="h-3.5 w-3.5" />
+            </span>
+          </Tooltip>
+          {showCronError ? (
+            <span className="text-danger">
+              {cronPreview.error || "Invalid cron expression"}
+            </span>
+          ) : cronPreview.description ? (
+            <span className="flex items-center gap-1.5 text-zinc-400">
               <Clock01Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-              <span>{cronPreview.description}</span>
-            </div>
+              {cronPreview.description}
+            </span>
+          ) : (
+            <span className="text-zinc-500">
+              minute hour day-of-month month day-of-week
+            </span>
           )}
         </div>
       )}
