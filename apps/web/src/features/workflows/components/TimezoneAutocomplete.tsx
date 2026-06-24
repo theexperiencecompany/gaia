@@ -42,6 +42,9 @@ export function TimezoneAutocomplete({
       aria-label="Timezone"
       size="sm"
       className={className}
+      // Let the dropdown size to its content (zone + region + offset) instead of
+      // being clamped to the narrow trigger width, so nothing is cut off.
+      popoverProps={{ classNames: { content: "min-w-fit" } }}
       defaultItems={options}
       selectedKey={timezone || null}
       onSelectionChange={(key) => {

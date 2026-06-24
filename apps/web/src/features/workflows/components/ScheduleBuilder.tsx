@@ -392,7 +392,7 @@ export const ScheduleBuilder = ({
               timezone={normalizedTimezone}
               options={timezoneOptions}
               onChange={onTimezoneChange}
-              className="w-48 shrink-0"
+              className="w-56 shrink-0"
             />
           </>
         )}
@@ -418,7 +418,7 @@ export const ScheduleBuilder = ({
               timezone={normalizedTimezone}
               options={timezoneOptions}
               onChange={onTimezoneChange}
-              className="w-48 shrink-0"
+              className="w-56 shrink-0"
             />
           </div>
           <p className="text-xs text-zinc-500">
