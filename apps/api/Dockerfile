@@ -42,9 +42,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
-    libnss3 libatk1.0-0 libx11-xcb1 libxcb-dri3-0 \
-    libdrm2 libxcomposite1 libxdamage1 libxrandr2 \
-    libgbm1 libasound2 libdbus-1-3 \
     tesseract-ocr \
     fuse3 \
     postgresql-client \
@@ -73,6 +70,17 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy crawl4ai browser data from builder
 COPY --from=builder /opt/browsers /opt/browsers
+
+# Install the Chromium system-dependency set for the bundled Playwright browser.
+# Using Playwright's own installer (not a hand-maintained apt list) keeps the
+# deps correct across Debian releases — notably the trixie ``t64`` library
+# renames (libatk-bridge-2.0-0t64, libcups2t64, libatspi2.0-0t64, …) that a
+# static list misses. Their absence is what made crawl4ai's Chromium fail to
+# launch ("libatk-bridge-2.0.so.0: cannot open shared object file"), silently
+# degrading webpage fetch and deep research to the httpx fallback.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && playwright install-deps chromium
 
 ENV ENV=production \
     PYTHONUNBUFFERED=1 \

@@ -162,14 +162,14 @@ def _apply_all_patches(
             stack.enter_context(p)
         stack.enter_context(
             patch(
-                "app.agents.tools.executor_tool.prepare_executor_execution",
+                "app.agents.core.background.executor_runner.prepare_executor_execution",
                 new_callable=AsyncMock,
                 return_value=(None, "executor not available in tests"),
             )
         )
         stack.enter_context(
             patch(
-                "app.agents.tools.memory_tools.memory_service",
+                "app.agents.tools.memory_tools.memory_engine",
                 new_callable=MagicMock,
             )
         )

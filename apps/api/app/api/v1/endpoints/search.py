@@ -17,7 +17,7 @@ from app.services.email_profile_service import fetch_email_profiles
 from app.services.search_service import search_messages
 from app.utils.email_utils import is_email_target
 from app.utils.internet_utils import fetch_url_metadata
-from app.utils.search_utils import perform_search
+from app.utils.search import perform_search
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -97,16 +97,13 @@ async def search_email_endpoint(query: str):
     search_data = await perform_search(
         query=f"Official contact e-mail address of {query}",
         count=50,
-        images=False,
-        videos=False,
-        news=False,
     )
 
     if not search_data or "web" not in search_data:
         raise HTTPException(status_code=500, detail="Search failed or returned no results")
 
     combined_text = " ".join(
-        f"{item.get('title', '')} {item.get('snippet', '')}" for item in search_data["web"]
+        f"{item.get('title', '')} {item.get('content', '')}" for item in search_data["web"]
     )
 
     emails = list(set(extract_emails(combined_text)))

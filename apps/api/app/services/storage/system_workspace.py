@@ -103,12 +103,22 @@ async def ensure_system_subtree() -> bool:
         files = system_files()
         signature = _library_signature(files)
         marker = root / _SYSTEM_HASH_MARKER
-        if marker.is_file() and marker.read_text(encoding="utf-8").strip() == signature:
-            return True
-        root.mkdir(parents=True, exist_ok=True)
-        _write_system_files(root, files)
-        _prune_orphan_system_files(root, files)
-        marker.write_text(signature, encoding="utf-8")
+        try:
+            if marker.is_file() and marker.read_text(encoding="utf-8").strip() == signature:
+                return True
+            root.mkdir(parents=True, exist_ok=True)
+            _write_system_files(root, files)
+            _prune_orphan_system_files(root, files)
+            marker.write_text(signature, encoding="utf-8")
+        except OSError as exc:
+            # JuiceFS is mounted but has I/O errors (e.g. R2 storage unreachable).
+            # Log loudly and degrade gracefully — the worker must not crash because
+            # of a storage fault; per-user copies will be used instead.
+            log.error(
+                f"{LogTag.STORAGE} system_subtree I/O error — JuiceFS fault, "
+                f"per-user copies will be used instead: {exc}"
+            )
+            return False
         return True
 
     return await asyncio.to_thread(_write)
