@@ -1,6 +1,5 @@
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Tooltip } from "@heroui/tooltip";
 import { Clock01Icon, InformationCircleIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 
@@ -422,27 +421,24 @@ export const ScheduleBuilder = ({
 
       {simpleSchedule.frequency === "custom" && (
         <div className="mt-2 flex items-center gap-1.5 text-xs">
-          <Tooltip
-            content="Format: minute hour day-of-month month day-of-week"
-            placement="top"
-          >
-            <span className="cursor-help text-zinc-500">
-              <InformationCircleIcon className="h-3.5 w-3.5" />
-            </span>
-          </Tooltip>
-          {showCronError ? (
-            <span className="text-danger">
-              {cronPreview.error || "Invalid cron expression"}
-            </span>
-          ) : cronPreview.description ? (
-            <span className="flex items-center gap-1.5 text-zinc-400">
+          {cronPreview.description && !showCronError ? (
+            // Valid expression: show the clock + a plain-English preview.
+            <>
               <Clock01Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-              {cronPreview.description}
-            </span>
+              <span className="text-zinc-400">{cronPreview.description}</span>
+            </>
           ) : (
-            <span className="text-zinc-500">
-              minute hour day-of-month month day-of-week
-            </span>
+            // Otherwise: info icon + the field format, tinted red when invalid.
+            <>
+              <InformationCircleIcon
+                className={`h-3.5 w-3.5 shrink-0 ${
+                  showCronError ? "text-danger" : "text-zinc-500"
+                }`}
+              />
+              <span className={showCronError ? "text-danger" : "text-zinc-500"}>
+                minute hour day-of-month month day-of-week
+              </span>
+            </>
           )}
         </div>
       )}
