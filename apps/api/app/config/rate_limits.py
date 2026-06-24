@@ -119,11 +119,9 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         ),
     ),
     "deep_research": TieredRateLimits(
-        # Each call runs 3-9 parallel searches + up to 20 page fetches internally.
-        # Free: enough to evaluate the feature (2/day, 10/month)
-        # Pro: generous for power users — ~1 deep research every 1.2 hours at daily limit
-        free=RateLimitConfig(day=2, month=10),
-        pro=RateLimitConfig(day=20, month=600),
+        # Heaviest tool: one call fans out to many searches and page fetches.
+        free=RateLimitConfig(day=5, month=30),
+        pro=RateLimitConfig(day=100, month=2000),
         info=FeatureInfo(
             title="Deep Research",
             description="Multi-source parallel research with full content analysis and synthesis",
@@ -136,8 +134,9 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     ),
     # WEB FEATURES (Moderate Cost)
     "web_search": TieredRateLimits(
-        free=RateLimitConfig(day=10, month=50),  # Unchanged - good trial
-        pro=RateLimitConfig(day=450, month=13500),  # +50% (300→450, 9000→13500)
+        # Low marginal cost: Exa free tier backed by an unlimited self-hosted fallback.
+        free=RateLimitConfig(day=100, month=1000),
+        pro=RateLimitConfig(day=5000, month=50000),
         info=FeatureInfo(title="Web Search", description="Search the web for information"),
     ),
     "webpage_fetch": TieredRateLimits(

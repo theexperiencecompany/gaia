@@ -42,6 +42,8 @@ services:
       LOG_COLORIZE: "false"
       # Share one copy of the embedding/reranker weights via the sidecar.
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
+      # Self-hosted SearXNG — the unlimited last-resort search fallback.
+      SEARXNG_BASE_URL: http://searxng:8080
       # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
       # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
       # unset — the storage helper short-circuits gracefully in that case).
@@ -245,6 +247,7 @@ services:
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
       - MEMORY_EMBEDDING_SIDECAR_URL=http://embedding-sidecar:8200
+      - SEARXNG_BASE_URL=http://searxng:8080
       - ARQ_METRICS_PORT=9100
       - JUICEFS_HOST_MOUNT_PATH=/mnt/jfs
       - UV_NO_SYNC=1
@@ -568,6 +571,35 @@ services:
       - gaia_network
     mem_limit: 256m
     cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # SearXNG — self-hosted metasearch (search fallback; mirrors prod)
+  # ---------------------------------------------------------------------------
+  searxng:
+    # Pinned by digest for reproducible deploys (tag 2026.6.23); bump deliberately.
+    image: searxng/searxng@sha256:f66b296a6fdfe3f656a19e98ac999a9acffa780773e39b3cbbdf673e9c474deb
+    container_name: searxng
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng-template/settings.yml:ro
+    environment:
+      # Dev-only placeholder secret; prod uses a Swarm secret.
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-dev-insecure-searxng-secret-change-me}
+    # Copy the read-only template to a writable path before the image entrypoint
+    # (which injects $SEARXNG_SECRET) runs.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mkdir -p /etc/searxng
+        cp /etc/searxng-template/settings.yml /etc/searxng/settings.yml
+        exec /usr/local/searxng/entrypoint.sh
+    ports:
+      - "${SEARXNG_HOST_PORT:-8888}:8080"
+    networks:
+      - gaia_network
+    restart: unless-stopped
+    mem_limit: 600m
+    cpus: "1.0"
 
 volumes:
   chroma_data:

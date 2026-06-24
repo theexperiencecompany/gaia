@@ -27,6 +27,9 @@ secrets:
   gaia_rabbitmq_default_pass:
     external: true
     name: gaia_rabbitmq_default_pass_v2
+  # Create once on the box: docker secret create gaia_searxng_secret <(openssl rand -hex 32)
+  gaia_searxng_secret:
+    external: true
 
 services:
   # ---------------------------------------------------------------------------
@@ -59,6 +62,8 @@ services:
       INFISICAL_ENV: prod
       # Use the shared embedding sidecar instead of loading models in-process.
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
+      # Self-hosted SearXNG — the unlimited last-resort search fallback.
+      SEARXNG_BASE_URL: http://searxng:8080
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -137,6 +142,8 @@ services:
       # Use the shared embedding sidecar — the worker's 2G limit can't hold the
       # ~1.85GB models in-process, so it must offload embed/rerank to the sidecar.
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
+      # Self-hosted SearXNG — the unlimited last-resort search fallback.
+      SEARXNG_BASE_URL: http://searxng:8080
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -915,12 +922,65 @@ services:
         constraints:
           - node.role == manager
 
+  # ---------------------------------------------------------------------------
+  # SearXNG — self-hosted metasearch (unlimited last-resort search fallback)
+  # ---------------------------------------------------------------------------
+  searxng:
+    # Pinned by digest for reproducible deploys (tag 2026.6.23); bump deliberately.
+    image: searxng/searxng@sha256:f66b296a6fdfe3f656a19e98ac999a9acffa780773e39b3cbbdf673e9c474deb
+    configs:
+      - source: searxng_settings
+        target: /etc/searxng-template/settings.yml
+    secrets:
+      - gaia_searxng_secret
+    # Config mounts are read-only, so copy the template to a writable path and
+    # inject the runtime secret before handing off to the image entrypoint.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mkdir -p /etc/searxng
+        cp /etc/searxng-template/settings.yml /etc/searxng/settings.yml
+        export SEARXNG_SECRET="$$(cat /run/secrets/gaia_searxng_secret)"
+        exec /usr/local/searxng/entrypoint.sh
+    ports:
+      # Tailnet-only in practice — the Hetzner firewall allows only 22/80/443
+      # from the public internet, so :8888 is reachable over Tailscale only.
+      - target: 8080
+        published: 8888
+        mode: ingress
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - searxng
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 600m
+          cpus: "1.0"
+      placement:
+        constraints:
+          - node.role == manager
+
 configs:
   # Single-file observability configs live in the Swarm raft instead of host
   # bind mounts, so the stack deploys from CI (remote context) with no config
   # files on the VM. Swarm configs are immutable, so each name carries a content
   # hash (OBS_CFG_HASH, computed by the deploy workflow) — a changed file
   # produces a new config object that services roll onto.
+  searxng_settings:
+    name: searxng_settings_${OBS_CFG_HASH:-dev}
+    file: ./searxng/settings.yml
   prometheus_yml:
     name: prometheus_yml_${OBS_CFG_HASH:-dev}
     file: ./observability/prometheus.yml
