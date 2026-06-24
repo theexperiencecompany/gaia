@@ -3,7 +3,6 @@ from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
 from uuid_extensions import uuid7str
 
-from app.agents.core.state import State
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
 from app.constants.log_tags import LogTag
@@ -147,8 +146,7 @@ async def do_prompt_no_stream(
     messages: list[AnyMessage] = [SystemMessage(content=system_prompt)] if system_prompt else []
     messages.append(HumanMessage(content=prompt))
 
-    state = State(messages=messages)
-    response = await chatbot(state)
+    response = await chatbot(messages)
 
     # BaseMessage.text handles both plain-string and list-of-blocks content uniformly.
     ai_message = response["messages"][0]

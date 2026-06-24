@@ -142,6 +142,9 @@ class TestRetrieveToolsDiscoveryMode:
                 store=store,
                 config=_config(user_id),
                 query="list posthog persons",
+                # Discovery mode: langchain resolves the Field default to [] at
+                # invocation; pass it explicitly when calling the tool directly.
+                exact_tool_names=[],
             )
 
         # Discovery should surface both MCP tool names in `response`.

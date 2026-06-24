@@ -149,7 +149,7 @@ class DynamicToolNode(ToolNode):
         all_parent_routed = all(self._needs_parent_routing(tc.get("name", "")) for tc in tool_calls)
         if all_parent_routed:
             return await super()._afunc(input, config, runtime)
-        delegate_state = self._extract_state(input)
+        delegate_state = self._extract_state(input, config)
         middleware_state = self._coerce_middleware_state(delegate_state)
 
         # Get store from runtime if available
