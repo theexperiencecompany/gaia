@@ -396,11 +396,9 @@ export const ScheduleBuilder = ({
             />
           </>
         )}
-      </div>
 
-      {simpleSchedule.frequency === "custom" && (
-        <div className="mt-4 w-full space-y-2">
-          <div className="flex items-center gap-2">
+        {simpleSchedule.frequency === "custom" && (
+          <>
             <Input
               placeholder="0 9 * * *"
               aria-label="Cron expression"
@@ -411,16 +409,19 @@ export const ScheduleBuilder = ({
               onChange={(e) => handleCustomCronChange(e.target.value)}
               className="flex-1"
             />
-            <span className="shrink-0 text-nowrap text-xs text-zinc-500">
-              in
-            </span>
+            <span className="shrink-0 text-nowrap text-zinc-500">in</span>
             <TimezoneAutocomplete
               timezone={normalizedTimezone}
               options={timezoneOptions}
               onChange={onTimezoneChange}
               className="w-56 shrink-0"
             />
-          </div>
+          </>
+        )}
+      </div>
+
+      {simpleSchedule.frequency === "custom" && (
+        <div className="mt-2 w-full space-y-2">
           <p className="text-xs text-zinc-500">
             Format: minute hour day-of-month month day-of-week
           </p>
