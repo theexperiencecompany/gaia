@@ -9,13 +9,18 @@ from app.utils.search.providers.tavily import TavilyProvider
 
 
 def default_providers() -> list[SearchProvider]:
-    """Waterfall order: free workhorse → unlimited self-hosted floor → boosters → last resort."""
+    """Waterfall order: premium/free-credit APIs first, self-hosted SearXNG last.
+
+    Exa → Tavily → Brave → DuckDuckGo → SearXNG. The budget-capped APIs are tried
+    first (they auto-stop at their free limits, so they can't bill), and the
+    unlimited self-hosted SearXNG is the final guaranteed fallback.
+    """
     return [
         ExaProvider(),
-        SearxngProvider(),
         TavilyProvider(),
         BraveProvider(),
         DuckDuckGoProvider(),
+        SearxngProvider(),
     ]
 
 
