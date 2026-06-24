@@ -112,7 +112,6 @@ export default function WorkflowHeader({
                 </Button>
               </DropdownTrigger>
               <DropdownMenu
-                variant="faded"
                 disabledKeys={isTogglingActivation ? ["activation"] : []}
                 onAction={(key) => {
                   if (key === "activation") onToggleActivation(!isActivated);
