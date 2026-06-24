@@ -1,12 +1,11 @@
-"""Webpage fetch failover behaviour and the httpx engine's HTML→markdown parse."""
+"""Webpage fetch failover behaviour and the httpx engine's HTML->markdown parse."""
 
 import httpx
 import pytest
 import respx
 
-from app.utils import webpage_fetch
 from app.utils.exceptions import FetchError
-from app.utils.webpage_fetch import HttpxFetcher, WebpageFetcher
+from app.utils.webpage_fetch import HttpxFetcher, WebpageFetcher, _fetch_first_success
 
 
 class FakeFetcher(WebpageFetcher):
@@ -26,52 +25,45 @@ class FakeFetcher(WebpageFetcher):
         return self._result
 
 
-async def test_returns_first_successful_engine(monkeypatch):
+async def test_returns_first_successful_engine() -> None:
     primary = FakeFetcher("primary", result="# content")
     secondary = FakeFetcher("secondary", result="should not run")
-    monkeypatch.setattr(webpage_fetch, "_FETCHERS", [primary, secondary])
 
-    result = await webpage_fetch._fetch_first_success("https://example.com")
+    result = await _fetch_first_success("https://example.com", fetchers=[primary, secondary])
 
     assert result == "# content"
     assert secondary.called is False
 
 
-async def test_fails_over_to_next_engine(monkeypatch):
+async def test_fails_over_to_next_engine() -> None:
     broken = FakeFetcher("broken", result=None)
     backup = FakeFetcher("backup", result="recovered")
-    monkeypatch.setattr(webpage_fetch, "_FETCHERS", [broken, backup])
 
-    result = await webpage_fetch._fetch_first_success("https://example.com")
+    result = await _fetch_first_success("https://example.com", fetchers=[broken, backup])
 
     assert broken.called is True
     assert result == "recovered"
 
 
-async def test_skips_unconfigured_engine(monkeypatch):
+async def test_skips_unconfigured_engine() -> None:
     disabled = FakeFetcher("disabled", configured=False, result="never")
     backup = FakeFetcher("backup", result="ok")
-    monkeypatch.setattr(webpage_fetch, "_FETCHERS", [disabled, backup])
 
-    result = await webpage_fetch._fetch_first_success("https://example.com")
+    result = await _fetch_first_success("https://example.com", fetchers=[disabled, backup])
 
     assert disabled.called is False
     assert result == "ok"
 
 
-async def test_raises_when_all_engines_fail(monkeypatch):
-    monkeypatch.setattr(
-        webpage_fetch,
-        "_FETCHERS",
-        [FakeFetcher("a", result=None), FakeFetcher("b", result=None)],
-    )
+async def test_raises_when_all_engines_fail() -> None:
+    fetchers = [FakeFetcher("a", result=None), FakeFetcher("b", result=None)]
 
     with pytest.raises(FetchError):
-        await webpage_fetch._fetch_first_success("https://example.com")
+        await _fetch_first_success("https://example.com", fetchers=fetchers)
 
 
 @respx.mock
-async def test_httpx_fetcher_extracts_main_content_to_markdown():
+async def test_httpx_fetcher_extracts_main_content_to_markdown() -> None:
     html = """
     <html><body>
       <nav>navigation menu</nav>

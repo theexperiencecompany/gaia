@@ -51,7 +51,7 @@ class FakeBudget:
         self.recorded.append(provider)
 
 
-async def test_returns_first_non_empty_provider():
+async def test_returns_first_non_empty_provider() -> None:
     first = FakeProvider("first")
     second = FakeProvider("second")
     engine = SearchEngine(providers=[first, second], budget=FakeBudget())
@@ -62,7 +62,7 @@ async def test_returns_first_non_empty_provider():
     assert second.called is False
 
 
-async def test_skips_unconfigured_provider():
+async def test_skips_unconfigured_provider() -> None:
     unconfigured = FakeProvider("unconfigured", configured=False)
     fallback = FakeProvider("fallback")
     engine = SearchEngine(providers=[unconfigured, fallback], budget=FakeBudget())
@@ -73,7 +73,7 @@ async def test_skips_unconfigured_provider():
     assert unconfigured.called is False
 
 
-async def test_fails_over_on_exception():
+async def test_fails_over_on_exception() -> None:
     broken = FakeProvider("broken", raises=True)
     healthy = FakeProvider("healthy")
     engine = SearchEngine(providers=[broken, healthy], budget=FakeBudget())
@@ -83,7 +83,7 @@ async def test_fails_over_on_exception():
     assert response.provider == "healthy"
 
 
-async def test_fails_over_on_empty_results():
+async def test_fails_over_on_empty_results() -> None:
     empty = FakeProvider("empty", response=SearchResponse(provider="empty"))
     healthy = FakeProvider("healthy")
     engine = SearchEngine(providers=[empty, healthy], budget=FakeBudget())
@@ -94,7 +94,7 @@ async def test_fails_over_on_empty_results():
     assert response.provider == "healthy"
 
 
-async def test_skips_provider_without_budget_headroom():
+async def test_skips_provider_without_budget_headroom() -> None:
     budgeted = FakeProvider("budgeted", monthly_free_limit=1000)
     floor = FakeProvider("floor")
     engine = SearchEngine(providers=[budgeted, floor], budget=FakeBudget(denied={"budgeted"}))
@@ -105,7 +105,7 @@ async def test_skips_provider_without_budget_headroom():
     assert response.provider == "floor"
 
 
-async def test_records_budget_on_successful_call():
+async def test_records_budget_on_successful_call() -> None:
     budget = FakeBudget()
     engine = SearchEngine(providers=[FakeProvider("first")], budget=budget)
 
@@ -114,7 +114,7 @@ async def test_records_budget_on_successful_call():
     assert budget.recorded == ["first"]
 
 
-async def test_returns_empty_response_when_all_exhausted():
+async def test_returns_empty_response_when_all_exhausted() -> None:
     a = FakeProvider("a", raises=True)
     b = FakeProvider("b", response=SearchResponse(provider="b"))
     engine = SearchEngine(providers=[a, b], budget=FakeBudget())

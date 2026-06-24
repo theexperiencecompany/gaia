@@ -36,7 +36,7 @@ class SearxngProvider(SearchProvider):
                 url=item["url"],
                 title=item.get("title") or "",
                 content=item.get("content") or "",
-                score=item.get("score") or 0.5,
+                score=item["score"] if item.get("score") is not None else 0.5,
                 published_date=item.get("publishedDate") or "",
             )
             for item in (payload.get("results") or [])[:count]

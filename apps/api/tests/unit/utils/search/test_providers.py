@@ -6,6 +6,7 @@ respx — no real network) to prove the JSON/HTML is mapped onto the shared
 """
 
 import httpx
+import pytest
 import respx
 
 from app.utils.search.providers.brave import BraveProvider
@@ -62,7 +63,7 @@ _DDG_HTML = """
 
 
 @respx.mock
-async def test_exa_parses_results_and_drops_urlless():
+async def test_exa_parses_results_and_drops_urlless() -> None:
     respx.post("https://api.exa.ai/search").mock(
         return_value=httpx.Response(200, json=_EXA_PAYLOAD)
     )
@@ -80,7 +81,7 @@ async def test_exa_parses_results_and_drops_urlless():
 
 
 @respx.mock
-async def test_brave_parses_nested_web_results():
+async def test_brave_parses_nested_web_results() -> None:
     respx.get("https://api.search.brave.com/res/v1/web/search").mock(
         return_value=httpx.Response(200, json=_BRAVE_PAYLOAD)
     )
@@ -96,7 +97,7 @@ async def test_brave_parses_nested_web_results():
 
 
 @respx.mock
-async def test_searxng_parses_json(monkeypatch):
+async def test_searxng_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "app.utils.search.providers.searxng.settings.SEARXNG_BASE_URL",
         "http://searxng:8080",
@@ -116,7 +117,7 @@ async def test_searxng_parses_json(monkeypatch):
 
 
 @respx.mock
-async def test_duckduckgo_parses_html_and_skips_relative():
+async def test_duckduckgo_parses_html_and_skips_relative() -> None:
     respx.post("https://lite.duckduckgo.com/lite/").mock(
         return_value=httpx.Response(200, text=_DDG_HTML)
     )
@@ -130,7 +131,7 @@ async def test_duckduckgo_parses_html_and_skips_relative():
 
 
 @respx.mock
-async def test_duckduckgo_treats_bot_challenge_as_empty():
+async def test_duckduckgo_treats_bot_challenge_as_empty() -> None:
     respx.post("https://lite.duckduckgo.com/lite/").mock(
         return_value=httpx.Response(200, text="If you think bots use DuckDuckGo...")
     )

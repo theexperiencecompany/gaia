@@ -4,10 +4,17 @@ A URL is rendered to markdown by the first engine that succeeds:
     Crawl4AI (free headless render) -> Firecrawl (managed, free credits) -> httpx
 httpx has no external dependency, so it is always the final backstop. The chain
 result is cached, so repeated fetches of the same URL never re-hit any engine.
+
+Full page content is returned untruncated; callers decide on any length limits.
 """
 
 from abc import ABC, abstractmethod
 import asyncio
+import ipaddress
+import socket
+import time
+from typing import Any
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 from firecrawl import FirecrawlApp
@@ -34,9 +41,47 @@ _BROWSER_HEADERS = {
     "Accept-Language": "en-US,en;q=0.5",
 }
 _HTTPX_TIMEOUT = 15.0
-_MAX_HTTPX_CHARS = 60_000
 _FIRECRAWL_BLOCK_MARKERS = ("401", "403", "500", "blocked", "bot", "timeout")
 _NON_CONTENT_TAGS = ["script", "style", "nav", "footer", "aside", "iframe", "noscript", "head"]
+
+
+def _resolve_addresses(host: str, port: int) -> list[str]:
+    return [info[4][0] for info in socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)]
+
+
+def _elapsed_ms(start: float) -> float:
+    return round((time.monotonic() - start) * 1000, 1)
+
+
+async def _ensure_url_allowed(url: str) -> None:
+    """Reject non-HTTP(S) schemes and hosts that resolve to non-public addresses.
+
+    Guards against SSRF — the agent can pass arbitrary URLs, so a request must not
+    be able to reach loopback, private, link-local (incl. cloud metadata), or
+    otherwise reserved ranges.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise FetchError(f"unsupported URL scheme: {parsed.scheme!r}", url=url)
+    host = parsed.hostname
+    if not host:
+        raise FetchError("URL has no host", url=url)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        addresses = await asyncio.to_thread(_resolve_addresses, host, port)
+    except OSError as e:
+        raise FetchError(f"DNS resolution failed: {e}", url=url) from e
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise FetchError(f"refusing to fetch non-public address {ip}", url=url)
 
 
 class WebpageFetcher(ABC):
@@ -75,15 +120,17 @@ class Crawl4aiFetcher(WebpageFetcher):
 
 class FirecrawlFetcher(WebpageFetcher):
     name = "firecrawl"
-    _client: FirecrawlApp | None = None
+
+    def __init__(self) -> None:
+        self._client: FirecrawlApp | None = None
 
     def is_configured(self) -> bool:
         return bool(settings.FIRECRAWL_API_KEY)
 
     def _get_client(self) -> FirecrawlApp:
-        if FirecrawlFetcher._client is None:
-            FirecrawlFetcher._client = FirecrawlApp(api_key=settings.FIRECRAWL_API_KEY)
-        return FirecrawlFetcher._client
+        if self._client is None:
+            self._client = FirecrawlApp(api_key=settings.FIRECRAWL_API_KEY)
+        return self._client
 
     async def fetch(self, url: str) -> str:
         client = self._get_client()
@@ -134,32 +181,67 @@ class HttpxFetcher(WebpageFetcher):
         markdown = converter.handle(str(node) if node else str(soup)).strip()
         if not markdown:
             raise FetchError("httpx returned empty content", url=url)
-        return markdown[:_MAX_HTTPX_CHARS]
+        return markdown
 
 
-_FETCHERS: list[WebpageFetcher] = [Crawl4aiFetcher(), FirecrawlFetcher(), HttpxFetcher()]
+def _default_fetchers() -> list[WebpageFetcher]:
+    """The fetch waterfall, cheapest/most-capable first."""
+    return [Crawl4aiFetcher(), FirecrawlFetcher(), HttpxFetcher()]
 
 
-async def _fetch_first_success(url: str) -> str:
-    """Try each configured engine in order, returning the first success."""
+async def _fetch_first_success(url: str, fetchers: list[WebpageFetcher] | None = None) -> str:
+    """Try each configured engine in order, returning the first success.
+
+    Records every engine attempt (outcome, latency, content length) in a single
+    ``webpage_fetch`` wide-event field, keyed by host for high-cardinality drill-down.
+    """
+    fetchers = fetchers if fetchers is not None else _default_fetchers()
+    host = urlparse(url).hostname or ""
+    attempts: list[dict[str, Any]] = []
     errors: list[str] = []
-    for fetcher in _FETCHERS:
+
+    for fetcher in fetchers:
         if not fetcher.is_configured():
+            attempts.append({"engine": fetcher.name, "outcome": "unconfigured"})
             continue
+        start = time.monotonic()
         try:
-            return await fetcher.fetch(url)
+            content = await fetcher.fetch(url)
         except Exception as e:
+            attempts.append(
+                {
+                    "engine": fetcher.name,
+                    "outcome": "error",
+                    "error_type": type(e).__name__,
+                    "latency_ms": _elapsed_ms(start),
+                }
+            )
             errors.append(f"{fetcher.name}: {e}")
-            log.warning(f"{fetcher.name} fetch failed for {url[:60]}: {e}")
+            log.warning(f"{fetcher.name} fetch failed: {e}")
+            continue
+        attempts.append(
+            {
+                "engine": fetcher.name,
+                "outcome": "hit",
+                "content_length": len(content),
+                "latency_ms": _elapsed_ms(start),
+            }
+        )
+        log.set(webpage_fetch={"host": host, "engine_used": fetcher.name, "attempts": attempts})
+        return content
+
+    log.set(webpage_fetch={"host": host, "engine_used": None, "attempts": attempts})
     raise FetchError("; ".join(errors) or "all fetchers failed", url=url)
 
 
 @Cacheable(key_pattern="webpage:{url}", ttl=WEBPAGE_FETCH_CACHE_TTL, namespace="web")
 async def fetch_webpage(url: str) -> str:
     """Fetch one URL to markdown, failing over across engines (cached)."""
+    await _ensure_url_allowed(url)
     return await _fetch_first_success(url)
 
 
 async def fetch_with_httpx(url: str) -> str:
     """Fetch a URL using only the httpx engine (deep-research fallback path)."""
+    await _ensure_url_allowed(url)
     return await HttpxFetcher().fetch(url)

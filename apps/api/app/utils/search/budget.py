@@ -30,9 +30,10 @@ class FreeTierBudget:
             return True
         try:
             used_raw = await redis_cache.get(self._key(provider))
+            used = int(used_raw) if used_raw else 0
         except Exception:
-            return True  # fail open: a Redis hiccup must not disable search
-        used = int(used_raw) if used_raw else 0
+            # Fail open: a Redis hiccup or a malformed counter must not disable search.
+            return True
         return used < limit
 
     async def record_call(self, provider: str) -> None:
