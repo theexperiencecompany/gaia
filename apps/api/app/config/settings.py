@@ -248,6 +248,14 @@ class ProductionSettings(CommonSettings):
     COMPOSIO_KEY: str
     FIRECRAWL_API_KEY: str
 
+    # Search providers (multi-provider failover; all optional — the chain skips
+    # any provider whose key/URL is unset). Exa is the primary free workhorse
+    # (20k/mo free); SearXNG is the self-hosted unlimited floor that can never
+    # bill us; Tavily/Brave are budget-capped boosters.
+    EXA_API_KEY: str | None = None
+    BRAVE_API_KEY: str | None = None
+    SEARXNG_BASE_URL: str | None = None
+
     # Voice Agent Configuration
     LIVEKIT_URL: str
     LIVEKIT_API_KEY: str
@@ -431,6 +439,11 @@ class DevelopmentSettings(CommonSettings):
     # External Service Integration
     COMPOSIO_KEY: str | None = None
     FIRECRAWL_API_KEY: str | None = None
+
+    # Search providers (multi-provider failover; all optional)
+    EXA_API_KEY: str | None = None
+    BRAVE_API_KEY: str | None = None
+    SEARXNG_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Webhook Secrets & Security

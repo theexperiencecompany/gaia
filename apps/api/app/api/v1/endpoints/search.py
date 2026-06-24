@@ -17,7 +17,7 @@ from app.services.email_profile_service import fetch_email_profiles
 from app.services.search_service import search_messages
 from app.utils.email_utils import is_email_target
 from app.utils.internet_utils import fetch_url_metadata
-from app.utils.search_utils import perform_search
+from app.utils.search import perform_search
 from shared.py.wide_events import log
 
 router = APIRouter()

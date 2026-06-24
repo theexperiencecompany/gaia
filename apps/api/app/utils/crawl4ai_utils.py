@@ -5,10 +5,46 @@ from contextlib import asynccontextmanager
 from urllib.parse import urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
+from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from app.config.settings import settings
 from app.constants.search import CRAWL4AI_CLOSE_TIMEOUT_SECONDS, CRAWL4AI_WAIT_UNTIL
 from shared.py.wide_events import log
+
+# Tags that are almost never primary content; dropped before markdown conversion.
+_EXCLUDED_TAGS = ["nav", "header", "footer", "aside", "form", "script", "style", "noscript"]
+_PRUNE_THRESHOLD = 0.48
+_BM25_THRESHOLD = 1.0
+
+
+def _build_markdown_generator(content_query: str | None = None) -> DefaultMarkdownGenerator:
+    """Build a markdown generator tuned for clean, LLM-ready output.
+
+    A content filter strips boilerplate so only the main content survives as
+    ``markdown.fit_markdown``. When ``content_query`` is supplied (deep research
+    knows its topic), BM25 keeps the passages most relevant to it; otherwise
+    pruning keeps the densest main content by text/link density.
+    """
+    content_filter = (
+        BM25ContentFilter(user_query=content_query, bm25_threshold=_BM25_THRESHOLD)
+        if content_query
+        else PruningContentFilter(
+            threshold=_PRUNE_THRESHOLD, threshold_type="fixed", min_word_threshold=5
+        )
+    )
+    return DefaultMarkdownGenerator(
+        content_source="cleaned_html",
+        content_filter=content_filter,
+        options={
+            "ignore_links": False,
+            "ignore_images": True,
+            "skip_internal_links": True,
+            "body_width": 0,
+            "escape_html": False,
+        },
+    )
+
 
 # Shared semaphore binding for the process-wide browser concurrency cap. The
 # limit itself is sourced from ``settings.CRAWL4AI_MAX_BROWSERS`` (env-driven,
@@ -165,10 +201,19 @@ def _extract_content_or_error(
     max_content_chars: int | None,
 ) -> tuple[str | None, str | None]:
     markdown = getattr(result, "markdown", None)
-    if getattr(result, "success", False) and isinstance(markdown, str) and markdown.strip():
+    # With a markdown_generator configured, ``result.markdown`` is a
+    # MarkdownGenerationResult (not a str): prefer the pruned ``fit_markdown``,
+    # fall back to ``raw_markdown``. Keep the plain-str path for safety/back-compat.
+    if isinstance(markdown, str):
+        text = markdown
+    elif markdown is not None:
+        text = getattr(markdown, "fit_markdown", None) or getattr(markdown, "raw_markdown", None)
+    else:
+        text = None
+    if getattr(result, "success", False) and isinstance(text, str) and text.strip():
         if max_content_chars is not None:
-            return markdown[:max_content_chars], None
-        return markdown, None
+            return text[:max_content_chars], None
+        return text, None
 
     error_message = getattr(result, "error_message", None)
     return None, str(error_message or f"{context_name} returned empty content")
@@ -181,6 +226,7 @@ async def _recover_with_single_url_crawls(
     total_timeout_seconds: float,
     context_name: str,
     max_content_chars: int | None,
+    content_query: str | None = None,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Best-effort recovery path after batch timeout to avoid all-or-nothing failures."""
     recovery_timeout = max(10.0, min(total_timeout_seconds, page_timeout_ms / 1000 + 10.0))
@@ -189,6 +235,9 @@ async def _recover_with_single_url_crawls(
         page_timeout=page_timeout_ms,
         wait_until=CRAWL4AI_WAIT_UNTIL,
         semaphore_count=1,
+        markdown_generator=_build_markdown_generator(content_query),
+        excluded_tags=_EXCLUDED_TAGS,
+        word_count_threshold=10,
         verbose=False,
     )
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
@@ -247,8 +296,13 @@ async def batch_fetch_with_crawl4ai(
     semaphore_count: int,
     max_content_chars: int | None = None,
     context_name: str = "crawl4ai",
+    content_query: str | None = None,
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Fetch multiple URLs with a single crawl4ai crawler via arun_many."""
+    """Fetch multiple URLs with a single crawl4ai crawler via arun_many.
+
+    Pass ``content_query`` to rank each page's content by relevance to a topic
+    (BM25) instead of generic boilerplate pruning — used by deep research.
+    """
     if not urls:
         return {}, {}
 
@@ -256,6 +310,9 @@ async def batch_fetch_with_crawl4ai(
         page_timeout=page_timeout_ms,
         wait_until=CRAWL4AI_WAIT_UNTIL,
         semaphore_count=semaphore_count,
+        markdown_generator=_build_markdown_generator(content_query),
+        excluded_tags=_EXCLUDED_TAGS,
+        word_count_threshold=10,
         verbose=False,
     )
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
@@ -280,6 +337,7 @@ async def batch_fetch_with_crawl4ai(
             total_timeout_seconds=total_timeout_seconds,
             context_name=context_name,
             max_content_chars=max_content_chars,
+            content_query=content_query,
         )
     except asyncio.CancelledError:
         raise

@@ -120,10 +120,10 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     ),
     "deep_research": TieredRateLimits(
         # Each call runs 3-9 parallel searches + up to 20 page fetches internally.
-        # Free: enough to evaluate the feature (2/day, 10/month)
-        # Pro: generous for power users — ~1 deep research every 1.2 hours at daily limit
-        free=RateLimitConfig(day=2, month=10),
-        pro=RateLimitConfig(day=20, month=600),
+        # Free: a single taste so users can see what it does, then it's gated.
+        # Pro: generous headroom for power users.
+        free=RateLimitConfig(day=1, month=3),
+        pro=RateLimitConfig(day=50, month=1000),
         info=FeatureInfo(
             title="Deep Research",
             description="Multi-source parallel research with full content analysis and synthesis",
