@@ -19,6 +19,11 @@ import type { TriggerConfig } from "../types";
 // TYPE DEFINITIONS
 // =============================================================================
 
+// Mirrors the backend cap (MAX_GMAIL_POLL_INTERVAL_MINUTES) so the picker can
+// offer day-scale intervals (e.g. a weekly digest) without producing a value
+// the API would reject.
+const GMAIL_MAX_INTERVAL_MINUTES = 60 * 24 * 30; // 30 days
+
 interface GmailPollTriggerData {
   trigger_name: string;
   interval: number;
@@ -54,7 +59,11 @@ function GmailPollSettings({
   return (
     <TriggerSettingsCard>
       <TriggerSettingRow label="Check my inbox every">
-        <IntervalPicker value={currentInterval} onChange={updateInterval} />
+        <IntervalPicker
+          value={currentInterval}
+          onChange={updateInterval}
+          maxMinutes={GMAIL_MAX_INTERVAL_MINUTES}
+        />
       </TriggerSettingRow>
     </TriggerSettingsCard>
   );
