@@ -92,3 +92,26 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: blackbox_exporter:9115
+
+  # Blackbox /health probes for the remaining stack containers that expose no
+  # native Prometheus metrics (the bots + embedding sidecar). Gives each a
+  # probe_success series so the "container down" alert (alert-rules.yaml rule 13)
+  # covers them too — without this, a dead bot is invisible to alerting.
+  - job_name: blackbox_internal
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://embedding-sidecar:8200/health
+          - http://discord-bot:3200/health
+          - http://slack-bot:3201/health
+          - http://telegram-bot:3202/health
+          - http://whatsapp-bot:3203/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115

@@ -27,7 +27,8 @@ from app.utils.research_utils import (
     decompose_research_queries,
     rank_and_deduplicate_urls,
 )
-from app.utils.search_utils import fetch_with_httpx, search_for_research
+from app.utils.search import search_for_research
+from app.utils.webpage_fetch import fetch_with_httpx
 from shared.py.wide_events import log
 
 
@@ -151,6 +152,7 @@ async def deep_research(
             total_timeout_seconds=DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
             semaphore_count=DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,
             context_name="crawl4ai",
+            content_query=query,
         )
 
         semaphore = asyncio.Semaphore(DEEP_RESEARCH_FALLBACK_SEMAPHORE_COUNT)

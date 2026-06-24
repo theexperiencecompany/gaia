@@ -52,7 +52,6 @@ _execute_tracked_todo = instrument_task(execute_tracked_todo)
 _safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = instrument_task(rescan_pending_scheduled_tasks)
-
 WorkerSettings.functions = [
     _process_reminder,
     _cleanup_expired_reminders,

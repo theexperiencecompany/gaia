@@ -1,4 +1,12 @@
 DEFAULT_LLM_PROVIDER = "gemini"
+
+# How often the messages DeltaChannel writes a full snapshot blob (every Nth
+# update). Between snapshots only per-step deltas are persisted, so checkpoint
+# storage grows ~O(N) instead of the O(N²) of full-snapshot channels. Lower =
+# more storage but faster thread reconstruction; higher = less storage but
+# deeper delta replay on resume.
+MESSAGES_SNAPSHOT_FREQUENCY = 50
+
 # Runaway loops are the main driver of long, expensive traces; capping tail
 # risk keeps p95 cost predictable. Legitimate tasks that need more steps
 # should split work across handoffs rather than chew through recursion budget.
