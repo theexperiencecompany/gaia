@@ -40,6 +40,7 @@ class BraveProvider(SearchProvider):
                 title=item.get("title") or "",
                 content=item.get("description") or "",
                 published_date=item.get("age") or "",
+                favicon=(item.get("meta_url") or {}).get("favicon") or "",
             )
             for item in web_results
             if item.get("url")

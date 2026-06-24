@@ -43,6 +43,7 @@ class TavilyProvider(SearchProvider):
                 title=item.get("title") or "",
                 content=item.get("content") or "",
                 score=item["score"] if item.get("score") is not None else 0.5,
+                favicon=item.get("favicon") or "",
             )
             for item in payload.get("results", [])
             if item.get("url")

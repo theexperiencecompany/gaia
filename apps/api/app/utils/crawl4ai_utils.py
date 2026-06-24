@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from urllib.parse import urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
-from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
+from crawl4ai.content_filter_strategy import BM25ContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from app.config.settings import settings
@@ -15,24 +15,22 @@ from shared.py.wide_events import log
 
 # Tags that are almost never primary content; dropped before markdown conversion.
 _EXCLUDED_TAGS = ["nav", "header", "footer", "aside", "form", "script", "style", "noscript"]
-_PRUNE_THRESHOLD = 0.48
 _BM25_THRESHOLD = 1.0
 
 
 def _build_markdown_generator(content_query: str | None = None) -> DefaultMarkdownGenerator:
     """Build a markdown generator tuned for clean, LLM-ready output.
 
-    A content filter strips boilerplate so only the main content survives as
-    ``markdown.fit_markdown``. When ``content_query`` is supplied (deep research
-    knows its topic), BM25 keeps the passages most relevant to it; otherwise
-    pruning keeps the densest main content by text/link density.
+    Plain fetch keeps the full raw markdown — links, emails and inline text are
+    preserved (boilerplate is already removed via ``excluded_tags``). Deep
+    research passes a ``content_query`` so BM25 keeps only the passages most
+    relevant to the topic. (A pruning filter was dropping inline links, so it is
+    not used for plain fetch.)
     """
     content_filter = (
         BM25ContentFilter(user_query=content_query, bm25_threshold=_BM25_THRESHOLD)
         if content_query
-        else PruningContentFilter(
-            threshold=_PRUNE_THRESHOLD, threshold_type="fixed", min_word_threshold=5
-        )
+        else None
     )
     return DefaultMarkdownGenerator(
         content_source="cleaned_html",
@@ -239,6 +237,7 @@ async def _recover_with_single_url_crawls(
         markdown_generator=_build_markdown_generator(content_query),
         excluded_tags=_EXCLUDED_TAGS,
         word_count_threshold=10,
+        remove_overlay_elements=True,
         verbose=False,
     )
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
@@ -314,6 +313,7 @@ async def batch_fetch_with_crawl4ai(
         markdown_generator=_build_markdown_generator(content_query),
         excluded_tags=_EXCLUDED_TAGS,
         word_count_threshold=10,
+        remove_overlay_elements=True,
         verbose=False,
     )
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)

@@ -35,9 +35,10 @@ class ExaProvider(SearchProvider):
             SearchResultItem(
                 url=item["url"],
                 title=item.get("title") or "",
-                content=(item.get("text") or "")[:_MAX_TEXT_CHARS],
+                content=item.get("text") or "",
                 score=item["score"] if item.get("score") is not None else 0.5,
                 published_date=item.get("publishedDate") or "",
+                favicon=item.get("favicon") or "",
             )
             for item in payload.get("results", [])
             if item.get("url")

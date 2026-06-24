@@ -11,6 +11,7 @@ class SearchResultItem(BaseModel):
     content: str = ""
     score: float = 0.5
     published_date: str = ""
+    favicon: str = ""
 
 
 class SearchResponse(BaseModel):
