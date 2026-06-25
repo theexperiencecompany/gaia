@@ -296,15 +296,25 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Starts the WhatsApp "typing…" indicator and keeps it alive on a 20s timer
-   * (Meta dismisses it after ~25s). Call `stop()` once the reply is sent.
+   * Shows the WhatsApp "typing…" indicator once for the inbound message.
+   *
+   * The WhatsApp Cloud API typing indicator — emitted by marking the inbound
+   * message as read — is a ONE-SHOT: the client shows it for up to ~25s or until
+   * the bot replies, and it cannot be refreshed for the same message. The
+   * previous implementation re-marked the same message on a 20s `setInterval`,
+   * which the client rendered as a flickering on/off indicator (the "appears and
+   * goes and appears" bug). Send it once and let it dismiss naturally when the
+   * reply is sent — no hand-rolled keep-alive timer.
+   *
+   * `refresh` re-emits the indicator (used to re-show it after an interstitial
+   * message such as the welcome); `stop` is a no-op kept for call-site parity.
    */
   private startWhatsAppTyping(
     waId: string,
     messageId: string,
   ): { refresh: () => void; stop: () => void } {
     const waIdHash = hashLogIdentifier(waId);
-    const refresh = (): void => {
+    const sendTyping = (): void => {
       this.whatsAppClient.messages
         .markRead({
           phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
@@ -319,9 +329,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           }),
         );
     };
-    refresh();
-    const interval = setInterval(refresh, 20_000);
-    return { refresh, stop: () => clearInterval(interval) };
+    sendTyping();
+    return { refresh: sendTyping, stop: () => {} };
   }
 
   /**
