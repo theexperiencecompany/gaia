@@ -251,6 +251,14 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
         try:
             async for chunk in stream_manager.subscribe_stream(stream_id):
+                # Match the web stream path: stop forwarding if the bot client
+                # dropped the connection. The background task keeps running and
+                # persists the conversation.
+                if await request.is_disconnected():
+                    log.info(
+                        f"{LogTag.API} Bot client disconnected, stream {stream_id} continues in background"
+                    )
+                    break
                 # Forward keepalive comments directly
                 if chunk.startswith(":"):
                     yield chunk
