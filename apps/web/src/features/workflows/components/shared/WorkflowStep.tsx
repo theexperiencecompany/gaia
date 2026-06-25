@@ -35,14 +35,15 @@ export default function WorkflowStep({
   const descriptionTextSize = isLarge ? "text-sm" : "text-xs";
 
   // Prefer the integration's real display name (handles custom/MCP ids that
-  // would otherwise show a raw uuid); fall back to a titleized category.
+  // would otherwise show a raw uuid); fall back to the category. Title-case the
+  // result so lowercase custom names render capitalized.
   const categoryLabel =
     step.category === "gaia"
       ? "GAIA"
-      : (getIntegrationName(step.category) ??
-        step.category
-          .replaceAll("_", " ")
-          .replace(/\b\w/g, (c) => c.toUpperCase()));
+      : (
+          getIntegrationName(step.category) ??
+          step.category.replaceAll("_", " ")
+        ).replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <div className="relative flex items-start gap-5">

@@ -6,7 +6,7 @@ import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { Switch } from "@heroui/switch";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Alert02Icon, InformationCircleIcon } from "@icons";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -151,20 +151,46 @@ export default function WorkflowModal({
   useEffect(() => {
     if (isOpen) return;
     const timer = globalThis.setTimeout(() => {
+      // Only clear the form fields here — NOT the creation phase. Resetting the
+      // phase to "form" mid-fade would flash the form/button view over the
+      // terminal "success" screen on the way out. The phase is reset on open.
       resetFormValues(getDefaultFormValues());
-      resetToForm();
-      clearCreationError();
     }, 250);
     return () => globalThis.clearTimeout(timer);
-  }, [isOpen, resetFormValues, resetToForm, clearCreationError]);
+  }, [isOpen, resetFormValues]);
 
-  // Manage the single workflow state from all sources
+  // Reset the creation phase to a clean "form" when the modal OPENS (false ->
+  // true transition only), so each session starts fresh without flashing the
+  // previous session's success/error screen during the close animation. The ref
+  // guard is essential: resetToForm/clearCreationError identities are unstable,
+  // so without it this synchronous reset re-runs every render and infinite-loops.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (existingWorkflow) {
-      setCurrentWorkflow(existingWorkflow);
-    } else {
-      setCurrentWorkflow(null);
+    if (isOpen && !wasOpenRef.current) {
+      console.debug("[workflow:modal] opened -> resetting creation phase", {
+        mode,
+      });
+      resetToForm();
+      clearCreationError();
     }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, resetToForm, clearCreationError, mode]);
+
+  // Sync the local working copy from the prop only when a DIFFERENT workflow is
+  // passed (modal opens / switches workflow). A background list refetch (e.g.
+  // after save/regenerate) re-passes the SAME workflow with possibly-stale
+  // steps; syncing on every object change would clobber freshly-regenerated
+  // steps and flash the old ones. currentWorkflow is the edit-session truth.
+  const syncedWorkflowIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const nextId = existingWorkflow?.id ?? null;
+    if (nextId === syncedWorkflowIdRef.current) return;
+    console.debug("[workflow:sync] syncing working copy from prop", {
+      id: nextId,
+      steps: existingWorkflow?.steps?.length ?? 0,
+    });
+    syncedWorkflowIdRef.current = nextId;
+    setCurrentWorkflow(existingWorkflow ?? null);
   }, [existingWorkflow]);
 
   // Watch form data for change detection
@@ -428,7 +454,14 @@ export default function WorkflowModal({
   const handleSave = async (data: WorkflowFormData) => {
     if (!data.title.trim() || !data.prompt?.trim()) return;
 
+    console.debug("[workflow:save] start", {
+      mode,
+      title: data.title,
+      integrations: selectedIntegrationSlugs,
+    });
+
     if (mode === "create") {
+      console.debug("[workflow:create] phase -> creating");
       setCreationPhase("creating");
 
       // Validate the trigger config before sending
@@ -470,6 +503,11 @@ export default function WorkflowModal({
       };
 
       const result = await createWorkflow(createRequest);
+      console.debug("[workflow:create] api returned", {
+        success: result.success,
+        id: result.workflow?.id,
+        steps: result.workflow?.steps?.length ?? 0,
+      });
 
       if (result.success && result.workflow) {
         const createdWorkflow = result.workflow;
@@ -483,6 +521,7 @@ export default function WorkflowModal({
 
         // Update currentWorkflow with the newly created workflow
         setCurrentWorkflow(createdWorkflow);
+        console.debug("[workflow:create] phase -> success");
         setCreationPhase("success");
 
         // Show success toast
@@ -560,6 +599,12 @@ export default function WorkflowModal({
       if (stepRelevantChanged) {
         // Modal stays open with a visible regen indicator until the user
         // dismisses it.
+        console.debug(
+          "[workflow:regen] step-relevant change detected, regenerating",
+          {
+            id: currentWorkflow.id,
+          },
+        );
         setIsRegeneratingSteps(true);
         setRegenerationError(null);
         try {
@@ -576,7 +621,16 @@ export default function WorkflowModal({
           );
 
           if (regenResult.workflow) {
+            console.debug("[workflow:regen] api returned new steps", {
+              id: currentWorkflow.id,
+              steps: regenResult.workflow.steps?.length ?? 0,
+            });
+            // Commit the new steps locally AND to the store so the upcoming
+            // fetchWorkflows() refetch can't briefly resurface the old steps.
             setCurrentWorkflow(regenResult.workflow);
+            updateInStore(currentWorkflow.id, {
+              steps: regenResult.workflow.steps,
+            });
             toast.success("Workflow updated", {
               description: `${regenResult.workflow.steps?.length || 0} steps regenerated`,
               duration: 3000,

@@ -102,7 +102,7 @@ export default function WorkflowStepsPanel({
             </DropdownTrigger>
             <DropdownMenu
               aria-label="Regeneration reasons"
-              variant="faded"
+              variant="flat"
               onAction={(key) => onRegenerateWithReason(key as string)}
               disabledKeys={isRegenerating ? ["all"] : []}
             >
