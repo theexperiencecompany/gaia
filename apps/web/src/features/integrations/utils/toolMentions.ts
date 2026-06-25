@@ -65,6 +65,18 @@ export interface MentionSegment {
   offset: number;
 }
 
+/** The tool names mentioned as `@<name>` in the value, de-duplicated, in order. */
+export const extractMentions = (
+  value: string,
+  toolNames: string[],
+): string[] => {
+  const seen = new Set<string>();
+  for (const segment of buildMentionSegments(value, toolNames)) {
+    if (segment.mention) seen.add(segment.text.slice(1));
+  }
+  return [...seen];
+};
+
 /** Split text on `@<toolName>` occurrences so mentions can render as chips. */
 export const buildMentionSegments = (
   value: string,

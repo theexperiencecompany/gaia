@@ -1,5 +1,6 @@
 "use client";
 
+import type { ChipProps } from "@heroui/chip";
 import {
   type ClipboardEvent,
   type FormEvent,
@@ -19,22 +20,35 @@ interface MentionEditorProps {
   value: string;
   onChange: (value: string) => void;
   toolNames: string[];
-  renderMentionIcon?: () => ReactNode;
+  /** Icon for a given mention name (lets each mention show its own icon). */
+  renderMentionIcon?: (name: string) => ReactNode;
+  mentionRadius?: ChipProps["radius"];
   placeholder?: string;
   maxLength?: number;
+  /** Override the wrapper styling (border/background/radius). */
+  className?: string;
+  /** Override the editable surface min/max height. */
+  surfaceClassName?: string;
+  /** Render the content but block editing (contentEditable ignores fieldset). */
+  readOnly?: boolean;
 }
 
 const EDITOR_TEXT = "px-3.5 py-3 text-sm leading-8";
+const DEFAULT_WRAPPER =
+  "relative rounded-2xl border border-zinc-800 bg-zinc-800/40 transition-colors focus-within:border-zinc-700";
+const DEFAULT_SURFACE = "max-h-80 min-h-60";
 
 interface MentionChipTokenProps {
   name: string;
-  renderMentionIcon?: () => ReactNode;
+  renderMentionIcon?: (name: string) => ReactNode;
+  mentionRadius?: ChipProps["radius"];
   onRemove: (element: HTMLElement) => void;
 }
 
 const MentionChipToken = ({
   name,
   renderMentionIcon,
+  mentionRadius,
   onRemove,
 }: MentionChipTokenProps) => {
   const tokenRef = useRef<HTMLSpanElement>(null);
@@ -47,7 +61,8 @@ const MentionChipToken = ({
     >
       <MentionChip
         name={name}
-        icon={renderMentionIcon?.()}
+        icon={renderMentionIcon?.(name)}
+        radius={mentionRadius}
         onClose={() => {
           if (tokenRef.current) onRemove(tokenRef.current);
         }}
@@ -61,7 +76,10 @@ interface EditorSurfaceProps {
   epochValue: string;
   toolNames: string[];
   rootRef: RefObject<HTMLDivElement | null>;
-  renderMentionIcon?: () => ReactNode;
+  renderMentionIcon?: (name: string) => ReactNode;
+  mentionRadius?: ChipProps["radius"];
+  surfaceClassName: string;
+  readOnly?: boolean;
   onRemoveMention: (element: HTMLElement) => void;
   onInput: (event: FormEvent<HTMLDivElement>) => void;
   onBeforeInput: (event: FormEvent<HTMLDivElement>) => void;
@@ -82,6 +100,9 @@ const EditorSurface = memo(
     toolNames,
     rootRef,
     renderMentionIcon,
+    mentionRadius,
+    surfaceClassName,
+    readOnly,
     onRemoveMention,
     onInput,
     onBeforeInput,
@@ -101,8 +122,8 @@ const EditorSurface = memo(
         ref={rootRef}
         role="textbox"
         aria-multiline="true"
-        tabIndex={0}
-        contentEditable
+        tabIndex={readOnly ? -1 : 0}
+        contentEditable={!readOnly}
         suppressContentEditableWarning
         spellCheck={false}
         onInput={onInput}
@@ -112,7 +133,7 @@ const EditorSurface = memo(
         onClick={onSelectionChange}
         onPaste={onPaste}
         onBlur={onBlur}
-        className={`relative block max-h-80 min-h-60 w-full overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 caret-zinc-100 outline-none ${EDITOR_TEXT}`}
+        className={`relative block w-full overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 caret-zinc-100 outline-none ${surfaceClassName} ${EDITOR_TEXT}`}
       >
         {segments.map((segment) =>
           segment.mention ? (
@@ -120,6 +141,7 @@ const EditorSurface = memo(
               key={segment.offset}
               name={segment.text.slice(1)}
               renderMentionIcon={renderMentionIcon}
+              mentionRadius={mentionRadius}
               onRemove={onRemoveMention}
             />
           ) : (
@@ -138,16 +160,17 @@ export const MentionEditor = ({
   onChange,
   toolNames,
   renderMentionIcon,
+  mentionRadius,
   placeholder,
   maxLength,
+  className,
+  surfaceClassName,
+  readOnly,
 }: MentionEditorProps) => {
   const editor = useMentionEditor({ value, onChange, toolNames, maxLength });
 
   return (
-    <div
-      ref={editor.wrapperRef}
-      className="relative rounded-2xl border border-zinc-800 bg-zinc-800/40 transition-colors focus-within:border-zinc-700"
-    >
+    <div ref={editor.wrapperRef} className={className ?? DEFAULT_WRAPPER}>
       {value === "" && (
         <div
           aria-hidden="true"
@@ -158,12 +181,17 @@ export const MentionEditor = ({
       )}
 
       <EditorSurface
-        key={editor.epoch}
+        // Remount on epoch (structural edits) and when the mentionable names
+        // load/change, so existing mentions resolve to chips once names arrive.
+        key={`${editor.epoch}-${toolNames.length}`}
         epoch={editor.epoch}
         epochValue={editor.epochValue}
         toolNames={toolNames}
         rootRef={editor.rootRef}
         renderMentionIcon={renderMentionIcon}
+        mentionRadius={mentionRadius}
+        surfaceClassName={surfaceClassName ?? DEFAULT_SURFACE}
+        readOnly={readOnly}
         onRemoveMention={editor.removeMentionToken}
         onInput={editor.handlers.onInput}
         onBeforeInput={editor.handlers.onBeforeInput}

@@ -1,8 +1,7 @@
 import { Button } from "@heroui/button";
-import { Textarea } from "@heroui/input";
 import { Tooltip } from "@heroui/tooltip";
 import { SparklesIcon } from "@icons";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   type Control,
   Controller,
@@ -11,10 +10,14 @@ import {
   useWatch,
 } from "react-hook-form";
 import { TextMorph } from "torph/react";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { MentionEditor } from "@/features/integrations/components/MentionEditor";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import { workflowApi } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { mentionableIntegrations } from "../../utils/integrationMentions";
 import WorkflowSection from "./WorkflowSection";
 
 interface WorkflowDescriptionFieldProps {
@@ -33,6 +36,30 @@ export default function WorkflowDescriptionField({
   selectedIntegrationSlugs,
 }: WorkflowDescriptionFieldProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const { integrations } = useIntegrations();
+  // Only integrations the user can actually use are mentionable.
+  const mentionable = useMemo(
+    () => mentionableIntegrations(integrations),
+    [integrations],
+  );
+  const toolNames = useMemo(
+    () => mentionable.map((i) => i.name),
+    [mentionable],
+  );
+  const integrationByName = useMemo(
+    () => new Map(mentionable.map((i) => [i.name, i])),
+    [mentionable],
+  );
+  const renderMentionIcon = (name: string) => {
+    const integ = integrationByName.get(name);
+    if (!integ) return null;
+    return getToolCategoryIcon(
+      integ.id,
+      { size: 14, width: 14, height: 14, showBackground: false },
+      integ.iconUrl,
+    );
+  };
 
   const [title, description, triggerConfig, currentPrompt] = useWatch({
     control,
@@ -131,28 +158,26 @@ export default function WorkflowDescriptionField({
         name="prompt"
         control={control}
         render={({ field }) => (
-          <Textarea
-            {...field}
-            aria-label="Workflow instructions"
-            placeholder="E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via Slack"
-            minRows={4}
-            variant="flat"
-            isRequired
-            isInvalid={!!errors.prompt}
-            errorMessage={errors.prompt?.message}
-            classNames={{ input: "text-sm leading-relaxed" }}
-            onKeyDown={(e) => {
-              if (
-                !isPreview &&
-                (e.metaKey || e.ctrlKey) &&
-                e.shiftKey &&
-                e.key === "Enter"
-              ) {
-                e.preventDefault();
-                handleGenerate();
-              }
-            }}
-          />
+          <>
+            <MentionEditor
+              value={field.value ?? ""}
+              onChange={field.onChange}
+              toolNames={toolNames}
+              renderMentionIcon={renderMentionIcon}
+              mentionRadius="sm"
+              readOnly={isPreview}
+              placeholder="E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via @Slack"
+              className={`relative rounded-xl bg-zinc-800/60 transition-colors focus-within:bg-zinc-800/80 ${
+                errors.prompt ? "ring-1 ring-danger" : ""
+              }`}
+              surfaceClassName="min-h-28 max-h-72"
+            />
+            {errors.prompt?.message && (
+              <p className="mt-1.5 px-1 text-xs text-danger">
+                {errors.prompt.message}
+              </p>
+            )}
+          </>
         )}
       />
     </WorkflowSection>

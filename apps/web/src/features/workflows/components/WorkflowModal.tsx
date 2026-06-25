@@ -41,6 +41,7 @@ import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { createDefaultTriggerConfig } from "../triggers/registry";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
 import { findTriggerSchema } from "../triggers/utils";
+import { mentionedIntegrationIds } from "../utils/integrationMentions";
 
 interface WorkflowModalProps {
   isOpen: boolean;
@@ -122,11 +123,6 @@ export default function WorkflowModal({
 
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Selected integration slugs for hinting step generation
-  const [selectedIntegrationSlugs, setSelectedIntegrationSlugs] = useState<
-    string[]
-  >([]);
-
   // Fetch trigger schemas for slug normalization
   const { data: triggerSchemas } = useTriggerSchemas();
 
@@ -156,7 +152,6 @@ export default function WorkflowModal({
     if (isOpen) return;
     const timer = globalThis.setTimeout(() => {
       resetFormValues(getDefaultFormValues());
-      setSelectedIntegrationSlugs([]);
       resetToForm();
       clearCreationError();
     }, 250);
@@ -167,15 +162,26 @@ export default function WorkflowModal({
   useEffect(() => {
     if (existingWorkflow) {
       setCurrentWorkflow(existingWorkflow);
-      setSelectedIntegrationSlugs(existingWorkflow.selected_integrations ?? []);
     } else {
       setCurrentWorkflow(null);
-      setSelectedIntegrationSlugs([]);
     }
   }, [existingWorkflow]);
 
   // Watch form data for change detection
   const formData = watch();
+
+  // The integration slugs that step generation hints on (and that get persisted)
+  // come from the @-mentions in the instructions. Falls back to the existing
+  // workflow's saved slugs for older prompts that predate mention support.
+  const selectedIntegrationSlugs = useMemo(() => {
+    const mentioned = mentionedIntegrationIds(
+      formData.prompt ?? "",
+      integrations,
+    );
+    return mentioned.length > 0
+      ? mentioned
+      : (existingWorkflow?.selected_integrations ?? []);
+  }, [formData.prompt, integrations, existingWorkflow]);
 
   // The integration backing the selected event trigger, if it still needs
   // connecting. Resolved from the selected trigger slug (not trigger_config,
