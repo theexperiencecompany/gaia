@@ -8,14 +8,14 @@ export const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 /**
  * Re-emit cadence for the "typing…" indicator while a reply is being generated.
  *
- * The WhatsApp Cloud API typing indicator auto-dismisses after ~25s (or when the
- * reply is sent), so a single emit leaves the user staring at a dead chat for any
- * generation that runs long (markdown-heavy answers routinely exceed 25s). We
- * re-emit well inside that ceiling so the indicator never expires mid-generation;
- * re-emitting while it is still active extends the window rather than flickering
- * it (the prior 20s cadence flickered because it lapsed before re-firing).
+ * Although the Cloud API documents a ~25s validity window, the WhatsApp *client*
+ * only animates "typing…" for a few seconds per emit before it decays. A slow
+ * cadence (8s/20s) therefore leaves visible gaps — the indicator decays, then
+ * reappears on the next emit (the "comes, goes, comes back" flicker). We re-emit
+ * faster than the client's decay so the animation stays continuous for the whole
+ * generation; stop() cancels it the instant the reply is sent.
  */
-export const TYPING_REFRESH_MS = 8 * 1000;
+export const TYPING_REFRESH_MS = 3 * 1000;
 
 /**
  * Approved utility template used to deliver proactive notifications when a
