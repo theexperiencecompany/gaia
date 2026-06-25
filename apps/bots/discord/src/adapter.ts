@@ -779,31 +779,32 @@ export class DiscordAdapter extends BaseBotAdapter {
       )
       .addFields(
         {
-          name: "💬 Chat",
+          name: "Chat",
           value:
-            "Just type anything. Ask questions, brainstorm, think out loud.",
+            "Just type anything — ask questions, brainstorm, think out loud.",
           inline: false,
         },
         {
-          name: "✅ Todos",
+          name: "Todos",
           value:
-            "Use `/todo add` to capture tasks. Right-click any message → **Add as Todo**.",
+            "Capture tasks with `/todo add`, or right-click any message → **Add as Todo**.",
           inline: false,
         },
         {
-          name: "⚡ Workflows",
-          value: "Run automations with `/workflow`. Delegate entire projects.",
+          name: "Workflows",
+          value:
+            "Run automations with `/workflow` and delegate whole projects.",
           inline: false,
         },
         {
-          name: "🔗 Link your account",
+          name: "Link your account",
           value:
-            "Use `/auth` to connect your GAIA account for memory and personalization.",
+            "Run `/auth` to connect GAIA so I remember you and your context.",
           inline: false,
         },
       )
       .setFooter({
-        text: "Tip: Right-click any message to summarize it or add it as a todo.",
+        text: "Tip: right-click any message to summarize it or save it as a todo.",
       })
       .setTimestamp();
 

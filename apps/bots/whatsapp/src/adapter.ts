@@ -609,18 +609,22 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private async sendWelcome(waId: string): Promise<void> {
     const text =
       `*Hey, I'm GAIA* 👋\n\n` +
-      `Your personal AI — built to think ahead, remember everything, and get things done with you.\n\n` +
-      `Here's what I can do right on WhatsApp:\n\n` +
-      `*💬 Chat*\nJust type anything. Ask questions, brainstorm, think out loud.\n\n` +
-      `*✅ Todos*\nUse /todo add to capture tasks.\n\n` +
-      `*⚡ Workflows*\nRun automations with /workflow. Delegate entire projects.\n\n` +
-      `*🔗 Link your account*\nUse /auth to connect your GAIA account for memory and personalization.\n\n` +
+      `Your personal AI — I think ahead, remember what matters, and help you actually get things done.\n\n` +
+      `Here's what I can do right here on WhatsApp:\n\n` +
+      `*Chat*\nJust type anything — ask questions, brainstorm, think out loud.\n\n` +
+      `*Todos*\nCapture tasks with /todo add.\n\n` +
+      `*Workflows*\nRun automations with /workflow and delegate whole projects.\n\n` +
+      `*Link your account*\nRun /auth to connect GAIA so I remember you and your context.\n\n` +
       `_Visit heygaia.io or read the docs at docs.heygaia.io_`;
 
     try {
       await this.sendWhatsAppText(waId, text);
-    } catch {
-      // If we can't send the welcome, continue silently (match Discord behavior)
+    } catch (error) {
+      this.adapterLogger.error(
+        "welcome_send_failed",
+        { wa_hash: hashLogIdentifier(waId) },
+        error,
+      );
     }
   }
 

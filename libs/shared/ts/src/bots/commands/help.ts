@@ -16,46 +16,44 @@ export const helpCommand: BotCommand = {
   async execute({ target }: CommandExecuteParams): Promise<void> {
     await target.sendRich({
       type: "embed",
-      title: "🤖 GAIA - Your Personal AI Assistant",
+      title: "Hey, I'm GAIA 👋",
       description:
-        "GAIA is your proactive AI assistant that helps manage your digital life. Here's how to get started:",
+        "Your personal AI — I think ahead, remember what matters, and help you actually get things done. Here's how we work together.",
       color: 0x7c3aed,
       fields: [
         {
-          name: "✨ Getting Started",
+          name: "Get started",
           value: [
-            "1. Use `/auth` to link your account with GAIA",
-            "2. Once linked, you can use all commands and features",
-            "3. Mention @GAIA in any channel for quick questions",
+            "**1.** Link your account with `/auth`",
+            "**2.** Talk to me anytime with `/gaia <message>`, or just @mention me",
+            "**3.** I'll remember our conversations and your context",
           ].join("\n"),
         },
         {
-          name: "📝 Available Commands",
+          name: "What I can do",
           value: [
-            "`/auth` - Link your account to GAIA",
-            "`/status` - Check your account link status",
-            "`/settings` - View your GAIA settings and integrations",
-            "`/gaia <message>` - Chat with GAIA (private)",
-            "`/conversations` - View conversation history",
-            "`/new` - Start a new conversation",
-            "`/stop` - Stop the current response and start fresh",
-            "`/todo` - Manage your tasks",
-            "`/workflow` - Manage workflows",
-            "`/unlink` - Disconnect your account from GAIA",
+            "`/gaia` — chat with me privately",
+            "`/todo` — capture and manage your tasks",
+            "`/workflow` — set up and run automations",
+            "`/settings` — your account and connected apps",
+            "`/status` — check if you're linked",
+            "`/new` — start a fresh conversation",
+            "`/stop` — cancel the current reply and reset",
+            "`/conversations` — pick up a past chat",
+            "`/unlink` — disconnect your account",
           ].join("\n"),
         },
         {
-          name: "💬 Mention Mode",
+          name: "Or just mention me",
           value:
-            "Mention @GAIA in any channel to ask questions or get help. Your conversations are remembered!",
+            "@mention me in any channel for a quick question — I'll keep track of the thread.",
         },
       ],
       links: [
         { label: "Website", url: "https://heygaia.io" },
-        { label: "Documentation", url: "https://docs.heygaia.io" },
+        { label: "Docs", url: "https://docs.heygaia.io" },
         { label: "Support", url: "https://discord.gg/gaia" },
       ],
-      footer: "GAIA - General AI Assistant",
       timestamp: true,
     });
   },
