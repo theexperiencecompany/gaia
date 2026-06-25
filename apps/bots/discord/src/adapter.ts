@@ -828,8 +828,12 @@ export class DiscordAdapter extends BaseBotAdapter {
           }) => Promise<Message>;
         }
       ).send({ embeds: [embed], components: [row] });
-    } catch {
-      // If we can't send the welcome, continue silently
+    } catch (error) {
+      this.adapterLogger.error(
+        "welcome_send_failed",
+        { user_id: message.author.id },
+        error,
+      );
     }
   }
 
