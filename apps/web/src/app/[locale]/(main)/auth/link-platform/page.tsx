@@ -1,6 +1,8 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { CheckmarkCircle02Icon, Link01Icon } from "@icons";
+import confetti from "canvas-confetti";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -26,6 +28,17 @@ const PLATFORM_CONFIG: Record<
   telegram: { name: "Telegram", icon: TelegramIcon, color: "bg-[#0088cc]" },
   whatsapp: { name: "WhatsApp", icon: WhatsappIcon, color: "bg-[#25D366]" },
 };
+
+/** Shared card shell: rounded, flat, no outline — matches GAIA surfaces. */
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-full items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-3xl bg-zinc-900 p-8 text-center shadow-2xl shadow-black/40">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function LinkPlatformPage() {
   const searchParams = useSearchParams();
@@ -82,16 +95,29 @@ export default function LinkPlatformPage() {
     }
   }, [token]);
 
+  // Celebrate a successful link with a quick confetti burst.
+  useEffect(() => {
+    if (!isLinked) return;
+    const defaults = {
+      spread: 70,
+      ticks: 90,
+      gravity: 1,
+      decay: 0.92,
+      startVelocity: 32,
+      colors: ["#00bbff", "#3effa6", "#ffffff", "#a78bfa"],
+    };
+    confetti({ ...defaults, particleCount: 60, origin: { x: 0.5, y: 0.45 } });
+    confetti({ ...defaults, particleCount: 30, origin: { x: 0.5, y: 0.45 } });
+  }, [isLinked]);
+
   if (!token || !platform || !config) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-          <p className="text-zinc-400">
-            Invalid or expired link. Please request a new link from your bot
-            using <span className="font-mono text-zinc-300">/auth</span>.
-          </p>
-        </div>
-      </div>
+      <Card>
+        <p className="text-zinc-400">
+          Invalid or expired link. Request a new one from your bot with{" "}
+          <span className="font-mono text-zinc-300">/auth</span>.
+        </p>
+      </Card>
     );
   }
 
@@ -101,9 +127,9 @@ export default function LinkPlatformPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-zinc-400">Redirecting to sign in...</p>
-      </div>
+      <Card>
+        <p className="text-sm text-zinc-400">Redirecting to sign in…</p>
+      </Card>
     );
   }
 
@@ -143,59 +169,59 @@ export default function LinkPlatformPage() {
 
   if (isLinked) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-          <div
-            className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl ${config.color}`}
-          >
-            <Icon className="h-7 w-7 text-white" />
-          </div>
-          <h2 className="mb-2 text-xl font-semibold text-white">
-            Account Linked!
-          </h2>
-          <p className="text-zinc-400">
-            You can close this window and return to {config.name}.
-          </p>
+      <Card>
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-success/15">
+          <CheckmarkCircle02Icon className="h-9 w-9 text-success" />
         </div>
-      </div>
+        <h2 className="mb-2 text-xl font-semibold text-white">
+          You&apos;re connected!
+        </h2>
+        <p className="text-sm text-zinc-400">
+          Your {config.name} account is linked. Head back to {config.name} and
+          say hi — GAIA&apos;s ready when you are.
+        </p>
+      </Card>
     );
   }
 
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-        <div
-          className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl ${config.color}`}
-        >
-          <Icon className="h-7 w-7 text-white" />
-        </div>
-        <h2 className="mb-2 text-xl font-semibold text-white">
-          Link your {config.name} account to GAIA?
-        </h2>
-        {(accountInfo?.displayName || accountInfo?.username) && (
-          <p className="mb-1 text-sm font-medium text-zinc-300">
-            Account: {accountInfo.displayName ?? accountInfo.username}
-            {accountInfo.username && accountInfo.displayName
-              ? ` (@${accountInfo.username})`
-              : ""}
-          </p>
-        )}
-        <p className="mb-6 text-sm text-zinc-400">
-          This will connect your {config.name} account so you can use GAIA
-          directly from {config.name}.
-        </p>
-
-        {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
-
-        <Button
-          color="primary"
-          className="w-full"
-          onPress={handleLink}
-          isLoading={isLinking}
-        >
-          Confirm Link
-        </Button>
+    <Card>
+      <div
+        className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[1.25rem] shadow-lg ${config.color}`}
+      >
+        <Icon className="h-8 w-8 text-white" />
       </div>
-    </div>
+      <h2 className="mb-2 text-xl font-semibold text-white">
+        Connect {config.name} to GAIA
+      </h2>
+      {(accountInfo?.displayName || accountInfo?.username) && (
+        <p className="mb-1 text-sm font-medium text-zinc-300">
+          {accountInfo.displayName ?? accountInfo.username}
+          {accountInfo.username && accountInfo.displayName
+            ? ` · @${accountInfo.username}`
+            : ""}
+        </p>
+      )}
+      <p className="mb-6 text-sm text-zinc-400">
+        Chat with GAIA, capture todos, and run workflows right inside{" "}
+        {config.name} — fully synced with your account.
+      </p>
+
+      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+
+      <Button
+        color="primary"
+        size="lg"
+        radius="lg"
+        className="w-full font-medium shadow-lg shadow-primary/30"
+        startContent={
+          isLinking ? undefined : <Link01Icon className="h-5 w-5" />
+        }
+        onPress={handleLink}
+        isLoading={isLinking}
+      >
+        Connect {config.name}
+      </Button>
+    </Card>
   );
 }
