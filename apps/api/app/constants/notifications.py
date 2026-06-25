@@ -43,17 +43,19 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_SLACK: True,
 }
 
-# Workflow-completion notification copy. GAIA texts like a friend on WhatsApp
-# (first person, casual), not a status bar. Each entry is (title, body);
-# {title} is the workflow name. One pair is picked per run so repeats don't read
-# like a robot. The workflow's full result is delivered as real messages straight
-# into the user's chat, so bodies can warmly point there ("in your chat") and must
-# never reference a link or button (there is none).
+# Workflow-completion notification copy. GAIA texts like a friend (first person,
+# casual), not a status bar. Each entry is (title, body); {title} is the workflow
+# name. One pair is picked per run so repeats don't read like a robot. This is the
+# in-app (web) heads-up and it carries a "View Results" button, so bodies stay warm
+# and channel-agnostic: they never claim a specific place ("in your chat"), since a
+# web user has no external chat and reaches the result through the button.
 WORKFLOW_DONE_COPY: tuple[tuple[str, str], ...] = (
-    ("sorted {title} for you", "dropped it all in your chat 🙌"),
-    ("{title} is done!", "everything's waiting in your chat"),
-    ("just wrapped up {title}", "pulled it together and sent it over"),
-    ("handled {title} for you", "had a proper look, it's all in your chat"),
+    ("sorted {title} for you", "it's all ready whenever you are 🙌"),
+    ("{title} is done", "had a proper look — everything's ready for you"),
+    ("just wrapped up {title}", "pulled it all together, take a peek"),
+    ("handled {title} for you", "all done end to end, give it a look"),
+    ("finished {title}", "got everything ready for you to check out"),
+    ("{title}: all set", "took care of it, here's what I found"),
 )
 
 

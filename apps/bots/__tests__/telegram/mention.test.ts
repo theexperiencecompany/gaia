@@ -105,6 +105,12 @@ describe("convertToTelegramHtml - emphasis conversion", () => {
     );
   });
 
+  it("wraps an indented blockquote (up to 3 leading spaces)", () => {
+    expect(convertToTelegramHtml("   > quoted text")).toBe(
+      "<blockquote>quoted text</blockquote>",
+    );
+  });
+
   it("marks a long blockquote as expandable", () => {
     const long = Array.from({ length: 5 }, (_, i) => `> line ${i + 1}`).join(
       "\n",
