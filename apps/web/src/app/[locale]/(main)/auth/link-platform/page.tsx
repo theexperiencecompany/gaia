@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Spinner } from "@heroui/spinner";
 import { CheckmarkCircle02Icon, Link01Icon } from "@icons";
 import confetti from "canvas-confetti";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -11,6 +11,7 @@ import {
   TelegramIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
@@ -29,11 +30,11 @@ const PLATFORM_CONFIG: Record<
   whatsapp: { name: "WhatsApp", icon: WhatsappIcon, color: "bg-[#25D366]" },
 };
 
-/** Shared card shell: rounded, flat, no outline — matches GAIA surfaces. */
+/** Shared card shell: rounded, flat, no outline, no shadow — matches GAIA surfaces. */
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-full items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-3xl bg-zinc-900 p-8 text-center shadow-2xl shadow-black/40">
+      <div className="w-full max-w-md rounded-3xl bg-zinc-900 p-8 text-center">
         {children}
       </div>
     </div>
@@ -203,25 +204,26 @@ export default function LinkPlatformPage() {
         </p>
       )}
       <p className="mb-6 text-sm text-zinc-400">
-        Chat with GAIA, capture todos, and run workflows right inside{" "}
-        {config.name} — fully synced with your account.
+        Chat with GAIA, your personal AI assistant, right inside {config.name}.
+        Fully synced with your account.
       </p>
 
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
-      <Button
-        color="primary"
+      <RaisedButton
         size="lg"
-        radius="lg"
-        className="w-full font-medium shadow-lg shadow-primary/30"
-        startContent={
-          isLinking ? undefined : <Link01Icon className="h-5 w-5" />
-        }
-        onPress={handleLink}
-        isLoading={isLinking}
+        color="#00bbff"
+        className="w-full font-medium text-black!"
+        onClick={handleLink}
+        disabled={isLinking}
       >
+        {isLinking ? (
+          <Spinner size="sm" color="default" />
+        ) : (
+          <Link01Icon className="h-5 w-5" />
+        )}
         Connect {config.name}
-      </Button>
+      </RaisedButton>
     </Card>
   );
 }
