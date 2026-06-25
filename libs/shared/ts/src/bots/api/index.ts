@@ -1,4 +1,3 @@
-import type { Readable } from "node:stream";
 import axios, { type AxiosInstance } from "axios";
 import type {
   AuthStatus,
@@ -16,9 +15,7 @@ import type {
   ChatRequest,
   SettingsResponse,
 } from "../types";
-import { createBotLogger } from "../utils/logger";
-
-const logger = createBotLogger("shared", "gaia-client");
+import { streamChat } from "./chat-stream";
 
 export class GaiaApiError extends Error {
   status?: number;
@@ -142,6 +139,16 @@ export class GaiaClient {
   }
 
   /**
+   * Stores a fresh session token for the user with the client-side TTL.
+   */
+  private storeSessionToken(ctx: BotUserContext, token: string): void {
+    this.sessionTokens.set(this.getSessionKey(ctx), {
+      token,
+      expiresAt: Date.now() + TOKEN_TTL_MS,
+    });
+  }
+
+  /**
    * Streams a chat response via SSE (authenticated users only).
    */
   async chatStream(
@@ -150,330 +157,19 @@ export class GaiaClient {
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
   ): Promise<string> {
-    return this._chatStreamWithRetry(
+    return streamChat(
+      {
+        client: this.client,
+        userHeaders: (ctx) => this.userHeaders(ctx),
+        storeSessionToken: (ctx, token) => this.storeSessionToken(ctx, token),
+        clearSessionToken: (ctx) => this.clearSessionToken(ctx),
+      },
       request,
       onChunk,
       onDone,
       onError,
       "/api/v1/bot/chat-stream",
     );
-  }
-
-  /**
-   * Wrapper that adds retry logic for transient failures.
-   */
-  private async _chatStreamWithRetry(
-    request: ChatRequest,
-    onChunk: (text: string) => void | Promise<void>,
-    onDone: (fullText: string, conversationId: string) => void | Promise<void>,
-    onError: (error: Error) => void | Promise<void>,
-    endpoint: string,
-    maxRetries = 2,
-  ): Promise<string> {
-    const retryableErrors = [
-      "ECONNRESET",
-      "socket hang up",
-      "ETIMEDOUT",
-      "ECONNREFUSED",
-      "Connection interrupted",
-      "Connection lost before receiving a response",
-    ];
-
-    let lastError: Error | null = null;
-    let attemptedRetries = 0;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        return await this._chatStreamInternal(
-          request,
-          onChunk,
-          onDone,
-          onError,
-          attempt > 0,
-          endpoint,
-        );
-      } catch (error: unknown) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        const errorMsg = lastError.message;
-
-        // Check if this is a retryable error
-        const isRetryable = retryableErrors.some((retryableErr) =>
-          errorMsg.includes(retryableErr),
-        );
-
-        if (!isRetryable || attempt === maxRetries) {
-          // Non-retryable error or max retries reached
-          await onError(lastError);
-          throw lastError;
-        }
-
-        // Wait before retrying (exponential backoff)
-        const delayMs = Math.min(1000 * 2 ** attempt, 5000);
-        attemptedRetries++;
-        logger.warn("chat_stream_retrying", {
-          attempt: attemptedRetries,
-          max_retries: maxRetries,
-          delay_ms: delayMs,
-          error_message: lastError.message,
-        });
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-    }
-
-    // Should never reach here, but just in case
-    const finalError = lastError || new Error("Stream failed after retries");
-    await onError(finalError);
-    throw finalError;
-  }
-
-  private async _chatStreamInternal(
-    request: ChatRequest,
-    onChunk: (text: string) => void | Promise<void>,
-    onDone: (fullText: string, conversationId: string) => void | Promise<void>,
-    onError: (error: Error) => void | Promise<void>,
-    retried: boolean,
-    endpoint: string,
-  ): Promise<string> {
-    let fullText = "";
-    let conversationId = "";
-    let streamError: Error | null = null;
-
-    // Increased timeouts for slow API operations (lazy loading, cold starts, etc.)
-    const STREAM_TIMEOUT_MS = 600_000; // 10 minutes - overall connection timeout
-    const INACTIVITY_TIMEOUT_MS = 300_000; // 5 minutes - no data received timeout
-
-    const ctx = {
-      platform: request.platform,
-      platformUserId: request.platformUserId,
-      channelId: request.channelId,
-    };
-
-    try {
-      const response = await this.client.post(
-        endpoint,
-        {
-          message: request.message,
-          platform: request.platform,
-          platform_user_id: request.platformUserId,
-          channel_id: request.channelId,
-          ...(request.fileIds && request.fileIds.length > 0
-            ? { file_ids: request.fileIds }
-            : {}),
-          ...(request.fileData && request.fileData.length > 0
-            ? { file_data: request.fileData }
-            : {}),
-        },
-        {
-          responseType: "stream",
-          timeout: STREAM_TIMEOUT_MS,
-          headers: {
-            Accept: "text/event-stream",
-            ...this.userHeaders(ctx),
-          },
-        },
-      );
-
-      const stream = response.data as Readable;
-      let buffer = "";
-      let finished = false;
-      let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
-      let receivedKeepalive = false;
-
-      const resetInactivityTimer = (resolve: () => void) => {
-        if (inactivityTimer) clearTimeout(inactivityTimer);
-        inactivityTimer = setTimeout(async () => {
-          if (!finished) {
-            finished = true;
-            stream.destroy();
-            if (fullText) {
-              // If we got some content, consider it a success
-              await onDone(fullText, conversationId);
-            } else {
-              // No content after timeout - this is an error
-              const errorMsg = receivedKeepalive
-                ? "The AI is taking longer than expected. Please try a simpler request or try again later."
-                : "Connection timeout - no response from server. Please try again.";
-              await onError(new Error(errorMsg));
-            }
-            resolve();
-          }
-        }, INACTIVITY_TIMEOUT_MS);
-      };
-
-      await new Promise<void>((resolve) => {
-        resetInactivityTimer(resolve);
-
-        stream.on("data", async (rawChunk: Buffer) => {
-          if (finished) return;
-          try {
-            resetInactivityTimer(resolve);
-            buffer += rawChunk.toString();
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (finished) return;
-              const trimmed = line.trim();
-
-              if (!trimmed || !trimmed.startsWith("data: ")) continue;
-              const raw = trimmed.slice(6);
-              if (raw === "[DONE]") continue;
-
-              try {
-                const data = JSON.parse(raw);
-                if (data.keepalive) {
-                  // Server keepalive ping to keep the connection alive
-                  receivedKeepalive = true;
-                  continue;
-                }
-                if (data.error === "not_authenticated") {
-                  finished = true;
-                  if (inactivityTimer) clearTimeout(inactivityTimer);
-                  await onError(new Error("not_authenticated"));
-                  resolve();
-                  return;
-                }
-                if (data.error) {
-                  finished = true;
-                  if (inactivityTimer) clearTimeout(inactivityTimer);
-                  await onError(new Error(data.error));
-                  resolve();
-                  return;
-                }
-                if (data.session_token) {
-                  const sessionKey = this.getSessionKey(ctx);
-                  this.sessionTokens.set(sessionKey, {
-                    token: data.session_token,
-                    expiresAt: Date.now() + TOKEN_TTL_MS,
-                  });
-                }
-                if (data.text) {
-                  fullText += data.text;
-                  onChunk(data.text);
-                }
-                if (data.done) {
-                  finished = true;
-                  if (inactivityTimer) clearTimeout(inactivityTimer);
-                  conversationId = data.conversation_id || "";
-                  await onDone(fullText, conversationId);
-                  resolve();
-                  return;
-                }
-              } catch (parseErr) {
-                if (!(parseErr instanceof SyntaxError)) {
-                  finished = true;
-                  if (inactivityTimer) clearTimeout(inactivityTimer);
-                  await onError(
-                    parseErr instanceof Error
-                      ? parseErr
-                      : new Error("Stream processing failed"),
-                  );
-                  resolve();
-                  return;
-                }
-              }
-            }
-          } catch {
-            // Prevent unhandled rejection if a callback throws
-            if (!finished) {
-              finished = true;
-              if (inactivityTimer) clearTimeout(inactivityTimer);
-              resolve();
-            }
-          }
-        });
-
-        stream.on("end", async () => {
-          if (inactivityTimer) clearTimeout(inactivityTimer);
-          try {
-            if (!finished) {
-              finished = true;
-              if (fullText) {
-                // Got partial response - return what we have
-                await onDone(fullText, conversationId);
-              } else if (receivedKeepalive) {
-                // Received keepalive but no content - server is working but slow
-                await onError(
-                  new Error(
-                    "The AI is processing your request but hasn't responded yet. Please try again.",
-                  ),
-                );
-              } else {
-                // No keepalive, no content - connection issue
-                await onError(
-                  new Error(
-                    "Connection lost before receiving a response. Please try again.",
-                  ),
-                );
-              }
-            }
-          } catch {
-            // Prevent unhandled rejection if a callback throws
-          } finally {
-            resolve();
-          }
-        });
-
-        stream.on("error", async (err: Error) => {
-          if (inactivityTimer) clearTimeout(inactivityTimer);
-          try {
-            if (!finished) {
-              finished = true;
-              const isRetryable =
-                err.message.includes("ECONNRESET") ||
-                err.message.includes("socket hang up") ||
-                err.message.includes("ETIMEDOUT");
-
-              if (isRetryable && !fullText) {
-                // No content received yet — store for re-throw so _chatStreamWithRetry can retry
-                streamError = err;
-              } else {
-                // Has partial content or non-retryable — surface to user
-                const errorMsg =
-                  err.message.includes("ECONNRESET") ||
-                  err.message.includes("socket hang up")
-                    ? "Connection interrupted. Please try again."
-                    : err.message.includes("timeout")
-                      ? "Request timed out. The server may be busy - please try again."
-                      : err.message;
-                await onError(new Error(errorMsg));
-              }
-            }
-          } catch {
-            // Prevent unhandled rejection if callback throws
-          } finally {
-            resolve();
-          }
-        });
-      });
-    } catch (error: unknown) {
-      const status = (error as { response?: { status?: number } })?.response
-        ?.status;
-
-      if (status === 401 && !retried) {
-        this.clearSessionToken(ctx);
-        return this._chatStreamInternal(
-          request,
-          onChunk,
-          onDone,
-          onError,
-          true,
-          endpoint,
-        );
-      }
-
-      // Re-throw so _chatStreamWithRetry can classify the error and retry if appropriate
-      throw error;
-    }
-
-    // Re-throw retryable mid-stream errors so _chatStreamWithRetry can retry them.
-    // These are stored rather than thrown inside the stream event handler because
-    // stream errors resolve the promise (not reject it).
-    if (streamError) {
-      throw streamError;
-    }
-
-    return conversationId;
   }
 
   /**
