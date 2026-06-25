@@ -24,13 +24,23 @@ from app.agents.core.background.comms_narrator import narrate_executor_result
 from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import conversations_collection
-from app.models.chat_models import ConversationSource, MessageModel, UpdateMessagesRequest
+from app.models.chat_models import (
+    BOT_CONVERSATION_SOURCES,
+    ConversationSource,
+    MessageModel,
+    UpdateMessagesRequest,
+)
 from app.models.message_models import ReplyToMessageData
+from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
+from app.services.outbound_delivery import publish_outbound_message
+from app.services.platform_link_service import PlatformLinkService
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
+from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
 
@@ -219,13 +229,20 @@ async def _narrate_and_deliver(
     # carrying the real voiced result, instead of pushing to one conversation
     # transport. The bot message is already saved above for "View Results".
     if run.workflow_id:
+        # Successful, non-silent runs are delivered into the user's real
+        # messaging-platform conversations as normal bot messages (GAIA's voice,
+        # no notification chrome). The in-app badge below is a web-only heads-up.
+        if result_type != "error" and run.workflow_notify_on_completion:
+            await _deliver_workflow_to_platforms(
+                user=run.user,
+                user_id=user_id,
+                notification_text=notification_text,
+            )
         await _dispatch_workflow_notification(
             msg_type=result_type,
             workflow_id=run.workflow_id,
             workflow_title=run.workflow_title,
-            conversation_id=run.conversation_id,
             user_id=user_id,
-            notification_text=notification_text,
             message_id=bot_message.message_id,
             notify_on_completion=run.workflow_notify_on_completion,
         )
@@ -418,14 +435,117 @@ async def _generate_and_push_follow_ups(
         log.error(f"{LogTag.AGENT} deliver_result: deferred follow-up actions failed", error=str(e))
 
 
+async def _deliver_workflow_to_platforms(
+    *,
+    user: dict,
+    user_id: str,
+    notification_text: str,
+) -> None:
+    """Deliver a finished workflow's result into the user's preferred messaging
+    platforms as real, persisted bot messages, split into natural bubbles.
+
+    Only platforms the user has linked AND left enabled in their notification
+    channel preferences receive it. This is what makes a workflow result appear
+    inline in the user's actual Telegram/WhatsApp/etc. chat (GAIA's voice, no
+    notification chrome) so the thread can be continued there, alongside the
+    workflow's own conversation. Best-effort: a single platform failing never
+    blocks the others or propagates to the caller.
+    """
+    if not notification_text.strip():
+        return
+
+    targets = await _preferred_bot_platforms(user_id)
+    if not targets:
+        return
+
+    # Comms splits its reply into bubbles with the break sentinel;
+    # publish_outbound_message strips blanks and sends them as one ordered message.
+    bubbles = notification_text.split(NEW_MESSAGE_BREAKER)
+    for source, platform_user_id in targets:
+        await _post_workflow_message(
+            user=user,
+            user_id=user_id,
+            source=source,
+            platform_user_id=platform_user_id,
+            response=notification_text,
+            bubbles=bubbles,
+        )
+
+
+async def _preferred_bot_platforms(user_id: str) -> list[tuple[ConversationSource, str]]:
+    """Resolve which messaging platforms a workflow result should reach: those the
+    user has linked AND left enabled in their notification channel preferences."""
+    try:
+        linked = await PlatformLinkService.get_linked_platforms(user_id)
+        prefs = await fetch_channel_preferences(user_id)
+    except Exception as e:  # noqa: BLE001 — proactive side channel, never fatal
+        log.error(f"{LogTag.AGENT} workflow platform delivery: target lookup failed", error=str(e))
+        return []
+
+    targets: list[tuple[ConversationSource, str]] = []
+    for platform_value, info in linked.items():
+        source = ConversationSource.coerce(platform_value)
+        if source is None or source not in BOT_CONVERSATION_SOURCES:
+            continue
+        if not prefs.get(platform_value, True):
+            continue  # channel disabled in the user's notification preferences
+        platform_user_id = info.get("platformUserId")
+        if platform_user_id:
+            targets.append((source, str(platform_user_id)))
+    return targets
+
+
+async def _post_workflow_message(
+    *,
+    user: dict,
+    user_id: str,
+    source: ConversationSource,
+    platform_user_id: str,
+    response: str,
+    bubbles: list[str],
+) -> None:
+    """Persist the result into the platform's session conversation and deliver it
+    as ordered bubbles. Best-effort: logs and swallows any single-platform failure."""
+    try:
+        conversation_id = await BotService.get_or_create_session(
+            platform=source.value,
+            platform_user_id=platform_user_id,
+            channel_id=None,
+            user=user,
+        )
+        bot_message = MessageModel(
+            type="bot",
+            response=response,
+            date=datetime.now(UTC).isoformat(),
+        )
+        bot_message.message_id = str(uuid4())
+        await update_messages(
+            UpdateMessagesRequest(conversation_id=conversation_id, messages=[bot_message]),
+            user=user,
+        )
+        result = await publish_outbound_message(source, user_id, bubbles)
+        log.info(
+            f"{LogTag.AGENT} workflow result delivered to platform",
+            platform=source.value,
+            conversation_id=conversation_id,
+            message_id=bot_message.message_id,
+            bubbles=len([b for b in bubbles if b.strip()]),
+            result=result.value,
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort per platform
+        log.error(
+            f"{LogTag.AGENT} workflow platform delivery failed",
+            platform=source.value,
+            error=str(e),
+        )
+
+
 async def _dispatch_workflow_notification(
     *,
     msg_type: str,
     workflow_id: str,
     workflow_title: str,
-    conversation_id: str,
     user_id: str,
-    notification_text: str,
     message_id: str,
     notify_on_completion: bool = True,
 ) -> None:
@@ -460,9 +580,7 @@ async def _dispatch_workflow_notification(
         await send_workflow_completion_notification(
             workflow_id=workflow_id,
             workflow_title=workflow_title,
-            conversation_id=conversation_id,
             user_id=user_id,
-            result_text=notification_text,
         )
     log.info(
         f"{LogTag.AGENT} deliver_result: workflow notification dispatched",

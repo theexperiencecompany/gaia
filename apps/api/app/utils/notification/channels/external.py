@@ -57,26 +57,11 @@ class ExternalPlatformAdapter(ChannelAdapter):
         before sending — no platform-specific markdown is produced here.
         """
         content = notification.content
-        rich = content.rich_content or {}
         app_url = settings.FRONTEND_URL.rstrip("/")
         title = content.title or ""
         body = content.body or ""
-        header = _join_nonempty(f"**{title}**" if title else "", body)
+        text = _join_nonempty(f"**{title}**" if title else "", body)
 
-        # Build clean parts here: drop blank/whitespace-only entries and guard
-        # the untyped ``rich.messages`` against non-strings, so a workflow with
-        # empty result messages never emits an empty bubble. ``publish_outbound_message``
-        # also strips defensively for callers (e.g. deliver_message_to_platform)
-        # that bypass ``transform``.
-        if rich.get("type") == "workflow_execution":
-            conversation_id = rich.get("conversation_id", "")
-            footer = (
-                f"[View full results]({app_url}/c/{conversation_id})" if conversation_id else ""
-            )
-            parts = [header, *rich.get("messages", []), footer]
-            return {"parts": [p for p in parts if isinstance(p, str) and p.strip()]}
-
-        text = header
         if content.actions:
             links = [
                 f"[{action.label}]({app_url}{action.config.redirect.url})"

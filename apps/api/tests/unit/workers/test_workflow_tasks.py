@@ -8,6 +8,7 @@ from bson import ObjectId
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.notification.notification_models import NotificationSourceEnum
 from app.services.workflow.notifications import (
     send_workflow_completion_notification,
@@ -970,36 +971,32 @@ class TestExecuteWorkflowAsChat:
 class TestWorkflowNotificationSenders:
     """Tests for the workflow completion/failure notification senders."""
 
-    async def test_completion_notification_sent_with_split_messages(self):
-        """send_workflow_completion_notification splits the result text on the
-        message break and sends one notification."""
-        with (
-            patch(
-                "app.services.workflow.notifications.notification_service",
-            ) as mock_notif,
-            patch(
-                "app.services.workflow.notifications.get_user_by_id",
-                new_callable=AsyncMock,
-                return_value={"timezone": "Asia/Kolkata"},
-            ),
-        ):
+    async def test_completion_notification_is_inapp_only(self):
+        """send_workflow_completion_notification fires a human, in-app-only badge.
+
+        The result itself is delivered to the user's chat as real messages, so the
+        notification carries no result payload, no link, and no external push."""
+        with patch(
+            "app.services.workflow.notifications.notification_service",
+        ) as mock_notif:
             mock_notif.create_notification = AsyncMock()
             await send_workflow_completion_notification(
                 workflow_id="wf_1",
                 workflow_title="Morning Briefing",
-                conversation_id="conv_123",
                 user_id="user_abc",
-                result_text="got emails<NEW_MESSAGE_BREAK>and calendar",
             )
 
         mock_notif.create_notification.assert_awaited_once()
         notif_req = mock_notif.create_notification.call_args[0][0]
-        # Human, WhatsApp-style copy: exact phrasing rotates, but the workflow
-        # name is always woven into the title and there's a casual body.
+        # Human copy: phrasing rotates, but the workflow name is woven into the
+        # title and there is a casual body.
         assert "Morning Briefing" in notif_req.content.title
         assert notif_req.content.body
-        assert notif_req.content.rich_content["type"] == "workflow_execution"
-        assert notif_req.content.rich_content["messages"] == ["got emails", "and calendar"]
+        # Scoped to in-app only (no external chrome push), no result payload, no link.
+        assert [c.channel_type for c in notif_req.channels] == [CHANNEL_TYPE_INAPP]
+        assert notif_req.content.rich_content is None
+        assert not notif_req.content.actions
+        assert notif_req.metadata == {"workflow_id": "wf_1"}
 
     async def test_failure_notification_sent_with_workflow_failed_source(self):
         """send_workflow_failure_notification sends a WORKFLOW_FAILED notification."""

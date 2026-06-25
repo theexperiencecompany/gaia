@@ -1016,16 +1016,23 @@ OUTPUT CONTRACT
 """
 
 
-# Prepended to a workflow result delivered to external messaging apps, where
-# there are no cards or UI, so every concrete data point must live in the words.
+# Prepended to a workflow result delivered as plain chat messages (no cards/UI),
+# so every concrete data point must live in the words and the reply is split into
+# natural, readable bubbles.
 PLATFORM_DELIVERY_NOTE = (
     f"{PLATFORM_DELIVERY_MARKER}\n"
-    "This is an automated workflow result delivered to the user as PLAIN TEXT on an "
-    "external messaging app (WhatsApp, Telegram, etc.). There are NO cards, NO UI "
-    "components, NO screen: the user only sees your words. State the full outcome in "
-    "your message — actually list the emails (sender + subject), the calendar events "
-    "(title + time), and every concrete result the user needs. Never say things like "
-    "'saved to your list', 'here's your summary 👇', or refer to anything shown on "
-    "screen, because there is no screen. Write it naturally but completely, and keep "
-    "GAIA's voice.\n"
+    "This is an automated WORKFLOW result. It ran on its own in the background, so "
+    "the user has NOT seen any of it, and it's delivered as plain chat messages "
+    "(Telegram, WhatsApp, web) with NO cards, NO UI, NO screen, only your words. "
+    "That makes every result critical: surface EVERYTHING the workflow found, in "
+    "full. Actually list the concrete items: each headline with its link, each "
+    "email's sender and subject, each event's title and time, every id and figure "
+    "the user needs. Never compress it to a vague 'done', 'saved to your list', or "
+    "'here's your summary 👇', and never point at anything 'on screen', because "
+    "there is no screen.\n"
+    f"Split your reply into a few separate bubbles with {NEW_MESSAGE_BREAKER}: open "
+    "with a short, warm lead-in line, then break the results into readable chunks "
+    "(group related items together, don't cram everything into one giant bubble, "
+    "and don't over-split into one line each). Write it like you personally sorted "
+    "this for them and are handing it over, in GAIA's normal voice.\n"
 )

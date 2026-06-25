@@ -45,25 +45,24 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
 
 # Workflow-completion notification copy. GAIA texts like a friend on WhatsApp
 # (first person, casual), not a status bar. Each entry is (title, body);
-# {title} is the workflow name and {time} the local completion time. One pair
-# is picked per run so repeats don't read like a robot.
-# Bodies stay action-agnostic on purpose: the result is delivered inline on
-# external channels (WhatsApp/Telegram) and behind "View Results" in-app, so
-# copy must never promise a specific gesture like "tap" or "come look".
+# {title} is the workflow name. One pair is picked per run so repeats don't read
+# like a robot. The workflow's full result is delivered as real messages straight
+# into the user's chat, so bodies can warmly point there ("in your chat") and must
+# never reference a link or button (there is none).
 WORKFLOW_DONE_COPY: tuple[tuple[str, str], ...] = (
-    ("just wrapped up {title} 🙌", "all done at {time}"),
-    ("ok, {title} is done!", "finished at {time}, all yours"),
-    ("just finished {title} 🎉", "wrapped it up at {time}"),
-    ("sorted {title} for you", "all good as of {time}"),
+    ("sorted {title} for you", "dropped it all in your chat 🙌"),
+    ("{title} is done!", "everything's waiting in your chat"),
+    ("just wrapped up {title}", "pulled it together and sent it over"),
+    ("handled {title} for you", "had a proper look, it's all in your chat"),
 )
 
 
-def pick_workflow_done_copy(workflow_id: str, title: str, time_str: str) -> tuple[str, str]:
-    """Pick one human completion title/body, varied per run, no RNG.
+def pick_workflow_done_copy(workflow_id: str, title: str, salt: str) -> tuple[str, str]:
+    """Pick one human completion title/body, rotating per run, no RNG.
 
-    Keyed off workflow_id + time so the same workflow doesn't always read the
-    same and successive runs rotate naturally.
+    ``salt`` (a per-run value such as a timestamp) only seeds the rotation so the
+    same workflow doesn't always read identically; it is never shown to the user.
     """
-    seed = sum(ord(c) for c in f"{workflow_id}{time_str}")
-    title_tmpl, body_tmpl = WORKFLOW_DONE_COPY[seed % len(WORKFLOW_DONE_COPY)]
-    return title_tmpl.format(title=title), body_tmpl.format(time=time_str)
+    seed = sum(ord(c) for c in f"{workflow_id}{salt}")
+    title_tmpl, body = WORKFLOW_DONE_COPY[seed % len(WORKFLOW_DONE_COPY)]
+    return title_tmpl.format(title=title), body
