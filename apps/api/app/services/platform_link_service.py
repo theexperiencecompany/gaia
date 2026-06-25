@@ -108,11 +108,20 @@ class PlatformLinkService:
         if result.matched_count == 0:
             raise ValueError("User not found")
 
+        previously_linked_same = bool(
+            user
+            and isinstance(user.get("platform_links", {}).get(platform), dict)
+            and user["platform_links"][platform].get("id") == platform_user_id
+        )
+
         return {
             "status": "linked",
             "platform": platform,
             "platform_user_id": platform_user_id,
             "connected_at": now,
+            # True only when this call created a brand-new link (not a re-link of
+            # the same id) — lets the caller fire a one-off "connected" greeting.
+            "is_new_link": not previously_linked_same,
         }
 
     @staticmethod
