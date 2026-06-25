@@ -68,8 +68,16 @@ export default function WorkflowDescriptionField({
 
   const hasExistingPrompt = !!currentPrompt?.trim();
 
+  // Generation needs something to work from — a title, a description, or an
+  // existing prompt to improve. With a blank form there's nothing to generate.
+  const canGenerate = !!(
+    title?.trim() ||
+    description?.trim() ||
+    currentPrompt?.trim()
+  );
+
   const handleGenerate = async () => {
-    if (isGenerating || !setValue) return;
+    if (isGenerating || !setValue || !canGenerate) return;
     setIsGenerating(true);
     try {
       const result = await workflowApi.generatePrompt({
@@ -117,14 +125,6 @@ export default function WorkflowDescriptionField({
       setIsGenerating(false);
     }
   };
-
-  // Generation needs something to work from — a title, a description, or an
-  // existing prompt to improve. With a blank form there's nothing to generate.
-  const canGenerate = !!(
-    title?.trim() ||
-    description?.trim() ||
-    currentPrompt?.trim()
-  );
 
   const generateButton = !isPreview ? (
     <Tooltip

@@ -80,7 +80,7 @@ export default function WorkflowLoadingState({
             <p className="mt-1 text-sm text-zinc-400">
               "{workflow?.title || "Untitled Workflow"}" is ready to use
               {workflow?.steps?.length
-                ? ` · ${workflow.steps.length} steps`
+                ? ` (${workflow.steps.length} steps)`
                 : ""}
             </p>
           </div>
