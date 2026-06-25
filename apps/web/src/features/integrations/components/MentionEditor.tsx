@@ -1,21 +1,14 @@
 "use client";
 
 import type { ChipProps } from "@heroui/chip";
+import type { Extensions } from "@tiptap/core";
+import { EditorContent, useEditor } from "@tiptap/react";
+import { type ReactNode, useEffect, useRef } from "react";
+import { buildMentionExtensions } from "@/features/integrations/components/mentionExtensions";
 import {
-  type ClipboardEvent,
-  type FormEvent,
-  type KeyboardEvent,
-  memo,
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useMemo,
-  useRef,
-} from "react";
-import { MentionChip } from "@/features/integrations/components/MentionChip";
-import { useMentionEditor } from "@/features/integrations/hooks/useMentionEditor";
-import { MENTION_ATTR } from "@/features/integrations/utils/mentionEditorDom";
-import { buildMentionSegments } from "@/features/integrations/utils/toolMentions";
+  docToValue,
+  valueToContent,
+} from "@/features/integrations/utils/mentionDoc";
 
 interface MentionEditorProps {
   value: string;
@@ -34,7 +27,7 @@ interface MentionEditorProps {
   textClassName?: string;
   /** Show the chip's close button. When false, mentions are removed by backspace. */
   mentionRemovable?: boolean;
-  /** Render the content but block editing (contentEditable ignores fieldset). */
+  /** Render the content but block editing. */
   readOnly?: boolean;
 }
 
@@ -43,134 +36,12 @@ const DEFAULT_WRAPPER =
   "relative rounded-2xl border border-zinc-800 bg-zinc-800/40 transition-colors focus-within:border-zinc-700";
 const DEFAULT_SURFACE = "max-h-80 min-h-60";
 
-interface MentionChipTokenProps {
-  name: string;
-  renderMentionIcon?: (name: string) => ReactNode;
-  mentionRadius?: ChipProps["radius"];
-  removable?: boolean;
-  onRemove: (element: HTMLElement) => void;
-}
-
-const MentionChipToken = ({
-  name,
-  renderMentionIcon,
-  mentionRadius,
-  removable = true,
-  onRemove,
-}: MentionChipTokenProps) => {
-  const tokenRef = useRef<HTMLSpanElement>(null);
-  return (
-    <span
-      ref={tokenRef}
-      {...{ [MENTION_ATTR]: name }}
-      contentEditable={false}
-      className="mx-0.5 inline-flex translate-y-1 align-baseline"
-    >
-      <MentionChip
-        name={name}
-        icon={renderMentionIcon?.(name)}
-        radius={mentionRadius}
-        onClose={
-          removable
-            ? () => {
-                if (tokenRef.current) onRemove(tokenRef.current);
-              }
-            : undefined
-        }
-      />
-    </span>
-  );
-};
-
-interface EditorSurfaceProps {
-  epoch: number;
-  epochValue: string;
-  toolNames: string[];
-  rootRef: RefObject<HTMLDivElement | null>;
-  renderMentionIcon?: (name: string) => ReactNode;
-  mentionRadius?: ChipProps["radius"];
-  mentionRemovable?: boolean;
-  surfaceClassName: string;
-  textClassName: string;
-  readOnly?: boolean;
-  onRemoveMention: (element: HTMLElement) => void;
-  onInput: (event: FormEvent<HTMLDivElement>) => void;
-  onBeforeInput: (event: FormEvent<HTMLDivElement>) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
-  onPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
-  onSelectionChange: () => void;
-  onBlur: () => void;
-}
-
 /**
- * The contentEditable surface renders one immutable snapshot per epoch; the
- * memo comparator blocks every re-render in between so React never reconciles
- * DOM the browser has mutated. Structural changes remount it via key={epoch}.
+ * Plain-text editor with `@<toolName>` mention chips, built on Tiptap. Markdown
+ * is authored as literal text; only mentions become atomic nodes. The value is
+ * a flat `@<toolName>` string (see {@link valueToContent} / {@link docToValue}),
+ * so callers and the backend keep working with plain strings.
  */
-const EditorSurface = memo(
-  function EditorSurface({
-    epochValue,
-    toolNames,
-    rootRef,
-    renderMentionIcon,
-    mentionRadius,
-    mentionRemovable,
-    surfaceClassName,
-    textClassName,
-    readOnly,
-    onRemoveMention,
-    onInput,
-    onBeforeInput,
-    onKeyDown,
-    onPaste,
-    onSelectionChange,
-    onBlur,
-  }: EditorSurfaceProps) {
-    const segments = useMemo(
-      () => buildMentionSegments(epochValue, toolNames),
-      [epochValue, toolNames],
-    );
-
-    return (
-      // biome-ignore lint/a11y/useSemanticElements: a textarea can't host inline chip elements; textbox is the correct role for a contentEditable editor
-      <div
-        ref={rootRef}
-        role="textbox"
-        aria-multiline="true"
-        tabIndex={readOnly ? -1 : 0}
-        contentEditable={!readOnly}
-        suppressContentEditableWarning
-        spellCheck={false}
-        onInput={onInput}
-        onBeforeInput={onBeforeInput}
-        onKeyDown={onKeyDown}
-        onKeyUp={onSelectionChange}
-        onClick={onSelectionChange}
-        onPaste={onPaste}
-        onBlur={onBlur}
-        className={`relative block w-full overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 caret-zinc-100 outline-none ${surfaceClassName} ${textClassName}`}
-      >
-        {segments.map((segment) =>
-          segment.mention ? (
-            <MentionChipToken
-              key={segment.offset}
-              name={segment.text.slice(1)}
-              renderMentionIcon={renderMentionIcon}
-              mentionRadius={mentionRadius}
-              removable={mentionRemovable}
-              onRemove={onRemoveMention}
-            />
-          ) : (
-            segment.text
-          ),
-        )}
-        {epochValue.endsWith("\n") && <br />}
-      </div>
-    );
-  },
-  (prev, next) => prev.epoch === next.epoch,
-);
-
 export const MentionEditor = ({
   value,
   onChange,
@@ -185,22 +56,79 @@ export const MentionEditor = ({
   textClassName,
   readOnly,
 }: MentionEditorProps) => {
-  const editor = useMentionEditor({ value, onChange, toolNames, maxLength });
   const textClass = textClassName ?? EDITOR_TEXT;
+  const surfaceClass = surfaceClassName ?? DEFAULT_SURFACE;
 
-  // Keep the keyboard-highlighted suggestion visible: the list can hold more
-  // items than fit in its max height, so arrowing past the fold must scroll.
-  const activeItemRef = useRef<HTMLButtonElement>(null);
+  // Live props reach the once-built extensions through refs (Tiptap can't
+  // rebuild extensions reactively), so updating them never recreates the editor.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const toolNamesRef = useRef(toolNames);
+  toolNamesRef.current = toolNames;
+  const iconRef = useRef(renderMentionIcon);
+  iconRef.current = renderMentionIcon;
+  const removableRef = useRef(mentionRemovable);
+  removableRef.current = mentionRemovable;
+  const radiusRef = useRef(mentionRadius);
+  radiusRef.current = mentionRadius;
+
+  const extensionsRef = useRef<Extensions>(undefined);
+  extensionsRef.current ??= buildMentionExtensions(
+    {
+      icon: iconRef,
+      removable: removableRef,
+      radius: radiusRef,
+      toolNames: toolNamesRef,
+    },
+    maxLength,
+  );
+
+  const editor = useEditor({
+    extensions: extensionsRef.current,
+    content: valueToContent(value, toolNames),
+    editable: !readOnly,
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        class: `block w-full overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 caret-zinc-100 outline-none [&_p]:m-0 ${surfaceClass} ${textClass}`,
+      },
+    },
+    onUpdate: ({ editor: instance }) => {
+      onChangeRef.current(docToValue(instance.state.doc));
+    },
+  });
+
   useEffect(() => {
-    activeItemRef.current?.scrollIntoView({ block: "nearest" });
-  }, [editor.highlight, editor.mention]);
+    editor?.setEditable(!readOnly);
+  }, [editor, readOnly]);
+
+  // External value changes (modal open / reset) replace the document — but only
+  // on a genuine divergence, never while it already matches. That keeps an
+  // in-progress edit from being clobbered and rules out any setContent⇄onChange
+  // feedback loop.
+  useEffect(() => {
+    if (!editor) return;
+    if (docToValue(editor.state.doc) === value) return;
+    editor.commands.setContent(
+      valueToContent(value, toolNamesRef.current),
+      false,
+    );
+  }, [editor, value]);
+
+  // When the tool list loads after mount, re-parse so existing `@name` text
+  // resolves into chips — but only on a real change, and never mid-edit.
+  const prevToolNamesRef = useRef(toolNames);
+  useEffect(() => {
+    if (!editor || prevToolNamesRef.current === toolNames) return;
+    prevToolNamesRef.current = toolNames;
+    if (!editor.isFocused) {
+      editor.commands.setContent(valueToContent(value, toolNames), false);
+    }
+  }, [editor, toolNames, value]);
 
   return (
-    <div ref={editor.wrapperRef} className={className ?? DEFAULT_WRAPPER}>
+    <div className={className ?? DEFAULT_WRAPPER}>
       {value.trim() === "" && (
-        // Whitespace-only counts as empty: clearing a contentEditable can leave
-        // a browser filler <br> (serializes to "\n"), which must still show the
-        // placeholder. text-default-500 matches HeroUI's input placeholder.
         <div
           aria-hidden="true"
           className={`pointer-events-none absolute inset-0 whitespace-pre-wrap text-default-500 ${textClass}`}
@@ -208,65 +136,7 @@ export const MentionEditor = ({
           {placeholder}
         </div>
       )}
-
-      <EditorSurface
-        // Remount on epoch (structural edits) and when the mentionable names
-        // load/change, so existing mentions resolve to chips once names arrive.
-        key={`${editor.epoch}-${toolNames.length}`}
-        epoch={editor.epoch}
-        epochValue={editor.epochValue}
-        toolNames={toolNames}
-        rootRef={editor.rootRef}
-        renderMentionIcon={renderMentionIcon}
-        mentionRadius={mentionRadius}
-        mentionRemovable={mentionRemovable}
-        surfaceClassName={surfaceClassName ?? DEFAULT_SURFACE}
-        textClassName={textClass}
-        readOnly={readOnly}
-        onRemoveMention={editor.removeMentionToken}
-        onInput={editor.handlers.onInput}
-        onBeforeInput={editor.handlers.onBeforeInput}
-        onKeyDown={editor.handlers.onKeyDown}
-        onPaste={editor.handlers.onPaste}
-        onSelectionChange={editor.refreshMention}
-        onBlur={editor.closeMention}
-      />
-
-      {editor.mention && (
-        <ul
-          className="absolute z-50 max-h-52 w-64 overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 p-1 shadow-xl"
-          style={{
-            top: editor.mention.coords.top,
-            left: editor.mention.coords.left,
-          }}
-        >
-          {editor.mention.matches.map((name, idx) => (
-            <li key={name}>
-              <button
-                ref={idx === editor.highlight ? activeItemRef : undefined}
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  editor.insertMention(name);
-                }}
-                onMouseEnter={() => editor.setHighlight(idx)}
-                className={`flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-1.5 text-left text-sm transition-colors ${
-                  idx === editor.highlight
-                    ? "bg-zinc-800 text-zinc-100"
-                    : "text-zinc-300"
-                }`}
-              >
-                {renderMentionIcon ? (
-                  <span className="inline-flex shrink-0 items-center">
-                    {renderMentionIcon(name)}
-                  </span>
-                ) : null}
-                <span className="truncate">{name}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <EditorContent editor={editor} />
     </div>
   );
 };
