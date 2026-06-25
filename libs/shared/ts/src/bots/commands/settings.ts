@@ -10,6 +10,9 @@
 
 import type { BotCommand, CommandExecuteParams, RichMessage } from "../types";
 import { formatBotError } from "../utils/formatters";
+import { createBotLogger } from "../utils/logger";
+
+const logger = createBotLogger("shared", "command:settings");
 
 /**
  * Converts a potentially relative URL to an absolute one using the frontend base URL.
@@ -48,7 +51,8 @@ export const settingsCommand: BotCommand = {
               `${authUrl}\n\n` +
               "Sign in to GAIA and connect your account in Settings → Linked Accounts.",
           );
-        } catch {
+        } catch (error) {
+          logger.error("settings_link_token_failed", undefined, error);
           await target.sendEphemeral(
             "❌ Not linked yet. Use /auth to link your account.",
           );
