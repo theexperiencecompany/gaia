@@ -19,7 +19,6 @@ from typing import Any
 
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.model_pricing import calculate_token_cost
-from app.config.settings import settings
 from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
 from app.constants.log_tags import LogTag
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
@@ -28,6 +27,7 @@ from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
 from app.services.payments.payment_service import payment_service
 from app.services.storage import JuiceFSUnavailable, ensure_session_dirs
+from app.utils.artifact_utils import artifact_url_base
 from app.utils.chat_utils import create_conversation
 from shared.py.wide_events import log
 
@@ -88,7 +88,7 @@ def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
     if not message or not conversation_id:
         return message
 
-    base = f"{settings.HOST}/api/v1/sessions/{conversation_id}/artifacts"
+    base = artifact_url_base(conversation_id)
 
     def _sub(m: re.Match[str]) -> str:
         # Preserve leading whitespace/quote so we don't break adjacent syntax.

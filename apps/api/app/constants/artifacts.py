@@ -6,6 +6,12 @@ ARTIFACT_ELEMENT_FIELDS = ("path", "size_bytes", "mtime", "content_type")
 # Greppable log prefix for the artifact forwarder subsystem.
 ARTIFACT_LOG_PREFIX = "[artifacts]"
 
+# Public URL path (under settings.HOST) that serves a conversation's artifacts.
+# Mirrors the GET /api/v1/sessions/{conv_id}/artifacts/{path} route. Single
+# source of truth for the save-time relative→absolute rewrite and the
+# agent-facing session banner. Format with the conversation id.
+ARTIFACT_URL_PATH_TEMPLATE = "/api/v1/sessions/{conversation_id}/artifacts"
+
 # The bot message row is written after the forwarder starts, so an artifact
 # created early in the turn can arrive before the row exists. Retry briefly to
 # bridge that window — the row lands within a few hundred ms.

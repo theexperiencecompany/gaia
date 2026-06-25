@@ -43,6 +43,7 @@ from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
+from app.utils.artifact_utils import artifact_url_base
 from app.utils.timezone import Timezone
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
@@ -224,15 +225,24 @@ BACKGROUND_EXECUTION_BANNER = (
 
 
 def build_workspace_session_banner(session_id: str) -> str:
-    """State the absolute path of the agent's own session directory.
+    """State the agent's own session directory and the public artifact URL base.
 
     The agent never otherwise learns its conversation/session id, so a prompt
     that asks it to report an absolute ``/workspace/sessions/<id>/...`` path
     forces it to guess — and a weak model fabricates one, writing the
     deliverable outside the session the artifact watcher scans, where it is
     silently lost. Stating the real path removes the guess.
+
+    The agent also knows a file's workspace path but not the URL the browser
+    fetches it from, so it cannot link or embed an artifact (in an HTML page it
+    generates, an email body, etc.). Stating the public URL base gives it the
+    one fact it is missing.
     """
-    return f"Session directory: {session_dir(session_id)}"
+    return (
+        f"Session directory: {session_dir(session_id)}\n"
+        f"Public artifact URL: a file at `artifacts/<name>` is served at "
+        f"{artifact_url_base(session_id)}/<name>"
+    )
 
 
 def _format_active_todo_banner(todo: dict) -> str:
