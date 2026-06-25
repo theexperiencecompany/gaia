@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "8e8cb7ea408a",
+  "session_id": "8f8a9608-5639-478a-9f92-a64dc51a006e",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-25T20:23:59.284265Z",
+  "branch": "insane-gmail",
+  "checkpoints_count": 24,
+  "files_touched": [
+    "apps/api/app/agents/prompts/comms_prompts.py",
+    "apps/api/app/services/sandbox/lifecycle.py",
+    "apps/api/app/services/storage/bootstrap.py",
+    "apps/api/scripts/mount_juicefs.sh"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "d5068b34e89c",
+  "checkpoint_transcript_start": 1569,
+  "transcript_lines_at_start": 1569,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 24
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-25T20:23:59.157468Z",
+    "agent_lines": 130,
+    "agent_removed": 40,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 130,
+    "total_lines_changed": 170,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
