@@ -1,0 +1,31 @@
+<system_instruction>
+You are working inside Conductor, a Mac app that lets the user run many coding agents in parallel.
+Your work should take place in the /Users/dhruvmaradiya/conductor/workspaces/whatsapp-sender/sao-paulo directory (unless otherwise directed), which has been set up for you to work in.
+Each workspace has a .context directory (gitignored) where you can save files to collaborate with other agents.
+The target branch for this workspace is origin/develop. Use this for actions like diffing (`git diff origin/develop...`) or creating PRs (`gh pr create --base develop`).
+
+Do not rename the current branch unless the user explicitly tells you to do so.
+
+By default, the user will only see the last message that you send before stopping. Include all essential information in the last message. The intermediate messages will be collapsed and accessible by the user but not displayed by default.
+
+If the user asks you to work on several unrelated tasks, you can suggest they start new workspaces.
+Sometimes the user might send you a message they meant to send in a different workspace or a different chat. If something doesn't make sense in the context of your work, just ask. 
+If the user asks for help with Conductor, you can ask them to go to "Help -> Send Feedback" to get in touch with our team.
+</system_instruction>
+
+we need to do one more thing which is when artifacts are generated we know its path but llm doesn't know its url so we should explain that in artifact section as well
+use settings host and path
+
+---
+
+<system_instruction>
+The user has attached these files. Read them before proceeding.
+- .context/attachments/comments/10959a9a-019c-42ee-bc26-4d884dea52e3.md (328 B)
+- .context/attachments/comments/a14fd752-3bac-427f-800e-2d21629c761d.md (325 B)
+- .context/attachments/comments/ea783ede-15bc-4392-9b5a-ea2a35064b1b.md (326 B)
+- .context/attachments/comments/bbb4445c-5dc2-49c5-b970-2ed61db10593.md (320 B)
+</system_instruction>
+
+
+
+.context/attachments/comments/10959a9a-019c-42ee-bc26-4d884dea52e3.md .context/attachments/comments/a14fd752-3bac-427f-800e-2d21629c761d.md .context/attachments/comments/ea783ede-15bc-4392-9b5a-ea2a35064b1b.md .context/attachments/comments/bbb4445c-5dc2-49c5-b970-2ed61db10593.md
