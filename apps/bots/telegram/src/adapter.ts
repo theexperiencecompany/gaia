@@ -53,6 +53,9 @@ const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 // over-limit caption rejects the whole upload, so the file would never arrive.
 const TELEGRAM_CAPTION_MAX_CHARS = 1024;
 
+/** Telegram clears the "typing…" chat action after ~5s; refresh on that cadence. */
+const TELEGRAM_TYPING_REFRESH_INTERVAL_MS = 5000;
+
 /**
  * Telegram-specific implementation of the GAIA bot adapter.
  *
@@ -506,7 +509,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     // Typing indicator with 5s refresh (Telegram expires it after ~5s).
     const clearTyping = this.startTypingIndicator(
       () => ctx.api.sendChatAction(chatId, "typing"),
-      5000,
+      TELEGRAM_TYPING_REFRESH_INTERVAL_MS,
     );
 
     try {
@@ -845,7 +848,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         if (!chatId) return () => {};
         return this.startTypingIndicator(
           () => api.sendChatAction(chatId, "typing"),
-          5000,
+          TELEGRAM_TYPING_REFRESH_INTERVAL_MS,
         );
       },
     };

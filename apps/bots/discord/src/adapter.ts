@@ -166,6 +166,9 @@ const ROTATING_STATUSES: { type: ActivityType; name: string }[] = [
 
 const STATUS_ROTATION_INTERVAL_MS = 3 * 60 * 1000;
 
+/** Discord shows the typing indicator for ~10s; refresh just before it expires. */
+const TYPING_REFRESH_INTERVAL_MS = 8000;
+
 /** A Discord attachment/sticker normalised for the shared media pipeline. */
 interface DiscordExtractedMedia {
   /** Public CDN URL for the bytes; empty for stickers (never downloaded). */
@@ -692,7 +695,7 @@ export class DiscordAdapter extends BaseBotAdapter {
               (
                 message.channel as { sendTyping: () => Promise<void> }
               ).sendTyping(),
-            8000,
+            TYPING_REFRESH_INTERVAL_MS,
           )
         : () => {};
 
@@ -899,7 +902,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     return this.startTypingIndicator(
       () =>
         (message.channel as { sendTyping: () => Promise<void> }).sendTyping(),
-      8000,
+      TYPING_REFRESH_INTERVAL_MS,
     );
   }
 
