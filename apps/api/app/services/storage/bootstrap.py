@@ -82,6 +82,28 @@ def _classify(text: str) -> str:
     return "fatal" if any(marker in low for marker in _PERMANENT_MARKERS) else "transient"
 
 
+def _meta_err_tail(stderr: str) -> str:
+    """Return the most diagnostic slice of a juicefs CLI failure.
+
+    juicefs logs a banner ("Meta address: postgres://...") first and the actual
+    cause last, on a ``<FATAL>``/``<ERROR>`` line — so head-truncating the stderr
+    (``[:300]``) drops exactly the reason and leaves only the (masked) URL.
+
+    The pgx/pgconn driver wraps the real cause (``dial tcp ... i/o timeout``,
+    ``connection refused``, ``too many connections``, ...) on *continuation*
+    lines below the ``<FATAL>:`` header, so a single-line grab clips it right at
+    the trailing colon. Keep the FATAL/ERROR line through the end of stderr.
+    """
+    text = (stderr or "").strip()
+    if not text:
+        return ""
+    lines = text.splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        if "<FATAL>" in lines[i] or "<ERROR>" in lines[i]:
+            return "\n".join(lines[i:]).strip()[-500:]
+    return text[-500:]
+
+
 # Module state — guards against the bootstrap thread being spawned twice.
 _bootstrap_lock = threading.Lock()
 _bootstrap_thread: threading.Thread | None = None
@@ -206,7 +228,7 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
         log.warning(
             f"{LogTag.STORAGE} permanent error during status",
             meta=_mask_meta(meta_url),
-            detail=status.stderr.strip()[:300],
+            detail=_meta_err_tail(status.stderr),
         )
         return "fatal"
     # Non-zero status with no permanent marker == "not formatted yet" (or a
@@ -256,10 +278,14 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
         log.warning(
             f"{LogTag.STORAGE} permanent error during format",
             meta=_mask_meta(meta_url),
-            detail=err[:300],
+            detail=_meta_err_tail(err),
         )
         return "fatal"
-    log.warning(f"{LogTag.STORAGE} format failed (transient; will retry): {err[:300]}")
+    log.warning(
+        f"{LogTag.STORAGE} format failed (transient; will retry)",
+        meta=_mask_meta(meta_url),
+        detail=_meta_err_tail(err),
+    )
     return "transient"
 
 
@@ -326,7 +352,7 @@ def _mount(meta_url: str, mount_path: Path) -> str:
     log.warning(
         f"{LogTag.STORAGE} mount not ready within {timeout}s ({kind})",
         meta=_mask_meta(meta_url),
-        detail=detail.strip()[:300],
+        detail=_meta_err_tail(res.stderr),
     )
     return kind
 
