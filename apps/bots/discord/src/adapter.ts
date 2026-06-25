@@ -663,7 +663,7 @@ export class DiscordAdapter extends BaseBotAdapter {
   private async handleDMMessage(message: Message): Promise<void> {
     const userId = message.author.id;
 
-    if (this.shouldSendWelcome(userId)) {
+    if (await this.shouldSendWelcome(userId)) {
       await this.sendDMWelcome(message);
     }
 

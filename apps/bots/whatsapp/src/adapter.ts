@@ -334,8 +334,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     refreshTyping: () => void,
     authCheckTimeoutMs?: number,
   ): Promise<void> {
-    // Base one-shot gate (shared with Discord) — fires at most once per user.
-    if (!this.shouldSendWelcome(waId)) return;
+    // Base gate (shared with Discord): only greets unlinked users, at most once per process.
+    if (!(await this.shouldSendWelcome(waId))) return;
 
     let isLinked = this.linkedUsers.has(waId);
     if (!isLinked) {
