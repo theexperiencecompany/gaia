@@ -27,7 +27,10 @@ import {
 import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
 import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
+import { createBotLogger, hashLogIdentifier } from "./logger";
 import { chunkResponse, truncateResponse } from "./text";
+
+const logger = createBotLogger("shared", "streaming");
 
 export interface StreamingOptions {
   editIntervalMs: number;
@@ -307,6 +310,21 @@ export async function handleStreamingChat(
   const startMs = Date.now();
   let responseLength = 0;
   let hadError = false;
+  // Latency + high-cardinality observability for the chat pipeline. user_hash
+  // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
+  const userHash = hashLogIdentifier(request.platformUserId);
+  let firstChunkMs: number | null = null;
+  let chunkCount = 0;
+  let conversationId = "";
+
+  logger.info("chat_stream_started", {
+    platform: request.platform,
+    user_hash: userHash,
+    channel_id: request.channelId,
+    message_length: request.message.length,
+    has_files: Boolean(request.fileIds?.length || request.fileData?.length),
+    streaming_enabled: options.streaming,
+  });
 
   analytics?.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
     interaction_type: "chat",
@@ -328,6 +346,17 @@ export async function handleStreamingChat(
 
   const wrappedOnGenericError = async (formattedError: string) => {
     hadError = true;
+    // Surface the failure with full latency context so every error is visible.
+    logger.error("chat_stream_failed", {
+      platform: request.platform,
+      user_hash: userHash,
+      channel_id: request.channelId,
+      duration_ms: Date.now() - startMs,
+      ttfb_ms: firstChunkMs,
+      chunk_count: chunkCount,
+      response_length: responseLength,
+      context: "chat:streaming",
+    });
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
     analytics?.capture(distinctId, BOT_EVENTS.ERROR, {
@@ -345,10 +374,23 @@ export async function handleStreamingChat(
   ) =>
     gaia.chatStream(
       request,
-      onChunk,
-      async (fullText, conversationId) => {
+      (text) => {
+        chunkCount++;
+        if (firstChunkMs === null) {
+          firstChunkMs = Date.now() - startMs;
+          logger.info("chat_stream_first_chunk", {
+            platform: request.platform,
+            user_hash: userHash,
+            channel_id: request.channelId,
+            ttfb_ms: firstChunkMs,
+          });
+        }
+        return onChunk(text);
+      },
+      async (fullText, convId) => {
         responseLength = fullText.length;
-        await onDone(fullText, conversationId);
+        conversationId = convId;
+        await onDone(fullText, convId);
       },
       onError,
     );
@@ -366,6 +408,17 @@ export async function handleStreamingChat(
     );
   } finally {
     if (!hadError) {
+      logger.info("chat_stream_completed", {
+        platform: request.platform,
+        user_hash: userHash,
+        channel_id: request.channelId,
+        total_ms: Date.now() - startMs,
+        ttfb_ms: firstChunkMs,
+        response_length: responseLength,
+        chunk_count: chunkCount,
+        conversation_id: conversationId,
+        streaming_enabled: options.streaming,
+      });
       analytics?.capture(distinctId, BOT_EVENTS.CHAT_COMPLETED, {
         channel_id: request.channelId,
         duration_ms: Date.now() - startMs,
