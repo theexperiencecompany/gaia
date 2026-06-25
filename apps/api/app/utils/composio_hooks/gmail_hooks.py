@@ -84,6 +84,34 @@ def gmail_compose_hide_is_html_schema_modifier(tool: str, toolkit: str, schema: 
     return schema
 
 
+@register_schema_modifier(tools=["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"])
+def gmail_compose_require_subject_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
+    """Make ``subject`` a required, non-empty field for email composition.
+
+    A blank subject line reads as spam and gets buried — the agent must always
+    write a clear, specific subject. Marking it required with ``minLength`` means
+    the function-calling / args-validation layer rejects a call that omits or
+    blanks it, before the tool ever runs (before-hook exceptions are swallowed,
+    so schema-level enforcement is the only hard guarantee).
+    """
+    input_params = schema.input_parameters
+    if not isinstance(input_params, dict):
+        return schema
+
+    required = input_params.setdefault("required", [])
+    if isinstance(required, list) and "subject" not in required:
+        required.append("subject")
+
+    props = input_params.get("properties")
+    if isinstance(props, dict) and isinstance(props.get("subject"), dict):
+        props["subject"]["minLength"] = 1
+        props["subject"]["description"] = (
+            "Email subject line. Required — write a clear, specific subject "
+            "that summarizes the email. Never leave it blank."
+        )
+    return schema
+
+
 @register_schema_modifier(tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
 def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     """
