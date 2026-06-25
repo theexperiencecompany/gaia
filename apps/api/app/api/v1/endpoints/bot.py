@@ -305,9 +305,15 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                         yield f"data: {json.dumps({'error': data['error']})}\n\n"
                         break
                 except json.JSONDecodeError:
+                    log.warning(f"{LogTag.API} Bot stream: dropped a malformed SSE chunk")
                     continue
+        except asyncio.CancelledError:
+            # Client disconnected mid-stream — expected, not an error. The
+            # background LangGraph task keeps running and persists the result.
+            log.info(f"{LogTag.API} Bot stream cancelled (client disconnected)")
+            raise
         except Exception as e:
-            log.error(f"{LogTag.API} Bot stream subscription error: {e}")
+            log.error(f"{LogTag.API} Bot stream subscription error: {e}", error=str(e))
             yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
 
     return StreamingResponse(stream_from_redis(), media_type="text/event-stream")
