@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "8e8cb7ea408a",
+  "strategy": "manual-commit",
+  "branch": "insane-gmail",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/api/app/agents/prompts/comms_prompts.py",
+    "apps/api/app/services/sandbox/lifecycle.py",
+    "apps/api/app/services/storage/bootstrap.py",
+    "apps/api/scripts/mount_juicefs.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/8e/8cb7ea408a/0/metadata.json",
+      "transcript": "/8e/8cb7ea408a/0/full.jsonl",
+      "content_hash": "/8e/8cb7ea408a/0/content_hash.txt",
+      "prompt": "/8e/8cb7ea408a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 73469,
+    "cache_creation_tokens": 2516525,
+    "cache_read_tokens": 62369331,
+    "output_tokens": 269421,
+    "api_call_count": 226
+  }
+}

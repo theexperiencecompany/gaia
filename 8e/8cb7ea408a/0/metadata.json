@@ -1,0 +1,75 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "8e8cb7ea408a",
+  "session_id": "8145bac2-a86d-4acb-aee5-f15b8f572ba0",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-25T20:23:58.229073Z",
+  "branch": "insane-gmail",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "apps/api/app/agents/prompts/comms_prompts.py",
+    "apps/api/app/services/sandbox/lifecycle.py",
+    "apps/api/app/services/storage/bootstrap.py",
+    "apps/api/scripts/mount_juicefs.sh"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "ce8d56634701",
+  "token_usage": {
+    "input_tokens": 73469,
+    "cache_creation_tokens": 2516525,
+    "cache_read_tokens": 62369331,
+    "output_tokens": 269421,
+    "api_call_count": 226
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01GT242RJPcutZLrcoZXxHnv",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "opsx:propose"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "ce8d56634701",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 12,
+        "end": 13,
+        "entry_ids": [
+          "eb69d155-40f1-4736-9baa-8f9dfa0639b7"
+        ],
+        "tool_use_id": "toolu_01GT242RJPcutZLrcoZXxHnv"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01GT242RJPcutZLrcoZXxHnv"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: opsx:propose",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-25T20:23:58.162035Z",
+    "agent_lines": 130,
+    "agent_removed": 40,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 130,
+    "total_lines_changed": 170,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

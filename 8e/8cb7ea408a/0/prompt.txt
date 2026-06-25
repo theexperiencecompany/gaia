@@ -1,0 +1,18 @@
+[Attached files for this turn]
+- image.png  →  `/workspace/sessions/0c675a18-5b13-4529-94bd-9aa69d7b2545/user-uploaded/image.png`
+    summary: content=[{'type': 'text', 'text': 'This document provides a collection performance status update for the April cycle as of May 24, 2026. It includes a Case Summary table detailing resolved, unresolved, and total cases with resolution percentages for buckets BKT_0 and BKT_1, as well as a POS Resolution Summary table showing total and recovered POS values with corresponding resolution percentages for the same buckets.', 'index': 0, 'extras': {'signature': 'REDACTED/fULnd'}}] additional_kwargs={} response_metadata={'safety_ratings': [], 'f…
+    full summary: `/workspace/sessions/0c675a18-5b13-4529-94bd-9aa69d7b2545/user-uploaded/image.png.summary.md`
+
+why there's json and lets include more context bcz this was simple image and I want stuff like images, small pdf are included entirely
+
+---
+
+and this is in comms should we repeat information in executor?
+
+---
+
+Go ahead
+
+---
+
+Commit and push all changes
