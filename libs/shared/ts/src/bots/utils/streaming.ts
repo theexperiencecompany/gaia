@@ -200,8 +200,18 @@ async function _handleStream(
       try {
         await currentEditor(firstChunk);
         sentText = firstChunk;
-      } catch {
-        // current bubble may have been deleted or expired
+      } catch (editError) {
+        // The live bubble may have been deleted/expired (streaming platforms),
+        // so fall back to a fresh message. This is the FINAL delivery of the
+        // whole response — if it can't be delivered at all, surface the failure
+        // instead of silently reporting success (a swallowed send here means the
+        // user got nothing while the bot logged chat_stream_completed).
+        if (wrappedSendNewMessage) {
+          currentEditor = await wrappedSendNewMessage(firstChunk);
+          sentText = firstChunk;
+        } else {
+          throw editError;
+        }
       }
     }
 
