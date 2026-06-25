@@ -142,6 +142,7 @@ export const useMentionEditor = ({
     }
     const caretRect = selection.getRangeAt(0).getBoundingClientRect();
     const wrapperRect = wrapper.getBoundingClientRect();
+    const previous = mentionRef.current;
     setMention({
       query,
       matches,
@@ -153,7 +154,16 @@ export const useMentionEditor = ({
         ),
       },
     });
-    setHighlight(0);
+    // Keep the highlighted suggestion while the same `@query` stays open — this
+    // runs on every selection change (incl. the key-up after ArrowUp/Down), so
+    // resetting unconditionally would snap the highlight back to the first item
+    // and make the dropdown impossible to navigate. Only reset when the query
+    // (and thus the match set) actually changes.
+    setHighlight((current) =>
+      previous && previous.query === query
+        ? Math.min(current, matches.length - 1)
+        : 0,
+    );
   }, []);
 
   const insertMention = useCallback(
