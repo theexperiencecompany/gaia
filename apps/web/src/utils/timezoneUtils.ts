@@ -208,3 +208,105 @@ const getAllTimezones = (): TimezoneInfo[] => {
 export const getTimezoneList = (includeAll = false): TimezoneInfo[] => {
   return includeAll ? getAllTimezones() : getPopularTimezones();
 };
+
+// IANA ids don't encode the country, so searching "india" wouldn't match
+// "Asia/Kolkata". This maps the common zones to country/alias keywords so a
+// country search resolves. City, region and offset are always searchable; this
+// only adds the country dimension for the zones people actually search by name.
+const TZ_COUNTRY_KEYWORDS: Record<string, string> = {
+  "Asia/Kolkata": "india bharat",
+  "Asia/Calcutta": "india bharat",
+  "Asia/Karachi": "pakistan",
+  "Asia/Dhaka": "bangladesh",
+  "Asia/Colombo": "sri lanka",
+  "Asia/Kathmandu": "nepal",
+  "Asia/Tokyo": "japan",
+  "Asia/Shanghai": "china",
+  "Asia/Hong_Kong": "hong kong china",
+  "Asia/Taipei": "taiwan",
+  "Asia/Singapore": "singapore",
+  "Asia/Kuala_Lumpur": "malaysia",
+  "Asia/Jakarta": "indonesia",
+  "Asia/Bangkok": "thailand",
+  "Asia/Ho_Chi_Minh": "vietnam",
+  "Asia/Manila": "philippines",
+  "Asia/Seoul": "south korea korea",
+  "Asia/Dubai": "uae united arab emirates",
+  "Asia/Riyadh": "saudi arabia",
+  "Asia/Jerusalem": "israel",
+  "Asia/Tehran": "iran",
+  "Asia/Istanbul": "turkey turkiye",
+  "Europe/Istanbul": "turkey turkiye",
+  "Europe/London": "united kingdom uk england britain gb",
+  "Europe/Dublin": "ireland",
+  "Europe/Paris": "france",
+  "Europe/Berlin": "germany deutschland",
+  "Europe/Madrid": "spain espana",
+  "Europe/Rome": "italy italia",
+  "Europe/Amsterdam": "netherlands holland",
+  "Europe/Brussels": "belgium",
+  "Europe/Zurich": "switzerland",
+  "Europe/Vienna": "austria",
+  "Europe/Stockholm": "sweden",
+  "Europe/Oslo": "norway",
+  "Europe/Copenhagen": "denmark",
+  "Europe/Helsinki": "finland",
+  "Europe/Warsaw": "poland",
+  "Europe/Lisbon": "portugal",
+  "Europe/Athens": "greece",
+  "Europe/Moscow": "russia",
+  "Europe/Kyiv": "ukraine",
+  "Europe/Kiev": "ukraine",
+  "America/New_York": "united states usa america us",
+  "America/Chicago": "united states usa america us",
+  "America/Denver": "united states usa america us",
+  "America/Los_Angeles": "united states usa america us",
+  "America/Toronto": "canada",
+  "America/Vancouver": "canada",
+  "America/Mexico_City": "mexico",
+  "America/Sao_Paulo": "brazil brasil",
+  "America/Buenos_Aires": "argentina",
+  "America/Argentina/Buenos_Aires": "argentina",
+  "America/Bogota": "colombia",
+  "America/Lima": "peru",
+  "America/Santiago": "chile",
+  "Africa/Cairo": "egypt",
+  "Africa/Johannesburg": "south africa",
+  "Africa/Lagos": "nigeria",
+  "Africa/Nairobi": "kenya",
+  "Africa/Casablanca": "morocco",
+  "Australia/Sydney": "australia",
+  "Australia/Melbourne": "australia",
+  "Australia/Perth": "australia",
+  "Pacific/Auckland": "new zealand nz",
+};
+
+/**
+ * A lowercase, space-joined searchable string for a timezone: its IANA path,
+ * city, region/continent, country keywords, and the UTC offset in several forms
+ * ("+05:30", "+5:30", "05:30", "5:30", "utc+5:30") so a `.includes(query)` match
+ * works for city, country, region and offset alike.
+ */
+export const timezoneSearchText = (value: string, offset: string): string => {
+  const parts = value.replace(/_/g, " ").split("/");
+  const city = parts[parts.length - 1] ?? value;
+  const region = parts.slice(0, -1).join(" ");
+  const country = TZ_COUNTRY_KEYWORDS[value] ?? "";
+
+  let offsets = offset;
+  const m = offset.match(/^([+-])(\d{2}):(\d{2})$/);
+  if (m) {
+    const [, sign, hh, mm] = m;
+    const h = String(Number(hh));
+    offsets = [
+      offset,
+      `${sign}${h}:${mm}`,
+      `${hh}:${mm}`,
+      `${h}:${mm}`,
+      `utc${sign}${h}:${mm}`,
+      `gmt${sign}${h}:${mm}`,
+    ].join(" ");
+  }
+
+  return `${value} ${city} ${region} ${country} ${offsets}`.toLowerCase();
+};
