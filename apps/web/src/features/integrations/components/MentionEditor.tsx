@@ -8,6 +8,7 @@ import {
   memo,
   type ReactNode,
   type RefObject,
+  useEffect,
   useMemo,
   useRef,
 } from "react";
@@ -187,6 +188,13 @@ export const MentionEditor = ({
   const editor = useMentionEditor({ value, onChange, toolNames, maxLength });
   const textClass = textClassName ?? EDITOR_TEXT;
 
+  // Keep the keyboard-highlighted suggestion visible: the list can hold more
+  // items than fit in its max height, so arrowing past the fold must scroll.
+  const activeItemRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: "nearest" });
+  }, [editor.highlight, editor.mention]);
+
   return (
     <div ref={editor.wrapperRef} className={className ?? DEFAULT_WRAPPER}>
       {value.trim() === "" && (
@@ -235,6 +243,7 @@ export const MentionEditor = ({
           {editor.mention.matches.map((name, idx) => (
             <li key={name}>
               <button
+                ref={idx === editor.highlight ? activeItemRef : undefined}
                 type="button"
                 onMouseDown={(e) => {
                   e.preventDefault();
