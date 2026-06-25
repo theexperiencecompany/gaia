@@ -280,6 +280,11 @@ export class DiscordAdapter extends BaseBotAdapter {
         bot_id: c.user.id,
       });
       this.startStatusRotation(c.user);
+      // Pre-warm DM channels for linked users. discord.js cannot reconstruct a
+      // DM channel from a cold MESSAGE_CREATE payload (it lacks type/recipients),
+      // so an uncached DM channel makes inbound DMs silently dropped after a
+      // restart. Opening each linked user's DM caches it so their DMs resolve.
+      void this.prewarmDmChannels();
     });
 
     this.client.on(Events.InteractionCreate, async (interaction) => {
@@ -368,6 +373,40 @@ export class DiscordAdapter extends BaseBotAdapter {
     await user.send({
       content: attachment.caption ?? undefined,
       files: [{ attachment: artifact.data, name: attachment.filename }],
+    });
+  }
+
+  /**
+   * Opens (and thereby caches) the DM channel for every linked Discord user.
+   *
+   * Without this, discord.js drops inbound DMs whose channel isn't cached — it
+   * can't rebuild a DM channel from a bare MESSAGE_CREATE (no type/recipients).
+   * A long-running prod bot caches these naturally by DMing users; a freshly
+   * restarted bot starts cold, so we warm them explicitly. Best-effort: failures
+   * for individual users (left the server, etc.) are logged and skipped.
+   */
+  private async prewarmDmChannels(): Promise<void> {
+    let linked: string[];
+    try {
+      linked = await this.gaia.listLinkedPlatformUserIds(this.platform);
+    } catch (error) {
+      this.adapterLogger.error("dm_prewarm_list_failed", {}, error);
+      return;
+    }
+    let cached = 0;
+    for (const userId of linked) {
+      try {
+        const user = await this.client.users.fetch(userId);
+        await user.createDM();
+        cached++;
+      } catch (error) {
+        this.adapterLogger.warn("dm_prewarm_user_failed", { user_id: userId });
+        void error;
+      }
+    }
+    this.adapterLogger.info("dm_channels_prewarmed", {
+      linked: linked.length,
+      cached,
     });
   }
 

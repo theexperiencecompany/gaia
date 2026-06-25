@@ -198,6 +198,26 @@ export class GaiaClient {
   }
 
   /**
+   * Lists the platform_user_ids linked on a platform. Bots use this on startup
+   * to pre-warm caches (e.g. Discord DM channels) so cold inbound messages
+   * resolve after a restart.
+   */
+  async listLinkedPlatformUserIds(platform: string): Promise<string[]> {
+    return this.request(async () => {
+      const { data } = await this.client.get<{ platform_user_ids: string[] }>(
+        `/api/v1/bot/linked-users/${platform}`,
+        {
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": platform,
+          },
+        },
+      );
+      return data.platform_user_ids ?? [];
+    });
+  }
+
+  /**
    * Gets user settings including account info, integrations, and selected model.
    */
   async getSettings(

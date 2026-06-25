@@ -48,6 +48,23 @@ class PlatformLinkService:
         return await users_collection.find_one({f"platform_links.{platform}.id": platform_user_id})
 
     @staticmethod
+    async def list_platform_user_ids(platform: str, limit: int = 500) -> list[str]:
+        """List the platform_user_ids of every account linked to the given platform.
+
+        Used by bots (e.g. Discord) to pre-warm DM-channel caches on startup so
+        inbound DMs resolve even on a cold restart. Bounded by ``limit`` to keep
+        startup cost predictable.
+        """
+        field = f"platform_links.{platform}.id"
+        cursor = users_collection.find({field: {"$exists": True}}, {field: 1}).limit(limit)
+        ids: list[str] = []
+        async for doc in cursor:
+            pid = doc.get("platform_links", {}).get(platform, {}).get("id")
+            if pid:
+                ids.append(str(pid))
+        return ids
+
+    @staticmethod
     async def link_account(
         user_id: str,
         platform: str,
