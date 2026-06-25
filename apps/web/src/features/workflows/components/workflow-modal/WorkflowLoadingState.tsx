@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
+import { Spinner } from "@heroui/spinner";
 import { AlertCircleIcon, CheckmarkCircle02Icon } from "@icons";
-import CustomSpinner from "@/components/ui/spinner";
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowSteps from "../shared/WorkflowSteps";
 
@@ -51,7 +51,7 @@ export default function WorkflowLoadingState({
   if (phase === "creating" || phase === "generating") {
     return (
       <div className="flex min-h-[280px] flex-col items-center justify-center gap-4 py-8 text-center">
-        <CustomSpinner variant="logo" />
+        <Spinner size="lg" color="primary" />
         <div>
           <h3 className="text-base font-semibold text-zinc-100">
             {phase === "generating" ? "Generating steps" : "Creating workflow"}
