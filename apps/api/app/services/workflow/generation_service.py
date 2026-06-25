@@ -182,6 +182,10 @@ class WorkflowGenerationService:
         # Custom integration ids -> icon URL, so generated steps that use a
         # custom integration carry an icon the frontend can render.
         category_icon_urls: dict[str, str] = {}
+        # Selected custom-integration ids -> display name. Custom integrations are
+        # keyed by an opaque uuid, so the preferred-tools hint must resolve the
+        # human name here (OAUTH_INTEGRATIONS doesn't know them).
+        selected_display_names: dict[str, str] = {}
         categories = tool_registry.get_all_category_objects()
         for category in categories.keys():
             if filter_active and category.lower() not in slug_set:
@@ -232,6 +236,7 @@ class WorkflowGenerationService:
                     if filter_active and integ.id.lower() not in slug_set:
                         continue
                     category_names.append(integ.id)
+                    selected_display_names[integ.id.lower()] = integ.name
                     summary = integ.description or integ.name
                     tools_with_categories.append(
                         f"{integ.id} (custom integration): {integ.name}. {summary}"
@@ -275,11 +280,20 @@ class WorkflowGenerationService:
                 f"{prompt}\n\nShort display summary for additional context: {description}"
             )
         if normalized_slugs:
-            friendly = [_slug_to_friendly_name(s) for s in normalized_slugs]
+
+            def _hint_label(slug: str) -> str:
+                name = selected_display_names.get(slug) or _slug_to_friendly_name(slug)
+                # Pass both the human name and the category id: the name tells the
+                # LLM what the user meant, the id is what each step's `category`
+                # must be set to for that integration's tools to resolve.
+                return f"{name} (category: {slug})" if name != slug else slug
+
+            friendly = [_hint_label(s) for s in normalized_slugs]
             integration_hint = (
                 "User has selected these integrations as preferred tools for this workflow: "
                 + ", ".join(friendly)
-                + ". Prioritise steps that use these integrations where appropriate."
+                + ". Prioritise steps that use these integrations where appropriate, "
+                "setting each such step's category to the given id."
             )
             prompt_context = f"{prompt_context}\n\n{integration_hint}"
 
