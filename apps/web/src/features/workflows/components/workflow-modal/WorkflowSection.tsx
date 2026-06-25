@@ -24,7 +24,7 @@ export default function WorkflowSection({
   action,
   children,
   className,
-}: WorkflowSectionProps) {
+}: Readonly<WorkflowSectionProps>) {
   return (
     <section className={cn("space-y-2", className)}>
       {(label || action) && (

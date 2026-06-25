@@ -9,7 +9,9 @@
 
 import type { ReactNode } from "react";
 
-export function TriggerSettingsCard({ children }: { children: ReactNode }) {
+export function TriggerSettingsCard({
+  children,
+}: Readonly<{ children: ReactNode }>) {
   return (
     <div className="divide-y divide-zinc-800 overflow-hidden rounded-2xl bg-zinc-800/40">
       {children}
@@ -31,7 +33,7 @@ export function TriggerSettingRow({
   hint,
   wide,
   children,
-}: TriggerSettingRowProps) {
+}: Readonly<TriggerSettingRowProps>) {
   return (
     <div className="flex items-start justify-between gap-4 px-4 py-3.5">
       {/* min-h matches a single control row so the label sits centered against

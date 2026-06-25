@@ -30,9 +30,8 @@ import { MENTION_NODE } from "@/features/integrations/utils/mentionDoc";
 
 const MAX_SUGGESTIONS = 8;
 
-/** A selected mention carries the tool name as both its id and display label. */
-type SuggestionItem = string;
-type Suggestion = SuggestionProps<SuggestionItem, MentionNodeAttrs>;
+// A selected mention carries the tool name (a string) as both its id and label.
+type Suggestion = SuggestionProps<string, MentionNodeAttrs>;
 
 /**
  * Live editor props funneled into the extensions through refs. Tiptap builds
@@ -139,7 +138,7 @@ export const buildMentionExtensions = (
     renderText: ({ node }) => `@${node.attrs.label ?? node.attrs.id}`,
     suggestion: {
       char: "@",
-      items: ({ query }): SuggestionItem[] => {
+      items: ({ query }): string[] => {
         const q = query.toLowerCase();
         const names = refs.toolNames.current;
         const pool = q

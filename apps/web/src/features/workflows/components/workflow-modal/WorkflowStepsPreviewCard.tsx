@@ -24,7 +24,7 @@ interface WorkflowStepsPreviewCardProps {
 export default function WorkflowStepsPreviewCard({
   steps,
   emptyMessage = "Steps will be generated when this workflow runs.",
-}: WorkflowStepsPreviewCardProps) {
+}: Readonly<WorkflowStepsPreviewCardProps>) {
   return (
     <div className={STEPS_CARD_SURFACE}>
       <div className="mb-1 flex items-center gap-2 px-2 pt-1">

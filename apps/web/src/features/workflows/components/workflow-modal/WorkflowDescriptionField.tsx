@@ -126,7 +126,7 @@ export default function WorkflowDescriptionField({
     }
   };
 
-  const generateButton = !isPreview ? (
+  const generateButton = isPreview ? undefined : (
     <Tooltip
       content="Add a title, description, or instructions first"
       placement="top"
@@ -150,7 +150,7 @@ export default function WorkflowDescriptionField({
         </Button>
       </span>
     </Tooltip>
-  ) : undefined;
+  );
 
   return (
     <WorkflowSection label="Instructions" action={generateButton}>

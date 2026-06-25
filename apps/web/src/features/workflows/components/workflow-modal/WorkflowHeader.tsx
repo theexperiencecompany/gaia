@@ -115,12 +115,18 @@ export default function WorkflowHeader({
                 variant="flat"
                 disabledKeys={isTogglingActivation ? ["activation"] : []}
                 onAction={(key) => {
-                  if (key === "activation") onToggleActivation(!isActivated);
-                  else if (key === "publish") onPublish?.();
-                  else if (key === "marketplace") onViewMarketplace?.();
-                  else if (key === "unpublish") onUnpublish?.();
-                  else if (key === "reset") onResetToDefault?.();
-                  else if (key === "delete") onDelete();
+                  const actions: Record<
+                    string,
+                    (() => void | Promise<void>) | undefined
+                  > = {
+                    activation: () => onToggleActivation(!isActivated),
+                    publish: onPublish,
+                    marketplace: onViewMarketplace,
+                    unpublish: onUnpublish,
+                    reset: onResetToDefault,
+                    delete: onDelete,
+                  };
+                  actions[String(key)]?.();
                 }}
               >
                 <DropdownItem

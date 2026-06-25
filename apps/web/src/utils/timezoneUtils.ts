@@ -288,13 +288,13 @@ const TZ_COUNTRY_KEYWORDS: Record<string, string> = {
  * works for city, country, region and offset alike.
  */
 export const timezoneSearchText = (value: string, offset: string): string => {
-  const parts = value.replace(/_/g, " ").split("/");
-  const city = parts[parts.length - 1] ?? value;
+  const parts = value.replaceAll("_", " ").split("/");
+  const city = parts.at(-1) ?? value;
   const region = parts.slice(0, -1).join(" ");
   const country = TZ_COUNTRY_KEYWORDS[value] ?? "";
 
   let offsets = offset;
-  const m = offset.match(/^([+-])(\d{2}):(\d{2})$/);
+  const m = /^([+-])(\d{2}):(\d{2})$/.exec(offset);
   if (m) {
     const [, sign, hh, mm] = m;
     const h = String(Number(hh));

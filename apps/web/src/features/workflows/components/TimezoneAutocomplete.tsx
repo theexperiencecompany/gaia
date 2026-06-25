@@ -21,8 +21,8 @@ interface TimezoneAutocompleteProps {
 // Split an IANA id ("Asia/Kolkata", "America/Argentina/Buenos_Aires") into a
 // city (last segment) and its region path, both human-readable.
 function describeZone(value: string): { city: string; region: string } {
-  const parts = value.replace(/_/g, " ").split("/");
-  const city = parts[parts.length - 1] ?? value;
+  const parts = value.replaceAll("_", " ").split("/");
+  const city = parts.at(-1) ?? value;
   const region = parts.slice(0, -1).join(" / ");
   return { city, region };
 }
@@ -37,7 +37,7 @@ export function TimezoneAutocomplete({
   options,
   onChange,
   className,
-}: TimezoneAutocompleteProps) {
+}: Readonly<TimezoneAutocompleteProps>) {
   const selected = options.find((tz) => tz.value === timezone);
   const selectedOffset = selected?.offset;
   const selectedCity = selected ? describeZone(selected.value).city : "";

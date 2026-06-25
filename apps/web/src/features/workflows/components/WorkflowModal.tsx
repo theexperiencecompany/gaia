@@ -213,9 +213,9 @@ export default function WorkflowModal({
   // connecting. Resolved from the selected trigger slug (not trigger_config,
   // which can briefly lag the selection) so this banner always agrees with the
   // settings panel below — same slug, same integration.
-  // TODO: extend this to also surface integrations required by the workflow's
-  // steps once step-level integration metadata is available, so the banner
-  // covers the whole workflow, not just the trigger.
+  // Limitation: only the trigger's integration is surfaced. Step-level
+  // integration metadata isn't available yet, so the banner can't cover
+  // integrations required by the workflow's steps — only the trigger.
   const missingIntegration = useMemo(() => {
     if (formData.activeTab !== "trigger" || !formData.selectedTrigger)
       return null;

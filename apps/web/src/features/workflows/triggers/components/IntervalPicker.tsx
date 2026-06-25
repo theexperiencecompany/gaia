@@ -61,7 +61,7 @@ export function IntervalPicker({
   onChange,
   presets = DEFAULT_PRESETS,
   maxMinutes = DEFAULT_MAX_MINUTES,
-}: IntervalPickerProps) {
+}: Readonly<IntervalPickerProps>) {
   const units = availableUnits(maxMinutes);
   const isPreset = presets.includes(value);
   const [customMode, setCustomMode] = useState(!isPreset);

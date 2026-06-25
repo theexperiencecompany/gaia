@@ -95,20 +95,18 @@ def gmail_compose_require_subject_schema_modifier(tool: str, toolkit: str, schem
     so schema-level enforcement is the only hard guarantee).
     """
     input_params = schema.input_parameters
-    if not isinstance(input_params, dict):
-        return schema
+    if isinstance(input_params, dict):
+        required = input_params.setdefault("required", [])
+        if isinstance(required, list) and "subject" not in required:
+            required.append("subject")
 
-    required = input_params.setdefault("required", [])
-    if isinstance(required, list) and "subject" not in required:
-        required.append("subject")
-
-    props = input_params.get("properties")
-    if isinstance(props, dict) and isinstance(props.get("subject"), dict):
-        props["subject"]["minLength"] = 1
-        props["subject"]["description"] = (
-            "Email subject line. Required — write a clear, specific subject "
-            "that summarizes the email. Never leave it blank."
-        )
+        props = input_params.get("properties")
+        if isinstance(props, dict) and isinstance(props.get("subject"), dict):
+            props["subject"]["minLength"] = 1
+            props["subject"]["description"] = (
+                "Email subject line. Required — write a clear, specific subject "
+                "that summarizes the email. Never leave it blank."
+            )
     return schema
 
 
