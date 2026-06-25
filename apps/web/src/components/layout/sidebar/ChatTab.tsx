@@ -85,19 +85,21 @@ export const ChatTab: FC<ChatTabProps> = ({
           })
         }
       >
-        <div className="flex items-center truncate justify-start w-full gap-2">
+        <div className="flex w-full items-center justify-start gap-2">
           {/* Streaming indicator - pulsing dot */}
           {isStreaming && (
             <div
-              className="size-2 bg-primary rounded-full animate-pulse"
+              className="size-2 shrink-0 rounded-full bg-primary animate-pulse"
               title="Streaming..."
             />
           )}
           {/* Unread indicator */}
           {!isStreaming && isUnread && (
-            <div className="size-2.5 bg-primary rounded-full" />
+            <div className="size-2.5 shrink-0 rounded-full bg-primary" />
           )}
-          <span>{name.replace('"', "")}</span>
+          {/* min-w-0 + truncate so a long title shrinks/ellipsizes instead of
+              squeezing the fixed-size indicator dot out of view. */}
+          <span className="min-w-0 truncate">{name.replace('"', "")}</span>
         </div>
       </Button>
 
