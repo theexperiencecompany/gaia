@@ -3,6 +3,7 @@
 import { Chip } from "@heroui/chip";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 
 interface WorkflowStepProps {
   step: {
@@ -22,6 +23,7 @@ export default function WorkflowStep({
   size = "small",
 }: WorkflowStepProps) {
   const isLarge = size === "large";
+  const { getIntegrationName, getIntegrationIconUrl } = useIntegrationLookup();
 
   // Size-dependent values
   const dotSize = isLarge ? "h-8 w-8" : "h-7 w-7";
@@ -32,12 +34,15 @@ export default function WorkflowStep({
   const titleTextSize = isLarge ? "text-base" : "text-sm";
   const descriptionTextSize = isLarge ? "text-sm" : "text-xs";
 
+  // Prefer the integration's real display name (handles custom/MCP ids that
+  // would otherwise show a raw uuid); fall back to a titleized category.
   const categoryLabel =
     step.category === "gaia"
       ? "GAIA"
-      : step.category
+      : (getIntegrationName(step.category) ??
+        step.category
           .replaceAll("_", " ")
-          .replace(/\b\w/g, (c) => c.toUpperCase());
+          .replace(/\b\w/g, (c) => c.toUpperCase()));
 
   return (
     <div className="relative flex items-start gap-5">
@@ -65,7 +70,7 @@ export default function WorkflowStep({
                     height: iconSize,
                     showBackground: false,
                   },
-                  step.icon_url,
+                  step.icon_url ?? getIntegrationIconUrl(step.category),
                 )}
               </div>
             }

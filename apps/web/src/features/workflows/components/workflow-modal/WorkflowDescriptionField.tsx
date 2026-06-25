@@ -165,12 +165,18 @@ export default function WorkflowDescriptionField({
               toolNames={toolNames}
               renderMentionIcon={renderMentionIcon}
               mentionRadius="sm"
+              mentionRemovable={false}
               readOnly={isPreview}
-              placeholder="E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via @Slack"
-              className={`relative rounded-xl bg-zinc-800/60 transition-colors focus-within:bg-zinc-800/80 ${
-                errors.prompt ? "ring-1 ring-danger" : ""
+              placeholder="E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via Slack"
+              // Match the HeroUI flat Textarea this replaced: same surface
+              // (default-100), radius, padding and line height.
+              className={`relative rounded-medium transition-colors ${
+                errors.prompt
+                  ? "bg-danger-50"
+                  : "bg-default-100 hover:bg-default-200 focus-within:bg-default-100"
               }`}
-              surfaceClassName="min-h-28 max-h-72"
+              textClassName="px-3 py-2 text-sm leading-relaxed"
+              surfaceClassName="min-h-24 max-h-72"
             />
             {errors.prompt?.message && (
               <p className="mt-1.5 px-1 text-xs text-danger">

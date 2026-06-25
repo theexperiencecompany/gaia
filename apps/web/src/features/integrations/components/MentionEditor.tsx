@@ -29,6 +29,10 @@ interface MentionEditorProps {
   className?: string;
   /** Override the editable surface min/max height. */
   surfaceClassName?: string;
+  /** Override padding / text size / line height (kept in sync with placeholder). */
+  textClassName?: string;
+  /** Show the chip's close button. When false, mentions are removed by backspace. */
+  mentionRemovable?: boolean;
   /** Render the content but block editing (contentEditable ignores fieldset). */
   readOnly?: boolean;
 }
@@ -42,6 +46,7 @@ interface MentionChipTokenProps {
   name: string;
   renderMentionIcon?: (name: string) => ReactNode;
   mentionRadius?: ChipProps["radius"];
+  removable?: boolean;
   onRemove: (element: HTMLElement) => void;
 }
 
@@ -49,6 +54,7 @@ const MentionChipToken = ({
   name,
   renderMentionIcon,
   mentionRadius,
+  removable = true,
   onRemove,
 }: MentionChipTokenProps) => {
   const tokenRef = useRef<HTMLSpanElement>(null);
@@ -63,9 +69,13 @@ const MentionChipToken = ({
         name={name}
         icon={renderMentionIcon?.(name)}
         radius={mentionRadius}
-        onClose={() => {
-          if (tokenRef.current) onRemove(tokenRef.current);
-        }}
+        onClose={
+          removable
+            ? () => {
+                if (tokenRef.current) onRemove(tokenRef.current);
+              }
+            : undefined
+        }
       />
     </span>
   );
@@ -78,7 +88,9 @@ interface EditorSurfaceProps {
   rootRef: RefObject<HTMLDivElement | null>;
   renderMentionIcon?: (name: string) => ReactNode;
   mentionRadius?: ChipProps["radius"];
+  mentionRemovable?: boolean;
   surfaceClassName: string;
+  textClassName: string;
   readOnly?: boolean;
   onRemoveMention: (element: HTMLElement) => void;
   onInput: (event: FormEvent<HTMLDivElement>) => void;
@@ -101,7 +113,9 @@ const EditorSurface = memo(
     rootRef,
     renderMentionIcon,
     mentionRadius,
+    mentionRemovable,
     surfaceClassName,
+    textClassName,
     readOnly,
     onRemoveMention,
     onInput,
@@ -133,7 +147,7 @@ const EditorSurface = memo(
         onClick={onSelectionChange}
         onPaste={onPaste}
         onBlur={onBlur}
-        className={`relative block w-full overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 caret-zinc-100 outline-none ${surfaceClassName} ${EDITOR_TEXT}`}
+        className={`relative block w-full overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 caret-zinc-100 outline-none ${surfaceClassName} ${textClassName}`}
       >
         {segments.map((segment) =>
           segment.mention ? (
@@ -142,6 +156,7 @@ const EditorSurface = memo(
               name={segment.text.slice(1)}
               renderMentionIcon={renderMentionIcon}
               mentionRadius={mentionRadius}
+              removable={mentionRemovable}
               onRemove={onRemoveMention}
             />
           ) : (
@@ -161,20 +176,26 @@ export const MentionEditor = ({
   toolNames,
   renderMentionIcon,
   mentionRadius,
+  mentionRemovable,
   placeholder,
   maxLength,
   className,
   surfaceClassName,
+  textClassName,
   readOnly,
 }: MentionEditorProps) => {
   const editor = useMentionEditor({ value, onChange, toolNames, maxLength });
+  const textClass = textClassName ?? EDITOR_TEXT;
 
   return (
     <div ref={editor.wrapperRef} className={className ?? DEFAULT_WRAPPER}>
-      {value === "" && (
+      {value.trim() === "" && (
+        // Whitespace-only counts as empty: clearing a contentEditable can leave
+        // a browser filler <br> (serializes to "\n"), which must still show the
+        // placeholder. text-default-500 matches HeroUI's input placeholder.
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-0 whitespace-pre-wrap text-zinc-600 ${EDITOR_TEXT}`}
+          className={`pointer-events-none absolute inset-0 whitespace-pre-wrap text-default-500 ${textClass}`}
         >
           {placeholder}
         </div>
@@ -190,7 +211,9 @@ export const MentionEditor = ({
         rootRef={editor.rootRef}
         renderMentionIcon={renderMentionIcon}
         mentionRadius={mentionRadius}
+        mentionRemovable={mentionRemovable}
         surfaceClassName={surfaceClassName ?? DEFAULT_SURFACE}
+        textClassName={textClass}
         readOnly={readOnly}
         onRemoveMention={editor.removeMentionToken}
         onInput={editor.handlers.onInput}
@@ -218,13 +241,18 @@ export const MentionEditor = ({
                   editor.insertMention(name);
                 }}
                 onMouseEnter={() => editor.setHighlight(idx)}
-                className={`w-full cursor-pointer truncate rounded-xl px-3 py-1.5 text-left text-sm transition-colors ${
+                className={`flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-1.5 text-left text-sm transition-colors ${
                   idx === editor.highlight
                     ? "bg-zinc-800 text-zinc-100"
                     : "text-zinc-300"
                 }`}
               >
-                {name}
+                {renderMentionIcon ? (
+                  <span className="inline-flex shrink-0 items-center">
+                    {renderMentionIcon(name)}
+                  </span>
+                ) : null}
+                <span className="truncate">{name}</span>
               </button>
             </li>
           ))}
