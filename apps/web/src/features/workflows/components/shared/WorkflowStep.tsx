@@ -60,6 +60,8 @@ export default function WorkflowStep({
           <Chip
             radius="md"
             variant="flat"
+            title={categoryLabel}
+            aria-label={categoryLabel}
             className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
             startContent={
               <div className="min-w-fit">
