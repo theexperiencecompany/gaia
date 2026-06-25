@@ -58,13 +58,11 @@ const TOKEN_TTL_MS = 12 * 60 * 1000;
 
 export class GaiaClient {
   private client: AxiosInstance;
-  private baseUrl: string;
   private frontendUrl: string;
   private apiKey: string;
   private sessionTokens: Map<string, TokenEntry> = new Map();
 
   constructor(baseUrl: string, apiKey: string, frontendUrl: string) {
-    this.baseUrl = baseUrl;
     this.frontendUrl = frontendUrl;
     this.apiKey = apiKey;
     this.client = axios.create({
@@ -365,21 +363,6 @@ export class GaiaClient {
   }
 
   /**
-   * Gets a specific todo by ID.
-   */
-  async getTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
-    return this.requestWithAuth(async () => {
-      const { data } = await this.client.get(
-        `/api/v1/todos/${encodeURIComponent(todoId)}`,
-        {
-          headers: this.userHeaders(ctx),
-        },
-      );
-      return mapTodoResponse(data);
-    }, ctx);
-  }
-
-  /**
    * Updates a todo.
    */
   async updateTodo(
@@ -449,33 +432,9 @@ export class GaiaClient {
     }, ctx);
   }
 
-  /**
-   * Gets a specific conversation by ID.
-   */
-  async getConversation(
-    conversationId: string,
-    ctx: BotUserContext,
-  ): Promise<BotConversation> {
-    return this.requestWithAuth(async () => {
-      const { data } = await this.client.get(
-        `/api/v1/conversations/${encodeURIComponent(conversationId)}`,
-        { headers: this.userHeaders(ctx) },
-      );
-      return mapConversationResponse(data);
-    }, ctx);
-  }
-
-  getConversationUrl(conversationId: string): string {
-    return `${this.frontendUrl}/c/${conversationId}`;
-  }
-
   /** Upgrade/pricing page, surfaced in rate-limit replies for free users. */
   getPricingUrl(): string {
     return `${this.frontendUrl}/pricing`;
-  }
-
-  getBaseUrl(): string {
-    return this.baseUrl;
   }
 
   getFrontendUrl(): string {
