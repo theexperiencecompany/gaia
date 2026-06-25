@@ -466,10 +466,9 @@ export function renderForPlatform(
  */
 export function buildAuthLinkMessage(authUrl: string): string {
   return (
-    "🔗 **Link your account to GAIA**\n\n" +
-    "Tap the link below to sign in and link your account:\n" +
-    `${authUrl}\n\n` +
-    "After linking, you'll be able to use all GAIA commands!"
+    "**Link your account to GAIA**\n\n" +
+    "Tap below to sign in — once you're connected, you can use everything right here.\n" +
+    `${authUrl}`
   );
 }
 

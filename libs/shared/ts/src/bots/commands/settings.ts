@@ -89,18 +89,18 @@ export const settingsCommand: BotCommand = {
 
       const richMsg: RichMessage = {
         type: "embed",
-        title: "⚙️ Your GAIA Settings",
+        title: "Your GAIA settings",
         color: 0x7c3aed,
         fields: [
           {
-            name: "👤 Account",
+            name: "Account",
             value: [
               `**Name:** ${settings.userName || "Not set"}`,
               `**Member since:** ${accountAge}`,
             ].join("\n"),
           },
           {
-            name: "🔗 Connected Integrations",
+            name: "Connected apps",
             value: integrationsText,
           },
         ],
