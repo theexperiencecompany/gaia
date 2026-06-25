@@ -12,3 +12,7 @@ and this is in comms should we repeat information in executor?
 ---
 
 Go ahead
+
+---
+
+Commit and push all changes
