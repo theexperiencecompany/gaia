@@ -759,7 +759,7 @@ def format_files_list(
 
     file_block = "\n".join(lines)
     return f"""
-[Attached files for this turn]
+[Uploaded files]
 {file_block}
 
 How to work with these files:

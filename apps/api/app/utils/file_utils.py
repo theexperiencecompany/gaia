@@ -19,6 +19,27 @@ from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 from shared.py.wide_events import log
 
 
+def _message_text(response: object) -> str:
+    """Extract plain text from an LLM response.
+
+    A chat model returns an ``AIMessage`` whose ``.content`` is either a string
+    or — for multimodal providers like Gemini — a list of content-part dicts.
+    ``str(response)`` would serialize the whole message object (``content=[...]
+    additional_kwargs=...``); this pulls out just the text.
+    """
+    content = getattr(response, "content", response)
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = [
+            part if isinstance(part, str) else part.get("text", "")
+            for part in content
+            if isinstance(part, str) or (isinstance(part, dict) and part.get("type") == "text")
+        ]
+        return "\n".join(p for p in parts if p).strip()
+    return str(content).strip()
+
+
 class DocumentProcessor:
     """Document processing and summarization using LlamaIndex and LlamaCloud."""
 
@@ -101,10 +122,7 @@ class DocumentProcessor:
                 ],
             )
 
-            description = response
-            if not isinstance(description, str):
-                description = str(description)
-            return description
+            return _message_text(response) or "Image description could not be generated."
 
         except Exception as e:
             log.error(f"{LogTag.TOOL} Failed to process image: {e!s}", exc_info=True)
@@ -168,7 +186,7 @@ class DocumentProcessor:
                         page_number=i + 1,
                         content=md_documents[i].text,
                     ),
-                    summary=str(summarized_pages[i]),
+                    summary=_message_text(summarized_pages[i]),
                 )
                 for i in range(len(md_documents))
             ]
@@ -224,7 +242,7 @@ class DocumentProcessor:
                 ],
             )
 
-            return str(response)
+            return _message_text(response) or "Summary could not be generated."
 
         except Exception as e:
             log.error(f"{LogTag.TOOL} Failed to generate summary: {e!s}", exc_info=True)

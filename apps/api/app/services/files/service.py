@@ -233,6 +233,36 @@ class FileService:
         }
 
     @staticmethod
+    async def list_conversation_files(conversation_id: str, user_id: str) -> list[MessageFileData]:
+        """Every file uploaded in a conversation, as ``FileData`` carrying its summary.
+
+        Lets the executor surface the conversation's uploads from only the
+        conversation id (it never sees the request payload).
+        """
+        docs = await files_collection.find(
+            {"user_id": user_id, "conversation_id": conversation_id},
+            projection={
+                "_id": 0,
+                "file_id": 1,
+                "filename": 1,
+                "url": 1,
+                "type": 1,
+                "description": 1,
+            },
+        ).to_list(length=None)
+        return [
+            MessageFileData(
+                fileId=doc["file_id"],
+                url=doc.get("url", ""),
+                filename=doc["filename"],
+                type=doc.get("type"),
+                description=doc.get("description"),
+            )
+            for doc in docs
+            if doc.get("file_id") and doc.get("filename")
+        ]
+
+    @staticmethod
     @CacheInvalidator(key_patterns=[FILES_CACHE_PATTERN])
     async def delete(file_id: str, user_id: str | None) -> dict:
         """Delete a file from Mongo, Cloudinary, and the vector index."""
