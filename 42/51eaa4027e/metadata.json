@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "4251eaa4027e",
+  "strategy": "manual-commit",
+  "branch": "insane-gmail",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/api/app/agents/core/subagents/subagent_runner.py",
+    "apps/api/app/constants/chat.py",
+    "apps/api/app/helpers/message_helpers.py",
+    "apps/api/app/services/files/service.py",
+    "apps/api/app/utils/file_utils.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/42/51eaa4027e/0/metadata.json",
+      "transcript": "/42/51eaa4027e/0/full.jsonl",
+      "content_hash": "/42/51eaa4027e/0/content_hash.txt",
+      "prompt": "/42/51eaa4027e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 73467,
+    "cache_creation_tokens": 2512681,
+    "cache_read_tokens": 61859590,
+    "output_tokens": 268767,
+    "api_call_count": 225
+  }
+}
