@@ -373,7 +373,12 @@ export class TelegramAdapter extends BaseBotAdapter {
   ): Promise<Message.TextMessage> {
     try {
       return await send(html, { parse_mode: "HTML" });
-    } catch {
+    } catch (error) {
+      // Telegram rejected the HTML (usually an unbalanced entity). Recover by
+      // sending plain text, but log it — silent fallback hides markdown bugs.
+      this.adapterLogger.warn("telegram_html_parse_fallback", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
       return await send(htmlToPlainText(html));
     }
   }
