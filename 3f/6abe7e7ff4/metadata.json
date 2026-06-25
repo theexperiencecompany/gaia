@@ -3,7 +3,7 @@
   "checkpoint_id": "3f6abe7e7ff4",
   "strategy": "manual-commit",
   "branch": "insane-gmail",
-  "checkpoints_count": 1,
+  "checkpoints_count": 25,
   "files_touched": [
     "apps/api/app/constants/artifacts.py",
     "apps/api/app/utils/artifact_utils.py"
@@ -14,6 +14,12 @@
       "transcript": "/3f/6abe7e7ff4/0/full.jsonl",
       "content_hash": "/3f/6abe7e7ff4/0/content_hash.txt",
       "prompt": "/3f/6abe7e7ff4/0/prompt.txt"
+    },
+    {
+      "metadata": "/3f/6abe7e7ff4/1/metadata.json",
+      "transcript": "/3f/6abe7e7ff4/1/full.jsonl",
+      "content_hash": "/3f/6abe7e7ff4/1/content_hash.txt",
+      "prompt": "/3f/6abe7e7ff4/1/prompt.txt"
     }
   ],
   "token_usage": {
