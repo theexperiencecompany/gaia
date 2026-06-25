@@ -106,8 +106,17 @@ def _build_available_triggers(
     return "Available integration triggers (use the slug for trigger_name):\n" + "\n".join(lines)
 
 
-def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
-    """Convert minimal generated steps to full step schema with id."""
+def enrich_steps(
+    generated_steps: list[GeneratedStep],
+    category_icon_urls: dict[str, str] | None = None,
+) -> list[dict]:
+    """Convert minimal generated steps to full step schema with id.
+
+    ``category_icon_urls`` maps a custom integration id (used as a step category)
+    to its icon URL, so the frontend can render an icon the category name alone
+    can't resolve. Built-in categories resolve by name and stay ``None``.
+    """
+    icons = category_icon_urls or {}
     enriched = []
     for i, step in enumerate(generated_steps):
         enriched.append(
@@ -116,6 +125,7 @@ def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
                 "title": step.title,
                 "category": step.category,
                 "description": step.description,
+                "icon_url": icons.get(step.category),
             }
         )
     return enriched
@@ -146,6 +156,7 @@ class WorkflowGenerationService:
         trigger_config=None,
         description: str | None = None,
         selected_integrations: list[str] | None = None,
+        user_id: str | None = None,
     ) -> list:
         """Generate workflow steps using LLM with structured output.
 
@@ -168,6 +179,9 @@ class WorkflowGenerationService:
 
         tools_with_categories = []
         category_names = []
+        # Custom integration ids -> icon URL, so generated steps that use a
+        # custom integration carry an icon the frontend can render.
+        category_icon_urls: dict[str, str] = {}
         categories = tool_registry.get_all_category_objects()
         for category in categories.keys():
             if filter_active and category.lower() not in slug_set:
@@ -198,6 +212,38 @@ class WorkflowGenerationService:
             "gaia: GAIA reasoning — summarize content, draft text, classify items, "
             "generate outlines, extract key points, write briefs. No external tool call."
         )
+
+        # The user's CUSTOM integrations (MCP / self-added) aren't in the static
+        # registry or OAUTH_INTEGRATIONS, so the generator never saw them. Surface
+        # each as its own category (keyed by integration id) with its icon URL, so
+        # steps can use them and resolve an icon on the frontend.
+        if user_id:
+            try:
+                # Local import: my_integrations -> tools/oauth services transitively
+                # import this module, so a top-level import is a circular import.
+                from app.services.integrations.my_integrations import (
+                    get_my_integrations,
+                )
+
+                my_integrations = await get_my_integrations(user_id)
+                for integ in my_integrations.integrations:
+                    if integ.source != "custom":
+                        continue
+                    if filter_active and integ.id.lower() not in slug_set:
+                        continue
+                    category_names.append(integ.id)
+                    summary = integ.description or integ.name
+                    tools_with_categories.append(
+                        f"{integ.id} (custom integration): {integ.name}. {summary}"
+                    )
+                    if integ.icon_url:
+                        category_icon_urls[integ.id] = integ.icon_url
+            except Exception as e:
+                # Custom integrations are an enrichment for generation; degrade to
+                # the built-in catalog rather than failing the whole generation.
+                log.warning(
+                    f"{LogTag.WORKFLOW} Could not load custom integrations for user {user_id}: {e}"
+                )
 
         log.info(
             f"{LogTag.WORKFLOW} Categories: {len(category_names)} "
@@ -280,7 +326,7 @@ class WorkflowGenerationService:
                         "the model may not have understood the request"
                     )
 
-                steps_data = enrich_steps(result.steps)
+                steps_data = enrich_steps(result.steps, category_icon_urls)
 
                 log.info(f"{LogTag.WORKFLOW} ========== DONE: {len(steps_data)} steps ==========")
                 return steps_data

@@ -10,6 +10,7 @@ interface WorkflowStepProps {
     title: string;
     description: string;
     category: string;
+    icon_url?: string | null;
   };
   index: number;
   size?: "small" | "large";
@@ -56,12 +57,16 @@ export default function WorkflowStep({
             className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
             startContent={
               <div className="min-w-fit">
-                {getToolCategoryIcon(step.category, {
-                  size: iconSize,
-                  width: iconSize,
-                  height: iconSize,
-                  showBackground: false,
-                })}
+                {getToolCategoryIcon(
+                  step.category,
+                  {
+                    size: iconSize,
+                    width: iconSize,
+                    height: iconSize,
+                    showBackground: false,
+                  },
+                  step.icon_url,
+                )}
               </div>
             }
           >
