@@ -93,8 +93,25 @@ describe("convertToTelegramHtml - emphasis conversion", () => {
     expect(convertToTelegramHtml("## My Section")).toBe("<b>My Section</b>");
   });
 
-  it("strips the blockquote prefix", () => {
-    expect(convertToTelegramHtml("> quoted text")).toBe("quoted text");
+  it("wraps a blockquote in <blockquote> tags", () => {
+    expect(convertToTelegramHtml("> quoted text")).toBe(
+      "<blockquote>quoted text</blockquote>",
+    );
+  });
+
+  it("merges consecutive blockquote lines into one <blockquote>", () => {
+    expect(convertToTelegramHtml("> line one\n> line two")).toBe(
+      "<blockquote>line one\nline two</blockquote>",
+    );
+  });
+
+  it("marks a long blockquote as expandable", () => {
+    const long = Array.from({ length: 5 }, (_, i) => `> line ${i + 1}`).join(
+      "\n",
+    );
+    expect(convertToTelegramHtml(long)).toBe(
+      "<blockquote expandable>line 1\nline 2\nline 3\nline 4\nline 5</blockquote>",
+    );
   });
 
   it("removes horizontal rules", () => {

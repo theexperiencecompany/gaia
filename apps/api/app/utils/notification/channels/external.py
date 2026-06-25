@@ -45,9 +45,13 @@ class ExternalPlatformAdapter(ChannelAdapter):
         return self.platform.value
 
     def can_handle(self, notification: NotificationRequest) -> bool:
-        # External adapters are auto-injected by the orchestrator regardless of
-        # the explicit channel list. The orchestrator's preference check and the
-        # platform-link lookup in ``publish_outbound_message`` are the real guards.
+        """Always claim the notification; the real guards live downstream.
+
+        External adapters are auto-injected by the orchestrator regardless of
+        the explicit channel list. The orchestrator's preference check and the
+        platform-link lookup in ``publish_outbound_message`` decide whether the
+        message is actually delivered.
+        """
         return True
 
     async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
@@ -74,6 +78,12 @@ class ExternalPlatformAdapter(ChannelAdapter):
         return {"parts": [text]}
 
     async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
+        """Publish the rendered parts to the user's linked platform chat.
+
+        Returns a success status when the broker accepts the message, an error
+        when the publish itself fails (so retries/alerting fire), and a skip when
+        the user has no linked platform or there is nothing to send.
+        """
         parts = content.get("parts", [])
         result = await publish_outbound_message(self.platform, user_id, parts)
         if result is OutboundResult.PUBLISHED:
