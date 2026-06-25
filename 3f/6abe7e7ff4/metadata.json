@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "3f6abe7e7ff4",
+  "strategy": "manual-commit",
+  "branch": "insane-gmail",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/app/constants/artifacts.py",
+    "apps/api/app/utils/artifact_utils.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3f/6abe7e7ff4/0/metadata.json",
+      "transcript": "/3f/6abe7e7ff4/0/full.jsonl",
+      "content_hash": "/3f/6abe7e7ff4/0/content_hash.txt",
+      "prompt": "/3f/6abe7e7ff4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 73475,
+    "cache_creation_tokens": 2519565,
+    "cache_read_tokens": 63912485,
+    "output_tokens": 271830,
+    "api_call_count": 229
+  }
+}
