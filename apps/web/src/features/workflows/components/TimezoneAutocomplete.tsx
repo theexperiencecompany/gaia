@@ -45,16 +45,10 @@ export function TimezoneAutocomplete({
       // Let the dropdown size to its content (zone + region + offset) instead of
       // being clamped to the narrow trigger width, so nothing is cut off.
       popoverProps={{ classNames: { content: "min-w-fit" } }}
-      // Give each row breathing room: vertical padding so items aren't cramped,
-      // a gap between the zone/region text and the offset, and a touch of space
-      // between the city and its region line.
-      listboxProps={{
-        itemClasses: {
-          base: "gap-3 py-2",
-          title: "text-sm",
-          description: "mt-0.5 text-xs text-default-400",
-        },
-      }}
+      // The list is virtualized with a fixed row height (default 32px), which is
+      // too short for the two-line city + region item and made rows overlap.
+      // Size the row to fit both lines so HeroUI's native description renders cleanly.
+      itemHeight={52}
       defaultItems={options}
       selectedKey={timezone || null}
       onSelectionChange={(key) => {
@@ -77,7 +71,11 @@ export function TimezoneAutocomplete({
             // region is HeroUI's native description line, the offset its endContent.
             textValue={city}
             description={region || undefined}
-            endContent={tz.offset}
+            endContent={
+              <span className="text-xs tabular-nums text-default-500">
+                {tz.offset}
+              </span>
+            }
           >
             {city}
           </AutocompleteItem>
