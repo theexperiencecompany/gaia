@@ -4,7 +4,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 
 interface WorkflowIconsProps {
-  steps: Array<{ category: string; icon_url?: string | null }>;
+  steps: Array<{ category: string }>;
   iconSize?: number;
   maxIcons?: number;
   className?: string;
@@ -25,15 +25,8 @@ export default function WorkflowIcons({
   showBackground = true,
 }: WorkflowIconsProps) {
   const { getIntegrationIconUrl } = useIntegrationLookup();
-  // Keep the first icon_url seen per category so custom-integration steps can
-  // resolve their icon (built-ins resolve from the category name regardless).
-  const categoryIconUrls = new Map<string, string | null | undefined>();
-  for (const step of steps) {
-    if (!categoryIconUrls.has(step.category)) {
-      categoryIconUrls.set(step.category, step.icon_url);
-    }
-  }
-  const categories = [...categoryIconUrls.keys()];
+  // De-duplicate categories, preserving first-seen order.
+  const categories = [...new Set(steps.map((step) => step.category))];
   const displayIcons = categories.slice(0, maxIcons);
 
   return (
@@ -46,7 +39,7 @@ export default function WorkflowIcons({
             height: iconSize,
             showBackground: showBackground,
           },
-          categoryIconUrls.get(category) ?? getIntegrationIconUrl(category),
+          getIntegrationIconUrl(category),
         );
         return IconComponent ? (
           <div

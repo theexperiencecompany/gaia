@@ -46,13 +46,6 @@ class WorkflowStep(BaseModel):
         description="Category for routing (e.g., gmail, notion, todos, reminders)",
     )
     description: str = Field(description="Detailed description of what this step accomplishes")
-    icon_url: str | None = Field(
-        default=None,
-        description=(
-            "Icon URL for the step's integration. Set for custom integrations "
-            "whose icon the frontend can't resolve from the category name alone."
-        ),
-    )
 
 
 # LLM Output Models for Workflow Generation

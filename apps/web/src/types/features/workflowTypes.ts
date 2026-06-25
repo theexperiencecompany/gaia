@@ -30,8 +30,6 @@ export interface WorkflowStepData {
   title: string;
   description: string;
   category: string;
-  /** Icon URL for custom-integration steps (built-ins resolve by category). */
-  icon_url?: string | null;
 }
 
 /**
@@ -42,8 +40,6 @@ export interface WorkflowStepType {
   title: string;
   category: string;
   description: string;
-  /** Icon URL for custom-integration steps (built-ins resolve by category). */
-  icon_url?: string | null;
 }
 
 /**

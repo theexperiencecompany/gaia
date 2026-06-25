@@ -11,7 +11,6 @@ interface WorkflowStepProps {
     title: string;
     description: string;
     category: string;
-    icon_url?: string | null;
   };
   index: number;
   size?: "small" | "large";
@@ -73,7 +72,7 @@ export default function WorkflowStep({
                     height: iconSize,
                     showBackground: false,
                   },
-                  step.icon_url ?? getIntegrationIconUrl(step.category),
+                  getIntegrationIconUrl(step.category),
                 )}
               </div>
             }

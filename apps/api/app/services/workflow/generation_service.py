@@ -106,29 +106,17 @@ def _build_available_triggers(
     return "Available integration triggers (use the slug for trigger_name):\n" + "\n".join(lines)
 
 
-def enrich_steps(
-    generated_steps: list[GeneratedStep],
-    category_icon_urls: dict[str, str] | None = None,
-) -> list[dict]:
-    """Convert minimal generated steps to full step schema with id.
-
-    ``category_icon_urls`` maps a custom integration id (used as a step category)
-    to its icon URL, so the frontend can render an icon the category name alone
-    can't resolve. Built-in categories resolve by name and stay ``None``.
-    """
-    icons = category_icon_urls or {}
-    enriched = []
-    for i, step in enumerate(generated_steps):
-        enriched.append(
-            {
-                "id": f"step_{i}",
-                "title": step.title,
-                "category": step.category,
-                "description": step.description,
-                "icon_url": icons.get(step.category),
-            }
-        )
-    return enriched
+def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
+    """Convert minimal generated steps to the full step schema with ids."""
+    return [
+        {
+            "id": f"step_{i}",
+            "title": step.title,
+            "category": step.category,
+            "description": step.description,
+        }
+        for i, step in enumerate(generated_steps)
+    ]
 
 
 def _parse_workflow_response(content: str) -> GeneratedWorkflow:
@@ -179,9 +167,6 @@ class WorkflowGenerationService:
 
         tools_with_categories = []
         category_names = []
-        # Custom integration ids -> icon URL, so generated steps that use a
-        # custom integration carry an icon the frontend can render.
-        category_icon_urls: dict[str, str] = {}
         # Selected custom-integration ids -> display name. Custom integrations are
         # keyed by an opaque uuid, so the preferred-tools hint must resolve the
         # human name here (OAUTH_INTEGRATIONS doesn't know them).
@@ -219,8 +204,7 @@ class WorkflowGenerationService:
 
         # The user's CUSTOM integrations (MCP / self-added) aren't in the static
         # registry or OAUTH_INTEGRATIONS, so the generator never saw them. Surface
-        # each as its own category (keyed by integration id) with its icon URL, so
-        # steps can use them and resolve an icon on the frontend.
+        # each as its own category (keyed by integration id) so steps can use them.
         if user_id:
             try:
                 # Local import: my_integrations -> tools/oauth services transitively
@@ -241,8 +225,6 @@ class WorkflowGenerationService:
                     tools_with_categories.append(
                         f"{integ.id} (custom integration): {integ.name}. {summary}"
                     )
-                    if integ.icon_url:
-                        category_icon_urls[integ.id] = integ.icon_url
             except Exception as e:
                 # Custom integrations are an enrichment for generation; degrade to
                 # the built-in catalog rather than failing the whole generation.
@@ -340,7 +322,7 @@ class WorkflowGenerationService:
                         "the model may not have understood the request"
                     )
 
-                steps_data = enrich_steps(result.steps, category_icon_urls)
+                steps_data = enrich_steps(result.steps)
 
                 log.info(f"{LogTag.WORKFLOW} ========== DONE: {len(steps_data)} steps ==========")
                 return steps_data

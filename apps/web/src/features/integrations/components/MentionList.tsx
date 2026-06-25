@@ -65,7 +65,7 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(
     if (items.length === 0) return null;
 
     return (
-      <ul className="max-h-52 w-64 overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 p-1 shadow-xl">
+      <ul className="max-h-52 w-64 overflow-y-auto rounded-2xl bg-zinc-900 p-1 shadow-xl">
         {items.map((name, idx) => (
           <li key={name}>
             <button
