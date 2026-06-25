@@ -821,7 +821,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         // richMessageToMarkdown renders Telegram-flavoured CommonMark; convert
         // it to HTML through the same chokepoint as every other outbound send.
         const html = renderForPlatform(
-          richMessageToMarkdown(richMsg, "telegram"),
+          richMessageToMarkdown(richMsg),
           "telegram",
         );
         // In groups, DM rich content for privacy; in private chats, send normally

@@ -733,11 +733,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       },
 
       sendRich: async (richMsg: RichMessage): Promise<SentMessage> => {
-        // richMessageToMarkdown is already platform-aware — for "whatsapp" it
-        // emits WhatsApp-native ``*bold*`` and ``label (url)`` links, so the
-        // previous extra convertToWhatsAppMarkdown pass was redundant. Render
-        // once here.
-        const markdown = richMessageToMarkdown(richMsg, "whatsapp");
+        // richMessageToMarkdown emits platform-agnostic CommonMark; convert it
+        // to WhatsApp formatting through the single shared chokepoint so field
+        // values that contain markdown render correctly.
+        const markdown = renderForPlatform(
+          richMessageToMarkdown(richMsg),
+          "whatsapp",
+        );
         return this.sendWhatsAppText(waId, markdown);
       },
 

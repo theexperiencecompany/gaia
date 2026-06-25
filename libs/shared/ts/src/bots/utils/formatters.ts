@@ -9,6 +9,7 @@
  * It checks for GaiaApiError (preserves HTTP status), then
  * falls back to axios-style errors, then generic Error messages.
  */
+import { slackifyMarkdown } from "slackify-markdown";
 import { GaiaApiError } from "../api";
 import type {
   BotConversation,
@@ -344,49 +345,20 @@ export function convertToTelegramHtml(text: string): string {
 }
 
 /**
- * Converts standard CommonMark Markdown to Slack mrkdwn.
+ * Converts standard CommonMark Markdown to Slack mrkdwn via the maintained
+ * `slackify-markdown` library (Unified/Remark based).
  *
- * Slack mrkdwn supports: `*bold*`, `_italic_`, `~strike~`, `` `code` ``,
- * ` ```code``` `, `<url|label>` hyperlinks.
- *
- * Converts `**bold**` → `*bold*`, `~~strike~~` → `~strike~`,
- * `[label](url)` → `<url|label>`, strips `# headers` to bold, strips
- * blockquote `>` prefixes and horizontal rules. Crucially it also escapes the
- * three Slack control characters (`&`, `<`, `>`) in narrative text so a stray
- * `<` no longer makes Slack swallow the rest of the line as a broken link.
- * Link `<url|label>` sequences and fenced code blocks are protected from that
- * escaping. (Underscores and `*` are literal in mrkdwn, so they need no
- * escaping — only the angle-bracket/ampersand trio does.)
+ * Replaces the previous hand-rolled regex converter: the library correctly
+ * handles `**bold**` -> `*bold*`, `~~strike~~` -> `~strike~`,
+ * `[label](url)` -> `<url|label>`, headings, lists, blockquotes, fenced code,
+ * tables, and escaping of Slack control characters -- including the edge cases
+ * (escaped backticks, nested emphasis, pipes in prose) the regex version got
+ * wrong. An empty string is passed through untouched so incremental streaming
+ * chunks never throw.
  */
 export function convertToSlackMrkdwn(text: string): string {
-  return applyOutsideCodeBlocks(text, (segment) => {
-    // Stash link control-sequences so the escape pass below cannot mangle the
-    // URL or the `<url|label>` angle brackets. U+E000 sentinels never occur in
-    // real text and survive escaping untouched.
-    const stash: string[] = [];
-    const hold = (mrkdwn: string): string => {
-      stash.push(mrkdwn);
-      return `\uE000${stash.length - 1}\uE000`;
-    };
-    const converted = segment
-      // Masked links → <url|label>. Only the label (display text) is escaped;
-      // the URL is left verbatim, as Slack expects inside the angle brackets.
-      .replaceAll(
-        /\[([^\]\n]{1,500})\]\(([^)\s]{1,2048})\)/g,
-        (_m, label, url) => hold(`<${url}|${escapeHtml(label as string)}>`),
-      )
-      .replaceAll(/\*\*\*([^*\n]+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
-      .replaceAll(/\*\*([^*\n]+?)\*\*/g, "*$1*") // **bold** → *bold*
-      .replaceAll(/~~([^~\n]+?)~~/g, "~$1~") // ~~strike~~ → ~strike~
-      .replaceAll(/^#{1,6}[ \t]+(.+)$/gm, "*$1*") // # Heading → *Heading*
-      .replaceAll(/^>[ \t]*/gm, "") // > quote → strip prefix (before escaping)
-      .replaceAll(/^[-_]{3,}$/gm, ""); // --- / ___ → remove
-    // Escape Slack control chars in surviving narrative, then restore links.
-    return escapeHtml(converted).replaceAll(
-      /\uE000(\d+)\uE000/g,
-      (_m, i) => stash[Number(i)],
-    );
-  });
+  if (!text) return text;
+  return slackifyMarkdown(text).trimEnd();
 }
 
 /**

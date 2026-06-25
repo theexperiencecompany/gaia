@@ -493,7 +493,7 @@ export class SlackAdapter extends BaseBotAdapter {
       },
 
       sendRich: async (msg: RichMessage): Promise<SentMessage> => {
-        const markdown = richMessageToMarkdown(msg, "slack");
+        const markdown = renderForPlatform(richMessageToMarkdown(msg), "slack");
         await respond({ text: markdown, response_type: "ephemeral" });
         return {
           id: "ephemeral",
