@@ -17,7 +17,7 @@ import type {
   BotWorkflow,
   PlatformName,
 } from "../types";
-import { createBotLogger } from "./logger";
+import { createBotLogger, getHttpStatus } from "./logger";
 import { isTableRow, isTableSeparator } from "./text";
 
 const logger = createBotLogger("shared", "formatters");
@@ -520,9 +520,7 @@ Type /help <command> for details.`,
  */
 export function formatBotError(error: unknown): string {
   const status =
-    error instanceof GaiaApiError
-      ? error.status
-      : (error as { response?: { status?: number } })?.response?.status;
+    error instanceof GaiaApiError ? error.status : getHttpStatus(error);
 
   if (status === 401) {
     return "❌ Authentication required. Use `/auth` to link your account.";

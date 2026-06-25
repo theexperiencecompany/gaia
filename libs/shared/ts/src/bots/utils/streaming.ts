@@ -27,7 +27,11 @@ import {
 import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
 import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
-import { createBotLogger, hashLogIdentifier } from "./logger";
+import {
+  createBotLogger,
+  hashLogIdentifier,
+  sanitizeErrorForLog,
+} from "./logger";
 import { chunkResponse, truncateResponse } from "./text";
 
 const logger = createBotLogger("shared", "streaming");
@@ -122,8 +126,14 @@ async function _handleStream(
     try {
       await currentEditor(truncated);
       sentText = truncated;
-    } catch {
-      // Message may have been deleted or interaction expired
+    } catch (err) {
+      // Transient: the live bubble may have been deleted or the interaction
+      // expired. The next edit or finalizeDelivery recovers, so this is debug,
+      // not a failure — but it is logged so a persistent edit problem is visible.
+      logger.debug("stream_edit_skipped", {
+        platform,
+        ...sanitizeErrorForLog(err),
+      });
     }
   };
 
@@ -168,8 +178,13 @@ async function _handleStream(
       try {
         await currentEditor(overflow);
         sentText = overflow;
-      } catch {
-        // ignore
+      } catch (err) {
+        // An overflow segment was dropped — the user is missing part of the
+        // response, so surface it rather than swallowing silently.
+        logger.warn("stream_overflow_chunk_dropped", {
+          platform,
+          ...sanitizeErrorForLog(err),
+        });
       }
     }
   };

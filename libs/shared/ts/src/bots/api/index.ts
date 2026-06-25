@@ -15,6 +15,7 @@ import type {
   ChatRequest,
   SettingsResponse,
 } from "../types";
+import { getHttpStatus } from "../utils/logger";
 import { streamChat } from "./chat-stream";
 import {
   downloadArtifactRequest,
@@ -113,8 +114,7 @@ export class GaiaClient {
     } catch (error: unknown) {
       if (error instanceof GaiaApiError) throw error;
       const message = error instanceof Error ? error.message : "Unknown error";
-      const status = (error as { response?: { status?: number } })?.response
-        ?.status;
+      const status = getHttpStatus(error);
       throw new GaiaApiError(`API error: ${status || message}`, status);
     }
   }
@@ -127,8 +127,7 @@ export class GaiaClient {
     try {
       return await fn();
     } catch (error: unknown) {
-      const status = (error as { response?: { status?: number } })?.response
-        ?.status;
+      const status = getHttpStatus(error);
 
       if (status === 401 && !retried) {
         this.clearSessionToken(ctx);

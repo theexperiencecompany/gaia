@@ -170,6 +170,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           this.whatsAppConfig.kapsoWebhookSecret,
         )
       ) {
+        // Surface rejected webhooks — a spike here means a misconfigured secret
+        // or a spoofing attempt, not something to drop silently.
+        this.adapterLogger.warn("webhook_signature_rejected", {
+          has_signature: signature !== null,
+        });
         return c.json({ error: "Invalid signature" }, 401);
       }
 

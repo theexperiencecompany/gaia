@@ -11,7 +11,7 @@
 import type { Readable } from "node:stream";
 import type { AxiosInstance } from "axios";
 import type { BotUserContext, ChatRequest } from "../types";
-import { createBotLogger } from "../utils/logger";
+import { createBotLogger, getHttpStatus } from "../utils/logger";
 
 const logger = createBotLogger("shared", "chat-stream");
 
@@ -26,6 +26,10 @@ export interface ChatStreamClient {
   storeSessionToken(ctx: BotUserContext, token: string): void;
   clearSessionToken(ctx: BotUserContext): void;
 }
+
+/** Exponential-backoff base delay and ceiling for stream retries. */
+const RETRY_BASE_DELAY_MS = 1000;
+const MAX_RETRY_DELAY_MS = 5000;
 
 /** Errors that warrant retrying the whole stream from scratch. */
 const RETRYABLE_ERRORS = [
@@ -76,7 +80,10 @@ export async function streamChat(
         throw lastError;
       }
 
-      const delayMs = Math.min(1000 * 2 ** attempt, 5000);
+      const delayMs = Math.min(
+        RETRY_BASE_DELAY_MS * 2 ** attempt,
+        MAX_RETRY_DELAY_MS,
+      );
       attemptedRetries++;
       logger.warn("chat_stream_retrying", {
         attempt: attemptedRetries,
@@ -288,10 +295,9 @@ async function streamChatOnce(
         try {
           if (!finished) {
             finished = true;
-            const isRetryable =
-              err.message.includes("ECONNRESET") ||
-              err.message.includes("socket hang up") ||
-              err.message.includes("ETIMEDOUT");
+            const isRetryable = RETRYABLE_ERRORS.some((retryableErr) =>
+              err.message.includes(retryableErr),
+            );
 
             if (isRetryable && !fullText) {
               // No content received yet — store for re-throw so streamChat can retry
@@ -316,8 +322,7 @@ async function streamChatOnce(
       });
     });
   } catch (error: unknown) {
-    const status = (error as { response?: { status?: number } })?.response
-      ?.status;
+    const status = getHttpStatus(error);
 
     if (status === 401 && !retried) {
       deps.clearSessionToken(ctx);
