@@ -5,12 +5,6 @@ import { CheckmarkCircle02Icon, Link01Icon } from "@icons";
 import confetti from "canvas-confetti";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  DiscordIcon,
-  SlackIcon,
-  TelegramIcon,
-  WhatsappIcon,
-} from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { apiService } from "@/lib/api/service";
@@ -20,14 +14,13 @@ const PLATFORM_CONFIG: Record<
   string,
   {
     name: string;
-    icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-    color: string;
+    iconSrc: string;
   }
 > = {
-  discord: { name: "Discord", icon: DiscordIcon, color: "bg-[#5865F2]" },
-  slack: { name: "Slack", icon: SlackIcon, color: "bg-[#4A154B]" },
-  telegram: { name: "Telegram", icon: TelegramIcon, color: "bg-[#0088cc]" },
-  whatsapp: { name: "WhatsApp", icon: WhatsappIcon, color: "bg-[#25D366]" },
+  discord: { name: "Discord", iconSrc: "/images/icons/macos/discord.webp" },
+  slack: { name: "Slack", iconSrc: "/images/icons/macos/slack.webp" },
+  telegram: { name: "Telegram", iconSrc: "/images/icons/macos/telegram.webp" },
+  whatsapp: { name: "WhatsApp", iconSrc: "/images/icons/macos/whatsapp.webp" },
 };
 
 /** Shared card shell: rounded, flat, no outline, no shadow — matches GAIA surfaces. */
@@ -134,8 +127,6 @@ export default function LinkPlatformPage() {
     );
   }
 
-  const Icon = config.icon;
-
   const handleLink = async () => {
     setIsLinking(true);
     setError(null);
@@ -187,11 +178,11 @@ export default function LinkPlatformPage() {
 
   return (
     <Card>
-      <div
-        className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[1.25rem] shadow-lg ${config.color}`}
-      >
-        <Icon className="h-8 w-8 text-white" />
-      </div>
+      <img
+        src={config.iconSrc}
+        alt={`${config.name} icon`}
+        className="mx-auto mb-5 h-16 w-16"
+      />
       <h2 className="mb-2 text-xl font-semibold text-white">
         Connect {config.name} to GAIA
       </h2>
