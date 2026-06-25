@@ -100,7 +100,7 @@ export const settingsCommand: BotCommand = {
             value: integrationsText,
           },
         ],
-        footer: "Manage settings at heygaia.io/settings",
+        links: [{ label: "Manage settings", url: `${frontendUrl}/settings` }],
         timestamp: true,
         thumbnailUrl: profileImageUrl ?? undefined,
         authorName: profileImageUrl
