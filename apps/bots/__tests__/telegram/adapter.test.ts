@@ -465,7 +465,7 @@ describe("TelegramAdapter - createCtxTarget.sendRich", () => {
 
     const sent = await target.sendRich(richMsg);
 
-    expect(richMessageToMarkdown).toHaveBeenCalledWith(richMsg, "telegram");
+    expect(richMessageToMarkdown).toHaveBeenCalledWith(richMsg);
     // richMessageToMarkdown is mocked to return "**GAIA Settings**\nYour settings";
     // renderForPlatform is identity in this mock, so the text is forwarded as-is
     // but with parse_mode: "HTML".

@@ -93,8 +93,10 @@ describe("convertToTelegramHtml - emphasis conversion", () => {
     expect(convertToTelegramHtml("## My Section")).toBe("<b>My Section</b>");
   });
 
-  it("strips the blockquote prefix", () => {
-    expect(convertToTelegramHtml("> quoted text")).toBe("quoted text");
+  it("renders a blockquote as Telegram's <blockquote> tag", () => {
+    expect(convertToTelegramHtml("> quoted text")).toBe(
+      "<blockquote>quoted text</blockquote>",
+    );
   });
 
   it("removes horizontal rules", () => {
