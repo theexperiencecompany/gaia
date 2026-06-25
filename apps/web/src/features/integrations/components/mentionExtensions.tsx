@@ -26,6 +26,7 @@ import {
   type MentionListHandle,
   type MentionListProps,
 } from "@/features/integrations/components/MentionList";
+import { MENTION_NODE } from "@/features/integrations/utils/mentionDoc";
 
 const MAX_SUGGESTIONS = 8;
 
@@ -151,7 +152,7 @@ export const buildMentionExtensions = (
           .chain()
           .focus()
           .insertContentAt(range, [
-            { type: "mention", attrs: props },
+            { type: MENTION_NODE, attrs: props },
             { type: "text", text: " " },
           ])
           .run();
