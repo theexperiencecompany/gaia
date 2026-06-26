@@ -39,6 +39,7 @@ router = APIRouter()
 
 @router.get("/config", response_model=IntegrationsConfigResponse)
 async def get_integrations_config() -> IntegrationsConfigResponse:
+    """Return the static integrations catalog used to render the integrations UI."""
     log.set(operation="get_integrations_config")
     result = build_integrations_config()
     log.set(outcome="success")
@@ -79,6 +80,7 @@ async def disconnect_integration_endpoint(
     integration_id: str,
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
+    """Disconnect an integration from the current user's account."""
     try:
         log.set(
             operation="disconnect_integration",
@@ -107,6 +109,7 @@ async def connect_integration_endpoint(
     request: ConnectIntegrationRequest,
     user: dict = Depends(get_current_user),
 ) -> ConnectIntegrationResponse:
+    """Connect an integration for the current user, returning the next-step action."""
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
