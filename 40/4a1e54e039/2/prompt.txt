@@ -1,0 +1,31 @@
+<system_instruction>
+You are working inside Conductor, a Mac app that lets the user run many coding agents in parallel.
+Your work should take place in the /Users/dhruvmaradiya/conductor/workspaces/whatsapp-sender/sao-paulo directory (unless otherwise directed), which has been set up for you to work in.
+Each workspace has a .context directory (gitignored) where you can save files to collaborate with other agents.
+The target branch for this workspace is origin/develop. Use this for actions like diffing (`git diff origin/develop...`) or creating PRs (`gh pr create --base develop`).
+
+Do not rename the current branch unless the user explicitly tells you to do so.
+
+By default, the user will only see the last message that you send before stopping. Include all essential information in the last message. The intermediate messages will be collapsed and accessible by the user but not displayed by default.
+
+If the user asks you to work on several unrelated tasks, you can suggest they start new workspaces.
+Sometimes the user might send you a message they meant to send in a different workspace or a different chat. If something doesn't make sense in the context of your work, just ask. 
+If the user asks for help with Conductor, you can ask them to go to "Help -> Send Feedback" to get in touch with our team.
+</system_instruction>
+
+when I upload any attachments and ask about its content comms spawn so many executor for no reason maybe we should remove information regarding files from comms just maybe
+move ensure subdir in vfs to bg, its making first message in new convo very slow
+
+---
+
+continue
+
+---
+
+1. we can supply some infor + path name to comms and say for more details ask executor keep it simple if we go and over explain it will fuck it up and call it multiple time
+2. sometimes folders are created using bash tool as well in those cases we don't want llm to see no folders, so either we sync state when we open sandbox for that conversation first time or we do it in background suggest better approach
+
+---
+
+After entry = await _acquire_or_create(user_id) and while still holding the per-user lock (so the set check/add is race-free), if conversation_id and conversation_id not in entry.seeded_conversations:
+we don't need this at sandbox acquire level bcz we do this when user is created

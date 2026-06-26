@@ -3,9 +3,11 @@
   "checkpoint_id": "404a1e54e039",
   "strategy": "manual-commit",
   "branch": "insane-gmail",
-  "checkpoints_count": 25,
+  "checkpoints_count": 26,
   "files_touched": [
-    "apps/api/app/agents/core/messages.py"
+    "apps/api/app/agents/core/messages.py",
+    "apps/api/app/helpers/message_helpers.py",
+    "apps/api/app/services/chat/persistence.py"
   ],
   "sessions": [
     {
@@ -19,13 +21,19 @@
       "transcript": "/40/4a1e54e039/1/full.jsonl",
       "content_hash": "/40/4a1e54e039/1/content_hash.txt",
       "prompt": "/40/4a1e54e039/1/prompt.txt"
+    },
+    {
+      "metadata": "/40/4a1e54e039/2/metadata.json",
+      "transcript": "/40/4a1e54e039/2/full.jsonl",
+      "content_hash": "/40/4a1e54e039/2/content_hash.txt",
+      "prompt": "/40/4a1e54e039/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 73475,
-    "cache_creation_tokens": 2519565,
-    "cache_read_tokens": 63912485,
-    "output_tokens": 271830,
-    "api_call_count": 229
+    "input_tokens": 82318,
+    "cache_creation_tokens": 2801100,
+    "cache_read_tokens": 67916533,
+    "output_tokens": 328383,
+    "api_call_count": 267
   }
 }
