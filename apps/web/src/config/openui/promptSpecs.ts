@@ -13,23 +13,6 @@
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
-// Analytics
-// ---------------------------------------------------------------------------
-
-export const gaugeChartSchema = z.object({
-  value: z.number(),
-  title: z.string().optional(),
-  min: z.number().optional(),
-  max: z.number().optional(),
-  unit: z.string().optional(),
-  thresholds: z.object({ warning: z.number(), danger: z.number() }).optional(),
-  variant: z.enum(["gauge", "text", "stacked"]).optional(),
-  secondValue: z.number().optional(),
-  secondLabel: z.string().optional(),
-  size: z.enum(["sm", "md", "lg"]).optional(),
-});
-
-// ---------------------------------------------------------------------------
 // Content
 // ---------------------------------------------------------------------------
 
@@ -216,11 +199,6 @@ export const textDocumentSchema = z.object({
  * vocabulary.
  */
 export const GAIA_COMPONENT_SPECS = [
-  {
-    name: "GaugeChart",
-    description: "Radial gauge for a value with min/max bounds.",
-    props: gaugeChartSchema,
-  },
   {
     name: "MapBlock",
     description: "OpenStreetMap embed for a lat/lng location.",

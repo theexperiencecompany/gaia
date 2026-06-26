@@ -54,14 +54,25 @@ export function OpenUIPlayground(): JSX.Element {
             spellCheck={false}
             className="h-full min-h-0 w-full resize-none overflow-auto rounded-2xl bg-zinc-900 p-4 font-mono text-xs leading-relaxed text-zinc-300 outline-none ring-1 ring-zinc-800 focus:ring-zinc-700"
           />
-          <div className="h-full min-h-0 overflow-auto rounded-2xl bg-zinc-950 p-4 ring-1 ring-zinc-800">
-            <ErrorBoundary>
-              <Renderer
-                response={normalized}
-                library={genericLibrary}
-                isStreaming={false}
-              />
-            </ErrorBoundary>
+          {/* Output framed like a real bot message: chat background, GAIA
+              avatar, an intro bubble, then the OpenUI rendered OUTSIDE the
+              bubble (exactly how chat renders it). */}
+          <div className="h-full min-h-0 overflow-auto rounded-2xl px-2 py-4">
+            <div className="mx-auto flex max-w-3xl gap-2.5">
+              <div className="mt-0.5 size-7 shrink-0 rounded-full bg-gradient-to-br from-[#00bbff] to-[#0066aa]" />
+              <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+                <div className="imessage-bubble imessage-from-them self-start">
+                  Here's what I put together:
+                </div>
+                <ErrorBoundary>
+                  <Renderer
+                    response={normalized}
+                    library={genericLibrary}
+                    isStreaming={false}
+                  />
+                </ErrorBoundary>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -3,7 +3,6 @@ import {
   openuiComponentGroups,
   openuiLibrary,
 } from "@openuidev/react-ui/genui-lib";
-import { gaugeChartDef } from "./components/analytics";
 import {
   audioPlayerDef,
   imageGalleryDef,
@@ -35,7 +34,6 @@ import { timelineDef } from "./components/timeline";
  * `scripts/openui/generate-prompt.ts`.
  */
 const gaiaComponents = [
-  gaugeChartDef,
   mapBlockDef,
   timelineDef,
   fileTreeDef,
@@ -61,7 +59,6 @@ const gaiaComponentGroups = [
   {
     name: "GAIA",
     components: [
-      "GaugeChart",
       "MapBlock",
       "Timeline",
       "FileTree",
@@ -75,7 +72,6 @@ const gaiaComponentGroups = [
       "KbdRow",
     ],
     notes: [
-      "GaugeChart — thresholded radial gauge for a single bounded value.",
       "MapBlock — geographic map with markers, routes, and arcs.",
       "Timeline — chronological event feed with actor, links, and actions.",
       "TextDocument — editable rich-text card for drafts, reports, and letters.",

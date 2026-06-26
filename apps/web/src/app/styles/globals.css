@@ -26,6 +26,16 @@
 @plugin "./hero.ts";
 @plugin "tailwindcss-animate";
 
+/* GAIA overrides for adopted react-ui components — same @layer openui as the
+   imported react-ui styles, declared later so source order wins. */
+@layer openui {
+  /* The "clear" Card variant is a bare wrapper (e.g. section headers); it
+     should sit flush with no padding. */
+  .openui-card-clear {
+    padding: 0;
+  }
+}
+
 @keyframes sheet-fade-in {
   from {
     opacity: 0;

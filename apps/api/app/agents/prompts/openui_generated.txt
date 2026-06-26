@@ -124,7 +124,6 @@ Tag(text: string, icon?: string, size?: "sm" | "md" | "lg", variant?: "neutral" 
 - Color-mapped Tag: Tag(value, null, "sm", value == "high" ? "danger" : value == "medium" ? "warning" : "neutral")
 
 ### GAIA Components
-GaugeChart(value: number, title?: string, min?: number, max?: number, unit?: string, thresholds?: {warning: number, danger: number}, variant?: "gauge" | "text" | "stacked", secondValue?: number, secondLabel?: string, size?: "sm" | "md" | "lg") — Radial gauge for a value with min/max bounds.
 MapBlock(lat: number, lng: number, label?: string, zoom?: number, markers?: {lat: number, lng: number, label?: string, popup?: string, tooltip?: string}[], routes?: {points: {lat: number, lng: number}[], color?: string, width?: number, opacity?: number, dashArray?: any}[], arcs?: {id?: string | number, from: {lat: number, lng: number}, to: {lat: number, lng: number}, label?: string}[], fitBounds?: boolean) — OpenStreetMap embed for a lat/lng location.
 NumberTicker(value: number, label?: string, unit?: string, duration?: number, size?: "sm" | "md" | "lg") — Animated count-up number display.
 VideoBlock(src: string, title?: string, poster?: string) — YouTube/Vimeo embed or native video player.

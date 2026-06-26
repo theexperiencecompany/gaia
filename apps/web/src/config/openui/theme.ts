@@ -61,11 +61,14 @@ export const gaiaOpenUITheme = createTheme({
   borderDangerEmphasis: "#f87171",
   borderInfoEmphasis: "#60a5fa",
 
-  // ── Borders (GAIA cards are near-borderless; depth via tonal layering) ───
-  borderDefault: "rgba(255,255,255,0.06)",
-  borderInteractive: "rgba(255,255,255,0.12)",
+  // ── Borders — flat design, no outlines (depth comes from tonal layering;
+  //    keep only the brand "selected" indicator) ───────────────────────────
+  borderDefault: "transparent",
+  borderInteractive: "transparent",
+  borderInteractiveEmphasis: "transparent",
+  borderAccent: "transparent",
+  borderAccentEmphasis: "transparent",
   borderInteractiveSelected: "#00bbff",
-  borderAccent: "rgba(0,187,255,0.2)",
 
   // ── Chat ────────────────────────────────────────────────────────────────
   chatUserResponseBg: "rgba(255,255,255,0.08)",
@@ -86,6 +89,20 @@ export const gaiaOpenUITheme = createTheme({
   spaceL: "16px", // Card padding → GAIA p-4
   spaceXl: "14px", // Card content gap → tighter than the 24px default
   space2xl: "28px",
+
+  // ── Radius — slightly rounder per GAIA's design language ─────────────────
+  radiusS: "8px", // chips (Tag sm)
+  radiusM: "12px", // chips (Tag md), small controls
+  radiusL: "12px", // buttons / inputs
+  radiusXl: "14px",
+  radius2xl: "16px",
+  radius3xl: "20px", // cards (react-ui Card uses radius-3xl)
+
+  // ── Shadows — flat cards; keep large shadows only for true overlays ──────
+  shadow0: "none",
+  shadowS: "none",
+  shadowM: "none",
+  shadowL: "none",
 
   // ── Charts ──────────────────────────────────────────────────────────────
   defaultChartPalette: CHART_PALETTE,
