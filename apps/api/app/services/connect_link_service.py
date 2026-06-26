@@ -1,101 +1,74 @@
 """Login-free integration-connect links for bots / non-UI surfaces.
 
 A bot user can't click an in-chat "Connect" card and isn't logged into a
-browser. This mints a short-lived, single-use, scope-limited signed token they
-can open in any browser to start the OAuth flow for ONE integration — no GAIA
-login required, because the identity travels (signed) in the link.
+browser. This mints a short, single-use link they can open in any browser to
+start the OAuth flow for ONE integration — no GAIA login required, because the
+link itself is the credential.
 
 Security properties:
-- **Signed** (HS256, shared agent/bot secret) → unforgeable.
-- **Role-scoped** (``integration_connect``) → cannot act as a session / agent /
-  bot token; those verifiers reject this role and vice-versa.
-- **Single integration** → bound to one ``integration_id``.
-- **Single-use** → the ``jti`` is consumed atomically in Redis on first use.
-- **Bounded lifetime** → ``CONNECT_LINK_TTL_HOURS``.
+- **High-entropy opaque code** (96-bit, ``secrets.token_urlsafe``) → unguessable;
+  the only way to test a code is an online request to the (rate-limited)
+  connect-link endpoint — there is no offline oracle.
+- **Server-side binding** → the code maps to one ``(user_id, integration_id)``
+  in Redis; nothing sensitive travels in the link.
+- **Single-use** → consumed atomically with ``GETDEL`` on first open, so a
+  second open (or a brute-force hit racing a real user) gets nothing.
+- **Bounded lifetime** → ``CONNECT_LINK_TTL_MINUTES``.
 - The endpoint it points at only redirects into OAuth; it never returns data.
-
-Minting is a pure local sign (no I/O), so it is cheap to do on every prompt.
-The only Redis write happens once, when the link is actually opened.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 import secrets
 
-from jose import JWTError, jwt
-
 from app.config.settings import settings
-from app.constants.auth import CONNECT_LINK_ROLE, CONNECT_LINK_TTL_HOURS, JWT_ALGORITHM
-from app.constants.cache import CONNECT_LINK_USED_PREFIX
-from app.db.redis import redis_cache
-from app.helpers.mcp_helpers import get_api_base_url
+from app.constants.auth import CONNECT_LINK_CODE_BYTES, CONNECT_LINK_TTL_MINUTES
+from app.constants.cache import CONNECT_LINK_PREFIX
+from app.db.redis import get_and_delete_cache, redis_cache, set_cache
 from shared.py.wide_events import log
 
-CONNECT_LINK_PATH = "/api/v1/integrations/connect-link"
+CONNECT_LINK_FRONTEND_PATH = "/connect"
 
 
-def create_connect_link_token(user_id: str, integration_id: str) -> str:
-    """Sign a single-use, connect-scoped token for ``(user_id, integration_id)``."""
-    now = datetime.now(UTC)
-    payload = {
-        "sub": user_id,
-        "integration_id": integration_id,
-        "role": CONNECT_LINK_ROLE,
-        "jti": secrets.token_urlsafe(16),
-        "iat": now,
-        "exp": now + timedelta(hours=CONNECT_LINK_TTL_HOURS),
-    }
-    return jwt.encode(payload, settings.AGENT_SECRET, algorithm=JWT_ALGORITHM)
+def _code_key(code: str) -> str:
+    return f"{CONNECT_LINK_PREFIX}:{code}"
 
 
-def build_connect_link_url(user_id: str, integration_id: str) -> str | None:
-    """Full login-free connect URL to hand to a bot / non-UI user.
+async def build_connect_link_url(user_id: str, integration_id: str) -> str | None:
+    """Mint a single-use connect link pointing at the frontend ``/connect/<code>``.
 
-    Returns ``None`` when no signing secret is configured (dev/misconfig) so
-    callers degrade to the generic integrations page instead of crashing.
-    ``AGENT_SECRET`` is required in production, so this only no-ops in dev.
+    Stores the ``(user_id, integration_id)`` binding in Redis under a fresh
+    high-entropy code and returns the frontend URL. Returns ``None`` when Redis
+    is unavailable (dev/outage) so callers degrade to a generic connect prompt
+    instead of handing out a link that can't resolve.
     """
-    if not settings.AGENT_SECRET:
-        log.warning("connect-link: AGENT_SECRET unset — falling back to generic connect prompt")
-        return None
-    token = create_connect_link_token(user_id, integration_id)
-    return f"{get_api_base_url()}{CONNECT_LINK_PATH}?t={token}"
-
-
-async def verify_and_consume_connect_link_token(token: str) -> tuple[str, str] | None:
-    """Verify (signature, role, expiry) and atomically consume the token.
-
-    Returns ``(user_id, integration_id)`` on the first valid use, else ``None``.
-    Single-use is enforced with an atomic Redis ``SET NX`` on the token's
-    ``jti``; the marker's TTL is the token's own remaining lifetime.
-    """
-    try:
-        payload = jwt.decode(token, settings.AGENT_SECRET, algorithms=[JWT_ALGORITHM])
-    except JWTError as e:
-        log.warning(f"connect-link token rejected (invalid/expired): {e}")
+    if not redis_cache.redis:
+        log.warning("connect-link: Redis unavailable — falling back to generic connect prompt")
         return None
 
-    if payload.get("role") != CONNECT_LINK_ROLE:
-        log.warning("connect-link token rejected: wrong role")
-        return None
-
-    user_id = payload.get("sub")
-    integration_id = payload.get("integration_id")
-    jti = payload.get("jti")
-    if not (user_id and integration_id and jti):
-        log.warning("connect-link token rejected: missing claims")
-        return None
-
-    remaining = int(payload.get("exp", 0) - datetime.now(UTC).timestamp())
-    if remaining <= 0:
-        return None
-
-    first_use = await redis_cache.client.set(
-        f"{CONNECT_LINK_USED_PREFIX}:{jti}", "1", nx=True, ex=remaining
+    code = secrets.token_urlsafe(CONNECT_LINK_CODE_BYTES)
+    await set_cache(
+        _code_key(code),
+        {"user_id": user_id, "integration_id": integration_id},
+        ttl=CONNECT_LINK_TTL_MINUTES * 60,
     )
-    if not first_use:
-        log.warning("connect-link token rejected: already used")
+    base = settings.FRONTEND_URL.rstrip("/")
+    return f"{base}{CONNECT_LINK_FRONTEND_PATH}/{code}"
+
+
+async def resolve_and_consume_connect_code(code: str) -> tuple[str, str] | None:
+    """Atomically consume a connect code, returning ``(user_id, integration_id)``.
+
+    The code is deleted on first read (``GETDEL``), enforcing single-use. Returns
+    ``None`` for an unknown, expired, or already-consumed code.
+    """
+    data = await get_and_delete_cache(_code_key(code))
+    if not isinstance(data, dict):
+        return None
+
+    user_id = data.get("user_id")
+    integration_id = data.get("integration_id")
+    if not (user_id and integration_id):
         return None
 
     log.set(auth={"user_id": str(user_id), "provider": str(integration_id)})

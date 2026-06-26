@@ -119,7 +119,7 @@ async def check_integration_connection(
 
         writer({"integration_connection_required": integration_data})
 
-        connect_url = build_connect_link_url(user_id, subagent.id)
+        connect_url = await build_connect_link_url(user_id, subagent.id)
         return build_integration_connection_message(subagent.name, connect_url)
 
     except Exception as e:
@@ -342,7 +342,7 @@ async def _resolve_subagent(
         token_store = MCPTokenStore(user_id=user_id)
         is_connected = await token_store.is_connected(integration_id)
         if not is_connected:
-            connect_url = build_connect_link_url(user_id, integration_id)
+            connect_url = await build_connect_link_url(user_id, integration_id)
             return (
                 None,
                 None,

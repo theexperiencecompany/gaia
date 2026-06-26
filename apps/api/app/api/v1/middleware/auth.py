@@ -57,8 +57,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             # Scoped to /releases so the authed /desktop/tool-result bridge stays
             # protected.
             "/api/v1/desktop/releases",
-            # Login-free connect link — self-authenticates via a signed,
-            # single-use, connect-scoped token (see connect_link_service).
+            # Login-free connect link — self-authenticates via a single-use,
+            # server-bound connect code (see connect_link_service).
             "/api/v1/integrations/connect-link",
         ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in

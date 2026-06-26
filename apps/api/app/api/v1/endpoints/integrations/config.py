@@ -2,10 +2,11 @@
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
+from app.api.v1.middleware.rate_limiter import limiter
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
@@ -17,7 +18,7 @@ from app.schemas.integrations.responses import (
     IntegrationStatusItem,
     IntegrationSuccessResponse,
 )
-from app.services.connect_link_service import verify_and_consume_connect_link_token
+from app.services.connect_link_service import resolve_and_consume_connect_code
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
@@ -210,16 +211,19 @@ _CONNECT_ERROR_REDIRECT = "/integrations?connect_error=invalid_or_expired_link"
 
 
 @router.get("/connect-link")
-async def connect_link_endpoint(t: str) -> RedirectResponse:
+@limiter.limit("10/minute")
+async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse:
     """Login-free entry point for bot / non-UI users.
 
-    Verifies the signed, single-use, connect-scoped token (no session required —
-    identity is in the token) and bounces the user straight into the provider
-    OAuth flow. Invalid/expired/used tokens redirect to a friendly page.
-    Excluded from auth in WorkOSAuthMiddleware; it self-authenticates.
+    Resolves the single-use connect code to its bound ``(user, integration)``
+    (no session required — the code is the credential) and bounces the user
+    straight into the provider OAuth flow. Invalid/expired/used codes redirect
+    to a friendly page. Excluded from auth in WorkOSAuthMiddleware; it
+    self-authenticates. Per-IP rate limited so the short code can't be brute
+    forced online.
     """
     log.set(operation="connect_link")
-    verified = await verify_and_consume_connect_link_token(t)
+    verified = await resolve_and_consume_connect_code(code)
     if not verified:
         return RedirectResponse(url=f"{settings.FRONTEND_URL.rstrip('/')}{_CONNECT_ERROR_REDIRECT}")
 
@@ -227,7 +231,7 @@ async def connect_link_endpoint(t: str) -> RedirectResponse:
     log.set(user={"id": user_id}, integration={"id": integration_id})
 
     # Self-managed (Google) connectors use email as an OAuth login hint; others
-    # ignore it. user_id is trusted (it came from a signature-verified token).
+    # ignore it. user_id is trusted (it came from a server-bound, single-use code).
     user_email = ""
     try:
         user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
