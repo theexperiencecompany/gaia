@@ -348,7 +348,7 @@ async def connect_integration(
 
             writer({"integration_connection_required": integration_data})
 
-            connect_url = build_connect_link_url(str(user_id), integration.id)
+            connect_url = await build_connect_link_url(str(user_id), integration.id)
             results.append(build_integration_connection_message(integration.name, connect_url))
 
         return "\n".join(results) if results else "No integrations to connect."

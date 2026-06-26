@@ -3,6 +3,7 @@ import {
   AutocompleteItem,
   AutocompleteSection,
 } from "@heroui/autocomplete";
+import { Skeleton } from "@heroui/skeleton";
 import Fuse from "fuse.js";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -17,7 +18,6 @@ interface TriggerAutocompleteProps {
   triggerSchemas: TriggerSchema[] | undefined;
   isLoading?: boolean;
   integrationStatusMap: Map<string, boolean>;
-  onConnectIntegration: (integrationId: string) => void;
 }
 
 function formatIntegrationName(integrationId: string): string {
@@ -33,7 +33,6 @@ export function TriggerAutocomplete({
   triggerSchemas,
   isLoading,
   integrationStatusMap,
-  onConnectIntegration,
 }: TriggerAutocompleteProps) {
   const [filterValue, setFilterValue] = useState("");
 
@@ -104,23 +103,9 @@ export function TriggerAutocomplete({
 
     const trigger = String(key);
 
-    if (trigger.startsWith("connect-")) {
-      const integrationId = trigger.replace("connect-", "");
-      if (
-        integrationStatusMap.has(integrationId) &&
-        integrationStatusMap.get(integrationId) === false
-      ) {
-        onConnectIntegration(integrationId);
-      }
-      return;
-    }
-
+    // Any trigger can be selected; if its integration isn't connected, the
+    // settings panel shows the inline connection prompt for it.
     const schema = triggerSchemas?.find((s) => s.slug === trigger);
-
-    if (schema?.integration_id) {
-      const isConnected = integrationStatusMap.get(schema.integration_id);
-      if (!isConnected) return;
-    }
 
     onTriggerChange(trigger);
     if (schema) {
@@ -136,16 +121,20 @@ export function TriggerAutocomplete({
   };
 
   if (isLoading) {
-    return <div className="animate-pulse h-12 bg-zinc-800 rounded-lg" />;
+    return (
+      <div className="space-y-2">
+        <Skeleton className="h-10 w-full rounded-xl" />
+      </div>
+    );
   }
 
   return (
     <div className="w-full space-y-2">
       <Autocomplete
-        aria-label="Choose a trigger"
-        label="Trigger"
-        placeholder="Search or select a trigger..."
-        className="w-full max-w-sm"
+        aria-label="Choose an event"
+        label="Event"
+        placeholder="Search apps and events..."
+        className="w-full"
         selectedKey={normalizedSelectedKey}
         onSelectionChange={handleSelectionChange}
         onInputChange={handleInputChange}
@@ -203,28 +192,13 @@ export function TriggerAutocomplete({
               </AutocompleteItem>
             ));
 
-            const connectionItem =
-              integrationStatusMap.has(integrationId) &&
-              integrationStatusMap.get(integrationId) === false ? (
-                <AutocompleteItem
-                  key={`connect-${integrationId}`}
-                  textValue={`Connect ${formatIntegrationName(integrationId)}`}
-                  className="my-2 bg-primary text-primary-foreground font-medium data-[hover=true]:bg-primary/90 data-[hover=true]:text-primary-foreground/90 text-center"
-                >
-                  <div className="text-center">
-                    Connect {formatIntegrationName(integrationId)}
-                  </div>
-                </AutocompleteItem>
-              ) : null;
-
-            if (connectionItem) {
-              triggerItems.unshift(connectionItem);
-            }
-
             return (
               <AutocompleteSection
                 key={integrationId}
-                className="border-b-1 pb-4 mb-4 border-zinc-800"
+                classNames={{
+                  base: "mb-1",
+                  heading: "px-2 py-1 text-tiny font-medium text-zinc-500",
+                }}
                 title={formatIntegrationName(integrationId)}
               >
                 {triggerItems}

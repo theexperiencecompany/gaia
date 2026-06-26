@@ -11,11 +11,13 @@ JWT_ALGORITHM = "HS256"
 AGENT_TOKEN_EXPIRY_MINUTES = 20
 
 # Login-free integration-connect magic link (delivered via bots / non-UI).
-# Scope-limited role so a leaked link can only start an OAuth connect for one
-# integration — never act as a session/agent/bot token.
-CONNECT_LINK_ROLE = "integration_connect"
-# Generous window so async bot replies stay usable; bounded to limit exposure.
-CONNECT_LINK_TTL_HOURS = 24
+# An opaque, single-use code bound server-side to one (user, integration).
+# 12 bytes → 96 bits of entropy → unguessable online (the only way to test a
+# code is a request to the rate-limited endpoint; there is no offline oracle).
+CONNECT_LINK_CODE_BYTES = 12
+# Short window: a "click to connect now" link, not a saved bookmark. Keeps the
+# pool of live codes small and the leak/brute-force window tiny.
+CONNECT_LINK_TTL_MINUTES = 60
 
 # Session cookie name (WorkOS sealed session)
 WOS_SESSION_COOKIE = "wos_session"

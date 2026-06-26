@@ -107,18 +107,16 @@ def _build_available_triggers(
 
 
 def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
-    """Convert minimal generated steps to full step schema with id."""
-    enriched = []
-    for i, step in enumerate(generated_steps):
-        enriched.append(
-            {
-                "id": f"step_{i}",
-                "title": step.title,
-                "category": step.category,
-                "description": step.description,
-            }
-        )
-    return enriched
+    """Convert minimal generated steps to the full step schema with ids."""
+    return [
+        {
+            "id": f"step_{i}",
+            "title": step.title,
+            "category": step.category,
+            "description": step.description,
+        }
+        for i, step in enumerate(generated_steps)
+    ]
 
 
 def _parse_workflow_response(content: str) -> GeneratedWorkflow:
@@ -146,6 +144,7 @@ class WorkflowGenerationService:
         trigger_config=None,
         description: str | None = None,
         selected_integrations: list[str] | None = None,
+        user_id: str | None = None,
     ) -> list:
         """Generate workflow steps using LLM with structured output.
 
@@ -168,6 +167,10 @@ class WorkflowGenerationService:
 
         tools_with_categories = []
         category_names = []
+        # Selected custom-integration ids -> display name. Custom integrations are
+        # keyed by an opaque uuid, so the preferred-tools hint must resolve the
+        # human name here (OAUTH_INTEGRATIONS doesn't know them).
+        selected_display_names: dict[str, str] = {}
         categories = tool_registry.get_all_category_objects()
         for category in categories.keys():
             if filter_active and category.lower() not in slug_set:
@@ -199,6 +202,36 @@ class WorkflowGenerationService:
             "generate outlines, extract key points, write briefs. No external tool call."
         )
 
+        # The user's CUSTOM integrations (MCP / self-added) aren't in the static
+        # registry or OAUTH_INTEGRATIONS, so the generator never saw them. Surface
+        # each as its own category (keyed by integration id) so steps can use them.
+        if user_id:
+            try:
+                # Local import: my_integrations -> tools/oauth services transitively
+                # import this module, so a top-level import is a circular import.
+                from app.services.integrations.my_integrations import (
+                    get_my_integrations,
+                )
+
+                my_integrations = await get_my_integrations(user_id)
+                for integ in my_integrations.integrations:
+                    if integ.source != "custom":
+                        continue
+                    if filter_active and integ.id.lower() not in slug_set:
+                        continue
+                    category_names.append(integ.id)
+                    selected_display_names[integ.id.lower()] = integ.name
+                    summary = integ.description or integ.name
+                    tools_with_categories.append(
+                        f"{integ.id} (custom integration): {integ.name}. {summary}"
+                    )
+            except Exception as e:
+                # Custom integrations are an enrichment for generation; degrade to
+                # the built-in catalog rather than failing the whole generation.
+                log.warning(
+                    f"{LogTag.WORKFLOW} Could not load custom integrations for user {user_id}: {e}"
+                )
+
         log.info(
             f"{LogTag.WORKFLOW} Categories: {len(category_names)} "
             f"(filtered={filter_active}, slugs={normalized_slugs})"
@@ -229,11 +262,20 @@ class WorkflowGenerationService:
                 f"{prompt}\n\nShort display summary for additional context: {description}"
             )
         if normalized_slugs:
-            friendly = [_slug_to_friendly_name(s) for s in normalized_slugs]
+
+            def _hint_label(slug: str) -> str:
+                name = selected_display_names.get(slug) or _slug_to_friendly_name(slug)
+                # Pass both the human name and the category id: the name tells the
+                # LLM what the user meant, the id is what each step's `category`
+                # must be set to for that integration's tools to resolve.
+                return f"{name} (category: {slug})" if name != slug else slug
+
+            friendly = [_hint_label(s) for s in normalized_slugs]
             integration_hint = (
                 "User has selected these integrations as preferred tools for this workflow: "
                 + ", ".join(friendly)
-                + ". Prioritise steps that use these integrations where appropriate."
+                + ". Prioritise steps that use these integrations where appropriate, "
+                "setting each such step's category to the given id."
             )
             prompt_context = f"{prompt_context}\n\n{integration_hint}"
 

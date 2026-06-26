@@ -10,6 +10,10 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
+import {
+  TriggerSettingRow,
+  TriggerSettingsCard,
+} from "../components/TriggerSettingsCard";
 import type { OptionItem } from "../components/types";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
@@ -98,7 +102,8 @@ function NotionSettings({
     return (
       <TriggerConnectionPrompt
         integrationName="Notion"
-        _integrationId={integrationId}
+        integrationId={integrationId}
+        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
         onConnect={() => connectIntegration(integrationId)}
       />
     );
@@ -111,73 +116,77 @@ function NotionSettings({
   const selectedPageValues = triggerData?.page_ids || [];
 
   return (
-    <div className="space-y-3">
+    <TriggerSettingsCard>
       {isDbTrigger && (
-        <TriggerSelectToggle
-          label="Databases"
-          selectProps={{
-            options: dbOptions,
-            selectedValues: selectedDbValues,
-            onSelectionChange: (selectedIds: string[]) => {
-              updateTriggerData({
-                database_ids: selectedIds,
-              });
-            },
-            isLoading: showDbLoading,
-            placeholder: "Select databases",
-            renderValue: (items: { key: string; textValue: string }[]) => {
-              const count = items.length;
-              if (count === 0) return "Select databases";
-              if (count === 1) return items[0]?.textValue || "1 database";
-              return `${count} databases selected`;
-            },
-          }}
-          tagInputProps={{
-            values: selectedDbValues,
-            onChange: (selectedIds: string[]) => {
-              updateTriggerData({
-                database_ids: selectedIds,
-              });
-            },
-            placeholder: "Add another...",
-            emptyPlaceholder: "Enter database IDs",
-          }}
-        />
+        <TriggerSettingRow label="Databases" wide>
+          <TriggerSelectToggle
+            label="Databases"
+            selectProps={{
+              options: dbOptions,
+              selectedValues: selectedDbValues,
+              onSelectionChange: (selectedIds: string[]) => {
+                updateTriggerData({
+                  database_ids: selectedIds,
+                });
+              },
+              isLoading: showDbLoading,
+              placeholder: "Select databases",
+              renderValue: (items: { key: string; textValue: string }[]) => {
+                const count = items.length;
+                if (count === 0) return "Select databases";
+                if (count === 1) return items[0]?.textValue || "1 database";
+                return `${count} databases selected`;
+              },
+            }}
+            tagInputProps={{
+              values: selectedDbValues,
+              onChange: (selectedIds: string[]) => {
+                updateTriggerData({
+                  database_ids: selectedIds,
+                });
+              },
+              placeholder: "Add another...",
+              emptyPlaceholder: "Enter database IDs",
+            }}
+          />
+        </TriggerSettingRow>
       )}
 
       {isPageTrigger && (
-        <TriggerSelectToggle
-          label="Pages"
-          selectProps={{
-            options: pageOptions,
-            selectedValues: selectedPageValues,
-            onSelectionChange: (selectedIds: string[]) => {
-              updateTriggerData({
-                page_ids: selectedIds,
-              });
-            },
-            isLoading: showPageLoading,
-            placeholder: "Select pages",
-            renderValue: (items: { key: string; textValue: string }[]) => {
-              const count = items.length;
-              if (count === 0) return "Select pages";
-              if (count === 1) return items[0]?.textValue || "1 page";
-              return `${count} pages selected`;
-            },
-          }}
-          tagInputProps={{
-            values: selectedPageValues,
-            onChange: (selectedIds: string[]) => {
-              updateTriggerData({
-                page_ids: selectedIds,
-              });
-            },
-            placeholder: "Add another...",
-            emptyPlaceholder: "Enter page IDs",
-          }}
-        />
+        <TriggerSettingRow label="Pages" wide>
+          <TriggerSelectToggle
+            label="Pages"
+            selectProps={{
+              options: pageOptions,
+              selectedValues: selectedPageValues,
+              onSelectionChange: (selectedIds: string[]) => {
+                updateTriggerData({
+                  page_ids: selectedIds,
+                });
+              },
+              isLoading: showPageLoading,
+              placeholder: "Select pages",
+              renderValue: (items: { key: string; textValue: string }[]) => {
+                const count = items.length;
+                if (count === 0) return "Select pages";
+                if (count === 1) return items[0]?.textValue || "1 page";
+                return `${count} pages selected`;
+              },
+            }}
+            tagInputProps={{
+              values: selectedPageValues,
+              onChange: (selectedIds: string[]) => {
+                updateTriggerData({
+                  page_ids: selectedIds,
+                });
+              },
+              placeholder: "Add another...",
+              emptyPlaceholder: "Enter page IDs",
+            }}
+          />
+        </TriggerSettingRow>
       )}
-    </div>
+    </TriggerSettingsCard>
   );
 }
 

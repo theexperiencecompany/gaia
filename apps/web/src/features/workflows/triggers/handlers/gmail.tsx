@@ -7,16 +7,26 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { useState } from "react";
-
+import { IntervalPicker } from "../components/IntervalPicker";
+import {
+  TriggerSettingRow,
+  TriggerSettingsCard,
+} from "../components/TriggerSettingsCard";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
 // =============================================================================
 // TYPE DEFINITIONS
 // =============================================================================
+
+// Mirrors the backend cap (MAX_GMAIL_POLL_INTERVAL_MINUTES) so the picker can
+// offer day-scale intervals (e.g. a weekly digest) without producing a value
+// the API would reject.
+const GMAIL_MAX_INTERVAL_MINUTES = 60 * 24 * 30; // 30 days
+
+// Spread across the useful triage range: every 15m, hourly, a few times a day,
+// and once a day. Anything else is available via "Custom".
+const GMAIL_INTERVAL_PRESETS = [15, 60, 360, 1440]; // 15m, 1h, 6h, 1d
 
 interface GmailPollTriggerData {
   trigger_name: string;
@@ -32,84 +42,35 @@ interface GmailPollConfig extends TriggerConfig {
 // POLL INBOX SETTINGS COMPONENT
 // =============================================================================
 
-const PRESET_INTERVALS = [5, 15, 30, 60] as const;
-
 function GmailPollSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
   const config = triggerConfig as GmailPollConfig;
   const currentInterval = config.trigger_data?.interval ?? 15;
-  const [inputValue, setInputValue] = useState(String(currentInterval));
 
   const updateInterval = (minutes: number) => {
-    const clamped = Math.min(1440, Math.max(1, minutes));
-    setInputValue(String(clamped));
     onConfigChange({
       ...triggerConfig,
       trigger_data: {
         trigger_name: config.trigger_name || "gmail_poll_inbox",
         ...config.trigger_data,
-        interval: clamped,
+        interval: minutes,
       },
     });
   };
 
-  const handleInputChange = (value: string) => {
-    setInputValue(value);
-    const parsed = parseInt(value, 10);
-    if (!Number.isNaN(parsed) && parsed >= 1 && parsed <= 1440) {
-      updateInterval(parsed);
-    }
-  };
-
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {PRESET_INTERVALS.map((mins) => (
-          <Button
-            key={mins}
-            size="sm"
-            variant={currentInterval === mins ? "flat" : "bordered"}
-            color={currentInterval === mins ? "primary" : "default"}
-            className="min-w-14 text-xs"
-            onPress={() => updateInterval(mins)}
-          >
-            {mins}m
-          </Button>
-        ))}
-        <Input
-          type="number"
-          aria-label="Custom poll interval in minutes"
-          placeholder="Custom"
-          min={1}
-          max={1440}
-          className="w-28"
-          size="sm"
-          classNames={{
-            input:
-              "text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
-          }}
-          value={
-            PRESET_INTERVALS.includes(
-              currentInterval as (typeof PRESET_INTERVALS)[number],
-            )
-              ? ""
-              : inputValue
-          }
-          onValueChange={handleInputChange}
-          endContent={
-            <span className="pointer-events-none text-xs text-zinc-500">
-              min
-            </span>
-          }
+    <TriggerSettingsCard>
+      <TriggerSettingRow label="Check my inbox every">
+        <IntervalPicker
+          value={currentInterval}
+          onChange={updateInterval}
+          presets={GMAIL_INTERVAL_PRESETS}
+          maxMinutes={GMAIL_MAX_INTERVAL_MINUTES}
         />
-      </div>
-      <p className="text-xs text-zinc-500">
-        Check inbox every {currentInterval}{" "}
-        {currentInterval === 1 ? "minute" : "minutes"} for new emails
-      </p>
-    </div>
+      </TriggerSettingRow>
+    </TriggerSettingsCard>
   );
 }
 

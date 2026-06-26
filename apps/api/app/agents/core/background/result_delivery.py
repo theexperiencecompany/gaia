@@ -23,11 +23,18 @@ from langsmith import traceable
 from app.agents.core.background.comms_narrator import narrate_executor_result
 from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.session import ExecutorRun
+from app.agents.core.background.workflow_platform_delivery import (
+    deliver_workflow_result_to_platforms,
+)
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import conversations_collection
-from app.models.chat_models import ConversationSource, MessageModel, UpdateMessagesRequest
+from app.models.chat_models import (
+    ConversationSource,
+    MessageModel,
+    UpdateMessagesRequest,
+)
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
@@ -72,7 +79,7 @@ async def deliver_result(
         return await _narrate_and_deliver(
             run, result_text, result_type, attach_tool_data, returned_note
         )
-    except Exception as e:  # noqa: BLE001 — delivery is best-effort, never propagates
+    except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))
         return None, None
 
@@ -114,7 +121,7 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
             ),
             user=run.user,
         )
-    except Exception as e:  # noqa: BLE001 — best-effort save of a stopped run
+    except Exception as e:  # best-effort save of a stopped run
         log.error(f"{LogTag.AGENT} Failed to save cancelled executor cards", error=str(e))
         return
 
@@ -219,13 +226,21 @@ async def _narrate_and_deliver(
     # carrying the real voiced result, instead of pushing to one conversation
     # transport. The bot message is already saved above for "View Results".
     if run.workflow_id:
+        # Successful, non-silent runs are delivered into the user's real
+        # messaging-platform conversations as normal bot messages (GAIA's voice,
+        # no notification chrome). The in-app badge below is a web-only heads-up.
+        if result_type != "error" and run.workflow_notify_on_completion:
+            await deliver_workflow_result_to_platforms(
+                user=run.user,
+                user_id=user_id,
+                notification_text=notification_text,
+            )
         await _dispatch_workflow_notification(
             msg_type=result_type,
             workflow_id=run.workflow_id,
             workflow_title=run.workflow_title,
             conversation_id=run.conversation_id,
             user_id=user_id,
-            notification_text=notification_text,
             message_id=bot_message.message_id,
             notify_on_completion=run.workflow_notify_on_completion,
         )
@@ -304,7 +319,7 @@ async def _safe_inline_follow_ups(
             user_msg_content=user_msg_content,
             user_id=user_id,
         )
-    except Exception as e:  # noqa: BLE001 — follow-ups are best-effort
+    except Exception as e:  # follow-ups are best-effort
         log.error(
             f"{LogTag.AGENT} deliver_result: failed to generate follow-up actions",
             error=str(e),
@@ -425,7 +440,6 @@ async def _dispatch_workflow_notification(
     workflow_title: str,
     conversation_id: str,
     user_id: str,
-    notification_text: str,
     message_id: str,
     notify_on_completion: bool = True,
 ) -> None:
@@ -462,7 +476,6 @@ async def _dispatch_workflow_notification(
             workflow_title=workflow_title,
             conversation_id=conversation_id,
             user_id=user_id,
-            result_text=notification_text,
         )
     log.info(
         f"{LogTag.AGENT} deliver_result: workflow notification dispatched",

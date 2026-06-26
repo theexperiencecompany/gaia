@@ -3,19 +3,13 @@
 import { defineComponent } from "@openuidev/react-lang";
 import dynamic from "next/dynamic";
 import React from "react";
-import { z } from "zod";
+import type { z } from "zod";
+import { textDocumentSchema } from "../promptSpecs";
 
-// Public schema lives here so genericLibrary can re-export it without dragging
-// @tiptap into the SSR bundle. The actual editor (with tiptap, BubbleMenu,
-// etc.) lives in `DocumentEditor.tsx` and only loads on the client via
-// `dynamic({ ssr: false })` — that keeps tiptap out of handler.mjs.
-export const textDocumentSchema = z.object({
-  title: z.string(),
-  body: z.string(),
-  fields: z
-    .array(z.object({ label: z.string(), value: z.string() }))
-    .optional(),
-});
+// The schema lives in the Node-safe `../promptSpecs` single source. The actual
+// editor (with tiptap, BubbleMenu, etc.) lives in `DocumentEditor.tsx` and only
+// loads on the client via `dynamic({ ssr: false })` — that keeps tiptap out of
+// handler.mjs.
 
 const TextDocumentEditor = dynamic(
   () => import("./DocumentEditor").then((m) => m.TextDocumentView),

@@ -34,21 +34,21 @@ export function TriggerSelectToggle({
 
   if (!allowManualInput || !useManualInput) {
     return (
-      <>
+      <div className="space-y-2">
         {searchConfig?.enabled && (
           <Input
-            label={`Search ${label}`}
+            aria-label={`Search ${label}`}
             placeholder={searchConfig.placeholder || "Type to search..."}
             value={searchConfig.searchValue}
             onValueChange={searchConfig.onSearchChange}
-            className="w-full max-w-xl"
+            className="w-full"
             size="sm"
             isClearable
             onClear={() => searchConfig.onSearchChange("")}
           />
         )}
         <Select
-          label={label}
+          aria-label={label}
           placeholder={isLoading ? "Loading..." : placeholder}
           selectionMode="multiple"
           selectedKeys={new Set(selectedValues)}
@@ -64,7 +64,7 @@ export function TriggerSelectToggle({
                 ) => React.ReactNode)
               | undefined
           }
-          className="w-full max-w-xl"
+          className="w-full"
           description={
             <div className="flex justify-between items-center">
               {description || <span className="text-xs text-zinc-500" />}
@@ -92,13 +92,12 @@ export function TriggerSelectToggle({
             ))
           )}
         </Select>
-      </>
+      </div>
     );
   }
 
   return (
     <TriggerTagInput
-      label={label}
       values={tagInputProps.values}
       onChange={tagInputProps.onChange}
       placeholder={tagInputProps.placeholder}

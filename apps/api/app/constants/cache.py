@@ -95,8 +95,8 @@ STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
 STATE_KEY_PREFIX = "oauth_state"
-# Single-use marker for login-free integration-connect links (keyed by jti).
-CONNECT_LINK_USED_PREFIX = "connect_link_used"
+# Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
+CONNECT_LINK_PREFIX = "connect_link"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
 # Desktop tool bridge — request ownership keys + per-request result channels.

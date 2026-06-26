@@ -17,9 +17,12 @@ const PrismAsyncLight = dynamic(
 
 // Dynamic import for the theme - split separately
 const loadVscDarkPlusTheme = async () => {
-  return await import(
+  // The ESM style module nests the token map under `default`; unwrap it so
+  // PrismAsyncLight receives the actual theme rather than the namespace object.
+  const mod = await import(
     "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus"
   );
+  return mod.default;
 };
 
 interface SyntaxHighlighterProps {
@@ -51,7 +54,11 @@ const MermaidCode: React.FC<MermaidCodeProps> = ({
   } | null>(null);
 
   React.useEffect(() => {
-    loadVscDarkPlusTheme().then(setTheme);
+    loadVscDarkPlusTheme().then((style) =>
+      // The style module is loosely typed upstream; assert the runtime shape
+      // (a token → CSSProperties map) without changing the value passed.
+      setTheme(style as unknown as { [key: string]: CSSProperties }),
+    );
   }, []);
 
   if (!theme) {

@@ -226,7 +226,8 @@ FORBIDDEN STEP TYPES (DO NOT CREATE):
 - Do NOT create steps that involve only text processing, data analysis, or content generation without external tool usage
 - Do NOT create generic steps like "gather requirements," "evaluate options," or "make recommendations" - these are LLM capabilities
 - If content analysis is needed, the LLM will do it while using actual tools like web_search_tool
-- Do NOT use `category: "notifications"` for any step. GAIA automatically sends the user a notification after every workflow run — you never need to explicitly deliver an alert or push message. If a step needs to prepare a summary or message for the user (e.g. "summarize findings to surface to the user"), use `category: "gaia"` instead.
+- Do NOT add a step that just notifies the user the workflow finished or delivers its results. GAIA sends a completion notification automatically after every run (this respects the user's "notify on completion" setting), so a final "notify the user" or "send results" step would notify them twice. Only when the instructions explicitly ask for a deliberate conditional or immediate alert during the run (e.g. "ping me if an email looks urgent") should a step message the user, and it should do so with the send_notification tool under `category: "gaia"`. If a step only prepares a summary to surface to the user, use `category: "gaia"`.
+- Do NOT over-use todos. Only add a todo step when the workflow is genuinely about tracking a task the user wants to remember or revisit later. Do not turn ordinary actions (sending an email, creating an event) into todo items, and do not add a "create a todo to do X" step when the workflow can just do X directly with a real tool.
 
 FOCUS ON EXTERNAL TOOL ACTIONS:
 - Every step must perform a concrete external action (send email, create calendar event, search web, save file, etc.)

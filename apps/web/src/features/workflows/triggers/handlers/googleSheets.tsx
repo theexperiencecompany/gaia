@@ -7,6 +7,10 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
+import {
+  TriggerSettingRow,
+  TriggerSettingsCard,
+} from "../components/TriggerSettingsCard";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
@@ -171,81 +175,87 @@ function GoogleSheetsSettings({
     return (
       <TriggerConnectionPrompt
         integrationName="Google Sheets"
-        _integrationId={integrationId}
+        integrationId={integrationId}
+        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
         onConnect={() => connectIntegration(integrationId)}
       />
     );
   }
   return (
-    <div className="space-y-4">
+    <TriggerSettingsCard>
       {/* Spreadsheet Selection */}
-      <TriggerSelectToggle
-        label="Spreadsheets"
-        selectProps={{
-          options: spreadsheetOptions,
-          selectedValues: spreadsheetIds,
-          onSelectionChange: handleSpreadsheetChange,
-          isLoading: isLoadingSpreadsheets,
-          placeholder: "Select spreadsheet(s)",
-          renderValue: renderSpreadsheetValue,
-          description: (
-            <span className="text-xs text-zinc-500">
-              Select spreadsheets to monitor
-            </span>
-          ),
-        }}
-        tagInputProps={{
-          values: spreadsheetIds,
-          onChange: handleSpreadsheetChange,
-          placeholder: "Add another...",
-          emptyPlaceholder: "Enter spreadsheet IDs",
-        }}
-        allowManualInput={true}
-      />
+      <TriggerSettingRow label="Spreadsheets" wide>
+        <TriggerSelectToggle
+          label="Spreadsheets"
+          selectProps={{
+            options: spreadsheetOptions,
+            selectedValues: spreadsheetIds,
+            onSelectionChange: handleSpreadsheetChange,
+            isLoading: isLoadingSpreadsheets,
+            placeholder: "Select spreadsheet(s)",
+            renderValue: renderSpreadsheetValue,
+            description: (
+              <span className="text-xs text-zinc-500">
+                Select spreadsheets to monitor
+              </span>
+            ),
+          }}
+          tagInputProps={{
+            values: spreadsheetIds,
+            onChange: handleSpreadsheetChange,
+            placeholder: "Add another...",
+            emptyPlaceholder: "Enter spreadsheet IDs",
+          }}
+          allowManualInput={true}
+        />
+      </TriggerSettingRow>
 
       {/* Sheet Name Selection - only for new_row trigger */}
       {isNewRowTrigger && (
-        <Select
-          label="Sheets"
-          placeholder="Select sheet(s)"
-          selectionMode="multiple"
-          selectedKeys={selectedSheetKeys}
-          onSelectionChange={handleSheetSelectionChange}
-          className="w-full max-w-xl"
-          description="Select specific sheets (leave empty for all sheets)"
-          isDisabled={spreadsheetIds.length === 0}
-          isLoading={isLoadingSheets}
-          renderValue={renderSheetValue}
-        >
-          {hasGroupedSheets
-            ? (groupedSheetOptions as GroupedOption[]).map((group) => {
-                const spreadsheetName =
-                  spreadsheetOptions.find((opt) => opt.value === group.group)
-                    ?.label || group.group;
-                return (
-                  <SelectSection
-                    key={group.group}
-                    title={spreadsheetName}
-                    classNames={{
-                      heading: "text-xs font-semibold text-zinc-400 px-2 py-1",
-                    }}
-                  >
-                    {group.options.map((option) => (
-                      <SelectItem key={option.value} textValue={option.label}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectSection>
-                );
-              })
-            : (groupedSheetOptions as OptionItem[]).map((option) => (
-                <SelectItem key={option.value} textValue={option.label}>
-                  {option.label}
-                </SelectItem>
-              ))}
-        </Select>
+        <TriggerSettingRow label="Sheets" wide>
+          <Select
+            aria-label="Sheets"
+            placeholder="Select sheet(s)"
+            selectionMode="multiple"
+            selectedKeys={selectedSheetKeys}
+            onSelectionChange={handleSheetSelectionChange}
+            className="w-full"
+            description="Select specific sheets (leave empty for all sheets)"
+            isDisabled={spreadsheetIds.length === 0}
+            isLoading={isLoadingSheets}
+            renderValue={renderSheetValue}
+          >
+            {hasGroupedSheets
+              ? (groupedSheetOptions as GroupedOption[]).map((group) => {
+                  const spreadsheetName =
+                    spreadsheetOptions.find((opt) => opt.value === group.group)
+                      ?.label || group.group;
+                  return (
+                    <SelectSection
+                      key={group.group}
+                      title={spreadsheetName}
+                      classNames={{
+                        heading:
+                          "text-xs font-semibold text-zinc-400 px-2 py-1",
+                      }}
+                    >
+                      {group.options.map((option) => (
+                        <SelectItem key={option.value} textValue={option.label}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectSection>
+                  );
+                })
+              : (groupedSheetOptions as OptionItem[]).map((option) => (
+                  <SelectItem key={option.value} textValue={option.label}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+          </Select>
+        </TriggerSettingRow>
       )}
-    </div>
+    </TriggerSettingsCard>
   );
 }
 

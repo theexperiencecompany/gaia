@@ -155,9 +155,13 @@ services:
         aliases:
           - arq_worker
     healthcheck:
-      # arq --check fails when the poll loop stops refreshing its health key (a
-      # wedged worker); the old Redis-socket probe passed even when frozen.
-      test: ["CMD", "arq", "app.worker.WorkerSettings", "--check"]
+      # Reads arq's own liveness key (arq:health — refreshed from the poll loop
+      # with a ~31s TTL, so it's gone within ~31s if the loop wedges). This is
+      # what `arq --check` asserts internally, but without importing the app:
+      # a healthcheck runs outside the entrypoint, so it has no INFISICAL_TOKEN
+      # and a full app import dies in settings bootstrap — which silently rolled
+      # the worker back on every deploy. The probe touches only Redis.
+      test: ["CMD", "python", "scripts/arq_healthcheck.py"]
       interval: 30s
       timeout: 10s
       retries: 3

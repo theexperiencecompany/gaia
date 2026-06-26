@@ -1,15 +1,16 @@
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Clock01Icon } from "@icons";
+import { Clock01Icon, InformationCircleIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 
-import { getTimezoneList } from "@/utils/timezoneUtils";
+import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
 import {
   buildCronExpression,
   type CronSchedule,
   describeCron,
   parseCronExpression,
 } from "../utils/cronUtils";
+import { TimezoneAutocomplete } from "./TimezoneAutocomplete";
 
 interface ScheduleBuilderProps {
   value?: string; // cron expression
@@ -82,6 +83,12 @@ const initializeCustomCron = (cronExpression?: string): string => {
     : "";
 };
 
+// Keep the compact inline triggers, but let each dropdown popover grow to fit
+// its option labels instead of inheriting the narrow trigger width (which
+// truncates "Custom", "Month", "Wednesday", …). min-width beats the inline
+// trigger-width style HeroUI sets on the popover.
+const SELECT_CLASSNAMES = { popoverContent: "min-w-fit" } as const;
+
 // Helper to convert 24h to 12h for display
 const to12Hour = (hour24: number): { hour12: number; ampm: "AM" | "PM" } => {
   if (hour24 === 0) return { hour12: 12, ampm: "AM" };
@@ -110,18 +117,30 @@ export const ScheduleBuilder = ({
     initializeCustomCron(value),
   );
 
+  // Normalise legacy aliases (e.g. "Asia/Calcutta" -> "Asia/Kolkata") so the
+  // active zone matches a canonical option and shows its city + offset.
+  const normalizedTimezone = normalizeTimezone(timezone);
+
   // Every IANA zone (not just the popular shortlist) so any user can pick their
   // exact zone; the active one is guaranteed to be present.
   const timezoneOptions = useMemo(() => {
     const options = getTimezoneList(true).map((tz) => ({
       value: tz.value,
       label: tz.label,
+      offset: tz.offset,
     }));
-    if (timezone && !options.some((tz) => tz.value === timezone)) {
-      options.unshift({ value: timezone, label: timezone });
+    if (
+      normalizedTimezone &&
+      !options.some((tz) => tz.value === normalizedTimezone)
+    ) {
+      options.unshift({
+        value: normalizedTimezone,
+        label: normalizedTimezone,
+        offset: "",
+      });
     }
     return options;
-  }, [timezone]);
+  }, [normalizedTimezone]);
 
   // Update state when value prop changes (e.g., when switching between workflow cards)
   useEffect(() => {
@@ -205,8 +224,8 @@ export const ScheduleBuilder = ({
   return (
     <div className="w-full">
       {/* Natural Language Schedule Builder */}
-      <div className="flex w-full flex-row items-center gap-3 text-sm">
-        <span>Run</span>
+      <div className="flex w-full flex-row items-center gap-x-2 gap-y-2 text-sm">
+        <span className="shrink-0 text-zinc-400">Run</span>
 
         <Select
           aria-label="Select every or once or custom"
@@ -217,7 +236,8 @@ export const ScheduleBuilder = ({
               frequency: Array.from(keys)[0] as SimpleSchedule["frequency"],
             })
           }
-          className="min-w-26"
+          className="w-28 shrink-0"
+          classNames={SELECT_CLASSNAMES}
         >
           <SelectItem key="every" textValue="Every">
             Every
@@ -241,7 +261,8 @@ export const ScheduleBuilder = ({
                   interval: Array.from(keys)[0] as SimpleSchedule["interval"],
                 })
               }
-              className="min-w-26"
+              className="w-[4.5rem] shrink-0"
+              classNames={SELECT_CLASSNAMES}
             >
               <SelectItem key="day" textValue="Day">
                 Day
@@ -256,7 +277,7 @@ export const ScheduleBuilder = ({
 
             {simpleSchedule.interval === "week" && (
               <>
-                <span>on</span>
+                <span className="shrink-0 text-zinc-400">on</span>
                 <Select
                   size="sm"
                   selectedKeys={new Set([simpleSchedule.dayOfWeek])}
@@ -265,7 +286,8 @@ export const ScheduleBuilder = ({
                       dayOfWeek: Array.from(keys)[0] as string,
                     })
                   }
-                  className="min-w-32"
+                  className="w-28 shrink-0"
+                  classNames={SELECT_CLASSNAMES}
                 >
                   <SelectItem key="1" textValue="Monday">
                     Monday
@@ -294,7 +316,9 @@ export const ScheduleBuilder = ({
 
             {simpleSchedule.interval === "month" && (
               <>
-                <span className="text-nowrap">on the</span>
+                <span className="shrink-0 text-nowrap text-zinc-400">
+                  on the
+                </span>
                 <Select
                   aria-label="Select day of the month"
                   size="sm"
@@ -306,7 +330,8 @@ export const ScheduleBuilder = ({
                       dayOfMonth: selectedDay,
                     });
                   }}
-                  className="min-w-20"
+                  className="w-16 shrink-0"
+                  classNames={SELECT_CLASSNAMES}
                   placeholder="Day"
                 >
                   {Array.from({ length: 31 }, (_, i) => (
@@ -321,8 +346,8 @@ export const ScheduleBuilder = ({
               </>
             )}
 
-            <span>at</span>
-            <div className="flex items-center gap-1">
+            <span className="shrink-0 text-zinc-400">at</span>
+            <div className="flex shrink-0 items-center gap-1">
               <Input
                 size="sm"
                 type="number"
@@ -330,19 +355,19 @@ export const ScheduleBuilder = ({
                 max="12"
                 value={hour12.toString()}
                 onChange={(e) => handleHour12Change(e.target.value)}
-                className="w-16"
+                className="w-12"
               />
-              <span>:</span>
+              <span className="text-zinc-500">:</span>
               <Input
                 size="sm"
                 type="number"
                 min="0"
                 max="59"
-                value={simpleSchedule.minute}
+                value={simpleSchedule.minute.padStart(2, "0")}
                 onChange={(e) =>
                   handleSimpleScheduleChange({ minute: e.target.value })
                 }
-                className="w-16"
+                className="w-12"
               />
               <Select
                 aria-label="Select AM or PM"
@@ -351,7 +376,8 @@ export const ScheduleBuilder = ({
                 onSelectionChange={(keys) =>
                   handleAmpmChange(Array.from(keys)[0] as "AM" | "PM")
                 }
-                className="w-22"
+                className="w-[4.25rem]"
+                classNames={SELECT_CLASSNAMES}
               >
                 <SelectItem key="AM" textValue="AM">
                   AM
@@ -361,51 +387,61 @@ export const ScheduleBuilder = ({
                 </SelectItem>
               </Select>
             </div>
+            <span className="shrink-0 text-nowrap text-zinc-500">in</span>
+            <TimezoneAutocomplete
+              timezone={normalizedTimezone}
+              options={timezoneOptions}
+              onChange={onTimezoneChange}
+              className="w-56 shrink-0"
+            />
+          </>
+        )}
+
+        {simpleSchedule.frequency === "custom" && (
+          <>
+            <Input
+              placeholder="0 9 * * *"
+              aria-label="Cron expression"
+              value={customCron}
+              size="sm"
+              isInvalid={showCronError}
+              onChange={(e) => handleCustomCronChange(e.target.value)}
+              className="flex-1"
+            />
+            <span className="shrink-0 text-nowrap text-zinc-500">in</span>
+            <TimezoneAutocomplete
+              timezone={normalizedTimezone}
+              options={timezoneOptions}
+              onChange={onTimezoneChange}
+              className="w-56 shrink-0"
+            />
           </>
         )}
       </div>
 
       {simpleSchedule.frequency === "custom" && (
-        <div className="mt-4 w-full space-y-2">
-          <Input
-            placeholder="0 9 * * *"
-            description="Format: minute hour day-of-month month day-of-week"
-            value={customCron}
-            label="Cron Job"
-            fullWidth
-            isInvalid={showCronError}
-            errorMessage={cronPreview.error}
-            onChange={(e) => handleCustomCronChange(e.target.value)}
-          />
-          {cronPreview.isValid && cronPreview.description && (
-            <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+        <div className="mt-2 flex items-center gap-1.5 text-xs">
+          {cronPreview.description && !showCronError ? (
+            // Valid expression: show the clock + a plain-English preview.
+            <>
               <Clock01Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-              <span>{cronPreview.description}</span>
-            </div>
+              <span className="text-zinc-400">{cronPreview.description}</span>
+            </>
+          ) : (
+            // Otherwise: info icon + the field format, tinted red when invalid.
+            <>
+              <InformationCircleIcon
+                className={`h-3.5 w-3.5 shrink-0 ${
+                  showCronError ? "text-danger" : "text-zinc-500"
+                }`}
+              />
+              <span className={showCronError ? "text-danger" : "text-zinc-500"}>
+                minute hour day-of-month month day-of-week
+              </span>
+            </>
           )}
         </div>
       )}
-
-      {/* Timezone the schedule runs in — the time/cron above is wall-clock in this zone */}
-      <div className="mt-4 flex flex-row items-center gap-3 text-sm">
-        <span className="text-nowrap text-zinc-400">Run in timezone</span>
-        <Select
-          aria-label="Select timezone"
-          size="sm"
-          selectedKeys={timezone ? new Set([timezone]) : undefined}
-          onSelectionChange={(keys) => {
-            const next = Array.from(keys)[0] as string | undefined;
-            if (next) onTimezoneChange(next);
-          }}
-          className="min-w-60"
-        >
-          {timezoneOptions.map((tz) => (
-            <SelectItem key={tz.value} textValue={tz.label}>
-              {tz.label}
-            </SelectItem>
-          ))}
-        </Select>
-      </div>
     </div>
   );
 };

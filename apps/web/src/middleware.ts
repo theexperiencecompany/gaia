@@ -59,5 +59,8 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|_vercel|sitemap|ingest|.*\\..*).*)", "/"],
+  // `connect` is the locale-invariant connect-link redirect route handler
+  // (src/app/connect/[code]/route.ts) — exclude it like `api` so next-intl
+  // doesn't rewrite it into the [locale] tree.
+  matcher: ["/((?!api|connect|_next|_vercel|sitemap|ingest|.*\\..*).*)", "/"],
 };
