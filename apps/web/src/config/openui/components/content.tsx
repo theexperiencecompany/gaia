@@ -6,6 +6,7 @@ import {
   RefreshIcon,
 } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
+import type { StyleSpecification } from "maplibre-gl";
 import * as m from "motion/react-m";
 import { useParams } from "next/navigation";
 import React from "react";
@@ -277,6 +278,29 @@ function MapAutoFit({
   return null;
 }
 
+// Basemap. maplibre's vector-tile Web Worker does not run in this app's runtime
+// (vector basemaps never load — raster does), so use CARTO's RASTER dark
+// basemap, which renders without the worker.
+const CARTO_DARK_RASTER: StyleSpecification = {
+  version: 8,
+  sources: {
+    carto: {
+      type: "raster",
+      tiles: [
+        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+        "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+      ],
+      tileSize: 256,
+      attribution: "© OpenStreetMap contributors © CARTO",
+    },
+  },
+  layers: [{ id: "carto", type: "raster", source: "carto" }],
+};
+
+const MAP_STYLES = { dark: CARTO_DARK_RASTER, light: CARTO_DARK_RASTER };
+
 export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
   const { markers, routes, arcs, blank, geojson } = props;
   // Center is optional — default to a whole-world view (handy for `geojson`
@@ -313,7 +337,10 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
     [arcs],
   );
 
-  const fitBounds = props.fitBounds ?? (hasExtras && props.zoom == null);
+  // Auto-fit to all markers/routes/arcs whenever there are any, so every point
+  // is visible (re-fits on prop change). Pass fitBounds:false to keep an
+  // explicit center/zoom.
+  const fitBounds = props.fitBounds ?? hasExtras;
 
   const title = props.label ? (
     <span className="flex items-center gap-2">
@@ -329,6 +356,7 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
       <ToolInset flush>
         <MapView
           theme="dark"
+          styles={MAP_STYLES}
           blank={blank}
           viewport={{ center: [lng, lat], zoom }}
           className="h-[220px] w-full overflow-hidden"

@@ -70,21 +70,24 @@ const mapArcItemSchema = z.object({
   label: z.string().optional(),
 });
 
+// Field order = positional arg order. Common props first; rare ones (blank,
+// geojson) last so a typical map needs no null padding:
+//   MapBlock(lat, lng, label, zoom, markers, routes)
 export const mapBlockSchema = z.object({
-  // Map center. Optional — omit for a whole-world view (e.g. with `geojson`).
+  // Map center (auto-fit overrides this when markers/routes are present).
   lat: z.number().optional(),
   lng: z.number().optional(),
   label: z.string().optional(),
   zoom: z.number().optional(),
+  markers: z.array(mapMarkerSchema).optional(),
+  routes: z.array(mapRouteItemSchema).optional(),
+  arcs: z.array(mapArcItemSchema).optional(),
+  fitBounds: z.boolean().optional(),
   // `blank: true` drops the street basemap for a clean data-only canvas
   // (use with `geojson` for country/region maps).
   blank: z.boolean().optional(),
   // URL to a GeoJSON file to overlay (e.g. country borders / regions).
   geojson: z.string().optional(),
-  markers: z.array(mapMarkerSchema).optional(),
-  routes: z.array(mapRouteItemSchema).optional(),
-  arcs: z.array(mapArcItemSchema).optional(),
-  fitBounds: z.boolean().optional(),
 });
 
 export const numberTickerSchema = z.object({

@@ -123,13 +123,19 @@ svc3 = Stack([TextContent("Webhooks", "small"), Tag("Degraded", null, "sm", "war
 
 const mapDemo = `root = Stack([header, map], "column", "m")
 header = Card([CardHeader("NYC Walking Tour", "3 stops with a walking route")], "clear")
-map = MapBlock(40.76, -73.975, "Midtown", 13, null, null, stops, route)
+map = MapBlock(40.76, -73.975, "Midtown", 13, stops, route)
 stops = [{"lat": 40.758, "lng": -73.9855, "label": "Times Square"}, {"lat": 40.7484, "lng": -73.9857, "label": "Empire State"}, {"lat": 40.7794, "lng": -73.9632, "label": "The Met", "popup": "1000 5th Ave"}]
 route = [{"points": [{"lat": 40.758, "lng": -73.9855}, {"lat": 40.7484, "lng": -73.9857}, {"lat": 40.7794, "lng": -73.9632}], "color": "#00bbff"}]`;
 
-const worldMap = `root = Stack([header, map], "column", "m")
-header = Card([CardHeader("World", "blank basemap + country borders (GeoJSON)")], "clear")
-map = MapBlock(null, null, null, null, true, "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_110m_admin_0_countries.geojson")`;
+const multiCityMap = `root = Stack([header, map], "column", "m")
+header = Card([CardHeader("Global Offices", "auto-fits to every location")], "clear")
+map = MapBlock(20, 0, "Global Offices", 1, offices)
+offices = [{"lat": 40.7128, "lng": -74.006, "label": "New York"}, {"lat": 51.5074, "lng": -0.1278, "label": "London"}, {"lat": 35.6762, "lng": 139.6503, "label": "Tokyo"}, {"lat": -33.8688, "lng": 151.2093, "label": "Sydney"}, {"lat": 37.7749, "lng": -122.4194, "label": "San Francisco"}]`;
+
+const placesMap = `root = Stack([header, map], "column", "m")
+header = Card([CardHeader("SF Coffee Tour", "tap a pin for the address")], "clear")
+map = MapBlock(37.78, -122.42, "San Francisco", 13, spots)
+spots = [{"lat": 37.7765, "lng": -122.3946, "label": "Sightglass", "popup": "270 7th St — pour-over"}, {"lat": 37.7857, "lng": -122.4011, "label": "Blue Bottle", "popup": "66 Mint St"}, {"lat": 37.7694, "lng": -122.4862, "label": "Andytown", "tooltip": "3655 Lawton St"}]`;
 
 const complexCharts = `root = Stack([header, row1, row2], "column", "m")
 header = Card([CardHeader("Charts", "Complex multi-series chart types")], "clear")
@@ -179,7 +185,8 @@ export const OPENUI_EXAMPLES: OpenUIExample[] = [
   { id: "profile", name: "Profile", code: profile },
   { id: "status", name: "System Status", code: systemStatus },
   { id: "charts", name: "Complex Charts", code: complexCharts },
-  { id: "map", name: "Map (directions)", code: mapDemo },
-  { id: "worldmap", name: "Map (data)", code: worldMap },
+  { id: "map", name: "Map (route)", code: mapDemo },
+  { id: "cities", name: "Map (cities)", code: multiCityMap },
+  { id: "places", name: "Map (places)", code: placesMap },
   { id: "form", name: "Form", code: formExample },
 ];
