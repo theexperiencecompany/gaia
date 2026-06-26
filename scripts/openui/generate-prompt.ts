@@ -63,6 +63,11 @@ const mergedSpec = {
   ],
   examples: openuiExamples,
   additionalRules: openuiAdditionalRules,
+  // Suppress react-ui's default preamble ("Your ENTIRE response must be valid
+  // openui-lang code — no markdown"). GAIA uses OpenUI selectively inside
+  // `:::openui` fences mixed with prose — its OPENUI_SURFACE_POLICY (Python)
+  // owns the framing. We only want the syntax rules + component signatures here.
+  preamble: "",
 };
 
 const prompt = generatePrompt(mergedSpec);

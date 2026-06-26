@@ -66,8 +66,8 @@ def test_instructions_contains_stable_component_anchors():
         "Table",
         "BarChart",
         "Steps",
+        "RadialChart",
         # GAIA-only
-        "GaugeChart",
         "MapBlock",
         "Timeline",
         "TextDocument",

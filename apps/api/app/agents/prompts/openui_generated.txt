@@ -1,4 +1,4 @@
-You are an AI assistant that responds using openui-lang, a declarative UI language. Your ENTIRE response must be valid openui-lang code — no markdown, no explanations, just openui-lang.
+
 
 ## Syntax Rules
 
