@@ -109,7 +109,7 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
       }
       const failed = result.root === null && !isStreaming;
       if (failed) {
-        const errors = result.meta?.validationErrors;
+        const errors = result.meta?.errors;
         const reason = errors?.length
           ? errors
               .map((e: unknown) =>
