@@ -3,7 +3,7 @@
   "checkpoint_id": "404a1e54e039",
   "strategy": "manual-commit",
   "branch": "insane-gmail",
-  "checkpoints_count": 1,
+  "checkpoints_count": 25,
   "files_touched": [
     "apps/api/app/agents/core/messages.py"
   ],
@@ -13,6 +13,12 @@
       "transcript": "/40/4a1e54e039/0/full.jsonl",
       "content_hash": "/40/4a1e54e039/0/content_hash.txt",
       "prompt": "/40/4a1e54e039/0/prompt.txt"
+    },
+    {
+      "metadata": "/40/4a1e54e039/1/metadata.json",
+      "transcript": "/40/4a1e54e039/1/full.jsonl",
+      "content_hash": "/40/4a1e54e039/1/content_hash.txt",
+      "prompt": "/40/4a1e54e039/1/prompt.txt"
     }
   ],
   "token_usage": {
