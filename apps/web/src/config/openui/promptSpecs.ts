@@ -71,10 +71,16 @@ const mapArcItemSchema = z.object({
 });
 
 export const mapBlockSchema = z.object({
-  lat: z.number(),
-  lng: z.number(),
+  // Map center. Optional — omit for a whole-world view (e.g. with `geojson`).
+  lat: z.number().optional(),
+  lng: z.number().optional(),
   label: z.string().optional(),
   zoom: z.number().optional(),
+  // `blank: true` drops the street basemap for a clean data-only canvas
+  // (use with `geojson` for country/region maps).
+  blank: z.boolean().optional(),
+  // URL to a GeoJSON file to overlay (e.g. country borders / regions).
+  geojson: z.string().optional(),
   markers: z.array(mapMarkerSchema).optional(),
   routes: z.array(mapRouteItemSchema).optional(),
   arcs: z.array(mapArcItemSchema).optional(),
@@ -201,7 +207,12 @@ export const textDocumentSchema = z.object({
 export const GAIA_COMPONENT_SPECS = [
   {
     name: "MapBlock",
-    description: "OpenStreetMap embed for a lat/lng location.",
+    description:
+      "Interactive map. Center it with lat/lng (+ zoom). Add `markers` (pins with " +
+      "label/popup/tooltip) for points of interest, `routes` (ordered point lists) for " +
+      "directions/paths, and `arcs` (from→to) for connections (e.g. flights). For a " +
+      "data/region map use `blank: true` with a `geojson` URL (country borders, regions). " +
+      "Auto-fits to your markers/routes; pass `fitBounds: false` to keep an explicit zoom.",
     props: mapBlockSchema,
   },
   {

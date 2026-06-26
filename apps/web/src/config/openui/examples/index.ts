@@ -122,8 +122,14 @@ svc2 = Stack([TextContent("Database", "small"), Tag("Operational", null, "sm", "
 svc3 = Stack([TextContent("Webhooks", "small"), Tag("Degraded", null, "sm", "warning")], "row", "s", "center", "between")`;
 
 const mapDemo = `root = Stack([header, map], "column", "m")
-header = Card([CardHeader("Office Location", "Where the team works")], "clear")
-map = MapBlock(37.7749, -122.4194, "San Francisco HQ", 12)`;
+header = Card([CardHeader("NYC Walking Tour", "3 stops with a walking route")], "clear")
+map = MapBlock(40.76, -73.975, "Midtown", 13, null, null, stops, route)
+stops = [{"lat": 40.758, "lng": -73.9855, "label": "Times Square"}, {"lat": 40.7484, "lng": -73.9857, "label": "Empire State"}, {"lat": 40.7794, "lng": -73.9632, "label": "The Met", "popup": "1000 5th Ave"}]
+route = [{"points": [{"lat": 40.758, "lng": -73.9855}, {"lat": 40.7484, "lng": -73.9857}, {"lat": 40.7794, "lng": -73.9632}], "color": "#00bbff"}]`;
+
+const worldMap = `root = Stack([header, map], "column", "m")
+header = Card([CardHeader("World", "blank basemap + country borders (GeoJSON)")], "clear")
+map = MapBlock(null, null, null, null, true, "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_110m_admin_0_countries.geojson")`;
 
 const complexCharts = `root = Stack([header, row1, row2], "column", "m")
 header = Card([CardHeader("Charts", "Complex multi-series chart types")], "clear")
@@ -173,6 +179,7 @@ export const OPENUI_EXAMPLES: OpenUIExample[] = [
   { id: "profile", name: "Profile", code: profile },
   { id: "status", name: "System Status", code: systemStatus },
   { id: "charts", name: "Complex Charts", code: complexCharts },
-  { id: "map", name: "Map", code: mapDemo },
+  { id: "map", name: "Map (directions)", code: mapDemo },
+  { id: "worldmap", name: "Map (data)", code: worldMap },
   { id: "form", name: "Form", code: formExample },
 ];

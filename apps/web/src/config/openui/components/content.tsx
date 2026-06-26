@@ -13,6 +13,7 @@ import type { z } from "zod";
 import {
   MapArc,
   type MapArcDatum,
+  MapGeoJSON,
   MapMarker,
   MapRoute,
   Map as MapView,
@@ -277,8 +278,12 @@ function MapAutoFit({
 }
 
 export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
-  const { lat, lng, markers, routes, arcs } = props;
-  const zoom = props.zoom ?? 14;
+  const { markers, routes, arcs, blank, geojson } = props;
+  // Center is optional — default to a whole-world view (handy for `geojson`
+  // country/region maps that don't focus on one spot).
+  const lat = props.lat ?? 20;
+  const lng = props.lng ?? 0;
+  const zoom = props.zoom ?? (blank || geojson ? 1.4 : 14);
 
   const hasExtras =
     (markers?.length ?? 0) > 0 ||
@@ -316,18 +321,21 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
       {props.label}
     </span>
   ) : undefined;
-  const subtitle = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  const subtitle =
+    props.lat != null ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : undefined;
 
   return (
     <ToolCard size="standard" title={title} subtitle={subtitle}>
       <ToolInset flush>
         <MapView
           theme="dark"
+          blank={blank}
           viewport={{ center: [lng, lat], zoom }}
           className="h-[220px] w-full overflow-hidden"
           attributionControl={false}
         >
-          {!hasExtras && (
+          {geojson && <MapGeoJSON data={geojson} />}
+          {!hasExtras && !blank && !geojson && (
             <MapMarker longitude={lng} latitude={lat}>
               <MarkerContent />
             </MapMarker>
