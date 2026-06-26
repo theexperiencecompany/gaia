@@ -118,6 +118,13 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
           isStreaming={isStreaming}
           onAction={handleAction}
           onParseResult={handleParseResult}
+          onError={(errors) => {
+            // Surface structured validation errors so an empty render is never
+            // silent (the previous parser dropped invalid trees with no signal).
+            if (errors.length > 0) {
+              console.error("[OpenUIRenderer] validation errors:", errors);
+            }
+          }}
         />
       </div>
     </>

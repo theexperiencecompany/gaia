@@ -1,8 +1,10 @@
 "use client";
 
+import { ThemeProvider } from "@openuidev/react-ui";
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 
+import { gaiaOpenUITheme } from "@/config/openui/theme";
 import { HeroUIProvider } from "@/layouts/HeroUIProvider";
 
 const LoginModal = dynamic(
@@ -25,7 +27,12 @@ const LoginModal = dynamic(
 export default function RootProviders({ children }: { children: ReactNode }) {
   return (
     <HeroUIProvider>
-      {children}
+      {/* OpenUI (`@openuidev/react-ui`) components render inside chat and the
+          dev playground; ThemeProvider injects the GAIA-mapped `--openui-*`
+          tokens and provides the theme context they require. */}
+      <ThemeProvider mode="dark" darkTheme={gaiaOpenUITheme}>
+        {children}
+      </ThemeProvider>
       <LoginModal />
     </HeroUIProvider>
   );
