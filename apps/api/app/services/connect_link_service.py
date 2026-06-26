@@ -24,7 +24,7 @@ import secrets
 from app.config.settings import settings
 from app.constants.auth import CONNECT_LINK_CODE_BYTES, CONNECT_LINK_TTL_MINUTES
 from app.constants.cache import CONNECT_LINK_PREFIX
-from app.db.redis import get_and_delete_cache, redis_cache, set_cache
+from app.db.redis import get_and_delete_cache, set_cache
 from shared.py.wide_events import log
 
 CONNECT_LINK_FRONTEND_PATH = "/connect"
@@ -38,20 +38,20 @@ async def build_connect_link_url(user_id: str, integration_id: str) -> str | Non
     """Mint a single-use connect link pointing at the frontend ``/connect/<code>``.
 
     Stores the ``(user_id, integration_id)`` binding in Redis under a fresh
-    high-entropy code and returns the frontend URL. Returns ``None`` when Redis
-    is unavailable (dev/outage) so callers degrade to a generic connect prompt
-    instead of handing out a link that can't resolve.
+    high-entropy code and returns the frontend URL. Returns ``None`` when the
+    binding can't be stored (Redis unavailable/failed) so callers degrade to a
+    generic connect prompt instead of handing out a link that can't resolve.
     """
-    if not redis_cache.redis:
-        log.warning("connect-link: Redis unavailable — falling back to generic connect prompt")
-        return None
-
     code = secrets.token_urlsafe(CONNECT_LINK_CODE_BYTES)
-    await set_cache(
+    stored = await set_cache(
         _code_key(code),
         {"user_id": user_id, "integration_id": integration_id},
         ttl=CONNECT_LINK_TTL_MINUTES * 60,
     )
+    if not stored:
+        log.warning("connect-link: could not store code (Redis unavailable) — generic prompt")
+        return None
+
     base = settings.FRONTEND_URL.rstrip("/")
     return f"{base}{CONNECT_LINK_FRONTEND_PATH}/{code}"
 
