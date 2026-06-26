@@ -220,6 +220,47 @@ function stashTables(text: string, hold: (html: string) => string): string {
   return out.join("\n");
 }
 
+/** A blockquote longer than this many lines or characters becomes collapsible. */
+const TELEGRAM_BLOCKQUOTE_EXPANDABLE_LINES = 4;
+const TELEGRAM_BLOCKQUOTE_EXPANDABLE_CHARS = 300;
+
+/**
+ * Wraps runs of consecutive blockquote lines (already HTML-escaped, so the
+ * marker reads `&gt;`) into Telegram `<blockquote>` tags, dropping the marker.
+ * Long quotes use `<blockquote expandable>` so the client collapses them. Inner
+ * inline emphasis is applied by the pass that runs after this one.
+ */
+function wrapTelegramBlockquotes(text: string): string {
+  // CommonMark allows up to 3 spaces of indentation before the `>` marker.
+  const QUOTE_MARKER = /^[ \t]{0,3}&gt;[ \t]?/;
+  const isQuote = (line: string): boolean => QUOTE_MARKER.test(line);
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (!isQuote(lines[i] ?? "")) {
+      out.push(lines[i] ?? "");
+      i += 1;
+      continue;
+    }
+    const quoted: string[] = [];
+    while (i < lines.length && isQuote(lines[i] ?? "")) {
+      quoted.push((lines[i] ?? "").replace(QUOTE_MARKER, ""));
+      i += 1;
+    }
+    const inner = quoted.join("\n");
+    const expandable =
+      quoted.length > TELEGRAM_BLOCKQUOTE_EXPANDABLE_LINES ||
+      inner.length > TELEGRAM_BLOCKQUOTE_EXPANDABLE_CHARS;
+    out.push(
+      expandable
+        ? `<blockquote expandable>${inner}</blockquote>`
+        : `<blockquote>${inner}</blockquote>`,
+    );
+  }
+  return out.join("\n");
+}
+
 /**
  * Converts the CommonMark the agent emits for Telegram into Telegram's **HTML**
  * parse mode (https://core.telegram.org/bots/api#html-style).
@@ -272,8 +313,13 @@ export function convertToTelegramHtml(text: string): string {
     // Block structure (line-anchored). `>` is `&gt;` now, after escaping.
     .replaceAll(/^(\s*)[-*+][ \t]+/gm, "$1• ") // bullets → •
     .replaceAll(/^#{1,6}[ \t]+(.+)$/gm, "<b>$1</b>") // headings → bold
-    .replaceAll(/^&gt;[ \t]?/gm, "") // blockquote → strip marker
-    .replaceAll(/^[-_]{3,}$/gm, "") // horizontal rule → remove
+    .replaceAll(/^[-_]{3,}$/gm, ""); // horizontal rule → remove
+
+  // Blockquotes → <blockquote>/<blockquote expandable> (Telegram rich
+  // formatting), before the inline pass so emphasis inside a quote still renders.
+  out = wrapTelegramBlockquotes(out);
+
+  out = out
     // Inline emphasis. Bold before italic so `**` is consumed first.
     .replaceAll(/\*\*\*([^*\n]+?)\*\*\*/g, "<b><i>$1</i></b>") // ***x***
     .replaceAll(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>") // **x**

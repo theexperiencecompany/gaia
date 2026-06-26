@@ -43,27 +43,28 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_SLACK: True,
 }
 
-# Workflow-completion notification copy. GAIA texts like a friend on WhatsApp
-# (first person, casual), not a status bar. Each entry is (title, body);
-# {title} is the workflow name and {time} the local completion time. One pair
-# is picked per run so repeats don't read like a robot.
-# Bodies stay action-agnostic on purpose: the result is delivered inline on
-# external channels (WhatsApp/Telegram) and behind "View Results" in-app, so
-# copy must never promise a specific gesture like "tap" or "come look".
+# Workflow-completion notification copy. GAIA texts like a friend (first person,
+# casual), not a status bar. Each entry is (title, body); {title} is the workflow
+# name. One pair is picked per run so repeats don't read like a robot. This is the
+# in-app (web) heads-up and it carries a "View Results" button, so bodies stay warm
+# and channel-agnostic: they never claim a specific place ("in your chat"), since a
+# web user has no external chat and reaches the result through the button.
 WORKFLOW_DONE_COPY: tuple[tuple[str, str], ...] = (
-    ("just wrapped up {title} 🙌", "all done at {time}"),
-    ("ok, {title} is done!", "finished at {time}, all yours"),
-    ("just finished {title} 🎉", "wrapped it up at {time}"),
-    ("sorted {title} for you", "all good as of {time}"),
+    ("sorted {title} for you", "it's all ready whenever you are 🙌"),
+    ("{title} is done", "had a proper look — everything's ready for you"),
+    ("just wrapped up {title}", "pulled it all together, take a peek"),
+    ("handled {title} for you", "all done end to end, give it a look"),
+    ("finished {title}", "got everything ready for you to check out"),
+    ("{title}: all set", "took care of it, here's what I found"),
 )
 
 
-def pick_workflow_done_copy(workflow_id: str, title: str, time_str: str) -> tuple[str, str]:
-    """Pick one human completion title/body, varied per run, no RNG.
+def pick_workflow_done_copy(workflow_id: str, title: str, salt: str) -> tuple[str, str]:
+    """Pick one human completion title/body, rotating per run, no RNG.
 
-    Keyed off workflow_id + time so the same workflow doesn't always read the
-    same and successive runs rotate naturally.
+    ``salt`` (a per-run value such as a timestamp) only seeds the rotation so the
+    same workflow doesn't always read identically; it is never shown to the user.
     """
-    seed = sum(ord(c) for c in f"{workflow_id}{time_str}")
-    title_tmpl, body_tmpl = WORKFLOW_DONE_COPY[seed % len(WORKFLOW_DONE_COPY)]
-    return title_tmpl.format(title=title), body_tmpl.format(time=time_str)
+    seed = sum(ord(c) for c in f"{workflow_id}{salt}")
+    title_tmpl, body = WORKFLOW_DONE_COPY[seed % len(WORKFLOW_DONE_COPY)]
+    return title_tmpl.format(title=title), body

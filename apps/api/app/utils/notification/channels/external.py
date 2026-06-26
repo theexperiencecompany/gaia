@@ -45,9 +45,13 @@ class ExternalPlatformAdapter(ChannelAdapter):
         return self.platform.value
 
     def can_handle(self, notification: NotificationRequest) -> bool:
-        # External adapters are auto-injected by the orchestrator regardless of
-        # the explicit channel list. The orchestrator's preference check and the
-        # platform-link lookup in ``publish_outbound_message`` are the real guards.
+        """Always claim the notification; the real guards live downstream.
+
+        External adapters are auto-injected by the orchestrator regardless of
+        the explicit channel list. The orchestrator's preference check and the
+        platform-link lookup in ``publish_outbound_message`` decide whether the
+        message is actually delivered.
+        """
         return True
 
     async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
@@ -57,26 +61,11 @@ class ExternalPlatformAdapter(ChannelAdapter):
         before sending — no platform-specific markdown is produced here.
         """
         content = notification.content
-        rich = content.rich_content or {}
         app_url = settings.FRONTEND_URL.rstrip("/")
         title = content.title or ""
         body = content.body or ""
-        header = _join_nonempty(f"**{title}**" if title else "", body)
+        text = _join_nonempty(f"**{title}**" if title else "", body)
 
-        # Build clean parts here: drop blank/whitespace-only entries and guard
-        # the untyped ``rich.messages`` against non-strings, so a workflow with
-        # empty result messages never emits an empty bubble. ``publish_outbound_message``
-        # also strips defensively for callers (e.g. deliver_message_to_platform)
-        # that bypass ``transform``.
-        if rich.get("type") == "workflow_execution":
-            conversation_id = rich.get("conversation_id", "")
-            footer = (
-                f"[View full results]({app_url}/c/{conversation_id})" if conversation_id else ""
-            )
-            parts = [header, *rich.get("messages", []), footer]
-            return {"parts": [p for p in parts if isinstance(p, str) and p.strip()]}
-
-        text = header
         if content.actions:
             links = [
                 f"[{action.label}]({app_url}{action.config.redirect.url})"
@@ -89,6 +78,12 @@ class ExternalPlatformAdapter(ChannelAdapter):
         return {"parts": [text]}
 
     async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
+        """Publish the rendered parts to the user's linked platform chat.
+
+        Returns a success status when the broker accepts the message, an error
+        when the publish itself fails (so retries/alerting fire), and a skip when
+        the user has no linked platform or there is nothing to send.
+        """
         parts = content.get("parts", [])
         result = await publish_outbound_message(self.platform, user_id, parts)
         if result is OutboundResult.PUBLISHED:
