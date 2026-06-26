@@ -1,4 +1,15 @@
+/* Order cascade layers so react-ui's component styles sit ABOVE Tailwind's
+   base preflight (else preflight's `*{padding:0}` zeroes react-ui card padding)
+   but BELOW GAIA's components/utilities (so GAIA still wins real conflicts). */
+@layer theme, base, openui, components, utilities;
 @import "tailwindcss";
+
+/* @openuidev/react-ui — token defaults (unlayered, vars only) + layered
+   component styles (scoped to @layer openui). Themed at runtime via
+   <ThemeProvider darkTheme={gaiaOpenUITheme}>. */
+@import "@openuidev/react-ui/defaults.css";
+@import "@openuidev/react-ui/layered/styles/index.css";
+
 @source "../../../src";
 @source "../../../../../libs/shared/ts/src/**/*.{js,ts,jsx,tsx}";
 @source inline("row-span-2 row-span-3 row-span-4");
@@ -14,6 +25,22 @@
 @custom-variant dark (&:is(.dark *));
 @plugin "./hero.ts";
 @plugin "tailwindcss-animate";
+
+/* GAIA overrides for adopted react-ui components — same @layer openui as the
+   imported react-ui styles, declared later so source order wins. */
+@layer openui {
+  /* The "clear" Card variant is a bare wrapper (e.g. section headers); it
+     should sit flush with no padding. */
+  .openui-card-clear {
+    padding: 0;
+  }
+
+  /* react-ui draws a 1px vertical "internal line" down the centre of every bar
+     (a light-mode highlight that reads as a white stripe). Remove it. */
+  .recharts-bar-rectangle line {
+    display: none;
+  }
+}
 
 @keyframes sheet-fade-in {
   from {

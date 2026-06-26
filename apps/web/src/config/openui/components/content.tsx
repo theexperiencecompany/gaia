@@ -1,4 +1,4 @@
-import { Button, Chip } from "@heroui/react";
+import { Button } from "@heroui/react";
 import {
   Location01Icon,
   MinusSignIcon,
@@ -6,25 +6,18 @@ import {
   RefreshIcon,
 } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
+import type { StyleSpecification } from "maplibre-gl";
 import * as m from "motion/react-m";
 import { useParams } from "next/navigation";
 import React from "react";
-import { z } from "zod";
-import { ChevronLeft, ChevronRight } from "@/components/shared/icons";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-  useCarousel,
-} from "@/components/ui/carousel";
+import type { z } from "zod";
 import {
   MapArc,
   type MapArcDatum,
+  MapGeoJSON,
   MapMarker,
   MapRoute,
-  Map as MapView,
+  MapView,
   MarkerContent,
   MarkerLabel,
   MarkerPopup,
@@ -33,100 +26,14 @@ import {
 } from "@/components/ui/map";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
-import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
 import { ToolCard, ToolInset } from "../primitives";
-
-// ---------------------------------------------------------------------------
-// Schemas
-// ---------------------------------------------------------------------------
-
-export const imageGallerySchema = z.object({
-  images: z.array(
-    z.object({
-      src: z.string(),
-      alt: z.string().optional(),
-      caption: z.string().optional(),
-    }),
-  ),
-  columns: z.number().int().min(1).max(6).optional(),
-  gap: z.enum(["xs", "sm", "md", "lg"]).optional(),
-  aspectRatio: z.string().optional(),
-  maxWidth: z.enum(["sm", "md", "lg", "xl", "full"]).optional(),
-});
-
-export const videoBlockSchema = z.object({
-  src: z.string(),
-  title: z.string().optional(),
-  poster: z.string().optional(),
-});
-
-export const audioPlayerSchema = z.object({
-  src: z.string(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-});
-
-const mapPointSchema = z.object({
-  lat: z.number(),
-  lng: z.number(),
-});
-
-const mapMarkerSchema = z.object({
-  lat: z.number(),
-  lng: z.number(),
-  label: z.string().optional(),
-  popup: z.string().optional(),
-  tooltip: z.string().optional(),
-});
-
-const mapRouteItemSchema = z.object({
-  points: z.array(mapPointSchema),
-  color: z.string().optional(),
-  width: z.number().optional(),
-  opacity: z.number().optional(),
-  dashArray: z.tuple([z.number(), z.number()]).optional(),
-});
-
-const mapArcItemSchema = z.object({
-  id: z.union([z.string(), z.number()]).optional(),
-  from: mapPointSchema,
-  to: mapPointSchema,
-  label: z.string().optional(),
-});
-
-export const mapBlockSchema = z.object({
-  lat: z.number(),
-  lng: z.number(),
-  label: z.string().optional(),
-  zoom: z.number().optional(),
-  markers: z.array(mapMarkerSchema).optional(),
-  routes: z.array(mapRouteItemSchema).optional(),
-  arcs: z.array(mapArcItemSchema).optional(),
-  fitBounds: z.boolean().optional(),
-});
-
-export const numberTickerSchema = z.object({
-  value: z.number(),
-  label: z.string().optional(),
-  unit: z.string().optional(),
-  duration: z.number().optional(),
-  size: z.enum(["sm", "md", "lg"]).optional(),
-});
-
-export const carouselSchema = z.object({
-  items: z.array(
-    z.object({
-      title: z.string(),
-      body: z.string().optional(),
-      image: z.string().optional(),
-      badge: z.string().optional(),
-      actions: z
-        .array(z.object({ label: z.string(), value: z.string() }))
-        .optional(),
-    }),
-  ),
-  autoPlay: z.boolean().optional(),
-});
+import {
+  audioPlayerSchema,
+  imageGallerySchema,
+  mapBlockSchema,
+  numberTickerSchema,
+  videoBlockSchema,
+} from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -162,30 +69,6 @@ function GalleryImage({
         </div>
       )}
     </m.div>
-  );
-}
-
-function CarouselDotIndicators() {
-  const { selectedIndex, scrollSnaps, scrollTo } = useCarousel();
-  if (scrollSnaps.length <= 1) return null;
-  return (
-    <div className="flex items-center justify-center gap-1.5">
-      {scrollSnaps.map((_, index) => (
-        <button
-          // biome-ignore lint/suspicious/noArrayIndexKey: scroll snap dots have no stable identifier
-          key={index}
-          type="button"
-          aria-label={`Go to slide ${index + 1}`}
-          onClick={() => scrollTo(index)}
-          className={[
-            "rounded-full transition-all duration-200",
-            index === selectedIndex
-              ? "w-2 h-2 bg-zinc-300"
-              : "w-1.5 h-1.5 bg-zinc-600 hover:bg-zinc-500",
-          ].join(" ")}
-        />
-      ))}
-    </div>
   );
 }
 
@@ -395,9 +278,36 @@ function MapAutoFit({
   return null;
 }
 
+// Basemap. maplibre's vector-tile Web Worker does not run in this app's runtime
+// (vector basemaps never load — raster does), so use CARTO's RASTER dark
+// basemap, which renders without the worker.
+const CARTO_DARK_RASTER: StyleSpecification = {
+  version: 8,
+  sources: {
+    carto: {
+      type: "raster",
+      tiles: [
+        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+        "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+      ],
+      tileSize: 256,
+      attribution: "© OpenStreetMap contributors © CARTO",
+    },
+  },
+  layers: [{ id: "carto", type: "raster", source: "carto" }],
+};
+
+const MAP_STYLES = { dark: CARTO_DARK_RASTER, light: CARTO_DARK_RASTER };
+
 export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
-  const { lat, lng, markers, routes, arcs } = props;
-  const zoom = props.zoom ?? 14;
+  const { markers, routes, arcs, blank, geojson } = props;
+  // Center is optional — default to a whole-world view (handy for `geojson`
+  // country/region maps that don't focus on one spot).
+  const lat = props.lat ?? 20;
+  const lng = props.lng ?? 0;
+  const zoom = props.zoom ?? (blank || geojson ? 1.4 : 14);
 
   const hasExtras =
     (markers?.length ?? 0) > 0 ||
@@ -427,7 +337,10 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
     [arcs],
   );
 
-  const fitBounds = props.fitBounds ?? (hasExtras && props.zoom == null);
+  // Auto-fit to all markers/routes/arcs whenever there are any, so every point
+  // is visible (re-fits on prop change). Pass fitBounds:false to keep an
+  // explicit center/zoom.
+  const fitBounds = props.fitBounds ?? hasExtras;
 
   const title = props.label ? (
     <span className="flex items-center gap-2">
@@ -435,18 +348,22 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
       {props.label}
     </span>
   ) : undefined;
-  const subtitle = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  const subtitle =
+    props.lat != null ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : undefined;
 
   return (
     <ToolCard size="standard" title={title} subtitle={subtitle}>
       <ToolInset flush>
         <MapView
           theme="dark"
+          styles={MAP_STYLES}
+          blank={blank}
           viewport={{ center: [lng, lat], zoom }}
           className="h-[220px] w-full overflow-hidden"
           attributionControl={false}
         >
-          {!hasExtras && (
+          {geojson && <MapGeoJSON data={geojson} />}
+          {!hasExtras && !blank && !geojson && (
             <MapMarker longitude={lng} latitude={lat}>
               <MarkerContent />
             </MapMarker>
@@ -523,81 +440,6 @@ export function NumberTickerView(props: z.infer<typeof numberTickerSchema>) {
   );
 }
 
-export function CarouselView(props: z.infer<typeof carouselSchema>) {
-  const handleAction = useSafeTriggerAction();
-
-  const total = props.items.length;
-
-  return (
-    <ToolCard size="full" className="max-w-(--breakpoint-sm)!">
-      <Carousel opts={{ align: "start", loop: true }}>
-        <CarouselContent className="-ml-0">
-          {props.items.map((item) => (
-            <CarouselItem key={item.title} className="pl-0 h-full">
-              <ToolInset className="min-h-full flex flex-col p-4">
-                {item.image && (
-                  <>
-                    {/* biome-ignore lint/performance/noImgElement: external user-provided URLs */}
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      className="w-full rounded-2xl object-cover h-40 mb-3"
-                    />
-                  </>
-                )}
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-zinc-100">
-                    {item.title}
-                  </p>
-                  {item.badge && (
-                    <Chip
-                      size="sm"
-                      variant="flat"
-                      className="shrink-0 text-xs text-zinc-400"
-                    >
-                      {item.badge}
-                    </Chip>
-                  )}
-                </div>
-                {item.body && (
-                  <p className="text-xs text-zinc-400 mt-1 flex-1">
-                    {item.body}
-                  </p>
-                )}
-                {item.actions && item.actions.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-auto pt-3">
-                    {item.actions.map((action) => (
-                      <Button
-                        key={action.value}
-                        size="sm"
-                        variant="flat"
-                        onPress={() => handleAction(action.value)}
-                      >
-                        {action.label}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-              </ToolInset>
-            </CarouselItem>
-          ))}
-        </CarouselContent>
-        {total > 1 && (
-          <div className="flex items-center justify-between mt-3 px-1">
-            <CarouselPrevious className="rounded-full bg-zinc-700 hover:bg-zinc-600 border-none p-1.5 disabled:opacity-40 transition-colors cursor-pointer">
-              <ChevronLeft className="w-4 h-4 text-zinc-300" />
-            </CarouselPrevious>
-            <CarouselDotIndicators />
-            <CarouselNext className="rounded-full bg-zinc-700 hover:bg-zinc-600 border-none p-1.5 disabled:opacity-40 transition-colors cursor-pointer">
-              <ChevronRight className="w-4 h-4 text-zinc-300" />
-            </CarouselNext>
-          </div>
-        )}
-      </Carousel>
-    </ToolCard>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Component definitions
 // ---------------------------------------------------------------------------
@@ -635,11 +477,4 @@ export const numberTickerDef = defineComponent({
   description: "Animated count-up number display.",
   props: numberTickerSchema,
   component: ({ props }) => React.createElement(NumberTickerView, props),
-});
-
-export const carouselDef = defineComponent({
-  name: "Carousel",
-  description: "Swipeable card carousel.",
-  props: carouselSchema,
-  component: ({ props }) => React.createElement(CarouselView, props),
 });

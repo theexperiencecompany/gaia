@@ -1,6 +1,7 @@
 import { Tab, Tabs } from "@heroui/tabs";
 import dynamic from "next/dynamic";
 import type React from "react";
+import type { CSSProperties } from "react";
 
 // Dynamic imports for Mermaid-related components
 const FlowchartPreview = dynamic(() => import("./FlowchartPreview"), {
@@ -23,8 +24,8 @@ const MermaidCode = dynamic(() => import("./MermaidCode"), {
 
 interface SyntaxHighlighterProps {
   language?: string;
-  style?: { [key: string]: unknown };
-  customStyle?: { [key: string]: unknown };
+  style?: CSSProperties;
+  customStyle?: CSSProperties;
   className?: string;
   showLineNumbers?: boolean;
   startingLineNumber?: number;

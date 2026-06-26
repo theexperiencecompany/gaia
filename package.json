@@ -29,6 +29,7 @@
     "quality:type-coverage:shared": "type-coverage --project libs/shared/ts/tsconfig.json --at-least 99 --ignore-catch --ignore-unread",
     "quality:type-coverage:web": "type-coverage --project apps/web/tsconfig.json --at-least 98 --ignore-catch --ignore-unread",
     "quality:types-location": "node scripts/ci/check-types-location.mjs",
+    "openui:gen-prompt": "tsx scripts/openui/generate-prompt.ts",
     "tokens": "pnpm run tokens:export && pnpm run tokens:build",
     "tokens:build": "style-dictionary build",
     "tokens:check": "design.md export --format dtcg DESIGN.md | diff - config/design.tokens.json",
@@ -112,7 +113,8 @@
     },
     "peerDependencyRules": {
       "allowedVersions": {
-        "react-remove-scroll>@types/react": "^19.0.0"
+        "react-remove-scroll>@types/react": "^19.0.0",
+        "zustand": "5"
       }
     },
     "patchedDependencies": {
