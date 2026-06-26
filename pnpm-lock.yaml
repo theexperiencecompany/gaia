@@ -299,8 +299,8 @@ importers:
         specifier: ^5.2.8
         version: 5.2.8(@types/react@19.2.14)(react-native-gesture-handler@2.30.1(react-native@0.83.2(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.2.14)(react@19.1.0))(react@19.1.0))(react-native-reanimated@4.2.3(react-native-worklets@0.7.2(@babel/core@7.29.0)(react-native@0.83.2(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.2.14)(react@19.1.0))(react@19.1.0))(react-native@0.83.2(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.2.14)(react@19.1.0))(react@19.1.0))(react-native@0.83.2(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
       '@openuidev/react-lang':
-        specifier: ^0.1.3
-        version: 0.1.3(react@19.1.0)
+        specifier: ^0.2.6
+        version: 0.2.6(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(react@19.1.0)(zod@4.3.6)
       '@react-native-async-storage/async-storage':
         specifier: ^2.1.2
         version: 2.2.0(react-native@0.83.2(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.2.14)(react@19.1.0))
@@ -812,9 +812,6 @@ importers:
       dompurify:
         specifier: ^3.2.6
         version: 3.3.3
-      embla-carousel-react:
-        specifier: ^8.6.0
-        version: 8.6.0(react@19.1.0)
       emblor:
         specifier: ^1.4.8
         version: 1.4.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -5777,11 +5774,6 @@ packages:
     peerDependencies:
       react: 19.1.0
       zustand: ^4.5.5
-
-  '@openuidev/react-lang@0.1.3':
-    resolution: {integrity: sha512-+/sVNVOFFzmnAsR8y+5W/la5U485OGXPFNtgY7wu0XdBdKSkbljNUGBA1XiHkzcxSVoATWOSy9eQ/J4UeHSPuQ==}
-    peerDependencies:
-      react: 19.1.0
 
   '@openuidev/react-lang@0.2.6':
     resolution: {integrity: sha512-5lfnMUiUyTQli0fPFwQtUhxV0B5T/PJntgZzUb0IXiJSyWm+FNpYOIozJxim0xxmqmuYwmk1geLTNcjzYIS6mA==}
@@ -11960,19 +11952,6 @@ packages:
     resolution: {integrity: sha512-zbYtGPYUI7PzqLAzkk21Rk6j67WN0hxn0Mq/njErZo1d0HSf33is4f8ICI5fMLy5vYe0JtCtM5sYunNOaochSQ==}
     engines: {node: '>= 12.20.55'}
     hasBin: true
-
-  embla-carousel-react@8.6.0:
-    resolution: {integrity: sha512-0/PjqU7geVmo6F734pmPqpyHqiM99olvyecY7zdweCw+6tKEXnrE90pBiBbMMU8s5tICemzpQ3hi5EpxzGW+JA==}
-    peerDependencies:
-      react: 19.1.0
-
-  embla-carousel-reactive-utils@8.6.0:
-    resolution: {integrity: sha512-fMVUDUEx0/uIEDM0Mz3dHznDhfX+znCCDCeIophYb1QGVM7YThSWX+wz11zlYwWFOr74b4QLGg0hrGPJeG2s4A==}
-    peerDependencies:
-      embla-carousel: 8.6.0
-
-  embla-carousel@8.6.0:
-    resolution: {integrity: sha512-SjWyZBHJPbqxHOzckOfo8lHisEaJWmwd23XppYFYVh10bU66/Pn5tkVkbkCMZVdbUE5eTCI2nD8OyIP4Z+uwkA==}
 
   emblor@1.4.8:
     resolution: {integrity: sha512-Vqtz4Gepa7CIkmplQ+kvJnsSZJ4sAyHvQqqX2iCmgoRo5iRQFxr+5FJkk6QuLVNH5vrbBZEYxg7sMZuDCnQ/PQ==}
@@ -25929,11 +25908,6 @@ snapshots:
       react: 19.1.0
       zustand: 5.0.12(@types/react@19.2.14)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0))
 
-  '@openuidev/react-lang@0.1.3(react@19.1.0)':
-    dependencies:
-      react: 19.1.0
-      zod: 4.3.6
-
   '@openuidev/react-lang@0.2.6(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(react@19.1.0)(zod@4.3.6)':
     dependencies:
       '@openuidev/lang-core': 0.2.6(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(zod@4.3.6)
@@ -33425,18 +33399,6 @@ snapshots:
       extract-zip: 2.0.1
     transitivePeerDependencies:
       - supports-color
-
-  embla-carousel-react@8.6.0(react@19.1.0):
-    dependencies:
-      embla-carousel: 8.6.0
-      embla-carousel-reactive-utils: 8.6.0(embla-carousel@8.6.0)
-      react: 19.1.0
-
-  embla-carousel-reactive-utils@8.6.0(embla-carousel@8.6.0):
-    dependencies:
-      embla-carousel: 8.6.0
-
-  embla-carousel@8.6.0: {}
 
   emblor@1.4.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
