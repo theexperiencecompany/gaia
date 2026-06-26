@@ -74,7 +74,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
           isLoading={isLoading}
           syntaxHighlighterProps={{
             ...props,
-            style: props.style as { [key: string]: unknown },
+            style: props.style,
           }}
         >
           {children}

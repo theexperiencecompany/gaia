@@ -51,7 +51,11 @@ const MermaidCode: React.FC<MermaidCodeProps> = ({
   } | null>(null);
 
   React.useEffect(() => {
-    loadVscDarkPlusTheme().then(setTheme);
+    loadVscDarkPlusTheme().then((mod) =>
+      // The style module is loosely typed upstream; assert the runtime shape
+      // (a token → CSSProperties map) without changing the value passed.
+      setTheme(mod as unknown as { [key: string]: CSSProperties }),
+    );
   }, []);
 
   if (!theme) {

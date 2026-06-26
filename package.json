@@ -112,7 +112,8 @@
     },
     "peerDependencyRules": {
       "allowedVersions": {
-        "react-remove-scroll>@types/react": "^19.0.0"
+        "react-remove-scroll>@types/react": "^19.0.0",
+        "zustand": "5"
       }
     },
     "patchedDependencies": {
