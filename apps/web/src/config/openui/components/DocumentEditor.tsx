@@ -140,6 +140,8 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       }),
     ],
     content: body,
+    // Defer first render to the client to avoid SSR hydration mismatches.
+    immediatelyRender: false,
     editorProps: {
       attributes: {
         class:
