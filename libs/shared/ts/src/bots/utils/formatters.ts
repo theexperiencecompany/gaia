@@ -232,7 +232,9 @@ const TELEGRAM_BLOCKQUOTE_EXPANDABLE_CHARS = 300;
  * inline emphasis is applied by the pass that runs after this one.
  */
 function wrapTelegramBlockquotes(text: string): string {
-  const isQuote = (line: string): boolean => /^&gt;[ \t]?/.test(line);
+  // CommonMark allows up to 3 spaces of indentation before the `>` marker.
+  const QUOTE_MARKER = /^[ \t]{0,3}&gt;[ \t]?/;
+  const isQuote = (line: string): boolean => QUOTE_MARKER.test(line);
   const lines = text.split("\n");
   const out: string[] = [];
   let i = 0;
@@ -244,7 +246,7 @@ function wrapTelegramBlockquotes(text: string): string {
     }
     const quoted: string[] = [];
     while (i < lines.length && isQuote(lines[i] ?? "")) {
-      quoted.push((lines[i] ?? "").replace(/^&gt;[ \t]?/, ""));
+      quoted.push((lines[i] ?? "").replace(QUOTE_MARKER, ""));
       i += 1;
     }
     const inner = quoted.join("\n");
