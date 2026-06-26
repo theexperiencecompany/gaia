@@ -92,6 +92,7 @@ export default function LinkPlatformPage() {
   // Celebrate a successful link with a quick confetti burst.
   useEffect(() => {
     if (!isLinked) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const defaults = {
       spread: 70,
       ticks: 90,

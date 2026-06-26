@@ -21,6 +21,7 @@ from app.models.bot_models import (
     CreateLinkTokenRequest,
     CreateLinkTokenResponse,
     IntegrationInfo,
+    LinkedUsersResponse,
     ResetSessionRequest,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
@@ -386,6 +387,7 @@ async def check_auth_status(
 
 @router.get(
     "/linked-users/{platform}",
+    response_model=LinkedUsersResponse,
     status_code=200,
     summary="List Linked Platform Users",
     description="List platform_user_ids of accounts linked to a platform (bots use this to pre-warm DM caches).",
@@ -398,7 +400,7 @@ async def list_linked_users(request: Request, platform: str) -> JSONResponse:
         raise HTTPException(status_code=400, detail="Invalid platform")
     ids = await PlatformLinkService.list_platform_user_ids(platform)
     log.set(outcome="success", linked_count=len(ids))
-    return JSONResponse(content={"platform_user_ids": ids})
+    return JSONResponse(content=LinkedUsersResponse(platform_user_ids=ids).model_dump())
 
 
 @router.get(

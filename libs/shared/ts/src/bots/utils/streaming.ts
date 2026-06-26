@@ -338,6 +338,9 @@ export async function handleStreamingChat(
   // Latency + high-cardinality observability for the chat pipeline. user_hash
   // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
   const userHash = hashLogIdentifier(request.platformUserId);
+  // channelId can be a raw PII identifier (e.g. the WhatsApp phone/waId), so it
+  // is hashed like user_hash before it reaches the logs.
+  const channelHash = hashLogIdentifier(request.channelId);
   let firstChunkMs: number | null = null;
   let chunkCount = 0;
   let conversationId = "";
@@ -345,7 +348,7 @@ export async function handleStreamingChat(
   logger.info("chat_stream_started", {
     platform: request.platform,
     user_hash: userHash,
-    channel_id: request.channelId,
+    channel_hash: channelHash,
     message_length: request.message.length,
     has_files: Boolean(request.fileIds?.length || request.fileData?.length),
     streaming_enabled: options.streaming,
@@ -375,7 +378,7 @@ export async function handleStreamingChat(
     logger.error("chat_stream_failed", {
       platform: request.platform,
       user_hash: userHash,
-      channel_id: request.channelId,
+      channel_hash: channelHash,
       duration_ms: Date.now() - startMs,
       ttfb_ms: firstChunkMs,
       chunk_count: chunkCount,
@@ -406,7 +409,7 @@ export async function handleStreamingChat(
           logger.info("chat_stream_first_chunk", {
             platform: request.platform,
             user_hash: userHash,
-            channel_id: request.channelId,
+            channel_hash: channelHash,
             ttfb_ms: firstChunkMs,
           });
         }
@@ -436,7 +439,7 @@ export async function handleStreamingChat(
       logger.info("chat_stream_completed", {
         platform: request.platform,
         user_hash: userHash,
-        channel_id: request.channelId,
+        channel_hash: channelHash,
         total_ms: Date.now() - startMs,
         ttfb_ms: firstChunkMs,
         response_length: responseLength,

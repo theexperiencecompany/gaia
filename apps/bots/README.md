@@ -24,7 +24,7 @@ platform needs when you install the bot into a new workspace/server.
 
 **Invite the bot** with both scopes — `bot` **and** `applications.commands`:
 
-```
+```text
 https://discord.com/oauth2/authorize?client_id=<CLIENT_ID>&scope=bot+applications.commands&permissions=2147568640
 ```
 
@@ -33,7 +33,7 @@ Embed Links, Read Message History, Use Application Commands.
 
 > Run `pnpm --filter @gaia/bot-discord deploy-commands` after adding/renaming a
 > command so the slash commands register.
-
+>
 > **Known gotcha:** a bot only receives **DM** `MESSAGE_CREATE` over the gateway
 > for an established bot↔user DM relationship. If DMs aren't received despite
 > correct intents (slash commands still work), the DM channel relationship is the

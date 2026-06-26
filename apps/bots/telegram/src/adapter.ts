@@ -45,7 +45,7 @@ import {
   sanitizeErrorForLog,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
-import { Bot, type Context, InputFile } from "grammy";
+import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
 /** Telegram's sendPhoto byte cap; larger images are sent as documents. */
 const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
@@ -55,6 +55,24 @@ const TELEGRAM_CAPTION_MAX_CHARS = 1024;
 
 /** Telegram clears the "typing…" chat action after ~5s; refresh on that cadence. */
 const TELEGRAM_TYPING_REFRESH_INTERVAL_MS = 5000;
+
+/**
+ * True when Telegram rejected a message because of its HTML markup — a 400 whose
+ * text mentions entity/tag parsing. Network, rate-limit (429), and server (5xx)
+ * failures do not match, so the caller re-throws them instead of pointlessly
+ * resending as plain text over a broken connection. grammY carries the Telegram
+ * reason in `GrammyError.description`; other throwers put it in `message`.
+ */
+function isTelegramHtmlParseError(error: unknown): boolean {
+  if (error instanceof GrammyError) {
+    if (error.error_code !== 400) return false;
+    return /can't parse|parse entities|start tag|end tag|entities/i.test(
+      error.description,
+    );
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /can't parse|parse entities|start tag|end tag|entities/i.test(message);
+}
 
 /**
  * Telegram-specific implementation of the GAIA bot adapter.
@@ -377,6 +395,10 @@ export class TelegramAdapter extends BaseBotAdapter {
     try {
       return await send(html, { parse_mode: "HTML" });
     } catch (error) {
+      // Only recover from genuine HTML parse rejections. Network timeouts, 429
+      // rate limits, and 5xx errors must re-throw so the normal retry/failure
+      // path handles them instead of hammering a broken connection with a resend.
+      if (!isTelegramHtmlParseError(error)) throw error;
       // Telegram rejected the HTML (usually an unbalanced entity). Recover by
       // sending plain text, but log it — silent fallback hides markdown bugs.
       this.adapterLogger.warn("telegram_html_parse_fallback", {

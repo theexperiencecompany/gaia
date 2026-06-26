@@ -49,11 +49,16 @@ export function extractDiscordMedia(
   return null;
 }
 
+/** How long to wait for a Discord CDN download before aborting. */
+const ATTACHMENT_DOWNLOAD_TIMEOUT_MS = 30_000;
+
 /** Downloads a Discord attachment from its public CDN URL. */
 export async function downloadDiscordAttachment(
   url: string,
 ): Promise<Uint8Array> {
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(ATTACHMENT_DOWNLOAD_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw Object.assign(
       new Error(`Discord attachment download failed (${res.status})`),

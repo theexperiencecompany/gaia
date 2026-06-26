@@ -30,8 +30,8 @@ repos:
       - id: outbound-topology-parity
         name: Outbound topology parity (Python <-> TypeScript)
         language: system
-        entry: python3 scripts/check_outbound_topology_parity.py
-        files: ^(apps/api/app/models/chat_models\.py|libs/shared/ts/src/bots/consumer/topology\.ts)$
+        entry: python3 apps/api/scripts/check_outbound_topology_parity.py
+        files: ^(apps/api/(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)|libs/shared/ts/src/bots/consumer/topology\.ts)$
         pass_filenames: false
         priority: 0
 

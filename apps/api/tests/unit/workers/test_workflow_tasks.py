@@ -971,7 +971,7 @@ class TestExecuteWorkflowAsChat:
 class TestWorkflowNotificationSenders:
     """Tests for the workflow completion/failure notification senders."""
 
-    async def test_completion_notification_is_inapp_only(self):
+    async def test_completion_notification_is_inapp_only(self) -> None:
         """send_workflow_completion_notification fires a human, in-app-only badge.
 
         The result itself is delivered to the user's chat as real messages, so the

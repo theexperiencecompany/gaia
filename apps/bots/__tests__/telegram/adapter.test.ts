@@ -55,6 +55,16 @@ const mockBotInstance = {
 
 vi.mock("grammy", () => ({
   Bot: vi.fn().mockImplementation(() => mockBotInstance),
+  GrammyError: class GrammyError extends Error {
+    constructor(
+      message: string,
+      public error_code: number,
+      public description: string,
+    ) {
+      super(message);
+      this.name = "GrammyError";
+    }
+  },
 }));
 
 vi.mock("@grammyjs/types", () => ({}));

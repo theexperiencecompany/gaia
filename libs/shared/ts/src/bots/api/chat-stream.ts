@@ -225,7 +225,7 @@ async function streamChatOnce(
               }
               if (data.text) {
                 fullText += data.text;
-                onChunk(data.text);
+                await onChunk(data.text);
               }
               if (data.done) {
                 finished = true;

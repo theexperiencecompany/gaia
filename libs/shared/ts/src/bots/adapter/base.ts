@@ -501,10 +501,18 @@ export abstract class BaseBotAdapter {
    */
   protected async shouldSendWelcome(userId: string): Promise<boolean> {
     if (this.welcomedUsers.has(userId)) return false;
+    // Mark in-flight before the await so two concurrent first messages can't
+    // both pass the check and send duplicate welcomes. Cleared again whenever
+    // the user turns out to be authenticated or the check fails.
+    this.welcomedUsers.add(userId);
     try {
       const status = await this.gaia.checkAuthStatus(this.platform, userId);
-      if (status.authenticated) return false;
+      if (status.authenticated) {
+        this.welcomedUsers.delete(userId);
+        return false;
+      }
     } catch (error) {
+      this.welcomedUsers.delete(userId);
       this.logger.error(
         "welcome_auth_check_failed",
         { user_id: userId },
@@ -512,7 +520,6 @@ export abstract class BaseBotAdapter {
       );
       return false;
     }
-    this.welcomedUsers.add(userId);
     return true;
   }
 
