@@ -1,32 +1,8 @@
 import { Avatar, Progress } from "@heroui/react";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
-import { z } from "zod";
-
-// ---------------------------------------------------------------------------
-// Schemas
-// ---------------------------------------------------------------------------
-
-export const progressSchema = z.object({
-  value: z.number(),
-  max: z.number().optional(),
-  color: z
-    .enum(["default", "primary", "success", "warning", "danger"])
-    .optional(),
-  label: z.string().optional(),
-  showValue: z.boolean().optional(),
-  width: z.enum(["sm", "md", "lg", "full"]).optional(),
-});
-
-export const avatarSchema = z.object({
-  name: z.string(),
-  initials: z.string().optional(),
-  image: z.string().optional(),
-  color: z
-    .enum(["primary", "success", "warning", "danger", "default"])
-    .optional(),
-  showName: z.boolean().optional(),
-});
+import type { z } from "zod";
+import { avatarSchema, progressSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // Views

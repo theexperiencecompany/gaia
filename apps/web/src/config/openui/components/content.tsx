@@ -9,7 +9,7 @@ import { defineComponent } from "@openuidev/react-lang";
 import * as m from "motion/react-m";
 import { useParams } from "next/navigation";
 import React from "react";
-import { z } from "zod";
+import type { z } from "zod";
 import {
   MapArc,
   type MapArcDatum,
@@ -25,83 +25,13 @@ import {
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 import { ToolCard, ToolInset } from "../primitives";
-
-// ---------------------------------------------------------------------------
-// Schemas
-// ---------------------------------------------------------------------------
-
-export const imageGallerySchema = z.object({
-  images: z.array(
-    z.object({
-      src: z.string(),
-      alt: z.string().optional(),
-      caption: z.string().optional(),
-    }),
-  ),
-  columns: z.number().int().min(1).max(6).optional(),
-  gap: z.enum(["xs", "sm", "md", "lg"]).optional(),
-  aspectRatio: z.string().optional(),
-  maxWidth: z.enum(["sm", "md", "lg", "xl", "full"]).optional(),
-});
-
-export const videoBlockSchema = z.object({
-  src: z.string(),
-  title: z.string().optional(),
-  poster: z.string().optional(),
-});
-
-export const audioPlayerSchema = z.object({
-  src: z.string(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-});
-
-const mapPointSchema = z.object({
-  lat: z.number(),
-  lng: z.number(),
-});
-
-const mapMarkerSchema = z.object({
-  lat: z.number(),
-  lng: z.number(),
-  label: z.string().optional(),
-  popup: z.string().optional(),
-  tooltip: z.string().optional(),
-});
-
-const mapRouteItemSchema = z.object({
-  points: z.array(mapPointSchema),
-  color: z.string().optional(),
-  width: z.number().optional(),
-  opacity: z.number().optional(),
-  dashArray: z.tuple([z.number(), z.number()]).optional(),
-});
-
-const mapArcItemSchema = z.object({
-  id: z.union([z.string(), z.number()]).optional(),
-  from: mapPointSchema,
-  to: mapPointSchema,
-  label: z.string().optional(),
-});
-
-export const mapBlockSchema = z.object({
-  lat: z.number(),
-  lng: z.number(),
-  label: z.string().optional(),
-  zoom: z.number().optional(),
-  markers: z.array(mapMarkerSchema).optional(),
-  routes: z.array(mapRouteItemSchema).optional(),
-  arcs: z.array(mapArcItemSchema).optional(),
-  fitBounds: z.boolean().optional(),
-});
-
-export const numberTickerSchema = z.object({
-  value: z.number(),
-  label: z.string().optional(),
-  unit: z.string().optional(),
-  duration: z.number().optional(),
-  size: z.enum(["sm", "md", "lg"]).optional(),
-});
+import {
+  audioPlayerSchema,
+  imageGallerySchema,
+  mapBlockSchema,
+  numberTickerSchema,
+  videoBlockSchema,
+} from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // Helpers

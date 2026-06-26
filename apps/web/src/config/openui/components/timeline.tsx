@@ -2,43 +2,10 @@ import { Button } from "@heroui/button";
 import { Link } from "@heroui/link";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
-import { z } from "zod";
+import type { z } from "zod";
 import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
 import { ToolCard } from "../primitives";
-
-// ---------------------------------------------------------------------------
-// Schemas
-// ---------------------------------------------------------------------------
-
-export const timelineSchema = z.object({
-  items: z.array(
-    z.object({
-      time: z.string(),
-      title: z.string(),
-      description: z.string().optional(),
-      status: z.enum(["success", "error", "warning", "neutral"]).optional(),
-      actor: z.string().optional(),
-      links: z
-        .array(
-          z.object({
-            label: z.string(),
-            url: z.string(),
-            type: z.enum(["primary", "secondary"]).optional(),
-          }),
-        )
-        .optional(),
-      actions: z
-        .array(
-          z.object({
-            label: z.string(),
-            value: z.string(),
-          }),
-        )
-        .optional(),
-    }),
-  ),
-  title: z.string().optional(),
-});
+import { timelineSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // Helpers

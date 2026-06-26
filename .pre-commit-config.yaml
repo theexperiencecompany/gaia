@@ -26,6 +26,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: openui-gen-prompt
+        name: openui generated prompt up to date
+        entry: bash -c 'pnpm openui:gen-prompt && git diff --exit-code apps/api/app/agents/prompts/openui_generated.txt'
+        language: system
+        files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts)'
+        pass_filenames: false
+
       - id: generate-changelog-pages
         name: Generate changelog sub-pages from release-notes.mdx
         entry: bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes.mdx docs/release-notes/'

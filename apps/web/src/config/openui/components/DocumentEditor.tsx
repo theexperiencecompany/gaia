@@ -8,26 +8,14 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { ArrowDown01Icon, Copy01Icon, Tick01Icon } from "@icons";
-import { defineComponent } from "@openuidev/react-lang";
 import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import React from "react";
-import { z } from "zod";
+import type { z } from "zod";
 import { ToolCard } from "../primitives";
-
-// ---------------------------------------------------------------------------
-// Schema
-// ---------------------------------------------------------------------------
-
-export const textDocumentSchema = z.object({
-  title: z.string(),
-  body: z.string(),
-  fields: z
-    .array(z.object({ label: z.string(), value: z.string() }))
-    .optional(),
-});
+import type { textDocumentSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // HTML → Markdown converter (handles tiptap output)
@@ -344,15 +332,3 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     </ToolCard>
   );
 }
-
-// ---------------------------------------------------------------------------
-// defineComponent registration
-// ---------------------------------------------------------------------------
-
-export const textDocumentDef = defineComponent({
-  name: "TextDocument",
-  description:
-    "Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters — never when sending a final email directly.",
-  props: textDocumentSchema,
-  component: ({ props }) => React.createElement(TextDocumentView, props),
-});

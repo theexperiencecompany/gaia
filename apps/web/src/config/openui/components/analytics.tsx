@@ -8,32 +8,16 @@ import {
   RadialBar,
   RadialBarChart,
 } from "recharts";
-import { z } from "zod";
+import type { z } from "zod";
 import { type ChartConfig, ChartContainer } from "@/components/ui/chart";
 import { SquareChart, ToolCard } from "../primitives";
+import { gaugeChartSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const CHART_COLORS = ["#00bbff", "#34d399", "#60a5fa", "#f472b6", "#fb923c"];
-
-// ---------------------------------------------------------------------------
-// Schemas
-// ---------------------------------------------------------------------------
-
-export const gaugeChartSchema = z.object({
-  value: z.number(),
-  title: z.string().optional(),
-  min: z.number().optional(),
-  max: z.number().optional(),
-  unit: z.string().optional(),
-  thresholds: z.object({ warning: z.number(), danger: z.number() }).optional(),
-  variant: z.enum(["gauge", "text", "stacked"]).optional(),
-  secondValue: z.number().optional(),
-  secondLabel: z.string().optional(),
-  size: z.enum(["sm", "md", "lg"]).optional(),
-});
 
 // ---------------------------------------------------------------------------
 // Views

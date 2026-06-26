@@ -11,37 +11,14 @@ import {
 } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
-import { z } from "zod";
+import type { z } from "zod";
 import { cn } from "@/lib/utils";
 import { ToolCard } from "../primitives";
-
-// ---------------------------------------------------------------------------
-// Schemas
-// ---------------------------------------------------------------------------
-
-export const copyableContentSchema = z.object({
-  content: z.string(),
-  mode: z.enum(["inline", "block"]).optional(),
-  languageHint: z.string().optional(),
-});
-
-export const fileTreeSchema = z.object({
-  items: z.array(
-    z.object({
-      path: z.string(),
-      type: z.enum(["file", "dir", "item"]).optional(),
-      size: z.string().optional(),
-      description: z.string().optional(),
-    }),
-  ),
-  title: z.string().optional(),
-  variant: z.enum(["file", "generic"]).optional(),
-});
-
-export const kbdRowSchema = z.object({
-  keys: z.array(z.string()),
-  description: z.string().optional(),
-});
+import {
+  copyableContentSchema,
+  fileTreeSchema,
+  kbdRowSchema,
+} from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // FileTree helpers
