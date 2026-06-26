@@ -29,7 +29,7 @@ const defaultStyles = {
 // data visualizations (choropleths, world arcs, dot maps) where you draw your
 // own layers and don't need a street basemap. The easiest way to opt in is the
 // `blank` prop:
-//   <Map blank>...</Map>
+//   <MapView blank>...</MapView>
 // The transparent background lets the themed container show through.
 const blankMapStyle: MapLibreGL.StyleSpecification = {
   version: 8,
@@ -133,7 +133,7 @@ const MapContext = createContext<MapContextValue | null>(null);
 function useMap() {
   const context = useContext(MapContext);
   if (!context) {
-    throw new Error("useMap must be used within a Map component");
+    throw new Error("useMap must be used within a MapView component");
   }
   return context;
 }
@@ -215,7 +215,9 @@ function getViewport(map: MapLibreGL.Map): MapViewport {
   };
 }
 
-const Map = forwardRef<MapRef, MapProps>(function Map(
+// Named `MapView` (not `Map`) so it doesn't shadow the JS built-in `Map` —
+// the mapcn registry ships this as `Map`; renamed on vendoring.
+const MapView = forwardRef<MapRef, MapProps>(function MapView(
   {
     children,
     className,
@@ -1304,7 +1306,7 @@ const GEOJSON_DEFAULT_COLORS = {
 
 /**
  * Renders arbitrary GeoJSON as fill + outline layers on the map. Composes like
- * `MapRoute` / `MapArc` — drop it inside `<Map>` (typically with `blank`) for
+ * `MapRoute` / `MapArc` — drop it inside `<MapView>` (typically with `blank`) for
  * choropleths and region/data maps. For full control over expressions and
  * multiple layers, manage layers directly via `useMap()` instead.
  */
@@ -2173,7 +2175,7 @@ function MapClusterLayer<
 }
 
 export {
-  Map,
+  MapView,
   useMap,
   MapMarker,
   MarkerContent,

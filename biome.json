@@ -232,9 +232,6 @@
       "includes": ["apps/web/src/components/ui/map.tsx"],
       "linter": {
         "rules": {
-          "suspicious": {
-            "noShadowRestrictedNames": "off"
-          },
           "a11y": {
             "noSvgWithoutTitle": "off"
           },

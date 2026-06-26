@@ -17,7 +17,7 @@ import {
   MapGeoJSON,
   MapMarker,
   MapRoute,
-  Map as MapView,
+  MapView,
   MarkerContent,
   MarkerLabel,
   MarkerPopup,
