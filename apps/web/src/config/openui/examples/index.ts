@@ -65,22 +65,20 @@ doneCards = Stack([done1, done2], "column", "s")
 done1 = Card([Stack([Tag("Feature", null, "sm", "info")], "row", "xs"), TextContent("Set up CI/CD pipeline", "small"), TextContent("Completed Jan 10", "small")], "card", "column", "xs")
 done2 = Card([Stack([Tag("Bug", null, "sm", "danger")], "row", "xs"), TextContent("Fix login redirect loop", "small"), TextContent("Completed Jan 12", "small")], "card", "column", "xs")`;
 
-const gaiaShowcase = `root = Stack([header, top, treeCard, docCard], "column", "m")
+const gaiaShowcase = `root = Stack([header, top, tree, doc], "column", "m")
 header = Card([CardHeader("GAIA Components", "Retained components react-ui has no equivalent for")], "clear")
 top = Stack([gaugeCard, timelineCard], "row", "m", "stretch")
 gaugeCard = Card([CardHeader("Server Load", "current CPU"), gauge], "card")
-gauge = GaugeChart(73, "CPU", 0, 100, "%")
+gauge = GaugeChart(73, null, 0, 100, "%")
 timelineCard = Card([CardHeader("Deploy Activity", "recent events"), timeline], "card")
 timeline = Timeline([evt1, evt2, evt3])
 evt1 = {"time": "2026-06-26T07:15:00Z", "title": "Deploy succeeded", "description": "main -> production (a3f2c1)", "status": "success", "actor": "github"}
 evt2 = {"time": "2026-06-26T06:40:00Z", "title": "Tests passed", "status": "success", "actor": "ci"}
 evt3 = {"time": "2026-06-26T06:10:00Z", "title": "Timeout warning", "description": "session cleanup slow", "status": "warning", "actor": "monitor"}
-treeCard = Card([CardHeader("Project Structure", "key directories"), tree], "card")
-tree = FileTree([f1, f2, f3], "GAIA Monorepo")
+tree = FileTree([f1, f2, f3], "Project Structure")
 f1 = {"path": "apps/web/next.config.ts", "size": "1.2 KB"}
 f2 = {"path": "apps/api/main.py", "size": "2.8 KB"}
 f3 = {"path": "packages/openui/index.ts", "size": "5.1 KB"}
-docCard = Card([CardHeader("Draft", "editable document"), doc], "card")
 doc = TextDocument("Release Notes", "GAIA now renders generative UI via @openuidev/react-ui, themed to match the product exactly.")`;
 
 const formExample = `root = Card([CardHeader("Feedback", "tell us what you think"), form], "card")

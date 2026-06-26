@@ -1,6 +1,7 @@
-/* Declare the OpenUI cascade layer first so it has the lowest priority —
-   GAIA's Tailwind utilities/components always win conflicts with react-ui. */
-@layer openui, theme, base, components, utilities;
+/* Order cascade layers so react-ui's component styles sit ABOVE Tailwind's
+   base preflight (else preflight's `*{padding:0}` zeroes react-ui card padding)
+   but BELOW GAIA's components/utilities (so GAIA still wins real conflicts). */
+@layer theme, base, openui, components, utilities;
 @import "tailwindcss";
 
 /* @openuidev/react-ui — token defaults (unlayered, vars only) + layered

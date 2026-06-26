@@ -79,6 +79,14 @@ export const gaiaOpenUITheme = createTheme({
   fontCode:
     "var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace",
 
+  // ── Spacing (tightened toward GAIA's p-4 / gap-3 — react-ui defaults run
+  //    roomier: Card padding = space-l, Card gap = space-xl) ────────────────
+  spaceM: "10px",
+  spaceML: "12px",
+  spaceL: "16px", // Card padding → GAIA p-4
+  spaceXl: "14px", // Card content gap → tighter than the 24px default
+  space2xl: "28px",
+
   // ── Charts ──────────────────────────────────────────────────────────────
   defaultChartPalette: CHART_PALETTE,
   barChartPalette: CHART_PALETTE,
