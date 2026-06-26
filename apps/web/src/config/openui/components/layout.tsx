@@ -1,11 +1,4 @@
-import {
-  AccordionItem,
-  Button,
-  Accordion as HeroAccordion,
-  Kbd,
-  Tab,
-  Tabs,
-} from "@heroui/react";
+import { Button, Kbd } from "@heroui/react";
 import {
   ArrowDown01Icon,
   ArrowRight01Icon,
@@ -43,15 +36,6 @@ export const fileTreeSchema = z.object({
   ),
   title: z.string().optional(),
   variant: z.enum(["file", "generic"]).optional(),
-});
-
-export const accordionSchema = z.object({
-  items: z.array(z.object({ label: z.string(), content: z.string() })),
-  title: z.string().optional(),
-});
-
-export const tabsBlockSchema = z.object({
-  tabs: z.array(z.object({ label: z.string(), content: z.unknown() })),
 });
 
 export const kbdRowSchema = z.object({
@@ -291,59 +275,6 @@ export function FileTreeView(props: z.infer<typeof fileTreeSchema>) {
   );
 }
 
-export function AccordionView(props: z.infer<typeof accordionSchema>) {
-  return (
-    <div className="w-full max-w-2xl">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100">{props.title}</p>
-      )}
-      <HeroAccordion variant="light">
-        {props.items.map((item) => (
-          <AccordionItem
-            key={item.label}
-            aria-label={item.label}
-            classNames={{ trigger: "!cursor-pointer" }}
-            title={
-              <span className="text-sm font-medium text-zinc-200">
-                {item.label}
-              </span>
-            }
-          >
-            <p className="text-xs text-zinc-400 pb-2">{item.content}</p>
-          </AccordionItem>
-        ))}
-      </HeroAccordion>
-    </div>
-  );
-}
-
-export function TabsBlockView(props: {
-  tabs: Array<{ label: string; content: React.ReactNode }>;
-}) {
-  return (
-    <div className="w-full max-w-2xl">
-      <Tabs variant="solid" size="sm">
-        {props.tabs.map((tab) => (
-          <Tab
-            key={tab.label}
-            title={<span className="text-sm">{tab.label}</span>}
-          >
-            {typeof tab.content === "string" ? (
-              <p className="text-sm text-zinc-300 whitespace-pre-wrap pt-2 max-w-full">
-                {tab.content}
-              </p>
-            ) : (
-              <div className="pt-3 max-w-full [&>*]:max-w-full">
-                {tab.content}
-              </div>
-            )}
-          </Tab>
-        ))}
-      </Tabs>
-    </div>
-  );
-}
-
 export function KbdRowView(props: z.infer<typeof kbdRowSchema>) {
   return (
     <div className="flex items-center justify-between gap-4">
@@ -379,30 +310,6 @@ export const fileTreeDef = defineComponent({
     "File/directory tree (variant='file') or generic collapsible tree (variant='generic').",
   props: fileTreeSchema,
   component: ({ props }) => React.createElement(FileTreeView, props),
-});
-
-export const accordionDef = defineComponent({
-  name: "Accordion",
-  description: "Collapsible sections with label and content.",
-  props: accordionSchema,
-  component: ({ props }) => React.createElement(AccordionView, props),
-});
-
-export const tabsBlockDef = defineComponent({
-  name: "TabsBlock",
-  description: "Tabbed content panels — each tab can contain any OpenUI node.",
-  props: tabsBlockSchema,
-  component: ({ props, renderNode }) => (
-    <TabsBlockView
-      tabs={props.tabs.map((tab) => ({
-        label: tab.label,
-        content:
-          typeof tab.content === "string"
-            ? tab.content
-            : renderNode(tab.content),
-      }))}
-    />
-  ),
 });
 
 export const kbdRowDef = defineComponent({

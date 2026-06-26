@@ -1,4 +1,4 @@
-import { Button, Chip } from "@heroui/react";
+import { Button } from "@heroui/react";
 import {
   Location01Icon,
   MinusSignIcon,
@@ -10,15 +10,6 @@ import * as m from "motion/react-m";
 import { useParams } from "next/navigation";
 import React from "react";
 import { z } from "zod";
-import { ChevronLeft, ChevronRight } from "@/components/shared/icons";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-  useCarousel,
-} from "@/components/ui/carousel";
 import {
   MapArc,
   type MapArcDatum,
@@ -33,7 +24,6 @@ import {
 } from "@/components/ui/map";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
-import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
 import { ToolCard, ToolInset } from "../primitives";
 
 // ---------------------------------------------------------------------------
@@ -113,21 +103,6 @@ export const numberTickerSchema = z.object({
   size: z.enum(["sm", "md", "lg"]).optional(),
 });
 
-export const carouselSchema = z.object({
-  items: z.array(
-    z.object({
-      title: z.string(),
-      body: z.string().optional(),
-      image: z.string().optional(),
-      badge: z.string().optional(),
-      actions: z
-        .array(z.object({ label: z.string(), value: z.string() }))
-        .optional(),
-    }),
-  ),
-  autoPlay: z.boolean().optional(),
-});
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -162,30 +137,6 @@ function GalleryImage({
         </div>
       )}
     </m.div>
-  );
-}
-
-function CarouselDotIndicators() {
-  const { selectedIndex, scrollSnaps, scrollTo } = useCarousel();
-  if (scrollSnaps.length <= 1) return null;
-  return (
-    <div className="flex items-center justify-center gap-1.5">
-      {scrollSnaps.map((_, index) => (
-        <button
-          // biome-ignore lint/suspicious/noArrayIndexKey: scroll snap dots have no stable identifier
-          key={index}
-          type="button"
-          aria-label={`Go to slide ${index + 1}`}
-          onClick={() => scrollTo(index)}
-          className={[
-            "rounded-full transition-all duration-200",
-            index === selectedIndex
-              ? "w-2 h-2 bg-zinc-300"
-              : "w-1.5 h-1.5 bg-zinc-600 hover:bg-zinc-500",
-          ].join(" ")}
-        />
-      ))}
-    </div>
   );
 }
 
@@ -523,81 +474,6 @@ export function NumberTickerView(props: z.infer<typeof numberTickerSchema>) {
   );
 }
 
-export function CarouselView(props: z.infer<typeof carouselSchema>) {
-  const handleAction = useSafeTriggerAction();
-
-  const total = props.items.length;
-
-  return (
-    <ToolCard size="full" className="max-w-(--breakpoint-sm)!">
-      <Carousel opts={{ align: "start", loop: true }}>
-        <CarouselContent className="-ml-0">
-          {props.items.map((item) => (
-            <CarouselItem key={item.title} className="pl-0 h-full">
-              <ToolInset className="min-h-full flex flex-col p-4">
-                {item.image && (
-                  <>
-                    {/* biome-ignore lint/performance/noImgElement: external user-provided URLs */}
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      className="w-full rounded-2xl object-cover h-40 mb-3"
-                    />
-                  </>
-                )}
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-zinc-100">
-                    {item.title}
-                  </p>
-                  {item.badge && (
-                    <Chip
-                      size="sm"
-                      variant="flat"
-                      className="shrink-0 text-xs text-zinc-400"
-                    >
-                      {item.badge}
-                    </Chip>
-                  )}
-                </div>
-                {item.body && (
-                  <p className="text-xs text-zinc-400 mt-1 flex-1">
-                    {item.body}
-                  </p>
-                )}
-                {item.actions && item.actions.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-auto pt-3">
-                    {item.actions.map((action) => (
-                      <Button
-                        key={action.value}
-                        size="sm"
-                        variant="flat"
-                        onPress={() => handleAction(action.value)}
-                      >
-                        {action.label}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-              </ToolInset>
-            </CarouselItem>
-          ))}
-        </CarouselContent>
-        {total > 1 && (
-          <div className="flex items-center justify-between mt-3 px-1">
-            <CarouselPrevious className="rounded-full bg-zinc-700 hover:bg-zinc-600 border-none p-1.5 disabled:opacity-40 transition-colors cursor-pointer">
-              <ChevronLeft className="w-4 h-4 text-zinc-300" />
-            </CarouselPrevious>
-            <CarouselDotIndicators />
-            <CarouselNext className="rounded-full bg-zinc-700 hover:bg-zinc-600 border-none p-1.5 disabled:opacity-40 transition-colors cursor-pointer">
-              <ChevronRight className="w-4 h-4 text-zinc-300" />
-            </CarouselNext>
-          </div>
-        )}
-      </Carousel>
-    </ToolCard>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Component definitions
 // ---------------------------------------------------------------------------
@@ -635,11 +511,4 @@ export const numberTickerDef = defineComponent({
   description: "Animated count-up number display.",
   props: numberTickerSchema,
   component: ({ props }) => React.createElement(NumberTickerView, props),
-});
-
-export const carouselDef = defineComponent({
-  name: "Carousel",
-  description: "Swipeable card carousel.",
-  props: carouselSchema,
-  component: ({ props }) => React.createElement(CarouselView, props),
 });
