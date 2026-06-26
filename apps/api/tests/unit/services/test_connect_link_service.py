@@ -1,136 +1,90 @@
-"""Security-critical tests for the login-free connect-link token.
+"""Security-critical tests for the login-free connect-link code.
 
-This token authenticates a logged-out bot user straight into an OAuth connect,
-so the verifier is the security boundary. These tests adversarially probe it:
-forgery, wrong-role reuse, expiry, tampering, and replay.
+The code authenticates a logged-out bot user straight into an OAuth connect, so
+resolution is the security boundary. These tests probe minting, atomic
+single-use consumption, and rejection of unknown/malformed codes.
 """
 
-from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Generator
+from unittest.mock import AsyncMock, patch
 
-from jose import jwt
 import pytest
 
 from app.config.settings import settings
-from app.constants.auth import CONNECT_LINK_ROLE, JWT_ALGORITHM
 import app.services.connect_link_service as svc
 from app.services.connect_link_service import (
     build_connect_link_url,
-    create_connect_link_token,
-    verify_and_consume_connect_link_token,
+    resolve_and_consume_connect_code,
 )
 
 
-@pytest.fixture(autouse=True)
-def _patch_signing_secret():
-    """AGENT_SECRET is optional (None) in the dev/test settings; pin a stable
-    test secret so sign+verify round-trip deterministically."""
-    with patch.object(settings, "AGENT_SECRET", "unit-test-secret-0123456789-abcdefghij"):
-        yield
+@pytest.fixture
+def fake_store() -> Generator[dict[str, object], None, None]:
+    """In-memory stand-in for the Redis single-use store: ``set_cache`` writes
+    (returning success), ``get_and_delete_cache`` reads-and-deletes (the
+    single-use guarantee)."""
+    store: dict[str, object] = {}
+
+    async def _set(
+        key: str, value: object, ttl: int | None = None, model: object | None = None
+    ) -> bool:
+        store[key] = value
+        return True
+
+    async def _getdel(key: str) -> object | None:
+        return store.pop(key, None)
+
+    with (
+        patch.object(svc, "set_cache", AsyncMock(side_effect=_set)),
+        patch.object(svc, "get_and_delete_cache", AsyncMock(side_effect=_getdel)),
+    ):
+        yield store
 
 
-def _make_redis(set_returns: list) -> MagicMock:
-    """Redis stand-in whose `client.set(... nx=True)` yields the given results
-    in order — True = first use (key claimed), None = already used (NX failed)."""
-    client = MagicMock()
-    client.set = AsyncMock(side_effect=set_returns)
-    redis = MagicMock()
-    redis.client = client
-    return redis
-
-
-def _signed(payload: dict, secret: str | None = None) -> str:
-    return jwt.encode(payload, secret or settings.AGENT_SECRET, algorithm=JWT_ALGORITHM)
+def _code_from_url(url: str | None) -> str:
+    assert url is not None
+    return url.rsplit("/", 1)[1]
 
 
 @pytest.mark.unit
-class TestConnectLinkToken:
-    async def test_round_trip_returns_user_and_integration(self) -> None:
-        token = create_connect_link_token("user1", "notion")
-        with patch.object(svc, "redis_cache", _make_redis([True])):
-            assert await verify_and_consume_connect_link_token(token) == ("user1", "notion")
+class TestConnectLinkCode:
+    async def test_mint_then_resolve_returns_user_and_integration(
+        self, fake_store: dict[str, object]
+    ) -> None:
+        url = await build_connect_link_url("user1", "notion")
+        assert url is not None
+        assert url.startswith(f"{settings.FRONTEND_URL.rstrip('/')}/connect/")
+        code = _code_from_url(url)
+        assert await resolve_and_consume_connect_code(code) == ("user1", "notion")
 
-    async def test_single_use_replay_is_rejected(self) -> None:
+    async def test_single_use_second_resolve_is_none(self, fake_store: dict[str, object]) -> None:
         """Second open of the same link must fail — the heart of single-use."""
-        token = create_connect_link_token("user1", "notion")
-        redis = _make_redis([True, None])  # first claims the jti; replay loses NX
-        with patch.object(svc, "redis_cache", redis):
-            first = await verify_and_consume_connect_link_token(token)
-            second = await verify_and_consume_connect_link_token(token)
+        code = _code_from_url(await build_connect_link_url("user1", "notion"))
+        first = await resolve_and_consume_connect_code(code)
+        second = await resolve_and_consume_connect_code(code)
         assert first == ("user1", "notion")
         assert second is None
 
-    async def test_wrong_role_rejected_even_with_valid_signature(self) -> None:
-        """A token signed with OUR secret but a different role (e.g. an agent
-        token) must NOT be accepted as a connect link — role is the boundary."""
-        token = _signed(
-            {
-                "sub": "user1",
-                "integration_id": "notion",
-                "role": "agent",
-                "jti": "x",
-                "exp": datetime.now(UTC) + timedelta(hours=1),
-            }
-        )
-        # No redis patch: must be rejected before the single-use SET.
-        assert await verify_and_consume_connect_link_token(token) is None
+    async def test_unknown_code_rejected(self, fake_store: dict[str, object]) -> None:
+        assert await resolve_and_consume_connect_code("does-not-exist") is None
 
-    async def test_expired_token_rejected(self) -> None:
-        token = _signed(
-            {
-                "sub": "user1",
-                "integration_id": "notion",
-                "role": CONNECT_LINK_ROLE,
-                "jti": "x",
-                "exp": datetime.now(UTC) - timedelta(seconds=5),
-            }
-        )
-        assert await verify_and_consume_connect_link_token(token) is None
+    async def test_malformed_binding_rejected(self, fake_store: dict[str, object]) -> None:
+        """A stored value missing integration_id must not resolve to a partial."""
+        await svc.set_cache(svc._code_key("partial"), {"user_id": "u"})
+        assert await resolve_and_consume_connect_code("partial") is None
 
-    async def test_tampered_token_rejected(self) -> None:
-        token = create_connect_link_token("user1", "notion")
-        tampered = token[:-2] + ("zz" if not token.endswith("zz") else "yy")
-        assert await verify_and_consume_connect_link_token(tampered) is None
+    async def test_two_mints_have_distinct_codes(self, fake_store: dict[str, object]) -> None:
+        a = _code_from_url(await build_connect_link_url("u", "notion"))
+        b = _code_from_url(await build_connect_link_url("u", "notion"))
+        assert a != b
 
-    async def test_foreign_secret_rejected(self) -> None:
-        """Forged with a different signing key → invalid signature → rejected."""
-        token = _signed(
-            {
-                "sub": "attacker",
-                "integration_id": "notion",
-                "role": CONNECT_LINK_ROLE,
-                "jti": "x",
-                "exp": datetime.now(UTC) + timedelta(hours=1),
-            },
-            # NOSONAR python:S6418 deliberately-wrong fake key used to assert
-            # tokens signed with the wrong secret are rejected; not a real secret.
-            secret="not-our-secret-key-at-all-0123456789abcdef",  # NOSONAR python:S6418
-        )
-        assert await verify_and_consume_connect_link_token(token) is None
+    async def test_code_has_high_entropy_length(self, fake_store: dict[str, object]) -> None:
+        # token_urlsafe(12) → 16 url-safe chars / 96 bits of entropy.
+        code = _code_from_url(await build_connect_link_url("u", "notion"))
+        assert len(code) >= 16
 
-    async def test_missing_claims_rejected(self) -> None:
-        token = _signed({"role": CONNECT_LINK_ROLE, "exp": datetime.now(UTC) + timedelta(hours=1)})
-        assert await verify_and_consume_connect_link_token(token) is None
-
-    def test_build_url_embeds_verifiable_token(self) -> None:
-        url = build_connect_link_url("user1", "notion")
-        assert "/api/v1/integrations/connect-link?t=" in url
-        token = url.split("t=", 1)[1]
-        payload = jwt.decode(token, settings.AGENT_SECRET, algorithms=[JWT_ALGORITHM])
-        assert payload["sub"] == "user1"
-        assert payload["integration_id"] == "notion"
-        assert payload["role"] == CONNECT_LINK_ROLE
-
-    def test_two_links_have_distinct_jti(self) -> None:
-        """Distinct jti per mint so single-use is per-link, not per-(user,integration)."""
-        a = jwt.decode(
-            create_connect_link_token("u", "notion"),
-            settings.AGENT_SECRET,
-            algorithms=[JWT_ALGORITHM],
-        )
-        b = jwt.decode(
-            create_connect_link_token("u", "notion"),
-            settings.AGENT_SECRET,
-            algorithms=[JWT_ALGORITHM],
-        )
-        assert a["jti"] != b["jti"]
+    async def test_failed_store_returns_none(self) -> None:
+        """A failed write (Redis unavailable) → no link minted; callers degrade
+        to a generic connect prompt rather than handing out a dead link."""
+        with patch.object(svc, "set_cache", AsyncMock(return_value=False)):
+            assert await build_connect_link_url("user1", "notion") is None
