@@ -30,7 +30,7 @@ repos:
         name: openui generated prompt up to date
         entry: bash -c 'pnpm openui:gen-prompt && git diff --exit-code apps/api/app/agents/prompts/openui_generated.txt'
         language: system
-        files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts)'
+        files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
         pass_filenames: false
 
       - id: generate-changelog-pages

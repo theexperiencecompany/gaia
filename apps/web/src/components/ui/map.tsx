@@ -2,7 +2,14 @@
 
 import MapLibreGL, { type MarkerOptions, type PopupOptions } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Loader2, Locate, Maximize, Minus, Plus, X } from "lucide-react";
+import { Spinner } from "@heroui/react";
+import {
+  Cancel01Icon,
+  Gps01Icon,
+  Maximize01Icon,
+  MinusSignIcon,
+  PlusSignIcon,
+} from "@icons";
 import {
   createContext,
   forwardRef,
@@ -325,7 +332,6 @@ const MapView = forwardRef<MapRef, MapProps>(function MapView(
       setIsStyleLoaded(false);
       setMapInstance(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync controlled viewport to map
@@ -372,10 +378,11 @@ const MapView = forwardRef<MapRef, MapProps>(function MapView(
     mapInstance.setStyle(newStyle, { diff: true });
   }, [mapInstance, resolvedTheme, mapStyles, clearStyleTimeout]);
 
-  // Sync projection when the prop changes after mount.
+  // Sync projection when the prop changes after mount. Falling back to
+  // `mercator` resets MapLibre to its default when the prop is cleared.
   useEffect(() => {
-    if (!mapInstance || !isStyleLoaded || !projection) return;
-    mapInstance.setProjection(projection);
+    if (!mapInstance || !isStyleLoaded) return;
+    mapInstance.setProjection(projection ?? { type: "mercator" });
   }, [mapInstance, isStyleLoaded, projection]);
 
   const contextValue = useMemo(
@@ -508,8 +515,6 @@ function MapMarker({
     markerInstance.on("dragend", handleDragEnd);
 
     return markerInstance;
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -520,8 +525,6 @@ function MapMarker({
     return () => {
       marker.remove();
     };
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
   const { offset, rotation, rotationAlignment, pitchAlignment } = markerOptions;
@@ -604,7 +607,7 @@ function PopupCloseButton({ onClick }: { onClick: () => void }) {
       aria-label="Close popup"
       className="focus-visible:ring-ring hover:bg-muted text-foreground absolute top-1 right-1 z-10 inline-flex size-5 cursor-pointer items-center justify-center rounded-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset"
     >
-      <X className="size-3.5" />
+      <Cancel01Icon className="size-3.5" />
     </button>
   );
 }
@@ -638,7 +641,6 @@ function MarkerPopup({
       .setDOMContent(container);
 
     return popupInstance;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -650,15 +652,12 @@ function MarkerPopup({
     return () => {
       marker.setPopup(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
   // Sync popup options when they change.
   useEffect(() => {
     popup.setOffset(offset ?? 16);
-    if (maxWidth) {
-      popup.setMaxWidth(maxWidth);
-    }
+    popup.setMaxWidth(maxWidth ?? "none");
   }, [popup, offset, maxWidth]);
 
   const handleClose = () => popup.remove();
@@ -703,7 +702,6 @@ function MarkerTooltip({
     }).setMaxWidth("none");
 
     return tooltipInstance;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -724,15 +722,12 @@ function MarkerTooltip({
       marker.getElement()?.removeEventListener("mouseleave", handleMouseLeave);
       tooltip.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
   // Sync tooltip options when they change.
   useEffect(() => {
     tooltip.setOffset(offset ?? 16);
-    if (maxWidth) {
-      tooltip.setMaxWidth(maxWidth);
-    }
+    tooltip.setMaxWidth(maxWidth ?? "none");
   }, [tooltip, offset, maxWidth]);
 
   return createPortal(
@@ -914,10 +909,10 @@ function MapControls({
       {showZoom && (
         <ControlGroup>
           <ControlButton onClick={handleZoomIn} label="Zoom in">
-            <Plus className="size-4" />
+            <PlusSignIcon className="size-4" />
           </ControlButton>
           <ControlButton onClick={handleZoomOut} label="Zoom out">
-            <Minus className="size-4" />
+            <MinusSignIcon className="size-4" />
           </ControlButton>
         </ControlGroup>
       )}
@@ -934,9 +929,9 @@ function MapControls({
             disabled={waitingForLocation}
           >
             {waitingForLocation ? (
-              <Loader2 className="size-4 animate-spin" />
+              <Spinner size="sm" color="current" />
             ) : (
-              <Locate className="size-4" />
+              <Gps01Icon className="size-4" />
             )}
           </ControlButton>
         </ControlGroup>
@@ -944,7 +939,7 @@ function MapControls({
       {showFullscreen && (
         <ControlGroup>
           <ControlButton onClick={handleFullscreen} label="Toggle fullscreen">
-            <Maximize className="size-4" />
+            <Maximize01Icon className="size-4" />
           </ControlButton>
         </ControlGroup>
       )}
@@ -985,6 +980,7 @@ function CompassButton({ onClick }: { onClick: () => void }) {
         className="size-5 transition-transform duration-200"
         style={{ transformStyle: "preserve-3d" }}
       >
+        <title>Compass</title>
         <path d="M12 2L16 12H12V2Z" className="fill-red-500" />
         <path d="M12 2L8 12H12V2Z" className="fill-red-300" />
         <path d="M12 22L16 12H12V22Z" className="fill-muted-foreground/60" />
@@ -1034,7 +1030,6 @@ function MapPopup({
       .setLngLat([longitude, latitude]);
 
     return popupInstance;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1053,7 +1048,6 @@ function MapPopup({
         popup.remove();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
   // Sync popup position and options when they change.
@@ -1063,9 +1057,7 @@ function MapPopup({
       popup.setLngLat([longitude, latitude]);
     }
     popup.setOffset(offset ?? 16);
-    if (maxWidth) {
-      popup.setMaxWidth(maxWidth);
-    }
+    popup.setMaxWidth(maxWidth ?? "none");
   }, [popup, longitude, latitude, offset, maxWidth]);
 
   const handleClose = () => {
@@ -1162,19 +1154,23 @@ function MapRoute({
         // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, map]);
 
-  // When coordinates change, update the source data
+  // When coordinates change, update the source data. Fewer than two points
+  // can't form a line, so push an empty LineString to clear any stale route
+  // rather than leaving the previous one rendered.
   useEffect(() => {
-    if (!isLoaded || !map || coordinates.length < 2) return;
+    if (!isLoaded || !map) return;
 
     const source = map.getSource(sourceId) as MapLibreGL.GeoJSONSource;
     if (source) {
       source.setData({
         type: "Feature",
         properties: {},
-        geometry: { type: "LineString", coordinates },
+        geometry: {
+          type: "LineString",
+          coordinates: coordinates.length >= 2 ? coordinates : [],
+        },
       });
     }
   }, [isLoaded, map, coordinates, sourceId]);
@@ -1304,6 +1300,18 @@ const GEOJSON_DEFAULT_COLORS = {
   dark: { fill: "#404040", line: "#0a0a0a" },
 } satisfies Record<Theme, { fill: string; line: string }>;
 
+// Apply every entry of a paint spec to a layer. Fill and line layers share this
+// loop, so it lives here rather than being duplicated inside the sync effect.
+function applyPaintProperties(
+  map: MapLibreGL.Map,
+  layerId: string,
+  paint: MapFillPaint | MapLinePaint,
+): void {
+  for (const [key, value] of Object.entries(paint)) {
+    map.setPaintProperty(layerId, key, value as never);
+  }
+}
+
 /**
  * Renders arbitrary GeoJSON as fill + outline layers on the map. Composes like
  * `MapRoute` / `MapArc` — drop it inside `<MapView>` (typically with `blank`) for
@@ -1374,7 +1382,6 @@ function MapGeoJSON<
         // style may be mid-reload
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, map]);
 
   // Sync data when it changes.
@@ -1422,22 +1429,10 @@ function MapGeoJSON<
     }
 
     if (showFill && map.getLayer(fillLayerId)) {
-      for (const [key, value] of Object.entries(mergedFillPaint)) {
-        map.setPaintProperty(
-          fillLayerId,
-          key as keyof MapFillPaint,
-          value as never,
-        );
-      }
+      applyPaintProperties(map, fillLayerId, mergedFillPaint);
     }
     if (showLine && map.getLayer(lineLayerId)) {
-      for (const [key, value] of Object.entries(mergedLinePaint)) {
-        map.setPaintProperty(
-          lineLayerId,
-          key as keyof MapLinePaint,
-          value as never,
-        );
-      }
+      applyPaintProperties(map, lineLayerId, mergedLinePaint);
     }
   }, [
     isLoaded,
@@ -1751,7 +1746,6 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
         // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, map]);
 
   // Sync features when data / curvature / samples change.
@@ -2010,7 +2004,6 @@ function MapClusterLayer<
         // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, map, sourceId]);
 
   // Update source data when data prop changes (only for non-URL data)

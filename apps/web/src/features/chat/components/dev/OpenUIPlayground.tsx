@@ -14,13 +14,27 @@ import { genericLibrary } from "@/config/openui/genericLibrary";
  * library under the GAIA theme, plus a live editor for pasting DSL. Kept out of
  * SSR because the component set (recharts, maplibre, …) is browser-only.
  */
-export function OpenUIPlayground(): JSX.Element {
-  const [code, setCode] = useState(OPENUI_EXAMPLES[0].code);
-
+/**
+ * Normalizes + renders the DSL. Kept as a child so it mounts UNDER the
+ * playground's <ErrorBoundary> — a throw during normalization of bad pasted
+ * input then fails inside the preview pane instead of taking down the page.
+ */
+function RenderedOutput({ code }: { code: string }): JSX.Element {
   const normalized = useMemo(
     () => normalizeOpenUICode(code, genericLibrary),
     [code],
   );
+  return (
+    <Renderer
+      response={normalized}
+      library={genericLibrary}
+      isStreaming={false}
+    />
+  );
+}
+
+export function OpenUIPlayground(): JSX.Element {
+  const [code, setCode] = useState(OPENUI_EXAMPLES[0].code);
 
   return (
     <div className="h-full overflow-hidden bg-primary-bg">
@@ -65,11 +79,7 @@ export function OpenUIPlayground(): JSX.Element {
                   Here's what I put together:
                 </div>
                 <ErrorBoundary>
-                  <Renderer
-                    response={normalized}
-                    library={genericLibrary}
-                    isStreaming={false}
-                  />
+                  <RenderedOutput code={code} />
                 </ErrorBoundary>
               </div>
             </div>

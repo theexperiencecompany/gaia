@@ -227,19 +227,6 @@
           }
         }
       }
-    },
-    {
-      "includes": ["apps/web/src/components/ui/map.tsx"],
-      "linter": {
-        "rules": {
-          "a11y": {
-            "noSvgWithoutTitle": "off"
-          },
-          "complexity": {
-            "noExcessiveCognitiveComplexity": "off"
-          }
-        }
-      }
     }
   ]
 }

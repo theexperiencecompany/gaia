@@ -72,7 +72,12 @@ const mergedSpec = {
 
 const prompt = generatePrompt(mergedSpec);
 
-mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
-writeFileSync(OUTPUT_PATH, prompt, "utf-8");
+// This artifact lands in apps/api/app/agents/prompts/, where the repo rule
+// forbids em/en dashes in prompt prose. Normalize any the react-ui library or
+// the component descriptions emit so every regeneration stays compliant.
+const sanitized = prompt.replace(/[—–]/g, "-");
 
-console.log(`Wrote ${prompt.length} chars to ${OUTPUT_PATH}`);
+mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
+writeFileSync(OUTPUT_PATH, sanitized, "utf-8");
+
+console.log(`Wrote ${sanitized.length} chars to ${OUTPUT_PATH}`);

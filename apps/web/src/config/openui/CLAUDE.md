@@ -11,7 +11,7 @@ has no equivalent.
 
 ## 1. Architecture
 
-```
+```text
 Backend LLM                         Frontend
 ────────────────────────            ──────────────────────────────────────────────
 response text with         →        TextBubble splits at :::openui fences
