@@ -16,6 +16,9 @@ from app.helpers.integration_helpers import generate_unique_integration_slug
 from app.services.integrations.category_inference_service import (
     infer_integration_category,
 )
+from app.services.integrations.content_inference_service import (
+    infer_integration_content,
+)
 from app.services.integrations.publish_validator import PublishIntegrationValidator
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from shared.py.wide_events import log
@@ -75,6 +78,14 @@ async def publish_custom_integration(
         server_url=integration.get("mcp_config", {}).get("server_url", ""),
     )
 
+    content = await infer_integration_content(
+        name=integration.get("name", ""),
+        description=integration.get("description", ""),
+        tools=tools,
+        server_url=integration.get("mcp_config", {}).get("server_url", ""),
+        category=category,
+    )
+
     slug = await generate_unique_integration_slug(
         name=integration.get("name", ""),
         category=category,
@@ -83,6 +94,16 @@ async def publish_custom_integration(
     )
 
     now = datetime.now(UTC)
+    update_fields: dict = {
+        "is_public": True,
+        "published_at": now,
+        "category": category,
+        "clone_count": integration.get("clone_count", 0),
+        "slug": slug,
+    }
+    if content is not None:
+        update_fields["content"] = content.model_dump()
+
     update_result = await integrations_collection.update_one(
         {
             "integration_id": integration_id,
@@ -90,15 +111,7 @@ async def publish_custom_integration(
             "source": "custom",
             "is_public": {"$ne": True},
         },
-        {
-            "$set": {
-                "is_public": True,
-                "published_at": now,
-                "category": category,
-                "clone_count": integration.get("clone_count", 0),
-                "slug": slug,
-            }
-        },
+        {"$set": update_fields},
     )
 
     if update_result.modified_count == 0:
