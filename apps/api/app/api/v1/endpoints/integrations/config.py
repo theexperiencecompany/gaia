@@ -214,9 +214,14 @@ async def connect_integration_endpoint(
         )
 
 
-# Where a login-free connect link sends the user on a bad token. Public-ish so a
-# logged-out bot user isn't bounced to a login wall.
-_CONNECT_ERROR_REDIRECT = "/integrations?connect_error=invalid_or_expired_link"
+def _connect_link_error(reason: str) -> RedirectResponse:
+    """Bounce a failed connect-link open to the public integrations page.
+
+    Goes to the integrations page (not a login wall) so a logged-out bot user
+    still lands somewhere useful.
+    """
+    base = settings.FRONTEND_URL.rstrip("/")
+    return RedirectResponse(url=f"{base}/integrations?connect_error={reason}")
 
 
 @router.get("/connect-link")
@@ -234,7 +239,7 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
     log.set(operation="connect_link")
     verified = await resolve_and_consume_connect_code(code)
     if not verified:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL.rstrip('/')}{_CONNECT_ERROR_REDIRECT}")
+        return _connect_link_error("invalid_or_expired_link")
 
     user_id, integration_id = verified
     log.set(user={"id": user_id}, integration={"id": integration_id})
@@ -245,7 +250,7 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
     try:
         user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
     except InvalidId:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL.rstrip('/')}{_CONNECT_ERROR_REDIRECT}")
+        return _connect_link_error("invalid_or_expired_link")
     if user_doc:
         user_email = user_doc.get("email", "")
 
@@ -260,6 +265,4 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
         return RedirectResponse(url=result.redirect_url)
 
     log.set(outcome="error")
-    return RedirectResponse(
-        url=f"{settings.FRONTEND_URL.rstrip('/')}/integrations?connect_error=could_not_start"
-    )
+    return _connect_link_error("could_not_start")
