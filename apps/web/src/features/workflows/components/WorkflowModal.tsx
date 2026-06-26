@@ -1,22 +1,23 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Divider } from "@heroui/divider";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { Switch } from "@heroui/switch";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { InformationCircleIcon } from "@icons";
-import { useCallback, useEffect, useState } from "react";
+import { Alert02Icon, InformationCircleIcon } from "@icons";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
 import WorkflowFooter from "@/features/workflows/components/workflow-modal/WorkflowFooter";
 import WorkflowHeader from "@/features/workflows/components/workflow-modal/WorkflowHeader";
 import WorkflowLoadingState from "@/features/workflows/components/workflow-modal/WorkflowLoadingState";
 import WorkflowRightPanel from "@/features/workflows/components/workflow-modal/WorkflowRightPanel";
+import WorkflowStepsPreviewCard from "@/features/workflows/components/workflow-modal/WorkflowStepsPreviewCard";
 import WorkflowTriggerSection from "@/features/workflows/components/workflow-modal/WorkflowTriggerSection";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -27,6 +28,7 @@ import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 import { type Workflow, workflowApi } from "../api/workflowApi";
+import { REGENERATION_REASONS } from "../constants/regeneration";
 import {
   getDefaultFormValues,
   type WorkflowFormData,
@@ -38,7 +40,8 @@ import { useWorkflowsStore } from "../stores/workflowsStore";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { createDefaultTriggerConfig } from "../triggers/registry";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
-import { findTriggerSchema, getTriggerDisplayInfo } from "../triggers/utils";
+import { findTriggerSchema } from "../triggers/utils";
+import { mentionedIntegrationIds } from "../utils/integrationMentions";
 
 interface WorkflowModalProps {
   isOpen: boolean;
@@ -75,6 +78,9 @@ export default function WorkflowModal({
   createAndSend = false,
 }: WorkflowModalProps) {
   const hasPredefinedSteps = !!predefinedSteps && predefinedSteps.length > 0;
+  // Two-column (form + side panel) for edit/preview and community-step create;
+  // plain create is a single comfortable column.
+  const isTwoColumn = mode !== "create" || hasPredefinedSteps;
   const {
     isCreating,
     error: creationError,
@@ -117,39 +123,11 @@ export default function WorkflowModal({
 
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Selected integration slugs for hinting step generation
-  const [selectedIntegrationSlugs, setSelectedIntegrationSlugs] = useState<
-    string[]
-  >([]);
-
   // Fetch trigger schemas for slug normalization
   const { data: triggerSchemas } = useTriggerSchemas();
 
   const { integrations, connectIntegration } = useIntegrations();
   const [isConnecting, setIsConnecting] = useState(false);
-  const missingIntegration = (() => {
-    if (!currentWorkflow) return null;
-    if (currentWorkflow.trigger_config.type !== "integration") return null;
-    const display = getTriggerDisplayInfo(
-      currentWorkflow,
-      integrations,
-      triggerSchemas,
-    );
-    if (!display.integration) return null;
-    if (display.integration.status === "connected") return null;
-    return display.integration;
-  })();
-  const handleConnectMissingIntegration = useCallback(async () => {
-    if (!missingIntegration || isConnecting) return;
-    setIsConnecting(true);
-    try {
-      await connectIntegration(missingIntegration.id);
-    } catch (err) {
-      console.error("Failed to connect integration", err);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [missingIntegration, isConnecting, connectIntegration]);
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -173,27 +151,101 @@ export default function WorkflowModal({
   useEffect(() => {
     if (isOpen) return;
     const timer = globalThis.setTimeout(() => {
+      // Only clear the form fields here — NOT the creation phase. Resetting the
+      // phase to "form" mid-fade would flash the form/button view over the
+      // terminal "success" screen on the way out. The phase is reset on open.
       resetFormValues(getDefaultFormValues());
-      setSelectedIntegrationSlugs([]);
-      resetToForm();
-      clearCreationError();
     }, 250);
     return () => globalThis.clearTimeout(timer);
-  }, [isOpen, resetFormValues, resetToForm, clearCreationError]);
+  }, [isOpen, resetFormValues]);
 
-  // Manage the single workflow state from all sources
+  // Reset the creation phase to a clean "form" when the modal OPENS (false ->
+  // true transition only), so each session starts fresh without flashing the
+  // previous session's success/error screen during the close animation. The ref
+  // guard is essential: resetToForm/clearCreationError identities are unstable,
+  // so without it this synchronous reset re-runs every render and infinite-loops.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (existingWorkflow) {
-      setCurrentWorkflow(existingWorkflow);
-      setSelectedIntegrationSlugs(existingWorkflow.selected_integrations ?? []);
-    } else {
-      setCurrentWorkflow(null);
-      setSelectedIntegrationSlugs([]);
+    if (isOpen && !wasOpenRef.current) {
+      console.debug("[workflow:modal] opened -> resetting creation phase", {
+        mode,
+      });
+      resetToForm();
+      clearCreationError();
     }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, resetToForm, clearCreationError, mode]);
+
+  // Sync the local working copy from the prop only when a DIFFERENT workflow is
+  // passed (modal opens / switches workflow). A background list refetch (e.g.
+  // after save/regenerate) re-passes the SAME workflow with possibly-stale
+  // steps; syncing on every object change would clobber freshly-regenerated
+  // steps and flash the old ones. currentWorkflow is the edit-session truth.
+  const syncedWorkflowIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const nextId = existingWorkflow?.id ?? null;
+    if (nextId === syncedWorkflowIdRef.current) return;
+    console.debug("[workflow:sync] syncing working copy from prop", {
+      id: nextId,
+      steps: existingWorkflow?.steps?.length ?? 0,
+    });
+    syncedWorkflowIdRef.current = nextId;
+    setCurrentWorkflow(existingWorkflow ?? null);
   }, [existingWorkflow]);
 
   // Watch form data for change detection
   const formData = watch();
+
+  // The integration slugs that step generation hints on (and that get persisted)
+  // come from the @-mentions in the instructions. Falls back to the existing
+  // workflow's saved slugs for older prompts that predate mention support.
+  const selectedIntegrationSlugs = useMemo(() => {
+    const mentioned = mentionedIntegrationIds(
+      formData.prompt ?? "",
+      integrations,
+    );
+    return mentioned.length > 0
+      ? mentioned
+      : (existingWorkflow?.selected_integrations ?? []);
+  }, [formData.prompt, integrations, existingWorkflow]);
+
+  // The integration backing the selected event trigger, if it still needs
+  // connecting. Resolved from the selected trigger slug (not trigger_config,
+  // which can briefly lag the selection) so this banner always agrees with the
+  // settings panel below — same slug, same integration.
+  // Limitation: only the trigger's integration is surfaced. Step-level
+  // integration metadata isn't available yet, so the banner can't cover
+  // integrations required by the workflow's steps — only the trigger.
+  const missingIntegration = useMemo(() => {
+    if (formData.activeTab !== "trigger" || !formData.selectedTrigger)
+      return null;
+    const integrationId = findTriggerSchema(
+      triggerSchemas,
+      formData.selectedTrigger,
+    )?.integration_id;
+    if (!integrationId) return null;
+    const integration = integrations.find((i) => i.id === integrationId);
+    return integration && integration.status !== "connected"
+      ? integration
+      : null;
+  }, [
+    formData.activeTab,
+    formData.selectedTrigger,
+    integrations,
+    triggerSchemas,
+  ]);
+
+  const handleConnectMissingIntegration = useCallback(async () => {
+    if (!missingIntegration || isConnecting) return;
+    setIsConnecting(true);
+    try {
+      await connectIntegration(missingIntegration.id);
+    } catch (err) {
+      console.error("Failed to connect integration", err);
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [missingIntegration, isConnecting, connectIntegration]);
 
   // Platform detection for keyboard shortcuts
   const { modifierKeyName } = usePlatform();
@@ -226,6 +278,11 @@ export default function WorkflowModal({
       return true;
     }
 
+    if (missingIntegration) {
+      // Don't create/save a workflow whose trigger integration isn't connected
+      return true;
+    }
+
     if (mode === "edit" && !hasFormChanges()) {
       // Edit mode requires changes
       return true;
@@ -237,7 +294,7 @@ export default function WorkflowModal({
     }
 
     return false;
-  }, [formData, mode, isCreating, existingWorkflow]);
+  }, [formData, mode, isCreating, existingWorkflow, missingIntegration]);
 
   // Keyboard shortcut: Escape to close modal
   useHotkeys(
@@ -397,7 +454,14 @@ export default function WorkflowModal({
   const handleSave = async (data: WorkflowFormData) => {
     if (!data.title.trim() || !data.prompt?.trim()) return;
 
+    console.debug("[workflow:save] start", {
+      mode,
+      title: data.title,
+      integrations: selectedIntegrationSlugs,
+    });
+
     if (mode === "create") {
+      console.debug("[workflow:create] phase -> creating");
       setCreationPhase("creating");
 
       // Validate the trigger config before sending
@@ -439,6 +503,11 @@ export default function WorkflowModal({
       };
 
       const result = await createWorkflow(createRequest);
+      console.debug("[workflow:create] api returned", {
+        success: result.success,
+        id: result.workflow?.id,
+        steps: result.workflow?.steps?.length ?? 0,
+      });
 
       if (result.success && result.workflow) {
         const createdWorkflow = result.workflow;
@@ -452,6 +521,7 @@ export default function WorkflowModal({
 
         // Update currentWorkflow with the newly created workflow
         setCurrentWorkflow(createdWorkflow);
+        console.debug("[workflow:create] phase -> success");
         setCreationPhase("success");
 
         // Show success toast
@@ -529,6 +599,12 @@ export default function WorkflowModal({
       if (stepRelevantChanged) {
         // Modal stays open with a visible regen indicator until the user
         // dismisses it.
+        console.debug(
+          "[workflow:regen] step-relevant change detected, regenerating",
+          {
+            id: currentWorkflow.id,
+          },
+        );
         setIsRegeneratingSteps(true);
         setRegenerationError(null);
         try {
@@ -545,7 +621,16 @@ export default function WorkflowModal({
           );
 
           if (regenResult.workflow) {
+            console.debug("[workflow:regen] api returned new steps", {
+              id: currentWorkflow.id,
+              steps: regenResult.workflow.steps?.length ?? 0,
+            });
+            // Commit the new steps locally AND to the store so the upcoming
+            // fetchWorkflows() refetch can't briefly resurface the old steps.
             setCurrentWorkflow(regenResult.workflow);
+            updateInStore(currentWorkflow.id, {
+              steps: regenResult.workflow.steps,
+            });
             toast.success("Workflow updated", {
               description: `${regenResult.workflow.steps?.length || 0} steps regenerated`,
               duration: 3000,
@@ -760,34 +845,12 @@ export default function WorkflowModal({
     router.push(`/use-cases/${currentWorkflow.slug}`);
   };
 
-  // Handle regeneration with specific instruction
-  // Keys must match WorkflowStepsPanel regenerationReasons
+  // Handle regeneration with a specific reason. The reason's instruction is the
+  // single source of truth in constants/regeneration.ts (shared with the panel).
   const handleRegenerateWithReason = (instructionKey: string) => {
-    const regenerationReasons = [
-      {
-        key: "too_complex",
-        label: "Simplify workflow",
-        description: "Simplify with fewer steps",
-      },
-      {
-        key: "missing_functionality",
-        label: "Add missing functionality",
-        description: "Add specific features",
-      },
-      {
-        key: "wrong_tools",
-        label: "Use different tools",
-        description: "Use different integrations",
-      },
-      {
-        key: "alternative_approach",
-        label: "Generate alternative approach",
-        description: "Try a completely different strategy",
-      },
-    ];
-    const reason = regenerationReasons.find((r) => r.key === instructionKey);
+    const reason = REGENERATION_REASONS.find((r) => r.key === instructionKey);
     if (reason) {
-      handleRegenerateSteps(reason.label, true); // Always force different tools for regeneration
+      handleRegenerateSteps(reason.instruction, true); // Always force different tools
     }
   };
 
@@ -839,149 +902,129 @@ export default function WorkflowModal({
         isOpen={isOpen}
         onOpenChange={onOpenChange}
         hideCloseButton
-        size={mode === "create" && !hasPredefinedSteps ? "3xl" : "4xl"}
-        className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" || hasPredefinedSteps ? "min-w-[80vw]" : ""}`}
+        size={isTwoColumn ? "5xl" : "2xl"}
+        // Width is widened past HeroUI's 5xl/2xl presets (via max-w-*) so the
+        // inline schedule sentence ("Run every … in <timezone>") fits on one
+        // line without overflowing. Two-column mode also gets a definite height
+        // so the side panel's flex/overflow chain (h-full → min-h-0 →
+        // overflow-y-auto) resolves and the Steps panel doesn't clip.
+        className={
+          isTwoColumn
+            ? "h-[85vh] max-h-[52rem] max-w-6xl bg-secondary-bg"
+            : "max-h-[90vh] max-w-3xl bg-secondary-bg"
+        }
         backdrop="blur"
       >
         <ModalContent>
-          <ModalBody className="min-h-0 overflow-hidden pr-2">
+          <ModalBody className="flex min-h-0 flex-col gap-0 p-0">
             {creationPhase === "form" ? (
-              <div className="flex min-h-0 flex-1 gap-8">
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <fieldset
-                    disabled={mode === "preview"}
-                    className="contents disabled:cursor-default"
-                  >
-                    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto ">
-                      {missingIntegration && (
-                        <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-3 py-2.5 text-sm text-amber-300">
-                          <span>
-                            This workflow is disabled because{" "}
-                            <span className="font-medium">
-                              {missingIntegration.name}
-                            </span>{" "}
-                            isn't connected. Connect it to start running.
-                          </span>
-                          <Button
-                            color="primary"
-                            size="sm"
-                            isLoading={isConnecting}
-                            onPress={handleConnectMissingIntegration}
-                          >
-                            Connect {missingIntegration.name}
-                          </Button>
-                        </div>
-                      )}
-                      <WorkflowHeader
-                        mode={mode}
-                        control={control}
-                        errors={errors}
-                        currentWorkflow={currentWorkflow}
-                        isActivated={isActivated}
-                        isTogglingActivation={isTogglingActivation}
-                        onToggleActivation={handleActivationToggle}
-                        isPublic={!!currentWorkflow?.is_public}
-                        onUnpublish={handlePublishToggle}
-                        onDelete={handleDelete}
-                        onResetToDefault={handleResetToDefault}
-                      />
+              <>
+                <div className="scrollbar-hover flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6 lg:flex-row lg:gap-8 lg:overflow-hidden">
+                  {/* Form column — the single scroll region on desktop. Below
+                      lg the row stacks and scrolls as a whole, so the column
+                      keeps its full content height (shrink-0) instead of being
+                      compressed by the fixed row height and overflowing onto the
+                      panel below. lg:flex-1 restores fill-and-scroll on desktop. */}
+                  <div className="flex min-h-0 shrink-0 flex-col lg:flex-1 lg:shrink lg:overflow-hidden">
+                    <fieldset
+                      disabled={mode === "preview"}
+                      className="contents disabled:cursor-default"
+                    >
+                      <div className="scrollbar-hover space-y-8 pb-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3">
+                        {missingIntegration && (
+                          <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
+                            <span className="flex items-center gap-2">
+                              <Alert02Icon className="h-4 w-4 shrink-0" />
+                              <span>
+                                <span className="font-medium">
+                                  {missingIntegration.name}
+                                </span>{" "}
+                                isn't connected — connect it to use this
+                                trigger.
+                              </span>
+                            </span>
+                            <Button
+                              color="danger"
+                              size="sm"
+                              isLoading={isConnecting}
+                              onPress={handleConnectMissingIntegration}
+                            >
+                              Connect
+                            </Button>
+                          </div>
+                        )}
 
-                      <WorkflowTriggerSection
-                        activeTab={formData.activeTab}
-                        selectedTrigger={formData.selectedTrigger}
-                        triggerConfig={formData.trigger_config}
-                        onActiveTabChange={handleActiveTabChange}
-                        onSelectedTriggerChange={(trigger) =>
-                          setValue("selectedTrigger", trigger)
-                        }
-                        onTriggerConfigChange={(config) =>
-                          setValue("trigger_config", config)
-                        }
-                        isPreview={mode === "preview"}
-                      />
-
-                      <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/60 px-4 py-3">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-zinc-100">
-                            Notify when runs finish
-                          </span>
-                          <span className="text-xs text-zinc-500">
-                            GAIA pings your channels with the result after each
-                            run
-                          </span>
-                        </div>
-                        <Switch
-                          size="sm"
-                          isSelected={formData.notify_on_completion}
-                          onValueChange={(enabled) =>
-                            setValue("notify_on_completion", enabled, {
-                              shouldDirty: true,
-                            })
+                        <WorkflowHeader
+                          mode={mode}
+                          control={control}
+                          errors={errors}
+                          currentWorkflow={currentWorkflow}
+                          isActivated={isActivated}
+                          isTogglingActivation={isTogglingActivation}
+                          onToggleActivation={handleActivationToggle}
+                          isPublic={!!currentWorkflow?.is_public}
+                          onUnpublish={handlePublishToggle}
+                          onViewMarketplace={
+                            currentWorkflow?.slug
+                              ? handleMarketplaceView
+                              : undefined
                           }
-                          isDisabled={mode === "preview"}
-                          aria-label="Notify when runs finish"
+                          onDelete={handleDelete}
+                          onResetToDefault={handleResetToDefault}
                         />
-                      </div>
 
-                      <div>
-                        <div className="border-t border-zinc-800 mb-2" />
-                        <div className="space-y-4">
-                          <WorkflowDescriptionField
-                            control={control}
-                            errors={errors}
-                            setValue={setValue}
-                            mode={mode === "preview" ? "edit" : mode}
-                            isPreview={mode === "preview"}
-                            selectedIntegrationSlugs={selectedIntegrationSlugs}
-                            onIntegrationSlugsChange={
-                              setSelectedIntegrationSlugs
+                        <WorkflowDescriptionField
+                          control={control}
+                          errors={errors}
+                          setValue={setValue}
+                          isPreview={mode === "preview"}
+                          selectedIntegrationSlugs={selectedIntegrationSlugs}
+                        />
+
+                        <WorkflowTriggerSection
+                          activeTab={formData.activeTab}
+                          selectedTrigger={formData.selectedTrigger}
+                          triggerConfig={formData.trigger_config}
+                          onActiveTabChange={handleActiveTabChange}
+                          onSelectedTriggerChange={(trigger) =>
+                            setValue("selectedTrigger", trigger)
+                          }
+                          onTriggerConfigChange={(config) =>
+                            setValue("trigger_config", config)
+                          }
+                          isPreview={mode === "preview"}
+                        />
+
+                        <div className="flex items-center justify-between gap-4 pb-1 pt-2">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-medium text-zinc-200">
+                              Notify when runs finish
+                            </span>
+                            <span className="text-xs text-zinc-500">
+                              GAIA shares the result in your channels after each
+                              run
+                            </span>
+                          </div>
+                          <Switch
+                            size="sm"
+                            isSelected={formData.notify_on_completion}
+                            onValueChange={(enabled) =>
+                              setValue("notify_on_completion", enabled, {
+                                shouldDirty: true,
+                              })
                             }
-                            showIntegrationSelector={!hasPredefinedSteps}
+                            isDisabled={mode === "preview"}
+                            aria-label="Notify when runs finish"
                           />
                         </div>
                       </div>
-                    </div>
-                  </fieldset>
+                    </fieldset>
+                  </div>
 
-                  {mode === "preview" ? (
-                    <PreviewFooter onClose={handleClose} />
-                  ) : (
-                    <WorkflowFooter
-                      existingWorkflow={!!existingWorkflow}
-                      hasSteps={
-                        !!currentWorkflow?.steps &&
-                        currentWorkflow.steps.length > 0
-                      }
-                      onRunWorkflow={handleRunWorkflow}
-                      onCancel={handleClose}
-                      onSave={() => handleSubmit(handleSave)()}
-                      isSaveDisabled={isSaveDisabled()}
-                      isCreating={isCreating}
-                      modifierKeyName={modifierKeyName}
-                      buttonText={getButtonText()}
-                      isPublic={!!currentWorkflow?.is_public}
-                      onPublishToggle={handlePublishToggle}
-                      onViewMarketplace={
-                        currentWorkflow?.slug
-                          ? handleMarketplaceView
-                          : undefined
-                      }
-                    />
-                  )}
-                </div>
-
-                {mode === "create" && hasPredefinedSteps && (
-                  <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
-                    <div className="mb-2 flex items-center justify-between px-1">
-                      <span className="text-sm font-medium text-zinc-300">
-                        Steps
-                      </span>
-                      <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-xs text-primary">
-                        {predefinedSteps?.length}
-                      </span>
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-y-auto">
-                      <WorkflowSteps
+                  {/* Side panel — predefined steps preview */}
+                  {mode === "create" && hasPredefinedSteps && (
+                    <div className="flex min-h-0 shrink-0 flex-col lg:w-[22rem] lg:pb-6">
+                      <WorkflowStepsPreviewCard
                         steps={(predefinedSteps ?? []).map((step) => ({
                           id: step.id ?? "",
                           title: step.title,
@@ -990,38 +1033,72 @@ export default function WorkflowModal({
                         }))}
                       />
                     </div>
-                  </div>
-                )}
-
-                {(mode === "edit" || mode === "preview") &&
-                  existingWorkflow && (
-                    <fieldset
-                      disabled={mode === "preview"}
-                      className="contents disabled:cursor-default"
-                    >
-                      <WorkflowRightPanel
-                        workflow={currentWorkflow}
-                        workflowId={existingWorkflow.id}
-                        isGenerating={isGeneratingSteps}
-                        isRegenerating={isRegeneratingSteps}
-                        regenerationError={regenerationError}
-                        onRegenerateWithReason={handleRegenerateWithReason}
-                        onInitialGeneration={handleInitialGeneration}
-                        onClearError={() => setRegenerationError(null)}
-                        isPreview={mode === "preview"}
-                      />
-                    </fieldset>
                   )}
-              </div>
+
+                  {/* Side panel — steps + history (edit / preview).
+                      The column stretches to the row's (now definite) height and
+                      the panel fills it via h-full, scrolling internally — so
+                      switching Steps↔History can't resize the modal. `lg:pb-6`
+                      matches the form column's bottom breathing room. */}
+                  {(mode === "edit" || mode === "preview") &&
+                    existingWorkflow && (
+                      <fieldset
+                        disabled={mode === "preview"}
+                        className="flex min-h-0 shrink-0 flex-col disabled:cursor-default lg:w-[22rem] lg:pb-6"
+                      >
+                        <WorkflowRightPanel
+                          workflow={currentWorkflow}
+                          workflowId={existingWorkflow.id}
+                          isGenerating={isGeneratingSteps}
+                          isRegenerating={isRegeneratingSteps}
+                          regenerationError={regenerationError}
+                          onRegenerateWithReason={handleRegenerateWithReason}
+                          onInitialGeneration={handleInitialGeneration}
+                          onClearError={() => setRegenerationError(null)}
+                          isPreview={mode === "preview"}
+                        />
+                      </fieldset>
+                    )}
+                </div>
+
+                {/* Full-width footer */}
+                <div className="shrink-0">
+                  <Divider className="bg-zinc-700" />
+                  <div className="px-6 py-4">
+                    {mode === "preview" ? (
+                      <PreviewFooter onClose={handleClose} />
+                    ) : (
+                      <WorkflowFooter
+                        existingWorkflow={!!existingWorkflow}
+                        hasSteps={
+                          !!currentWorkflow?.steps &&
+                          currentWorkflow.steps.length > 0
+                        }
+                        onRunWorkflow={handleRunWorkflow}
+                        onCancel={handleClose}
+                        onSave={() => handleSubmit(handleSave)()}
+                        isSaveDisabled={isSaveDisabled()}
+                        isCreating={isCreating}
+                        modifierKeyName={modifierKeyName}
+                        buttonText={getButtonText()}
+                        isPublic={!!currentWorkflow?.is_public}
+                        onPublish={handlePublishToggle}
+                      />
+                    )}
+                  </div>
+                </div>
+              </>
             ) : (
-              <WorkflowLoadingState
-                phase={creationPhase}
-                mode={mode}
-                error={creationError}
-                workflow={currentWorkflow}
-                onClose={handleClose}
-                onRetry={() => setCreationPhase("form")}
-              />
+              <div className="px-6 py-4">
+                <WorkflowLoadingState
+                  phase={creationPhase}
+                  mode={mode}
+                  error={creationError}
+                  workflow={currentWorkflow}
+                  onClose={handleClose}
+                  onRetry={() => setCreationPhase("form")}
+                />
+              </div>
             )}
           </ModalBody>
         </ModalContent>
@@ -1045,22 +1122,16 @@ export default function WorkflowModal({
 
 function PreviewFooter({ onClose }: { onClose: () => void }) {
   return (
-    <div className="mt-6 pt-4 pb-3">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-start gap-2 rounded-2xl bg-zinc-800 px-3 py-2.5 text-xs text-zinc-300">
-          <InformationCircleIcon
-            height={16}
-            className="mt-0.5 shrink-0 text-zinc-400"
-          />
-          <span>
-            Don't worry, you can customise all the details later from the
-            Workflows page.
-          </span>
-        </div>
-        <Button color="primary" onPress={onClose}>
-          Close
-        </Button>
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center gap-2 text-xs text-zinc-400">
+        <InformationCircleIcon height={16} className="shrink-0 text-zinc-500" />
+        <span>
+          You can customise every detail later from the Workflows page.
+        </span>
       </div>
+      <Button color="primary" onPress={onClose}>
+        Close
+      </Button>
     </div>
   );
 }

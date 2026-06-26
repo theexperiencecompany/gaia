@@ -10,6 +10,7 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import {
   resolveCreatorAvatar,
   resolveCreatorName,
@@ -76,13 +77,16 @@ function TriggerIcon({
   integrationId,
   size = 20,
 }: TriggerIconProps) {
-  // Try to get icon from integrationId first
+  const { getIntegrationIconUrl } = useIntegrationLookup();
+
+  // Try to get icon from integrationId first (pass the integration's icon URL so
+  // custom/MCP integration triggers resolve, not just built-ins).
   if (integrationId) {
-    const icon = getToolCategoryIcon(integrationId, {
-      width: size,
-      height: size,
-      showBackground: false,
-    });
+    const icon = getToolCategoryIcon(
+      integrationId,
+      { width: size, height: size, showBackground: false },
+      getIntegrationIconUrl(integrationId),
+    );
     if (icon) {
       return <div className="flex items-center">{icon}</div>;
     }

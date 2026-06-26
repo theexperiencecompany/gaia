@@ -9,31 +9,11 @@ import { Skeleton } from "@heroui/skeleton";
 import { AlertCircleIcon, RedoIcon } from "@icons";
 import { ChevronDown } from "@/components/shared/icons";
 import type { Workflow } from "../../api/workflowApi";
+import { REGENERATION_REASONS } from "../../constants/regeneration";
 import WorkflowSteps from "../shared/WorkflowSteps";
 import PanelHeader from "./PanelHeader";
 
-const regenerationReasons = [
-  {
-    key: "too_complex",
-    label: "Too Complex",
-    description: "Simplify with fewer steps",
-  },
-  {
-    key: "missing_functionality",
-    label: "Missing Functionality",
-    description: "Add specific features",
-  },
-  {
-    key: "wrong_tools",
-    label: "Wrong Tools",
-    description: "Use different integrations",
-  },
-  {
-    key: "alternative_approach",
-    label: "Alternative Approach",
-    description: "Try a completely different strategy",
-  },
-] as const;
+const DROPDOWN_ICON = "size-5 text-default-500 pointer-events-none shrink-0";
 
 interface WorkflowStepsPanelProps {
   workflow: Workflow | null;
@@ -43,7 +23,6 @@ interface WorkflowStepsPanelProps {
   onRegenerateWithReason: (reasonKey: string) => void;
   onInitialGeneration: () => void;
   onClearError: () => void;
-  isPreview?: boolean;
 }
 
 export default function WorkflowStepsPanel({
@@ -54,74 +33,47 @@ export default function WorkflowStepsPanel({
   onRegenerateWithReason,
   onInitialGeneration,
   onClearError,
-  isPreview = false,
 }: WorkflowStepsPanelProps) {
-  if (isPreview) {
-    if (!workflow?.steps || workflow.steps.length === 0) {
-      return (
-        <div className="py-6 text-center text-sm text-zinc-500">
-          Steps will be generated when this workflow runs.
-        </div>
-      );
-    }
-    return (
-      <div className="overflow-y-auto">
-        <WorkflowSteps steps={workflow.steps} />
-      </div>
-    );
-  }
-
   if (regenerationError) {
     return (
-      <div className="space-y-4">
-        <div className="flex flex-col items-center justify-center py-8">
-          <div className="text-center">
-            <div className="mb-4">
-              <AlertCircleIcon className="mx-auto h-12 w-12 text-danger" />
-            </div>
-            <h3 className="text-lg font-medium text-danger">
-              Generation Failed
-            </h3>
-            <p className="mb-4 text-sm text-zinc-400">{regenerationError}</p>
-            <Button variant="flat" size="sm" onPress={onClearError}>
-              Try Again
-            </Button>
-          </div>
+      <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+        <div className="rounded-full bg-danger/15 p-3">
+          <AlertCircleIcon className="h-5 w-5 text-danger" />
         </div>
+        <div>
+          <p className="text-sm font-medium text-danger">Generation failed</p>
+          <p className="mt-0.5 text-xs text-zinc-500">{regenerationError}</p>
+        </div>
+        <Button variant="flat" size="sm" onPress={onClearError}>
+          Try again
+        </Button>
       </div>
     );
   }
 
   if (!workflow?.steps || workflow.steps.length === 0) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h4 className="font-medium text-zinc-200">Workflow Steps</h4>
-            <p className="text-xs text-zinc-500">No steps generated yet</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="flat"
-              size="sm"
-              color="primary"
-              isLoading={isRegenerating}
-              isDisabled={isRegenerating}
-              startContent={<RedoIcon className="h-4 w-4" />}
-              onPress={onInitialGeneration}
-            >
-              Generate Steps
-            </Button>
-          </div>
+      <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+        <div className="rounded-full bg-zinc-800/60 p-3">
+          <RedoIcon className="h-5 w-5 text-zinc-500" />
         </div>
-        <div className="flex flex-col items-center justify-center py-8 text-center">
-          <div className="mb-4 rounded-full bg-zinc-800/50 p-3">
-            <RedoIcon className="h-6 w-6 text-zinc-500" />
-          </div>
-          <p className="text-sm text-zinc-400">
-            Click "Generate Steps" to create your first workflow plan
+        <div>
+          <p className="text-sm font-medium text-zinc-300">No steps yet</p>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            Generate a plan for this workflow
           </p>
         </div>
+        <Button
+          variant="flat"
+          size="sm"
+          color="primary"
+          isLoading={isRegenerating}
+          isDisabled={isRegenerating}
+          startContent={!isRegenerating && <RedoIcon className="h-4 w-4" />}
+          onPress={onInitialGeneration}
+        >
+          Generate steps
+        </Button>
       </div>
     );
   }
@@ -136,7 +88,6 @@ export default function WorkflowStepsPanel({
               <Button
                 variant="flat"
                 size="sm"
-                color="primary"
                 isLoading={isRegenerating}
                 isDisabled={isRegenerating}
                 endContent={
@@ -151,14 +102,16 @@ export default function WorkflowStepsPanel({
             </DropdownTrigger>
             <DropdownMenu
               aria-label="Regeneration reasons"
+              variant="flat"
               onAction={(key) => onRegenerateWithReason(key as string)}
               disabledKeys={isRegenerating ? ["all"] : []}
             >
-              {regenerationReasons.map((reason) => (
+              {REGENERATION_REASONS.map((reason) => (
                 <DropdownItem
                   key={reason.key}
                   textValue={reason.label}
                   description={reason.description}
+                  startContent={<reason.icon className={DROPDOWN_ICON} />}
                 >
                   {reason.label}
                 </DropdownItem>
@@ -167,7 +120,7 @@ export default function WorkflowStepsPanel({
           </Dropdown>
         }
       />
-      <div className="overflow-y-auto">
+      <div>
         <Skeleton
           className="rounded-2xl"
           isLoaded={!(isRegenerating || isGenerating)}

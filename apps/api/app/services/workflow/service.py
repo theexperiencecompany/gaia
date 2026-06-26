@@ -935,6 +935,7 @@ class WorkflowService:
                 workflow.trigger_config,
                 description=workflow.description,
                 selected_integrations=effective_slugs,
+                user_id=user_id,
             )
 
             update_set: dict[str, Any] = {
@@ -1185,6 +1186,7 @@ class WorkflowService:
                 workflow.trigger_config,
                 description=workflow.description,
                 selected_integrations=selected_integrations,
+                user_id=user_id,
             )
 
             await workflows_collection.find_one_and_update(

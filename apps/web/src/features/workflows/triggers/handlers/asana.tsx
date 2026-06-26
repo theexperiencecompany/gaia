@@ -6,9 +6,13 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
+import {
+  TriggerSettingRow,
+  TriggerSettingsCard,
+} from "../components/TriggerSettingsCard";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
@@ -54,40 +58,39 @@ function AsanaSettings({
 
   if (!isConnected) {
     return (
-      <div className="flex flex-col items-center justify-center p-4 space-y-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
-        <p className="text-sm text-zinc-400">
-          Connect Asana to configure this trigger
-        </p>
-        <Button
-          color="primary"
-          variant="flat"
-          onPress={() => connectIntegration(integrationId)}
-        >
-          Connect Asana
-        </Button>
-      </div>
+      <TriggerConnectionPrompt
+        integrationName="Asana"
+        integrationId={integrationId}
+        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
+        onConnect={() => connectIntegration(integrationId)}
+      />
     );
   }
 
   return (
-    <div className="space-y-3">
-      <Input
-        label="Project ID (optional)"
-        placeholder="Enter project ID to filter"
-        value={triggerData?.project_id || ""}
-        onValueChange={(val) => updateTriggerData({ project_id: val })}
-        className="w-full max-w-xl"
-        description="Leave empty to trigger on all projects"
-      />
-      <Input
-        label="Workspace ID (optional)"
-        placeholder="Enter workspace ID to filter"
-        value={triggerData?.workspace_id || ""}
-        onValueChange={(val) => updateTriggerData({ workspace_id: val })}
-        className="w-full max-w-xl"
-        description="Leave empty to trigger on all workspaces"
-      />
-    </div>
+    <TriggerSettingsCard>
+      <TriggerSettingRow label="Project ID" hint="Leave empty for all projects">
+        <Input
+          aria-label="Project ID"
+          placeholder="Enter project ID"
+          value={triggerData?.project_id || ""}
+          onValueChange={(val) => updateTriggerData({ project_id: val })}
+          className="w-full"
+        />
+      </TriggerSettingRow>
+      <TriggerSettingRow
+        label="Workspace ID"
+        hint="Leave empty for all workspaces"
+      >
+        <Input
+          aria-label="Workspace ID"
+          placeholder="Enter workspace ID"
+          value={triggerData?.workspace_id || ""}
+          onValueChange={(val) => updateTriggerData({ workspace_id: val })}
+          className="w-full"
+        />
+      </TriggerSettingRow>
+    </TriggerSettingsCard>
   );
 }
 

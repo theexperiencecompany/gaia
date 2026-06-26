@@ -14,6 +14,10 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Discriminator, Field
 
+# Upper bound for the Gmail polling interval. Allows day-scale intervals (e.g.
+# a weekly digest) while staying within a sane range Composio will accept.
+MAX_GMAIL_POLL_INTERVAL_MINUTES = 60 * 24 * 30  # 30 days
+
 
 class BaseTriggerConfigData(BaseModel):
     """Base class for trigger-specific configuration."""
@@ -77,8 +81,8 @@ class GmailPollInboxConfig(BaseTriggerConfigData):
     interval: int = Field(
         default=15,
         ge=1,
-        le=1440,
-        description="How often Composio polls Gmail, in minutes.",
+        le=MAX_GMAIL_POLL_INTERVAL_MINUTES,
+        description="How often Composio polls Gmail, in minutes (up to 30 days).",
     )
 
 

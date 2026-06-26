@@ -1,6 +1,7 @@
 "use client";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 
 interface WorkflowIconsProps {
   steps: Array<{ category: string }>;
@@ -23,17 +24,23 @@ export default function WorkflowIcons({
   spacing = "-space-x-1.5 ",
   showBackground = true,
 }: WorkflowIconsProps) {
+  const { getIntegrationIconUrl } = useIntegrationLookup();
+  // De-duplicate categories, preserving first-seen order.
   const categories = [...new Set(steps.map((step) => step.category))];
   const displayIcons = categories.slice(0, maxIcons);
 
   return (
     <div className={`flex min-h-8 items-center ${spacing} ${className}`}>
       {displayIcons.map((category, index) => {
-        const IconComponent = getToolCategoryIcon(category, {
-          width: iconSize,
-          height: iconSize,
-          showBackground: showBackground,
-        });
+        const IconComponent = getToolCategoryIcon(
+          category,
+          {
+            width: iconSize,
+            height: iconSize,
+            showBackground: showBackground,
+          },
+          getIntegrationIconUrl(category),
+        );
         return IconComponent ? (
           <div
             key={category}
