@@ -18,9 +18,13 @@ import { useLoading } from "@/features/chat/hooks/useLoading";
 function getButtonStyle(
   showStop: boolean,
   hasContent: boolean,
+  isUploading: boolean,
 ): { bg: "default" | "primary"; contentColor: string } {
   if (showStop) return { bg: "default", contentColor: "text-zinc-300" };
-  if (hasContent) return { bg: "primary", contentColor: "text-black" };
+  // An in-flight upload holds the send, so it must read as muted/not-ready
+  // rather than the live primary fill even though there is content.
+  if (hasContent && !isUploading)
+    return { bg: "primary", contentColor: "text-black" };
   return { bg: "default", contentColor: "text-zinc-500" };
 }
 
@@ -62,6 +66,8 @@ interface SendStopButtonProps {
   hasContent: boolean;
   /** Submit handler invoked when sending or queueing. */
   onSend: () => void;
+  /** While true an attachment is still uploading, so send is held. */
+  isUploading?: boolean;
   className?: string;
 }
 
@@ -74,11 +80,11 @@ interface SendStopButtonProps {
 export default function SendStopButton({
   hasContent,
   onSend,
+  isUploading = false,
   className = "h-9 min-h-9 w-9 max-w-9 min-w-9",
 }: Readonly<SendStopButtonProps>) {
   const { stopStream } = useLoading();
-  const { isStreaming, showQueue, showStop, mode } =
-    useComposerSendMode(hasContent);
+  const { showQueue, showStop, mode } = useComposerSendMode(hasContent);
 
   const handlePress = () => {
     if (showStop) {
@@ -88,7 +94,11 @@ export default function SendStopButton({
     }
   };
 
-  const { bg, contentColor } = getButtonStyle(showStop, hasContent);
+  const { bg, contentColor } = getButtonStyle(
+    showStop,
+    hasContent,
+    isUploading,
+  );
 
   // Queue widens into a labelled pill; stop/send stay icon-only square buttons.
   const stopCursor = showStop ? "cursor-pointer" : "";
@@ -102,7 +112,10 @@ export default function SendStopButton({
       aria-label={MODE_ARIA_LABEL[mode]}
       className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
       color={bg}
-      disabled={!isStreaming && !hasContent}
+      // Stop (abort the stream) is always pressable; send/queue is gated on
+      // readiness — there must be content AND no in-flight upload, otherwise the
+      // submit is dropped by the composer's uploading guard.
+      disabled={!showStop && (!hasContent || isUploading)}
       radius="full"
       // In stop mode the button aborts the stream rather than submitting, so it
       // must not trigger the composer form. Only send/queue submit.

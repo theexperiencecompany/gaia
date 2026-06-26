@@ -20,6 +20,7 @@ import time
 
 import psutil
 
+from app.constants.log_tags import LogTag
 from app.constants.search import (
     BROWSER_REAPER_INTERVAL_SECONDS,
     BROWSER_REAPER_MAX_AGE_SECONDS,
@@ -73,11 +74,11 @@ async def _reaper_loop() -> None:
         try:
             reaped = await asyncio.to_thread(reap_leaked_browsers)
             if reaped:
-                log.warning(f"Reaped {reaped} leaked browser driver process(es)")
+                log.warning(f"{LogTag.TOOL} Reaped {reaped} leaked browser driver process(es)")
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.warning(f"Browser reaper sweep failed: {e}")
+            log.warning(f"{LogTag.TOOL} Browser reaper sweep failed: {e}")
 
 
 def start_browser_reaper() -> None:
@@ -87,7 +88,7 @@ def start_browser_reaper() -> None:
         return
     _reaper_task = asyncio.get_running_loop().create_task(_reaper_loop())
     log.info(
-        f"Browser reaper started (interval={BROWSER_REAPER_INTERVAL_SECONDS:.0f}s, "
+        f"{LogTag.TOOL} Browser reaper started (interval={BROWSER_REAPER_INTERVAL_SECONDS:.0f}s, "
         f"max_age={BROWSER_REAPER_MAX_AGE_SECONDS:.0f}s)"
     )
 

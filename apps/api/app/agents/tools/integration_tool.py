@@ -17,6 +17,7 @@ from app.constants.integrations import (
     MAX_CONNECTED_FOR_LLM,
     MAX_SUGGESTED_FOR_LLM,
 )
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
@@ -159,7 +160,7 @@ async def list_integrations(
         if search_public_query and search_public_query.strip():
             try:
                 query = search_public_query.strip()
-                log.info(f"Searching public integrations with query: {query}")
+                log.info(f"{LogTag.TOOL} Searching public integrations with query: {query}")
 
                 # Get IDs to exclude (user already has these)
                 existing_ids = {i["id"] for i in connected_list + available_list}
@@ -204,7 +205,7 @@ async def list_integrations(
                 async for doc in docs_cursor:
                     iid = doc.get("integration_id")
                     mcp_config = doc.get("mcp_config", {})
-                    log.info(f"Found public integration: {iid} - {doc.get('name')}")
+                    log.info(f"{LogTag.TOOL} Found public integration: {iid} - {doc.get('name')}")
 
                     suggested_list.append(
                         {
@@ -223,10 +224,10 @@ async def list_integrations(
                         }
                     )
 
-                log.info(f"Found {len(suggested_list)} public integrations")
+                log.info(f"{LogTag.TOOL} Found {len(suggested_list)} public integrations")
 
             except Exception as e:
-                log.warning(f"Failed to search public integrations: {e}")
+                log.warning(f"{LogTag.TOOL} Failed to search public integrations: {e}")
 
         # Stream suggested integrations to frontend (camelCase)
         suggested_for_stream = [
@@ -260,7 +261,7 @@ async def list_integrations(
         }
 
     except Exception as e:
-        log.error(f"Error listing integrations: {e}")
+        log.error(f"{LogTag.TOOL} Error listing integrations: {e}")
         return f"Error listing integrations: {e!s}"
 
 
@@ -353,7 +354,7 @@ async def connect_integration(
         return "\n".join(results) if results else "No integrations to connect."
 
     except Exception as e:
-        log.error(f"Error connecting integrations {integration_ids}: {e}")
+        log.error(f"{LogTag.TOOL} Error connecting integrations {integration_ids}: {e}")
         return f"Error connecting integrations: {e!s}"
 
 
@@ -400,7 +401,7 @@ async def check_integrations_status(
         return "\n".join(results)
 
     except Exception as e:
-        log.error(f"Error checking integration status: {e}")
+        log.error(f"{LogTag.TOOL} Error checking integration status: {e}")
         return f"Error checking status: {e!s}"
 
 

@@ -9,7 +9,7 @@
  * Run with: `pnpm deploy-commands` or `tsx src/deploy-commands.ts`
  */
 
-import { allCommands, type BotCommand } from "@gaia/shared";
+import { allCommands, type BotCommand, createBotLogger } from "@gaia/shared";
 import {
   ApplicationCommandType,
   ContextMenuCommandBuilder,
@@ -119,6 +119,8 @@ export function buildAllCommands() {
   return [...allCommands.map(buildSlashCommand), ...CONTEXT_MENU_COMMANDS];
 }
 
+const deployLogger = createBotLogger("discord", "deploy-commands");
+
 // Only run deployment when executed directly (not imported)
 const isMain =
   typeof process !== "undefined" &&
@@ -132,7 +134,12 @@ if (isMain) {
   const clientId = process.env.DISCORD_CLIENT_ID;
 
   if (!token || !clientId) {
-    console.error("Missing DISCORD_BOT_TOKEN or DISCORD_CLIENT_ID");
+    deployLogger.error("deploy_commands_missing_env", {
+      missing: [
+        ...(!token ? ["DISCORD_BOT_TOKEN"] : []),
+        ...(!clientId ? ["DISCORD_CLIENT_ID"] : []),
+      ],
+    });
     process.exit(1);
   }
 
@@ -140,11 +147,15 @@ if (isMain) {
 
   (async () => {
     try {
-      console.log("Registering slash and context menu commands...");
+      deployLogger.info("deploy_commands_started", {
+        command_count: commands.length,
+      });
       await rest.put(Routes.applicationCommands(clientId), { body: commands });
-      console.log("Successfully registered all commands");
+      deployLogger.info("deploy_commands_succeeded", {
+        command_count: commands.length,
+      });
     } catch (error) {
-      console.error("Failed to register commands:", error);
+      deployLogger.error("deploy_commands_failed", undefined, error);
       process.exit(1);
     }
   })();

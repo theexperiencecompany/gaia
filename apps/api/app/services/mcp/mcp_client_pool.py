@@ -14,6 +14,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
@@ -48,7 +49,7 @@ class MCPClientPool:
                 # Move to end (most recently used) so LRU eviction picks the
                 # truly oldest entry when we hit the cap.
                 self._clients.move_to_end(user_id)
-                log.debug(f"Reusing pooled MCPClient for {user_id}")
+                log.debug(f"{LogTag.MCP} Reusing pooled MCPClient for {user_id}")
                 return pooled.client
 
             # Pop oldest if at capacity (close outside lock)
@@ -56,7 +57,7 @@ class MCPClientPool:
                 oldest_key = next(iter(self._clients))
                 evicted = self._clients.pop(oldest_key)
                 log.info(
-                    f"MCPClientPool at capacity ({self._max_clients}); LRU-evicting {oldest_key}"
+                    f"{LogTag.MCP} MCPClientPool at capacity ({self._max_clients}); LRU-evicting {oldest_key}"
                 )
 
             # Create new client (local import to avoid circular dependency)
@@ -64,14 +65,14 @@ class MCPClientPool:
 
             client = MCPClient(user_id=user_id)
             self._clients[user_id] = PooledClient(client=client)
-            log.debug(f"Created new pooled MCPClient for {user_id}")
+            log.debug(f"{LogTag.MCP} Created new pooled MCPClient for {user_id}")
 
         # Close evicted sessions outside the lock to avoid blocking
         if evicted:
             try:
                 await evicted.client.close_all_client_sessions()
             except Exception as e:
-                log.warning(f"Error closing evicted MCP sessions: {e}")
+                log.warning(f"{LogTag.MCP} Error closing evicted MCP sessions: {e}")
 
         return client
 
@@ -84,8 +85,8 @@ class MCPClientPool:
         try:
             await pooled.client.close_all_client_sessions()
         except Exception as e:
-            log.warning(f"Error closing MCP sessions for user {user_id}: {e}")
-        log.debug(f"Evicted MCPClient for {user_id}")
+            log.warning(f"{LogTag.MCP} Error closing MCP sessions for user {user_id}: {e}")
+        log.debug(f"{LogTag.MCP} Evicted MCPClient for {user_id}")
 
     async def shutdown(self):
         """Graceful shutdown of all clients."""
@@ -93,7 +94,7 @@ class MCPClientPool:
             for user_id in list(self._clients.keys()):
                 await self._evict(user_id)
 
-        log.info("MCPClientPool shutdown complete")
+        log.info(f"{LogTag.MCP} MCPClientPool shutdown complete")
 
     @property
     def size(self) -> int:

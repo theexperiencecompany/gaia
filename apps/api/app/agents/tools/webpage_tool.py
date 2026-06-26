@@ -9,12 +9,14 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
 from app.agents.templates.fetch_template import FETCH_TEMPLATE
+from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.search_tool_docs import (
     WEB_SEARCH_TOOL,
 )
 from app.templates.docstrings.webpage_tool_docs import FETCH_WEBPAGES
-from app.utils.search_utils import fetch_with_firecrawl, perform_search
+from app.utils.search import perform_search
+from app.utils.webpage_fetch import fetch_webpage
 from shared.py.wide_events import log
 
 _NO_URLS_RETRIEVED_MSG = (
@@ -47,7 +49,7 @@ async def fetch_webpages(
             else:
                 processed_urls.append(url)
 
-        fetch_tasks = [fetch_with_firecrawl(url) for url in processed_urls]
+        fetch_tasks = [fetch_webpage(url) for url in processed_urls]
         fetched_pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
 
         for i, page_content in enumerate(fetched_pages):
@@ -105,7 +107,7 @@ async def web_search_tool(
         elapsed_time = time.time() - start_time
         formatted_text = f"Web search completed in {elapsed_time:.2f} seconds. Found {len(web_results)} web results, {len(image_results)} images, and {len(video_results)} videos."
 
-        log.info(formatted_text)
+        log.info(f"{LogTag.TOOL} {formatted_text}")
         writer({"progress": formatted_text})
 
         # Send search data to frontend via writer
@@ -152,7 +154,7 @@ async def web_search_tool(
         }
 
     except (TimeoutError, ConnectionError) as e:
-        log.error(f"Network error in web search: {e}", exc_info=True)
+        log.error(f"{LogTag.TOOL} Network error in web search: {e}", exc_info=True)
         return {
             "formatted_text": "\n\nConnection timed out during web search. Please try again later.",
             "error": str(e),
@@ -160,7 +162,7 @@ async def web_search_tool(
             "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except ValueError as e:
-        log.error(f"Value error in web search: {e}", exc_info=True)
+        log.error(f"{LogTag.TOOL} Value error in web search: {e}", exc_info=True)
         return {
             "formatted_text": "\n\nInvalid search parameters. Please try a different query.",
             "error": str(e),
@@ -168,7 +170,7 @@ async def web_search_tool(
             "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except Exception as e:
-        log.error(f"Unexpected error in web search: {e}", exc_info=True)
+        log.error(f"{LogTag.TOOL} Unexpected error in web search: {e}", exc_info=True)
         return {
             "formatted_text": "\n\nError performing web search. Please try again later.",
             "error": str(e),

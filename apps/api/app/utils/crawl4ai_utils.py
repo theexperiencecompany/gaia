@@ -2,13 +2,79 @@ import asyncio
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
+from crawl4ai.content_filter_strategy import BM25ContentFilter
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.constants.search import CRAWL4AI_CLOSE_TIMEOUT_SECONDS, CRAWL4AI_WAIT_UNTIL
 from shared.py.wide_events import log
+
+# Tags that are almost never primary content; dropped before markdown conversion.
+_EXCLUDED_TAGS = ["nav", "header", "footer", "aside", "form", "script", "style", "noscript"]
+_BM25_THRESHOLD = 1.0
+
+
+def _build_markdown_generator(content_query: str | None = None) -> DefaultMarkdownGenerator:
+    """Build a markdown generator tuned for clean, LLM-ready output.
+
+    Plain fetch keeps the full raw markdown — links, emails and inline text are
+    preserved (boilerplate is already removed via ``excluded_tags``). Deep
+    research passes a ``content_query`` so BM25 keeps only the passages most
+    relevant to the topic. (A pruning filter was dropping inline links, so it is
+    not used for plain fetch.)
+    """
+    content_filter = (
+        BM25ContentFilter(user_query=content_query, bm25_threshold=_BM25_THRESHOLD)
+        if content_query
+        else None
+    )
+    return DefaultMarkdownGenerator(
+        content_source="cleaned_html",
+        content_filter=content_filter,
+        options={
+            "ignore_links": False,
+            "ignore_images": True,
+            "skip_internal_links": True,
+            "body_width": 0,
+            "escape_html": False,
+        },
+    )
+
+
+def _build_run_config(
+    *,
+    page_timeout_ms: int,
+    semaphore_count: int,
+    content_query: str | None,
+    thorough: bool,
+) -> CrawlerRunConfig:
+    """Build a crawl run config.
+
+    ``thorough`` (single-page fetch) scrolls the whole page, lets late JS and
+    animations settle, and enables ``magic`` (overlay handling + light stealth)
+    so lazy-loaded / scroll-revealed content is captured. It is several times
+    slower, so batch crawls (deep research) leave it off. ``networkidle`` is
+    deliberately not used — it hangs on SPAs that hold persistent connections.
+    """
+    kwargs: dict[str, Any] = {
+        "page_timeout": page_timeout_ms,
+        "wait_until": CRAWL4AI_WAIT_UNTIL,
+        "semaphore_count": semaphore_count,
+        "markdown_generator": _build_markdown_generator(content_query),
+        "excluded_tags": _EXCLUDED_TAGS,
+        "word_count_threshold": 10,
+        "remove_overlay_elements": True,
+        "verbose": False,
+    }
+    if thorough:
+        kwargs.update(scan_full_page=True, magic=True, delay_before_return_html=1.0)
+    return CrawlerRunConfig(**kwargs)
+
 
 # Shared semaphore binding for the process-wide browser concurrency cap. The
 # limit itself is sourced from ``settings.CRAWL4AI_MAX_BROWSERS`` (env-driven,
@@ -43,7 +109,7 @@ async def _close_crawler(crawler: AsyncWebCrawler, context_name: str) -> None:
     try:
         await crawler.close()
     except Exception as e:
-        log.warning(f"{context_name} browser close failed: {e}")
+        log.warning(f"{LogTag.TOOL} {context_name} browser close failed: {e}")
 
 
 def _spawn_shielded_close(crawler: AsyncWebCrawler, context_name: str) -> asyncio.Task[None]:
@@ -88,7 +154,7 @@ async def managed_crawler(
             # close() is wedged; it keeps running detached and the reaper
             # collects the driver if it never finishes.
             log.warning(
-                f"{context_name} browser close still running after "
+                f"{LogTag.TOOL} {context_name} browser close still running after "
                 f"{CRAWL4AI_CLOSE_TIMEOUT_SECONDS:.0f}s; leaving it to finish in background"
             )
 
@@ -165,10 +231,19 @@ def _extract_content_or_error(
     max_content_chars: int | None,
 ) -> tuple[str | None, str | None]:
     markdown = getattr(result, "markdown", None)
-    if getattr(result, "success", False) and isinstance(markdown, str) and markdown.strip():
+    # With a markdown_generator configured, ``result.markdown`` is a
+    # MarkdownGenerationResult (not a str): prefer the pruned ``fit_markdown``,
+    # fall back to ``raw_markdown``. Keep the plain-str path for safety/back-compat.
+    if isinstance(markdown, str):
+        text = markdown
+    elif markdown is not None:
+        text = getattr(markdown, "fit_markdown", None) or getattr(markdown, "raw_markdown", None)
+    else:
+        text = None
+    if getattr(result, "success", False) and isinstance(text, str) and text.strip():
         if max_content_chars is not None:
-            return markdown[:max_content_chars], None
-        return markdown, None
+            return text[:max_content_chars], None
+        return text, None
 
     error_message = getattr(result, "error_message", None)
     return None, str(error_message or f"{context_name} returned empty content")
@@ -181,15 +256,17 @@ async def _recover_with_single_url_crawls(
     total_timeout_seconds: float,
     context_name: str,
     max_content_chars: int | None,
+    content_query: str | None = None,
+    thorough: bool = False,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Best-effort recovery path after batch timeout to avoid all-or-nothing failures."""
     recovery_timeout = max(10.0, min(total_timeout_seconds, page_timeout_ms / 1000 + 10.0))
 
-    run_config = CrawlerRunConfig(
-        page_timeout=page_timeout_ms,
-        wait_until=CRAWL4AI_WAIT_UNTIL,
+    run_config = _build_run_config(
+        page_timeout_ms=page_timeout_ms,
         semaphore_count=1,
-        verbose=False,
+        content_query=content_query,
+        thorough=thorough,
     )
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
 
@@ -247,16 +324,24 @@ async def batch_fetch_with_crawl4ai(
     semaphore_count: int,
     max_content_chars: int | None = None,
     context_name: str = "crawl4ai",
+    content_query: str | None = None,
+    thorough: bool = False,
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Fetch multiple URLs with a single crawl4ai crawler via arun_many."""
+    """Fetch multiple URLs with a single crawl4ai crawler via arun_many.
+
+    Pass ``content_query`` to rank each page's content by relevance to a topic
+    (BM25) instead of returning the full raw markdown — used by deep research.
+    Pass ``thorough`` to scroll + settle + handle overlays for richer single-page
+    captures (see ``_build_run_config``).
+    """
     if not urls:
         return {}, {}
 
-    run_config = CrawlerRunConfig(
-        page_timeout=page_timeout_ms,
-        wait_until=CRAWL4AI_WAIT_UNTIL,
+    run_config = _build_run_config(
+        page_timeout_ms=page_timeout_ms,
         semaphore_count=semaphore_count,
-        verbose=False,
+        content_query=content_query,
+        thorough=thorough,
     )
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
 
@@ -271,7 +356,7 @@ async def batch_fetch_with_crawl4ai(
             )
     except TimeoutError:
         log.warning(
-            f"{context_name} batch timed out after {total_timeout_seconds:.0f}s; "
+            f"{LogTag.TOOL} {context_name} batch timed out after {total_timeout_seconds:.0f}s; "
             "retrying URLs individually"
         )
         return await _recover_with_single_url_crawls(
@@ -280,12 +365,14 @@ async def batch_fetch_with_crawl4ai(
             total_timeout_seconds=total_timeout_seconds,
             context_name=context_name,
             max_content_chars=max_content_chars,
+            content_query=content_query,
+            thorough=thorough,
         )
     except asyncio.CancelledError:
         raise
     except Exception as e:
         error = f"{context_name} batch error: {e}"
-        log.warning(error)
+        log.warning(f"{LogTag.TOOL} {error}")
         return {}, dict.fromkeys(urls, error)
 
     requested_by_exact: dict[str, deque[int]] = defaultdict(deque)
@@ -338,12 +425,14 @@ async def batch_fetch_with_crawl4ai(
 
     if len(results) > len(urls):
         log.warning(
-            f"{context_name} returned {len(results)} results for {len(urls)} URLs; ignoring extras"
+            f"{LogTag.TOOL} {context_name} returned {len(results)} results for {len(urls)} URLs; ignoring extras"
         )
 
     unmatched_count = max(len(unmatched_results) - len(matched_results), 0)
     if unmatched_count:
-        log.warning(f"{context_name} could not map {unmatched_count} results to requested URLs")
+        log.warning(
+            f"{LogTag.TOOL} {context_name} could not map {unmatched_count} results to requested URLs"
+        )
 
     for url in urls:
         if url not in contents and url not in errors:

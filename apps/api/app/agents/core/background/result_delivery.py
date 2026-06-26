@@ -24,6 +24,7 @@ from app.agents.core.background.comms_narrator import narrate_executor_result
 from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
+from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import ConversationSource, MessageModel, UpdateMessagesRequest
@@ -72,7 +73,7 @@ async def deliver_result(
             run, result_text, result_type, attach_tool_data, returned_note
         )
     except Exception as e:  # noqa: BLE001 — delivery is best-effort, never propagates
-        log.error("Background notification delivery failed", error=str(e))
+        log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))
         return None, None
 
 
@@ -91,7 +92,7 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
     tool_data = drain_executor_tool_data(run.stream_id)
     if not tool_data:
         log.info(
-            "Cancelled executor produced no cards to persist",
+            f"{LogTag.AGENT} Cancelled executor produced no cards to persist",
             task_id=run.task_id,
             stream_id=run.stream_id,
         )
@@ -114,11 +115,11 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
             user=run.user,
         )
     except Exception as e:  # noqa: BLE001 — best-effort save of a stopped run
-        log.error("Failed to save cancelled executor cards", error=str(e))
+        log.error(f"{LogTag.AGENT} Failed to save cancelled executor cards", error=str(e))
         return
 
     log.info(
-        "Persisted cancelled executor cards",
+        f"{LogTag.AGENT} Persisted cancelled executor cards",
         message_id=bot_message.message_id,
         task_id=run.task_id,
         stream_id=run.stream_id,
@@ -210,7 +211,7 @@ async def _narrate_and_deliver(
             user=run.user,
         )
     except Exception as e:
-        log.error("deliver_result: failed to save message", error=str(e))
+        log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
         return None, None
 
     # Workflow run: the result was produced with no human watching, so deliver it
@@ -269,7 +270,7 @@ async def _narrate_and_deliver(
         transport = "websocket"
 
     log.info(
-        "deliver_result: delivered message",
+        f"{LogTag.AGENT} deliver_result: delivered message",
         message_id=bot_message.message_id,
         task_id=run.task_id,
         conversation_id=run.conversation_id,
@@ -305,7 +306,7 @@ async def _safe_inline_follow_ups(
         )
     except Exception as e:  # noqa: BLE001 — follow-ups are best-effort
         log.error(
-            "deliver_result: failed to generate follow-up actions",
+            f"{LogTag.AGENT} deliver_result: failed to generate follow-up actions",
             error=str(e),
             conversation_id=conversation_id,
             message_id=message_id,
@@ -414,7 +415,7 @@ async def _generate_and_push_follow_ups(
     except Exception as e:
         # Non-critical enhancement — the answer is already delivered. Log loudly
         # but never let a follow-up failure crash the background task.
-        log.error("deliver_result: deferred follow-up actions failed", error=str(e))
+        log.error(f"{LogTag.AGENT} deliver_result: deferred follow-up actions failed", error=str(e))
 
 
 async def _dispatch_workflow_notification(
@@ -450,7 +451,7 @@ async def _dispatch_workflow_notification(
         )
     elif not notify_on_completion:
         log.info(
-            "deliver_result: completion notification skipped (workflow is silent)",
+            f"{LogTag.AGENT} deliver_result: completion notification skipped (workflow is silent)",
             workflow_id=workflow_id,
             message_id=message_id,
         )
@@ -464,7 +465,7 @@ async def _dispatch_workflow_notification(
             result_text=notification_text,
         )
     log.info(
-        "deliver_result: workflow notification dispatched",
+        f"{LogTag.AGENT} deliver_result: workflow notification dispatched",
         workflow_id=workflow_id,
         message_id=message_id,
     )
@@ -525,7 +526,7 @@ async def _broadcast_message(user_id: str, ws_event: dict[str, Any]) -> None:
             return
         except Exception as ws_err:
             log.warning(
-                "_broadcast_message: broadcast attempt failed",
+                f"{LogTag.AGENT} _broadcast_message: broadcast attempt failed",
                 attempt=attempt + 1,
                 user_id=user_id,
                 error=str(ws_err),
@@ -550,7 +551,7 @@ async def _lookup_user_message_content(
         if conv_doc and conv_doc.get("messages"):
             return conv_doc["messages"][0].get("response", "")[:150]
     except Exception as e:
-        log.warning("_lookup_user_message_content: failed", error=str(e))
+        log.warning(f"{LogTag.AGENT} _lookup_user_message_content: failed", error=str(e))
     return ""
 
 
@@ -568,6 +569,6 @@ async def _get_conversation_source(conversation_id: str, user_id: str) -> Conver
             {"source": 1},
         )
     except Exception as e:
-        log.warning("_get_conversation_source: lookup failed", error=str(e))
+        log.warning(f"{LogTag.AGENT} _get_conversation_source: lookup failed", error=str(e))
         return None
     return ConversationSource.coerce(doc.get("source")) if doc else None

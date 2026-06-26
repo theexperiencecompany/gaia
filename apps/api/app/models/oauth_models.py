@@ -2,7 +2,8 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic.alias_generators import to_camel
 
 from app.models.mcp_config import (
     ComposioConfig,
@@ -29,7 +30,15 @@ class IntegrationFAQ(BaseModel):
 
 
 class IntegrationContent(BaseModel):
-    """Rich marketplace content shown only on the integration detail page."""
+    """Rich marketplace content shown only on the integration detail page.
+
+    Serializes with camelCase aliases (use_cases -> useCases, how_it_works ->
+    howItWorks) so the nested object matches the camelCase contract the rest of
+    the public integration response already uses; without this the frontend
+    receives snake_case keys and silently falls back to generic content.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
     use_cases: list[str] = []
     how_it_works: list[IntegrationHowItWorksStep] = []

@@ -10,6 +10,7 @@ from app.agents.prompts.onboarding_prompts import (
     WRITING_STYLE_EXAMPLE_PROMPT,
     WRITING_STYLE_PROMPT,
 )
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import (
@@ -50,7 +51,7 @@ async def learn_writing_style(
 
         if sent_count < _MIN_SENT_EMAILS:
             log.info(
-                "[writing_style] skipped",
+                f"{LogTag.ONBOARDING} writing_style skipped",
                 user_id=user_id,
                 outcome="skipped",
                 skip_reason="insufficient_sent",
@@ -77,7 +78,7 @@ async def learn_writing_style(
 
         if len(samples) < _MIN_SENT_EMAILS:
             log.info(
-                "[writing_style] skipped",
+                f"{LogTag.ONBOARDING} writing_style skipped",
                 user_id=user_id,
                 outcome="skipped",
                 skip_reason="insufficient_samples",
@@ -113,7 +114,7 @@ async def learn_writing_style(
         )
 
         log.info(
-            "[writing_style] learned",
+            f"{LogTag.ONBOARDING} writing_style learned",
             user_id=user_id,
             outcome="ok",
             sent_count=sent_count,
@@ -128,7 +129,7 @@ async def learn_writing_style(
 
     except Exception as e:
         log.error(
-            "[writing_style] failed",
+            f"{LogTag.ONBOARDING} writing_style failed",
             user_id=user_id,
             outcome="failed",
             error=str(e)[:200],
@@ -161,7 +162,7 @@ async def regenerate_example_for_style(
 
     except Exception as e:
         log.error(
-            f"[writing_style] Failed to regenerate example: {e}",
+            f"{LogTag.ONBOARDING} writing_style Failed to regenerate example: {e}",
             exc_info=True,
         )
         return None
@@ -173,7 +174,7 @@ async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.writing_style.user_edited_summary": edited_summary}},
     )
-    log.info(f"[writing_style] Saved user-edited summary for {user_id}")
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved user-edited summary for {user_id}")
 
 
 async def save_generated_example(user_id: str, example: WritingStyleExampleBlocks) -> None:
@@ -182,4 +183,4 @@ async def save_generated_example(user_id: str, example: WritingStyleExampleBlock
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.writing_style.example": example.model_dump()}},
     )
-    log.info(f"[writing_style] Saved regenerated example for {user_id}")
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for {user_id}")

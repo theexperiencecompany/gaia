@@ -14,6 +14,7 @@ from app.constants.cache import (
     SUBSCRIPTION_PLAN_CACHE_PREFIX,
     SUBSCRIPTION_PLAN_CACHE_TTL,
 )
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     plans_collection,
     subscriptions_collection,
@@ -43,7 +44,7 @@ class DodoPaymentService:
                 environment=environment,
             )
         except Exception as e:
-            log.error(f"Failed to instantiate dodo payments: {e}")
+            log.error(f"{LogTag.PAYMENT} Failed to instantiate dodo payments: {e}")
 
     async def get_plans(self, active_only: bool = True) -> list[PlanResponse]:
         """Get subscription plans with caching."""
@@ -142,7 +143,7 @@ class DodoPaymentService:
 
             checkout_session = self.client.checkout_sessions.create(**params)
         except Exception as e:
-            log.error(f"Error creating Dodo checkout session: {e}")
+            log.error(f"{LogTag.PAYMENT} Error creating Dodo checkout session: {e}")
             raise HTTPException(502, f"Payment service error: {e!s}")
 
         # Look up plan name for richer logging
@@ -153,7 +154,7 @@ class DodoPaymentService:
             if matched_plan:
                 plan_name = matched_plan.name
         except Exception as e:  # nosec B110
-            log.warning("Failed to resolve plan name for logging", error=str(e))
+            log.warning(f"{LogTag.PAYMENT} Failed to resolve plan name for logging", error=str(e))
 
         log.set(
             payment={
@@ -191,7 +192,7 @@ class DodoPaymentService:
                     user_email=user["email"],
                 )
         except Exception as e:
-            log.debug(f"Failed to send welcome email: {e}")
+            log.debug(f"{LogTag.PAYMENT} Failed to send welcome email: {e}")
 
         return {
             "payment_completed": True,

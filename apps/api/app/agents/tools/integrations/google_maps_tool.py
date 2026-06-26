@@ -4,6 +4,7 @@ from typing import Any
 
 from composio import Composio
 
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
@@ -46,7 +47,7 @@ def register_google_maps_custom_tools(composio: Composio) -> list[str]:
             status = data.get("status", "UNKNOWN")
             connected = status == "OK"
         except Exception as e:
-            log.debug(f"Google Maps integration failed: {e}")
+            log.debug(f"{LogTag.TOOL} Google Maps integration failed: {e}")
             status = "ERROR"
             connected = False
 

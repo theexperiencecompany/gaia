@@ -7,6 +7,7 @@ from typing import Any
 
 from composio.types import ToolExecutionResponse
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     GoogleSheetsGetSheetNamesData,
@@ -75,7 +76,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     user_id=user_id,
                 )
                 if not tool:
-                    log.error("Google Sheets search spreadsheets tool not found")
+                    log.error(f"{LogTag.TRIGGER} Google Sheets search spreadsheets tool not found")
                     return []
 
                 # Invoke tool with typed input
@@ -93,7 +94,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
                 # Check response status
                 if not result["successful"]:
-                    log.error(f"Google Sheets API error: {result['error']}")
+                    log.error(f"{LogTag.TRIGGER} Google Sheets API error: {result['error']}")
                     return []
 
                 # Extract and parse data
@@ -116,7 +117,9 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
                     options.append({"value": sheet.id, "label": label})
 
-                log.info(f"Returning {len(options)} Google Sheets spreadsheet options")
+                log.info(
+                    f"{LogTag.TRIGGER} Returning {len(options)} Google Sheets spreadsheet options"
+                )
                 return options
 
             # Get sheets grouped by spreadsheet (cascading)
@@ -126,7 +129,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     user_id=user_id,
                 )
                 if not tool:
-                    log.error("Google Sheets get sheet names tool not found")
+                    log.error(f"{LogTag.TRIGGER} Google Sheets get sheet names tool not found")
                     return []
 
                 # Fetch sheet names for all spreadsheets in parallel
@@ -142,7 +145,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
                     if not sheets_result["successful"]:
                         log.error(
-                            f"Failed to get sheet names for {spreadsheet_id}: "
+                            f"{LogTag.TRIGGER} Failed to get sheet names for {spreadsheet_id}: "
                             f"{sheets_result['error']}"
                         )
                         return None
@@ -170,13 +173,13 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 # Filter out None/errors and collect results
                 grouped_results = [r for r in results if isinstance(r, dict) and r is not None]
 
-                log.info(f"Returning {len(grouped_results)} grouped sheet options")
+                log.info(f"{LogTag.TRIGGER} Returning {len(grouped_results)} grouped sheet options")
                 return grouped_results
 
             return []
 
         except Exception as e:
-            log.error(f"Failed to get Google Sheets options for {field_name}: {e}")
+            log.error(f"{LogTag.TRIGGER} Failed to get Google Sheets options for {field_name}: {e}")
             return []
 
     async def register(
@@ -196,7 +199,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         """
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
-            log.error(f"Unknown Google Sheets trigger: {trigger_name}")
+            log.error(f"{LogTag.TRIGGER} Unknown Google Sheets trigger: {trigger_name}")
             raise TriggerRegistrationError(
                 f"Unknown Google Sheets trigger: {trigger_name}",
                 trigger_name,
@@ -264,7 +267,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         self, event_type: str, trigger_id: str, data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching a Google Sheets trigger event."""
-        log.set(trigger={"provider": "google_sheets", "event": event_type})
+        log.set_ns("trigger", integration_id="google_sheets", trigger_type=event_type)
         try:
             query = {
                 "activated": True,
@@ -281,7 +284,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 elif "new_sheet" in event_type.lower():
                     GoogleSheetsNewSheetAddedPayload.model_validate(data)
             except Exception as e:
-                log.debug(f"Google Sheets payload validation failed: {e}")
+                log.debug(f"{LogTag.TRIGGER} Google Sheets payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
@@ -294,13 +297,13 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     workflow = Workflow(**workflow_doc)
                     workflows.append(workflow)
                 except Exception as e:
-                    log.error(f"Error processing workflow document: {e}")
+                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
                     continue
 
             return workflows
 
         except Exception as e:
-            log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
 

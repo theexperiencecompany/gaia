@@ -11,6 +11,7 @@ from langgraph.config import get_config, get_stream_writer
 from app.config.oauth_config import get_integration_by_id, get_integration_scopes
 from app.config.settings import settings
 from app.config.token_repository import token_repository
+from app.constants.log_tags import LogTag
 from app.models.chat_models import SourceCategory
 from shared.py.wide_events import log
 
@@ -91,13 +92,13 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
         # Get required scopes for this integration from oauth_config
         required_scopes = get_integration_scopes(integration_id)
         if not required_scopes:
-            log.warning(f"No scopes defined for integration: {integration_id}")
+            log.warning(f"{LogTag.INTEGRATION} No scopes defined for integration: {integration_id}")
             return False
 
         token = await token_repository.get_token_by_auth_token(access_token, renew_if_expired=True)
 
         if not token:
-            log.warning(f"No token found for access token: {access_token}")
+            log.warning(f"{LogTag.INTEGRATION} No token found for access token: {access_token}")
             return False
 
         authorized_scopes = str(token.get("scope", "")).split()
@@ -107,7 +108,7 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
         return len(missing_scopes) == 0
 
     except Exception as e:
-        log.error(f"Error checking integration permissions: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error checking integration permissions: {e}")
         return False
 
 
@@ -137,7 +138,7 @@ async def stream_integration_connection_prompt(
         # Get integration details
         integration = get_integration_by_id(integration_id)
         if not integration:
-            log.error(f"Integration not found: {integration_id}")
+            log.error(f"{LogTag.INTEGRATION} Integration not found: {integration_id}")
             return
 
         # Prepare the integration connection data
@@ -151,10 +152,12 @@ async def stream_integration_connection_prompt(
 
         # Stream the data to frontend
         writer(connection_data)
-        log.info(f"Streamed integration connection prompt for: {integration_id}")
+        log.info(
+            f"{LogTag.INTEGRATION} Streamed integration connection prompt for: {integration_id}"
+        )
 
     except Exception as e:
-        log.error(f"Error streaming integration connection prompt: {e}")
+        log.error(f"{LogTag.INTEGRATION} Error streaming integration connection prompt: {e}")
 
 
 def get_required_integration_for_tool_category(tool_category: str) -> str | None:

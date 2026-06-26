@@ -7,6 +7,7 @@ from typing import Any
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
 from app.db.utils import serialize_document
 from app.models.workflow_models import (
@@ -52,9 +53,11 @@ async def handle_workflow_error(
             {"_id": workflow_id, "user_id": user_id},
             {"$set": update_data},
         )
-        log.error(f"Workflow {workflow_id} error: {error}")
+        log.error(f"{LogTag.WORKFLOW} Workflow {workflow_id} error: {error}")
     except Exception as update_error:
-        log.error(f"Failed to update workflow {workflow_id} error state: {update_error}")
+        log.error(
+            f"{LogTag.WORKFLOW} Failed to update workflow {workflow_id} error state: {update_error}"
+        )
 
 
 def ensure_trigger_config_object(trigger_config: Any) -> TriggerConfig:
@@ -94,7 +97,7 @@ def transform_workflow_document(doc: dict) -> dict:
             "paused",
         ]:
             log.warning(
-                f"Unknown status '{old_status}' in workflow {doc.get('_id')}, defaulting to 'failed'"
+                f"{LogTag.WORKFLOW} Unknown status '{old_status}' in workflow {doc.get('_id')}, defaulting to 'failed'"
             )
             transformed_doc["status"] = "failed"
 
@@ -209,7 +212,7 @@ async def create_workflow_directly(
 
         writer({"workflow_created": workflow_data})
 
-        log.info(f"[create_workflow] Created workflow directly: {workflow.id}")
+        log.info(f"{LogTag.WORKFLOW} Created workflow directly: {workflow.id}")
 
         return success_response(
             {"status": "created", "workflow_id": workflow.id},
@@ -219,7 +222,7 @@ async def create_workflow_directly(
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        log.warning(f"[create_workflow] Direct creation failed: {e}")
+        log.warning(f"{LogTag.WORKFLOW} Direct creation failed: {e}")
         return None
 
 

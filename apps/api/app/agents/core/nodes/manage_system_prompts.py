@@ -22,6 +22,7 @@ from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
+from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
@@ -209,5 +210,5 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         return cast(State, {**state, "messages": filtered})
 
     except Exception as e:
-        log.error(f"Error in manage system prompts node: {e}")
+        log.error(f"{LogTag.AGENT} Error in manage system prompts node: {e}")
         return state

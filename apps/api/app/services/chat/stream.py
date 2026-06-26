@@ -27,6 +27,7 @@ from app.agents.core.background.executor_capture import (
     teardown_executor_capture,
 )
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
 from app.models.message_models import MessageRequestWithHistory
@@ -268,7 +269,7 @@ async def _publish_description_if_ready(
             f"""data: {json.dumps({"conversation_description": description})}\n\n""",
         )
     except Exception as e:  # noqa: BLE001 — description is non-critical
-        log.error(f"Failed to get conversation description: {e}")
+        log.error(f"{LogTag.CHAT} Failed to get conversation description: {e}")
     return None
 
 
@@ -283,7 +284,7 @@ async def _wait_for_http_subscriber(
     try:
         await asyncio.wait_for(start_event.wait(), timeout=5.0)
     except TimeoutError:
-        log.warning(f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
+        log.warning(f"{LogTag.CHAT} Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
 
 
 async def _publish_init_chunk(
@@ -344,7 +345,7 @@ async def _consume_agent_stream(
     ):
         if await stream_manager.is_cancelled(stream_id):
             state.is_cancelled = True
-            log.info(f"Stream {stream_id} cancelled by user")
+            log.info(f"{LogTag.CHAT} Stream {stream_id} cancelled by user")
             break
 
         # Skip [DONE] marker — we send it after description generation.
@@ -368,7 +369,7 @@ async def _consume_agent_stream(
                     state.follow_up_actions,
                 )
             except Exception as e:  # noqa: BLE001 — fall back to passthrough
-                log.error(f"Error processing chunk: {e}")
+                log.error(f"{LogTag.CHAT} Error processing chunk: {e}")
                 await stream_manager.publish_chunk(stream_id, chunk)
         else:
             await stream_manager.publish_chunk(stream_id, chunk)
@@ -428,7 +429,7 @@ async def _finalize_description(
             f"""data: {json.dumps({"conversation_description": description})}\n\n""",
         )
     except Exception as e:  # noqa: BLE001 — description is non-critical
-        log.error(f"Failed to get conversation description: {e}")
+        log.error(f"{LogTag.CHAT} Failed to get conversation description: {e}")
 
 
 async def _handle_stream_error(
@@ -441,7 +442,7 @@ async def _handle_stream_error(
     Order matters: ``set_error`` publishes the ``STREAM_ERROR_SIGNAL`` which
     breaks the subscriber loop, so the error chunk must go on the wire first.
     """
-    log.error(f"Background stream error for {stream_id}: {error}")
+    log.error(f"{LogTag.CHAT} Background stream error for {stream_id}: {error}")
     await _wait_for_http_subscriber(start_event, stream_id)
     await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'error': str(error)})}\n\n")
     await stream_manager.set_error(stream_id, str(error))
@@ -520,7 +521,7 @@ async def _attach_executor_tool_data(
             {"$push": {"messages.$.tool_data": {"$each": executor_td}}},
         )
     except Exception as e:  # noqa: BLE001 — executor tool_data attach is best-effort
-        log.error(f"Failed to update bot message tool_data: {e}")
+        log.error(f"{LogTag.CHAT} Failed to update bot message tool_data: {e}")
 
 
 async def _finalize_stream(
@@ -552,7 +553,7 @@ async def _finalize_stream(
             # happy/cancel path, which always runs the attach itself.
             await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         except Exception as save_err:  # noqa: BLE001 — best-effort fallback save
-            log.error(f"Fallback save failed for stream {stream_id}: {save_err}")
+            log.error(f"{LogTag.CHAT} Fallback save failed for stream {stream_id}: {save_err}")
 
     # Teardown must come AFTER the fallback save: the backstop attach drains the
     # session's tool events — tearing down first would leave it nothing to drain.
@@ -572,4 +573,4 @@ async def _finalize_stream(
         # elided so events without FS activity stay clean.
         **({"fs": fs_metrics} if fs_metrics else {}),
     )
-    log.debug(f"Background stream {stream_id} completed and saved")
+    log.debug(f"{LogTag.CHAT} Background stream {stream_id} completed and saved")

@@ -9,6 +9,9 @@ export interface Tool {
   integrationId?: string;
   integrationName?: string;
   tags?: string[];
+  // True when the tool's integration was added but is not connected (or failed).
+  // Core platform tools are never locked.
+  locked: boolean;
 }
 
 export interface ToolParameter {

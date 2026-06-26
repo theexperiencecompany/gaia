@@ -7,6 +7,7 @@ import pymongo
 from pymongo.server_api import ServerApi
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -27,7 +28,7 @@ class MongoDB:
             db_name (str): Name of the database.
         """
         if not uri:
-            log.error("MongoDB URI is not found in the environment variables.")
+            log.error(f"{LogTag.MONGO} MongoDB URI is not found in the environment variables.")
             sys.exit(1)
 
         try:
@@ -48,7 +49,7 @@ class MongoDB:
 
         except Exception as e:
             log.set(db={"connection_status": "error", "backend": "mongodb"})
-            log.error(f"An error occurred while connecting to MongoDB: {e}")
+            log.error(f"{LogTag.MONGO} An error occurred while connecting to MongoDB: {e}")
             sys.exit(1)
 
     def ping(self):
@@ -58,18 +59,18 @@ class MongoDB:
             sync_client.admin.command("ping")
             sync_client.close()
         except Exception as e:
-            log.error(f"Ping failed: {e}")
+            log.error(f"{LogTag.MONGO} Ping failed: {e}")
 
     async def _initialize_indexes(self):
         try:
-            log.info("Initializing all indexes in MongoDB...")
+            log.info(f"{LogTag.MONGO} Initializing all indexes in MongoDB...")
             # Import here to avoid circular import
             from app.db.mongodb.indexes import create_all_indexes
 
             await create_all_indexes()
             # await log_index_summary()
         except Exception as e:
-            log.error(f"Error while initializing indexes: {e}")
+            log.error(f"{LogTag.MONGO} Error while initializing indexes: {e}")
 
     def get_collection(self, collection_name: str):
         return self.database.get_collection(collection_name)
@@ -83,9 +84,9 @@ def init_mongodb():
     Args:
         app (FastAPI): The FastAPI application instance.
     """
-    log.info("Initializing MongoDB...")
+    log.info(f"{LogTag.MONGO} Initializing MongoDB...")
     mongodb_instance = MongoDB(uri=settings.MONGO_DB, db_name="GAIA")
-    log.info("Created MongoDB instance")
+    log.info(f"{LogTag.MONGO} Created MongoDB instance")
     mongodb_instance.ping()
-    log.info("Successfully connected to MongoDB.")
+    log.info(f"{LogTag.MONGO} Successfully connected to MongoDB.")
     return mongodb_instance

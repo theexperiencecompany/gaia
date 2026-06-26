@@ -7,103 +7,62 @@ import type {
   CommunitySearchParams,
   Integration,
   IntegrationCategoryValue,
-  IntegrationsConfigResponse,
-  IntegrationsStatusResponse,
+  IntegrationTool,
+  IntegrationToolsResponse,
+  MyIntegrationItem,
+  MyIntegrationsResponse,
   PublicIntegrationResponse,
-  UserIntegrationsResponse,
 } from "../types";
 
 WebBrowser.maybeCompleteAuthSession();
 
+// Display order: created (added but unconnected) first, then connected, then
+// the rest of the catalog. Matches the previous client-side merge ordering.
+const STATUS_PRIORITY: Record<Integration["status"], number> = {
+  created: 0,
+  connected: 1,
+  not_connected: 2,
+};
+
 /**
- * Fetch all integrations merged with their status.
- * Uses the same endpoints as web: /integrations/config, /integrations/status,
- * and /integrations/users/me/integrations
+ * Map one personalized catalog entry (`GET /integrations/me`) to the mobile
+ * `Integration` UI type. Per-tool schemas are not included here — the detail
+ * sheet fetches them on demand via `getIntegrationTools`.
+ */
+function toIntegration(item: MyIntegrationItem): Integration {
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    category: (item.category || "other") as IntegrationCategoryValue,
+    status: item.status,
+    slug: item.slug ?? item.id,
+    isFeatured: item.isFeatured,
+    displayPriority: item.displayPriority,
+    available: item.available,
+    managedBy: item.managedBy,
+    source: item.source,
+    requiresAuth: item.requiresAuth,
+    authType: item.authType ?? undefined,
+    iconUrl: item.iconUrl ?? undefined,
+    isPublic: item.isPublic ?? undefined,
+    createdBy: item.createdBy ?? undefined,
+    creator: item.creator,
+  };
+}
+
+/**
+ * Fetch the user's full integration catalog (platform + their own custom
+ * integrations), each carrying connection status, in a single request.
  */
 export async function fetchIntegrations(): Promise<Integration[]> {
   try {
-    const [configResponse, statusResponse, userResponse] = await Promise.all([
-      apiService.get<IntegrationsConfigResponse>("/integrations/config"),
-      apiService
-        .get<IntegrationsStatusResponse>("/integrations/status")
-        .catch(() => ({ integrations: [] }) as IntegrationsStatusResponse),
-      apiService
-        .get<UserIntegrationsResponse>("/integrations/users/me/integrations")
-        .catch(
-          () => ({ integrations: [], total: 0 }) as UserIntegrationsResponse,
-        ),
-    ]);
+    const response =
+      await apiService.get<MyIntegrationsResponse>("/integrations/me");
 
-    const statuses = statusResponse.integrations;
-    const userIntegrations = userResponse.integrations;
-
-    // Build user integrations list (includes custom integrations)
-    const userIntegrationsList: Integration[] = userIntegrations.map((ui) => ({
-      id: ui.integrationId,
-      name: ui.integration.name,
-      description: ui.integration.description,
-      category: ui.integration.category as IntegrationCategoryValue,
-      status: ui.status as Integration["status"],
-      managedBy: ui.integration.managedBy,
-      source: ui.integration.source,
-      requiresAuth: ui.integration.requiresAuth,
-      authType: ui.integration.authType,
-      tools: ui.integration.tools,
-      iconUrl: ui.integration.iconUrl ?? undefined,
-      isPublic: ui.integration.isPublic ?? undefined,
-      createdBy: ui.integration.createdBy ?? undefined,
-      isFeatured: ui.integration.isFeatured,
-      displayPriority: ui.integration.displayPriority,
-      slug: ui.integration.slug,
-    }));
-
-    const userIntegrationIds = new Set(
-      userIntegrations.map((ui) => ui.integrationId),
-    );
-
-    // Add platform integrations not yet in user's list
-    const platformIntegrations = configResponse.integrations;
-    const availablePlatformIntegrations: Integration[] = platformIntegrations
-      .filter((pi) => !userIntegrationIds.has(pi.id))
-      .map((pi) => {
-        const status = statuses.find((s) => s.integrationId === pi.id);
-        return {
-          id: pi.id,
-          name: pi.name,
-          description: pi.description,
-          category: (pi.category || "other") as IntegrationCategoryValue,
-          status: status?.connected
-            ? ("connected" as const)
-            : ("not_connected" as const),
-          isSpecial: pi.isSpecial,
-          displayPriority: pi.displayPriority,
-          includedIntegrations: pi.includedIntegrations,
-          isFeatured: pi.isFeatured,
-          available: pi.available,
-          managedBy: pi.managedBy as Integration["managedBy"],
-          source: "platform" as const,
-          authType: pi.authType as Integration["authType"],
-          iconUrl: pi.iconUrl,
-          slug: pi.slug || pi.id,
-        };
-      });
-
-    const allIntegrations = [
-      ...userIntegrationsList,
-      ...availablePlatformIntegrations,
-    ];
-
-    // Sort: created first, then connected, then not_connected, alphabetically within
-    const statusPriority: Record<string, number> = {
-      created: 0,
-      connected: 1,
-      not_connected: 2,
-      error: 3,
-    };
-
-    return allIntegrations.sort((a, b) => {
-      const priorityA = statusPriority[a.status] ?? 3;
-      const priorityB = statusPriority[b.status] ?? 3;
+    return response.integrations.map(toIntegration).sort((a, b) => {
+      const priorityA = STATUS_PRIORITY[a.status];
+      const priorityB = STATUS_PRIORITY[b.status];
       if (priorityA !== priorityB) return priorityA - priorityB;
       return a.name.localeCompare(b.name);
     });
@@ -113,18 +72,18 @@ export async function fetchIntegrations(): Promise<Integration[]> {
   }
 }
 
-export async function fetchIntegrationsStatus(): Promise<
-  IntegrationsStatusResponse["integrations"]
-> {
-  try {
-    const response = await apiService.get<IntegrationsStatusResponse>(
-      "/integrations/status",
-    );
-    return response.integrations;
-  } catch (error) {
-    console.error("Error fetching integrations status:", error);
-    return [];
-  }
+/**
+ * Fetch the full tool list for a single integration on demand. The catalog
+ * endpoint (`/integrations/me`) only returns `toolCount`, so the detail view
+ * loads names/descriptions from here when opened.
+ */
+export async function getIntegrationTools(
+  integrationId: string,
+): Promise<IntegrationTool[]> {
+  const response = await apiService.get<IntegrationToolsResponse>(
+    `/integrations/${integrationId}/tools`,
+  );
+  return response.tools;
 }
 
 export interface ConnectIntegrationResult {
@@ -329,7 +288,7 @@ export async function unpublishIntegration(integrationId: string): Promise<{
 
 export const integrationsApi = {
   fetchIntegrations,
-  fetchIntegrationsStatus,
+  getIntegrationTools,
   connectIntegration,
   connectIntegrationWithToken,
   disconnectIntegration,

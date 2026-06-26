@@ -10,6 +10,7 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.agents import INTERNAL_AGENT_MARKERS
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
+from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.mongodb.collections import integrations_collection
 from app.decorators.caching import Cacheable
@@ -306,7 +307,7 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
         mcp_client = await get_mcp_client(user_id)
         return mcp_client.find_integration(tool_name)
     except Exception as e:
-        log.warning(f"MCP integration lookup failed for {tool_name}: {e}")
+        log.warning(f"{LogTag.AGENT} MCP integration lookup failed for {tool_name}: {e}")
         return None
 
 
@@ -324,7 +325,7 @@ async def _resolve_mcp_ui_metadata(tool_name: str, user_id: str) -> tuple[dict |
                         return meta.get("mcp_ui"), meta.get("mcp_server_url")
                     return None, None
     except Exception as e:
-        log.warning(f"MCP UI metadata lookup failed for {tool_name}: {e}")
+        log.warning(f"{LogTag.AGENT} MCP UI metadata lookup failed for {tool_name}: {e}")
     return None, None
 
 
@@ -356,7 +357,7 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
         await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
         return metadata["icon_url"], metadata["integration_name"]
     except Exception as e:
-        log.warning(f"MCP icon/name lookup failed for {integration_id}: {e}")
+        log.warning(f"{LogTag.AGENT} MCP icon/name lookup failed for {integration_id}: {e}")
         return None, None
 
 
@@ -380,5 +381,5 @@ def process_custom_event_for_tools(payload) -> dict:
         new_data = extract_tool_data(serialized)
         return new_data if new_data else {}
     except Exception as e:
-        log.error(f"Error extracting tool data: {e}")
+        log.error(f"{LogTag.AGENT} Error extracting tool data: {e}")
         return {}

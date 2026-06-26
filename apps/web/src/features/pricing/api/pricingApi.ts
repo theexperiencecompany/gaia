@@ -1,6 +1,7 @@
 import type { AxiosError } from "axios";
 
 import { apiService } from "@/lib/api/service";
+import { getErrorMessage } from "@/utils/interceptorUtils";
 
 export interface Plan {
   id: string;
@@ -71,20 +72,14 @@ export interface UserSubscriptionStatus {
 }
 
 // Helper function for consistent error handling
-interface ApiErrorResponse {
-  detail?: string;
-  message?: string;
-}
-
 const handleApiError = (error: unknown, context: string): never => {
   let errorMessage = "An unexpected error occurred";
   let status: number | undefined;
 
   if (error && typeof error === "object" && "isAxiosError" in error) {
-    const axiosError = error as AxiosError<ApiErrorResponse>;
+    const axiosError = error as AxiosError;
     errorMessage =
-      axiosError.response?.data?.detail ||
-      axiosError.response?.data?.message ||
+      getErrorMessage(axiosError.response?.data) ||
       axiosError.message ||
       errorMessage;
     status = axiosError.response?.status;

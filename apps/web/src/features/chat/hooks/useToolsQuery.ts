@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { toolKeys } from "@/features/integrations/api/queryKeys";
+
 import { fetchAvailableTools, type ToolInfo } from "../api/toolsApi";
 
 export interface UseToolsQueryReturn {
@@ -15,7 +17,7 @@ export interface UseToolsQueryReturn {
  */
 export const useToolsQuery = (): UseToolsQueryReturn => {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["tools", "available"],
+    queryKey: toolKeys.available,
     queryFn: fetchAvailableTools,
     staleTime: 5 * 60 * 1000, // 5 minutes - reduced to allow faster updates after MCP connection
     gcTime: 30 * 60 * 1000, // 30 minutes - keep in cache

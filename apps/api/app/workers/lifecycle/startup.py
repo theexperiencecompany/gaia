@@ -17,6 +17,7 @@ from shared.py.logging import configure_file_logging
 if os.getenv("LOG_FORMAT", "console") != "json":
     configure_file_logging("./logs/worker")
 
+from app.constants.log_tags import LogTag  # noqa: E402
 from app.core.provider_registration import (  # noqa: E402
     setup_warnings,
     unified_startup,
@@ -32,7 +33,7 @@ setup_warnings()
 async def startup(ctx: dict):
     """ARQ worker startup function with eager initialization."""
 
-    log.info("ARQ worker starting up...")
+    log.info(f"{LogTag.WORKER} ARQ worker starting up...")
     # Store startup time for monitoring/debugging
     ctx["startup_time"] = asyncio.get_event_loop().time()
 

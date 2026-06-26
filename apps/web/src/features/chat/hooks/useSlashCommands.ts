@@ -5,13 +5,24 @@ import type { ToolInfo } from "@/features/chat/api/toolsApi";
 
 import type { EnhancedToolInfo } from "../types/enhancedTools";
 import { useToolsQuery } from "./useToolsQuery";
-import { useToolsWithIntegrations } from "./useToolsWithIntegrations";
 
 export interface SlashCommandMatch {
   tool: ToolInfo;
   enhancedTool?: EnhancedToolInfo;
   matchedText: string;
 }
+
+/**
+ * Build an EnhancedToolInfo directly from a ToolInfo. `locked` comes straight
+ * from the workspace-scoped /tools response — no integration join needed.
+ */
+const toEnhancedTool = (tool: ToolInfo): EnhancedToolInfo => ({
+  name: tool.name,
+  category: tool.category,
+  displayName: tool.display_name,
+  iconUrl: tool.icon_url,
+  isLocked: tool.locked,
+});
 
 export interface UseSlashCommandsReturn {
   tools: ToolInfo[];
@@ -35,17 +46,12 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
   // Use React Query hook for fetching tools with caching
   const { tools, isLoading: isLoadingTools, error } = useToolsQuery();
 
-  // Get enhanced tools with integration status
-  const { tools: enhancedTools } = useToolsWithIntegrations();
-
   // Create Fuse instance with optimized config for fuzzy search
   const fuse = useMemo(() => {
-    const enhancedToolMap = new Map(enhancedTools.map((et) => [et.name, et]));
     const toolsWithEnhanced = tools.map((tool) => {
-      const enhancedTool = enhancedToolMap.get(tool.name);
       return {
         tool,
-        enhancedTool,
+        enhancedTool: toEnhancedTool(tool),
         // Create searchable strings
         nameSpaced: tool.name.replace(/_/g, " "),
         category: tool.category,
@@ -84,17 +90,16 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
       shouldSort: true,
       findAllMatches: true, // Find all pattern matches
     });
-  }, [tools, enhancedTools]);
+  }, [tools]);
 
   const getSlashCommandSuggestions = useCallback(
     (query: string): SlashCommandMatch[] => {
-      const enhancedToolMap = new Map(enhancedTools.map((et) => [et.name, et]));
       // If no query, show all tools sorted by unlock status, category and name
       if (!query.trim()) {
         return tools
           .map((tool) => ({
             tool,
-            enhancedTool: enhancedToolMap.get(tool.name),
+            enhancedTool: toEnhancedTool(tool),
             matchedText: tool.name,
           }))
           .sort((a, b) => {
@@ -123,7 +128,7 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
         matchedText: result.item.tool.name,
       }));
     },
-    [tools, enhancedTools, fuse],
+    [tools, fuse],
   );
 
   const detectSlashCommand = useCallback(

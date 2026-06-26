@@ -8,8 +8,9 @@ import type {
   CreateCustomIntegrationResponse,
   Integration,
   IntegrationInstructions,
+  IntegrationToolsResponse,
+  MyIntegrationsResponse,
   PublicIntegrationResponse,
-  UserIntegrationsResponse,
 } from "../types";
 
 /**
@@ -38,13 +39,6 @@ function sanitizeRedirectUrl(url: string): string | null {
   }
 }
 
-export interface IntegrationStatusResponse {
-  integrations: Array<{
-    integrationId: string;
-    connected: boolean;
-  }>;
-}
-
 export interface IntegrationConfigResponse {
   integrations: Integration[];
 }
@@ -66,31 +60,25 @@ export const integrationsApi = {
   },
 
   /**
-   * Get integration status (connected/disconnected) for all platform integrations
+   * Get the full catalog personalized for the user: every platform integration
+   * plus the user's own custom ones, each annotated with connection status.
+   * Per-tool schemas are not included — only `toolCount`. Fetch one
+   * integration's tools on demand via `getIntegrationTools`.
    */
-  getIntegrationStatus: async (): Promise<IntegrationStatusResponse> => {
-    try {
-      const response = await apiService.get("/integrations/status");
-      return response as IntegrationStatusResponse;
-    } catch (error) {
-      console.error("Failed to get integration status:", error);
-      return { integrations: [] };
-    }
+  getMyIntegrations: async (): Promise<MyIntegrationsResponse> => {
+    return await apiService.get<MyIntegrationsResponse>("/integrations/me");
   },
 
   /**
-   * Get user's integrations with status
+   * Get the full tool list for a single integration, on demand.
    */
-  getUserIntegrations: async (): Promise<UserIntegrationsResponse> => {
-    try {
-      const response = await apiService.get(
-        "/integrations/users/me/integrations",
-      );
-      return response as UserIntegrationsResponse;
-    } catch (error) {
-      console.error("Failed to get user integrations:", error);
-      return { integrations: [], total: 0 };
-    }
+  getIntegrationTools: async (
+    integrationId: string,
+  ): Promise<IntegrationToolsResponse> => {
+    return await apiService.get<IntegrationToolsResponse>(
+      `/integrations/${integrationId}/tools`,
+      { silent: true },
+    );
   },
 
   /**
@@ -180,48 +168,6 @@ export const integrationsApi = {
       await apiService.delete(`/integrations/${integrationId}`);
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Add an integration to user's workspace
-   */
-  addToWorkspace: async (
-    integrationId: string,
-  ): Promise<{
-    status: string;
-    integration_id: string;
-    connection_status: string;
-  }> => {
-    try {
-      const response = await apiService.post(
-        "/integrations/users/me/integrations",
-        {
-          integration_id: integrationId,
-        },
-      );
-      return response as {
-        status: string;
-        integration_id: string;
-        connection_status: string;
-      };
-    } catch (error) {
-      console.error(`Failed to add integration ${integrationId}:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Remove an integration from user's workspace
-   */
-  removeFromWorkspace: async (integrationId: string): Promise<void> => {
-    try {
-      await apiService.delete(
-        `/integrations/users/me/integrations/${integrationId}`,
-      );
-    } catch (error) {
-      console.error(`Failed to remove integration ${integrationId}:`, error);
       throw error;
     }
   },

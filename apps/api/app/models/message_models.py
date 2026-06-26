@@ -76,6 +76,12 @@ class MessageRequestWithHistory(BaseModel):
     # for the voice agent to speak). Text clients leave it False — the executor
     # result reaches them out-of-band over the WebSocket as today.
     voice_mode: bool = False
+    # DEV-ONLY (ENV=development): per-request model overrides from the chat-header
+    # selector. `use_default_models` keeps the plan-routed default; otherwise these
+    # ids (keys of DEV_MODEL_OPTIONS) pin the comms / executor models. Ignored in prod.
+    comms_model: str | None = None
+    executor_model: str | None = None
+    use_default_models: bool = True
 
 
 class MessageRequest(BaseModel):

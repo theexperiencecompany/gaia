@@ -2,6 +2,7 @@
 
 import asyncio
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -32,8 +33,8 @@ class RedisPoolManager:
                     try:
                         redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
                         cls._pool = await create_pool(redis_settings)
-                        log.info("Redis pool created successfully")
+                        log.info(f"{LogTag.STORAGE} Redis pool created successfully")
                     except Exception as e:
-                        log.error(f"Failed to create Redis pool: {e}")
+                        log.error(f"{LogTag.STORAGE} Failed to create Redis pool: {e}")
                         raise
         return cls._pool

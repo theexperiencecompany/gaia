@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage
 
 from app.agents.llm.client import init_llm
 from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
+from app.constants.log_tags import LogTag
 from app.constants.profession_bios import get_random_bio_for_profession
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import HoloCardLLMOutput
@@ -188,11 +189,11 @@ async def generate_holo_card_content(
         result: HoloCardLLMOutput = await structured_llm.ainvoke([HumanMessage(content=prompt)])
         phrase = result.personality_phrase.strip().strip('"').strip("'")
         bio = result.user_bio.strip()
-        log.info(f"Generated holo card content for user {user_id}: phrase='{phrase}'")
+        log.info(f"{LogTag.API} Generated holo card content for user {user_id}: phrase='{phrase}'")
         return phrase, bio, BioStatus.COMPLETED
 
     except Exception as e:
-        log.error(f"Error generating holo card content: {e}", exc_info=True)
+        log.error(f"{LogTag.API} Error generating holo card content: {e}", exc_info=True)
         return (
             _phrase_fallback(profession),
             get_random_bio_for_profession(name, profession or "other"),

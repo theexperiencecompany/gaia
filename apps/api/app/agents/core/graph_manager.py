@@ -6,6 +6,7 @@ This module helps avoid circular imports between app.api.v1 and app.agents.agent
 
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from shared.py.wide_events import log
 
@@ -14,19 +15,23 @@ class GraphManager:
     @classmethod
     async def get_graph(cls, graph_name: str = "default_graph") -> Any:
         """Get the graph instance by name."""
-        log.info(f"Attempting to get graph '{graph_name}'")
+        log.info(f"{LogTag.AGENT} Attempting to get graph '{graph_name}'")
         try:
             graph = await providers.aget(graph_name)
             if graph is not None:
-                log.info(f"Successfully retrieved graph '{graph_name}' from lazy provider")
+                log.info(
+                    f"{LogTag.AGENT} Successfully retrieved graph '{graph_name}' from lazy provider"
+                )
                 return graph
             log.error(
-                f"Graph '{graph_name}' returned None from lazy provider - this means the provider function failed or returned None"
+                f"{LogTag.AGENT} Graph '{graph_name}' returned None from lazy provider - this means the provider function failed or returned None"
             )
             return None
         except KeyError as e:
-            log.error(f"Graph provider '{graph_name}' not registered in lazy providers: {e}")
+            log.error(
+                f"{LogTag.AGENT} Graph provider '{graph_name}' not registered in lazy providers: {e}"
+            )
             return None
         except Exception as e:
-            log.error(f"Error retrieving graph '{graph_name}': {e}", exc_info=True)
+            log.error(f"{LogTag.AGENT} Error retrieving graph '{graph_name}': {e}", exc_info=True)
             return None

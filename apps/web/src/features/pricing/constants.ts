@@ -16,3 +16,23 @@ const ANNUAL_DISCOUNT_RATE = 0.25;
  * `annualPrice / ANNUAL_PRICE_RETENTION`.
  */
 export const ANNUAL_PRICE_RETENTION = 1 - ANNUAL_DISCOUNT_RATE;
+
+/**
+ * localStorage key holding the plan id a logged-out user chose before being
+ * sent through OAuth signup. Written on the pricing click, read by the resume
+ * hook + the auth redirect gates, cleared once the checkout attempt settles.
+ */
+export const PENDING_CHECKOUT_KEY = "gaia_pending_checkout_plan";
+
+/**
+ * Max age of a pending checkout. Bounds the localStorage footgun: a checkout
+ * abandoned at the OAuth screen must not silently fire on a much later login.
+ * Generous vs the seconds-long OAuth round-trip.
+ */
+export const PENDING_CHECKOUT_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * localStorage key holding the last product id sent to checkout, so the payment
+ * result page can restart checkout for the same plan via "Try Again".
+ */
+export const LAST_CHECKOUT_PRODUCT_KEY = "gaia_last_checkout_product";

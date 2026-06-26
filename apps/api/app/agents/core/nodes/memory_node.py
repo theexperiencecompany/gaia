@@ -14,6 +14,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
 from app.config.oauth_config import get_memory_extraction_prompt
+from app.constants.log_tags import LogTag
 from app.constants.memory import (
     MIN_USER_CONTENT_CHARS,
     MemorySourceType,
@@ -197,7 +198,7 @@ async def memory_node(
     # Quick validation - skip trivial conversations
     should_learn, reason = _check_worth_learning(messages)
     if not should_learn:
-        log.debug(f"Memory learning skipped: {reason}")
+        log.debug(f"{LogTag.AGENT} Memory learning skipped: {reason}")
         return state
 
     if user_id:
@@ -215,6 +216,8 @@ async def memory_node(
 
         _background_tasks.add(task)
         task.add_done_callback(_task_done_callback)
-        log.debug(f"[{subagent_id or 'agent'}] Memory learning spawned: {task.get_name()}")
+        log.debug(
+            f"{LogTag.AGENT} Memory learning spawned ({subagent_id or 'agent'}): {task.get_name()}"
+        )
 
     return state

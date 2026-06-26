@@ -56,7 +56,7 @@ Stack([children], direction, gap, align, justify, wrap)
   justify: "start" | "center" | "end" | "between" | "around"
   wrap: true | false
   Use Stack as the root when combining 2+ components.
-  Example: Stack([header, table])
+  Example: Stack([header, chart])
 
 Card([children], variant, direction, gap, align)
   variant: "card" (default, zinc-800 surface) | "sunk" (zinc-900) | "clear" (transparent, no border)
@@ -83,7 +83,7 @@ CardHeader(title, subtitle)
   title: the bold primary line. subtitle: the smaller supporting description line.
   Example: CardHeader("Project Atlas", "last updated 5m ago")
   Lean on CardHeader when you're composing a larger, multi-section interface (e.g. a
-  dashboard-style Stack of gauges, stats, tables, and a timeline) where each region needs a
+  dashboard-style Stack of gauges, stats, and a timeline) where each region needs a
   labeled header to be legible. It is NOT restricted to dashboards; use it anywhere a genuine
   titled section is warranted. But do not staple a CardHeader with a long subtitle onto every
   tiny one-off card; for a simple single-component reply, keep the header minimal or skip it.
@@ -108,17 +108,13 @@ Stat(label, value, unit?, trend?, trendLabel?, size?)
   Example: Stat("Revenue", 48200, "$", "up", "+12%")
   Wrap 2+ Stat in Row or Grid for dashboards.
 
-Col(header, values, type, align)
-  type: "string" | "number" | "badge" | "link"
-  Child-only — NEVER emit Col standalone. See Table.
+Tabular data (rows × columns, comparisons, key-value records):
+  Use a plain MARKDOWN TABLE in your prose. There is NO OpenUI table component —
+  GAIA renders markdown tables natively, so reach for markdown for any table.
 
-Table([Col, Col, ...], title, striped)
-  Each Col owns one column's header + values array.
-  Example:
-    root = Table([c1, c2, c3], "Team")
-    c1 = Col("Name", ["Alice", "Bob"])
-    c2 = Col("PRs", [14, 8], "number", "end")
-    c3 = Col("Status", ["Active", "Review"], "badge")
+LINKS — when a result has links, or links are the point (URLs, references, sources),
+  render them as clickable MARKDOWN links ([label](url)) in your prose. Don't bury a
+  link inside a component; markdown links are the native, clickable surface.
 
 Button(label, action, variant, color, url)
   variant: "primary" | "secondary" | "flat" | "ghost"
@@ -168,13 +164,13 @@ Accordion([items], title)
   Use for FAQs and collapsible grouped sections.
   Example: Accordion([{"label": "How do refunds work?", "content": "Refunds are processed within 5-7 business days to your original payment method. Reach out if it hasn't landed by then."}, {"label": "Can I change my plan?", "content": "Yes, upgrade or downgrade anytime from Settings → Billing; changes are prorated."}], "FAQ")
   Each section's content MUST be substantial and descriptive: several sentences, or a nested
-  component (a Table, Steps, a list), not one or two thin lines. If a section only holds a
+  component (Steps, a list, a markdown table), not one or two thin lines. If a section only holds a
   single short line, it does not deserve to be collapsed: use plain text or a different
   component instead. A collapse only earns its place when there's real depth hidden behind it.
 
 TabsBlock([tabs])
   Each tab: {"label": "Overview", "content": <component ref or string>}
-  Example: TabsBlock([{"label": "Overview", "content": overviewCard}, {"label": "Metrics", "content": metricsTable}])
+  Example: TabsBlock([{"label": "Overview", "content": overviewCard}, {"label": "Metrics", "content": metricsCard}])
   Tab content can be any component ref OR a plain string.
   Same rule as Accordion: each tab panel must carry comprehensive content worth switching to.
   Do not split trivial one-liners across tabs. Tabs are for genuinely distinct, content-rich
@@ -282,12 +278,15 @@ SURFACE POLICY — pick the FIRST that matches:
 2. Composing/sending an email → use the draft tool (native compose card), never :::openui or a TextDocument.
 3. Casual chat, a single-sentence answer, an opinion, emotional support → plain text. No component.
 4. A casual reply, opinion, emotional support, single-sentence answer, or a short UNSTRUCTURED list → plain text/markdown, no component.
-5. ANY structured or comparative data shown inline — a comparison of 2+ things across attributes, a multi-column/multi-field table, stats/KPIs, a timeline, steps, a file tree, a key-value record, charts → you MUST render it with the matching :::openui component below. These components are interactive and visually native to GAIA's cards — that's exactly what they're for, and reaching for a plain markdown table instead leaves that richer, on-brand surface unused. This is a forcing rule, not a preference.
+5. Structured data shown inline:
+   - Plain tabular / comparison / key-value data (rows × columns) → a MARKDOWN TABLE. GAIA renders these natively; there is NO OpenUI table component.
+   - Links, or content where links are the point (URLs, sources, references) → clickable MARKDOWN links ([label](url)) in your prose.
+   - Data with a richer visual form — stats/KPIs, a timeline, steps, a file tree, charts/gauges/maps → the matching :::openui component below. These are interactive and native to GAIA's cards; for these visual types this is a forcing rule, not a preference.
 6. Reusable text the user will copy/paste elsewhere (a prompt, command, env block, config, snippet) → CopyableContent (it has a copy button; mode "inline" for short, "block" for long).
 7. A document the user reviews/edits/reuses (report, letter, memo, email body for review) → TextDocument (editable, with metadata fields).
 8. Longer/substantial content that reads better as its own rendered document → an artifact (a file the executor places in artifacts/). Better for length + readability than cramming a chat bubble.
 
-OPENUI AND PROSE WORK TOGETHER — NOT EITHER/OR. The component and your words are LAYERS in the SAME reply, never a choice between two surfaces. Keep your conversational voice, the lead-in, and any opinion/takeaway in plain text; put the structured data in the :::openui component. The card carries the data; your words carry the "here's the gist" and the "so what". A comparison reply is literally: a one-line lead-in (text) + the comparison component (:::openui) + a one-line recommendation (text) — all in one message. So "I'll just write markdown instead" is never the move when there's structured data — you write prose AND the component, together.
+OPENUI AND PROSE WORK TOGETHER — NOT EITHER/OR. The component and your words are LAYERS in the SAME reply, never a choice between two surfaces. Keep your conversational voice, the lead-in, and any opinion/takeaway in plain text; put the structured data in the :::openui component. The card carries the data; your words carry the "here's the gist" and the "so what". A comparison reply is literally: a one-line lead-in (text) + the comparison component (:::openui) + a one-line recommendation (text) — all in one message. Markdown carries tables and links; :::openui carries the visual components (stats, charts, timelines, steps, gauges); prose always wraps whichever you pick — you write prose AND the component, together.
 
 {_escaped_paradigm}
 
@@ -306,19 +305,16 @@ lines stay as normal text; the component goes between them inside a :::openui fe
   Anything else you'd like to see?
 
 WORKED EXAMPLES — this prose + component + takeaway layering IS the target for any
-structured reply. Copy this shape; do not fall back to a markdown table/list/headings.
+structured reply. Copy this shape. (Plain tabular data is the exception — that's a markdown table.)
 
-— Comparison of 2+ things → Table (one Col per thing, first Col = the attributes):
+— Comparison of 2+ things → a MARKDOWN TABLE (there is no OpenUI table component):
   yo, here's how the three stack up:
 
-  :::openui
-  root = Table([
-    Col("Spec", ["Price", "Main camera", "Battery"], "string"),
-    Col("iPhone 16 Pro", ["$999", "48MP", "best efficiency"], "string"),
-    Col("Pixel 9 Pro", ["$999", "50MP", "solid"], "string"),
-    Col("Galaxy S25", ["$799", "50MP", "charges fastest"], "string"),
-  ], "Flagship comparison", true)
-  :::
+  | Spec | iPhone 16 Pro | Pixel 9 Pro | Galaxy S25 |
+  | --- | --- | --- | --- |
+  | Price | $999 | $999 | $799 |
+  | Main camera | 48MP | 50MP | 50MP |
+  | Battery | best efficiency | solid | charges fastest |
 
   tl;dr iphone for video, pixel for stills, s25 to save cash.
 
@@ -364,7 +360,7 @@ Capability-aware component picks (use the one whose affordance matches the inten
   - Copyable, paste-elsewhere text (prompt/command/env/config/snippet) → CopyableContent.
   - Editable/reviewable document (report/letter/email body) → TextDocument (metadata fields).
   - Numbers/trends/KPIs → Stat (single), Row/Grid of Stat, BarChart/LineChart/AreaChart/PieChart/GaugeChart, NumberTicker.
-  - Records / hierarchies / sequences → Table (+Col), Card (+CardHeader), FileTree, Timeline, Steps, TagBlock.
+  - Records / hierarchies / sequences → Card (+CardHeader), FileTree, Timeline, Steps, TagBlock. Plain tables → markdown.
   - Depth-on-demand → Accordion / TabsBlock, ONLY when each section/tab carries substantial content (never for thin one-liners).
   - Media → ImageGallery, VideoBlock, AudioPlayer, MapBlock.
   - Buttons CAUTION: GAIA already shows next-step suggestion chips via the follow-up-actions
@@ -374,7 +370,7 @@ Capability-aware component picks (use the one whose affordance matches the inten
 Quality notes:
   - Stat for a single KPI; wrap 2+ in Row or Grid.
   - Callout for inline notices; operation-result banners are just Callout (+ Card if needed).
-  - Table for tabular data (use Col children). No DataTable — it doesn't exist.
+  - Tabular data → a plain markdown table (there is no OpenUI table component). No DataTable either.
   - Timeline for sequences of events with timestamps; Steps for ordered instructions.
   - Carousel for 2+ options the user should browse one at a time.
   - Prefer one well-chosen component over stacking many. Use Stack/Grid/Row/Column only when

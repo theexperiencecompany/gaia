@@ -13,6 +13,7 @@ from arq.jobs import Job, JobStatus
 from arq.utils import timestamp_ms
 from bson import ObjectId
 
+from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import todos_collection, users_collection
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
@@ -64,7 +65,7 @@ async def is_intelligence_job_live(user_id: str) -> bool:
         status = await job.status()
     except Exception as e:
         log.warning(
-            "[intelligence_job] status check failed, treating as dead",
+            f"{LogTag.ONBOARDING} intelligence_job status check failed, treating as dead",
             user_id=user_id,
             job_id=job_id,
             error=str(e)[:200],
@@ -88,7 +89,7 @@ async def abort_active_intelligence_job(user_id: str) -> bool:
         await pool.zadd(abort_jobs_ss, {job_id: timestamp_ms()})
         aborted = True
         log.info(
-            "[intelligence_job] aborted",
+            f"{LogTag.ONBOARDING} intelligence_job aborted",
             user_id=user_id,
             job_id=job_id,
             prev_status=status.value,
@@ -104,7 +105,7 @@ async def _purge_stale_onboarding_todos(user_id: str) -> int:
         return result.deleted_count
     except Exception as e:
         log.warning(
-            "[intelligence_job] failed to purge stale onboarding todos",
+            f"{LogTag.ONBOARDING} intelligence_job failed to purge stale onboarding todos",
             user_id=user_id,
             error=str(e)[:200],
         )
@@ -118,7 +119,7 @@ async def enqueue_intelligence_job(user_id: str) -> str | None:
     purged = await _purge_stale_onboarding_todos(user_id)
     if purged:
         log.info(
-            "[intelligence_job] purged stale onboarding todos",
+            f"{LogTag.ONBOARDING} intelligence_job purged stale onboarding todos",
             user_id=user_id,
             purged=purged,
         )
@@ -126,12 +127,12 @@ async def enqueue_intelligence_job(user_id: str) -> str | None:
     pool = await RedisPoolManager.get_pool()
     job = await pool.enqueue_job(_INTELLIGENCE_TASK, user_id)
     if job is None:
-        log.error("[intelligence_job] enqueue returned no job", user_id=user_id)
+        log.error(f"{LogTag.ONBOARDING} intelligence_job enqueue returned no job", user_id=user_id)
         return None
 
     await _set_active_job_id(user_id, job.job_id)
     log.info(
-        "[intelligence_job] enqueued",
+        f"{LogTag.ONBOARDING} intelligence_job enqueued",
         user_id=user_id,
         job_id=job.job_id,
     )

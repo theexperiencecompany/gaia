@@ -15,7 +15,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
-from app.utils.errors import AppError
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
@@ -69,7 +69,10 @@ def _reinstate_reserved_python_keywords(request: dict, keywords: dict) -> dict:
 
 
 class StructuredTool(BaseStructuredTool):
+    """StructuredTool that returns a structured failure instead of raising on invalid args."""
+
     def run(self, *args, **kwargs):
+        """Run the tool, converting argument validation errors into a failure result."""
         try:
             return super().run(*args, **kwargs)
         except pydantic.ValidationError as e:
@@ -104,23 +107,13 @@ class LangchainProvider(
             metadata = (
                 runnable_config.get("metadata", {}) if isinstance(runnable_config, dict) else {}
             )
+            # user_id is read only for the observability log below. It is present
+            # for agent-flow calls (which pass it in config metadata) and None for
+            # trigger-option calls (which bind the user at get_tool(user_id=...)
+            # time — invisible here but still used for auth at execution). Identity
+            # is resolved at execution, not here, so a None is harmless; Composio
+            # errors loudly if no user_id reaches it either way.
             user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
-            if not user_id:
-                # Composio defaults a missing user_id to its "default" account,
-                # which would silently route this call to the wrong (or no)
-                # connected account. Fail loudly instead of hitting "default".
-                log.warning(
-                    f"composio tool {tool} (toolkit={toolkit}) invoked without a "
-                    "user_id in runnable metadata; refusing to fall back to the "
-                    "Composio 'default' account."
-                )
-                raise AppError(
-                    message=f"Missing user_id in runnable metadata for composio tool {tool}",
-                    why="Composio tool invoked without a user_id in runnable metadata.",
-                    fix="Ensure the runnable config includes metadata.user_id before invoking the tool.",
-                    status_code=400,
-                    meta={"tool": tool, "toolkit": toolkit},
-                )
 
             kwargs = _reinstate_reserved_python_keywords(
                 request=kwargs,
@@ -156,16 +149,18 @@ class LangchainProvider(
                     )
                     if looks_like_dead_account:
                         log.warning(
-                            f"composio tool {tool} (toolkit={toolkit}) likely "
+                            f"{LogTag.COMPOSIO} composio tool {tool} (toolkit={toolkit}) likely "
                             f"dead account for user={user_id}: error={err_preview!r}"
                         )
                     else:
                         log.info(
-                            f"composio tool {tool} (toolkit={toolkit}) returned "
+                            f"{LogTag.COMPOSIO} composio tool {tool} (toolkit={toolkit}) returned "
                             f"successful=False for user={user_id}: error={err_preview!r}"
                         )
             except Exception as obs_err:  # noqa: BLE001 - observability must not break tool
-                log.debug(f"composio invocation log skipped for {tool}: {obs_err}")
+                log.debug(
+                    f"{LogTag.COMPOSIO} composio invocation log skipped for {tool}: {obs_err}"
+                )
 
             return result
 
@@ -195,6 +190,7 @@ class LangchainProvider(
         return action_func
 
     def wrap_tool(self, tool: Tool, execute_tool: AgenticProviderExecuteFn) -> StructuredTool:
+        """Wrap a single Composio tool as a LangChain StructuredTool."""
         # Replace reserved python keywords
         schema_params, keywords = _substitute_reserved_python_keywords(schema=tool.input_parameters)
 

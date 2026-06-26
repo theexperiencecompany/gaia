@@ -13,6 +13,10 @@ class ToolInfo(BaseModel):
     display_name: str  # REQUIRED - human-readable name, never null
     icon_url: str | None = None
     requires_integration: bool = False  # False for core platform tools
+    # Server-computed: True when the tool's integration requires a connection the
+    # user does not have. Core tools are never locked. The client renders lock
+    # state from this — it must not re-derive it from a separate status call.
+    locked: bool = False
 
 
 class ToolsListResponse(BaseModel):

@@ -5,8 +5,9 @@ Maps trigger names and event types to their handlers.
 Provides plug-and-play registration for new trigger handlers.
 """
 
+from app.constants.log_tags import LogTag
 from app.services.triggers.base import TriggerHandler
-from shared.py.wide_events import log
+from shared.py.wide_events import TriggerContext, log
 
 
 class TriggerRegistry:
@@ -29,20 +30,24 @@ class TriggerRegistry:
             operation="register",
             handler=type(handler).__name__,
             trigger_names=list(handler.trigger_names),
+            trigger=TriggerContext(
+                operation="register",
+                result_count=len(handler.trigger_names),
+            ),
         )
         # Register by trigger names
         for name in handler.trigger_names:
             if name in self._name_handlers:
-                log.warning(f"Overwriting handler for trigger: {name}")
+                log.warning(f"{LogTag.TRIGGER} Overwriting handler for trigger: {name}")
             self._name_handlers[name] = handler
-            log.info(f"Registered handler for trigger: {name}")
+            log.info(f"{LogTag.TRIGGER} Registered handler for trigger: {name}")
 
         # Register by event types
         for event_type in handler.event_types:
             if event_type in self._event_handlers:
-                log.warning(f"Overwriting handler for event: {event_type}")
+                log.warning(f"{LogTag.TRIGGER} Overwriting handler for event: {event_type}")
             self._event_handlers[event_type] = handler
-            log.info(f"Registered handler for event: {event_type}")
+            log.info(f"{LogTag.TRIGGER} Registered handler for event: {event_type}")
 
     def get_by_trigger_name(self, trigger_name: str) -> TriggerHandler | None:
         """Get handler by trigger name (for registration)."""

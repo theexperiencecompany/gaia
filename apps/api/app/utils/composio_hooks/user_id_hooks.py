@@ -7,6 +7,7 @@ for all Composio tools.
 
 from composio.types import ToolExecuteParams
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 from .registry import register_before_hook
@@ -19,13 +20,14 @@ def extract_user_id_from_params(
     """
     Extract user_id from RunnableConfig metadata and add it to tool execution params.
 
-    This function is used as a before_execute modifier for Composio tools to ensure
-    user context is properly passed through during tool execution.
+    Used as a before_execute modifier so the agent flow (tools fetched with
+    user_id="") can supply the user per-invocation via runnable metadata. When
+    no metadata is present, params["user_id"] keeps whatever the SDK bound at
+    `tools.get(user_id=...)` time (the trigger-option-handler flow) — this hook
+    only overrides it when runnable metadata carries a user_id.
 
     Sets both 'user_id' (new SDK) and 'entity_id' (legacy) for compatibility
     with Composio's connected account authentication.
-
-    Migrated from the old standalone function to use the new hook system.
     """
     log.set(composio_tool=tool, composio_toolkit=toolkit)
     arguments = params.get("arguments", {})
@@ -48,7 +50,7 @@ def extract_user_id_from_params(
     # The Composio API requires entity_id for connected account authentication
     params["user_id"] = user_id
     params["entity_id"] = user_id
-    log.debug(f"Extracted user_id/entity_id '{user_id}' for {toolkit}:{tool}")
+    log.debug(f"{LogTag.COMPOSIO} Extracted user_id/entity_id '{user_id}' for {toolkit}:{tool}")
     return params
 
 

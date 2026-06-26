@@ -9,6 +9,7 @@ cancellation paths where the ``nostream`` marker never arrives.
 from datetime import UTC, datetime
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from shared.py.wide_events import log
 
@@ -63,7 +64,7 @@ async def recover_stream_state(
         and not tool_data.get("tool_data")
     ):
         tool_data = progress_tool_data
-    log.debug(f"Recovered {len(complete_message)} chars from Redis progress")
+    log.debug(f"{LogTag.CHAT} Recovered {len(complete_message)} chars from Redis progress")
     return complete_message, tool_data
 
 

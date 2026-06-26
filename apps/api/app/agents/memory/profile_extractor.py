@@ -27,6 +27,7 @@ from app.constants.general import (
     PROFILE_EXTRACTION_LLM_MODEL,
     PROFILE_EXTRACTION_LLM_PROVIDER,
 )
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 PLATFORM_CONFIG = {
@@ -358,7 +359,7 @@ async def extract_username_with_llm(
     # Deduplicate similar emails to avoid sending redundant context
     unique_emails = _deduplicate_emails(emails)
     log.info(
-        f"Deduplicated {len(emails)} emails down to {len(unique_emails)} unique emails for {platform}"
+        f"{LogTag.MEMORY} Deduplicated {len(emails)} emails down to {len(unique_emails)} unique emails for {platform}"
     )
 
     # Debug: Log deduplication results
@@ -471,7 +472,7 @@ async def extract_username_with_llm(
 
         elapsed = time.time() - start_time
         log.info(
-            f"LLM extracted username for {platform}: '{username}' "
+            f"{LogTag.MEMORY} LLM extracted username for {platform}: '{username}' "
             f"(confidence: {confidence}) in {elapsed:.2f}s"
         )
 
@@ -496,5 +497,5 @@ async def extract_username_with_llm(
 
     except Exception as e:
         elapsed = time.time() - start_time
-        log.error(f"LLM extraction failed for {platform} after {elapsed:.2f}s: {e}")
+        log.error(f"{LogTag.MEMORY} LLM extraction failed for {platform} after {elapsed:.2f}s: {e}")
         return "NOT_FOUND"

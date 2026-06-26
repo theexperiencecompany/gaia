@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
@@ -152,7 +153,10 @@ def get_or_create_session(stream_id: str, kind: RunKind = RunKind.LIVE) -> Strea
     """
     session = _sessions.get(stream_id)
     if session is None:
-        log.warning("Implicit session creation — registration ordering gap", stream_id=stream_id)
+        log.warning(
+            f"{LogTag.AGENT} Implicit session creation — registration ordering gap",
+            stream_id=stream_id,
+        )
         session = create_session(stream_id, kind)
     return session
 

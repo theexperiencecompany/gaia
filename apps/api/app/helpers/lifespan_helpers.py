@@ -1,3 +1,6 @@
+from collections.abc import Awaitable, Callable
+from typing import NamedTuple
+
 from app.core.lazy_loader import providers
 from app.core.websocket_consumer import (
     start_websocket_consumer,
@@ -138,14 +141,43 @@ async def close_mcp_client_pool():
         log.error(f"Error closing MCP client pool: {e}")
 
 
-def _process_results(results, service_names):
-    failed_services = []
-    for i, result in enumerate(results):
-        if isinstance(result, Exception):
-            failed_services.append(service_names[i])
-            log.error(f"Failed to initialize {service_names[i]}: {result}")
+class StartupService(NamedTuple):
+    """A startup coroutine plus whether its failure is fatal.
 
-        if failed_services:
-            error_msg = f"Failed to initialize services: {failed_services}"
-            log.error(error_msg)
-            raise RuntimeError(error_msg)
+    ``required=True``  → failure aborts startup (Mongo, Redis, schedulers, outbound
+    topology): the process is useless without it, so crashing is the honest signal.
+    ``required=False`` → best-effort: optional infrastructure / optimizations the app
+    degrades gracefully without (the JuiceFS mount, the shared system subtree, cache
+    warmups). A storage-backend fault hitting one of these used to take down the whole
+    ARQ worker; now it logs and the process keeps running. Criticality lives on the
+    descriptor at its definition site so it can't drift from a separate lookup table.
+    """
+
+    func: Callable[[], Awaitable[object]]
+    name: str
+    required: bool = True
+
+
+def _process_results(results: list[object], services: list[StartupService]) -> None:
+    """Raise if any REQUIRED startup service failed; degrade (log) for best-effort ones.
+
+    A best-effort service failing for ANY reason (not just I/O) is non-fatal. Required
+    services still hard-fail so a genuine misconfiguration surfaces loudly instead of a
+    half-initialized process.
+    """
+    required_failures = []
+    for result, service in zip(results, services):
+        if not isinstance(result, Exception):
+            continue
+        if service.required:
+            required_failures.append(service.name)
+            log.error(f"Failed to initialize {service.name}: {result}")
+        else:
+            log.warning(
+                f"Best-effort startup service '{service.name}' failed; continuing degraded: {result}"
+            )
+
+    if required_failures:
+        error_msg = f"Failed to initialize required services: {required_failures}"
+        log.error(error_msg)
+        raise RuntimeError(error_msg)
