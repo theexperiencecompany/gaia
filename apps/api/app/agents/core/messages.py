@@ -151,7 +151,12 @@ async def construct_langchain_messages(
                 file.description = descriptions[file.fileId]
 
     if currently_uploaded_file_ids and (
-        files_str := format_files_list(files_data, currently_uploaded_file_ids, conversation_id)
+        files_str := format_files_list(
+            files_data,
+            currently_uploaded_file_ids,
+            conversation_id,
+            include_processing_guide=False,
+        )
     ):
         content += f"\n\n{files_str}"
 

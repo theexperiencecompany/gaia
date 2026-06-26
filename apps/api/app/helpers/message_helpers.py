@@ -730,13 +730,22 @@ def format_files_list(
     files_data: list[FileData] | None,
     file_ids: list[str] | None = None,
     conversation_id: str | None = None,
+    *,
+    include_processing_guide: bool = True,
 ) -> str:
-    """Surface uploaded files to the agent with path, summary, and summary file.
+    """Surface uploaded files to an agent with path and summary.
 
-    Each attachment is shown with its on-disk path, a truncated summary (so the
-    comms agent knows what the file is without a tool call), and the path to its
-    full `<file>.summary.md` sidecar. The summary text is enriched server-side by
-    the caller; this helper only formats. Pure — no DB/FS access.
+    Each attachment is shown with its on-disk path and a truncated summary (so
+    the reader knows what the file is without a tool call). The summary text is
+    enriched server-side by the caller; this helper only formats. Pure — no
+    DB/FS access.
+
+    ``include_processing_guide`` controls the audience:
+    - ``True`` (executor): adds the `full summary` sidecar pointer and the full
+      read/bash/scratch/artifacts how-to — the executor holds those tools.
+    - ``False`` (comms): a lean block — name, path, summary, and a single line
+      telling it to delegate real file work. Comms has no file tools; the
+      executor-voice how-to only baits it into over-delegating.
     """
     if not files_data or (file_ids is not None and not file_ids):
         return ""
@@ -761,13 +770,21 @@ def format_files_list(
             if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
                 summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
             lines.append(f"    summary: {summary}")
-            if conversation_id:
+            if conversation_id and include_processing_guide:
                 lines.append(f"    full summary: `{path}.summary.md`")
 
     if not lines:
         return ""
 
     file_block = "\n".join(lines)
+
+    if not include_processing_guide:
+        return (
+            f"\n[Uploaded files]\n{file_block}\n\n"
+            "Answer simple questions from these summaries directly; for the full "
+            "contents or any work on the files, delegate to the executor.\n"
+        )
+
     return f"""
 [Uploaded files]
 {file_block}
