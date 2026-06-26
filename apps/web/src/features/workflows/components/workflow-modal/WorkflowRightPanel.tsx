@@ -54,7 +54,7 @@ export default function WorkflowRightPanel({
           cursor: "shadow-sm",
           tabContent:
             "font-medium text-zinc-400 group-data-[selected=true]:text-black",
-          panel: "min-h-0 flex-1 overflow-y-auto px-1 py-2",
+          panel: "scrollbar-hover min-h-0 flex-1 overflow-y-auto px-1 py-2",
         }}
       >
         <Tab key="steps" title="Steps">

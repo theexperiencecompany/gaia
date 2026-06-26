@@ -30,7 +30,7 @@ export default function WorkflowStepsPreviewCard({
       <div className="mb-1 flex items-center gap-2 px-2 pt-1">
         <span className="text-sm font-medium text-zinc-200">Steps</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <div className="scrollbar-hover min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {steps.length ? (
           <WorkflowSteps steps={steps} />
         ) : (

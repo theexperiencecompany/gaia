@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
-import { PlayIcon } from "@icons";
+import { PlayIcon, Share01Icon } from "@icons";
 
 interface WorkflowFooterProps {
   existingWorkflow: boolean;
@@ -13,6 +13,8 @@ interface WorkflowFooterProps {
   isCreating: boolean;
   modifierKeyName: "command" | "ctrl" | "shift" | "option" | "alt";
   buttonText: string;
+  isPublic?: boolean;
+  onPublish?: () => void;
 }
 
 export default function WorkflowFooter({
@@ -25,6 +27,8 @@ export default function WorkflowFooter({
   isCreating,
   modifierKeyName,
   buttonText,
+  isPublic,
+  onPublish,
 }: WorkflowFooterProps) {
   return (
     <div className="flex items-center justify-between gap-3">
@@ -48,6 +52,19 @@ export default function WorkflowFooter({
               className="active:scale-[0.97] transition-transform duration-150"
             >
               Run
+            </Button>
+          </Tooltip>
+        )}
+
+        {existingWorkflow && !isPublic && onPublish && (
+          <Tooltip content="Share to the marketplace" placement="top">
+            <Button
+              variant="flat"
+              startContent={<Share01Icon className="h-4 w-4" />}
+              onPress={onPublish}
+              className="active:scale-[0.97] transition-transform duration-150"
+            >
+              Publish
             </Button>
           </Tooltip>
         )}

@@ -604,6 +604,41 @@
     background: rgba(255, 255, 255, 0.25);
   }
 
+  /* Reserves the scrollbar gutter so content never shifts, but keeps the thumb
+     invisible until the scroll container is hovered. Lets sibling scroll areas
+     coexist without both thumbs showing at once. */
+  .scrollbar-hover {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .scrollbar-hover::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-hover::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-hover::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 100px;
+    transition: background 0.2s ease;
+  }
+
+  .scrollbar-hover:hover {
+    scrollbar-color: var(--color-zinc-700) transparent;
+  }
+
+  .scrollbar-hover:hover::-webkit-scrollbar-thumb {
+    background: var(--color-zinc-700);
+  }
+
+  .scrollbar-hover:hover::-webkit-scrollbar-thumb:hover {
+    background: var(--color-zinc-500);
+  }
+
   .heroimage {
     image-rendering: crisp-edges;
   }

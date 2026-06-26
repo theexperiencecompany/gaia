@@ -10,7 +10,6 @@ import { Input, Textarea } from "@heroui/input";
 import {
   Cancel01Icon,
   Delete02Icon,
-  GlobeIcon,
   LinkSquare02Icon,
   MoreVerticalIcon,
   ReloadIcon,
@@ -34,7 +33,6 @@ interface WorkflowHeaderProps {
   isTogglingActivation: boolean;
   onToggleActivation: (activated: boolean) => void;
   isPublic?: boolean;
-  onPublish?: () => void | Promise<void>;
   onUnpublish?: () => void | Promise<void>;
   onViewMarketplace?: () => void;
   onDelete: () => void;
@@ -50,14 +48,12 @@ export default function WorkflowHeader({
   isTogglingActivation,
   onToggleActivation,
   isPublic,
-  onPublish,
   onUnpublish,
   onViewMarketplace,
   onDelete,
   onResetToDefault,
 }: WorkflowHeaderProps) {
   const isSystemWorkflow = !!currentWorkflow?.is_system_workflow;
-  const showPublish = !isPublic && !!onPublish;
   const showMarketplace = !!isPublic && !!onViewMarketplace;
   const showUnpublish = !!isPublic && !!onUnpublish;
   const showReset = isSystemWorkflow && !!onResetToDefault;
@@ -120,7 +116,6 @@ export default function WorkflowHeader({
                     (() => void | Promise<void>) | undefined
                   > = {
                     activation: () => onToggleActivation(!isActivated),
-                    publish: onPublish,
                     marketplace: onViewMarketplace,
                     unpublish: onUnpublish,
                     reset: onResetToDefault,
@@ -146,16 +141,6 @@ export default function WorkflowHeader({
                 >
                   {isActivated ? "Disable" : "Enable"}
                 </DropdownItem>
-
-                {showPublish ? (
-                  <DropdownItem
-                    key="publish"
-                    description="Share to the marketplace"
-                    startContent={<GlobeIcon className={iconClasses} />}
-                  >
-                    Publish
-                  </DropdownItem>
-                ) : null}
 
                 {showMarketplace ? (
                   <DropdownItem

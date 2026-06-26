@@ -919,7 +919,7 @@ export default function WorkflowModal({
           <ModalBody className="flex min-h-0 flex-col gap-0 p-0">
             {creationPhase === "form" ? (
               <>
-                <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6 lg:flex-row lg:gap-8 lg:overflow-hidden">
+                <div className="scrollbar-hover flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6 lg:flex-row lg:gap-8 lg:overflow-hidden">
                   {/* Form column — the single scroll region on desktop. Below
                       lg the row stacks and scrolls as a whole, so the column
                       keeps its full content height (shrink-0) instead of being
@@ -930,7 +930,7 @@ export default function WorkflowModal({
                       disabled={mode === "preview"}
                       className="contents disabled:cursor-default"
                     >
-                      <div className="space-y-8 pb-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3">
+                      <div className="scrollbar-hover space-y-8 pb-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3">
                         {missingIntegration && (
                           <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
                             <span className="flex items-center gap-2">
@@ -963,7 +963,6 @@ export default function WorkflowModal({
                           isTogglingActivation={isTogglingActivation}
                           onToggleActivation={handleActivationToggle}
                           isPublic={!!currentWorkflow?.is_public}
-                          onPublish={handlePublishToggle}
                           onUnpublish={handlePublishToggle}
                           onViewMarketplace={
                             currentWorkflow?.slug
@@ -1082,6 +1081,8 @@ export default function WorkflowModal({
                         isCreating={isCreating}
                         modifierKeyName={modifierKeyName}
                         buttonText={getButtonText()}
+                        isPublic={!!currentWorkflow?.is_public}
+                        onPublish={handlePublishToggle}
                       />
                     )}
                   </div>
