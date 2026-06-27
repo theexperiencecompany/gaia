@@ -3,7 +3,7 @@
   "checkpoint_id": "f6e4d4685971",
   "strategy": "manual-commit",
   "branch": "insane-gmail",
-  "checkpoints_count": 7,
+  "checkpoints_count": 12,
   "files_touched": [
     "apps/api/app/agents/middleware/compaction.py",
     "apps/api/app/agents/middleware/factory.py",
@@ -16,13 +16,19 @@
       "transcript": "/f6/e4d4685971/0/full.jsonl",
       "content_hash": "/f6/e4d4685971/0/content_hash.txt",
       "prompt": "/f6/e4d4685971/0/prompt.txt"
+    },
+    {
+      "metadata": "/f6/e4d4685971/1/metadata.json",
+      "transcript": "/f6/e4d4685971/1/full.jsonl",
+      "content_hash": "/f6/e4d4685971/1/content_hash.txt",
+      "prompt": "/f6/e4d4685971/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 54979,
-    "cache_creation_tokens": 538243,
-    "cache_read_tokens": 15276211,
-    "output_tokens": 174079,
-    "api_call_count": 75
+    "input_tokens": 89990,
+    "cache_creation_tokens": 1014710,
+    "cache_read_tokens": 21447190,
+    "output_tokens": 247501,
+    "api_call_count": 131
   }
 }
