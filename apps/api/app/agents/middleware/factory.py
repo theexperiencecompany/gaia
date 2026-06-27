@@ -33,6 +33,12 @@ from shared.py.wide_events import log
 CODING_TOOL_NAMES = {"bash", "read", "write", "edit"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 
+# Tools that already perform their own context-safe offload (return a small
+# digest + write a clean file the agent mines). The generic compaction
+# middleware must leave their output alone — re-handling it would clobber the
+# tool's own file format with the generic wrapper.
+SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES"}
+
 _summarization_llm: BaseChatModel | None = None
 
 
@@ -204,20 +210,23 @@ def create_executor_middleware(
         subagent_registry=subagent_registry,
         subagent_excluded_tools=subagent_excluded_tools,
         subagent_tool_runtime_config=subagent_tool_runtime_config,
-        compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
+        compaction_excluded_tools=CODING_TOOL_NAMES
+        | SPAWN_SUBAGENT_TOOL
+        | SELF_OFFLOADING_TOOL_NAMES,
     )
 
 
 def create_comms_middleware() -> list[Any]:
     """Create the middleware stack for the comms agent.
 
-    Comms delegates complex work to the executor, so it only gets summarization
-    and compaction middleware.
+    Comms delegates all real work to the executor, so it only gets summarization.
+    File-offload compaction is intentionally off: comms has no read/bash/subagent
+    tool, so a compacted output would leave it holding an unreadable file path.
     """
     return create_middleware_stack(
         agent_name="comms_agent",
         enable_subagent=False,
-        compaction_excluded_tools=CODING_TOOL_NAMES,
+        enable_compaction=False,
     )
 
 
@@ -262,5 +271,7 @@ def create_subagent_middleware(
         subagent_excluded_tools=subagent_excluded_tools,
         subagent_tool_space=subagent_tool_space,
         subagent_tool_runtime_config=subagent_tool_runtime_config,
-        compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
+        compaction_excluded_tools=CODING_TOOL_NAMES
+        | SPAWN_SUBAGENT_TOOL
+        | SELF_OFFLOADING_TOOL_NAMES,
     )
