@@ -90,3 +90,7 @@ and also lets increase threashold to arounf 50k tokens models these days are rea
 
 middleware also compacts any output >500 chars -> bullshit remove this 500 characters is just nothing
 increase that as well to 30k tokens (make everything 30k change MAX_OUTPUT_CHARS to match 30k tokens as well)
+
+---
+
+and commit & push our changes only related to compaction and stuff
