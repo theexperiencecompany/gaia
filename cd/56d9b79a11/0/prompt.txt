@@ -98,3 +98,7 @@ and commit & push our changes only related to compaction and stuff
 ---
 
 Gmail INLINE_LIMIT_CHARS	 -> 120_000 as well bcz its very normal to have
+
+---
+
+I think 50 + 120k is good bcz 50 is large enough number for agent to miss something important so its good only
