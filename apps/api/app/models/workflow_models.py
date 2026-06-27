@@ -36,6 +36,13 @@ class TriggerType(str, Enum):
     INTEGRATION = "integration"
 
 
+class IntegrationRef(BaseModel):
+    """Lightweight integration reference for workflow responses."""
+
+    id: str
+    name: str
+
+
 class WorkflowStep(BaseModel):
     """A single step in a workflow."""
 
@@ -246,6 +253,16 @@ class Workflow(BaseScheduledTask):
     creator: dict[str, Any] | None = Field(
         default=None,
         description="Creator info hydrated for public workflow lookups.",
+    )
+
+    # Computed at read time (not stored in DB). Mirrors the `creator` pattern.
+    required_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Integration IDs required by the workflow's steps.",
+    )
+    missing_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Required integrations the user has not connected yet.",
     )
 
     def __init__(self, **data):

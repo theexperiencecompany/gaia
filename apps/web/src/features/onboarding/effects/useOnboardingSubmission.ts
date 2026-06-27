@@ -51,6 +51,10 @@ export function useOnboardingSubmission(
       });
       return;
     }
+    if (!state.integrationSelectDone) {
+      console.debug("[onboarding:submit] skip — integration selection pending");
+      return;
+    }
     console.debug("[onboarding:submit] FIRING POST /onboarding");
 
     inFlightRef.current = true;
@@ -73,6 +77,9 @@ export function useOnboardingSubmission(
       timezone: getBrowserTimezone(),
       focus: responses[FIELD_NAMES.FOCUS] ?? "",
       ...(clarifyAnswers ? { clarify_answers: clarifyAnswers } : {}),
+      ...(state.selectedIntegrations.length > 0
+        ? { selected_integrations: state.selectedIntegrations }
+        : {}),
     };
 
     completeOnboarding(body)

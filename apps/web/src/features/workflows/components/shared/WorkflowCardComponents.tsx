@@ -3,6 +3,7 @@
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
 import {
+  Alert01Icon,
   CursorMagicSelection03Icon,
   DateTimeIcon,
   Mail01Icon,
@@ -17,7 +18,7 @@ import {
 } from "@/features/workflows/utils/creator";
 import { cn } from "@/lib/utils";
 
-import type { Workflow } from "../../api/workflowApi";
+import type { IntegrationRef, Workflow } from "@/types/features/workflowTypes";
 
 /**
  * Get relative time display (e.g., "in 2h", "in 3d")
@@ -254,6 +255,33 @@ export function CreatorAvatar({
       color="foreground"
     >
       {avatar}
+    </Tooltip>
+  );
+}
+
+interface MissingIntegrationsWarningProps {
+  missingIntegrations: IntegrationRef[];
+}
+
+export function MissingIntegrationsWarning({
+  missingIntegrations,
+}: MissingIntegrationsWarningProps) {
+  if (!missingIntegrations.length) return null;
+
+  const names = missingIntegrations.map((i) => i.name).join(", ");
+  const tooltipText = `Connect ${names} to enable this workflow.`;
+
+  return (
+    <Tooltip
+      content={tooltipText}
+      placement="top"
+      delay={200}
+      closeDelay={0}
+      classNames={{ content: "bg-zinc-800 text-xs max-w-56 text-center" }}
+    >
+      <div className="flex h-6 w-6 cursor-default items-center justify-center rounded-full border border-yellow-500/30 bg-yellow-500/10">
+        <Alert01Icon width={13} height={13} className="text-yellow-400" />
+      </div>
     </Tooltip>
   );
 }

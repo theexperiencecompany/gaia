@@ -403,7 +403,7 @@ User profile (PRIMARY signal — weigh this most):
 - Profession: {profession}
 - Current focus: {focus}
 
-{clarify_context}Secondary signals (use sparingly — do not let these dominate):
+{clarify_context}{selected_integrations_section}Secondary signals (use sparingly — do not let these dominate):
 - Has Gmail connected: {has_gmail}
 - Inbox patterns observed: {inbox_patterns}
 - Frequent senders: {email_senders_summary}

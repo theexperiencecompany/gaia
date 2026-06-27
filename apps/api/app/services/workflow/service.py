@@ -17,6 +17,7 @@ from app.decorators.caching import Cacheable
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    IntegrationRef,
     PublicWorkflowsResponse,
     TriggerConfig,
     TriggerType,
@@ -25,6 +26,11 @@ from app.models.workflow_models import (
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
+    WorkflowStep,
+)
+from app.services.workflow.integration_requirements import (
+    compute_missing_integrations,
+    compute_required_integrations,
 )
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.creator import (
@@ -242,8 +248,11 @@ class WorkflowService:
             )
 
             # Python mode keeps datetimes native (BSON dates) so the scheduler's
-            # `scheduled_at: {"$lte": now}` scan can match. creator is response-only.
-            workflow_dict = workflow.model_dump(exclude={"creator"})
+            # `scheduled_at: {"$lte": now}` scan can match. creator,
+            # required_integrations, missing_integrations are response-only.
+            workflow_dict = workflow.model_dump(
+                exclude={"creator", "required_integrations", "missing_integrations"}
+            )
             workflow_dict["_id"] = workflow_dict["id"]
 
             if workflow_dict.get("is_public") and not workflow_dict.get("slug"):
@@ -436,7 +445,9 @@ class WorkflowService:
             await ensure_public_workflow_slug(workflow_doc)
 
             transformed_doc = transform_workflow_document(workflow_doc)
-            return Workflow(**transformed_doc)
+            workflow = Workflow(**transformed_doc)
+            await WorkflowService._enrich_integration_fields(workflow, user_id)
+            return workflow
 
         except Exception as e:
             log.error(f"{LogTag.WORKFLOW} Error getting workflow {workflow_id}: {e!s}")
@@ -459,7 +470,7 @@ class WorkflowService:
                 await workflows_collection.find(query).sort("created_at", -1).to_list(length=None)
             )
 
-            workflows = []
+            workflows: list[Workflow] = []
             for doc in docs:
                 try:
                     transformed_doc = transform_workflow_document(doc)
@@ -470,12 +481,55 @@ class WorkflowService:
                     )
                     continue
 
+            # Enrich all workflows with integration fields in one status call.
+            from app.services.oauth.oauth_service import get_all_integrations_status
+
+            status_map = await get_all_integrations_status(user_id)
+            from app.services.workflow.integration_requirements import (
+                _integration_name_map,
+                compute_required_integrations,
+            )
+
+            name_map = _integration_name_map()
+            for workflow in workflows:
+                if workflow.steps:
+                    required = compute_required_integrations(workflow.steps)
+                    workflow.required_integrations = [
+                        IntegrationRef(id=iid, name=name_map.get(iid, iid))
+                        for iid in sorted(required)
+                    ]
+                    workflow.missing_integrations = [
+                        IntegrationRef(id=iid, name=name_map.get(iid, iid))
+                        for iid in sorted(required)
+                        if not status_map.get(iid, False)
+                    ]
+                else:
+                    workflow.required_integrations = []
+                    workflow.missing_integrations = []
+
             log.debug(f"{LogTag.WORKFLOW} Retrieved {len(workflows)} workflows for user {user_id}")
             return workflows
 
         except Exception as e:
             log.error(f"{LogTag.WORKFLOW} Error listing workflows for user {user_id}: {e!s}")
             raise
+
+    @staticmethod
+    async def _enrich_integration_fields(workflow: Workflow, user_id: str) -> None:
+        """Populate required_integrations and missing_integrations in-place."""
+        if not workflow.steps:
+            workflow.required_integrations = []
+            workflow.missing_integrations = []
+            return
+        required = compute_required_integrations(workflow.steps)
+        missing = await compute_missing_integrations(required, user_id)
+        from app.services.workflow.integration_requirements import _integration_name_map
+
+        name_map = _integration_name_map()
+        workflow.required_integrations = [
+            IntegrationRef(id=iid, name=name_map.get(iid, iid)) for iid in sorted(required)
+        ]
+        workflow.missing_integrations = missing
 
     @staticmethod
     async def update_workflow(
@@ -1189,14 +1243,26 @@ class WorkflowService:
                 user_id=user_id,
             )
 
+            steps_as_models = [WorkflowStep(**s) for s in steps_data]
+            required = compute_required_integrations(steps_as_models)
+            missing = await compute_missing_integrations(required, user_id)
+
+            update: dict[str, Any] = {
+                "steps": steps_data,
+                "updated_at": datetime.now(UTC),
+            }
+            if missing:
+                # Keep deactivated when step integrations are not connected.
+                update["activated"] = False
+                update[TRIGGER_CONFIG_ENABLED_FIELD] = False
+                log.info(
+                    f"{LogTag.WORKFLOW} Workflow {workflow_id} kept inactive — "
+                    f"missing step integrations: {[m.id for m in missing]}"
+                )
+
             await workflows_collection.find_one_and_update(
                 {"_id": workflow_id, "user_id": user_id},
-                {
-                    "$set": {
-                        "steps": steps_data,
-                        "updated_at": datetime.now(UTC),
-                    }
-                },
+                {"$set": update},
             )
 
         except Exception as e:

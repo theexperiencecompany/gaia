@@ -113,6 +113,10 @@ class OnboardingRequest(BaseModel):
         None,
         description="No-Gmail follow-up answers (scope/blocker/constraint)",
     )
+    selected_integrations: list[str] | None = Field(
+        None,
+        description="Integration slugs the user selected during onboarding.",
+    )
 
     @field_validator("name")
     @classmethod

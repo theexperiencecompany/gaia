@@ -320,6 +320,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     profession: str = onboarding.get("preferences", {}).get("profession", "") or ""
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[dict] = onboarding.get("clarify_answers") or []
+    selected_integrations: list[str] = onboarding.get("selected_integrations") or []
 
     t_gmail_check = time.monotonic()
     composio_service = get_composio_service()
@@ -373,6 +374,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             triage_future,
             writing_style_future,
             clarify_answers,
+            selected_integrations,
         )
     )
     t_gather = time.monotonic()
@@ -862,6 +864,7 @@ async def _run_workflows(
     triage_future: asyncio.Task[InboxTriage | None],
     writing_style_future: asyncio.Task[WritingStyleProfile | None],
     clarify_answers: list[dict] | None = None,
+    selected_integrations: list[str] | None = None,
 ) -> list[dict]:
     triage, writing_style = await asyncio.gather(triage_future, writing_style_future)
 
@@ -882,6 +885,7 @@ async def _run_workflows(
             triage,
             writing_style,
             clarify_answers,
+            selected_integrations,
         )
     except Exception as e:
         log.error(
@@ -1346,6 +1350,7 @@ def _build_workflow_prompt_context(
     triage: InboxTriage | None,
     writing_style: WritingStyleProfile | None,
     clarify_answers: list[dict] | None,
+    selected_integrations: list[str] | None = None,
 ) -> str:
     """Render the workflow-creation prompt from the user's onboarding context."""
     inbox_patterns = (
@@ -1357,10 +1362,25 @@ def _build_workflow_prompt_context(
         else "no email data"
     )
     writing_style_summary = writing_style.summary[:150] if writing_style else "not analyzed"
+
+    if selected_integrations:
+        from app.config.oauth_config import OAUTH_INTEGRATIONS
+
+        name_map = {i.id: i.name for i in OAUTH_INTEGRATIONS}
+        friendly = [name_map.get(s, s) for s in selected_integrations]
+        selected_integrations_section = (
+            "Preferred integrations (anchor at least half of the workflows to these tools):\n"
+            + ", ".join(friendly)
+            + "\n\n"
+        )
+    else:
+        selected_integrations_section = ""
+
     return WORKFLOW_CREATION_PROMPT.format(
         profession=profession or "professional",
         focus=focus or _NOT_SPECIFIED,
         clarify_context=format_clarify_context(clarify_answers),
+        selected_integrations_section=selected_integrations_section,
         has_gmail=has_gmail,
         inbox_patterns=inbox_patterns,
         email_senders_summary=email_senders_summary,
@@ -1409,6 +1429,7 @@ async def _build_one_workflow(
     idx: int,
     spec: _WorkflowSpec,
     user_timezone: str,
+    selected_integrations: list[str] | None = None,
 ) -> dict | None:
     """Generate the prompt + trigger for a single spec and persist the workflow."""
     t_spec = time.monotonic()
@@ -1430,6 +1451,7 @@ async def _build_one_workflow(
             prompt=workflow_prompt,
             trigger_config=trigger_config,
             generate_immediately=True,
+            selected_integrations=selected_integrations or None,
         )
         t_create = time.monotonic()
         workflow = await WorkflowService.create_workflow(
@@ -1478,8 +1500,14 @@ async def _create_onboarding_workflows(
     triage: InboxTriage | None = None,
     writing_style: WritingStyleProfile | None = None,
     clarify_answers: list[dict] | None = None,
+    selected_integrations: list[str] | None = None,
 ) -> list[dict]:
     """Create 4 LLM-generated workflows tailored to the user's context."""
+    # Include Gmail in selected integrations if connected and not already listed.
+    effective_integrations: list[str] = list(selected_integrations or [])
+    if has_gmail and "gmail" not in effective_integrations:
+        effective_integrations.append("gmail")
+
     prompt = _build_workflow_prompt_context(
         profession,
         focus,
@@ -1487,6 +1515,7 @@ async def _create_onboarding_workflows(
         triage,
         writing_style,
         clarify_answers,
+        effective_integrations or None,
     )
 
     t0 = time.monotonic()
@@ -1505,7 +1534,9 @@ async def _create_onboarding_workflows(
 
         results = await asyncio.gather(
             *[
-                _build_one_workflow(user_id, idx, spec, user_timezone)
+                _build_one_workflow(
+                    user_id, idx, spec, user_timezone, effective_integrations or None
+                )
                 for idx, spec in enumerate(parsed.workflows)
             ]
         )

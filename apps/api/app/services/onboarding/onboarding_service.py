@@ -86,6 +86,11 @@ async def complete_onboarding(
             if kept:
                 update_fields["onboarding.clarify_answers"] = kept
 
+        if onboarding_data.selected_integrations:
+            slugs = [s.strip().lower() for s in onboarding_data.selected_integrations if s.strip()]
+            if slugs:
+                update_fields["onboarding.selected_integrations"] = slugs
+
         # Atomic gate: only the request that creates the `onboarding` subdoc
         # wins; concurrent POSTs and replays get None and fall through.
         updated_user = await users_collection.find_one_and_update(

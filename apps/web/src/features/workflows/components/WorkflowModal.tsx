@@ -96,6 +96,7 @@ export default function WorkflowModal({
     updateWorkflow: updateInStore,
     removeWorkflow: removeFromStore,
     fetchWorkflows,
+    invalidateCache,
   } = useWorkflowsStore();
 
   // Zustand UI state
@@ -535,6 +536,7 @@ export default function WorkflowModal({
 
         // Notify parent callbacks if provided (for backwards compatibility)
         if (onWorkflowSaved) onWorkflowSaved(createdWorkflow.id);
+        invalidateCache();
         await fetchWorkflows();
 
         // In createAndSend mode, selectWorkflow navigates to /c and unmounts
@@ -586,15 +588,12 @@ export default function WorkflowModal({
         updateRequest,
       );
 
-      if (updatedWorkflow) {
-        setCurrentWorkflow({
-          ...currentWorkflow,
-          ...updateRequest,
-          description: updateRequest.description ?? "",
-        });
+      if (updatedWorkflow?.workflow) {
+        setCurrentWorkflow(updatedWorkflow.workflow);
+        updateInStore(currentWorkflow.id, updatedWorkflow.workflow);
+      } else {
+        updateInStore(currentWorkflow.id, updateRequest);
       }
-
-      updateInStore(currentWorkflow.id, updateRequest);
 
       if (stepRelevantChanged) {
         // Modal stays open with a visible regen indicator until the user
@@ -628,9 +627,7 @@ export default function WorkflowModal({
             // Commit the new steps locally AND to the store so the upcoming
             // fetchWorkflows() refetch can't briefly resurface the old steps.
             setCurrentWorkflow(regenResult.workflow);
-            updateInStore(currentWorkflow.id, {
-              steps: regenResult.workflow.steps,
-            });
+            updateInStore(currentWorkflow.id, regenResult.workflow);
             toast.success("Workflow updated", {
               description: `${regenResult.workflow.steps?.length || 0} steps regenerated`,
               duration: 3000,
@@ -655,6 +652,7 @@ export default function WorkflowModal({
 
       if (onWorkflowSaved) onWorkflowSaved(currentWorkflow.id);
 
+      invalidateCache();
       await fetchWorkflows();
     } catch (error) {
       console.error("Failed to update workflow:", error);
@@ -678,6 +676,7 @@ export default function WorkflowModal({
     if (!existingWorkflow?.id) return;
     try {
       await workflowApi.resetToDefault(existingWorkflow.id);
+      invalidateCache();
       await fetchWorkflows();
       handleClose();
     } catch (error) {
@@ -713,6 +712,7 @@ export default function WorkflowModal({
 
       if (onWorkflowDeleted) onWorkflowDeleted(existingWorkflow.id);
 
+      invalidateCache();
       await fetchWorkflows();
       setIsDeleteConfirmOpen(false);
       handleClose();
@@ -749,6 +749,7 @@ export default function WorkflowModal({
       });
       setIsActivated(newActivated);
       updateInStore(currentWorkflow.id, { activated: newActivated });
+      invalidateCache();
       await fetchWorkflows();
     } catch (error) {
       console.error("Failed to toggle workflow activation:", error);
@@ -799,6 +800,7 @@ export default function WorkflowModal({
       }
 
       if (onWorkflowSaved) onWorkflowSaved(currentWorkflow.id);
+      invalidateCache();
       await fetchWorkflows();
 
       setIsRegeneratingSteps(false);
@@ -834,6 +836,7 @@ export default function WorkflowModal({
         setCurrentWorkflow({ ...currentWorkflow, is_public: true, slug });
         if (slug) router.push(`/use-cases/${slug}`);
       }
+      invalidateCache();
       await fetchWorkflows();
     } catch (error) {
       console.error("Error publishing/unpublishing workflow:", error);
