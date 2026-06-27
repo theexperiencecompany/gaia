@@ -4,6 +4,41 @@ Email Constants.
 Constants for email processing and display.
 """
 
+from typing import Literal
+
+# Per-message fields the Gmail summary tool can project to.
+MessageFieldLiteral = Literal[
+    "id",
+    "threadId",
+    "from",
+    "to",
+    "cc",
+    "bcc",
+    "subject",
+    "snippet",
+    "body",
+    "time",
+    "isRead",
+    "hasAttachment",
+    "labels",
+]
+
+# Curated per-message fields returned when the caller does not specify any:
+# metadata + snippet, deliberately excluding the full `body` and `cc`/`bcc` to
+# keep the LLM payload small. An explicit empty list means "all fields" instead.
+DEFAULT_SUMMARY_FIELDS: list[MessageFieldLiteral] = [
+    "id",
+    "threadId",
+    "from",
+    "to",
+    "subject",
+    "snippet",
+    "time",
+    "isRead",
+    "hasAttachment",
+    "labels",
+]
+
 # Default display values
 UNKNOWN_SENDER = "[Unknown]"
 NO_SUBJECT = "[No Subject]"

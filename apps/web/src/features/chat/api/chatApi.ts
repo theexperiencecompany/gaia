@@ -10,6 +10,7 @@ import { getBrowserTimezone } from "@/lib/timezone";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
@@ -108,6 +109,7 @@ export const chatApi = {
       createdAt: string;
       updatedAt?: string;
       messages: MessageType[];
+      artifacts?: ArtifactData[];
     }[];
   }> => {
     return apiService.post(
@@ -121,9 +123,15 @@ export const chatApi = {
   },
 
   // File upload
-  uploadFile: async (file: File): Promise<FileUploadResponse> => {
+  uploadFile: async (
+    file: File,
+    conversationId?: string,
+  ): Promise<FileUploadResponse> => {
     const formData = new FormData();
     formData.append("file", file);
+    if (conversationId) {
+      formData.append("conversation_id", conversationId);
+    }
 
     // No errorMessage override: let the backend detail surface (e.g. the 413
     // "File size exceeds the N MB limit." or 415 unsupported-type message)

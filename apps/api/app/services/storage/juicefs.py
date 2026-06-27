@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 import re
 import shutil
@@ -146,10 +147,11 @@ async def write_skill_file(
         skills_root = _require_mount() / "skills" / user_id / skill_name
         target = _contained(skills_root, relative_path, root_label="skill root")
         target.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, str):
-            target.write_text(content, encoding="utf-8")
-        else:
-            target.write_bytes(content)
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        with target.open("wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
         return target
 
     async with fs_timer(FsOps.WRITE_SKILL_FILE):
@@ -171,10 +173,11 @@ async def write_session_file(
         base = _require_mount() / "users" / user_id / "sessions" / conversation_id
         target = _contained(base, relative_path, root_label="session root")
         target.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, str):
-            target.write_text(content, encoding="utf-8")
-        else:
-            target.write_bytes(content)
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        with target.open("wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
         sandbox_view = f"/workspace/sessions/{conversation_id}/{relative_path}"
         return target, sandbox_view
 

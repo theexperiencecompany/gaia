@@ -508,6 +508,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
         isPastedFile={pendingDroppedFiles.some((file) =>
           file.type.includes("image"),
         )}
+        conversationId={conversationId}
       />
     </div>
   );

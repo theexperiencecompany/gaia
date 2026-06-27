@@ -9,7 +9,6 @@ for customizing tool descriptions and defaults.
 from typing import Any
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
-from langchain_core.tools import ToolException
 from langgraph.config import get_stream_writer
 
 from app.agents.templates.mail_templates import (
@@ -17,7 +16,6 @@ from app.agents.templates.mail_templates import (
     draft_template,
     process_get_thread_response,
     process_list_drafts_response,
-    process_list_messages_response,
 )
 from app.constants.log_tags import LogTag
 from app.utils.markdown_utils import normalize_email_body_to_html
@@ -37,8 +35,6 @@ _GMAIL_COMPOSE_TOOLS = (
 )
 # Gmail's ``body`` field is named differently across compose tools.
 _GMAIL_BODY_KEYS = ("body", "message_body", "message")
-
-GMAIL_FULL_FETCH_HARD_LIMIT = 30
 
 # ====================== SCHEMA MODIFIERS ======================
 # These modifiers customize tool schemas before they are seen by agents
@@ -110,53 +106,15 @@ def gmail_compose_require_subject_schema_modifier(tool: str, toolkit: str, schem
     return schema
 
 
-@register_schema_modifier(tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
-def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """
-    Set sensible defaults for GMAIL_FETCH_EMAILS and GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID.
-
-    - max_results: default to 10 (was 1)
-    - format: default to "full"
-    - Add Gmail search syntax tips to description
-
-    Do NOT default label_ids to ["INBOX"]: Gmail ANDs it with the query, so a
-    stale default silently zeroes out folder-scoped searches (e.g. in:sent).
-    """
+@register_schema_modifier(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
+def gmail_fetch_message_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
+    """Default GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID to format='full' for detailed content."""
     input_params = schema.input_parameters
     if not isinstance(input_params, dict):
         return schema
 
     props = input_params.get("properties", {})
-    if not isinstance(props, dict):
-        return schema
-
-    if tool == "GMAIL_FETCH_EMAILS":
-        # Set max_results default to 10
-        if "max_results" in props and isinstance(props["max_results"], dict):
-            props["max_results"]["default"] = 10
-
-        # Add Gmail search syntax tips to description
-        search_tips = (
-            "\n\nGMAIL SEARCH SYNTAX (use in 'query' parameter):\n"
-            "• from:sender@email.com - emails from specific sender\n"
-            "• to:recipient@email.com - emails to specific recipient\n"
-            "• subject:keyword - emails with keyword in subject\n"
-            "• is:unread, is:read, is:starred - filter by status\n"
-            "• has:attachment - emails with attachments\n"
-            "• after:2024/01/01, before:2024/12/31 - date range\n"
-            "• newer_than:7d, older_than:1m - relative dates\n"
-            "• label:labelname - emails with specific label\n"
-            "• in:inbox, in:sent, in:drafts - filter by folder"
-        )
-        full_mode_limit = (
-            "\n\nHARD LIMIT: In full email mode (verbose=true OR include_payload!=false), "
-            f"max_results must be <= {GMAIL_FULL_FETCH_HARD_LIMIT}. "
-            "If you need more, fetch in chunks."
-        )
-        schema.description += search_tips + full_mode_limit
-
-    # Set format default to "full" for detailed content
-    if "format" in props and isinstance(props["format"], dict):
+    if isinstance(props, dict) and "format" in props and isinstance(props["format"], dict):
         props["format"]["default"] = "full"
 
     return schema
@@ -184,36 +142,6 @@ def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
 
 # ====================== BEFORE EXECUTE HOOKS ======================
 # These hooks send progress/streaming data to frontend before tool execution
-
-
-@register_before_hook(tools=["GMAIL_FETCH_EMAILS"])
-def gmail_fetch_emails_before_hook(
-    tool: str, toolkit: str, params: ToolExecuteParams
-) -> ToolExecuteParams:
-    """Validate high-volume Gmail fetch requests before execution."""
-    arguments = params.get("arguments", {})
-
-    raw_max_results = arguments.get("max_results", 10)
-    if raw_max_results is None:
-        raw_max_results = 10
-    try:
-        max_results = int(raw_max_results)
-    except (TypeError, ValueError):
-        # Let schema/tool validation handle malformed values.
-        return params
-
-    verbose = arguments.get("verbose", True)
-    include_payload = arguments.get("include_payload", True)
-
-    full_email_mode = verbose is True or include_payload is not False
-
-    if full_email_mode and max_results > GMAIL_FULL_FETCH_HARD_LIMIT:
-        raise ToolException(
-            f"Result set too large for full email mode. "
-            f"Call in chunks with max_results <= {GMAIL_FULL_FETCH_HARD_LIMIT}."
-        )
-
-    return params
 
 
 @register_before_hook(
@@ -327,45 +255,6 @@ def gmail_compose_before_hook(
 
 # ====================== AFTER EXECUTE HOOKS ======================
 # These hooks process responses and send data to frontend after tool execution
-
-
-@register_after_hook(tools=["GMAIL_FETCH_EMAILS"])
-def gmail_fetch_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
-    """Process email fetch response and send data to frontend."""
-    try:
-        writer = get_stream_writer()
-
-        # Process the raw response to minimize data for LLM
-        processed_response = process_list_messages_response(response["data"])
-
-        if writer is not None and processed_response.get("messages"):
-            # Transform to EmailFetchData format for frontend
-            email_fetch_data = []
-            for msg in processed_response["messages"]:
-                email_fetch_data.append(
-                    {
-                        "from": msg.get("from", ""),
-                        "subject": msg.get("subject", ""),
-                        "time": msg.get("time", ""),
-                        "thread_id": msg.get("threadId", ""),
-                        "id": msg.get("id", ""),
-                    }
-                )
-
-            # Send email data to frontend
-            payload = {
-                "email_fetch_data": email_fetch_data,
-                "nextPageToken": processed_response.get("nextPageToken"),
-                "resultSize": processed_response.get("resultSize", 0),
-            }
-            writer(payload)
-
-        # Return processed response for LLM
-        return processed_response
-
-    except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in gmail_fetch_after_hook: {e}")
-        return response["data"]
 
 
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])

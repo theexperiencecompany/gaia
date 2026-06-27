@@ -153,6 +153,20 @@ libs/
     ts/         - TypeScript shared code
 ```
 
+### Agent System
+
+The full agent architecture — comms → executor → subagents, bots, voice, skills, memory, notifications, workflows, todos, sandbox, MCP — is documented in **[`ARCHITECTURE.md`](./ARCHITECTURE.md)** at the repo root. **Read it before touching any agent code**; it lists every authoritative file path so you don't have to re-derive the system per session.
+
+Quick map:
+- **Comms agent** (user-facing, no work tools) → `apps/api/app/agents/core/graph_builder/build_graph.py` (`build_comms_*`)
+- **Executor agent** (worker tier, all tools) → same file (`build_executor_*`) + `apps/api/app/agents/tools/executor_tool.py`
+- **Subagents** (per-integration) → `apps/api/app/agents/core/subagents/` + `apps/api/app/config/oauth_config.py`
+- **Bots** → `apps/bots/{telegram,whatsapp,discord,slack}/` + `libs/shared/ts/src/bots/`
+- **Voice** → `apps/voice-agent/src/worker.py`
+- **Skills** → `apps/api/app/agents/skills/`
+- **Memory** → `apps/api/app/memory/` + `apps/api/app/agents/memory/`
+- **Workflows / Notifications / Todos / Sandbox** → `apps/api/app/services/{workflow,notification,*,sandbox}/` + `apps/api/app/agents/tools/`
+
 ### Frontend (Web/Desktop)
 
 **Tech Stack**: Next.js 16, React 19, TypeScript, Zustand, TailwindCSS, Biome

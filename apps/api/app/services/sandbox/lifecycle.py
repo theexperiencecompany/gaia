@@ -289,14 +289,23 @@ async def _run_silent(sbx: Any, cmd: str, *, timeout: int = 10) -> tuple[int, st
 
 
 async def _ensure_mounted(sbx: Any, mount_env: dict[str, str]) -> None:
-    """No-op if /workspace is mounted, else re-run mount script.
+    """No-op if /workspace is a HEALTHY mount, else re-run mount script.
 
-    Handles stale FUSE mounts after pause/resume. ``mount_env`` is required
-    because the credentials are no longer sandbox-wide — every call site
-    that may re-run the script must supply them (see ``_mount_env``).
+    Handles stale FUSE mounts after pause/resume. A wedged JuiceFS endpoint
+    (dead/stuck daemon, or a mount that came up against a misconfigured meta/R2)
+    still passes ``mountpoint -q`` but returns EIO on every I/O, so we probe real
+    I/O (``stat``, ``timeout``-bounded) rather than just the mount-table entry —
+    otherwise a wedged ``/workspace`` is never re-mounted and keeps erroring.
+    ``mount.sh`` tears the stale mount down and remounts when re-run.
+
+    ``mount_env`` is required because the credentials are no longer sandbox-wide
+    — every call site that may re-run the script must supply them (see
+    ``_mount_env``).
     """
     async with fs_timer(FsOps.SBX_ENSURE_MOUNTED):
-        exit_code, _, _ = await _run_silent(sbx, "mountpoint -q /workspace", timeout=5)
+        exit_code, _, _ = await _run_silent(
+            sbx, "mountpoint -q /workspace && timeout 5 stat /workspace", timeout=8
+        )
         if exit_code != 0:
             await _run_mount_script(sbx, mount_env)
 

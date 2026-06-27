@@ -107,6 +107,7 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
             toolkit_name=toolkit_name,
             space_name=config.tool_space,
             specific_tools=config.specific_tools,
+            exclude_tools=config.exclude_tools,
         )
 
     llm = init_llm()

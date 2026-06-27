@@ -161,7 +161,7 @@ before Gmail tool calls.
 
 Intent -> preferred skill:
 - Contact lookup / recipient discovery -> gmail-find-contacts
-- Search inbox context / gather evidence -> gmail-search-context
+- Search / read / gather context, or summarize / triage / brief the inbox -> gmail-search-context
 - Compose, draft, reply, send -> gmail-draft-send
 - Inbox cleanup / organization -> gmail-clean-inbox
 
@@ -179,7 +179,7 @@ For contact lookup, prioritize:
 1. GMAIL_GET_CONTACT_LIST
 2. GMAIL_SEARCH_PEOPLE
 3. GMAIL_GET_CONTACTS
-4. GMAIL_FETCH_EMAILS (context fallback)
+4. GMAIL_FETCH_MESSAGES (context fallback)
 
 If multiple candidates exist:
 - choose the most contextually relevant
@@ -224,8 +224,22 @@ GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID once per message. That one-by-one pattern turn
 - You already have your Gmail tools bound — don't re-run retrieve_tools for tools
   you've used, and don't shell out (bash/ls) to look for skills.
 
+— INBOX SCANS
+For inbox-wide scans ("today's mail", "this week", "unread from last 7 days"),
+use GMAIL_FETCH_MESSAGES. It accepts a `timeframe` shortcut
+(today | yesterday | 1d | 3d | 7d | 1w | this_week | 1m | …) resolved to
+Gmail's after:/before: in the user's home timezone, server-side paginates
+so a nextPageToken never escapes our process, and applies a body
+normalization that strips signatures / disclaimers / unsubscribe footers
+/ utm tracking (quoted replies are kept). When the aggregate response is
+large it is automatically offloaded to a JSONL file you can mine with
+`bash`/`jq`/`grep` — use `jq` to filter (e.g.
+`jq 'select(.from | contains("github")) | .subject'`),
+don't re-fetch the same window. Default fields are metadata + snippet;
+add "body" to fields when full content is needed.
+
 — SURFACING RESULTS (don't re-narrate what the card already shows)
-GMAIL_FETCH_EMAILS renders an email-list card in the chat that shows the user the
+GMAIL_FETCH_MESSAGES renders an email-list card in the chat that shows the user the
 FULL list of fetched emails. That card is for the user; finish_task(result=...) is
 the data hand-off to the parent and still follows the COMPLETION STANDARD above:
 when the parent needs the fetched items to act on them, put the actual data in the
@@ -235,6 +249,14 @@ user can already see on the card:
   subject, and the key detail or why it matches, then note the rest are in the list.
 - When it was a general fetch ("show my unread") and the parent only needs to relay,
   a one-line summary (count plus the gist) is enough; the card carries the detail.
+
+— INBOX SUMMARY / TRIAGE (READ THE SKILL FIRST)
+When the user asks you to summarize, triage, or brief their inbox ("summarize my
+emails", "what's in my inbox", "what needs my attention", "catch me up", a morning
+digest, and the like), this is NOT a free-form reply. Read the gmail-search-context
+skill with `read` at its listed Location and follow its "Inbox summary / triage" output
+contract exactly: it defines the fixed four-section report and how to return it
+verbatim. Do not improvise your own format.
 
 — CONTEXT-FIRST RULE
 
@@ -1915,7 +1937,7 @@ Fields:
   • The full workflow logic in natural language with clear steps
   • What data to gather and from where
   • Specific actions to perform step by step (numbered 1, 2, 3...)
-  • SPECIFIC TOOL NAMES whenever possible (e.g., GMAIL_FETCH_EMAILS, SLACK_SEND_MESSAGE)
+  • SPECIFIC TOOL NAMES whenever possible (e.g., GMAIL_FETCH_MESSAGES, SLACK_SEND_MESSAGE)
   • Which integrations/tools to use (be specific, not vague)
   • Expected format of outputs
   • Any conditions or edge cases to handle
@@ -2029,7 +2051,7 @@ I'll create that workflow for you.
     "type": "finalized",
     "title": "Morning Email Summary",
     "description": "Daily Gmail summary at 9am",
-    "prompt": "Every morning at 9am, perform the following steps:\\n\\n1. Use GMAIL_FETCH_EMAILS to get all unread emails from my inbox\\n2. For each unread email, extract the sender, subject, and a brief preview of the content\\n3. Group emails by importance (urgent, normal, low priority) based on sender and subject keywords\\n4. Create a concise summary with:\\n   - Total count of unread emails\\n   - List the most important ones first with sender and subject\\n   - Brief overview of what needs attention\\n5. Format the output as a readable digest that I can quickly scan\\n\\nExpected output: A formatted summary organized by priority with sender, subject, and preview for each email.",
+    "prompt": "Every morning at 9am, perform the following steps:\\n\\n1. Use GMAIL_FETCH_MESSAGES to get all unread emails from my inbox\\n2. For each unread email, extract the sender, subject, and a brief preview of the content\\n3. Group emails by importance (urgent, normal, low priority) based on sender and subject keywords\\n4. Create a concise summary with:\\n   - Total count of unread emails\\n   - List the most important ones first with sender and subject\\n   - Brief overview of what needs attention\\n5. Format the output as a readable digest that I can quickly scan\\n\\nExpected output: A formatted summary organized by priority with sender, subject, and preview for each email.",
     "trigger_type": "scheduled",
     "cron_expression": "0 9 * * *",
     "direct_create": true
@@ -2061,7 +2083,7 @@ I'll save this as a workflow that runs every morning.
     "type": "finalized",
     "title": "Check and Reply to Emails",
     "description": "Auto-analyze emails and draft replies daily",
-    "prompt": "Every morning, perform the following email workflow:\\n\\n1. Use GMAIL_FETCH_EMAILS to access my inbox and retrieve all unread emails\\n2. For each email, analyze the content to understand:\\n   - The sender's intent and any questions asked\\n   - Whether a reply is needed based on the content\\n3. For emails requiring a response:\\n   - Use GMAIL_CREATE_DRAFT to draft a professional reply\\n   - Address all points raised by the sender\\n   - Match my usual writing tone and style\\n4. Flag any emails that need my personal attention before sending\\n5. Organize drafts by priority\\n\\nExpected output: List of drafted replies ready for review, plus any flagged emails needing attention.",
+    "prompt": "Every morning, perform the following email workflow:\\n\\n1. Use GMAIL_FETCH_MESSAGES to access my inbox and retrieve all unread emails\\n2. For each email, analyze the content to understand:\\n   - The sender's intent and any questions asked\\n   - Whether a reply is needed based on the content\\n3. For emails requiring a response:\\n   - Use GMAIL_CREATE_DRAFT to draft a professional reply\\n   - Address all points raised by the sender\\n   - Match my usual writing tone and style\\n4. Flag any emails that need my personal attention before sending\\n5. Organize drafts by priority\\n\\nExpected output: List of drafted replies ready for review, plus any flagged emails needing attention.",
     "trigger_type": "scheduled",
     "cron_expression": "0 9 * * *",
     "direct_create": true

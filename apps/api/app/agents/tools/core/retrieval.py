@@ -177,9 +177,9 @@ Simple read task:
 
 Multi-tool task:
   retrieve_tools(query="fetch emails, send reply")
-  → ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
-  retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD"])
-  → GMAIL_FETCH_EMAILS(...) → find the thread
+  → ["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD", ...]
+  retrieve_tools(exact_tool_names=["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD"])
+  → GMAIL_FETCH_MESSAGES(...) → find the thread
   → GMAIL_REPLY_TO_THREAD(...) → send reply. Done.
 
 Write task with verification:

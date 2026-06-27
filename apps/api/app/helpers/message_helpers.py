@@ -23,6 +23,7 @@ from app.agents.workspace.paths import (
     safe_upload_filename,
     session_dir,
 )
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.db.mongodb.collections import (
     conversations_collection,
     todos_collection,
@@ -42,6 +43,7 @@ from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
+from app.utils.artifact_utils import artifact_url_base
 from app.utils.timezone import Timezone
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
@@ -223,15 +225,24 @@ BACKGROUND_EXECUTION_BANNER = (
 
 
 def build_workspace_session_banner(session_id: str) -> str:
-    """State the absolute path of the agent's own session directory.
+    """State the agent's own session directory and the public artifact URL base.
 
     The agent never otherwise learns its conversation/session id, so a prompt
     that asks it to report an absolute ``/workspace/sessions/<id>/...`` path
     forces it to guess — and a weak model fabricates one, writing the
     deliverable outside the session the artifact watcher scans, where it is
     silently lost. Stating the real path removes the guess.
+
+    The agent also knows a file's workspace path but not the URL the browser
+    fetches it from, so it cannot link or embed an artifact (in an HTML page it
+    generates, an email body, etc.). Stating the public URL base gives it the
+    one fact it is missing.
     """
-    return f"Session directory: {session_dir(session_id)}"
+    return (
+        f"Session directory: {session_dir(session_id)}\n"
+        f"Public artifact URL: a file at `artifacts/<name>` is served at "
+        f"{artifact_url_base(session_id)}/<name>"
+    )
 
 
 def _format_active_todo_banner(todo: dict) -> str:
@@ -719,14 +730,22 @@ def format_files_list(
     files_data: list[FileData] | None,
     file_ids: list[str] | None = None,
     conversation_id: str | None = None,
+    *,
+    include_processing_guide: bool = True,
 ) -> str:
-    """Surface uploaded files to the agent as concrete FS paths.
+    """Surface uploaded files to an agent with path and summary.
 
-    The agent reads/writes files via bash/read/write/edit; the upload
-    pipeline mirrors every attachment into the session's read-only
-    `user-uploaded/` dir. Tell the agent the on-disk path explicitly and
-    point at the session GUIDE for the action conventions — no
-    `query_files` tool indirection, no path guessing.
+    Each attachment is shown with its on-disk path and a truncated summary (so
+    the reader knows what the file is without a tool call). The summary text is
+    enriched server-side by the caller; this helper only formats. Pure — no
+    DB/FS access.
+
+    ``include_processing_guide`` controls the audience:
+    - ``True`` (executor): adds the `full summary` sidecar pointer and the full
+      read/bash/scratch/artifacts how-to — the executor holds those tools.
+    - ``False`` (comms): a lean block — name, path, summary, and a single line
+      telling it to delegate real file work. Comms has no file tools; the
+      executor-voice how-to only baits it into over-delegating.
     """
     if not files_data or (file_ids is not None and not file_ids):
         return ""
@@ -746,19 +765,38 @@ def format_files_list(
         else:
             path = f"./user-uploaded/{on_disk}"
         lines.append(f"- {file.filename}  →  `{path}`")
+        if file.description:
+            summary = file.description.strip()
+            if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
+                summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
+            lines.append(f"    summary: {summary}")
+            if conversation_id and include_processing_guide:
+                lines.append(f"    full summary: `{path}.summary.md`")
 
     if not lines:
         return ""
 
     file_block = "\n".join(lines)
+
+    if not include_processing_guide:
+        return (
+            f"\n[Uploaded files]\n{file_block}\n\n"
+            "Answer simple questions from these summaries directly; for the full "
+            "contents or any work on the files, delegate to the executor.\n"
+        )
+
     return f"""
-[Attached files for this turn]
+[Uploaded files]
 {file_block}
 
-These files are on the conversation filesystem in `./user-uploaded/`
-(read-only). To process them: copy into `./scratch/`, do your work,
-and write any user-visible output into `./artifacts/` — files written
-there render as cards in the chat immediately.
+How to work with these files:
+- What is it? — the `summary` above already says; read the `full summary` file
+  for the complete write-up.
+- Need the raw content? — read the file at its path with read/bash.
+- Searching across several uploaded files? — use `search_uploaded_files`.
+The files live in `./user-uploaded/` (read-only). To process them: copy into
+`./scratch/`, do your work, and write user-visible output into `./artifacts/`
+— files written there render as cards in the chat immediately.
 
 See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
 full layout and conventions, and `/workspace/INDEX.md` for the top level.

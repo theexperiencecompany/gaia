@@ -158,7 +158,9 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             f"{summary}\n\n"
             f"[Full output ({size_kb:.1f} KB / {len(content_str)} chars) "
             f"stored at: {sandbox_path}]\n"
-            f"[Use the `read` tool to load it, or `bash` to grep/process it]"
+            f"[Do NOT `read` the whole file back into context, that undoes the offload. "
+            f"Spawn a subagent (spawn_subagent) to read and summarize {sandbox_path}, "
+            f"or use `bash`/`jq`/`grep` to extract only what you need.]"
         )
 
         log.info(

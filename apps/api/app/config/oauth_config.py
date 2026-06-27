@@ -493,17 +493,22 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             tool_space="gmail",
             handoff_tool_name="call_gmail_agent",
             domain="email",
-            capabilities="composing emails, sending messages, reading inbox, organizing with labels, managing drafts, handling attachments, searching emails, and automating email workflows",
+            capabilities="composing emails, sending messages, reading inbox, organizing with labels, managing drafts, handling attachments, searching emails, server-side paginating inbox scans with timeframe shortcuts (today/7d/this_week), and automating email workflows",
             use_cases="any email-related task including sending, reading, organizing, or automating email operations",
             system_prompt=GMAIL_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
                 "GMAIL_CUSTOM_GATHER_CONTEXT",
-                "GMAIL_FETCH_EMAILS",
+                "GMAIL_FETCH_MESSAGES",
                 "GMAIL_CREATE_EMAIL_DRAFT",
                 "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
                 "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
                 "GMAIL_GET_CONTACT_LIST",
             ],
+            # GMAIL_FETCH_MESSAGES (custom, paginating, renders the card) fully
+            # supersedes the stock GMAIL_FETCH_EMAILS, whose fixed page size
+            # silently capped inbox reads. Exclude it so it is neither bound nor
+            # retrievable; the agent has one canonical read tool.
+            exclude_tools=["GMAIL_FETCH_EMAILS"],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(

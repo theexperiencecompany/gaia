@@ -23,6 +23,9 @@ class FileData(BaseModel):
     filename: str
     type: str | None = "file"
     message: str | None = "File uploaded successfully"
+    # Server-owned summary of the file's content. Populated from MongoDB on the
+    # agent path and on the upload response; never trusted from inbound requests.
+    description: str | None = None
 
 
 class SelectedWorkflowData(BaseModel):

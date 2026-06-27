@@ -29,7 +29,9 @@ from app.helpers.agent_helpers import build_agent_config
 from app.helpers.message_helpers import (
     build_current_time_message,
     create_system_message,
+    format_files_list,
 )
+from app.services.files import FileService
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
 from app.utils.stream_utils import extract_tool_entries_from_update, normalize_custom_event
 from shared.py.wide_events import log
@@ -425,6 +427,17 @@ async def prepare_executor_execution(
             else WORKFLOW_SILENT_NOTIFY_SECTION
         )
         enhanced_task = f"{enhanced_task}\n{notification_section}"
+
+    # Surface the conversation's uploaded files so the executor — which holds the
+    # read/bash/search_uploaded_files tools — can act on them directly, rather than
+    # depending on comms to hand-copy paths into the task. Comms can't use these
+    # paths itself (it has no file tools); the executor is where file work happens.
+    if user_id and thread_id:
+        uploaded_files = await FileService.list_conversation_files(thread_id, user_id)
+        if uploaded_files and (
+            files_block := format_files_list(uploaded_files, conversation_id=thread_id)
+        ):
+            enhanced_task = f"{enhanced_task}\n\n{files_block}"
 
     # Build messages using shared helper.
     # Pass original task as retrieval_query so memory/context semantic search

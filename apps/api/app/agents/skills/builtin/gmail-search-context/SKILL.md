@@ -1,135 +1,154 @@
 ---
 name: gmail-search-context
-description: Search Gmail intelligently — construct precise queries, resolve threads, handle attachments, synthesize findings
+description: Read, search, and summarize Gmail — precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report
 target: gmail_agent
 ---
 
-# Gmail: Search & Gather Context
+# Gmail: Read, Search & Summarize Inbox
 
 ## When to Activate
-User wants to find specific emails, search for information in their inbox, or gather email context on a topic.
+User wants to find specific emails, gather context on a topic, OR get a summary /
+triage / brief of their inbox ("summarize my emails", "what's in my inbox", "what
+needs my attention", "catch me up", a morning digest).
 
-## Step 1: Construct Smart Query
+The mechanics below (query, fetch, large-inbox fan-out) are shared by both jobs. The
+two output contracts at the end differ: free-form findings for a search, the fixed
+four-section report for a summary.
+
+## Step 1: Construct a Smart Query
 
 Gmail supports powerful search operators:
 
-**People:**
-- `from:user@example.com` — emails from
-- `to:user@example.com` — emails to
-- `cc:user@example.com` — CC'd to
+**People:** `from:user@x.com` / `to:user@x.com` / `cc:user@x.com`
+**Status:** `is:unread` / `is:read` / `is:starred` / `is:important` / `is:snoozed`
+**Categories:** `category:primary|social|promotions|updates` / `label:custom-label`
+**Time:** `after:2025/01/01` / `before:2025/02/01` / `newer_than:7d` / `older_than:30d`
+- All emails for one day: `after:YYYY/MM/DD before:YYYY/MM/DD+1` (Jan 15: `after:2025/01/15 before:2025/01/16`)
 
-**Status:**
-- `is:unread` / `is:read` / `is:starred` / `is:important` / `is:snoozed`
-
-**Categories:**
-- `category:primary` / `category:social` / `category:promotions` / `category:updates`
-- `label:custom-label` — user-created labels only
-
-**Time:**
-- `after:2025/01/01` / `before:2025/02/01`
-- `newer_than:7d` / `older_than:30d`
-- **Fetch all emails for a specific day:** use `after:YYYY/MM/DD before:YYYY/MM/DD+1` (e.g., all emails on Jan 15: `after:2025/01/15 before:2025/01/16`)
-
-**Content:**
-- `subject:meeting` — in subject line
-- `"exact phrase"` — exact match
-- `has:attachment` / `filename:pdf` / `filename:xlsx`
-- `larger:5M` / `smaller:1M` — by size
-
+**Content:** `subject:meeting` / `"exact phrase"` / `has:attachment` / `filename:pdf` / `larger:5M` / `smaller:1M`
 **Logic:** AND (default), OR, `-exclude`
 
-## Step 2: Execute Search
+## Step 2: Fetch the messages
 
-**Always use `spawn_subagent` for any Gmail fetch** — raw email responses are too large for the parent context regardless of result count. The subagent fetches, summarizes, and returns only a compact digest + `next_page_token`.
+`GMAIL_FETCH_MESSAGES` is the one read tool for everything: a specific email, a topic,
+or a whole-inbox scan. Call it **directly, do NOT wrap it in `spawn_subagent`**. It
+paginates the Gmail API server-side in one call (results are never silently capped),
+renders the email-list card for small results, and offloads big ones to a file itself.
 
-**Find specific emails:**
 ```
-result = spawn_subagent(
-  task="""
-    Call GMAIL_FETCH_EMAILS(query="from:sarah@company.com subject:Q1 after:2025/01/01", max_results=30)
-    Summarize all emails: sender, subject, date, key points, action items.
-    digest: <summary>, next_page_token: <token or null>
-  """
+GMAIL_FETCH_MESSAGES(
+  query="from:sarah@company.com subject:Q1 after:2025/01/01",  # any Gmail search query
+  timeframe="today",   # optional: yesterday | 7d | this_week | 1m | ... ; ANDed with query
+  fields=["id","threadId","from","to","subject","snippet","time","isRead","labels","body"],
 )
 ```
 
-**Find contacts** (lightweight — safe to call directly):
+Include `body` in `fields` when you need to triage or read content, not just subjects.
+
+For thread-grouped views (participants, timeline, decisions per thread) use
+`GMAIL_LIST_THREADS(query=..., max_results=30, verbose=true)` via `spawn_subagent`.
+Contact lookup is lightweight, call directly: `GMAIL_SEARCH_PEOPLE(query="Sarah", pageSize=10)`.
+
+It returns one of two shapes:
+- **Inline** (`{"messages": [...]}`): a small inbox. Use the messages directly.
+- **Offloaded** (`{"offloaded_to": ..., "total_messages": N, "file_size_human": ...,
+  "read_plan": {...}}`): a large inbox written to a JSONL file, one message per line,
+  too big to read inline. Do NOT read the whole file into your own context.
+
+### Large-inbox fan-out (offloaded results)
+`read_plan.chunks` gives exact line ranges; `read_plan.recommended_subagents` is how
+many readers to spawn.
+- If `recommended_subagents` is 1, just `read` the file yourself.
+- Otherwise issue all `spawn_subagent` calls in ONE turn (parallel), one per chunk.
+  Give each: the path (`offloaded_to`), its chunk's `read.offset` and `read.limit`, and
+  what to extract. Tell it to `read(<path>, offset=<offset>, limit=<limit>)` and return
+  only its distilled result, never raw bodies.
+
 ```
-GMAIL_SEARCH_PEOPLE(query="Sarah", pageSize=10)
-```
-
-**Thread-based search:**
-```
-result = spawn_subagent(
-  task="""
-    Call GMAIL_LIST_THREADS(query="project proposal from:alex", max_results=30, verbose=true)
-    For each thread extract: participants, timeline, key decisions, action items.
-    digest: <summary>, next_page_token: <token or null>
-  """
-)
-```
-
-**Fetch ALL emails for a specific day:**
-
-Use `after:YYYY/MM/DD before:YYYY/MM/DD+1`. Parent orchestrates pagination — spawn a subagent per page, each returning a digest + token. Parent spawns the next only when a token is returned:
-
-```
-# Page 1
-result_1 = spawn_subagent(
-  task="""
-    Call GMAIL_FETCH_EMAILS(query="after:2025/01/15 before:2025/01/16", max_results=30)
-    Summarize all emails: sender, subject, date, key points, action items.
-    digest: <summary>, next_page_token: <token or null>
-  """
-)
-
-# Page 2 — only if token returned
-if result_1.next_page_token:
-  result_2 = spawn_subagent(
-    task="""
-      Call GMAIL_FETCH_EMAILS(query="after:2025/01/15 before:2025/01/16", max_results=30, page_token="<token>")
-      Same summarization instructions.
-      digest: <summary>, next_page_token: <token or null>
-    """
-  )
-
-# Repeat until next_page_token is null. Parent synthesizes all digests.
+Read /workspace/sessions/<id>/gmail/inbox_summary_*.jsonl with read(offset=26, limit=25).
+Each line is one email (JSON). <extraction instructions>. Return a compact result, not raw emails.
 ```
 
-## Step 3: Progressive Search
+Then merge subagent results; dedupe by `threadId`/`id` if a chunk boundary split a thread.
+For ad-hoc filtering you can also mine the file directly: `jq -r 'select(.from | contains("github")) | .subject' <path>`.
 
-1. **Start specific:** `"quarterly report from:finance@company.com after:2025/01/01 has:attachment"`
-2. **Broaden if empty:** `"quarterly report from:finance@company.com"`
-3. **Broaden more:** `"quarterly report has:attachment"`
-4. **Last resort:** `"quarterly report"`
+## Step 3: Progressive Search (when a query comes back empty)
+1. Start specific: `"quarterly report from:finance@company.com after:2025/01/01 has:attachment"`
+2. Broaden: drop the date, then the sender, then the attachment, down to `"quarterly report"`.
+Each retry must change the query meaningfully — never re-fire a near-identical one.
 
-## Persistence & Disambiguation (Critical)
+## Persistence & Disambiguation
+- Don't stop after the first 5-10 results; broaden and raise `max_results` when needed.
+- Multiple strong candidates: present the best 2-3 (sender + date + subject), ask ONE focused question.
+- No results: briefly list what you tried, ask ONE clarifying question (sender? timeframe? attachment type?).
 
-- Do not stop after a small sample (e.g., first 5-10 results). Broaden queries and increase max_results when needed.
-- If multiple strong candidates remain, present the best 2-3 with sender + date + subject, then ask ONE focused question to disambiguate.
-- If no results, list the queries you tried (briefly) and ask ONE clarifying question (sender? timeframe? attachment type?).
-
-## Step 4: Synthesize Findings
-
-Parent collects all subagent digests and presents organized results:
+## Output contract A — Search findings
+Collect the subagent digests and present organized results, e.g.:
 ```
 Found 8 emails about "Q1 budget proposal":
 
-Thread: "Q1 Budget Review" (5 messages)
-   From: Sarah → Finance Team | Jan 15-22
-   Summary: Initial proposal → revision → final approval
-   Attachment: Q1_Budget_Final.xlsx (in latest message)
-   Status: Approved (Sarah's last message: "Looks good, approved.")
+Thread: "Q1 Budget Review" (5 messages) — Sarah → Finance Team, Jan 15-22
+  Initial proposal → revision → final approval. Attachment: Q1_Budget_Final.xlsx.
+  Status: Approved.
 
-Thread: "Budget Follow-up" (3 messages)  
-   From: Alex → Sarah, You | Jan 25
-   Summary: Questions about marketing allocation
-   Status: Awaiting your response
+Thread: "Budget Follow-up" (3 messages) — Alex → Sarah, You, Jan 25
+  Questions about marketing allocation. Status: Awaiting your response.
 ```
 
+## Output contract B — Inbox summary / triage (OPINIONATED, FIXED)
+For summary/triage/brief requests, the output is NOT free-form. Sort every message into
+exactly ONE section and emit the sections in this order. **Skip a section entirely when
+it is empty** (never print a heading with "None" under it). One short, scannable line
+per item: who it is from, the point, any date.
+
+- **Section 1 — What matters today (main summary):** important inbox mail, actionable
+  updates/promotions, anything needing a reply, anything with a deadline/date, finance /
+  payment / verification / security, calendar-related mail, mail from important people
+  or domains, follow-ups due today.
+- **Section 2 — Action queue (most important):** a numbered to-do list of what the user
+  must DO ("Reply to ...", "Confirm ...", "Review the attachment from ...", "Pay /
+  submit / upload / sign / register ...", "Follow up with X if no reply by ..."). Each
+  item points to a specific email. If there is nothing to do, say so in one line.
+- **Section 3 — Low-priority digest:** promotions, social, newsletters, automated
+  notifications, no-action circulars. Counts grouped by source/type, never one by one.
+- **Section 4 — Worth a closer look:** OTP / login / security alerts, bank or payment
+  alerts, a new recruiter or interview mail, a deadline that shifted, a large invoice /
+  refund / cancellation, likely spam or phishing still worth a glance. Flag plainly.
+
+Example shape (copy the structure, not the content):
+```
+**📌 What matters today**
+- Prof. Mehta: wants your thesis draft by Fri Jun 27. Needs a reply.
+- Stripe: payment of $480 failed, the card on file expired.
+- Calendar: "Design sync" moved to 3pm today.
+
+**✅ Action queue**
+1. Reply to Prof. Mehta with the thesis draft (due Fri Jun 27).
+2. Update the card on Stripe so the $480 charge goes through.
+3. Review the offer PDF from Acme before the call.
+4. Follow up with the recruiter at Initech if no reply by tomorrow.
+
+**🗂️ Low-priority digest**
+- 6 promotions (Swiggy, Zomato, Amazon)
+- 2 newsletters
+- 3 GitHub notifications
+- 4 college circulars, no action
+
+**⚠️ Worth a closer look**
+- Login alert: new sign-in from a Windows device in Mumbai.
+- HDFC: ₹22,400 debit notification.
+```
+
+Write it like a sharp assistant briefing a busy person: plain words, varied sentence
+length, no filler, no "I hope this helps". Wording can vary run to run, but the four
+sections, their order, and what belongs in each are fixed. This report is the
+deliverable: return it to the executor verbatim (headings, order, emoji, line breaks
+intact) and tell the executor to relay it to comms unchanged, not re-summarized.
+
 ## Anti-Patterns
-- Calling `GMAIL_FETCH_EMAILS` or `GMAIL_LIST_THREADS` in the parent context — always use `spawn_subagent`
-- Using `label:snoozed` (wrong — use `is:snoozed`)
-- Searching with very long natural language (use operators)
-- Giving up after one search (use progressive strategy)
-- Raw message dumps without synthesis
+- Wrapping `GMAIL_FETCH_MESSAGES` in a subagent (call it directly; it self-paginates and offloads).
+- Calling `GMAIL_LIST_THREADS` in the parent context (use `spawn_subagent`).
+- Reading a whole offloaded JSONL into your own context instead of fanning out the `read_plan` chunks.
+- Using `label:snoozed` (use `is:snoozed`).
+- Long natural-language queries (use operators); giving up after one search.
+- Raw message dumps without synthesis; improvising a summary format instead of the fixed four sections.

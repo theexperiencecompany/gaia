@@ -84,6 +84,13 @@ USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
 INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
+# Conversation-level artifact registry (single source of truth for a
+# conversation's agent-written files). Long TTL with event-driven invalidation
+# on every upsert/remove — a chat turn reads it once instead of re-scanning the
+# costly JuiceFS dir.
+CONV_ARTIFACTS_CACHE_PATTERN = "conv_artifacts:{user_id}:{conv_id}"
+# A user's uploaded-file listings; busted on every file upload/update/delete.
+FILES_CACHE_PATTERN = "files:{user_id}:*"
 STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"

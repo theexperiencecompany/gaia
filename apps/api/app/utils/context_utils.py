@@ -32,7 +32,7 @@ def execute_tool(
     """Execute a Composio tool directly (bypasses hook pipeline) and return its data dict.
 
     Args:
-        tool_name: Composio tool name, e.g. "GMAIL_FETCH_EMAILS".
+        tool_name: Composio tool name, e.g. "GMAIL_FETCH_MESSAGES".
         params: Parameters to pass to the tool.
         user_id: User ID used for authentication.
         output_model: Optional Pydantic model to validate the response data.
