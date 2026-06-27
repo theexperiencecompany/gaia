@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "beb6badf1796",
+  "strategy": "manual-commit",
+  "branch": "insane-gmail",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "openspec/changes/agent-monitor-tool/.openspec.yaml",
+    "openspec/changes/agent-monitor-tool/design.md",
+    "openspec/changes/agent-monitor-tool/proposal.md",
+    "openspec/changes/agent-monitor-tool/specs/agent-monitor/spec.md",
+    "openspec/changes/agent-monitor-tool/specs/agent-wake/spec.md",
+    "openspec/changes/agent-monitor-tool/tasks.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/be/b6badf1796/0/metadata.json",
+      "transcript": "/be/b6badf1796/0/full.jsonl",
+      "content_hash": "/be/b6badf1796/0/content_hash.txt",
+      "prompt": "/be/b6badf1796/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 15039,
+    "cache_creation_tokens": 96669,
+    "cache_read_tokens": 1452914,
+    "output_tokens": 33762,
+    "api_call_count": 21
+  }
+}
