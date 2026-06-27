@@ -37,11 +37,12 @@ TIMEFRAME_DEFAULT_MAX: dict[str, int] = {
     "1y": 500,
 }
 
-# When the serialized aggregate crosses this many chars (~5K tokens), we write
+# When the serialized aggregate crosses this many chars (~30k tokens), we write
 # a JSONL file (messages only, one per line) and return a digest + read_plan.
 # GMAIL_FETCH_MESSAGES is excluded from the generic compaction middleware, so
-# this is the sole offload trigger and its JSONL is the single source of truth.
-INLINE_LIMIT_CHARS = 20_000
+# this is the sole char-based offload trigger and its JSONL is the single
+# source of truth.
+INLINE_LIMIT_CHARS = 120_000
 
 # Offload file naming + sandbox-visible path.
 OFFLOAD_DIR = "gmail"
