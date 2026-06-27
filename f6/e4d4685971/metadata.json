@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "f6e4d4685971",
+  "strategy": "manual-commit",
+  "branch": "insane-gmail",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "apps/api/app/agents/middleware/compaction.py",
+    "apps/api/app/agents/middleware/factory.py",
+    "apps/api/app/constants/summarization.py",
+    "apps/api/app/services/composio/custom_tools/gmail_constants.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f6/e4d4685971/0/metadata.json",
+      "transcript": "/f6/e4d4685971/0/full.jsonl",
+      "content_hash": "/f6/e4d4685971/0/content_hash.txt",
+      "prompt": "/f6/e4d4685971/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 54979,
+    "cache_creation_tokens": 538243,
+    "cache_read_tokens": 15276211,
+    "output_tokens": 174079,
+    "api_call_count": 75
+  }
+}
