@@ -57,3 +57,7 @@ Yes I like to have new pr for this but before that lets go over below conversati
 ---
 
 Okk I want u to spawn 3 independent agents to research and reason over these caching values and their positive/negative impacts and any missing things that can gain us more performance for our usecase
+
+---
+
+Okay at few places u mention that without verification lets not do this or not worth the risk but why not serach it in docs and other places its simple so lets validate or invalidate our claiims and Lets server skills like /_system since its low to medium effort lets alsos scope artifact watcher
