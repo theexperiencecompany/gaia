@@ -25,7 +25,7 @@ from app.models.chat_models import (
 )
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
-from app.services.outbound_delivery import publish_outbound_message
+from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
@@ -124,6 +124,15 @@ async def _post_workflow_message(
             user=user,
         )
         result = await publish_outbound_message(source, user_id, bubbles)
+        if result is OutboundResult.FAILED:
+            log.error(
+                f"{LogTag.AGENT} workflow platform publish failed",
+                platform=source.value,
+                conversation_id=conversation_id,
+                message_id=bot_message.message_id,
+                bubbles=len([b for b in bubbles if b.strip()]),
+            )
+            return
         log.info(
             f"{LogTag.AGENT} workflow result delivered to platform",
             platform=source.value,

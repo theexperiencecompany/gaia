@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
@@ -21,6 +21,7 @@ from app.models.bot_models import (
     CreateLinkTokenRequest,
     CreateLinkTokenResponse,
     IntegrationInfo,
+    LinkedUsersResponse,
     ResetSessionRequest,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
@@ -251,6 +252,14 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
         try:
             async for chunk in stream_manager.subscribe_stream(stream_id):
+                # Match the web stream path: stop forwarding if the bot client
+                # dropped the connection. The background task keeps running and
+                # persists the conversation.
+                if await request.is_disconnected():
+                    log.info(
+                        f"{LogTag.API} Bot client disconnected, stream {stream_id} continues in background"
+                    )
+                    break
                 # Forward keepalive comments directly
                 if chunk.startswith(":"):
                     yield chunk
@@ -305,9 +314,15 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                         yield f"data: {json.dumps({'error': data['error']})}\n\n"
                         break
                 except json.JSONDecodeError:
+                    log.warning(f"{LogTag.API} Bot stream: dropped a malformed SSE chunk")
                     continue
+        except asyncio.CancelledError:
+            # Client disconnected mid-stream — expected, not an error. The
+            # background LangGraph task keeps running and persists the result.
+            log.info(f"{LogTag.API} Bot stream cancelled (client disconnected)")
+            raise
         except Exception as e:
-            log.error(f"{LogTag.API} Bot stream subscription error: {e}")
+            log.error(f"{LogTag.API} Bot stream subscription error: {e}", error=str(e))
             yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
 
     return StreamingResponse(stream_from_redis(), media_type="text/event-stream")
@@ -368,6 +383,24 @@ async def check_auth_status(
         platform=platform,
         platform_user_id=platform_user_id,
     )
+
+
+@router.get(
+    "/linked-users/{platform}",
+    response_model=LinkedUsersResponse,
+    status_code=200,
+    summary="List Linked Platform Users",
+    description="List platform_user_ids of accounts linked to a platform (bots use this to pre-warm DM caches).",
+)
+async def list_linked_users(request: Request, platform: str) -> JSONResponse:
+    """Return the platform_user_ids linked on the given platform."""
+    await require_bot_api_key(request)
+    log.set(operation="list_linked_users", platform=platform)
+    if not Platform.is_valid(platform):
+        raise HTTPException(status_code=400, detail="Invalid platform")
+    ids = await PlatformLinkService.list_platform_user_ids(platform)
+    log.set(outcome="success", linked_count=len(ids))
+    return JSONResponse(content=LinkedUsersResponse(platform_user_ids=ids).model_dump())
 
 
 @router.get(

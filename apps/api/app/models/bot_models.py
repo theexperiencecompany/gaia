@@ -45,6 +45,15 @@ class BotAuthStatusResponse(BaseModel):
     platform_user_id: str = Field(..., description="User's platform ID")
 
 
+class LinkedUsersResponse(BaseModel):
+    """Response model for the list of platform_user_ids linked on a platform."""
+
+    platform_user_ids: list[str] = Field(
+        default_factory=list,
+        description="platform_user_ids of accounts linked to the platform.",
+    )
+
+
 class CreateLinkTokenRequest(BaseModel):
     """Request model for creating a secure platform link token."""
 

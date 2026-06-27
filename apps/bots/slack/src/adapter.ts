@@ -408,16 +408,32 @@ export class SlackAdapter extends BaseBotAdapter {
         };
       },
       async (authUrl: string) => {
-        // Send auth URL as ephemeral to avoid exposing tokens publicly
+        const authMessage = renderForPlatform(
+          buildAuthLinkMessage(authUrl),
+          "slack",
+        );
+        // In a DM (channel id starts with "D") there is no risk of exposing the
+        // token to others, and chat.postEphemeral is unreliable there — so put
+        // the link straight into the placeholder message where it always shows.
+        if (channelId.startsWith("D")) {
+          await client.chat.update({
+            channel: channelId,
+            ts: currentTs,
+            text: authMessage,
+          });
+          return;
+        }
+        // In a public channel, keep the token out of the visible message and
+        // deliver the link as an ephemeral only the requesting user can see.
         await client.chat.update({
           channel: channelId,
           ts: currentTs,
-          text: "Authentication required. Check the message below.",
+          text: "🔒 Authentication required — check the private message below to link your account.",
         });
         await client.chat.postEphemeral({
           channel: channelId,
           user: userId,
-          text: renderForPlatform(buildAuthLinkMessage(authUrl), "slack"),
+          text: authMessage,
         });
       },
       async (errMsg: string) => {
@@ -493,7 +509,7 @@ export class SlackAdapter extends BaseBotAdapter {
       },
 
       sendRich: async (msg: RichMessage): Promise<SentMessage> => {
-        const markdown = richMessageToMarkdown(msg, "slack");
+        const markdown = renderForPlatform(richMessageToMarkdown(msg), "slack");
         await respond({ text: markdown, response_type: "ephemeral" });
         return {
           id: "ephemeral",

@@ -485,19 +485,41 @@ export abstract class BaseBotAdapter {
     };
   }
 
-  /** Users greeted this process, so the welcome fires at most once each. */
+  /** Unlinked users greeted this process, deduped so the welcome does not repeat on every message. */
   private readonly welcomedUsers = new Set<string>();
 
   /**
-   * One-shot welcome gate shared by adapters that greet a user on first
-   * contact (Discord DM embed, WhatsApp text). Returns true the first time it
-   * sees a user this process and false thereafter, so a caller can guard its
-   * platform-specific welcome with a single check instead of each adapter
-   * maintaining its own `Set`.
+   * Welcome gate shared by adapters that greet a user on first contact (Discord
+   * DM embed, WhatsApp text).
+   *
+   * Greets a user ONLY while they have not linked their GAIA account. Linked
+   * users never see the welcome — deterministically, because the decision is
+   * driven by the persistent auth status (MongoDB), not by process memory. This
+   * fixes the bug where a restart re-greeted already-linked users. For an
+   * unlinked user it still fires at most once per process so the greeting does
+   * not repeat on every message while they remain unlinked.
    */
-  protected shouldSendWelcome(userId: string): boolean {
+  protected async shouldSendWelcome(userId: string): Promise<boolean> {
     if (this.welcomedUsers.has(userId)) return false;
+    // Mark in-flight before the await so two concurrent first messages can't
+    // both pass the check and send duplicate welcomes. Cleared again whenever
+    // the user turns out to be authenticated or the check fails.
     this.welcomedUsers.add(userId);
+    try {
+      const status = await this.gaia.checkAuthStatus(this.platform, userId);
+      if (status.authenticated) {
+        this.welcomedUsers.delete(userId);
+        return false;
+      }
+    } catch (error) {
+      this.welcomedUsers.delete(userId);
+      this.logger.error(
+        "welcome_auth_check_failed",
+        { user_id: userId },
+        error,
+      );
+      return false;
+    }
     return true;
   }
 
