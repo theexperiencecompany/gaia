@@ -1,0 +1,76 @@
+Okay now start the backend or write some scripts or apis to simulate the foillowing flow
+1. start the sandbox with this id
+2. run few commands to test if everything is mounted or not
+3. simulate real session and see if artifact, scratch, user-uploaded folders are there or not
+
+---
+
+<task-notification>
+<task-id>bz2own04s</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-502/-Users-dhruvmaradiya-conductor-workspaces-whatsapp-sender-sao-paulo/874fb4a7-503c-4798-96cf-bcffb26437fa/tasks/bz2own04s.output</output-file>
+<status>completed</status>
+<summary>Background command "rm -f /tmp/verify.log &amp;&amp; uv run python /tmp/verify_sandbox.py &gt; /tmp/verify.log 2&gt;&amp;1; echo "EXIT=$?" &gt;&gt; /tmp/verify.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bfj2uj4wj</task-id>
+<tool-use-id>toolu_018YGJTUYY9qSAjREGjDqizm</tool-use-id>
+<output-file>/private/tmp/claude-502/-Users-dhruvmaradiya-conductor-workspaces-whatsapp-sender-sao-paulo/874fb4a7-503c-4798-96cf-bcffb26437fa/tasks/bfj2uj4wj.output</output-file>
+<status>completed</status>
+<summary>Background command "rm -f /tmp/diag.log &amp;&amp; uv run python /tmp/diag_jfs.py &gt; /tmp/diag.log 2&gt;&amp;1; echo "EXIT=$?" &gt;&gt; /tmp/diag.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bx0904fid</task-id>
+<tool-use-id>toolu_01YbmCbaRrYHDV4nxRpMYhH3</tool-use-id>
+<output-file>/private/tmp/claude-502/-Users-dhruvmaradiya-conductor-workspaces-whatsapp-sender-sao-paulo/874fb4a7-503c-4798-96cf-bcffb26437fa/tasks/bx0904fid.output</output-file>
+<status>completed</status>
+<summary>Background command "rm -f /tmp/diagnet.log &amp;&amp; uv run python /tmp/diag_net.py &gt; /tmp/diagnet.log 2&gt;&amp;1; echo "EXIT=$?" &gt;&gt; /tmp/diagnet.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b255ei1le</task-id>
+<tool-use-id>toolu_01GfzCcHysMGmN3umcYswVMp</tool-use-id>
+<output-file>/private/tmp/claude-502/-Users-dhruvmaradiya-conductor-workspaces-whatsapp-sender-sao-paulo/874fb4a7-503c-4798-96cf-bcffb26437fa/tasks/b255ei1le.output</output-file>
+<status>completed</status>
+<summary>Background command "rm -f /tmp/diagauth.log &amp;&amp; uv run python /tmp/diag_auth.py &gt; /tmp/diagauth.log 2&gt;&amp;1; echo "EXIT=$?" &gt;&gt; /tmp/diagauth.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+that's fixed pls try now
+
+---
+
+<task-notification>
+<task-id>bajbym7rq</task-id>
+<tool-use-id>toolu_012PtALvcvkKp6tLPSHNurSQ</tool-use-id>
+<output-file>/private/tmp/claude-502/-Users-dhruvmaradiya-conductor-workspaces-whatsapp-sender-sao-paulo/874fb4a7-503c-4798-96cf-bcffb26437fa/tasks/bajbym7rq.output</output-file>
+<status>completed</status>
+<summary>Background command "rm -f /tmp/verify.log &amp;&amp; uv run python /tmp/verify_sandbox.py &gt; /tmp/verify.log 2&gt;&amp;1; echo "EXIT=$?" &gt;&gt; /tmp/verify.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bg628sd41</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-502/-Users-dhruvmaradiya-conductor-workspaces-whatsapp-sender-sao-paulo/874fb4a7-503c-4798-96cf-bcffb26437fa/tasks/bg628sd41.output</output-file>
+<status>completed</status>
+<summary>Background command "rm -f /tmp/verify.log &amp;&amp; uv run python /tmp/verify_sandbox.py &gt; /tmp/verify.log 2&gt;&amp;1; echo "EXIT=$?" &gt;&gt; /tmp/verify.log" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Do both pls
+
+---
+
+so our little manuaver costed us 4k commands in redis
