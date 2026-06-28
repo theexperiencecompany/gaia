@@ -13,7 +13,6 @@ from app.api.v1.endpoints import (
     chat,
     conversations,
     desktop,
-    dev,
     feedback,
     file,
     goals,
@@ -62,7 +61,6 @@ router.include_router(notes.router, tags=["Notes/Memories"])
 router.include_router(memory.router, tags=["Memory"], prefix="/memory")
 router.include_router(goals.router, tags=["Goals"])
 router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
-router.include_router(dev.router, prefix="/dev", tags=["Dev"])
 router.include_router(integrations_router, prefix="/integrations", tags=["Integrations"])
 router.include_router(mcp.router, prefix="/mcp", tags=["MCP"])
 router.include_router(mcp_proxy.router, prefix="/mcp", tags=["MCP"])

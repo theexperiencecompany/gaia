@@ -18,7 +18,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { CommunityIntegration } from "../types";
 
 // Component to handle integration icon with fallback on error
-export const IntegrationIcon: React.FC<{
+const IntegrationIcon: React.FC<{
   integrationId: string;
   iconUrl?: string | null;
 }> = ({ integrationId, iconUrl }) => {
