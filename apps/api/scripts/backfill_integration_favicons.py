@@ -6,24 +6,20 @@ was upgraded to resolve per host (Smithery registry icon -> host <link rel=icon>
 -> Google S2), so integrations created before the upgrade keep a stale icon (e.g.
 every Smithery server stored Smithery's generic grid). This re-resolves each
 custom integration that has an MCP server URL and updates `icon_url` when it
-changed.
+resolves to a specific icon.
 
-Only documents whose resolved icon differs from what's stored are written, so the
-script is safe to run multiple times.
+Only documents whose resolved icon differs from what's stored are written, and a
+generic Google-S2 fallback never overwrites a stored (possibly curated) icon, so
+the script is safe to run multiple times.
 
-Run from repo root:
-    cd apps/api && uv run python scripts/backfill_integration_favicons.py
+Run from apps/api:
+    uv run python -m scripts.backfill_integration_favicons
 """
 
 import asyncio
-from pathlib import Path
-import sys
 
-# Ensure app is on path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from app.db.mongodb.collections import integrations_collection  # noqa: E402
-from app.utils.favicon_utils import fetch_favicon_uncached, legacy_favicon_url  # noqa: E402
+from app.db.mongodb.collections import integrations_collection
+from app.utils.favicon_utils import fetch_favicon_uncached, legacy_favicon_url
 
 
 async def backfill() -> None:
@@ -42,7 +38,6 @@ async def backfill() -> None:
     failed = 0
 
     async for doc in integrations_collection.find(query):
-        integration_id = doc.get("integration_id", "")
         name = doc.get("name", "")
         server_url = (doc.get("mcp_config") or {}).get("server_url")
         if not server_url:
@@ -68,7 +63,7 @@ async def backfill() -> None:
             continue
 
         await integrations_collection.update_one(
-            {"integration_id": integration_id},
+            {"_id": doc["_id"]},
             {"$set": {"icon_url": new_icon}},
         )
         print(f"  {name}: {doc.get('icon_url')} -> {new_icon}")

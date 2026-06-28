@@ -261,7 +261,9 @@ class TestSelectBestIcon:
 # ---------------------------------------------------------------------------
 
 
-def _mock_async_client(response: MagicMock | None = None, head_side_effect=None) -> AsyncMock:
+def _mock_async_client(
+    response: MagicMock | None = None, head_side_effect: Exception | None = None
+) -> AsyncMock:
     client = AsyncMock()
     if head_side_effect is not None:
         client.head.side_effect = head_side_effect
