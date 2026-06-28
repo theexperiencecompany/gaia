@@ -376,6 +376,9 @@ class TestModelPricing:
         mock_model = MagicMock()
         mock_model.pricing_per_1k_input_tokens = 0.005
         mock_model.pricing_per_1k_output_tokens = 0.015
+        # Explicitly set cached pricing to None so production derives it from
+        # the DEFAULT_CACHED_INPUT_FRACTION (0.25 * input_cost = 0.00125).
+        mock_model.pricing_per_1k_cached_input_tokens = None
 
         with patch(
             "app.config.model_pricing.get_model_by_id",
@@ -384,7 +387,11 @@ class TestModelPricing:
         ):
             pricing = await get_model_pricing("gpt-4o")
 
-        assert pricing == ModelPricing(input_cost_per_1k=0.005, output_cost_per_1k=0.015)
+        assert pricing == ModelPricing(
+            input_cost_per_1k=0.005,
+            output_cost_per_1k=0.015,
+            cached_input_cost_per_1k=0.005 * 0.25,
+        )
 
     async def test_get_model_pricing_handles_exception_gracefully(self) -> None:
         """On exception from the model service, DEFAULT_PRICING is returned."""

@@ -100,13 +100,12 @@ class TestPopNextQueuedRun:
         assert run.task_id == "task-7"
         assert run.user_message_id == "msg-1"
         assert run.conversation_id == "conv-1"
-        assert run.user == {"user_id": "u1", "email": "u1@x.com", "name": "Uno"}
+        assert run.user == {"user_id": "u1", "email": "u1@x.com", "name": "Uno", "timezone": None}
 
         # The popped item's stale stream_id is replaced by the fresh queued one.
         assert prepared.configurable["stream_id"] == run.stream_id
         assert run.stream_id != "old-stream"
         assert prepared.task == "summarize my inbox"
-        assert prepared.user_time.year == 2026
 
         # Lock overwritten with the new run's value BEFORE returning, via the RAW
         # client.set — the value must be the unquoted lock string get_lock_state

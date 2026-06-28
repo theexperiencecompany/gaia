@@ -668,7 +668,9 @@ class TestGmailSchemaModifiers:
 
         props = result.input_parameters["properties"]
         assert props["max_results"]["default"] == 10
-        assert props["label_ids"]["default"] == ["INBOX"]
+        # label_ids default is intentionally NOT set: Gmail ANDs it with the query,
+        # so a stale ["INBOX"] default silently zeroes out folder-scoped searches.
+        assert "default" not in props["label_ids"]
         assert props["format"]["default"] == "full"
         assert "SEARCH SYNTAX" in result.description
 

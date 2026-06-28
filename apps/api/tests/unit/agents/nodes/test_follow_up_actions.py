@@ -155,7 +155,9 @@ class TestFollowUpActionsNode:
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-                new=AsyncMock(return_value={"tool_names": ["calendar", "gmail"]}),
+                new=AsyncMock(
+                    return_value={"tool_names": ["xyztest_invoice_tool", "xyztest_sms_tool"]}
+                ),
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
@@ -175,15 +177,17 @@ class TestFollowUpActionsNode:
         # The node now assembles [static_system, dynamic_context, human].
         # Tool names live in the dynamic-context message so the static
         # system prefix stays byte-identical across users.
+        # Use tool names that cannot appear in the static prompt to avoid
+        # false positives from coincidental word matches.
         assert len(captured_llm_inputs) == 1
         msgs = captured_llm_inputs[0]
         assert len(msgs) == 3
         dynamic_context = msgs[1].content
-        assert "calendar" in dynamic_context
-        assert "gmail" in dynamic_context
+        assert "xyztest_invoice_tool" in dynamic_context
+        assert "xyztest_sms_tool" in dynamic_context
         # Static prefix must NOT embed per-user data.
-        assert "calendar" not in msgs[0].content
-        assert "gmail" not in msgs[0].content
+        assert "xyztest_invoice_tool" not in msgs[0].content
+        assert "xyztest_sms_tool" not in msgs[0].content
 
     @pytest.mark.asyncio
     async def test_happy_path_no_user_id_falls_back_to_tool_registry(self):

@@ -763,6 +763,8 @@ class TestGetPublicWorkflow:
             "trigger_config": {"type": "manual", "enabled": True},
             "activated": True,
             "is_public": True,
+            # slug present → ensure_public_workflow_slug short-circuits (no DB write)
+            "slug": "public-workflow",
             "creator_info": [{"name": "Test User", "picture": None}],
         }
         with (

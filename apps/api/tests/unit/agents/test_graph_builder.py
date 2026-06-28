@@ -317,7 +317,7 @@ class TestBuildCommsGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             assert "end_graph_hooks" in kwargs
-            assert len(kwargs["end_graph_hooks"]) == 1
+            assert len(kwargs["end_graph_hooks"]) == 2
 
     async def test_comms_tool_registry_contains_expected_tools(self):
         with ExitStack() as stack:
@@ -750,45 +750,41 @@ class TestCompileKwargs:
 
 
 class TestRetryPolicyWiring:
-    """Verify _AGENT_RETRY_POLICY is passed to create_agent for both graphs."""
+    """Verify per-graph retry policies are passed to create_agent."""
 
     async def test_comms_graph_passes_retry_policy(self):
         with ExitStack() as stack:
             deps = _apply_patches(stack)
-            from app.agents.core.graph_builder.build_graph import (
-                _AGENT_RETRY_POLICY,
-                build_comms_graph,
-            )
+            from app.agents.core.graph_builder.build_graph import build_comms_graph
+            from app.agents.llm.retry_policies import COMMS_RETRY_POLICY
 
             async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert kwargs["agent_retry_policy"] is _AGENT_RETRY_POLICY
+            assert kwargs["agent_retry_policy"] is COMMS_RETRY_POLICY
 
     async def test_executor_graph_passes_retry_policy(self):
         with ExitStack() as stack:
             deps = _apply_patches(stack)
-            from app.agents.core.graph_builder.build_graph import (
-                _AGENT_RETRY_POLICY,
-                build_executor_graph,
-            )
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+            from app.agents.llm.retry_policies import EXECUTOR_RETRY_POLICY
 
             async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert kwargs["agent_retry_policy"] is _AGENT_RETRY_POLICY
+            assert kwargs["agent_retry_policy"] is EXECUTOR_RETRY_POLICY
 
     def test_retry_policy_configuration(self):
-        """_AGENT_RETRY_POLICY has expected max_attempts and intervals."""
-        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
+        """COMMS_RETRY_POLICY has expected max_attempts and intervals."""
+        from app.agents.llm.retry_policies import COMMS_RETRY_POLICY
 
-        assert _AGENT_RETRY_POLICY.max_attempts == 3
-        assert _AGENT_RETRY_POLICY.initial_interval == pytest.approx(1.0)
-        assert _AGENT_RETRY_POLICY.backoff_factor == pytest.approx(2.0)
-        assert _AGENT_RETRY_POLICY.max_interval == pytest.approx(30.0)
-        assert _AGENT_RETRY_POLICY.jitter is True
+        assert COMMS_RETRY_POLICY.max_attempts == 3
+        assert COMMS_RETRY_POLICY.initial_interval == pytest.approx(1.0)
+        assert COMMS_RETRY_POLICY.backoff_factor == pytest.approx(2.0)
+        assert COMMS_RETRY_POLICY.max_interval == pytest.approx(30.0)
+        assert COMMS_RETRY_POLICY.jitter is True
 
     def test_retry_on_retryable_exceptions(self):
         """retry_on returns True for every type in _LLM_RETRYABLE_EXCEPTIONS."""
@@ -799,10 +795,10 @@ class TestRetryPolicyWiring:
             ServiceUnavailable,
         )
 
-        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
         from app.agents.llm.client import _LLM_RETRYABLE_EXCEPTIONS
+        from app.agents.llm.retry_policies import COMMS_RETRY_POLICY
 
-        retry_on = _AGENT_RETRY_POLICY.retry_on
+        retry_on = COMMS_RETRY_POLICY.retry_on
         assert callable(retry_on)
 
         retryable_instances = [
@@ -820,9 +816,9 @@ class TestRetryPolicyWiring:
 
     def test_retry_on_non_retryable_exceptions(self):
         """retry_on returns False for non-retryable exception types."""
-        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
+        from app.agents.llm.retry_policies import COMMS_RETRY_POLICY
 
-        retry_on = _AGENT_RETRY_POLICY.retry_on
+        retry_on = COMMS_RETRY_POLICY.retry_on
         assert callable(retry_on)
 
         non_retryable = [

@@ -12,7 +12,6 @@ the routing logic under test are real.
 
 import asyncio
 from contextlib import ExitStack
-from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -67,7 +66,7 @@ class _Boundaries:
             patch.object(er, "pop_next_queued_run", new_callable=AsyncMock, return_value=None)
         )
         self.deliver = stack.enter_context(
-            patch.object(er, "deliver_result", new_callable=AsyncMock)
+            patch.object(er, "deliver_result", new_callable=AsyncMock, return_value=(None, None))
         )
         self.persist_cancelled = stack.enter_context(
             patch.object(er, "persist_cancelled_run", new_callable=AsyncMock)
@@ -224,7 +223,6 @@ class TestQueueLockBugs:
             run=next_run,
             task="the queued ask",
             configurable={"stream_id": "queued_next"},
-            user_time=datetime(2026, 1, 1),
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
@@ -260,7 +258,6 @@ class TestQueueLockBugs:
             run=next_run,
             task="stranded ask",
             configurable={"stream_id": "queued_next"},
-            user_time=datetime(2026, 1, 1),
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
@@ -291,7 +288,6 @@ class TestQueueLockHandoff:
             run=next_run,
             task="do the thing",
             configurable={"stream_id": "queued_next"},
-            user_time=datetime(2026, 1, 1),
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
@@ -302,7 +298,6 @@ class TestQueueLockHandoff:
             run=next_run,
             task="do the thing",
             configurable={"stream_id": "queued_next"},
-            user_time=datetime(2026, 1, 1),
         )
         # Lock handed off to the next run — must NOT be released or reclaimed.
         boundaries.release.assert_not_awaited()

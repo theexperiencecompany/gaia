@@ -241,37 +241,46 @@ class TestWorkflowValidator:
 class TestGenerateUniqueWorkflowSlug:
     """Tests for generate_unique_workflow_slug."""
 
+    @patch("app.services.workflow.service._slug_suffix", return_value="aabbcc")
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_unique_slug_first_try(self, mock_collection):
+    async def test_unique_slug_first_try(self, mock_collection, _mock_suffix):
         mock_collection.find_one = AsyncMock(return_value=None)
         slug = await generate_unique_workflow_slug("My Test Workflow")
-        assert slug == "mytestworkflow"
+        assert slug == "mytestworkflow-aabbcc"
 
+    @patch("app.services.workflow.service._slug_suffix", side_effect=["hex001", "hex002"])
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_slug_collision_appends_suffix(self, mock_collection):
-        # First call returns existing, second returns None
-        mock_collection.find_one = AsyncMock(side_effect=[{"slug": "myworkflow"}, None])
+    async def test_slug_collision_appends_suffix(self, mock_collection, _mock_suffix):
+        # First candidate collides, second is unique
+        mock_collection.find_one = AsyncMock(side_effect=[{"slug": "myworkflow-hex001"}, None])
         slug = await generate_unique_workflow_slug("My Workflow")
-        assert slug == "myworkflow-1"
+        assert slug == "myworkflow-hex002"
 
+    @patch(
+        "app.services.workflow.service._slug_suffix",
+        side_effect=["hex001", "hex002", "hex003"],
+    )
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_slug_multiple_collisions(self, mock_collection):
+    async def test_slug_multiple_collisions(self, mock_collection, _mock_suffix):
         mock_collection.find_one = AsyncMock(
             side_effect=[
-                {"slug": "myworkflow"},
-                {"slug": "myworkflow-1"},
+                {"slug": "myworkflow-hex001"},
+                {"slug": "myworkflow-hex002"},
                 None,
             ]
         )
         slug = await generate_unique_workflow_slug("My Workflow")
-        assert slug == "myworkflow-2"
+        assert slug == "myworkflow-hex003"
 
+    @patch("app.services.workflow.service._slug_suffix", return_value="aabbcc")
     @patch("app.services.workflow.service.slugify", return_value="")
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_empty_title_falls_back_to_workflow(self, mock_collection, _mock_slugify):
+    async def test_empty_title_falls_back_to_workflow(
+        self, mock_collection, _mock_slugify, _mock_suffix
+    ):
         mock_collection.find_one = AsyncMock(return_value=None)
         slug = await generate_unique_workflow_slug("")
-        assert slug == "workflow"
+        assert slug == "workflow-aabbcc"
 
     @patch("app.services.workflow.service.workflows_collection")
     async def test_exclude_id_passed_to_query(self, mock_collection):
@@ -390,6 +399,11 @@ class TestCreateWorkflow:
         mock_scheduler.schedule_workflow_execution.assert_awaited_once()
 
     @patch(
+        "app.services.oauth.oauth_service.check_integration_status",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch(
         "app.services.workflow.service.TriggerService.register_triggers",
         new_callable=AsyncMock,
         return_value=["trigger_1"],
@@ -398,7 +412,7 @@ class TestCreateWorkflow:
     @patch("app.services.workflow.service.ChromaClient")
     @patch("app.services.workflow.service.workflows_collection")
     async def test_create_integration_workflow_registers_triggers(
-        self, mock_collection, mock_chroma, mock_scheduler, mock_register
+        self, mock_collection, mock_chroma, mock_scheduler, mock_register, _mock_check_status
     ):
         trigger = _make_trigger_config(
             trigger_type=TriggerType.INTEGRATION,
@@ -749,12 +763,13 @@ class TestUpdateWorkflow:
         updated_wf = _make_workflow(trigger_config=new_trigger)
         mock_get.side_effect = [wf, updated_wf]
         mock_collection.update_one = AsyncMock(return_value=_mock_update_result())
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
 
         request = _make_update_request(trigger_config=new_trigger)
-        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+        result = await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
 
-        mock_scheduler.cancel_scheduled_workflow_execution.assert_awaited_once()
+        # Disabling a schedule no longer explicitly cancels ARQ jobs — the claim
+        # gate rejects any in-flight job once activated=False is persisted.
+        assert result is not None
 
     @patch(
         "app.services.workflow.service.TriggerService.unregister_triggers",
@@ -769,7 +784,7 @@ class TestUpdateWorkflow:
     @patch(
         "app.services.workflow.service.WorkflowService._register_integration_triggers",
         new_callable=AsyncMock,
-        return_value=["new_trigger_id"],
+        return_value=(["new_trigger_id"], True),
     )
     @patch("app.services.workflow.service.workflow_scheduler")
     @patch(
@@ -1193,11 +1208,9 @@ class TestDeactivateWorkflow:
         deactivated_wf = _make_workflow(activated=False)
         mock_get.side_effect = [wf, deactivated_wf]
         mock_collection.update_one = AsyncMock(return_value=_mock_update_result())
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
 
         result = await WorkflowService.deactivate_workflow(WORKFLOW_ID, USER_ID)
         assert result is not None
-        mock_scheduler.cancel_scheduled_workflow_execution.assert_awaited_once()
 
     @patch(
         "app.services.workflow.service.WorkflowService.get_workflow",
@@ -1481,7 +1494,8 @@ class TestRegisterIntegrationTriggers:
     async def test_non_integration_trigger_returns_empty(self):
         trigger = _make_trigger_config(trigger_type=TriggerType.MANUAL)
         result = await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
-        assert result == []
+        # Non-INTEGRATION triggers return ([], True): empty ids, integration_connected=True
+        assert result == ([], True)
 
     async def test_integration_trigger_without_name_raises(self):
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION, trigger_name=None)
@@ -1498,7 +1512,8 @@ class TestRegisterIntegrationTriggers:
             trigger_type=TriggerType.INTEGRATION, trigger_name="calendar_event"
         )
         result = await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
-        assert result == ["tid_1"]
+        # Returns (trigger_ids, integration_connected)
+        assert result == (["tid_1"], True)
         mock_register.assert_awaited_once()
 
 
@@ -2005,38 +2020,6 @@ class TestWorkflowScheduler:
         result = await scheduler.schedule_workflow_execution(WORKFLOW_ID, USER_ID, scheduled_at)
         assert result is False
 
-    async def test_cancel_scheduled_workflow_execution_success(self):
-        scheduler = WorkflowScheduler()
-        scheduler.update_task_status = AsyncMock(return_value=True)
-        scheduler.cancel_task = AsyncMock(return_value=True)
-
-        result = await scheduler.cancel_scheduled_workflow_execution(WORKFLOW_ID)
-        assert result is True
-
-    async def test_cancel_scheduled_workflow_db_only(self):
-        """DB cancel succeeds but ARQ cancel fails."""
-        scheduler = WorkflowScheduler()
-        scheduler.update_task_status = AsyncMock(return_value=True)
-        scheduler.cancel_task = AsyncMock(return_value=False)
-
-        result = await scheduler.cancel_scheduled_workflow_execution(WORKFLOW_ID)
-        assert result is True  # Returns db_success
-
-    async def test_cancel_scheduled_workflow_both_fail(self):
-        scheduler = WorkflowScheduler()
-        scheduler.update_task_status = AsyncMock(return_value=False)
-        scheduler.cancel_task = AsyncMock(return_value=False)
-
-        result = await scheduler.cancel_scheduled_workflow_execution(WORKFLOW_ID)
-        assert result is False
-
-    async def test_cancel_scheduled_workflow_exception_returns_false(self):
-        scheduler = WorkflowScheduler()
-        scheduler.update_task_status = AsyncMock(side_effect=Exception("Error"))
-
-        result = await scheduler.cancel_scheduled_workflow_execution(WORKFLOW_ID)
-        assert result is False
-
     async def test_reschedule_workflow_success(self):
         scheduler = WorkflowScheduler()
         scheduler.update_task_status = AsyncMock(return_value=True)
@@ -2070,28 +2053,6 @@ class TestWorkflowScheduler:
         new_time = datetime.now(UTC) + timedelta(hours=2)
         result = await scheduler.reschedule_workflow(WORKFLOW_ID, new_time)
         assert result is False
-
-    async def test_get_workflow_status_found(self):
-        scheduler = WorkflowScheduler()
-        wf = _make_workflow()
-        scheduler.get_task = AsyncMock(return_value=wf)
-
-        result = await scheduler.get_workflow_status(WORKFLOW_ID)
-        assert result is not None
-
-    async def test_get_workflow_status_not_found(self):
-        scheduler = WorkflowScheduler()
-        scheduler.get_task = AsyncMock(return_value=None)
-
-        result = await scheduler.get_workflow_status(WORKFLOW_ID)
-        assert result is None
-
-    async def test_get_workflow_status_error_returns_none(self):
-        scheduler = WorkflowScheduler()
-        scheduler.get_task = AsyncMock(side_effect=Exception("Error"))
-
-        result = await scheduler.get_workflow_status(WORKFLOW_ID)
-        assert result is None
 
     @patch("app.services.workflow.scheduler.workflows_collection")
     async def test_get_pending_task_returns_workflows(self, mock_collection):
@@ -2163,14 +2124,10 @@ class TestWorkflowScheduler:
         with patch(
             "app.workers.tasks.execute_workflow_as_chat", new_callable=AsyncMock
         ) as mock_exec:
-            with patch(
-                "app.workers.tasks.workflow_tasks.create_workflow_completion_notification",
-                new_callable=AsyncMock,
-            ):
-                mock_exec.return_value = ["message1"]
+            mock_exec.return_value = ["message1"]
 
-                result = await scheduler.execute_task(wf)
-                assert result.success is True
+            result = await scheduler.execute_task(wf)
+            assert result.success is True
 
     async def test_execute_task_with_non_workflow_fails(self):
         """execute_task with a non-Workflow object should fail."""
@@ -2222,6 +2179,9 @@ class TestWorkflowQueueService:
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
     async def test_queue_execution_success(self, mock_redis):
+        import hashlib
+        import json
+
         mock_pool = AsyncMock()
         mock_job = MagicMock()
         mock_job.job_id = "job_456"
@@ -2232,12 +2192,23 @@ class TestWorkflowQueueService:
             WORKFLOW_ID, USER_ID, context={"key": "val"}
         )
         assert result is True
+        dedup_payload = json.dumps(
+            {"workflow_id": WORKFLOW_ID, "user_id": USER_ID, "context": {"key": "val"}},
+            sort_keys=True,
+            default=str,
+        )
+        expected_job_id = (
+            "execute_workflow_by_id:" + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
+        )
         mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {"key": "val"}
+            "execute_workflow_by_id", WORKFLOW_ID, {"key": "val"}, _job_id=expected_job_id
         )
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
     async def test_queue_execution_no_context(self, mock_redis):
+        import hashlib
+        import json
+
         mock_pool = AsyncMock()
         mock_job = MagicMock()
         mock_job.job_id = "job_789"
@@ -2246,8 +2217,18 @@ class TestWorkflowQueueService:
 
         result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
         assert result is True
+        dedup_payload = json.dumps(
+            {"workflow_id": WORKFLOW_ID, "user_id": USER_ID, "context": {}},
+            sort_keys=True,
+            default=str,
+        )
+        expected_job_id = (
+            "execute_workflow_by_id:" + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
+        )
         # context defaults to empty dict
-        mock_pool.enqueue_job.assert_awaited_once_with("execute_workflow_by_id", WORKFLOW_ID, {})
+        mock_pool.enqueue_job.assert_awaited_once_with(
+            "execute_workflow_by_id", WORKFLOW_ID, {}, _job_id=expected_job_id
+        )
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
     async def test_queue_execution_failure(self, mock_redis):
@@ -2256,7 +2237,9 @@ class TestWorkflowQueueService:
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
         result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
-        assert result is False
+        # enqueue_job returning None means the job was deduped (already queued/running).
+        # That is a success, not a failure.
+        assert result is True
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
     async def test_queue_todo_workflow_generation_success(self, mock_redis):
@@ -2418,10 +2401,12 @@ class TestTriggerService:
         mock_get_handler.return_value = mock_handler
 
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
-        with pytest.raises(TriggerRegistrationError, match="Failed to register"):
-            await TriggerService.register_triggers(
-                USER_ID, WORKFLOW_ID, "calendar_event", trigger, raise_on_failure=True
-            )
+        # Empty result is valid (e.g. account-level Gmail trigger has no per-workflow IDs).
+        # raise_on_failure only applies when the handler raises, not when it returns [].
+        result = await TriggerService.register_triggers(
+            USER_ID, WORKFLOW_ID, "calendar_event", trigger, raise_on_failure=True
+        )
+        assert result == []
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
     async def test_register_triggers_type_error_re_raised(self, mock_get_handler):

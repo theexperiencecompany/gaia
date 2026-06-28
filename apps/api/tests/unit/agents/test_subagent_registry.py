@@ -390,7 +390,8 @@ class TestGetSubagentByIdExtended:
 
         assert result is not None
         assert result.id == "gaia_knowledge_guide"
-        assert result is BUILTIN_SUBAGENTS[0]
+        expected = next(s for s in BUILTIN_SUBAGENTS if s.id == "gaia_knowledge_guide")
+        assert result is expected
 
     def test_finds_real_gaia_builtin_uppercase(self) -> None:
         _clear_registry_cache()

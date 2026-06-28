@@ -155,7 +155,7 @@ class TestOwnershipRule:
             task_id="t1",
             user_message_id="m1",
         )
-        assert run.user == {"user_id": "u1", "email": "u1@x.com", "name": "Uno"}
+        assert run.user == {"user_id": "u1", "email": "u1@x.com", "name": "Uno", "timezone": None}
         assert run.workflow_id == "wf-9"
         assert run.workflow_title == "Daily digest"
         assert run.workflow_notify_on_completion is False
