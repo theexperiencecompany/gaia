@@ -3,10 +3,7 @@ import type { Metadata } from "next";
 import LandingPageClient from "@/app/[locale]/(landing)/client";
 import JsonLd from "@/components/seo/JsonLd";
 import { getLatestRelease } from "@/features/landing/utils/getLatestRelease";
-import {
-  getTimeOfDay,
-  type TimeOfDay,
-} from "@/features/landing/utils/timeOfDay";
+import { getTimeOfDay } from "@/features/landing/utils/timeOfDay";
 import { homepageFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
@@ -17,14 +14,6 @@ import {
   generateWebSiteSchema,
   siteConfig,
 } from "@/lib/seo";
-
-// Preload paths mirror WALLPAPERS in HeroImage.tsx — keep in sync.
-const HERO_WALLPAPER_PATHS: Record<TimeOfDay, string> = {
-  morning: "/images/wallpapers/swiss_morning.webp",
-  day: "/images/wallpapers/swiss.webp",
-  evening: "/images/wallpapers/swiss_evening.webp",
-  night: "/images/wallpapers/swiss_night.webp",
-};
 
 // ISR: give the homepage a stable incremental-cache entry so OpenNext's cache
 // interception serves it without booting the full Next server (the worker
@@ -67,15 +56,11 @@ export default function LandingPage() {
 
   return (
     <>
-      {/* Preload the initial hero wallpaper so it starts fetching before JS runs.
-          HeroImage renders inside a "use client" component, so Next.js may not
-          emit a preload link via the Image component's SSR path. */}
-      <link
-        rel="preload"
-        as="image"
-        href={HERO_WALLPAPER_PATHS[initialTimeOfDay]}
-        fetchPriority="high"
-      />
+      {/* The hero wallpaper preload is emitted automatically by next/image's
+          `priority` prop (verified in the rendered HTML), so no manual <link
+          rel="preload"> is needed — a manual one points at the raw asset URL,
+          not the optimized /_next/image URL the component actually fetches, so
+          it just wastes bandwidth on the LCP path. */}
       <JsonLd
         data={[
           organizationSchema,

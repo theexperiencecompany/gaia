@@ -104,7 +104,6 @@ export default function TimeSavedCounter() {
         <m.button
           type="button"
           onClick={cycleScale}
-          aria-label={`Time saved ${scale.label}. Click to change scale.`}
           whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", duration: 0.3, bounce: 0 }}
           className="group flex flex-col items-center gap-4 cursor-pointer bg-transparent border-0 outline-0 p-0"
@@ -182,7 +181,7 @@ export default function TimeSavedCounter() {
             </div>
           </NumberFlowGroup>
 
-          <span className="inline-flex items-center gap-1.5 text-xs text-zinc-600 group-hover:text-zinc-400 transition-colors">
+          <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400 group-hover:text-zinc-300 transition-colors">
             <CursorPointer02Icon width={12} height={12} />
             click to change
           </span>
