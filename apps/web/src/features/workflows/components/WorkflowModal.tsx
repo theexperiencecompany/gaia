@@ -13,7 +13,10 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
-import { MissingIntegrationsAlert } from "@/features/workflows/components/shared/WorkflowCardComponents";
+import {
+  MissingIntegrationsAlert,
+  missingIntegrationsMessage,
+} from "@/features/workflows/components/shared/WorkflowCardComponents";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
 import WorkflowFooter from "@/features/workflows/components/workflow-modal/WorkflowFooter";
 import WorkflowHeader from "@/features/workflows/components/workflow-modal/WorkflowHeader";
@@ -757,6 +760,15 @@ export default function WorkflowModal({
   // Handle activation toggle
   const handleActivationToggle = async (newActivated: boolean) => {
     if (mode !== "edit" || !currentWorkflow) return;
+
+    // Block enabling a workflow whose trigger/steps need unconnected
+    // integrations — it could never actually run.
+    if (newActivated && missingIntegrations.length > 0) {
+      toast.error("Can't enable this workflow", {
+        description: missingIntegrationsMessage(missingIntegrations),
+      });
+      return;
+    }
 
     setIsTogglingActivation(true);
     try {

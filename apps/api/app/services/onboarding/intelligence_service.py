@@ -66,6 +66,10 @@ from app.services.onboarding.writing_style_service import learn_writing_style
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.todo_service import TodoService
 from app.services.workflow.generation_service import WorkflowGenerationService
+from app.services.workflow.integration_requirements import (
+    compute_missing_integrations,
+    compute_required_integrations,
+)
 from app.services.workflow.service import WorkflowService
 from app.utils.profile_card import (
     generate_holo_card_content,
@@ -134,6 +138,10 @@ _background_tasks: set[asyncio.Task] = set()
 _TRIAGE_EARLY_THRESHOLD = 100
 
 _NOT_SPECIFIED = "not specified"
+
+# Known integration ids -> display name, used to validate request-backed
+# `selected_integrations` before they reach prompts or workflow generation.
+OAUTH_INTEGRATION_NAME_BY_ID = {i.id: i.name for i in OAUTH_INTEGRATIONS}
 
 
 @dataclass
@@ -1363,11 +1371,12 @@ def _build_workflow_prompt_context(
     )
     writing_style_summary = writing_style.summary[:150] if writing_style else "not analyzed"
 
-    if selected_integrations:
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
-
-        name_map = {i.id: i.name for i in OAUTH_INTEGRATIONS}
-        friendly = [name_map.get(s, s) for s in selected_integrations]
+    friendly = [
+        OAUTH_INTEGRATION_NAME_BY_ID[s]
+        for s in (selected_integrations or [])
+        if s in OAUTH_INTEGRATION_NAME_BY_ID
+    ]
+    if friendly:
         selected_integrations_section = (
             "Preferred integrations (anchor at least half of the workflows to these tools):\n"
             + ", ".join(friendly)
@@ -1470,12 +1479,17 @@ async def _build_one_workflow(
             create_duration_s=create_duration_s,
             duration_s=round(time.monotonic() - t_spec, 2),
         )
+        # Surface step integrations the user hasn't connected so the onboarding
+        # cards can show the same missing-integration warning as the app.
+        required = compute_required_integrations(workflow.steps)
+        missing = await compute_missing_integrations(required, user_id)
         return {
             "id": str(workflow.id),
             "title": spec.title,
             "description": spec.description,
             "categories": spec.categories,
             "trigger": _serialize_trigger_for_payload(workflow.trigger_config),
+            "missing_integrations": [{"id": ref.id, "name": ref.name} for ref in missing],
         }
     except Exception as e:
         log.warning(
@@ -1503,8 +1517,11 @@ async def _create_onboarding_workflows(
     selected_integrations: list[str] | None = None,
 ) -> list[dict]:
     """Create 4 LLM-generated workflows tailored to the user's context."""
-    # Include Gmail in selected integrations if connected and not already listed.
-    effective_integrations: list[str] = list(selected_integrations or [])
+    # Keep only known integration ids (request-backed input), de-duped and
+    # order-preserving. Include Gmail when connected and not already listed.
+    effective_integrations: list[str] = [
+        s for s in dict.fromkeys(selected_integrations or []) if s in OAUTH_INTEGRATION_NAME_BY_ID
+    ]
     if has_gmail and "gmail" not in effective_integrations:
         effective_integrations.append("gmail")
 

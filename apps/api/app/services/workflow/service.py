@@ -811,6 +811,15 @@ class WorkflowService:
             if not workflow:
                 return None
 
+            # Refuse activation when the workflow's steps need integrations the
+            # user hasn't connected — an enabled workflow that can't run is
+            # misleading. (Surfaced as a 400 by the activate endpoint.)
+            required = compute_required_integrations(workflow.steps)
+            missing = await compute_missing_integrations(required, user_id)
+            if missing:
+                names = ", ".join(ref.name for ref in missing)
+                raise ValueError(f"Connect {names} to enable this workflow.")
+
             # 1. Register Composio triggers FIRST (can raise TriggerRegistrationError)
             trigger_config = workflow.trigger_config
             trigger_type = trigger_config.type
@@ -903,6 +912,11 @@ class WorkflowService:
         except TriggerRegistrationError as e:
             # Trigger registration failed - workflow remains inactive
             log.error(f"{LogTag.WORKFLOW} Failed to activate workflow {workflow_id}: {e}")
+            raise
+
+        except ValueError:
+            # Validation refusal (e.g. missing step integrations) — a normal 400,
+            # surfaced to the user; not an internal error to log loudly.
             raise
 
         except Exception as e:
@@ -1007,7 +1021,11 @@ class WorkflowService:
 
             if result:
                 transformed_doc = transform_workflow_document(result)
-                return Workflow(**transformed_doc)
+                workflow = Workflow(**transformed_doc)
+                # Match get_workflow/list_workflows so the regenerated steps'
+                # required/missing integrations surface in the UI.
+                await WorkflowService._enrich_integration_fields(workflow, user_id)
+                return workflow
             return None
 
         except Exception as e:

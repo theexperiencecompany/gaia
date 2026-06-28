@@ -1,11 +1,21 @@
 from datetime import datetime
 from enum import Enum
 import re
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from app.utils.timezone import is_valid_timezone
+
+# Lowercased, bounded slug for request-supplied integration ids.
+IntegrationSlug = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        to_lower=True,
+        pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$",
+    ),
+]
 
 
 class OnboardingPhase(str, Enum):
@@ -113,10 +123,24 @@ class OnboardingRequest(BaseModel):
         None,
         description="No-Gmail follow-up answers (scope/blocker/constraint)",
     )
-    selected_integrations: list[str] | None = Field(
+    selected_integrations: list[IntegrationSlug] | None = Field(
         None,
+        max_length=25,
         description="Integration slugs the user selected during onboarding.",
     )
+
+    @field_validator("selected_integrations")
+    @classmethod
+    def dedupe_integrations(cls, v: list[str] | None) -> list[str] | None:
+        if not v:
+            return v
+        seen: set[str] = set()
+        out: list[str] = []
+        for slug in v:
+            if slug not in seen:
+                seen.add(slug)
+                out.append(slug)
+        return out
 
     @field_validator("name")
     @classmethod

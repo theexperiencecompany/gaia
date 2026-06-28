@@ -1,5 +1,7 @@
 """Workflow generation service for LLM-based step creation."""
 
+import re
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
@@ -57,8 +59,12 @@ def _extract_explicit_mentions(prompt: str) -> set[str]:
     lower_prompt = prompt.lower()
     mentioned: set[str] = set()
     for integration in OAUTH_INTEGRATIONS:
-        if integration.name.lower() in lower_prompt or integration.id.lower() in lower_prompt:
-            mentioned.add(integration.id)
+        # Word-boundary match so short/common names/ids (e.g. "box" in "inbox")
+        # don't get flagged as explicit mentions and force-include integrations.
+        for token in (integration.name.lower(), integration.id.lower()):
+            if re.search(rf"\b{re.escape(token)}\b", lower_prompt):
+                mentioned.add(integration.id)
+                break
     return mentioned
 
 

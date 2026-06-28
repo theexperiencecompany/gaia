@@ -302,6 +302,91 @@ function scrollAncestorToBottom(node: HTMLElement | null): void {
   }
 }
 
+interface PillRowMeasurement {
+  rowByPosition: number[];
+  clampHeight: number | null;
+  hasMore: boolean;
+}
+
+/** Group the wrap's children into rows (by distinct offsetTop) and compute the
+ *  max-height that clips the cloud to `visibleRows` whole rows. */
+function measurePillRows(
+  el: HTMLDivElement,
+  visibleRows: number,
+): PillRowMeasurement {
+  const children = Array.from(el.children) as HTMLElement[];
+  if (children.length === 0) {
+    return { rowByPosition: [], clampHeight: null, hasMore: false };
+  }
+  const baseTop = children[0].offsetTop;
+  const rowTops: number[] = [];
+  for (const child of children) {
+    if (!rowTops.includes(child.offsetTop)) rowTops.push(child.offsetTop);
+  }
+  rowTops.sort((a, b) => a - b);
+  const rowByPosition = children.map((c) => rowTops.indexOf(c.offsetTop));
+
+  if (visibleRows >= rowTops.length) {
+    return { rowByPosition, clampHeight: null, hasMore: false };
+  }
+  const lastVisibleTop = rowTops[visibleRows - 1];
+  const rowChild =
+    children.find((c) => c.offsetTop === lastVisibleTop) ?? children[0];
+  return {
+    rowByPosition,
+    clampHeight: lastVisibleTop - baseTop + rowChild.offsetHeight,
+    hasMore: true,
+  };
+}
+
+interface PillChipProps {
+  readonly integration: Integration;
+  readonly isSelected: boolean;
+  /** Within the current clamp (visible) vs clipped below it. */
+  readonly shown: boolean;
+  readonly delay: number;
+  readonly onToggle: (slug: string) => void;
+}
+
+function PillChip({
+  integration,
+  isSelected,
+  shown,
+  delay,
+  onToggle,
+}: PillChipProps) {
+  return (
+    <m.div
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: shown ? 1 : 0, scale: shown ? 1 : 0.96 }}
+      // Transforms/opacity don't affect layout, so row measurement stays valid.
+      transition={{ duration: 0.22, delay, ease: "easeOut" }}
+    >
+      <Chip
+        as="button"
+        type="button"
+        onClick={() => onToggle(integration.slug)}
+        aria-pressed={isSelected}
+        // Pills clipped below the clamp stay mounted; keep them out of tab order
+        // + a11y tree until "Show more" reveals them.
+        tabIndex={shown ? undefined : -1}
+        aria-hidden={shown ? undefined : true}
+        size="lg"
+        variant="flat"
+        color={isSelected ? "success" : "default"}
+        startContent={
+          <span className="ml-1 flex items-center">
+            <IntegrationIcon integration={integration} size={16} />
+          </span>
+        }
+        className="cursor-pointer"
+      >
+        {integration.name}
+      </Chip>
+    </m.div>
+  );
+}
+
 function IntegrationPillCloud({
   integrations,
   isLoading,
@@ -358,31 +443,12 @@ function IntegrationPillCloud({
     if (!el) return;
 
     const measure = () => {
-      const children = Array.from(el.children) as HTMLElement[];
-      if (isSearching || children.length === 0) {
-        setRowByPosition([]);
-        setClampHeight(null);
-        setHasMore(false);
-        return;
-      }
-      const baseTop = children[0].offsetTop;
-      const rowTops: number[] = [];
-      for (const child of children) {
-        if (!rowTops.includes(child.offsetTop)) rowTops.push(child.offsetTop);
-      }
-      rowTops.sort((a, b) => a - b);
-      setRowByPosition(children.map((c) => rowTops.indexOf(c.offsetTop)));
-
-      if (visibleRows >= rowTops.length) {
-        setClampHeight(null);
-        setHasMore(false);
-        return;
-      }
-      const lastVisibleTop = rowTops[visibleRows - 1];
-      const rowChild =
-        children.find((c) => c.offsetTop === lastVisibleTop) ?? children[0];
-      setClampHeight(lastVisibleTop - baseTop + rowChild.offsetHeight);
-      setHasMore(true);
+      const next = isSearching
+        ? { rowByPosition: [], clampHeight: null, hasMore: false }
+        : measurePillRows(el, visibleRows);
+      setRowByPosition(next.rowByPosition);
+      setClampHeight(next.clampHeight);
+      setHasMore(next.hasMore);
     };
 
     measure();
@@ -454,49 +520,20 @@ function IntegrationPillCloud({
               }
             >
               {filtered.map((integration, index) => {
-                const isSelected = selectedSlugSet.has(integration.slug);
                 const row = rowByPosition[index] ?? 0;
                 const shown = isSearching || row < visibleRows;
                 // Stagger relative to the first pill of the current reveal batch,
                 // so each "Show more" cascades from its start (not the list start).
                 const order = Math.max(0, index - batchStartIndex);
                 return (
-                  <m.div
+                  <PillChip
                     key={integration.slug}
-                    initial={{ opacity: 0, scale: 0.96 }}
-                    animate={{
-                      opacity: shown ? 1 : 0,
-                      scale: shown ? 1 : 0.96,
-                    }}
-                    transition={{
-                      duration: 0.22,
-                      // Capped so a large batch still settles quickly. Transforms
-                      // and opacity don't affect layout, so measurement stays valid.
-                      delay: shown ? Math.min(order, 18) * 0.025 : 0,
-                      ease: "easeOut",
-                    }}
-                  >
-                    <Chip
-                      as="button"
-                      type="button"
-                      onClick={() => onToggle(integration.slug)}
-                      aria-pressed={isSelected}
-                      size="lg"
-                      variant="flat"
-                      color={isSelected ? "success" : "default"}
-                      startContent={
-                        <span className="ml-1 flex items-center">
-                          <IntegrationIcon
-                            integration={integration}
-                            size={16}
-                          />
-                        </span>
-                      }
-                      className="cursor-pointer"
-                    >
-                      {integration.name}
-                    </Chip>
-                  </m.div>
+                    integration={integration}
+                    isSelected={selectedSlugSet.has(integration.slug)}
+                    shown={shown}
+                    delay={shown ? Math.min(order, 18) * 0.025 : 0}
+                    onToggle={onToggle}
+                  />
                 );
               })}
             </div>

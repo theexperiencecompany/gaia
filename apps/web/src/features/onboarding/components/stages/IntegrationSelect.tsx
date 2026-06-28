@@ -9,6 +9,7 @@
 import * as m from "motion/react-m";
 import { type Dispatch, useCallback, useMemo } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import IntegrationChipsSelector from "@/features/workflows/components/workflow-modal/IntegrationChipsSelector";
 import { FIELD_NAMES } from "../../constants";
 import { BOT_BUBBLE_DEFAULTS } from "../../constants/bubbleDefaults";
@@ -56,8 +57,13 @@ export function IntegrationSelectComposer({
   state,
   dispatch,
 }: IntegrationSelectProps) {
+  const { integrations, isLoading } = useIntegrations();
   const remaining = MIN_SELECTIONS - state.selectedIntegrations.length;
-  const canContinue = state.selectedIntegrations.length >= MIN_SELECTIONS;
+  // When the catalog is empty/unavailable there's nothing to pick — don't trap
+  // the user (skip was removed); let them continue so onboarding can finish.
+  const catalogEmpty = !isLoading && integrations.length === 0;
+  const canContinue =
+    state.selectedIntegrations.length >= MIN_SELECTIONS || catalogEmpty;
 
   const handleContinue = useCallback(() => {
     dispatch({ type: "integrationSelectConfirm" });
@@ -71,9 +77,10 @@ export function IntegrationSelectComposer({
         <OnboardingCTAButton onClick={handleContinue} disabled={!canContinue}>
           Continue
         </OnboardingCTAButton>
-        {/* Reserve the line so the hint appearing/clearing never moves the CTA. */}
         <p className="h-4 text-xs text-zinc-500">
-          {remaining > 0 ? `Select ${remaining} more to continue` : ""}
+          {remaining > 0 && !catalogEmpty
+            ? `Select ${remaining} more to continue`
+            : ""}
         </p>
       </div>
     </ComposerCTA>
