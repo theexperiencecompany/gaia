@@ -207,16 +207,20 @@ class GaiaCi:
         We key off that authoritative code rather than grepping a summary line
         that Dagger can truncate from long logs. A missing sentinel means the run
         never finished cleanly (e.g. an xdist worker crash) and is a failure.
+
+        On failure the full pytest output is attached to the error so the failing
+        test names and tracebacks surface in the CI log — Dagger otherwise drops a
+        raising function's captured stdout, leaving only the bare exit code.
         """
         codes = re.findall(r"GAIA_PYTEST_EXIT=(\d+)", output)
         if not codes:
             raise RuntimeError(
                 "pytest did not report an exit code — the run was interrupted "
-                "(worker crash or container error), treating as a failure."
+                f"(worker crash or container error), treating as a failure.\n\n{output}"
             )
         code = int(codes[-1])
         if code != 0:
-            raise RuntimeError(f"pytest failed with exit code {code}.")
+            raise RuntimeError(f"pytest failed with exit code {code}.\n\n{output}")
 
     @function
     async def test_python(self, source: Source) -> str:
