@@ -6,13 +6,12 @@ import time
 from bson import ObjectId
 from langchain_core.messages import HumanMessage
 
-from app.agents.llm.client import ainvoke_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.prompts.onboarding_prompts import (
     WRITING_STYLE_EXAMPLE_PROMPT,
     WRITING_STYLE_PROMPT,
 )
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
@@ -93,9 +92,7 @@ async def learn_writing_style(
 
         email_samples_text = "\n---\n".join(samples)
 
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
+        llm = get_default_llm()
 
         structured_llm = llm.with_structured_output(WritingStyleOutput)
         prompt = WRITING_STYLE_PROMPT.format(
@@ -147,9 +144,7 @@ async def regenerate_example_for_style(
 ) -> WritingStyleExampleBlocks | None:
     """Generate a new example email from an edited writing style summary."""
     try:
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
+        llm = get_default_llm()
 
         structured_llm = llm.with_structured_output(WritingStyleExampleOutput)
         prompt = WRITING_STYLE_EXAMPLE_PROMPT.format(

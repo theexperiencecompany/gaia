@@ -29,7 +29,7 @@ from bson import ObjectId
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.memory.email_processor import fetch_emails_for_onboarding
 from app.agents.prompts.onboarding_prompts import (
     FOCUS_TODOS_PROMPT,
@@ -40,7 +40,6 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
-from app.core.lazy_loader import providers
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import (
@@ -1132,9 +1131,7 @@ async def _create_focus_todos(
     )
 
     try:
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
+        llm = get_default_llm()
         structured_llm = llm.with_structured_output(_FocusTodoList)
         t_llm = time.monotonic()
         parsed: _FocusTodoList = await ainvoke_llm(
@@ -1219,9 +1216,7 @@ async def _create_todos_from_triage(
 
     t0 = time.monotonic()
     try:
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
+        llm = get_default_llm()
         structured_llm = llm.with_structured_output(_TodoListFromEmails)
         t_llm = time.monotonic()
         parsed: _TodoListFromEmails = await ainvoke_llm(
@@ -1376,9 +1371,7 @@ def _build_workflow_prompt_context(
 async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
     """Invoke the LLM up to 3 times until it returns exactly 4 workflow specs.
     Raises if no valid result is produced after the retries."""
-    llm = await providers.aget("gemini_llm")
-    if llm is None:
-        raise RuntimeError("LLM provider not available")
+    llm = get_default_llm()
     structured_llm = llm.with_structured_output(_WorkflowList)
 
     last_error: Exception | None = None

@@ -14,7 +14,6 @@ from langchain_core.language_models.chat_models import (
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openrouter.errors import (
     BadGatewayResponseError,
@@ -112,37 +111,17 @@ def with_llm_retry(runnable: Runnable) -> Runnable:
 
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
-    "openai": "gpt-4o-mini",
     "openrouter": DEFAULT_GROK_MODEL_NAME,
 }
 PROVIDER_PRIORITY = {
     1: "gemini",
-    2: "openai",
-    3: "openrouter",
+    2: "openrouter",
 }
 
 
 class LLMProvider(TypedDict):
     name: str
     instance: BaseChatModel
-
-
-@lazy_provider(
-    name="openai_llm",
-    required_keys=[settings.OPENAI_API_KEY],
-    strategy=MissingKeyStrategy.WARN,
-    warning_message="OpenAI API key not configured. Models provided by openai will not work.",
-)
-def init_openai_llm():
-    """Initialize OpenAI LLM with default model."""
-    return ChatOpenAI(
-        model=PROVIDER_MODELS["openai"],
-        temperature=0.1,
-        streaming=True,
-        stream_usage=True,
-    ).configurable_fields(
-        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
-    )
 
 
 @lazy_provider(
@@ -263,7 +242,6 @@ def _get_available_providers() -> dict[str, Any]:
     mapped by provider name."""
     # Mapping of provider names to their instance keys in the providers registry
     provider_instance_mapping = {
-        "openai": "openai_llm",
         "gemini": "gemini_llm",
         "openrouter": "openrouter_llm",
     }
@@ -331,7 +309,6 @@ def _create_configurable_llm(primary: LLMProvider, alternatives: list[LLMProvide
 
 def register_llm_providers():
     """Register LLM providers in the lazy loader."""
-    init_openai_llm()
     init_gemini_llm()
     init_openrouter_llm()
 
@@ -349,12 +326,13 @@ def init_fallback_llm() -> BaseChatModel | None:
 
 
 def get_default_llm(*, temperature: float = 0.1) -> BaseChatModel:
-    """The default model (direct Gemini) for every auxiliary LLM task — follow-ups,
-    research, memory extraction, integration inference, profile/holo cards, vision
-    helpers, workflow generation, one-shot helpers. The pro model is reserved for
-    the main chat agent (see ``plan_model``); auxiliary tasks never use it. The
-    optional ``temperature`` lets creative tasks opt into more variation. Raises if
-    Google is not configured."""
+    """The single factory for the default model (direct Gemini, ``gemini-3.1-flash-lite``)
+    used by EVERY auxiliary LLM task — follow-ups, research, memory extraction,
+    integration inference, profile/holo cards, vision helpers, workflow generation,
+    context summarization, onboarding, one-shot helpers. The pro model is reserved
+    for the main chat agent (see ``plan_model``); auxiliary tasks never use it.
+    ``temperature`` lets creative tasks opt into more variation. Raises if Google
+    is not configured."""
     if not settings.GOOGLE_API_KEY:
         raise RuntimeError("Default LLM not configured. Set GOOGLE_API_KEY.")
     return ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=temperature)

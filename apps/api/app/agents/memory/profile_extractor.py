@@ -20,12 +20,10 @@ import ftfy
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_llm, init_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
-    PROFILE_EXTRACTION_LLM_MODEL,
-    PROFILE_EXTRACTION_LLM_PROVIDER,
 )
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -437,10 +435,7 @@ async def extract_username_with_llm(
         # Create parser
         parser = PydanticOutputParser(pydantic_object=UsernameExtraction)
 
-        # Get LLM client with Gemini 2.5 Pro for profile extraction
-        llm = init_llm(
-            preferred_provider=PROFILE_EXTRACTION_LLM_PROVIDER, fallback_enabled=True
-        ).with_config(configurable={"model": PROFILE_EXTRACTION_LLM_MODEL})
+        llm = get_default_llm()
 
         # Format the prompt with parser instructions
         formatted_prompt = EXTRACTION_PROMPT.format(

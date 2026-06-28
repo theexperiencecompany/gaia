@@ -56,13 +56,11 @@ def _make_llm_provider(name: str) -> dict[str, Any]:
 class TestGetAvailableProviders:
     @patch("app.agents.llm.client.providers")
     def test_all_providers_available(self, mock_providers: MagicMock) -> None:
-        openai_inst = _make_fake_provider("openai")
         gemini_inst = _make_fake_provider("gemini")
         openrouter_inst = _make_fake_provider("openrouter")
 
         def _get(key: str) -> MagicMock | None:
             return {
-                "openai_llm": openai_inst,
                 "gemini_llm": gemini_inst,
                 "openrouter_llm": openrouter_inst,
             }.get(key)
@@ -71,10 +69,9 @@ class TestGetAvailableProviders:
 
         result = _get_available_providers()
 
-        assert "openai" in result
         assert "gemini" in result
         assert "openrouter" in result
-        assert result["openai"] is openai_inst
+        assert result["gemini"] is gemini_inst
 
     @patch("app.agents.llm.client.providers")
     def test_no_providers_available(self, mock_providers: MagicMock) -> None:
@@ -109,15 +106,14 @@ class TestGetAvailableProviders:
 class TestGetOrderedProviders:
     def test_default_priority_order(self) -> None:
         available: dict[str, Any] = {
-            "openai": _make_fake_provider("openai"),
             "gemini": _make_fake_provider("gemini"),
             "openrouter": _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
-        # Should follow PROVIDER_PRIORITY: 1=gemini, 2=openai, 3=openrouter
+        # Should follow PROVIDER_PRIORITY: 1=gemini, 2=openrouter
         names = [p["name"] for p in ordered]
-        assert names == ["gemini", "openai", "openrouter"]
+        assert names == ["gemini", "openrouter"]
 
     def test_preferred_provider_is_first(self) -> None:
         available: dict[str, Any] = {
@@ -175,14 +171,14 @@ class TestGetOrderedProviders:
 
     def test_no_preferred_no_fallback(self) -> None:
         available: dict[str, Any] = {
-            "openai": _make_fake_provider("openai"),
             "gemini": _make_fake_provider("gemini"),
+            "openrouter": _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
 
         # No preferred, ordered is empty, so all providers by priority added
         names = [p["name"] for p in ordered]
-        assert names == ["gemini", "openai"]
+        assert names == ["gemini", "openrouter"]
 
     def test_empty_available(self) -> None:
         ordered = _get_ordered_providers({}, preferred_provider=None, fallback_enabled=True)
@@ -192,15 +188,15 @@ class TestGetOrderedProviders:
     def test_no_duplicate_when_preferred_is_also_in_priority(self) -> None:
         available: dict[str, Any] = {
             "gemini": _make_fake_provider("gemini"),
-            "openai": _make_fake_provider("openai"),
+            "openrouter": _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(
             available, preferred_provider="gemini", fallback_enabled=True
         )
 
         names = [p["name"] for p in ordered]
-        # gemini first (preferred), openai from priority; gemini not duplicated
-        assert names == ["gemini", "openai"]
+        # gemini first (preferred), openrouter from priority; gemini not duplicated
+        assert names == ["gemini", "openrouter"]
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +288,7 @@ class TestInitLlm:
         mock_ordered.return_value = []
 
         with pytest.raises(RuntimeError, match="Preferred provider"):
-            init_llm(preferred_provider="openai", fallback_enabled=False)
+            init_llm(preferred_provider="openrouter", fallback_enabled=False)
 
     @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
@@ -305,35 +301,15 @@ class TestInitLlm:
         mock_create: MagicMock,
         mock_log: MagicMock,
     ) -> None:
-        primary = _make_llm_provider("openai")
-        mock_available.return_value = {"openai": primary["instance"]}
+        primary = _make_llm_provider("openrouter")
+        mock_available.return_value = {"openrouter": primary["instance"]}
         mock_ordered.return_value = [primary]
         mock_create.return_value = MagicMock()
 
-        init_llm(preferred_provider="openai", fallback_enabled=False)
+        init_llm(preferred_provider="openrouter", fallback_enabled=False)
 
         # With fallback disabled, alternatives list should be empty
         mock_create.assert_called_once_with(primary, [])
-
-    @patch("app.agents.llm.client.log")
-    @patch("app.agents.llm.client._create_configurable_llm")
-    @patch("app.agents.llm.client._get_ordered_providers")
-    @patch("app.agents.llm.client._get_available_providers")
-    def test_preferred_provider_openai(
-        self,
-        mock_available: MagicMock,
-        mock_ordered: MagicMock,
-        mock_create: MagicMock,
-        mock_log: MagicMock,
-    ) -> None:
-        primary = _make_llm_provider("openai")
-        mock_available.return_value = {"openai": primary["instance"]}
-        mock_ordered.return_value = [primary]
-        mock_create.return_value = MagicMock()
-
-        init_llm(preferred_provider="openai")
-
-        mock_ordered.assert_called_once_with(mock_available.return_value, "openai", True)
 
     @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
@@ -455,16 +431,13 @@ class TestAinvokeLlm:
 class TestRegisterLlmProviders:
     @patch("app.agents.llm.client.init_openrouter_llm")
     @patch("app.agents.llm.client.init_gemini_llm")
-    @patch("app.agents.llm.client.init_openai_llm")
     def test_calls_all_init_functions(
         self,
-        mock_openai: MagicMock,
         mock_gemini: MagicMock,
         mock_openrouter: MagicMock,
     ) -> None:
         register_llm_providers()
 
-        mock_openai.assert_called_once()
         mock_gemini.assert_called_once()
         mock_openrouter.assert_called_once()
 
@@ -477,15 +450,15 @@ class TestRegisterLlmProviders:
 @pytest.mark.unit
 class TestConstants:
     def test_provider_models_keys(self) -> None:
-        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openai", "openrouter"}
+        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter"}
 
     def test_provider_priority_values(self) -> None:
-        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openai", "openrouter"}
+        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter"}
 
     def test_provider_priority_is_ordered(self) -> None:
         sorted_keys = sorted(PROVIDER_PRIORITY.keys())
         providers_in_order = [PROVIDER_PRIORITY[k] for k in sorted_keys]
-        assert providers_in_order == ["gemini", "openai", "openrouter"]
+        assert providers_in_order == ["gemini", "openrouter"]
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.api_core.exceptions import (

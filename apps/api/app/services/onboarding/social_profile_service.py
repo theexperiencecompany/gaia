@@ -5,10 +5,9 @@ import urllib.parse
 from bson import ObjectId
 from langchain_core.messages import HumanMessage
 
-from app.agents.llm.client import ainvoke_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.prompts.onboarding_prompts import SOCIAL_PROFILE_FILTER_PROMPT
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import SocialProfile, SocialProfileFilterOutput
 from shared.py.wide_events import log
@@ -246,8 +245,9 @@ async def extract_social_profiles_from_emails(
     ]
 
     try:
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
+        try:
+            llm = get_default_llm()
+        except RuntimeError:
             log.warning(
                 f"{LogTag.ONBOARDING} social_profiles LLM not available, using sent-email fallback"
             )

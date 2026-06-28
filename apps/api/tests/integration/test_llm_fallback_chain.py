@@ -49,23 +49,20 @@ class TestProviderPriorityOrdering:
     """Verify provider ordering follows PROVIDER_PRIORITY and respects preferences."""
 
     def test_default_priority_order(self) -> None:
-        """Without a preferred provider, ordering follows PROVIDER_PRIORITY (gemini > openai > openrouter)."""
+        """Without a preferred provider, ordering follows PROVIDER_PRIORITY (gemini > openrouter)."""
         mock_gemini = _make_mock_llm("gemini")
-        mock_openai = _make_mock_llm("openai")
         mock_openrouter = _make_mock_llm("openrouter")
 
         available = {
-            "openai": mock_openai,
             "gemini": mock_gemini,
             "openrouter": mock_openrouter,
         }
 
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
-        assert len(ordered) == 3
+        assert len(ordered) == 2
         assert ordered[0]["name"] == "gemini"
-        assert ordered[1]["name"] == "openai"
-        assert ordered[2]["name"] == "openrouter"
+        assert ordered[1]["name"] == "openrouter"
 
     def test_preferred_provider_goes_first(self) -> None:
         """When a preferred_provider is given and available, it leads the list."""
@@ -114,15 +111,15 @@ class TestProviderPriorityOrdering:
 
     def test_fallback_disabled_no_preferred_still_returns_priority_order(self) -> None:
         """With fallback_enabled=False but no preferred provider, ordered list still populated from priority."""
-        mock_openai = _make_mock_llm("openai")
-        available = {"openai": mock_openai}
+        mock_openrouter = _make_mock_llm("openrouter")
+        available = {"openrouter": mock_openrouter}
 
         # When no ordered (preferred) providers, fallback_enabled=False still adds from priority
         # because the condition is `if fallback_enabled or not ordered`
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
 
         assert len(ordered) == 1
-        assert ordered[0]["name"] == "openai"
+        assert ordered[0]["name"] == "openrouter"
 
 
 @pytest.mark.integration
@@ -145,30 +142,30 @@ class TestProviderInitialization:
     def test_init_llm_returns_configurable_with_multiple_providers(self) -> None:
         """With multiple providers, init_llm wraps them with configurable_alternatives."""
         mock_gemini = _make_mock_llm("gemini")
-        mock_openai = _make_mock_llm("openai")
+        mock_openrouter = _make_mock_llm("openrouter")
 
-        available = {"gemini": mock_gemini, "openai": mock_openai}
+        available = {"gemini": mock_gemini, "openrouter": mock_openrouter}
 
         with patch("app.agents.llm.client._get_available_providers", return_value=available):
             init_llm()
 
-        # Primary is gemini, and configurable_alternatives is called with openai
+        # Primary is gemini, and configurable_alternatives is called with openrouter
         mock_gemini.configurable_alternatives.assert_called_once()
         call_kwargs = mock_gemini.configurable_alternatives.call_args[1]
-        assert "openai" in call_kwargs
+        assert "openrouter" in call_kwargs
 
-    def test_init_llm_preferred_provider_openai(self) -> None:
-        """Requesting openai as preferred provider makes it the primary."""
+    def test_init_llm_preferred_provider_openrouter(self) -> None:
+        """Requesting openrouter as preferred provider makes it the primary."""
         mock_gemini = _make_mock_llm("gemini")
-        mock_openai = _make_mock_llm("openai")
+        mock_openrouter = _make_mock_llm("openrouter")
 
-        available = {"gemini": mock_gemini, "openai": mock_openai}
+        available = {"gemini": mock_gemini, "openrouter": mock_openrouter}
 
         with patch("app.agents.llm.client._get_available_providers", return_value=available):
-            init_llm(preferred_provider="openai")
+            init_llm(preferred_provider="openrouter")
 
-        # openai should be primary — its configurable_alternatives should be called
-        mock_openai.configurable_alternatives.assert_called_once()
+        # openrouter should be primary — its configurable_alternatives should be called
+        mock_openrouter.configurable_alternatives.assert_called_once()
 
     def test_init_llm_invalid_provider_raises_value_error(self) -> None:
         """Requesting a non-existent provider raises ValueError."""
@@ -194,9 +191,9 @@ class TestProviderInitialization:
             "app.agents.llm.client._get_available_providers",
             return_value={"gemini": mock_gemini},
         ):
-            result = init_llm(preferred_provider="openai", fallback_enabled=False)
+            result = init_llm(preferred_provider="openrouter", fallback_enabled=False)
 
-        # Since openai is not available and ordered is empty, gemini fills in
+        # Since openrouter is not available and ordered is empty, gemini fills in
         assert result is mock_gemini
 
 
@@ -314,9 +311,8 @@ class TestProviderConstants:
         assert PROVIDER_PRIORITY[1] == "gemini"
 
     def test_provider_models_have_expected_keys(self) -> None:
-        """PROVIDER_MODELS must contain gemini, openai, and openrouter."""
+        """PROVIDER_MODELS must contain gemini and openrouter."""
         assert "gemini" in PROVIDER_MODELS
-        assert "openai" in PROVIDER_MODELS
         assert "openrouter" in PROVIDER_MODELS
 
 
@@ -357,15 +353,14 @@ class TestGetAvailableProviders:
 
     def test_returns_only_registered_providers(self) -> None:
         """Only providers whose keys are configured appear in the result."""
-        mock_openai_llm = _make_mock_llm("openai_llm")
-        registry = self._build_registry({"openai_llm": mock_openai_llm})
+        mock_openrouter_llm = _make_mock_llm("openrouter_llm")
+        registry = self._build_registry({"openrouter_llm": mock_openrouter_llm})
 
         with patch("app.agents.llm.client.providers", registry):
             available = _get_available_providers()
 
-        assert "openai" in available
+        assert "openrouter" in available
         assert "gemini" not in available
-        assert "openrouter" not in available
 
     def test_returns_empty_when_no_providers_have_keys(self) -> None:
         """When all providers have missing keys, available dict is empty."""

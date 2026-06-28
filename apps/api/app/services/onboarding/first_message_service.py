@@ -4,13 +4,12 @@ import time
 
 from langchain_core.messages import HumanMessage
 
-from app.agents.llm.client import ainvoke_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.prompts.onboarding_prompts import (
     FIRST_MESSAGE_GENERATION_PROMPT_GMAIL,
     FIRST_MESSAGE_GENERATION_PROMPT_NO_GMAIL,
 )
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from app.models.onboarding_models import (
     InboxTriage,
     WritingStyleProfile,
@@ -85,9 +84,7 @@ async def generate_first_message(
                 todos_executed=todos_executed_text,
             )
 
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
+        llm = get_default_llm()
         t_llm = time.monotonic()
         response = await ainvoke_llm(
             llm, [HumanMessage(content=prompt)], label="onboarding_first_message"

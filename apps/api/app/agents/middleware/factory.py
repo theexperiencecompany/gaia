@@ -7,8 +7,8 @@ from typing import Any
 
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
-from langchain_google_genai import ChatGoogleGenerativeAI
 
+from app.agents.llm.client import get_default_llm
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
@@ -22,7 +22,6 @@ from app.constants.summarization import (
     COMPACTION_THRESHOLD,
     MAX_OUTPUT_CHARS,
     SUMMARIZATION_KEEP_TOKENS,
-    SUMMARIZATION_MODEL,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
 from shared.py.wide_events import log
@@ -50,10 +49,7 @@ def get_summarization_llm() -> BaseChatModel | None:
         )
         return None
 
-    _summarization_llm = ChatGoogleGenerativeAI(
-        model=SUMMARIZATION_MODEL,
-        temperature=0.1,  # Low temperature for consistent summaries
-    )
+    _summarization_llm = get_default_llm()
     return _summarization_llm
 
 

@@ -24,9 +24,8 @@ import re
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from shared.py.wide_events import log
 
 # Publish is user-initiated; cap the LLM call so a degraded provider can't
@@ -143,8 +142,9 @@ async def contains_profanity(**fields: str | None) -> bool:
         return False
 
     try:
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
+        try:
+            llm = get_default_llm()
+        except RuntimeError:
             return _wordlist_any(non_empty.values())
 
         structured_llm = llm.with_structured_output(_ModerationResult)
