@@ -1241,3 +1241,19 @@
     opacity: 0.9;
   }
 }
+
+/* App-wide HeroUI <Kbd> restyle: no shadow/outline, and font-size relative to
+   the parent so inline shortcut hints sit flush with surrounding text. Targets
+   the `shadow-small` class HeroUI's Kbd base always emits; unlayered so it wins
+   over Tailwind's layered utilities without !important. */
+kbd.shadow-small {
+  box-shadow: none;
+  border: 0;
+  outline: 0;
+  font-size: 0.85em;
+  line-height: 1;
+  /* a touch of vertical breathing room so the smaller box doesn't look cramped */
+  padding-block: 0.4em;
+  /* radius relative to the smaller font so it stays a rounded rectangle */
+  border-radius: 0.5em;
+}

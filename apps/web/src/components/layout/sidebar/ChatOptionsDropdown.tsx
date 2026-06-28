@@ -31,12 +31,9 @@ import {
   useState,
 } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { chatApi } from "@/features/chat/api/chatApi";
+import { useChatActions } from "@/features/chat/hooks/useChatActions";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { useDeleteConversation } from "@/hooks/useDeleteConversation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { db } from "@/lib/db/chatDb";
-import { useChatStore } from "@/stores/chatStore";
 
 export default function ChatOptionsDropdown({
   buttonHovered,
@@ -55,7 +52,7 @@ export default function ChatOptionsDropdown({
   logo2?: boolean;
   btnChildren?: ReactNode;
 }) {
-  const deleteConversation = useDeleteConversation();
+  const chatActions = useChatActions();
   const { confirm, confirmationProps } = useConfirmation();
   const [dangerStateHovered, setDangerStateHovered] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -63,52 +60,18 @@ export default function ChatOptionsDropdown({
   const router = useRouter();
 
   const handleStarToggle = async () => {
-    const newStarredValue = starred === undefined ? true : !starred;
-
     try {
-      // Make the API call first
-      await chatApi.toggleStarConversation(chatId, newStarredValue);
-
-      // Update IndexedDB atomically - event will update Zustand store
-      await db.updateConversationFields(chatId, {
-        starred: newStarredValue,
-      });
-
+      await chatActions.toggleStar(chatId, Boolean(starred));
       trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_STARRED, {
         conversation_id: chatId,
-        starred: newStarredValue,
+        starred: !starred,
       });
-    } catch (error) {
-      console.error("Failed to update star", error);
+    } catch {
+      // toggleStar already surfaces the error toast
     }
   };
 
-  const handleReadToggle = async () => {
-    const newIsUnread = !isUnread;
-
-    // Optimistic update - update store immediately for instant UI feedback
-    useChatStore
-      .getState()
-      .updateConversation(chatId, { isUnread: newIsUnread });
-
-    try {
-      // Also update IndexedDB for persistence
-      await db.updateConversationFields(chatId, { isUnread: newIsUnread });
-
-      // API call in background
-      if (newIsUnread) {
-        chatApi.markAsUnread(chatId).catch(console.error);
-      } else {
-        chatApi.markAsRead(chatId).catch(console.error);
-      }
-    } catch (error) {
-      // Revert on error
-      useChatStore
-        .getState()
-        .updateConversation(chatId, { isUnread: isUnread });
-      console.error("Failed to toggle read status", error);
-    }
-  };
+  const handleReadToggle = () => chatActions.toggleRead(chatId, isUnread);
 
   const closeEditModal = useCallback(() => {
     setIsEditModalOpen(false);
@@ -118,21 +81,13 @@ export default function ChatOptionsDropdown({
   const handleEdit = async () => {
     if (!newName) return;
     try {
-      await chatApi.renameConversation(chatId, newName);
-
-      // Update IndexedDB atomically - event will update Zustand store
-      await db.updateConversationFields(chatId, {
-        title: newName,
-        description: newName,
-      });
-
+      await chatActions.rename(chatId, newName);
       trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_RENAMED, {
         conversation_id: chatId,
       });
-
       closeEditModal();
-    } catch (error) {
-      console.error("Failed to update chat name", error);
+    } catch {
+      // rename already surfaces the error toast
     }
   };
 
@@ -150,14 +105,14 @@ export default function ChatOptionsDropdown({
 
     try {
       router.push("/c");
-      await deleteConversation(chatId);
+      await chatActions.remove(chatId);
       trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_DELETED, {
         conversation_id: chatId,
       });
     } catch (error) {
       console.error("Failed to delete chat", error);
     }
-  }, [router, chatId, deleteConversation, confirm]);
+  }, [router, chatId, chatActions, confirm]);
 
   const openEditModal = () => {
     setNewName(chatName); // Reset to current chat name when opening edit modal
