@@ -133,7 +133,7 @@ async def contains_profanity(**fields: str | None) -> bool:
     ``description=...``). All fields are sent in a single LLM call returning
     one boolean — one request covers any number of fields.
 
-    Primary path: LLM moderation via the free Gemini provider with structured
+    Primary path: LLM moderation via the default model with structured
     output. Falls back to the offline wordlist if the LLM provider is missing,
     the call errors, or it exceeds ``_MODERATION_TIMEOUT_SECONDS``.
     """
