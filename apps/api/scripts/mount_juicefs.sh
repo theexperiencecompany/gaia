@@ -236,24 +236,64 @@ wait_mounted() {
 }
 
 # Each launch_*_subdir only STARTS the juicefs daemon (launch_juicefs is
-# setsid+&, non-blocking) — it does NOT wait for readiness. The three are all
-# independent clients of the same volume on different mountpoints, and each pays
-# ~13s of connect + SQL schema-sync. Launching them together lets that overlap,
-# so the whole mount waits ~once (~14s) instead of summing (~47s). The
-# wait_mounted + bind for each happens in the main flow below.
+# setsid+&, non-blocking) — it does NOT wait for readiness. The clients are
+# independent mounts of the same volume on different mountpoints, each paying
+# ~13s of connect + SQL schema-sync; starting them without blocking lets that
+# overlap. The wait_mounted + bind for each happens in the main flow below.
+# Steady state runs TWO daemons (user RW + skills RO) — the shared /_system
+# overlay is served from the template-baked bind, no daemon. Only an older,
+# pre-bake template falls back to a third (/_system) juicefs daemon.
 #
-# Memory: the E2B sandbox has only ~1 GB RAM and runs all THREE daemons at once.
-# --buffer-size is an in-RAM read/write buffer, so the old 600+300+300 MB OOM-
-# killed the mount ~2/3 of the time. Keep the buffers small (128+32+32) so they
-# coexist in ~1 GB; reads go host-side in prod so a big sandbox buffer buys little.
+# Memory: the E2B sandbox has only ~1 GB RAM. --buffer-size is an in-RAM read/
+# write buffer, so the old large buffers OOM-killed the mount ~2/3 of the time
+# when three daemons ran at once. Keep the buffers small (128+32+32) so they
+# coexist in ~1 GB even on the fallback path; reads go host-side in prod so a big
+# sandbox buffer buys little.
 launch_user_subdir() {
     mountpoint -q "$JFS_MOUNT" && return 0
     mkdir -p "$JFS_MOUNT" /var/cache/juicefs
     # --subdir scopes the kernel-visible tree to /users/$USER_ID — no parent
     # navigation to a sibling user. --backup-meta=0: R2 ListObjects is unsorted.
     # no --writeback: writeback loses data on sandbox kill — keep durable.
+    #
+    # --no-bgjob: background metadata GC (trash cleanup, unreferenced-slice
+    # deletion, stale-session removal) must run on exactly ONE client per volume,
+    # not on every sandbox. JuiceFS GC repeatedly scans the whole `sessions` set
+    # (SMEMBERS/ZSCORE per session) — running it on every per-user RW mount
+    # multiplies that scan by the live-sandbox count and was the dominant source
+    # of metadata-engine load. The host-side whole-volume mount (storage/
+    # bootstrap.py) is the single GC owner; sandbox clients opt out. (The two
+    # read-only mounts below already imply --no-bgjob, but it's set explicitly so
+    # the intent survives a future juicefs default change.)
+    #
+    # Metadata caches (cut the per-op firehose: git/npm/python/rg re-stat the
+    # same paths and probe thousands of non-existent ones every run). Safe to
+    # raise here because JuiceFS invalidates the mounting client's OWN cache on
+    # every local write (verified in pkg/vfs/handle.go invalidateDirHandle +
+    # docs "consistency exceptions") — the agent always sees its own files
+    # immediately regardless of TTL. The TTLs only bound how long THIS sandbox
+    # lags a change made by the HOST mount (uploads). Kept at ~10s so a
+    # host-uploaded file is listed within ~10s; reads by exact path are
+    # close-to-open and see it instantly (open bypasses cache).
+    #   --readdir-cache: kernel readdir caching (TTL tied to --attr-cache; needs
+    #     kernel 4.20+, E2B is 5.x). Safe: local creates/deletes invalidate the
+    #     dir handle so `ls` shows the agent's own changes at once.
+    #   --negative-entry-cache=2: kills the ENOENT storm from module resolution;
+    #     small TTL because a path stat'd ENOENT before a host upload stays
+    #     "missing" for the TTL (cross-client only).
+    #   --open-cache omitted (0): keep close-to-open so host-written content is
+    #     never served stale.
+    #   --heartbeat=30: halve the session-refresh write rate (default 12s); only
+    #     cost is slower stale-session detection, which graceful unmount covers.
     launch_juicefs \
         --subdir "/users/$USER_ID" \
+        --no-bgjob \
+        --heartbeat=30 \
+        --attr-cache=10 \
+        --entry-cache=10 \
+        --dir-entry-cache=10 \
+        --negative-entry-cache=2 \
+        --readdir-cache \
         --backup-meta=0 \
         --cache-dir=/var/cache/juicefs \
         --cache-size=2048 \
@@ -266,9 +306,20 @@ launch_skills_subdir() {
     mountpoint -q "$JFS_SKILLS_MOUNT" && return 0
     mkdir -p "$JFS_SKILLS_MOUNT"
     # Read-only mount of /skills/$USER_ID — backs /workspace/skills.
+    # --read-only already implies --no-bgjob; set explicitly for intent.
+    # Skills are near-immutable (change only on a skill install, written
+    # host-side), so cache metadata aggressively — a new skill appears within
+    # the entry TTL, which is fine since installs precede use. No --heartbeat:
+    # read-only mounts don't refresh a session. open-cache stays off so an
+    # in-place skill reinstall is never served stale.
     launch_juicefs \
         --subdir "/skills/$USER_ID" \
         --read-only \
+        --no-bgjob \
+        --attr-cache=300 \
+        --entry-cache=120 \
+        --dir-entry-cache=120 \
+        --negative-entry-cache=30 \
         --backup-meta=0 \
         --cache-dir=/var/cache/juicefs \
         --cache-size=512 \
@@ -333,31 +384,36 @@ fi
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE" 2>/dev/null || true
 chmod 0750 "$WORKSPACE" 2>/dev/null || true
 
-# Primary is up. NOW launch the read-only overlays concurrently — they share one
-# cheap read-only session each and contend with nothing critical from here.
+# Primary is up. NOW launch the read-only skills overlay concurrently — it opens
+# a cheap read-only session and contends with nothing critical from here. (The
+# shared-system overlay is the template-baked /etc/gaia/system bind below.)
 launch_skills_subdir
-launch_system_subdir
 
-# Optional skills overlay — best-effort. If /skills/$USER_ID doesn't exist or the
-# mount fails, /workspace/skills falls back to the materialized subdir.
+# Skills overlay (/workspace/skills) — best-effort. If /skills/$USER_ID doesn't
+# exist or the mount fails, /workspace/skills falls back to the materialized subdir.
 mkdir -p "$WORKSPACE/skills"
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/skills" 2>/dev/null || true
-# `mount --bind ... -o ro` is honoured on the bind itself only on newer
-# kernels; older kernels silently ignore the flag and require a remount to
-# actually mark the bind read-only. The underlying FUSE is `--read-only`
-# already, so writes still fail in either case — but pin the bind itself ro
-# explicitly so the read-only surface is consistent at every layer.
 if wait_mounted "$JFS_SKILLS_MOUNT" 30 && mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills"; then
     mount -o remount,bind,ro "$WORKSPACE/skills" 2>/dev/null || true
 fi
 
-# Optional shared-system overlay — best-effort. Backs /workspace/.system with the
-# single /_system subtree (INDEX.md, GUIDE.md docs, builtin skills). If /_system
-# doesn't exist or the mount fails, per-user workspaces keep their own copies.
+# Shared-system overlay — best-effort. Backs /workspace/.system with the system
+# files (INDEX.md, GUIDE.md docs, builtin skills) that the per-user symlinks
+# target. These are static + identical for every user, so we prefer the copy
+# BAKED into the E2B template at /etc/gaia/system — a plain read-only bind, no
+# JuiceFS client and no per-sandbox metadata-engine session. Older templates
+# (pre-bake) have no /etc/gaia/system, so fall back to the JuiceFS /_system mount.
 mkdir -p "$WORKSPACE/.system"
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/.system" 2>/dev/null || true
-if wait_mounted "$JFS_SYSTEM_MOUNT" 30 && mount --bind "$JFS_SYSTEM_MOUNT" "$WORKSPACE/.system"; then
-    mount -o remount,bind,ro "$WORKSPACE/.system" 2>/dev/null || true
+if [[ -d /etc/gaia/system ]]; then
+    if mount --bind /etc/gaia/system "$WORKSPACE/.system"; then
+        mount -o remount,bind,ro "$WORKSPACE/.system" 2>/dev/null || true
+    fi
+else
+    launch_system_subdir
+    if wait_mounted "$JFS_SYSTEM_MOUNT" 30 && mount --bind "$JFS_SYSTEM_MOUNT" "$WORKSPACE/.system"; then
+        mount -o remount,bind,ro "$WORKSPACE/.system" 2>/dev/null || true
+    fi
 fi
 
 mkdir -p "$WORKSPACE/.gaia/runs"

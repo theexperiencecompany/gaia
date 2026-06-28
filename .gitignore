@@ -158,3 +158,5 @@ skills-lock.json
 .jscpd-report/
 
 infra/load-testing
+# E2B template build staging artifact (transient)
+apps/api/scripts/_gaia_system.tar.gz
