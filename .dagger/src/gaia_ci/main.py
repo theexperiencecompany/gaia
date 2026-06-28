@@ -124,6 +124,10 @@ class GaiaCi:
                     "**/package.json",
                     "**/pyproject.toml",
                     "libs/**",
+                    # pnpm.patchedDependencies in the root package.json points here;
+                    # --frozen-lockfile reads the patch files during install, so they
+                    # must exist in this dependency layer (before the full source mount).
+                    "patches/**",
                 ],
             )
             .with_exec(["pnpm", "install", "--frozen-lockfile"])
