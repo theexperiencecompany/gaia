@@ -3,6 +3,7 @@ from typing import Any
 
 from google.api_core.exceptions import (
     DeadlineExceeded,
+    GoogleAPICallError,
     InternalServerError,
     ResourceExhausted,
     ServiceUnavailable,
@@ -11,17 +12,29 @@ from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
 from langchain_core.messages import BaseMessage
-from langchain_core.runnables import Runnable, RunnableConfig
+from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
+from openrouter.errors import (
+    BadGatewayResponseError,
+    EdgeNetworkTimeoutResponseError,
+    InternalServerResponseError,
+    NoResponseError,
+    OpenRouterError,
+    ProviderOverloadedResponseError,
+    RequestTimeoutResponseError,
+    ServiceUnavailableResponseError,
+    TooManyRequestsResponseError,
+)
 from typing_extensions import TypedDict
 
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
+    DEFAULT_MODEL_NAME,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
@@ -31,33 +44,59 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
-# Exception types we retry at the LLM layer. All of these are transient /
-# infrastructure errors that are safe to retry and tend to succeed on a
-# second attempt. ``ResourceExhausted`` covers 429 from the provider's own
-# quota (distinct from the application-level rate limiter which raises
-# ``LangChainRateLimitException`` and must NOT be retried).
+# OpenRouter SDK (the ``openrouter`` package used by ``langchain-openrouter``)
+# transient response/network failures — worth retrying. The non-transient ones
+# (402 out-of-credits, 401/403 auth, 404, 400/422) are deliberately excluded so
+# they fall straight through to the fallback instead of burning retries.
+_OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
+    TooManyRequestsResponseError,
+    InternalServerResponseError,
+    BadGatewayResponseError,
+    ServiceUnavailableResponseError,
+    RequestTimeoutResponseError,
+    EdgeNetworkTimeoutResponseError,
+    ProviderOverloadedResponseError,
+    NoResponseError,
+)
+
+# Transient provider/infra errors — safe to retry, usually succeed on a second
+# attempt. The agent model node wraps the bound model in ``with_retry`` on these
+# (applied AFTER ``bind_tools`` so the ``RunnableRetry`` wrapper need not expose
+# it). Provider 429s (``ResourceExhausted`` / ``TooManyRequestsResponseError``)
+# are the provider's own quota, distinct from the application rate limiter
+# (``LangChainRateLimitException``) which must NOT be retried and never reaches
+# the model node. Covers both Gemini (google-api-core) and OpenRouter so retry
+# is provider-agnostic.
 _LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    # Gemini (google-api-core)
     ResourceExhausted,
     ServiceUnavailable,
     DeadlineExceeded,
     InternalServerError,
+    # OpenRouter SDK
+    *_OPENROUTER_TRANSIENT_ERRORS,
+    # stdlib
     ConnectionError,
     TimeoutError,
 )
 
+# Provider/infra failures that trigger a fallback to the default model once
+# retries are exhausted — or immediately for the non-transient ones like 402
+# out-of-credits and 401 auth. Deliberately a curated provider-error set, NOT a
+# bare ``Exception``: a programming bug must fail loud, not silently downgrade
+# the model. ``OpenRouterError`` is the base of every OpenRouter response error
+# (so new error types are covered automatically); ``NoResponseError`` is the
+# SDK's connection failure and is not an ``OpenRouterError`` subclass.
+_LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    OpenRouterError,  # every OpenRouter response error, incl. 402 insufficient credits
+    NoResponseError,
+    GoogleAPICallError,  # every Gemini google-api-core error
+    ConnectionError,
+    TimeoutError,
+)
 
-def _wrap_with_retry(llm: Runnable, *, attempts: int = 3) -> Runnable:
-    """Return ``llm`` unchanged.
-
-    We deliberately do NOT call ``llm.with_retry(...)`` here. It returns a
-    ``RunnableRetry`` wrapper that does not expose ``bind_tools``, which
-    breaks LangGraph's bigtool agent builder. Retry semantics for transient
-    provider errors belong on the agent NODE via ``RetryPolicy`` — see the
-    ``retry_policy`` wiring in the graph builder. The exception tuple above
-    stays here so the node-level policy can import it.
-    """
-    del attempts  # retained for signature compat
-    return llm
+# Attempts for the model-level transient-error retry in the agent model node.
+LLM_RETRY_MAX_ATTEMPTS = 3
 
 
 PROVIDER_MODELS = {
@@ -110,7 +149,7 @@ def init_gemini_llm():
     ).configurable_fields(
         model=ConfigurableField(id="model_name", name="Model", description="Which model to use"),
     )
-    return _wrap_with_retry(llm)
+    return llm
 
 
 @lazy_provider(
@@ -284,6 +323,18 @@ def register_llm_providers():
     init_openai_llm()
     init_gemini_llm()
     init_openrouter_llm()
+
+
+def init_fallback_llm() -> BaseChatModel | None:
+    """The default model (Gemini) used as the last-resort fallback when the
+    user-selected model keeps failing mid-turn. Reuses the registered
+    ``gemini_llm`` provider, pinned to the default model so a paid/dev selection
+    can't leak in. Returns ``None`` when Google isn't configured, in which case
+    the agent node skips the fallback instead of crashing."""
+    gemini = providers.get("gemini_llm")
+    if gemini is None:
+        return None
+    return gemini.with_config(configurable={"model_name": DEFAULT_MODEL_NAME})
 
 
 def get_free_llm_chain() -> list[BaseChatModel]:
