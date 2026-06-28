@@ -52,10 +52,20 @@ export default function Navbar() {
       setStars(Math.round(repoData.stargazers_count));
       return;
     }
+    // Slot-machine flicker while the GitHub count loads — but BOUNDED. If the
+    // external GitHub API is slow or rate-limited, an unbounded 80ms interval
+    // spins the main thread forever: the page never goes idle, which both
+    // wastes battery and prevents Lighthouse from ever settling (massively
+    // inflating LCP/TBT/TTI). Cap the flicker; NumberFlow animates to the real
+    // value once it arrives.
     const id = setInterval(() => {
       setStars(Math.floor(100 + Math.random() * 900));
     }, 80);
-    return () => clearInterval(id);
+    const stop = setTimeout(() => clearInterval(id), 1600);
+    return () => {
+      clearInterval(id);
+      clearTimeout(stop);
+    };
   }, [repoData?.stargazers_count]);
 
   const user = useUser();
