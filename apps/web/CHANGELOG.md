@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.22.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.21.0...web-v0.22.0) (2026-06-28)
+
+
+### Features
+
+* **agent:** GLM 5.2, dev model selector, harness fixes, skill rendering, OpenUI markdown ([#813](https://github.com/theexperiencecompany/gaia/issues/813)) ([b109509](https://github.com/theexperiencecompany/gaia/commit/b10950968d4927ddfe9eb32660fc8e6d5e1632a2))
+* **integrations:** per-host MCP favicon resolution ([#835](https://github.com/theexperiencecompany/gaia/issues/835)) ([190e4d8](https://github.com/theexperiencecompany/gaia/commit/190e4d818f143e63521922c0ff857b5fcd3656ad))
+* **integrations:** short, single-use connect links on the frontend domain ([#829](https://github.com/theexperiencecompany/gaia/issues/829)) ([c75fd1e](https://github.com/theexperiencecompany/gaia/commit/c75fd1e33ee4fc4559fc2f1e1251bc46a63a8805))
+* **openui:** adopt @openuidev/react-ui, themed to GAIA ([#830](https://github.com/theexperiencecompany/gaia/issues/830)) ([83f392b](https://github.com/theexperiencecompany/gaia/commit/83f392ba569d3ca85d53a99a07b925d0f4810c3b))
+* **pricing:** resume checkout after signup for logged-out users ([#809](https://github.com/theexperiencecompany/gaia/issues/809)) ([418de73](https://github.com/theexperiencecompany/gaia/commit/418de73453a29f65bef8550da105396043005e7b))
+* **web:** fix marketplace integration detail page (content delivery, tool names, layout) ([#801](https://github.com/theexperiencecompany/gaia/issues/801)) ([bfd7a31](https://github.com/theexperiencecompany/gaia/commit/bfd7a3101892c4d289989e3443bf6def374f8937))
+* **workflows:** workflow modal UX redesign ([#819](https://github.com/theexperiencecompany/gaia/issues/819)) ([80c7a75](https://github.com/theexperiencecompany/gaia/commit/80c7a753d2967b1ae601c2c4b814044c4a666fb5))
+
+
+### Bug Fixes
+
+* **chat:** block send until composer attachments finish uploading ([#806](https://github.com/theexperiencecompany/gaia/issues/806)) ([8420387](https://github.com/theexperiencecompany/gaia/commit/8420387e9c160f242609cd6a483ba3f6d9407be0))
+* **chat:** make links legible in user bubbles ([#802](https://github.com/theexperiencecompany/gaia/issues/802)) ([d57402b](https://github.com/theexperiencecompany/gaia/commit/d57402bea392e41c2171e25a105a59896729efb6))
+* **chat:** show integration name instead of id in planning task header ([#807](https://github.com/theexperiencecompany/gaia/issues/807)) ([4015d56](https://github.com/theexperiencecompany/gaia/commit/4015d560349dd45255bfd39be8f3692ffe816ebb))
+* **desktop:** route to desktop login on logout instead of landing page ([#832](https://github.com/theexperiencecompany/gaia/issues/832)) ([ea2fb8e](https://github.com/theexperiencecompany/gaia/commit/ea2fb8e95cedb3da0df49a2f4ce9f58bbf917b72))
+* notification tool schema and ui ([#804](https://github.com/theexperiencecompany/gaia/issues/804)) ([a10f720](https://github.com/theexperiencecompany/gaia/commit/a10f7208adb21f82fa9227447336714bdfef2d9a))
+* **web:** keep desktop-only wake-word out of the Cloudflare Worker bu… ([#798](https://github.com/theexperiencecompany/gaia/issues/798)) ([5a92a79](https://github.com/theexperiencecompany/gaia/commit/5a92a796c9e95afbe1738d0e3e3db4ddfb35e5c3))
+* **web:** keep desktop-only wake-word out of the Cloudflare Worker bundle ([#796](https://github.com/theexperiencecompany/gaia/issues/796)) ([cdd765a](https://github.com/theexperiencecompany/gaia/commit/cdd765a46bbc5c464c11a143ef7f59d7b29a768e))
+* **web:** keep wake-word ONNX runtime off the Cloudflare Workers bundle ([#793](https://github.com/theexperiencecompany/gaia/issues/793)) ([68b4e84](https://github.com/theexperiencecompany/gaia/commit/68b4e84a38b3eaab419b65bf63fff43264614653))
+* **web:** publish modal dismiss, redirect to published integration, clear stale connect params ([#814](https://github.com/theexperiencecompany/gaia/issues/814)) ([eb0bdc3](https://github.com/theexperiencecompany/gaia/commit/eb0bdc3fc47d849ff093e162a1f1651316242137))
+
 ## [0.21.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.20.0...web-v0.21.0) (2026-06-21)
 
 

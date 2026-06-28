@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.4.0...desktop-v0.5.0) (2026-06-28)
+
+
+### Features
+
+* **logging:** greppable subsystem prefixes + structured wide events ([#815](https://github.com/theexperiencecompany/gaia/issues/815)) ([b4fca50](https://github.com/theexperiencecompany/gaia/commit/b4fca508e9a0bcb559c89d1d57bafde82b04e3f2))
+
 ## [0.4.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.3.0...desktop-v0.4.0) (2026-06-21)
 
 
