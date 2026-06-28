@@ -1,6 +1,6 @@
 """Unit tests for the integrations config API endpoints.
 
-Tests cover GET /config, GET /status, DELETE /{integration_id},
+Tests cover GET /config, DELETE /{integration_id},
 and POST /connect/{integration_id}.  Service layer is mocked;
 only HTTP status codes, response shapes, and error handling are verified.
 """
@@ -104,44 +104,6 @@ class TestGetIntegrationsConfig:
             resp = await unauthed_client.get(f"{API}/config")
         # Config endpoint has no auth dependency — should succeed
         assert resp.status_code == 200
-
-
-# ===========================================================================
-# GET /integrations/status
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestGetIntegrationsStatus:
-    async def test_status_success(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.integrations.config.get_all_integrations_status",
-            new_callable=AsyncMock,
-            return_value={"github": True, "slack": False},
-        ):
-            resp = await client.get(f"{API}/status")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data["integrations"]) == 2
-
-    async def test_status_service_error_returns_all_disconnected(self, client: AsyncClient) -> None:
-        """When get_all_integrations_status fails, endpoint returns all
-        integrations as disconnected (not 500)."""
-        with patch(
-            "app.api.v1.endpoints.integrations.config.get_all_integrations_status",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB down"),
-        ):
-            resp = await client.get(f"{API}/status")
-        assert resp.status_code == 200
-        data = resp.json()
-        # All returned items should have connected=False
-        for item in data["integrations"]:
-            assert item["connected"] is False
-
-    async def test_status_requires_auth(self, unauthed_client: AsyncClient) -> None:
-        resp = await unauthed_client.get(f"{API}/status")
-        assert resp.status_code == 401
 
 
 # ===========================================================================

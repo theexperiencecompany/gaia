@@ -1,21 +1,18 @@
 """
 Favicon fetching utilities with Redis caching.
 
-Strategy:
-1. Check Redis cache by root domain (e.g., smithery.ai)
-2. Try Google's favicon service (fastest, most reliable)
-3. Try 'favicon' library (parses HTML for link tags) - runs in thread pool
-4. Try standard /favicon.ico path
-5. Parse HTML for link[rel=icon] tags
-6. Cache result in Redis for 180 days
+Resolution (per full host, cached in Redis by host):
+1. Smithery hosts: the Smithery registry's per-server iconUrl.
+2. The host's explicit <link rel="icon">.
+3. Google's favicon service for the registered domain (default fallback).
+
+Each override is HEAD-validated to be a live image before use, so a server never
+loses its working icon to a broken or missing one.
 """
 
-import asyncio
-import time
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
-import favicon
 import httpx
 import tldextract
 
@@ -26,82 +23,88 @@ from shared.py.wide_events import log
 
 # HTTP client settings
 HTTP_TIMEOUT = 3.0
-FAVICON_LIB_TIMEOUT = 3
+
+# Present a normal browser UA — several hosts (e.g. the Smithery API) reject
+# default library user agents with a 403.
+BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
 
 # Google Favicon Service - fast and reliable
 GOOGLE_FAVICON_URL = "https://www.google.com/s2/favicons?domain={domain}&sz=256"
 
-# Known favicon extensions that don't need validation
-KNOWN_FAVICON_EXTENSIONS = (".ico", ".png", ".svg", ".webp")
+# Smithery hosts every server under one host but the Smithery registry exposes a
+# per-server icon (its source varies: a CDN logo, a Google S2 favicon, or a
+# Smithery-hosted image), so resolve that instead of the shared host favicon.
+SMITHERY_SUFFIX = "smithery.ai"
+SMITHERY_REGISTRY_URL = "https://registry.smithery.ai/servers/{qualified_name}"
+SMITHERY_TRANSPORT_SUFFIXES = ("/mcp", "/sse", "/stdio")
+
+
+def _get_host_url(server_url: str) -> str:
+    """Scheme + full host (subdomain included), e.g. 'https://whoop.run.mcp-use.com'.
+
+    MCP servers commonly live on a subdomain and serve their own icon there, so
+    favicon resolution keys off the full host rather than the registered domain.
+    """
+    parsed = urlparse(server_url if "://" in server_url else f"https://{server_url}")
+    scheme = parsed.scheme or "https"
+    return f"{scheme}://{parsed.netloc}"
 
 
 def _get_domain_cache_key(server_url: str) -> str:
-    """Extract root domain for cache key."""
-    extracted = tldextract.extract(server_url)
-    return f"favicon:{extracted.top_domain_under_public_suffix}"
+    """Cache key by scheme + full host so each MCP server resolves its own icon."""
+    return f"favicon:{_get_host_url(server_url)}"
 
 
-def _get_root_domain_url(server_url: str) -> str:
-    """Extract root domain URL from any URL."""
-    parsed = urlparse(server_url)
-    scheme = parsed.scheme or "https"
-    extracted = tldextract.extract(server_url)
-    return f"{scheme}://{extracted.top_domain_under_public_suffix}"
+def _smithery_qualified_name(server_url: str) -> str | None:
+    """Smithery server qualified name from its URL, or None if not a Smithery host.
 
-
-def _is_known_favicon_url(url: str) -> bool:
-    """Check if URL has a known favicon extension (skip validation)."""
-    url_lower = url.lower().split("?")[0]  # Remove query params
-    return any(url_lower.endswith(ext) for ext in KNOWN_FAVICON_EXTENSIONS)
-
-
-def _try_favicon_library_sync(url: str) -> str | None:
+    URLs look like ``https://server.smithery.ai/@owner/name`` or a bare ``/slug``,
+    optionally with a transport suffix (``/mcp``, ``/sse``, ``/stdio``).
     """
-    Sync version of favicon library fetch (runs in thread pool).
+    parsed = urlparse(server_url if "://" in server_url else f"https://{server_url}")
+    hostname = parsed.hostname or ""
+    if hostname != SMITHERY_SUFFIX and not hostname.endswith(f".{SMITHERY_SUFFIX}"):
+        return None
+    qualified_name = parsed.path.strip("/")
+    for suffix in SMITHERY_TRANSPORT_SUFFIXES:
+        qualified_name = qualified_name.removesuffix(suffix)
+    return qualified_name or None
 
-    Filters out large OG images, prefers small icons or unknown dimensions.
+
+async def _fetch_smithery_icon(server_url: str) -> str | None:
+    """The Smithery registry's authoritative per-server iconUrl, or None.
+
+    The icon source varies per server (a CDN logo, a Google S2 favicon, or a
+    Smithery-hosted image), so we use whatever the registry reports rather than
+    constructing a URL.
     """
+    qualified_name = _smithery_qualified_name(server_url)
+    if not qualified_name:
+        return None
     try:
-        start = time.perf_counter()
-        icons = favicon.get(url, timeout=FAVICON_LIB_TIMEOUT)
-        elapsed = (time.perf_counter() - start) * 1000
-        log.debug(f"favicon.get() took {elapsed:.1f}ms for {url}")
-
-        if not icons:
-            return None
-
-        # Filter out large images (OG images are typically 1200px+)
-        # Keep icons with unknown dimensions (0x0) or small dimensions (<= 512px)
-        valid_icons = [
-            i
-            for i in icons
-            if i.url
-            and (
-                (i.width or 0) == 0  # Unknown dimensions (likely favicon)
-                or ((i.width or 0) <= 512 and (i.height or 0) <= 512)  # Small icons
+        async with httpx.AsyncClient(
+            timeout=HTTP_TIMEOUT, headers={"User-Agent": BROWSER_UA}
+        ) as client:
+            response = await client.get(
+                SMITHERY_REGISTRY_URL.format(qualified_name=qualified_name),
+                follow_redirects=True,
             )
-        ]
-
-        if not valid_icons:
-            return None
-
-        # Sort: prefer known small sizes, then unknown (0x0)
-        # Icons with 0x0 get size=999 so they come after known small icons
-        def sort_key(icon):
-            size = (icon.width or 0) * (icon.height or 0)
-            return size if size > 0 else 999
-
-        valid_icons.sort(key=sort_key)
-        return valid_icons[0].url
-
+            if response.status_code != 200:
+                return None
+            icon_url = response.json().get("iconUrl")
+            return icon_url if isinstance(icon_url, str) and icon_url else None
     except Exception as e:
-        log.debug(f"favicon library failed for {url}: {e}")
-    return None
+        log.debug(f"Smithery icon lookup failed for {qualified_name}: {e}")
+        return None
 
 
-async def _try_favicon_library(url: str) -> str | None:
-    """Run favicon library in thread pool to avoid blocking."""
-    return await asyncio.to_thread(_try_favicon_library_sync, url)
+def legacy_favicon_url(server_url: str) -> str:
+    """Google's favicon service keyed by the registered domain (the default fallback)."""
+    extracted = tldextract.extract(server_url)
+    return GOOGLE_FAVICON_URL.format(domain=extracted.top_domain_under_public_suffix)
 
 
 def _make_absolute_url(href: str, base_url: str) -> str:
@@ -173,7 +176,9 @@ def _select_best_icon(icons: list[dict]) -> str | None:
 async def _validate_favicon_url(url: str) -> bool:
     """Verify favicon URL returns an image (HEAD request)."""
     try:
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=HTTP_TIMEOUT, headers={"User-Agent": BROWSER_UA}
+        ) as client:
             response = await client.head(url, follow_redirects=True)
             if response.status_code != 200:
                 return False
@@ -184,20 +189,12 @@ async def _validate_favicon_url(url: str) -> bool:
         return False
 
 
-async def _try_standard_favicon(url: str) -> str | None:
-    """Try the standard /favicon.ico path."""
-    parsed = urlparse(url)
-    favicon_url = f"{parsed.scheme}://{parsed.netloc}/favicon.ico"
-
-    if await _validate_favicon_url(favicon_url):
-        return favicon_url
-    return None
-
-
 async def _try_html_link_parsing(url: str) -> str | None:
     """Fetch HTML and parse link[rel=icon] tags."""
     try:
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=HTTP_TIMEOUT, headers={"User-Agent": BROWSER_UA}
+        ) as client:
             response = await client.get(url, follow_redirects=True)
             if response.status_code != 200:
                 return None
@@ -210,91 +207,33 @@ async def _try_html_link_parsing(url: str) -> str | None:
     return None
 
 
-async def _try_google_favicon_service(domain: str) -> str | None:
-    """
-    Try Google's favicon service - fast and reliable.
-
-    Returns the Google favicon URL if it returns a valid image.
-    Google returns a default globe icon for missing favicons,
-    so we check content-length to detect that.
-    """
-    favicon_url = GOOGLE_FAVICON_URL.format(domain=domain)
-
-    try:
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            response = await client.head(favicon_url, follow_redirects=True)
-            if response.status_code != 200:
-                return None
-
-            content_type = response.headers.get("content-type", "").lower()
-            if "image" not in content_type:
-                return None
-
-            # Google returns a small default globe icon (~318 bytes at sz=128)
-            # Real favicons are typically larger. Skip if too small.
-            content_length = response.headers.get("content-length", "")
-            if content_length and int(content_length) < 400:
-                log.debug(f"Google favicon too small for {domain}, likely default")
-                return None
-
-            return favicon_url
-
-    except Exception as e:
-        log.debug(f"Google favicon service failed for {domain}: {e}")
-    return None
-
-
 async def _fetch_favicon_impl(server_url: str) -> str | None:
     """
-    Fetch favicon from external sources.
+    Resolve a favicon for an MCP server.
 
-    Uses root domain only. Strategy:
-    1. Google's favicon service (fastest, most reliable)
-    2. favicon library (thread pool, with timeout)
-    3. Standard /favicon.ico path
-    4. Parse HTML for link[rel=icon]
+    Order of preference, each validated to be a live image before use:
+    1. The per-server Smithery icon (Smithery hosts many servers behind one host).
+    2. An explicit ``<link rel="icon">`` the host declares in its root HTML — the
+       intentional signal a self-hosted MCP server uses to declare its own icon.
+    3. Google's favicon service for the registered domain (the default fallback).
+
+    Each override is validated (HEAD -> must be a live image) so we never replace
+    the working default with a broken or missing icon. Probing ``/favicon.ico`` or
+    the favicon library is deliberately avoided — it picks up a framework's generic
+    placeholder (or nothing) for servers that don't customise their icon.
     """
-    url = _get_root_domain_url(server_url)
-    extracted = tldextract.extract(server_url)
-    domain = extracted.top_domain_under_public_suffix
-    log.debug(f"Fetching favicon for domain: {domain}")
+    host_url = _get_host_url(server_url)
+    log.debug(f"Fetching favicon for host: {host_url}")
 
-    # For non-Smithery domains, just return Google S2 URL directly - no need to fetch
-    if domain != "smithery.ai":
-        return GOOGLE_FAVICON_URL.format(domain=domain)
+    smithery_icon = await _fetch_smithery_icon(server_url)
+    if smithery_icon and await _validate_favicon_url(smithery_icon):
+        return smithery_icon
 
-    # Try Google's favicon service first (fastest)
-    result = await _try_google_favicon_service(domain)
-    if result:
-        return result
+    declared = await _try_html_link_parsing(host_url)
+    if declared and await _validate_favicon_url(declared):
+        return declared
 
-    # Try favicon library (runs in thread pool)
-    result = await _try_favicon_library(url)
-    if result:
-        # Skip validation for known favicon extensions
-        if _is_known_favicon_url(result):
-            return result
-        if await _validate_favicon_url(result):
-            return result
-        log.debug(f"Favicon library result failed validation: {result}")
-
-    # Try standard /favicon.ico path
-    result = await _try_standard_favicon(url)
-    if result:
-        return result
-
-    # Fallback: parse HTML for link rel=icon
-    result = await _try_html_link_parsing(url)
-    if result:
-        # Skip validation for known favicon extensions
-        if _is_known_favicon_url(result):
-            return result
-        # Only validate unknown extensions
-        if await _validate_favicon_url(result):
-            return result
-        log.debug(f"HTML parsing result failed validation: {result}")
-
-    return None
+    return legacy_favicon_url(server_url)
 
 
 async def fetch_favicon_from_url(server_url: str) -> str | None:
@@ -324,3 +263,8 @@ async def fetch_favicon_from_url(server_url: str) -> str | None:
     except Exception as e:
         log.warning(f"{LogTag.TOOL} Failed to fetch favicon for {server_url}: {e}")
         return None
+
+
+async def fetch_favicon_uncached(server_url: str) -> str | None:
+    """Resolve a favicon bypassing the cache (for diagnostics / dev tooling)."""
+    return await _fetch_favicon_impl(server_url)

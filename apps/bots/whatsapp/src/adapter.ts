@@ -44,6 +44,7 @@ import {
   NOTIFICATION_TEMPLATE_PARAM_NAME,
   REPLAY_WINDOW_MS,
   TEMPLATE_BODY_MAX_LENGTH,
+  TYPING_REFRESH_MS,
 } from "./constants";
 import {
   extractMedia,
@@ -169,6 +170,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           this.whatsAppConfig.kapsoWebhookSecret,
         )
       ) {
+        // Surface rejected webhooks — a spike here means a misconfigured secret
+        // or a spoofing attempt, not something to drop silently.
+        this.adapterLogger.warn("webhook_signature_rejected", {
+          has_signature: signature !== null,
+        });
         return c.json({ error: "Invalid signature" }, 401);
       }
 
@@ -296,15 +302,38 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Starts the WhatsApp "typing…" indicator and keeps it alive on a 20s timer
-   * (Meta dismisses it after ~25s). Call `stop()` once the reply is sent.
+   * Shows the WhatsApp "typing…" indicator and keeps it alive for the whole
+   * generation.
+   *
+   * The WhatsApp Cloud API typing indicator (emitted by marking the inbound
+   * message read) auto-dismisses after ~25s or when the reply is sent. A single
+   * emit therefore leaves the user staring at a dead chat whenever generation
+   * runs long — markdown-heavy answers routinely exceed 25s. So we re-emit every
+   * {@link TYPING_REFRESH_MS} (well under the 25s ceiling) until {@link stop} is
+   * called from the request's `finally`. Re-emitting while the indicator is still
+   * active extends the window instead of flickering it.
+   *
+   * `refresh` forces an immediate re-emit (used to re-show it right after an
+   * interstitial message such as the welcome); `stop` cancels the keep-alive.
    */
   private startWhatsAppTyping(
     waId: string,
     messageId: string,
   ): { refresh: () => void; stop: () => void } {
     const waIdHash = hashLogIdentifier(waId);
-    const refresh = (): void => {
+    const startedAt = Date.now();
+    let emitCount = 0;
+    let stopped = false;
+    const sendTyping = (): void => {
+      if (stopped) return;
+      emitCount += 1;
+      const seq = emitCount;
+      this.adapterLogger.debug("typing_indicator_emitted", {
+        wa_hash: waIdHash,
+        message_id: messageId,
+        seq,
+        elapsed_ms: Date.now() - startedAt,
+      });
       this.whatsAppClient.messages
         .markRead({
           phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
@@ -315,13 +344,20 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           this.adapterLogger.error("typing_indicator_failed", {
             wa_hash: waIdHash,
             message_id: messageId,
+            seq,
             ...sanitizeErrorForLog(err),
           }),
         );
     };
-    refresh();
-    const interval = setInterval(refresh, 20_000);
-    return { refresh, stop: () => clearInterval(interval) };
+    sendTyping();
+    const keepAlive = setInterval(sendTyping, TYPING_REFRESH_MS);
+    return {
+      refresh: sendTyping,
+      stop: () => {
+        stopped = true;
+        clearInterval(keepAlive);
+      },
+    };
   }
 
   /**
@@ -334,8 +370,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     refreshTyping: () => void,
     authCheckTimeoutMs?: number,
   ): Promise<void> {
-    // Base one-shot gate (shared with Discord) — fires at most once per user.
-    if (!this.shouldSendWelcome(waId)) return;
+    // Base gate (shared with Discord): only greets unlinked users, at most once per process.
+    if (!(await this.shouldSendWelcome(waId))) return;
 
     let isLinked = this.linkedUsers.has(waId);
     if (!isLinked) {
@@ -487,9 +523,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * Sends the user's message to the GAIA streaming endpoint.
    *
    * WhatsApp streaming is disabled (STREAMING_DEFAULTS.whatsapp.streaming = false),
-   * so the full response is accumulated and sent as a single message.
-   * The typing indicator was already fired once before this is called and will
-   * auto-dismiss when the reply is sent (Meta's hard 25s ceiling).
+   * so the full response is accumulated and sent as a single message. The caller's
+   * typing keep-alive (see {@link startWhatsAppTyping}) keeps "typing…" visible for
+   * the whole generation and is cancelled in the caller's `finally`.
    *
    * @param attachments - Files already uploaded to GAIA's storage (via
    *   {@link GaiaClient.uploadFile}) that should accompany this message so
@@ -600,18 +636,22 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private async sendWelcome(waId: string): Promise<void> {
     const text =
       `*Hey, I'm GAIA* 👋\n\n` +
-      `Your personal AI — built to think ahead, remember everything, and get things done with you.\n\n` +
-      `Here's what I can do right on WhatsApp:\n\n` +
-      `*💬 Chat*\nJust type anything. Ask questions, brainstorm, think out loud.\n\n` +
-      `*✅ Todos*\nUse /todo add to capture tasks.\n\n` +
-      `*⚡ Workflows*\nRun automations with /workflow. Delegate entire projects.\n\n` +
-      `*🔗 Link your account*\nUse /auth to connect your GAIA account for memory and personalization.\n\n` +
+      `Your personal AI — I think ahead, remember what matters, and help you actually get things done.\n\n` +
+      `Here's what I can do right here on WhatsApp:\n\n` +
+      `*Chat*\nJust type anything — ask questions, brainstorm, think out loud.\n\n` +
+      `*Todos*\nCapture tasks with /todo add.\n\n` +
+      `*Workflows*\nRun automations with /workflow and delegate whole projects.\n\n` +
+      `*Link your account*\nRun /auth to connect GAIA so I remember you and your context.\n\n` +
       `_Visit heygaia.io or read the docs at docs.heygaia.io_`;
 
     try {
       await this.sendWhatsAppText(waId, text);
-    } catch {
-      // If we can't send the welcome, continue silently (match Discord behavior)
+    } catch (error) {
+      this.adapterLogger.error(
+        "welcome_send_failed",
+        { wa_hash: hashLogIdentifier(waId) },
+        error,
+      );
     }
   }
 
@@ -733,11 +773,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       },
 
       sendRich: async (richMsg: RichMessage): Promise<SentMessage> => {
-        // richMessageToMarkdown is already platform-aware — for "whatsapp" it
-        // emits WhatsApp-native ``*bold*`` and ``label (url)`` links, so the
-        // previous extra convertToWhatsAppMarkdown pass was redundant. Render
-        // once here.
-        const markdown = richMessageToMarkdown(richMsg, "whatsapp");
+        // richMessageToMarkdown emits platform-agnostic CommonMark; convert it
+        // to WhatsApp formatting through the single shared chokepoint so field
+        // values that contain markdown render correctly.
+        const markdown = renderForPlatform(
+          richMessageToMarkdown(richMsg),
+          "whatsapp",
+        );
         return this.sendWhatsAppText(waId, markdown);
       },
 

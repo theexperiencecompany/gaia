@@ -7,6 +7,7 @@ import httpx
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.services.outbound_delivery import notify_account_linked
 from app.services.platform_link_service import PlatformLinkService
 from shared.py.wide_events import log
 
@@ -199,9 +200,11 @@ async def _handle_platform_oauth_callback(
 
         # Link platform account to current user (using ObjectId)
         try:
-            await PlatformLinkService.link_account(
+            link_result = await PlatformLinkService.link_account(
                 user_id, config.platform, platform_user_id, profile=profile or None
             )
+            if link_result.get("is_new_link"):
+                await notify_account_linked(config.platform, user_id)
             log.info(
                 f"{LogTag.API} {config.platform} account {platform_user_id} linked to user {user_id} via OAuth"
             )

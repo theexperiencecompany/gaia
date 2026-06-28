@@ -14,6 +14,7 @@ from app.models.platform_models import (
     LinkPlatformResponse,
 )
 from app.services.oauth.oauth_state_service import create_oauth_state
+from app.services.outbound_delivery import notify_account_linked
 from app.services.platform_link_service import Platform, PlatformLinkService
 from shared.py.wide_events import log
 
@@ -97,6 +98,8 @@ async def link_platform(
         result = await PlatformLinkService.link_account(
             user_id, platform, platform_user_id, profile=profile or None
         )
+        if result.get("is_new_link"):
+            await notify_account_linked(platform, user_id)
         log.set(outcome="success")
         return LinkPlatformResponse(**result)
     except ValueError as e:
