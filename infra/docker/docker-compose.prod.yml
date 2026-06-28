@@ -825,17 +825,21 @@ services:
       # GRAFANA_ALERT_EMAIL is the destination the email contact point sends to
       # (see provisioning/alerting/contact-points.yaml → $__env{GRAFANA_ALERT_EMAIL}).
       #
-      # REQUIRED (no default): GRAFANA_SMTP_USER must be set in the deploy env before
-      # `docker stack deploy` — it's the full Gmail/Workspace sending address (e.g.
-      # alerts@heygaia.io) that owns the app password. If unset, GF_SMTP_USER is empty
-      # and Gmail rejects auth with `535 Username and Password not accepted`, so email
-      # alerts silently never send (Slack still works). The app password must belong to
-      # this same account. See internal-docs → Production → Grafana → Alerting.
+      # GRAFANA_SMTP_USER is the full Gmail/Workspace sending address that owns the
+      # app password; it defaults to aryan@heygaia.io. The from-address must match the
+      # authenticated account (Gmail rewrites mismatched senders), so it carries the
+      # same default. Both use a single-level `:-` default — never a nested one:
+      # `docker stack deploy` does not recurse into a default's value, so an unset
+      # GRAFANA_SMTP_USER would leak the literal "${GRAFANA_SMTP_USER}" as the from
+      # address, which Grafana rejects as an invalid email and refuses to boot. To send
+      # from a different account, override GRAFANA_SMTP_USER and GRAFANA_SMTP_FROM_ADDRESS
+      # together, and make sure the app-password secret belongs to it.
+      # See internal-docs → Production → Grafana → Alerting.
       GF_SMTP_ENABLED: "true"
       GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-smtp.gmail.com:587}
-      GF_SMTP_USER: ${GRAFANA_SMTP_USER}
+      GF_SMTP_USER: ${GRAFANA_SMTP_USER:-aryan@heygaia.io}
       GF_SMTP_PASSWORD__FILE: /run/secrets/gaia_grafana_smtp_password
-      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM_ADDRESS:-${GRAFANA_SMTP_USER}}
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM_ADDRESS:-aryan@heygaia.io}
       GF_SMTP_FROM_NAME: "GAIA Alerts"
       GRAFANA_ALERT_EMAIL: ${GRAFANA_ALERT_EMAIL:-aryan@heygaia.io}
     secrets:
