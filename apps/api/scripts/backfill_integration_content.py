@@ -11,10 +11,10 @@ them using the exact same service the publish flow uses.
 Scope: integrations with `is_public=True` and `source="custom"`. By default only those
 WITHOUT existing content are processed; pass --regenerate to overwrite existing content.
 
-IMPORTANT: Run from the api directory (so `app` is importable):
+Run as a module from the api directory (so `app` is importable):
 
     cd /path/to/gaia/apps/api
-    python scripts/backfill_integration_content.py --dry-run --limit 3
+    uv run python -m scripts.backfill_integration_content --dry-run --limit 3
 
 Usage flags:
 --dry-run:     Generate and print content, write NOTHING to the database
@@ -28,21 +28,13 @@ import argparse
 import asyncio
 from datetime import UTC, datetime
 import json
-from pathlib import Path
 import sys
 from typing import Any
 
-# Add the backend directory to Python path so we can import from app
-backend_dir = Path(__file__).parent.parent
-sys.path.insert(0, str(backend_dir))
-
-# Import app modules after path setup  # noqa: E402
-from app.db.mongodb.collections import integrations_collection  # noqa: E402
-from app.db.redis import delete_cache_by_pattern  # noqa: E402
-from app.models.oauth_models import IntegrationContent  # noqa: E402
-from app.services.integrations.integration_inference_service import (  # noqa: E402
-    infer_integration_content,
-)
+from app.db.mongodb.collections import integrations_collection
+from app.db.redis import delete_cache_by_pattern
+from app.models.oauth_models import IntegrationContent
+from app.services.integrations.integration_inference_service import infer_integration_content
 
 # Cache pattern invalidated by the publish flow when marketplace content changes.
 MARKETPLACE_CACHE_PATTERN = "marketplace:community:*"
@@ -72,12 +64,16 @@ def print_content(name: str, content: IntegrationContent) -> None:
         print(f"    A: {faq.answer}")
 
 
-async def create_backup(docs: list[dict[str, Any]]) -> str:
+def create_backup(docs: list[dict[str, Any]]) -> str:
     """Back up the current `content` field of affected docs before overwriting."""
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     backup_file = f"integration_content_backup_{timestamp}.json"
     snapshot = [
-        {"integration_id": d["integration_id"], "name": d.get("name"), "content": d.get("content")}
+        {
+            "integration_id": d.get("integration_id"),
+            "name": d.get("name"),
+            "content": d.get("content"),
+        }
         for d in docs
     ]
     with open(backup_file, "w") as f:
@@ -86,40 +82,9 @@ async def create_backup(docs: list[dict[str, Any]]) -> str:
     return backup_file
 
 
-async def backfill(
-    dry_run: bool, limit: int | None, regenerate: bool, force: bool, backup: bool
-) -> None:
-    print("🔄 Backfilling marketplace content for published custom integrations...")
-
-    query = build_query(regenerate)
-    cursor = integrations_collection.find(query)
-    if limit is not None:
-        cursor = cursor.limit(limit)
-    docs = await cursor.to_list(length=limit if limit is not None else None)
-
-    print(
-        f"\n📊 Matched {len(docs)} integration(s) "
-        f"({'including' if regenerate else 'excluding'} those with existing content)"
-        f"{f', limited to {limit}' if limit is not None else ''}."
-    )
-
-    if not docs:
-        print("✅ Nothing to do.")
-        return
-
-    if not dry_run and not force:
-        response = input(f"\n❓ Generate + write content for {len(docs)} integration(s)? (y/N): ")
-        if response.lower() != "y":
-            print("❌ Operation cancelled.")
-            return
-
-    if not dry_run and backup:
-        await create_backup(docs)
-
-    generated = 0
-    skipped = 0
-    written = 0
-
+async def _generate_for_docs(docs: list[dict[str, Any]], dry_run: bool) -> tuple[int, int, int]:
+    """Generate content per doc, writing unless dry_run. Returns (generated, skipped, written)."""
+    generated = skipped = written = 0
     for doc in docs:
         name = doc.get("name", "")
         content = await infer_integration_content(
@@ -129,15 +94,13 @@ async def backfill(
             server_url=(doc.get("mcp_config") or {}).get("server_url", ""),
             category=doc.get("category", "other"),
         )
-
         if content is None:
-            print(f"⚠️  Skipped (generation failed): {name} ({doc['integration_id']})")
+            print(f"⚠️  Skipped (generation failed): {name} ({doc.get('integration_id')})")
             skipped += 1
             continue
 
         generated += 1
         print_content(name, content)
-
         if dry_run:
             continue
 
@@ -149,6 +112,39 @@ async def backfill(
             {"$set": {"content": content.model_dump(), "updated_at": datetime.now(UTC)}},
         )
         written += result.modified_count
+    return generated, skipped, written
+
+
+async def backfill(
+    dry_run: bool, limit: int | None, regenerate: bool, force: bool, backup: bool
+) -> None:
+    print("🔄 Backfilling marketplace content for published custom integrations...")
+
+    cursor = integrations_collection.find(build_query(regenerate))
+    if limit is not None:
+        cursor = cursor.limit(limit)
+    docs = await cursor.to_list(length=limit)
+
+    print(
+        f"\n📊 Matched {len(docs)} integration(s) "
+        f"({'including' if regenerate else 'excluding'} those with existing content)"
+        f"{f', limited to {limit}' if limit is not None else ''}."
+    )
+    if not docs:
+        print("✅ Nothing to do.")
+        return
+
+    if not dry_run and not force:
+        prompt = f"\n❓ Generate + write content for {len(docs)} integration(s)? (y/N): "
+        response = await asyncio.to_thread(input, prompt)
+        if response.lower() != "y":
+            print("❌ Operation cancelled.")
+            return
+
+    if not dry_run and backup:
+        create_backup(docs)
+
+    generated, skipped, written = await _generate_for_docs(docs, dry_run)
 
     print(f"\n{'=' * 70}")
     if dry_run:
@@ -176,9 +172,9 @@ def parse_arguments() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python scripts/backfill_integration_content.py --dry-run --limit 3   # sample 3, no writes
-  python scripts/backfill_integration_content.py --backup              # write missing, with backup
-  python scripts/backfill_integration_content.py --regenerate --force  # overwrite all, no prompt
+  uv run python -m scripts.backfill_integration_content --dry-run --limit 3   # sample 3, no writes
+  uv run python -m scripts.backfill_integration_content --backup              # write missing, with backup
+  uv run python -m scripts.backfill_integration_content --regenerate --force  # overwrite all, no prompt
         """,
     )
     parser.add_argument("--dry-run", action="store_true", help="Generate and print, write nothing")

@@ -35,8 +35,9 @@ from app.models.oauth_models import IntegrationContent
 from shared.py.wide_events import log
 
 _FALLBACK_CATEGORY = "other"
-# Best-effort cap so a slow upstream LLM never stalls the inline publish flow.
+# Best-effort caps so a slow upstream LLM never stalls the inline publish flow.
 _CONTENT_GENERATION_TIMEOUT_SECONDS = 12
+_CATEGORY_INFERENCE_TIMEOUT_SECONDS = 10
 
 
 def _tools_summary(tools: list[dict[str, Any]], limit: int) -> str:
@@ -46,8 +47,9 @@ def _tools_summary(tools: list[dict[str, Any]], limit: int) -> str:
 
 
 def _server_domain(server_url: str) -> str:
+    # .hostname (not .netloc) so any embedded credentials/port never leak into the prompt.
     try:
-        return urlparse(server_url).netloc or "unknown"
+        return urlparse(server_url).hostname or "unknown"
     except ValueError:
         return "unknown"
 
@@ -71,7 +73,10 @@ async def infer_integration_category(
         domain=_server_domain(server_url),
     )
     try:
-        response = await invoke_with_fallback(get_free_llm_chain(), [HumanMessage(content=prompt)])
+        async with asyncio.timeout(_CATEGORY_INFERENCE_TIMEOUT_SECONDS):
+            response = await invoke_with_fallback(
+                get_free_llm_chain(), [HumanMessage(content=prompt)]
+            )
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Failed to infer category for integration '{name}': {e}",
@@ -118,28 +123,38 @@ async def infer_integration_content(
         how_it_works_count=HOW_IT_WORKS_COUNT,
         faq_count=FAQ_COUNT,
     )
+    # Try each free model in the chain (with structured output) under one overall
+    # timeout budget, so a transient failure or incomplete result on the first
+    # provider falls through to the next instead of dropping content entirely.
     try:
-        # get_free_llm_chain yields the cheap auxiliary model (gemini-3.1-flash-lite);
-        # with_structured_output returns the parsed IntegrationContent directly.
-        structured_llm = get_free_llm_chain()[0].with_structured_output(IntegrationContent)
         async with asyncio.timeout(_CONTENT_GENERATION_TIMEOUT_SECONDS):
-            result = await structured_llm.ainvoke([HumanMessage(content=prompt)])
-        content = IntegrationContent.model_validate(result)
+            for model in get_free_llm_chain():
+                try:
+                    structured_llm = model.with_structured_output(IntegrationContent)
+                    result = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+                    content = IntegrationContent.model_validate(result)
+                except Exception as e:
+                    log.warning(
+                        f"{LogTag.INTEGRATION} Content model failed for '{name}', trying next: {e}"
+                    )
+                    continue
+                if _is_complete(content):
+                    log.info(
+                        f"{LogTag.INTEGRATION} Generated marketplace content for integration '{name}'"
+                    )
+                    return content
+                log.warning(
+                    f"{LogTag.INTEGRATION} Incomplete content for '{name}', trying next model"
+                )
     except Exception as e:
         log.error(
-            f"{LogTag.INTEGRATION} Failed to generate content for integration '{name}': {e}",
+            f"{LogTag.INTEGRATION} Content generation errored for integration '{name}': {e}",
             exc_info=True,
         )
         return None
 
-    if not _is_complete(content):
-        log.warning(
-            f"{LogTag.INTEGRATION} LLM returned incomplete content for integration '{name}'"
-        )
-        return None
-
-    log.info(f"{LogTag.INTEGRATION} Generated marketplace content for integration '{name}'")
-    return content
+    log.warning(f"{LogTag.INTEGRATION} No free model produced complete content for '{name}'")
+    return None
 
 
 def _is_complete(content: IntegrationContent) -> bool:
