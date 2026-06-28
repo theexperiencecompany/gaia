@@ -5,7 +5,7 @@ import { Divider } from "@heroui/divider";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { Switch } from "@heroui/switch";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Alert02Icon, InformationCircleIcon } from "@icons";
+import { InformationCircleIcon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -13,6 +13,7 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
+import { MissingIntegrationsAlert } from "@/features/workflows/components/shared/WorkflowCardComponents";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
 import WorkflowFooter from "@/features/workflows/components/workflow-modal/WorkflowFooter";
 import WorkflowHeader from "@/features/workflows/components/workflow-modal/WorkflowHeader";
@@ -257,11 +258,11 @@ export default function WorkflowModal({
   }, [missingTriggerIntegration, missingStepIntegrations]);
 
   const handleConnectIntegration = useCallback(
-    async (integration: Integration) => {
+    async (integrationId: string) => {
       if (connectingId) return;
-      setConnectingId(integration.id);
+      setConnectingId(integrationId);
       try {
-        await connectIntegration(integration.id);
+        await connectIntegration(integrationId);
       } catch (err) {
         console.error("Failed to connect integration", err);
       } finally {
@@ -957,42 +958,11 @@ export default function WorkflowModal({
                       className="contents disabled:cursor-default"
                     >
                       <div className="scrollbar-hover space-y-8 pb-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3">
-                        {missingIntegrations.length > 0 && (
-                          <div className="flex flex-col gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
-                            <span className="flex items-center gap-2">
-                              <Alert02Icon className="h-4 w-4 shrink-0" />
-                              <span>
-                                Connect{" "}
-                                <span className="font-medium">
-                                  {missingIntegrations
-                                    .map((i) => i.name)
-                                    .join(", ")}
-                                </span>{" "}
-                                to enable this workflow.
-                              </span>
-                            </span>
-                            <div className="flex flex-wrap gap-2">
-                              {missingIntegrations.map((integration) => (
-                                <Button
-                                  key={integration.id}
-                                  color="warning"
-                                  variant="flat"
-                                  size="sm"
-                                  isLoading={connectingId === integration.id}
-                                  isDisabled={
-                                    !!connectingId &&
-                                    connectingId !== integration.id
-                                  }
-                                  onPress={() =>
-                                    handleConnectIntegration(integration)
-                                  }
-                                >
-                                  Connect {integration.name}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        <MissingIntegrationsAlert
+                          missingIntegrations={missingIntegrations}
+                          connectingId={connectingId}
+                          onConnect={handleConnectIntegration}
+                        />
 
                         <WorkflowHeader
                           mode={mode}

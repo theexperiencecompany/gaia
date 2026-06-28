@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
 import {
@@ -263,17 +264,23 @@ interface MissingIntegrationsWarningProps {
   missingIntegrations: IntegrationRef[];
 }
 
+/** Canonical copy for the "this workflow needs integrations connected" alert,
+ *  shared by the card warning tooltip and the workflow-modal banner. */
+export function missingIntegrationsMessage(
+  missingIntegrations: IntegrationRef[],
+): string {
+  const names = missingIntegrations.map((i) => i.name).join(", ");
+  return `Connect ${names} to enable this workflow.`;
+}
+
 export function MissingIntegrationsWarning({
   missingIntegrations,
 }: MissingIntegrationsWarningProps) {
   if (!missingIntegrations.length) return null;
 
-  const names = missingIntegrations.map((i) => i.name).join(", ");
-  const tooltipText = `Connect ${names} to enable this workflow.`;
-
   return (
     <Tooltip
-      content={tooltipText}
+      content={missingIntegrationsMessage(missingIntegrations)}
       placement="top"
       delay={200}
       closeDelay={0}
@@ -283,5 +290,48 @@ export function MissingIntegrationsWarning({
         <Alert01Icon width={13} height={13} className="text-yellow-400" />
       </div>
     </Tooltip>
+  );
+}
+
+interface MissingIntegrationsAlertProps {
+  /** Integrations the workflow needs but the user hasn't connected. */
+  missingIntegrations: IntegrationRef[];
+  /** Id currently connecting (shows a spinner; disables the others). */
+  connectingId: string | null;
+  onConnect: (integrationId: string) => void;
+}
+
+/** Full banner version of {@link MissingIntegrationsWarning}: the same message
+ *  plus a connect button per integration. Used in the workflow modal where
+ *  there is room to act on it. */
+export function MissingIntegrationsAlert({
+  missingIntegrations,
+  connectingId,
+  onConnect,
+}: MissingIntegrationsAlertProps) {
+  if (!missingIntegrations.length) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+      <span className="flex items-center gap-2">
+        <Alert01Icon width={16} height={16} className="shrink-0" />
+        <span>{missingIntegrationsMessage(missingIntegrations)}</span>
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {missingIntegrations.map((integration) => (
+          <Button
+            key={integration.id}
+            color="warning"
+            variant="flat"
+            size="sm"
+            isLoading={connectingId === integration.id}
+            isDisabled={!!connectingId && connectingId !== integration.id}
+            onPress={() => onConnect(integration.id)}
+          >
+            Connect {integration.name}
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }
