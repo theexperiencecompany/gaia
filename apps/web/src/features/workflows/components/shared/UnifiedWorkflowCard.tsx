@@ -293,14 +293,17 @@ export default function UnifiedWorkflowCard({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">{renderToolIcons()}</div>
         <div className="flex items-center gap-2">
-          {shouldShowActivation && workflow && (
-            <ActivationStatus activated={workflow.activated} />
-          )}
           {resolvedMissingIntegrations?.length ? (
+            // The warning replaces the activation badge: a workflow with
+            // unconnected integrations can't run, so its activated/deactivated
+            // state is moot until they're connected.
             <MissingIntegrationsWarning
               missingIntegrations={resolvedMissingIntegrations}
             />
-          ) : null}
+          ) : (
+            shouldShowActivation &&
+            workflow && <ActivationStatus activated={workflow.activated} />
+          )}
         </div>
       </div>
 

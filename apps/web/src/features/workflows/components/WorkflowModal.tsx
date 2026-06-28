@@ -12,6 +12,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import type { Integration } from "@/features/integrations/types";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
 import WorkflowFooter from "@/features/workflows/components/workflow-modal/WorkflowFooter";
 import WorkflowHeader from "@/features/workflows/components/workflow-modal/WorkflowHeader";
@@ -128,7 +129,7 @@ export default function WorkflowModal({
   const { data: triggerSchemas } = useTriggerSchemas();
 
   const { integrations, connectIntegration } = useIntegrations();
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -213,11 +214,9 @@ export default function WorkflowModal({
   // The integration backing the selected event trigger, if it still needs
   // connecting. Resolved from the selected trigger slug (not trigger_config,
   // which can briefly lag the selection) so this banner always agrees with the
-  // settings panel below — same slug, same integration.
-  // Limitation: only the trigger's integration is surfaced. Step-level
-  // integration metadata isn't available yet, so the banner can't cover
-  // integrations required by the workflow's steps — only the trigger.
-  const missingIntegration = useMemo(() => {
+  // settings panel below — same slug, same integration. This one alone gates
+  // saving: a trigger that can't fire makes the whole workflow inert.
+  const missingTriggerIntegration = useMemo(() => {
     if (formData.activeTab !== "trigger" || !formData.selectedTrigger)
       return null;
     const integrationId = findTriggerSchema(
@@ -236,17 +235,41 @@ export default function WorkflowModal({
     triggerSchemas,
   ]);
 
-  const handleConnectMissingIntegration = useCallback(async () => {
-    if (!missingIntegration || isConnecting) return;
-    setIsConnecting(true);
-    try {
-      await connectIntegration(missingIntegration.id);
-    } catch (err) {
-      console.error("Failed to connect integration", err);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [missingIntegration, isConnecting, connectIntegration]);
+  // Integrations the generated steps require but the user hasn't connected.
+  // Sourced from the backend-computed `missing_integrations` (same data the
+  // workflow card uses) but re-checked against live connection status so a
+  // freshly-connected integration drops out of the banner without a refetch.
+  const missingStepIntegrations = useMemo<Integration[]>(() => {
+    const refs = currentWorkflow?.missing_integrations ?? [];
+    return refs
+      .map((ref) => integrations.find((i) => i.id === ref.id))
+      .filter((i): i is Integration => !!i && i.status !== "connected");
+  }, [currentWorkflow, integrations]);
+
+  // Trigger + step integrations that still need connecting, deduped by id.
+  const missingIntegrations = useMemo<Integration[]>(() => {
+    const byId = new Map<string, Integration>();
+    if (missingTriggerIntegration)
+      byId.set(missingTriggerIntegration.id, missingTriggerIntegration);
+    for (const integration of missingStepIntegrations)
+      byId.set(integration.id, integration);
+    return [...byId.values()];
+  }, [missingTriggerIntegration, missingStepIntegrations]);
+
+  const handleConnectIntegration = useCallback(
+    async (integration: Integration) => {
+      if (connectingId) return;
+      setConnectingId(integration.id);
+      try {
+        await connectIntegration(integration.id);
+      } catch (err) {
+        console.error("Failed to connect integration", err);
+      } finally {
+        setConnectingId(null);
+      }
+    },
+    [connectingId, connectIntegration],
+  );
 
   // Platform detection for keyboard shortcuts
   const { modifierKeyName } = usePlatform();
@@ -279,7 +302,7 @@ export default function WorkflowModal({
       return true;
     }
 
-    if (missingIntegration) {
+    if (missingTriggerIntegration) {
       // Don't create/save a workflow whose trigger integration isn't connected
       return true;
     }
@@ -295,7 +318,7 @@ export default function WorkflowModal({
     }
 
     return false;
-  }, [formData, mode, isCreating, existingWorkflow, missingIntegration]);
+  }, [formData, mode, isCreating, existingWorkflow, missingTriggerIntegration]);
 
   // Keyboard shortcut: Escape to close modal
   useHotkeys(
@@ -934,26 +957,40 @@ export default function WorkflowModal({
                       className="contents disabled:cursor-default"
                     >
                       <div className="scrollbar-hover space-y-8 pb-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3">
-                        {missingIntegration && (
-                          <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
+                        {missingIntegrations.length > 0 && (
+                          <div className="flex flex-col gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
                             <span className="flex items-center gap-2">
                               <Alert02Icon className="h-4 w-4 shrink-0" />
                               <span>
+                                Connect{" "}
                                 <span className="font-medium">
-                                  {missingIntegration.name}
+                                  {missingIntegrations
+                                    .map((i) => i.name)
+                                    .join(", ")}
                                 </span>{" "}
-                                isn't connected — connect it to use this
-                                trigger.
+                                to enable this workflow.
                               </span>
                             </span>
-                            <Button
-                              color="danger"
-                              size="sm"
-                              isLoading={isConnecting}
-                              onPress={handleConnectMissingIntegration}
-                            >
-                              Connect
-                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                              {missingIntegrations.map((integration) => (
+                                <Button
+                                  key={integration.id}
+                                  color="warning"
+                                  variant="flat"
+                                  size="sm"
+                                  isLoading={connectingId === integration.id}
+                                  isDisabled={
+                                    !!connectingId &&
+                                    connectingId !== integration.id
+                                  }
+                                  onPress={() =>
+                                    handleConnectIntegration(integration)
+                                  }
+                                >
+                                  Connect {integration.name}
+                                </Button>
+                              ))}
+                            </div>
                           </div>
                         )}
 

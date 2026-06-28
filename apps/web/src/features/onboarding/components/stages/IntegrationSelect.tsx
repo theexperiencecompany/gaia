@@ -7,12 +7,14 @@
 "use client";
 
 import * as m from "motion/react-m";
-import { type Dispatch, useCallback } from "react";
+import { type Dispatch, useCallback, useMemo } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import IntegrationChipsSelector from "@/features/workflows/components/workflow-modal/IntegrationChipsSelector";
+import { FIELD_NAMES } from "../../constants";
 import { BOT_BUBBLE_DEFAULTS } from "../../constants/bubbleDefaults";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import type { Action, OnboardingState } from "../../state/types";
+import { getOnboardingIntegrationPriority } from "../../utils/integrationPriority";
 import { ComposerCTA } from "../ComposerCTA";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
 
@@ -24,33 +26,28 @@ interface IntegrationSelectProps {
 }
 
 export function IntegrationSelect({ state, dispatch }: IntegrationSelectProps) {
-  const remaining = MIN_SELECTIONS - state.selectedIntegrations.length;
+  const priorityNames = useMemo(
+    () =>
+      getOnboardingIntegrationPriority(state.responses[FIELD_NAMES.PROFESSION]),
+    [state.responses],
+  );
 
   return (
-    <m.div
-      className="mt-4 flex flex-col items-center gap-4"
-      {...MOTION_FADE_UP}
-    >
-      <div className="w-full max-w-xl">
-        <ChatBubbleBot
-          {...BOT_BUBBLE_DEFAULTS}
-          text="Which apps do you use most? Pick at least 3 and I'll build your first workflows around the tools you already live in."
-        />
-      </div>
-      <div className="w-full max-w-xl rounded-2xl bg-zinc-800 p-5">
+    <m.div className="mt-4 flex w-full flex-col gap-4" {...MOTION_FADE_UP}>
+      <ChatBubbleBot
+        {...BOT_BUBBLE_DEFAULTS}
+        text="Which apps do you use most? Pick at least 3 so I can build your first workflows around them. You're not connecting anything yet, that happens later. This just helps me learn what you actually use."
+      />
+      <div className="ml-10.75">
         <IntegrationChipsSelector
           source="catalog"
+          variant="pills"
+          priorityNames={priorityNames}
           selectedSlugs={state.selectedIntegrations}
           onChange={(slugs) =>
             dispatch({ type: "integrationSelectUpdate", integrations: slugs })
           }
-          autocompleteClassName="w-full"
         />
-        {state.selectedIntegrations.length > 0 && remaining > 0 && (
-          <p className="mt-3 text-center text-xs text-zinc-500">
-            Select {remaining} more to continue
-          </p>
-        )}
       </div>
     </m.div>
   );
@@ -60,13 +57,10 @@ export function IntegrationSelectComposer({
   state,
   dispatch,
 }: IntegrationSelectProps) {
+  const remaining = MIN_SELECTIONS - state.selectedIntegrations.length;
   const canContinue = state.selectedIntegrations.length >= MIN_SELECTIONS;
 
   const handleContinue = useCallback(() => {
-    dispatch({ type: "integrationSelectConfirm" });
-  }, [dispatch]);
-
-  const handleSkip = useCallback(() => {
     dispatch({ type: "integrationSelectConfirm" });
   }, [dispatch]);
 
@@ -74,13 +68,14 @@ export function IntegrationSelectComposer({
 
   return (
     <ComposerCTA>
-      <div className="flex gap-3">
+      <div className="flex flex-col items-center gap-2">
         <OnboardingCTAButton onClick={handleContinue} disabled={!canContinue}>
           Continue
         </OnboardingCTAButton>
-        <OnboardingCTAButton onClick={handleSkip} hideEndIcon>
-          I'll choose later
-        </OnboardingCTAButton>
+        {/* Reserve the line so the hint appearing/clearing never moves the CTA. */}
+        <p className="h-4 text-xs text-zinc-500">
+          {remaining > 0 ? `Select ${remaining} more to continue` : ""}
+        </p>
       </div>
     </ComposerCTA>
   );
