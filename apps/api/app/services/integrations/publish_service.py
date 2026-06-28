@@ -1,6 +1,7 @@
 """Publish/unpublish service for community marketplace."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import (
@@ -13,10 +14,8 @@ from app.db.mongodb.collections import (
 )
 from app.db.redis import delete_cache_by_pattern
 from app.helpers.integration_helpers import generate_unique_integration_slug
-from app.services.integrations.category_inference_service import (
+from app.services.integrations.integration_inference_service import (
     infer_integration_category,
-)
-from app.services.integrations.content_inference_service import (
     infer_integration_content,
 )
 from app.services.integrations.publish_validator import PublishIntegrationValidator
@@ -94,15 +93,17 @@ async def publish_custom_integration(
     )
 
     now = datetime.now(UTC)
-    update_fields: dict = {
+    update_fields: dict[str, Any] = {
         "is_public": True,
         "published_at": now,
         "category": category,
         "clone_count": integration.get("clone_count", 0),
         "slug": slug,
+        # Explicitly null on regeneration failure so a republish never serves
+        # stale copy left over from a previous publish — the frontend falls back
+        # to its generic content instead.
+        "content": content.model_dump() if content is not None else None,
     }
-    if content is not None:
-        update_fields["content"] = content.model_dump()
 
     update_result = await integrations_collection.update_one(
         {

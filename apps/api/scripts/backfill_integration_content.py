@@ -4,7 +4,7 @@ Backfill LLM-generated marketplace content for published custom integrations.
 
 Native (platform) integrations ship curated content from `app/config/oauth_content.py`.
 Custom integrations only get content generated at publish time (see
-`content_inference_service`). Integrations published before that feature shipped have no
+`integration_inference_service`). Integrations published before that feature shipped have no
 content and fall back to the frontend's generic copy. This script generates content for
 them using the exact same service the publish flow uses.
 
@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 import json
 from pathlib import Path
 import sys
+from typing import Any
 
 # Add the backend directory to Python path so we can import from app
 backend_dir = Path(__file__).parent.parent
@@ -39,7 +40,7 @@ sys.path.insert(0, str(backend_dir))
 from app.db.mongodb.collections import integrations_collection  # noqa: E402
 from app.db.redis import delete_cache_by_pattern  # noqa: E402
 from app.models.oauth_models import IntegrationContent  # noqa: E402
-from app.services.integrations.content_inference_service import (  # noqa: E402
+from app.services.integrations.integration_inference_service import (  # noqa: E402
     infer_integration_content,
 )
 
@@ -47,9 +48,9 @@ from app.services.integrations.content_inference_service import (  # noqa: E402
 MARKETPLACE_CACHE_PATTERN = "marketplace:community:*"
 
 
-def build_query(regenerate: bool) -> dict:
+def build_query(regenerate: bool) -> dict[str, Any]:
     """Public custom integrations, optionally only those missing content."""
-    query: dict = {"is_public": True, "source": "custom"}
+    query: dict[str, Any] = {"is_public": True, "source": "custom"}
     if not regenerate:
         query["$or"] = [{"content": {"$exists": False}}, {"content": None}]
     return query
@@ -71,7 +72,7 @@ def print_content(name: str, content: IntegrationContent) -> None:
         print(f"    A: {faq.answer}")
 
 
-async def create_backup(docs: list[dict]) -> str:
+async def create_backup(docs: list[dict[str, Any]]) -> str:
     """Back up the current `content` field of affected docs before overwriting."""
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     backup_file = f"integration_content_backup_{timestamp}.json"
@@ -140,8 +141,11 @@ async def backfill(
         if dry_run:
             continue
 
+        # Target the exact document we read by its Mongo _id, not integration_id,
+        # so a concurrent write (e.g. content added after this read) is never
+        # clobbered and we never rely on integration_id uniqueness.
         result = await integrations_collection.update_one(
-            {"integration_id": doc["integration_id"]},
+            {"_id": doc["_id"]},
             {"$set": {"content": content.model_dump(), "updated_at": datetime.now(UTC)}},
         )
         written += result.modified_count
@@ -158,6 +162,14 @@ async def backfill(
     print("✅ Cache cleared.")
 
 
+def positive_int(value: str) -> int:
+    """argparse type: accept only integers >= 1."""
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {value}")
+    return parsed
+
+
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Backfill LLM-generated marketplace content for custom integrations",
@@ -170,7 +182,9 @@ Examples:
         """,
     )
     parser.add_argument("--dry-run", action="store_true", help="Generate and print, write nothing")
-    parser.add_argument("--limit", type=int, default=None, help="Process at most N integrations")
+    parser.add_argument(
+        "--limit", type=positive_int, default=None, help="Process at most N integrations (>= 1)"
+    )
     parser.add_argument(
         "--regenerate", action="store_true", help="Overwrite content that already exists"
     )
