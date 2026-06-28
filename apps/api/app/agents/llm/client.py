@@ -32,7 +32,6 @@ from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
-    DEFAULT_MODEL_NAME,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
@@ -315,14 +314,13 @@ def register_llm_providers():
 
 def init_fallback_llm() -> BaseChatModel | None:
     """The default model (Gemini) used as the last-resort fallback when the
-    user-selected model keeps failing mid-turn. Reuses the registered
-    ``gemini_llm`` provider, pinned to the default model so a paid/dev selection
-    can't leak in. Returns ``None`` when Google isn't configured, in which case
-    the agent node skips the fallback instead of crashing."""
-    gemini = providers.get("gemini_llm")
-    if gemini is None:
+    user-selected model keeps failing mid-turn. Acquired through the same
+    ``get_default_llm`` factory as every other default-model call, so there is
+    one way to reach it. Returns ``None`` when Google isn't configured, in which
+    case the agent node skips the fallback instead of crashing."""
+    if not settings.GOOGLE_API_KEY:
         return None
-    return gemini.with_config(configurable={"model_name": DEFAULT_MODEL_NAME})
+    return get_default_llm()
 
 
 def get_default_llm(*, temperature: float = 0.1) -> BaseChatModel:
