@@ -40,9 +40,16 @@ from pathlib import Path
 import sys
 import tarfile
 
+from dotenv import load_dotenv
 from e2b import Template
 
-from app.agents.workspace.system_files import system_files
+# Make `app.*` importable when run directly as `python scripts/build_e2b_template.py`
+# (sys.path[0] is the scripts/ dir, not the backend root). Matches the pattern
+# used by the other apps/api/scripts.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.agents.workspace.system_files import system_files  # noqa: E402
+from app.config.secrets import inject_infisical_secrets  # noqa: E402
 
 JUICEFS_VERSION = "1.3.0"
 JUICEFS_TARBALL = (
@@ -82,8 +89,14 @@ def _stage_system_tarball() -> None:
 
 
 def build(name: str) -> str:
+    # Load apps/api/.env, then pull secrets from Infisical (E2B_API_KEY lives
+    # there, not in .env). ENV selects the Infisical environment slug; local
+    # env / .env take precedence, and missing Infisical creds in a non-prod ENV
+    # just fall back to local env (see inject_infisical_secrets).
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    inject_infisical_secrets()
     if not os.environ.get("E2B_API_KEY"):
-        raise SystemExit("E2B_API_KEY is not set in the environment")
+        raise SystemExit("E2B_API_KEY is not set (checked Infisical and .env)")
     if not MOUNT_SCRIPT_PATH.exists():
         raise SystemExit(f"Mount script not found at {MOUNT_SCRIPT_PATH}")
     if not JFS_LAUNCHER_PATH.exists():
