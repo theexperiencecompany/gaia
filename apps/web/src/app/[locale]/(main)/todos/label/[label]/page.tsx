@@ -1,12 +1,14 @@
-"use client";
-
-import { useParams } from "next/navigation";
-
 import TodoListPage from "@/features/todo/components/TodoListPage";
 
-export default function LabelTodosPage() {
-  const params = useParams();
-  const label = decodeURIComponent(params.label as string);
+interface LabelTodosPageProps {
+  params: Promise<{ label: string }>;
+}
 
-  return <TodoListPage filters={{ labels: [label], completed: false }} />;
+export default async function LabelTodosPage({ params }: LabelTodosPageProps) {
+  const { label } = await params;
+  const decodedLabel = decodeURIComponent(label);
+
+  return (
+    <TodoListPage filters={{ labels: [decodedLabel], completed: false }} />
+  );
 }

@@ -126,51 +126,96 @@ export async function generateMetadata({
   }
 }
 
-export default async function UseCaseDetailPage({ params }: PageProps) {
-  const { slug } = await params;
+interface ResolvedUseCase {
+  useCase: UseCase | null;
+  communityWorkflow: Workflow | null;
+  redirectTo: string | null;
+  missing: boolean;
+}
 
-  let useCase: UseCase | null = null;
-  let communityWorkflow: Workflow | null = null;
+/**
+ * Resolve a use-case slug to either a curated explore use-case or a community
+ * workflow. Redirect targets are returned (not thrown) so the caller can invoke
+ * redirect() outside of try/catch — redirect() throws a NEXT_REDIRECT control
+ * flow error, which a surrounding catch would otherwise swallow or convert.
+ */
+async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
+  const isLegacyId = (canonicalSlug?: string | null) =>
+    slug.startsWith("wf_") && !!canonicalSlug && canonicalSlug !== slug;
 
   try {
     const resp = await getExploreWorkflowsCached(200, 0);
     const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
     if (found) {
-      // If the URL uses the old ID but the workflow has a real slug, redirect
-      if (slug.startsWith("wf_") && found.slug && found.slug !== slug) {
-        redirect(`/use-cases/${found.slug}`);
+      if (isLegacyId(found.slug)) {
+        return {
+          useCase: null,
+          communityWorkflow: null,
+          redirectTo: `/use-cases/${found.slug}`,
+          missing: false,
+        };
       }
-      useCase = {
-        title: found.title,
-        description: found.description || "",
-        action_type: "workflow",
-        integrations: found.steps?.map((s) => s.category) || [],
-        categories: found.categories || ["featured"],
-        published_id: found.id,
-        slug: found.slug,
-        steps: found.steps,
-        creator: found.creator,
-      } as UseCase;
+      return {
+        useCase: {
+          title: found.title,
+          description: found.description || "",
+          action_type: "workflow",
+          integrations: found.steps?.map((s) => s.category) || [],
+          categories: found.categories || ["featured"],
+          published_id: found.id,
+          slug: found.slug,
+          steps: found.steps,
+          creator: found.creator,
+        } as UseCase,
+        communityWorkflow: null,
+        redirectTo: null,
+        missing: false,
+      };
     }
   } catch (err) {
     console.error("Error fetching explore workflows for page data:", err);
   }
 
-  if (!useCase) {
-    try {
-      const response = await workflowApi.getPublicWorkflow(slug);
-      const workflow = response.workflow;
-
-      // If the URL uses the old ID but the workflow has a real slug, redirect
-      if (slug.startsWith("wf_") && workflow.slug && workflow.slug !== slug) {
-        redirect(`/use-cases/${workflow.slug}`);
-      }
-
-      communityWorkflow = workflow;
-    } catch (error) {
-      console.error("Error fetching workflow:", error);
-      notFound();
+  try {
+    const response = await workflowApi.getPublicWorkflow(slug);
+    const workflow = response.workflow;
+    if (isLegacyId(workflow.slug)) {
+      return {
+        useCase: null,
+        communityWorkflow: null,
+        redirectTo: `/use-cases/${workflow.slug}`,
+        missing: false,
+      };
     }
+    return {
+      useCase: null,
+      communityWorkflow: workflow,
+      redirectTo: null,
+      missing: false,
+    };
+  } catch (error) {
+    console.error("Error fetching workflow:", error);
+    return {
+      useCase: null,
+      communityWorkflow: null,
+      redirectTo: null,
+      missing: true,
+    };
+  }
+}
+
+export default async function UseCaseDetailPage({ params }: PageProps) {
+  const { slug } = await params;
+
+  const { useCase, communityWorkflow, redirectTo, missing } =
+    await resolveUseCase(slug);
+
+  if (redirectTo) {
+    redirect(redirectTo);
+  }
+
+  if (missing) {
+    notFound();
   }
 
   const data = useCase || communityWorkflow;
