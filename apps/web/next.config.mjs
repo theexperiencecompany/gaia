@@ -119,12 +119,11 @@ const nextConfig = {
     },
   },
   experimental: {
-    // optimizeCss disabled: @opennextjs/aws unconditionally cpSyncs
-    // .next/static/css when this is on, but Next 16 + Turbopack does not
-    // emit that directory in this build (no separate CSS chunks), so the
-    // bundle step crashes with ENOENT. Bug exists across @opennextjs/aws
-    // 3.9.16 → main; critters has nothing to inline anyway, so this was
-    // a no-op.
+    // optimizeCss stays OFF. Two reasons, both verified: (1) it crashes the
+    // Cloudflare/OpenNext bundle (unconditional cpSync of .next/static/css,
+    // which Turbopack doesn't emit -> ENOENT); (2) tested on a webpack build it
+    // does NOT inline the critical CSS — the render-blocking stylesheet <link>s
+    // remain — so it provides no FCP benefit while adding the `critters` risk.
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
