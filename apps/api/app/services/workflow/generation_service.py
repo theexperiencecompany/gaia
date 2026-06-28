@@ -3,7 +3,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
-from app.agents.llm.client import init_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
@@ -239,7 +239,7 @@ class WorkflowGenerationService:
 
         trigger_context = generate_trigger_context(trigger_config)
 
-        llm = init_llm()
+        llm = get_default_llm()
 
         # Use native structured output for reliable JSON generation.
         # with_structured_output uses the LLM's function-calling / JSON schema
@@ -288,50 +288,50 @@ class WorkflowGenerationService:
         )
         log.info(f"{LogTag.WORKFLOW} Prompt: {len(formatted_prompt)} chars")
 
+        # Transient provider errors are retried inside ainvoke_llm; this loop only
+        # regenerates when the model returns an empty or unparseable result.
         last_error: Exception | None = None
         for attempt in range(_MAX_GENERATION_ATTEMPTS):
-            try:
-                if attempt > 0:
-                    log.info(f"{LogTag.WORKFLOW} Retry attempt {attempt} for: {title}")
+            if attempt > 0:
+                log.info(f"{LogTag.WORKFLOW} Regeneration attempt {attempt} for: {title}")
 
-                log.info(f"{LogTag.WORKFLOW} === CALLING LLM ===")
-
-                if structured_llm:
-                    result = await structured_llm.ainvoke(formatted_prompt)
-                else:
-                    # Fallback: invoke LLM and parse text response.
-                    # Append minimal format guidance since with_structured_output
-                    # isn't available to constrain the output schema.
-                    fallback_prompt = (
-                        formatted_prompt
-                        + "\n\nRespond with ONLY a JSON object in this exact format, "
-                        "no other text:\n"
-                        '{"steps": [{"title": "...", "category": "...", '
-                        '"description": "..."}]}'
-                    )
-                    llm_response = await llm.ainvoke(fallback_prompt)
-                    response_content = getattr(llm_response, "content", str(llm_response))
-                    log.debug(f"{LogTag.WORKFLOW} Raw response ({len(response_content)} chars)")
+            if structured_llm:
+                result = await ainvoke_llm(
+                    structured_llm, formatted_prompt, label="workflow_generation"
+                )
+            else:
+                # No native structured output: ask for raw JSON and parse it.
+                fallback_prompt = (
+                    formatted_prompt + "\n\nRespond with ONLY a JSON object in this exact format, "
+                    "no other text:\n"
+                    '{"steps": [{"title": "...", "category": "...", '
+                    '"description": "..."}]}'
+                )
+                llm_response = await ainvoke_llm(llm, fallback_prompt, label="workflow_generation")
+                response_content = getattr(llm_response, "content", str(llm_response))
+                try:
                     result = _parse_workflow_response(response_content)
-
-                log.info(f"{LogTag.WORKFLOW} === LLM RESPONDED ===")
-
-                if not result or not result.steps:
-                    raise ValueError(
-                        "LLM returned a workflow with no steps — "
-                        "the model may not have understood the request"
+                except Exception as e:
+                    last_error = e
+                    log.warning(
+                        f"{LogTag.WORKFLOW} Parse failed "
+                        f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating: {e}"
                     )
+                    continue
 
+            if result and result.steps:
                 steps_data = enrich_steps(result.steps)
-
                 log.info(f"{LogTag.WORKFLOW} ========== DONE: {len(steps_data)} steps ==========")
                 return steps_data
 
-            except Exception as e:
-                last_error = e
-                log.warning(
-                    f"{LogTag.WORKFLOW} Attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS} failed: {e}"
-                )
+            last_error = ValueError(
+                "LLM returned a workflow with no steps — "
+                "the model may not have understood the request"
+            )
+            log.warning(
+                f"{LogTag.WORKFLOW} No steps "
+                f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating"
+            )
 
         log.error(
             f"{LogTag.WORKFLOW} ========== FAILED after {_MAX_GENERATION_ATTEMPTS} "
@@ -374,7 +374,7 @@ class WorkflowGenerationService:
         else:
             integrations_hint = ""
 
-        llm = init_llm()
+        llm = get_default_llm()
 
         formatted = WORKFLOW_PROMPT_GENERATION_TEMPLATE.format(
             title_section=f"Title: {title}\n" if title else "",
@@ -399,7 +399,7 @@ class WorkflowGenerationService:
             HumanMessage(content=formatted),
         ]
 
-        response = await llm.ainvoke(messages)
+        response = await ainvoke_llm(llm, messages, label="workflow_prompt")
         raw_content = getattr(response, "content", str(response))
         if isinstance(raw_content, list):
             raw_content = "".join(

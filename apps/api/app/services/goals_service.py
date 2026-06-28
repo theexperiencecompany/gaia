@@ -5,7 +5,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage
 
-from app.agents.llm.client import init_llm
+from app.agents.llm.client import get_default_llm, with_llm_retry
 from app.agents.prompts.goal_prompts import (
     ROADMAP_GENERATOR,
     ROADMAP_INSTRUCTIONS,
@@ -40,8 +40,8 @@ async def generate_roadmap_with_llm_stream(title: str):
     )
 
     try:
-        # Initialize the LLM client
-        llm = init_llm()
+        # Default model with the canonical transient-error retry; streamed below.
+        llm = with_llm_retry(get_default_llm())
 
         # Send initial progress message
         yield {"progress": f"Starting roadmap generation for '{title}'..."}

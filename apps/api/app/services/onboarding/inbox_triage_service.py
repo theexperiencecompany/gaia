@@ -4,6 +4,7 @@ import time
 
 from langchain_core.messages import HumanMessage
 
+from app.agents.llm.client import ainvoke_llm
 from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -89,7 +90,9 @@ async def triage_inbox(
             focus=focus or "not specified",
         )
         t_llm = time.monotonic()
-        result: InboxTriageOutput = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        result: InboxTriageOutput = await ainvoke_llm(
+            structured_llm, [HumanMessage(content=prompt)], label="onboarding_inbox_triage"
+        )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         total_unread = len(unread)

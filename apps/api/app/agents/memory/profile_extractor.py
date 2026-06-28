@@ -20,7 +20,7 @@ import ftfy
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import init_llm
+from app.agents.llm.client import ainvoke_llm, init_llm
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
@@ -451,7 +451,7 @@ async def extract_username_with_llm(
         )
 
         # Generate response using LLM
-        llm_response = await llm.ainvoke(formatted_prompt)
+        llm_response = await ainvoke_llm(llm, formatted_prompt, label="profile_extraction")
 
         # Parse the response content — Gemini may return a list of content blocks
         raw_content = getattr(llm_response, "content", str(llm_response))

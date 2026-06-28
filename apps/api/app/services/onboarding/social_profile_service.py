@@ -5,6 +5,7 @@ import urllib.parse
 from bson import ObjectId
 from langchain_core.messages import HumanMessage
 
+from app.agents.llm.client import ainvoke_llm
 from app.agents.prompts.onboarding_prompts import SOCIAL_PROFILE_FILTER_PROMPT
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -258,8 +259,8 @@ async def extract_social_profiles_from_emails(
             user_email=user_email or "Unknown",
             candidates=candidates_text,
         )
-        result: SocialProfileFilterOutput = await structured_llm.ainvoke(
-            [HumanMessage(content=prompt)]
+        result: SocialProfileFilterOutput = await ainvoke_llm(
+            structured_llm, [HumanMessage(content=prompt)], label="onboarding_social_profile"
         )
 
         url_lookup: dict[tuple[str, str], str] = {

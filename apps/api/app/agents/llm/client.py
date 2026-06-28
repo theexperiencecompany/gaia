@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from typing import Any
 
 from google.api_core.exceptions import (
@@ -8,10 +7,10 @@ from google.api_core.exceptions import (
     ResourceExhausted,
     ServiceUnavailable,
 )
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
-from langchain_core.messages import BaseMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -349,19 +348,21 @@ def init_fallback_llm() -> BaseChatModel | None:
     return gemini.with_config(configurable={"model_name": DEFAULT_MODEL_NAME})
 
 
-def get_default_llm() -> BaseChatModel:
+def get_default_llm(*, temperature: float = 0.1) -> BaseChatModel:
     """The default model (direct Gemini) for every auxiliary LLM task — follow-ups,
-    research, memory extraction, integration inference, one-shot helpers. The pro
-    model is reserved for the main chat agent (see ``plan_model``); auxiliary tasks
-    never use it. Raises if Google is not configured."""
+    research, memory extraction, integration inference, profile/holo cards, vision
+    helpers, workflow generation, one-shot helpers. The pro model is reserved for
+    the main chat agent (see ``plan_model``); auxiliary tasks never use it. The
+    optional ``temperature`` lets creative tasks opt into more variation. Raises if
+    Google is not configured."""
     if not settings.GOOGLE_API_KEY:
         raise RuntimeError("Default LLM not configured. Set GOOGLE_API_KEY.")
-    return ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=0.1)
+    return ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=temperature)
 
 
 async def ainvoke_llm(
     primary: Runnable,
-    messages: Sequence[BaseMessage],
+    messages: LanguageModelInput,
     *,
     fallback: Runnable | None = None,
     config: RunnableConfig | None = None,
@@ -388,7 +389,7 @@ async def ainvoke_llm(
 
 def invoke_llm(
     primary: Runnable,
-    messages: Sequence[BaseMessage],
+    messages: LanguageModelInput,
     *,
     fallback: Runnable | None = None,
     config: RunnableConfig | None = None,

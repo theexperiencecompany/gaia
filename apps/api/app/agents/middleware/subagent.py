@@ -28,6 +28,7 @@ from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
+from app.agents.llm.client import ainvoke_llm
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
@@ -296,7 +297,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         # Tool-calling loop
         for _turn in range(self._max_turns):
-            response = cast(AIMessage, await llm_with_tools.ainvoke(messages, config=config))
+            response = cast(
+                AIMessage,
+                await ainvoke_llm(llm_with_tools, messages, config=config, label="subagent"),
+            )
             messages.append(response)
 
             if not response.tool_calls:
@@ -404,7 +408,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             messages.extend(tool_messages)
 
         # Max turns reached — get final answer without tools
-        final = await llm.ainvoke(messages, config=config)
+        final = await ainvoke_llm(llm, messages, config=config, label="subagent_final")
         if isinstance(final, AIMessage) and final.content:
             return str(final.content)
         return str(final) if final else "Max turns reached."

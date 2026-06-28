@@ -12,7 +12,7 @@ from typing import Union
 from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
-from app.agents.llm.client import init_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
@@ -29,7 +29,7 @@ class DocumentProcessor:
             result_type=ResultType.MD,
             api_key=settings.LLAMA_INDEX_KEY or "",
         )
-        self.llm = init_llm()
+        self.llm = get_default_llm()
 
     async def process_file(
         self, file_content: bytes, content_type: str, filename: str
@@ -80,8 +80,9 @@ class DocumentProcessor:
             base64_image = base64.b64encode(image_data).decode("utf-8")
 
             # Process with vision model
-            response = await self.llm.ainvoke(
-                input=[
+            response = await ainvoke_llm(
+                self.llm,
+                [
                     {
                         "role": "user",
                         "content": [
@@ -99,6 +100,7 @@ class DocumentProcessor:
                         ],
                     }
                 ],
+                label="file_image_summary",
             )
 
             description = response
@@ -211,8 +213,9 @@ class DocumentProcessor:
     async def _generate_text_summary(self, text: str) -> str:
         """Generate a summary for text content using the default LLM."""
         try:
-            response = await self.llm.ainvoke(
-                input=[
+            response = await ainvoke_llm(
+                self.llm,
+                [
                     {
                         "role": "system",
                         "content": "You are an expert document summarizer. Create concise summaries that capture key information.",
@@ -222,6 +225,7 @@ class DocumentProcessor:
                         "content": f"Summarize the following text in a concise way that preserves the most important information:\n\n{text}",
                     },
                 ],
+                label="file_text_summary",
             )
 
             return str(response)

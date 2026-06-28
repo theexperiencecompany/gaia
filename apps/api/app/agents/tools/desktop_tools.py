@@ -12,7 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-from app.agents.llm.client import init_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.chat_models import ConversationSource
@@ -92,16 +92,15 @@ async def _describe_screenshot(image_b64: str, query: str) -> str | None:
     (OpenAI rejects them), so the screenshot is described here in a regular
     user-role message and the description is returned to the agent.
 
-    All default providers (Gemini, GPT-4o-mini, Grok) are multimodal, so the
-    plain ``init_llm()`` selection is vision-capable. Should the resolved model
-    still reject the image (text-only deployment, transient provider error),
-    return ``None`` so the caller can degrade gracefully instead of failing the
-    whole tool.
+    The default model (Gemini) is multimodal, so the screenshot is described on
+    it via ``ainvoke_llm``. Should the model reject the image (transient provider
+    error), return ``None`` so the caller degrades gracefully instead of failing
+    the whole tool.
     """
-    llm = init_llm()
     try:
-        response = await llm.ainvoke(
-            input=[
+        response = await ainvoke_llm(
+            get_default_llm(),
+            [
                 {
                     "role": "user",
                     "content": [
@@ -113,6 +112,7 @@ async def _describe_screenshot(image_b64: str, query: str) -> str | None:
                     ],
                 }
             ],
+            label="desktop_vision",
         )
     except Exception as exc:  # noqa: BLE001 - any provider failure degrades gracefully
         log.warning(f"{LogTag.TOOL} Screenshot vision call failed: {exc}")

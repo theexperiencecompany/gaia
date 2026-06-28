@@ -29,6 +29,7 @@ from bson import ObjectId
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+from app.agents.llm.client import ainvoke_llm
 from app.agents.memory.email_processor import fetch_emails_for_onboarding
 from app.agents.prompts.onboarding_prompts import (
     FOCUS_TODOS_PROMPT,
@@ -1136,7 +1137,9 @@ async def _create_focus_todos(
             raise RuntimeError("LLM provider not available")
         structured_llm = llm.with_structured_output(_FocusTodoList)
         t_llm = time.monotonic()
-        parsed: _FocusTodoList = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        parsed: _FocusTodoList = await ainvoke_llm(
+            structured_llm, [HumanMessage(content=prompt)], label="onboarding_focus_todos"
+        )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         async def _create_one(title: str) -> dict | None:
@@ -1221,7 +1224,9 @@ async def _create_todos_from_triage(
             raise RuntimeError("LLM provider not available")
         structured_llm = llm.with_structured_output(_TodoListFromEmails)
         t_llm = time.monotonic()
-        parsed: _TodoListFromEmails = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        parsed: _TodoListFromEmails = await ainvoke_llm(
+            structured_llm, [HumanMessage(content=prompt)], label="onboarding_todos_from_emails"
+        )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         async def _create_one(spec: _TodoSpec) -> dict | None:
@@ -1379,7 +1384,11 @@ async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
     last_error: Exception | None = None
     for attempt in range(3):
         try:
-            candidate: _WorkflowList = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+            candidate: _WorkflowList = await ainvoke_llm(
+                structured_llm,
+                [HumanMessage(content=prompt)],
+                label="onboarding_workflow_suggestions",
+            )
             if len(candidate.workflows) == 4:
                 return candidate
             log.warning(

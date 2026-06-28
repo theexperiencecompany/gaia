@@ -4,6 +4,7 @@ import time
 
 from langchain_core.messages import HumanMessage
 
+from app.agents.llm.client import ainvoke_llm
 from app.agents.prompts.onboarding_prompts import (
     FIRST_MESSAGE_GENERATION_PROMPT_GMAIL,
     FIRST_MESSAGE_GENERATION_PROMPT_NO_GMAIL,
@@ -88,7 +89,9 @@ async def generate_first_message(
         if llm is None:
             raise RuntimeError("LLM provider not available")
         t_llm = time.monotonic()
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        response = await ainvoke_llm(
+            llm, [HumanMessage(content=prompt)], label="onboarding_first_message"
+        )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
         content = response.content
         if isinstance(content, list):

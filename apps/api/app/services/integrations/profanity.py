@@ -24,6 +24,7 @@ import re
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+from app.agents.llm.client import ainvoke_llm
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from shared.py.wide_events import log
@@ -152,7 +153,7 @@ async def contains_profanity(**fields: str | None) -> bool:
         payload = json.dumps(non_empty, ensure_ascii=False)
         prompt = _MODERATION_PROMPT.format(fields=f"```json\n{payload}\n```")
         result: _ModerationResult = await asyncio.wait_for(
-            structured_llm.ainvoke([HumanMessage(content=prompt)]),
+            ainvoke_llm(structured_llm, [HumanMessage(content=prompt)], label="profanity"),
             timeout=_MODERATION_TIMEOUT_SECONDS,
         )
         return bool(result.is_offensive)

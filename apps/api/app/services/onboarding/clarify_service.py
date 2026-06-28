@@ -19,6 +19,7 @@ from typing import Any, Literal
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+from app.agents.llm.client import ainvoke_llm
 from app.agents.prompts.onboarding_prompts import CLARIFY_QUESTIONS_PROMPT
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -102,7 +103,9 @@ async def generate_clarify_questions(
         if llm is None:
             raise RuntimeError("LLM provider not available")
         structured_llm = llm.with_structured_output(_ClarifyQuestionList)
-        parsed: _ClarifyQuestionList = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        parsed: _ClarifyQuestionList = await ainvoke_llm(
+            structured_llm, [HumanMessage(content=prompt)], label="onboarding_clarify"
+        )
 
         by_kind = {q.kind: q for q in parsed.questions}
         questions: list[dict[str, Any]] = []
