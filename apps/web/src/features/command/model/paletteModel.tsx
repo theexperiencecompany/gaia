@@ -15,7 +15,7 @@ export type Row =
   | { kind: "ask"; id: string; query: string }
   | { kind: "back"; id: string };
 
-export interface Section {
+interface Section {
   id: string;
   heading?: string;
   rows: Row[];
@@ -81,7 +81,7 @@ function dedupeById(items: CommandItem[]): CommandItem[] {
   });
 }
 
-export interface SectionParams {
+interface SectionParams {
   view: View | undefined;
   query: string;
   groups: CommandGroup[];
