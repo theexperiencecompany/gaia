@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "eb5cb8176988",
+  "session_id": "d3e651ca-ff84-4fd4-b8e2-a7c064420e01",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-28T00:09:04.290848Z",
+  "branch": "perf/sandbox-juicefs-metadata-load",
+  "checkpoints_count": 1,
+  "save_step_count": 2,
+  "files_touched": [
+    ".gitignore",
+    "apps/api/app/services/sandbox/lifecycle.py",
+    "apps/api/scripts/build_e2b_template.py",
+    "apps/api/scripts/mount_juicefs.sh"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "7f3f18213c23",
+  "token_usage": {
+    "input_tokens": 35289,
+    "cache_creation_tokens": 484525,
+    "cache_read_tokens": 7919157,
+    "output_tokens": 79650,
+    "api_call_count": 66
+  },
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-28T00:09:04.257043Z",
+    "agent_lines": 165,
+    "agent_removed": 26,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 165,
+    "total_lines_changed": 191,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+<system_instruction>
+You are working inside Conductor, a Mac app that lets the user run many coding agents in parallel.
+Your work should take place in the /Users/dhruvmaradiya/conductor/workspaces/whatsapp-sender/sao-paulo directory (unless otherwise directed), which has been set up for you to work in.
+Each workspace has a .context directory (gitignored) where you can save files to collaborate with other agents.
+The target branch for this workspace is origin/develop. Use this for actions like diffing (`git diff origin/develop...`) or creating PRs (`gh pr create --base develop`).
+
+Do not rename the current branch unless the user explicitly tells you to do so.
+
+By default, the user will only see the last message that you send before stopping. Include all essential information in the last message. The intermediate messages will be collapsed and accessible by the user but not displayed by default.
+
+If the user asks you to work on several unrelated tasks, you can suggest they start new workspaces.
+Sometimes the user might send you a message they meant to send in a different workspace or a different chat. If something doesn't make sense in the context of your work, just ask. 
+If the user asks for help with Conductor, you can ask them to go to "Help -> Send Feedback" to get in touch with our team.
+</system_instruction>
+
+Okay so asked gaia to "check my inbox for today anything important there?"
+it called executor, executor passed it to gmail, gmail called gmail_fetch_messages tool and it returned 9 emails
+I think it ignored all promotion and other stuff and only fetcged primary mails 
+Can u pls confirm 
+this was input to the gmail fetch messages tool
+{
+  "fields": [
+    "id",
+    "threadId",
+    "from",
+    "to",
+    "subject",
+    "snippet",
+    "time",
+    "isRead",
+    "labels",
+    "body"
+  ],
+  "timeframe": "today"
+}
+
+---
+
+Okay I cleared all mails except 2 one was in unsubscribe label so that is not coming, 1 primary mail is there
+
+---
+
+api is returning one tool only I suspect its gmail who is sending 1 mail, also in gmail app I am having hard time finding that other mail.
+Also tell me when we reuturn all content in mail vs store in file (by number of characters cap) vs when we create jsonl file?
+need to streamline this
+
+---
+
+I dont think so that's we are actually writing jsonl are we? 
+okay so either we pass everything to llm or write in jsonl right?
+also we have post tool hook that stores response in file make sure our jsonl matches that and in json file we onlly write messages and not all data and sucess and such feilds otherwise it doesn't server the purpose
+and does our sandbox has jq inatlled bcz our skill mentions use of jq
+
+also in skills we should mention use all the feilds accordingly like when summarizing use specific thngs and in other cases use other stuff accordingly
+
+and since WorkspaceCompactionMiddleware kicks in at 8K then we should make it but higher and make sure we properly use jsonl jq and files and since those files
+
+---
+
+Okay so lets increase limits for compaction in file (and when that happens we return file path and also tell it to read but that kills the purpose we should write use Subagent tool to read and summarize file to save context)
+and decrease gmail's context for compaction bridging that gap.
+
+---
+
+1. Yes agreed
+2. who told u that we will do this for comms everything related to real work is done by execcutor anyways 
+for comms WorkspaceCompactionMiddleware doesn't make sense we need to make it agent aware
+
+---
+
+10000 -> 20000 bcz 10k characters is just around 2500 tokens we can handle much more than that
+
+---
+
+Do u know the structure of gmail api are we sure that it will create proper jsonl file
+
+---
+
+<system_instruction>
+The user has attached these files. Read them before proceeding.
+- .context/attachments/comments/b0d453a9-1817-4436-bb01-395350a2dfa6.md (405 B)
+</system_instruction>
+
+
+
+.context/attachments/comments/b0d453a9-1817-4436-bb01-395350a2dfa6.md 
+and also lets increase threashold to arounf 50k tokens models these days are really good and can handle this much context easily
+
+---
+
+middleware also compacts any output >500 chars -> bullshit remove this 500 characters is just nothing
+increase that as well to 30k tokens (make everything 30k change MAX_OUTPUT_CHARS to match 30k tokens as well)
+
+---
+
+and commit & push our changes only related to compaction and stuff
+
+---
+
+Gmail INLINE_LIMIT_CHARS	 -> 120_000 as well bcz its very normal to have
