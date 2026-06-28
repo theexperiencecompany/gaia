@@ -44,9 +44,11 @@ class TestGetDomainCacheKey:
 
     def test_scheme_is_part_of_key(self) -> None:
         """http and https for the same host get distinct cache keys."""
-        assert _get_domain_cache_key("http://example.com") != _get_domain_cache_key(
-            "https://example.com"
-        )
+        # NOSONAR python:S5332 — the http:// literal is intentional here: this
+        # asserts the cache key separates schemes; no real connection is made.
+        http_key = _get_domain_cache_key("http://example.com")  # NOSONAR python:S5332
+        https_key = _get_domain_cache_key("https://example.com")
+        assert http_key != https_key
 
     def test_host_url_includes_scheme_and_full_host(self) -> None:
         """_get_host_url returns scheme + full host, no path."""
