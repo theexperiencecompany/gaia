@@ -16,6 +16,7 @@
  */
 import type { GaiaClient } from "../api";
 import type { BotFileData, BotUserContext, PlatformName } from "../types";
+import { getHttpStatus } from "./logger";
 
 const MB = 1024 * 1024;
 
@@ -90,10 +91,7 @@ export function friendlyMediaError(
   err: unknown,
   pricingUrl?: string,
 ): string {
-  const status = (err as { status?: number })?.status;
-  const responseStatus = (err as { response?: { status?: number } })?.response
-    ?.status;
-  const code = status ?? responseStatus;
+  const code = (err as { status?: number })?.status ?? getHttpStatus(err);
 
   if (code === 401 || code === 403) {
     return "I need you to link your GAIA account first before I can read attachments. Send /auth to get started.";

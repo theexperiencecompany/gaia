@@ -7,6 +7,9 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
+import { createBotLogger } from "../utils/logger";
+
+const logger = createBotLogger("shared", "command:unlink");
 
 /** `/unlink` command definition. */
 export const unlinkCommand: BotCommand = {
@@ -31,7 +34,8 @@ export const unlinkCommand: BotCommand = {
           "Your account has been unlinked from GAIA.\n" +
           "Use `/auth` to reconnect at any time.",
       );
-    } catch {
+    } catch (error) {
+      logger.error("unlink_command_error", undefined, error);
       await target.sendEphemeral(
         "❌ Failed to unlink your account. Please try again.",
       );

@@ -177,7 +177,10 @@ class TestExternalPlatformTransform:
             content = await DiscordChannelAdapter().transform(request)
         assert "[View Task](https://app.example.com/todos/1)" in content["parts"][0]
 
-    async def test_workflow_execution_parts(self) -> None:
+    async def test_rich_content_is_ignored(self) -> None:
+        # Workflow results now reach the user as real chat messages, not through
+        # the notification. The external transform renders only title/body and
+        # ignores rich_content entirely (no result bubbles, no "view results").
         request = _make_request(
             title="Workflow Done",
             body="Completed in 30s",
@@ -190,22 +193,7 @@ class TestExternalPlatformTransform:
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
-        parts = content["parts"]
-        assert "**Workflow Done**" in parts[0]
-        assert "Step 1 result" in parts
-        assert "Step 2 result" in parts
-        assert any("conv-123" in p for p in parts)  # footer link is its own part
-
-    async def test_workflow_no_conversation_id_drops_footer(self) -> None:
-        request = _make_request(
-            title="WF",
-            body="Done",
-            rich_content={"type": "workflow_execution", "messages": [], "conversation_id": ""},
-        )
-        with patch("app.utils.notification.channels.external.settings") as s:
-            s.FRONTEND_URL = "https://app.example.com"
-            content = await DiscordChannelAdapter().transform(request)
-        assert all("View full results" not in p for p in content["parts"])
+        assert content["parts"] == ["**Workflow Done**\nCompleted in 30s"]
 
 
 # ========================================================================
@@ -313,26 +301,6 @@ class TestExternalTransformBrutalEdges:
             s.FRONTEND_URL = "https://app.example.com"
             content = await adapter_cls().transform(request)
         assert content["parts"] == ["**Reminder**\nTake a break"]
-
-    async def test_workflow_filters_blank_messages(self) -> None:
-        request = _make_request(
-            title="WF",
-            body="done",
-            rich_content={
-                "type": "workflow_execution",
-                "messages": ["real", "", "   ", "also real"],
-                "conversation_id": "c1",
-            },
-        )
-        with patch("app.utils.notification.channels.external.settings") as s:
-            s.FRONTEND_URL = "https://app.example.com"
-            content = await DiscordChannelAdapter().transform(request)
-        assert content["parts"] == [
-            "**WF**\ndone",
-            "real",
-            "also real",
-            "[View full results](https://app.example.com/c/c1)",
-        ]
 
     async def test_redirect_action_with_no_url_is_skipped_not_crashed(self) -> None:
         # A REDIRECT action whose config.redirect is None must be skipped, not

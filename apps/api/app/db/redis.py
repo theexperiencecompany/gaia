@@ -188,7 +188,7 @@ class RedisCache:
             )
             return None
 
-    async def set(self, key: str, value: Any, ttl: int = 3600, model: type | None = None):
+    async def set(self, key: str, value: Any, ttl: int = 3600, model: type | None = None) -> bool:
         """
         Store value in cache with TTL and optional type validation.
 
@@ -197,6 +197,11 @@ class RedisCache:
             value: Data to cache (any serializable Python object)
             ttl: Time-to-live in seconds (default: 3600/1 hour)
             model: Optional Pydantic model for type-safe serialization
+
+        Returns:
+            True if the value was written, False if Redis was unavailable or the
+            write failed. Callers that must not act on an unstored value (e.g.
+            single-use tokens) should check this.
 
         Examples:
             # Generic caching
@@ -207,13 +212,14 @@ class RedisCache:
         """
         if not self.redis:
             log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping set operation.")
-            return
+            return False
 
         try:
             ttl = ttl or self.default_ttl
             # Use TypeAdapter to handle any data structure with Pydantic models
             json_str = serialize_any(value, model)
             await self.redis.setex(key, ttl, json_str)
+            return True
         except Exception as e:
             log.error(
                 "redis_op_failed",
@@ -223,6 +229,7 @@ class RedisCache:
                 error_type=type(e).__name__,
                 error=str(e),
             )
+            return False
 
     async def delete(self, key: str):
         """
@@ -278,7 +285,9 @@ async def get_cache(key: str, model: type | None = None) -> Any:
     return await redis_cache.get(key, model)
 
 
-async def set_cache(key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: type | None = None):
+async def set_cache(
+    key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: type | None = None
+) -> bool:
     """
     Convenience wrapper for storing cached values.
 
@@ -288,10 +297,13 @@ async def set_cache(key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: type |
         ttl: Time-to-live in seconds (default: 1 year)
         model: Optional Pydantic model for type validation
 
+    Returns:
+        True if the value was written, False if Redis was unavailable/failed.
+
     Example:
         await set_cache("user:123", user, ttl=3600, model=User)
     """
-    await redis_cache.set(key, value, ttl, model)
+    return await redis_cache.set(key, value, ttl, model)
 
 
 async def delete_cache(key: str):

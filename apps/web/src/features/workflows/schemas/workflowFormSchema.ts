@@ -10,7 +10,7 @@
  */
 
 import { z } from "zod";
-import { getUserHomeTimezone, isValidTimezone } from "@/lib/timezone";
+import { isValidTimezone } from "@/lib/timezone";
 import type { Workflow } from "@/types/features/workflowTypes";
 import { describeCron } from "../utils/cronUtils";
 
@@ -90,13 +90,11 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
   title: "",
   description: undefined,
   prompt: "",
-  activeTab: "schedule",
+  activeTab: "manual",
   selectedTrigger: "",
   trigger_config: {
-    type: "schedule",
+    type: "manual",
     enabled: true,
-    cron_expression: "0 9 * * *", // Daily at 9 AM
-    timezone: getUserHomeTimezone(),
   },
   notify_on_completion: true,
 });

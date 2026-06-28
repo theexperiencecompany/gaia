@@ -1,4 +1,15 @@
+/* Order cascade layers so react-ui's component styles sit ABOVE Tailwind's
+   base preflight (else preflight's `*{padding:0}` zeroes react-ui card padding)
+   but BELOW GAIA's components/utilities (so GAIA still wins real conflicts). */
+@layer theme, base, openui, components, utilities;
 @import "tailwindcss";
+
+/* @openuidev/react-ui — token defaults (unlayered, vars only) + layered
+   component styles (scoped to @layer openui). Themed at runtime via
+   <ThemeProvider darkTheme={gaiaOpenUITheme}>. */
+@import "@openuidev/react-ui/defaults.css";
+@import "@openuidev/react-ui/layered/styles/index.css";
+
 @source "../../../src";
 @source "../../../../../libs/shared/ts/src/**/*.{js,ts,jsx,tsx}";
 @source inline("row-span-2 row-span-3 row-span-4");
@@ -14,6 +25,22 @@
 @custom-variant dark (&:is(.dark *));
 @plugin "./hero.ts";
 @plugin "tailwindcss-animate";
+
+/* GAIA overrides for adopted react-ui components — same @layer openui as the
+   imported react-ui styles, declared later so source order wins. */
+@layer openui {
+  /* The "clear" Card variant is a bare wrapper (e.g. section headers); it
+     should sit flush with no padding. */
+  .openui-card-clear {
+    padding: 0;
+  }
+
+  /* react-ui draws a 1px vertical "internal line" down the centre of every bar
+     (a light-mode highlight that reads as a white stripe). Remove it. */
+  .recharts-bar-rectangle line {
+    display: none;
+  }
+}
 
 @keyframes sheet-fade-in {
   from {
@@ -443,6 +470,7 @@
     /* HeroUI theme variables */
     --heroui-primary: #00bbff;
     --heroui-primary-foreground: #000000;
+    --heroui-focus: #00bbff;
     --heroui-white: #ffffff;
     --heroui-white-foreground: #000000;
 
@@ -482,6 +510,7 @@
     /* HeroUI theme variables */
     --heroui-primary: #00bbff;
     --heroui-primary-foreground: #000000;
+    --heroui-focus: #00bbff;
     --heroui-white: #ffffff;
     --heroui-white-foreground: #000000;
 
@@ -600,6 +629,41 @@
 
   .scrollbar-faint::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Reserves the scrollbar gutter so content never shifts, but keeps the thumb
+     invisible until the scroll container is hovered. Lets sibling scroll areas
+     coexist without both thumbs showing at once. */
+  .scrollbar-hover {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .scrollbar-hover::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-hover::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-hover::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 100px;
+    transition: background 0.2s ease;
+  }
+
+  .scrollbar-hover:hover {
+    scrollbar-color: var(--color-zinc-700) transparent;
+  }
+
+  .scrollbar-hover:hover::-webkit-scrollbar-thumb {
+    background: var(--color-zinc-700);
+  }
+
+  .scrollbar-hover:hover::-webkit-scrollbar-thumb:hover {
+    background: var(--color-zinc-500);
   }
 
   .heroimage {

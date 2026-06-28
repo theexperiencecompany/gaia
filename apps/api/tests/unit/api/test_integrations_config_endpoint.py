@@ -1,6 +1,6 @@
 """Unit tests for the integrations config API endpoints.
 
-Tests cover GET /config, GET /status, DELETE /{integration_id},
+Tests cover GET /config, DELETE /{integration_id},
 and POST /connect/{integration_id}.  Service layer is mocked;
 only HTTP status codes, response shapes, and error handling are verified.
 """
@@ -104,44 +104,6 @@ class TestGetIntegrationsConfig:
             resp = await unauthed_client.get(f"{API}/config")
         # Config endpoint has no auth dependency — should succeed
         assert resp.status_code == 200
-
-
-# ===========================================================================
-# GET /integrations/status
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestGetIntegrationsStatus:
-    async def test_status_success(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.integrations.config.get_all_integrations_status",
-            new_callable=AsyncMock,
-            return_value={"github": True, "slack": False},
-        ):
-            resp = await client.get(f"{API}/status")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data["integrations"]) == 2
-
-    async def test_status_service_error_returns_all_disconnected(self, client: AsyncClient) -> None:
-        """When get_all_integrations_status fails, endpoint returns all
-        integrations as disconnected (not 500)."""
-        with patch(
-            "app.api.v1.endpoints.integrations.config.get_all_integrations_status",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB down"),
-        ):
-            resp = await client.get(f"{API}/status")
-        assert resp.status_code == 200
-        data = resp.json()
-        # All returned items should have connected=False
-        for item in data["integrations"]:
-            assert item["connected"] is False
-
-    async def test_status_requires_auth(self, unauthed_client: AsyncClient) -> None:
-        resp = await unauthed_client.get(f"{API}/status")
-        assert resp.status_code == 401
 
 
 # ===========================================================================
@@ -411,7 +373,7 @@ class TestConnectLinkEndpoint:
         users.find_one = AsyncMock(return_value={"email": "a@b.com"})
         with (
             patch(
-                f"{_MODULE}.verify_and_consume_connect_link_token",
+                f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
                 return_value=(_VALID_UID, "notion"),
             ),
@@ -422,29 +384,29 @@ class TestConnectLinkEndpoint:
                 return_value=result,
             ),
         ):
-            resp = await client.get(f"{API}/connect-link?t=sometoken", follow_redirects=False)
+            resp = await client.get(f"{API}/connect-link?code=somecode", follow_redirects=False)
         assert resp.status_code in (302, 307)
         assert resp.headers["location"] == "https://oauth.example/go"
 
     async def test_invalid_token_redirects_to_error(self, client: AsyncClient) -> None:
         with patch(
-            f"{_MODULE}.verify_and_consume_connect_link_token",
+            f"{_MODULE}.resolve_and_consume_connect_code",
             new_callable=AsyncMock,
             return_value=None,
         ):
-            resp = await client.get(f"{API}/connect-link?t=bad", follow_redirects=False)
+            resp = await client.get(f"{API}/connect-link?code=bad", follow_redirects=False)
         assert resp.status_code in (302, 307)
         assert "connect_error=invalid_or_expired_link" in resp.headers["location"]
 
     async def test_works_without_login(self, unauthed_client: AsyncClient) -> None:
         """The whole point: a logged-out user reaches it (not 401) and is sent
-        into OAuth — identity comes from the signed token, not a session."""
+        into OAuth — identity comes from the single-use code, not a session."""
         result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
         users = MagicMock()
         users.find_one = AsyncMock(return_value={"email": "a@b.com"})
         with (
             patch(
-                f"{_MODULE}.verify_and_consume_connect_link_token",
+                f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
                 return_value=(_VALID_UID, "notion"),
             ),
@@ -456,7 +418,7 @@ class TestConnectLinkEndpoint:
             ),
         ):
             resp = await unauthed_client.get(
-                f"{API}/connect-link?t=sometoken", follow_redirects=False
+                f"{API}/connect-link?code=somecode", follow_redirects=False
             )
         assert resp.status_code != 401
         assert resp.headers["location"] == "https://oauth.example/go"

@@ -28,7 +28,6 @@ import {
   handleStreamingChat,
   type IncomingMedia,
   type MediaOutcome,
-  mediaKindFromMime,
   type OutboundAttachment,
   type PlatformName,
   type RichMessage,
@@ -52,168 +51,124 @@ import {
   MessageFlags,
   Partials,
 } from "discord.js";
+import { downloadDiscordAttachment, extractDiscordMedia } from "./media";
 
 // ---------------------------------------------------------------------------
 // Rotating presence statuses
 // ---------------------------------------------------------------------------
 
+// Discord renders the activity type itself: ActivityType.Listening shows as
+// "Listening to {name}" and ActivityType.Competing as "Competing in {name}".
+// So Listening/Competing names must NOT repeat that preposition, otherwise the
+// client shows "Listening to to …". Watching/Playing take the name verbatim.
 const ROTATING_STATUSES: { type: ActivityType; name: string }[] = [
   { type: ActivityType.Watching, name: "over your goals" },
-  { type: ActivityType.Listening, name: "to your inner procrastinator" },
+  { type: ActivityType.Listening, name: "your inner procrastinator" },
   { type: ActivityType.Playing, name: "personal assistant to legends" },
-  { type: ActivityType.Competing, name: "in the productivity Olympics" },
+  { type: ActivityType.Competing, name: "the productivity Olympics" },
   { type: ActivityType.Watching, name: "your productivity soar" },
-  { type: ActivityType.Listening, name: "to the sound of getting things done" },
+  { type: ActivityType.Listening, name: "the sound of getting things done" },
   { type: ActivityType.Playing, name: "life admin simulator" },
-  { type: ActivityType.Competing, name: "against your past self" },
+  { type: ActivityType.Competing, name: "the rematch with your past self" },
   { type: ActivityType.Watching, name: "for tasks worth automating" },
-  { type: ActivityType.Listening, name: "to great ideas happen" },
+  { type: ActivityType.Listening, name: "great ideas happen" },
   { type: ActivityType.Playing, name: "the long game with you" },
-  { type: ActivityType.Competing, name: "for the title of most helpful AI" },
+  { type: ActivityType.Competing, name: "the race for most helpful AI" },
   { type: ActivityType.Watching, name: "your potential unfold" },
-  { type: ActivityType.Listening, name: "to your todo list grow" },
+  { type: ActivityType.Listening, name: "your todo list grow" },
   { type: ActivityType.Playing, name: "chess with your calendar" },
-  { type: ActivityType.Competing, name: "in the task completion marathon" },
+  { type: ActivityType.Competing, name: "the task completion marathon" },
   { type: ActivityType.Watching, name: "the chaos become clarity" },
-  { type: ActivityType.Listening, name: "to your ambitions" },
+  { type: ActivityType.Listening, name: "your ambitions" },
   { type: ActivityType.Playing, name: "catch-up with your goals" },
   { type: ActivityType.Watching, name: "your habits build momentum" },
-  { type: ActivityType.Listening, name: "to your 3am ideas" },
+  { type: ActivityType.Listening, name: "your 3am ideas" },
   { type: ActivityType.Playing, name: "scheduler extraordinaire" },
-  { type: ActivityType.Competing, name: "with yesterday's you" },
+  { type: ActivityType.Competing, name: "a rematch against yesterday's you" },
   { type: ActivityType.Watching, name: "your dreams take shape" },
-  { type: ActivityType.Listening, name: "to the rhythm of your workflow" },
+  { type: ActivityType.Listening, name: "the rhythm of your workflow" },
   { type: ActivityType.Playing, name: "productivity coach unlocked" },
   { type: ActivityType.Watching, name: "out for your deadlines" },
-  { type: ActivityType.Listening, name: "to your best ideas yet" },
+  { type: ActivityType.Listening, name: "your best ideas yet" },
   { type: ActivityType.Playing, name: "your favorite AI companion" },
-  { type: ActivityType.Competing, name: "for best personal assistant 2025" },
+  { type: ActivityType.Competing, name: "the best-assistant league" },
   { type: ActivityType.Watching, name: "you crush it today" },
-  {
-    type: ActivityType.Listening,
-    name: "for 'I should write that down' moments",
-  },
+  { type: ActivityType.Listening, name: "'I should write that down' moments" },
   { type: ActivityType.Playing, name: "executive assistant" },
   { type: ActivityType.Watching, name: "your workflow evolve" },
-  { type: ActivityType.Listening, name: "to a todo list that never quits" },
+  { type: ActivityType.Listening, name: "a todo list that never quits" },
   { type: ActivityType.Playing, name: "the AI you didn't know you needed" },
   { type: ActivityType.Watching, name: "your future unfold" },
-  { type: ActivityType.Listening, name: "to your daily wins" },
-  { type: ActivityType.Playing, name: "personal concierge since 2024" },
-  { type: ActivityType.Competing, name: "with every other AI (and winning)" },
+  { type: ActivityType.Listening, name: "your daily wins" },
+  { type: ActivityType.Playing, name: "personal concierge" },
+  { type: ActivityType.Competing, name: "the AI showdown (and winning)" },
   { type: ActivityType.Watching, name: "every task you complete" },
-  { type: ActivityType.Listening, name: "to the grind (it's paying off)" },
+  { type: ActivityType.Listening, name: "the grind (it's paying off)" },
   { type: ActivityType.Playing, name: "co-pilot to your ambitions" },
   { type: ActivityType.Watching, name: "your back (and your calendar)" },
-  { type: ActivityType.Listening, name: "to success stories (yours)" },
+  { type: ActivityType.Listening, name: "success stories (yours)" },
   { type: ActivityType.Playing, name: "second brain for first-class minds" },
   { type: ActivityType.Watching, name: "for shortcuts to suggest" },
-  { type: ActivityType.Listening, name: "to the future you're building" },
+  { type: ActivityType.Listening, name: "the future you're building" },
   { type: ActivityType.Playing, name: "AI companion to visionaries" },
   { type: ActivityType.Watching, name: "you level up" },
-  { type: ActivityType.Listening, name: "to creative sparks ignite" },
+  { type: ActivityType.Listening, name: "creative sparks ignite" },
   { type: ActivityType.Playing, name: "Swiss Army AI" },
-  { type: ActivityType.Competing, name: "in the habit-building championship" },
+  { type: ActivityType.Competing, name: "the habit-building championship" },
   { type: ActivityType.Watching, name: "your productivity metrics" },
-  { type: ActivityType.Listening, name: "to plans become reality" },
+  { type: ActivityType.Listening, name: "plans become reality" },
   { type: ActivityType.Playing, name: "assistant to the ambitious" },
   { type: ActivityType.Watching, name: "you outpace expectations" },
-  { type: ActivityType.Listening, name: "to ambitions become plans" },
+  { type: ActivityType.Listening, name: "ambitions become plans" },
   { type: ActivityType.Playing, name: "the AI that actually remembers" },
   { type: ActivityType.Watching, name: "for the next big breakthrough" },
-  { type: ActivityType.Listening, name: "to the productivity beat" },
+  { type: ActivityType.Listening, name: "the productivity beat" },
   { type: ActivityType.Playing, name: "life optimizer" },
-  { type: ActivityType.Competing, name: "for your favorite app slot" },
+  { type: ActivityType.Competing, name: "the race for your favorite app slot" },
   { type: ActivityType.Watching, name: "you build good habits" },
-  { type: ActivityType.Listening, name: "to ideas worth capturing" },
+  { type: ActivityType.Listening, name: "ideas worth capturing" },
   { type: ActivityType.Playing, name: "the kindest productivity nag" },
   { type: ActivityType.Watching, name: "you turn chaos into clarity" },
-  { type: ActivityType.Listening, name: "to your workflow's rhythm" },
+  { type: ActivityType.Listening, name: "your workflow's rhythm" },
   { type: ActivityType.Playing, name: "your personal AI, always on" },
   { type: ActivityType.Watching, name: "for things you might forget" },
   { type: ActivityType.Listening, name: "for 'hey GAIA'" },
   { type: ActivityType.Playing, name: "the long game (like you)" },
-  { type: ActivityType.Competing, name: "in the focus championship" },
+  { type: ActivityType.Competing, name: "the focus championship" },
   { type: ActivityType.Watching, name: "1,000 tasks at once" },
-  { type: ActivityType.Listening, name: "to every whisper of an idea" },
+  { type: ActivityType.Listening, name: "every whisper of an idea" },
   { type: ActivityType.Playing, name: "digital chief of staff" },
   { type: ActivityType.Watching, name: "deadlines approach (very calmly)" },
-  { type: ActivityType.Listening, name: "to your calendar breathe" },
+  { type: ActivityType.Listening, name: "your calendar breathe" },
   { type: ActivityType.Playing, name: "memory palace curator" },
-  { type: ActivityType.Competing, name: "for most proactive AI ever" },
+  { type: ActivityType.Competing, name: "the race to be most proactive" },
   { type: ActivityType.Watching, name: "your goals get checked off" },
-  { type: ActivityType.Listening, name: "to every great plan you make" },
+  { type: ActivityType.Listening, name: "every great plan you make" },
   { type: ActivityType.Playing, name: "task whisperer" },
   { type: ActivityType.Watching, name: "you build something great" },
-  { type: ActivityType.Listening, name: "to your procrastinator's excuses" },
+  { type: ActivityType.Listening, name: "your procrastinator's excuses" },
   { type: ActivityType.Playing, name: "your cognitive offloading device" },
-  { type: ActivityType.Competing, name: "in the inbox zero marathon" },
+  { type: ActivityType.Competing, name: "the inbox zero marathon" },
   { type: ActivityType.Watching, name: "the todo pile (it's growing)" },
-  { type: ActivityType.Listening, name: "to your inner visionary" },
+  { type: ActivityType.Listening, name: "your inner visionary" },
   { type: ActivityType.Playing, name: "second brain, first priority" },
   { type: ActivityType.Watching, name: "patterns in your day" },
-  { type: ActivityType.Listening, name: "to the future being planned" },
+  { type: ActivityType.Listening, name: "the future being planned" },
   { type: ActivityType.Playing, name: "accountability partner" },
-  { type: ActivityType.Competing, name: "in the deep work tournament" },
+  { type: ActivityType.Competing, name: "the deep work tournament" },
   { type: ActivityType.Watching, name: "you stay ahead of the curve" },
-  { type: ActivityType.Listening, name: "to your morning intentions" },
+  { type: ActivityType.Listening, name: "your morning intentions" },
   { type: ActivityType.Playing, name: "the AI that has your back" },
   { type: ActivityType.Watching, name: "every goal inch closer" },
-  { type: ActivityType.Listening, name: "to tasks get done" },
+  { type: ActivityType.Listening, name: "tasks get done" },
   { type: ActivityType.Playing, name: "your productivity operating system" },
   { type: ActivityType.Watching, name: "over everything, so you can focus" },
 ];
 
 const STATUS_ROTATION_INTERVAL_MS = 3 * 60 * 1000;
 
-/** A Discord attachment/sticker normalised for the shared media pipeline. */
-interface DiscordExtractedMedia {
-  /** Public CDN URL for the bytes; empty for stickers (never downloaded). */
-  url: string;
-  media: Omit<IncomingMedia, "caption">;
-}
-
-/**
- * Maps a Discord message's first attachment (or sticker) onto the shared
- * {@link IncomingMedia} shape, or null when the message carries no media.
- * Optional chaining keeps it safe against partial test mocks that omit the
- * `attachments` / `stickers` collections.
- */
-function extractDiscordMedia(message: Message): DiscordExtractedMedia | null {
-  const attachment = message.attachments?.first?.();
-  if (attachment) {
-    const mimeType = attachment.contentType ?? "application/octet-stream";
-    const kind = mediaKindFromMime(mimeType);
-    return {
-      url: attachment.url,
-      media: {
-        kind,
-        isVoiceNote: message.flags?.has(MessageFlags.IsVoiceMessage) ?? false,
-        mimeType,
-        filename: kind === "document" ? attachment.name : undefined,
-      },
-    };
-  }
-  if ((message.stickers?.size ?? 0) > 0) {
-    return {
-      url: "",
-      media: { kind: "sticker", isVoiceNote: false, mimeType: "image/png" },
-    };
-  }
-  return null;
-}
-
-/** Downloads a Discord attachment from its public CDN URL. */
-async function downloadDiscordAttachment(url: string): Promise<Uint8Array> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw Object.assign(
-      new Error(`Discord attachment download failed (${res.status})`),
-      { status: res.status },
-    );
-  }
-  return new Uint8Array(await res.arrayBuffer());
-}
+/** Discord shows the typing indicator for ~10s; refresh just before it expires. */
+const TYPING_REFRESH_INTERVAL_MS = 8000;
 
 /**
  * Discord-specific implementation of the GAIA bot adapter.
@@ -277,6 +232,11 @@ export class DiscordAdapter extends BaseBotAdapter {
         bot_id: c.user.id,
       });
       this.startStatusRotation(c.user);
+      // Pre-warm DM channels for linked users. discord.js cannot reconstruct a
+      // DM channel from a cold MESSAGE_CREATE payload (it lacks type/recipients),
+      // so an uncached DM channel makes inbound DMs silently dropped after a
+      // restart. Opening each linked user's DM caches it so their DMs resolve.
+      void this.prewarmDmChannels();
     });
 
     this.client.on(Events.InteractionCreate, async (interaction) => {
@@ -365,6 +325,40 @@ export class DiscordAdapter extends BaseBotAdapter {
     await user.send({
       content: attachment.caption ?? undefined,
       files: [{ attachment: artifact.data, name: attachment.filename }],
+    });
+  }
+
+  /**
+   * Opens (and thereby caches) the DM channel for every linked Discord user.
+   *
+   * Without this, discord.js drops inbound DMs whose channel isn't cached — it
+   * can't rebuild a DM channel from a bare MESSAGE_CREATE (no type/recipients).
+   * A long-running prod bot caches these naturally by DMing users; a freshly
+   * restarted bot starts cold, so we warm them explicitly. Best-effort: failures
+   * for individual users (left the server, etc.) are logged and skipped.
+   */
+  private async prewarmDmChannels(): Promise<void> {
+    let linked: string[];
+    try {
+      linked = await this.gaia.listLinkedPlatformUserIds(this.platform);
+    } catch (error) {
+      this.adapterLogger.error("dm_prewarm_list_failed", {}, error);
+      return;
+    }
+    let cached = 0;
+    for (const userId of linked) {
+      try {
+        const user = await this.client.users.fetch(userId);
+        await user.createDM();
+        cached++;
+      } catch (error) {
+        this.adapterLogger.warn("dm_prewarm_user_failed", { user_id: userId });
+        void error;
+      }
+    }
+    this.adapterLogger.info("dm_channels_prewarmed", {
+      linked: linked.length,
+      cached,
     });
   }
 
@@ -663,7 +657,7 @@ export class DiscordAdapter extends BaseBotAdapter {
   private async handleDMMessage(message: Message): Promise<void> {
     const userId = message.author.id;
 
-    if (this.shouldSendWelcome(userId)) {
+    if (await this.shouldSendWelcome(userId)) {
       await this.sendDMWelcome(message);
     }
 
@@ -692,7 +686,7 @@ export class DiscordAdapter extends BaseBotAdapter {
               (
                 message.channel as { sendTyping: () => Promise<void> }
               ).sendTyping(),
-            8000,
+            TYPING_REFRESH_INTERVAL_MS,
           )
         : () => {};
 
@@ -779,31 +773,32 @@ export class DiscordAdapter extends BaseBotAdapter {
       )
       .addFields(
         {
-          name: "💬 Chat",
+          name: "Chat",
           value:
-            "Just type anything. Ask questions, brainstorm, think out loud.",
+            "Just type anything — ask questions, brainstorm, think out loud.",
           inline: false,
         },
         {
-          name: "✅ Todos",
+          name: "Todos",
           value:
-            "Use `/todo add` to capture tasks. Right-click any message → **Add as Todo**.",
+            "Capture tasks with `/todo add`, or right-click any message → **Add as Todo**.",
           inline: false,
         },
         {
-          name: "⚡ Workflows",
-          value: "Run automations with `/workflow`. Delegate entire projects.",
+          name: "Workflows",
+          value:
+            "Run automations with `/workflow` and delegate whole projects.",
           inline: false,
         },
         {
-          name: "🔗 Link your account",
+          name: "Link your account",
           value:
-            "Use `/auth` to connect your GAIA account for memory and personalization.",
+            "Run `/auth` to connect GAIA so I remember you and your context.",
           inline: false,
         },
       )
       .setFooter({
-        text: "Tip: Right-click any message to summarize it or add it as a todo.",
+        text: "Tip: right-click any message to summarize it or save it as a todo.",
       })
       .setTimestamp();
 
@@ -827,8 +822,12 @@ export class DiscordAdapter extends BaseBotAdapter {
           }) => Promise<Message>;
         }
       ).send({ embeds: [embed], components: [row] });
-    } catch {
-      // If we can't send the welcome, continue silently
+    } catch (error) {
+      this.adapterLogger.error(
+        "welcome_send_failed",
+        { user_id: message.author.id },
+        error,
+      );
     }
   }
 
@@ -894,7 +893,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     return this.startTypingIndicator(
       () =>
         (message.channel as { sendTyping: () => Promise<void> }).sendTyping(),
-      8000,
+      TYPING_REFRESH_INTERVAL_MS,
     );
   }
 

@@ -1,4 +1,5 @@
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import {
   Dropdown,
   DropdownItem,
@@ -9,6 +10,7 @@ import { Input, Textarea } from "@heroui/input";
 import {
   Cancel01Icon,
   Delete02Icon,
+  LinkSquare02Icon,
   MoreVerticalIcon,
   ReloadIcon,
   ToggleOffIcon,
@@ -16,8 +18,11 @@ import {
 } from "@icons";
 import { type Control, Controller, type FieldErrors } from "react-hook-form";
 
+import { cn } from "@/lib/utils";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+
+const iconClasses = "size-5 text-default-500 pointer-events-none shrink-0";
 
 interface WorkflowHeaderProps {
   mode: "create" | "edit" | "preview";
@@ -29,6 +34,7 @@ interface WorkflowHeaderProps {
   onToggleActivation: (activated: boolean) => void;
   isPublic?: boolean;
   onUnpublish?: () => void | Promise<void>;
+  onViewMarketplace?: () => void;
   onDelete: () => void;
   onResetToDefault?: () => void | Promise<void>;
 }
@@ -43,16 +49,19 @@ export default function WorkflowHeader({
   onToggleActivation,
   isPublic,
   onUnpublish,
+  onViewMarketplace,
   onDelete,
   onResetToDefault,
 }: WorkflowHeaderProps) {
   const isSystemWorkflow = !!currentWorkflow?.is_system_workflow;
+  const showMarketplace = !!isPublic && !!onViewMarketplace;
   const showUnpublish = !!isPublic && !!onUnpublish;
   const showReset = isSystemWorkflow && !!onResetToDefault;
+  const showMenu = mode === "edit" && !!currentWorkflow;
 
   return (
-    <div className="flex flex-col pt-5">
-      <div className="flex items-center gap-3">
+    <div className="space-y-1">
+      <div className="flex items-start gap-3">
         <Controller
           name="title"
           control={control}
@@ -61,106 +70,122 @@ export default function WorkflowHeader({
               {...field}
               autoFocus
               placeholder={
-                mode === "edit" ? "Edit workflow name" : "Enter workflow name"
+                mode === "edit" ? "Workflow name" : "Name your workflow"
               }
-              variant="underlined"
+              variant="flat"
               classNames={{
-                input: "font-medium! text-4xl",
-                inputWrapper: "px-0",
+                base: "min-w-0 flex-1",
+                input:
+                  "text-2xl font-semibold text-white placeholder:font-normal placeholder:text-zinc-600 focus:outline-none focus-visible:outline-none",
+                inputWrapper:
+                  "h-auto min-h-0 border-none bg-transparent px-0 py-0 shadow-none outline-none ring-0 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus=true]:shadow-none group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
               }}
               isRequired
-              className="flex-1"
               isInvalid={!!errors.title}
               errorMessage={errors.title?.message}
             />
           )}
         />
 
-        {mode === "edit" && currentWorkflow && (
-          <Dropdown placement="bottom-end" className="w-64">
-            <DropdownTrigger>
-              <Button variant="flat" size="sm" isIconOnly>
-                <MoreVerticalIcon />
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu
-              disabledKeys={isTogglingActivation ? ["activation"] : []}
-              onAction={(key) => {
-                if (key === "activation") {
-                  onToggleActivation(!isActivated);
-                } else if (key === "unpublish" && onUnpublish) {
-                  onUnpublish();
-                } else if (key === "reset" && onResetToDefault) {
-                  onResetToDefault();
-                } else if (key === "delete") {
-                  onDelete();
-                }
+        {showMenu && (
+          <div className="flex shrink-0 items-center gap-2 pt-1.5">
+            <Chip
+              size="sm"
+              variant="flat"
+              color={isActivated ? "success" : "default"}
+              classNames={{
+                base: isActivated ? "bg-success/15" : "bg-zinc-800",
+                content: "text-xs font-medium",
               }}
             >
-              <DropdownItem
-                key="activation"
-                startContent={
-                  isActivated ? (
-                    <ToggleOffIcon className="h-4 w-4" />
-                  ) : (
-                    <ToggleOnIcon className="h-4 w-4" />
-                  )
-                }
-                classNames={{
-                  description: "text-wrap",
-                  base: "items-start!",
+              {isActivated ? "Active" : "Paused"}
+            </Chip>
+
+            <Dropdown placement="bottom-end" className="w-64">
+              <DropdownTrigger>
+                <Button variant="flat" size="sm" isIconOnly>
+                  <MoreVerticalIcon className="h-4 w-4" />
+                </Button>
+              </DropdownTrigger>
+              <DropdownMenu
+                variant="flat"
+                disabledKeys={isTogglingActivation ? ["activation"] : []}
+                onAction={(key) => {
+                  const actions: Record<
+                    string,
+                    (() => void | Promise<void>) | undefined
+                  > = {
+                    activation: () => onToggleActivation(!isActivated),
+                    marketplace: onViewMarketplace,
+                    unpublish: onUnpublish,
+                    reset: onResetToDefault,
+                    delete: onDelete,
+                  };
+                  actions[String(key)]?.();
                 }}
-                description={
-                  isActivated
-                    ? "Stop this workflow from running"
-                    : "Allow this workflow to run"
-                }
               >
-                {isActivated ? "Disable" : "Enable"}
-              </DropdownItem>
-
-              {showUnpublish ? (
                 <DropdownItem
-                  key="unpublish"
-                  startContent={<Cancel01Icon className="h-4 w-4" />}
-                  classNames={{
-                    description: "text-wrap",
-                    base: "items-start!",
-                  }}
-                  description="Remove from community marketplace"
+                  key="activation"
+                  description={
+                    isActivated
+                      ? "Stop this workflow from running"
+                      : "Allow this workflow to run"
+                  }
+                  startContent={
+                    isActivated ? (
+                      <ToggleOffIcon className={iconClasses} />
+                    ) : (
+                      <ToggleOnIcon className={iconClasses} />
+                    )
+                  }
                 >
-                  Unpublish
+                  {isActivated ? "Disable" : "Enable"}
                 </DropdownItem>
-              ) : null}
 
-              {showReset ? (
+                {showMarketplace ? (
+                  <DropdownItem
+                    key="marketplace"
+                    description="Open on the marketplace"
+                    startContent={<LinkSquare02Icon className={iconClasses} />}
+                  >
+                    View on marketplace
+                  </DropdownItem>
+                ) : null}
+
+                {showUnpublish ? (
+                  <DropdownItem
+                    key="unpublish"
+                    description="Remove from the marketplace"
+                    startContent={<Cancel01Icon className={iconClasses} />}
+                  >
+                    Unpublish
+                  </DropdownItem>
+                ) : null}
+
+                {showReset ? (
+                  <DropdownItem
+                    key="reset"
+                    description="Restore the original GAIA definition"
+                    startContent={<ReloadIcon className={iconClasses} />}
+                  >
+                    Reset to default
+                  </DropdownItem>
+                ) : null}
+
                 <DropdownItem
-                  key="reset"
-                  startContent={<ReloadIcon className="h-4 w-4" />}
-                  classNames={{
-                    description: "text-wrap",
-                    base: "items-start!",
-                  }}
-                  description="Restore this workflow to its original GAIA-provided definition"
+                  key="delete"
+                  className="text-danger"
+                  color="danger"
+                  description="Permanently delete this workflow"
+                  startContent={
+                    <Delete02Icon className={cn(iconClasses, "text-danger")} />
+                  }
                 >
-                  Reset to Default
+                  Delete workflow
                 </DropdownItem>
-              ) : null}
-
-              <DropdownItem
-                key="delete"
-                color="danger"
-                startContent={<Delete02Icon className="h-4 w-4" />}
-                classNames={{
-                  description: "text-wrap",
-                  base: "items-start!",
-                }}
-                description="Permanently delete this workflow"
-              >
-                Delete Workflow
-              </DropdownItem>
-            </DropdownMenu>
-          </Dropdown>
+              </DropdownMenu>
+            </Dropdown>
+          </div>
         )}
       </div>
 
@@ -173,11 +198,13 @@ export default function WorkflowHeader({
             value={field.value ?? ""}
             placeholder="Add a short description..."
             minRows={1}
-            maxRows={3}
-            variant="underlined"
+            maxRows={2}
+            variant="flat"
             classNames={{
-              input: "text-sm text-foreground-500 resize-none",
-              inputWrapper: "px-0",
+              input:
+                "resize-none text-sm text-zinc-300 focus:outline-none focus-visible:outline-none",
+              inputWrapper:
+                "border-none bg-transparent px-0 py-0 shadow-none outline-none ring-0 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus=true]:shadow-none group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
             }}
             isInvalid={!!errors.description}
             errorMessage={errors.description?.message}

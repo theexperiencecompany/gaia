@@ -1,8 +1,7 @@
 import { Button } from "@heroui/button";
-import { Textarea } from "@heroui/input";
 import { Tooltip } from "@heroui/tooltip";
 import { SparklesIcon } from "@icons";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   type Control,
   Controller,
@@ -10,34 +9,57 @@ import {
   type UseFormSetValue,
   useWatch,
 } from "react-hook-form";
+import { TextMorph } from "torph/react";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { MentionEditor } from "@/features/integrations/components/MentionEditor";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import { workflowApi } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
-import IntegrationChipsSelector from "./IntegrationChipsSelector";
+import { mentionableIntegrations } from "../../utils/integrationMentions";
+import WorkflowSection from "./WorkflowSection";
 
 interface WorkflowDescriptionFieldProps {
   control: Control<WorkflowFormData>;
   errors: FieldErrors<WorkflowFormData>;
   setValue?: UseFormSetValue<WorkflowFormData>;
-  mode?: "create" | "edit" | "preview";
   isPreview?: boolean;
   selectedIntegrationSlugs: string[];
-  onIntegrationSlugsChange: (slugs: string[]) => void;
-  showIntegrationSelector?: boolean;
 }
 
 export default function WorkflowDescriptionField({
   control,
   errors,
   setValue,
-  mode = "create",
   isPreview = false,
   selectedIntegrationSlugs,
-  onIntegrationSlugsChange,
-  showIntegrationSelector = true,
 }: WorkflowDescriptionFieldProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const { integrations } = useIntegrations();
+  // Only integrations the user can actually use are mentionable.
+  const mentionable = useMemo(
+    () => mentionableIntegrations(integrations),
+    [integrations],
+  );
+  const toolNames = useMemo(
+    () => mentionable.map((i) => i.name),
+    [mentionable],
+  );
+  const integrationByName = useMemo(
+    () => new Map(mentionable.map((i) => [i.name, i])),
+    [mentionable],
+  );
+  const renderMentionIcon = (name: string) => {
+    const integ = integrationByName.get(name);
+    if (!integ) return null;
+    return getToolCategoryIcon(
+      integ.id,
+      { size: 14, width: 14, height: 14, showBackground: false },
+      integ.iconUrl,
+    );
+  };
 
   const [title, description, triggerConfig, currentPrompt] = useWatch({
     control,
@@ -46,14 +68,16 @@ export default function WorkflowDescriptionField({
 
   const hasExistingPrompt = !!currentPrompt?.trim();
 
-  const tooltipText = isGenerating
-    ? "Generating..."
-    : hasExistingPrompt
-      ? "Improve instructions and triggers with AI"
-      : "Generate instructions and triggers with AI";
+  // Generation needs something to work from — a title, a description, or an
+  // existing prompt to improve. With a blank form there's nothing to generate.
+  const canGenerate = !!(
+    title?.trim() ||
+    description?.trim() ||
+    currentPrompt?.trim()
+  );
 
-  const handleGenerate = async (onChange: (val: string) => void) => {
-    if (isGenerating) return;
+  const handleGenerate = async () => {
+    if (isGenerating || !setValue || !canGenerate) return;
     setIsGenerating(true);
     try {
       const result = await workflowApi.generatePrompt({
@@ -66,10 +90,10 @@ export default function WorkflowDescriptionField({
             ? selectedIntegrationSlugs
             : undefined,
       });
-      onChange(result.prompt);
+      setValue("prompt", result.prompt, { shouldDirty: true });
 
       // Auto-fill trigger config from AI suggestion
-      if (result.suggested_trigger && setValue) {
+      if (result.suggested_trigger) {
         const { type, cron_expression, trigger_name } =
           result.suggested_trigger;
 
@@ -84,17 +108,15 @@ export default function WorkflowDescriptionField({
         } else if (type === "manual") {
           setValue("activeTab", "manual");
           setValue("trigger_config", { type: "manual", enabled: true });
-        } else if (type === "integration") {
+        } else if (type === "integration" && trigger_name) {
           setValue("activeTab", "trigger");
-          if (trigger_name) {
-            setValue("selectedTrigger", trigger_name);
-            setValue("trigger_config", {
-              type: "integration",
-              enabled: true,
-              trigger_name,
-              trigger_data: { trigger_name },
-            });
-          }
+          setValue("selectedTrigger", trigger_name);
+          setValue("trigger_config", {
+            type: "integration",
+            enabled: true,
+            trigger_name,
+            trigger_data: { trigger_name },
+          });
         }
       }
     } catch {
@@ -104,68 +126,66 @@ export default function WorkflowDescriptionField({
     }
   };
 
+  const generateButton = isPreview ? undefined : (
+    <Tooltip
+      content="Add a title, description, or instructions first"
+      placement="top"
+      isDisabled={canGenerate}
+    >
+      {/* span wrapper keeps the tooltip hoverable while the button is disabled */}
+      <span className="inline-flex">
+        <Button
+          size="sm"
+          variant="light"
+          color="primary"
+          className="h-7 px-2 text-xs"
+          startContent={!isGenerating && <SparklesIcon className="h-4 w-4" />}
+          isLoading={isGenerating}
+          isDisabled={isGenerating || !canGenerate}
+          onPress={handleGenerate}
+        >
+          <TextMorph duration={300}>
+            {hasExistingPrompt ? "Improve with AI" : "Generate with AI"}
+          </TextMorph>
+        </Button>
+      </span>
+    </Tooltip>
+  );
+
   return (
-    <div className="space-y-2">
+    <WorkflowSection label="Instructions" action={generateButton}>
       <Controller
         name="prompt"
         control={control}
         render={({ field }) => (
-          <div className="relative group">
-            <Textarea
-              {...field}
-              aria-label="Workflow instructions"
-              placeholder={
-                mode === "edit"
-                  ? "Detailed instructions for what this workflow should do"
-                  : "Describe in detail what this workflow should do when triggered"
-              }
-              minRows={5}
-              variant="flat"
-              className="text-base"
-              isRequired
-              isInvalid={!!errors.prompt}
-              errorMessage={errors.prompt?.message}
-              onKeyDown={(e) => {
-                if (
-                  !isPreview &&
-                  (e.metaKey || e.ctrlKey) &&
-                  e.shiftKey &&
-                  e.key === "Enter"
-                ) {
-                  e.preventDefault();
-                  handleGenerate(field.onChange);
-                }
-              }}
+          <>
+            <MentionEditor
+              value={field.value ?? ""}
+              onChange={field.onChange}
+              toolNames={toolNames}
+              renderMentionIcon={renderMentionIcon}
+              mentionRadius="sm"
+              mentionRemovable={false}
+              readOnly={isPreview}
+              placeholder="E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via Slack"
+              // Match the HeroUI flat Textarea this replaced: same surface
+              // (default-100), radius, padding and line height.
+              className={`relative rounded-medium transition-colors ${
+                errors.prompt
+                  ? "bg-danger-50"
+                  : "bg-default-100 hover:bg-default-200 focus-within:bg-default-100"
+              }`}
+              textClassName="px-3 py-2 text-sm leading-relaxed"
+              surfaceClassName="min-h-24 max-h-72"
             />
-            {!isPreview && (
-              <div className="absolute top-1 right-0 z-10">
-                <Tooltip content={tooltipText} placement="top">
-                  <Button
-                    size="sm"
-                    variant="light"
-                    isIconOnly
-                    isDisabled={isGenerating}
-                    isLoading={isGenerating}
-                    onPress={() => handleGenerate(field.onChange)}
-                    aria-label={tooltipText}
-                    className="text-foreground-400 hover:text-primary"
-                  >
-                    {!isGenerating && <SparklesIcon className="h-4 w-4" />}
-                  </Button>
-                </Tooltip>
-              </div>
+            {errors.prompt?.message && (
+              <p className="mt-1.5 px-1 text-xs text-danger">
+                {errors.prompt.message}
+              </p>
             )}
-          </div>
+          </>
         )}
       />
-      {showIntegrationSelector && !isPreview && (
-        <div className="pt-1">
-          <IntegrationChipsSelector
-            selectedSlugs={selectedIntegrationSlugs}
-            onChange={onIntegrationSlugsChange}
-          />
-        </div>
-      )}
-    </div>
+    </WorkflowSection>
   );
 }

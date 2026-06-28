@@ -6,11 +6,14 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
-import { Checkbox } from "@heroui/checkbox";
-
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
+import {
+  TriggerSettingRow,
+  TriggerSettingsCard,
+} from "../components/TriggerSettingsCard";
+import { TriggerToggleRow } from "../components/TriggerToggleRow";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
@@ -80,18 +83,12 @@ function SlackSettings({
 
   if (!isConnected) {
     return (
-      <div className="flex flex-col items-center justify-center p-4 space-y-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
-        <p className="text-sm text-zinc-400">
-          Connect Slack to configure this trigger
-        </p>
-        <Button
-          color="primary"
-          variant="flat"
-          onPress={() => connectIntegration(integrationId)}
-        >
-          Connect Slack
-        </Button>
-      </div>
+      <TriggerConnectionPrompt
+        integrationName="Slack"
+        integrationId={integrationId}
+        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
+        onConnect={() => connectIntegration(integrationId)}
+      />
     );
   }
 
@@ -106,88 +103,76 @@ function SlackSettings({
   }
 
   return (
-    <div className="space-y-4">
-      <TriggerSelectToggle
-        label="Channels"
-        selectProps={{
-          options: channelOptions || [],
-          selectedValues: selectedValues,
-          onSelectionChange: (selectedIds: string[]) => {
-            updateTriggerData({
-              channel_ids: selectedIds,
-            });
-          },
-          isLoading: isLoadingChannels,
-          placeholder: "Select channels",
-          renderValue: (items: { key: string; textValue: string }[]) => {
-            const count = items.length;
-            if (count === 0) return "Select channels";
-            if (count === 1) return items[0]?.textValue || "1 channel";
-            return `${count} channels selected`;
-          },
-          description: "Leave empty to trigger on all channels",
-        }}
-        tagInputProps={{
-          values: selectedValues,
-          onChange: (selectedIds: string[]) => {
-            updateTriggerData({
-              channel_ids: selectedIds,
-            });
-          },
-          placeholder: "Add another...",
-          emptyPlaceholder: "Enter channel IDs",
-        }}
-        allowManualInput={true}
-      />
+    <TriggerSettingsCard>
+      <TriggerSettingRow label="Channels" wide>
+        <TriggerSelectToggle
+          label="Channels"
+          selectProps={{
+            options: channelOptions || [],
+            selectedValues: selectedValues,
+            onSelectionChange: (selectedIds: string[]) => {
+              updateTriggerData({ channel_ids: selectedIds });
+            },
+            isLoading: isLoadingChannels,
+            placeholder: "Select channels",
+            renderValue: (items: { key: string; textValue: string }[]) => {
+              const count = items.length;
+              if (count === 0) return "Select channels";
+              if (count === 1) return items[0]?.textValue || "1 channel";
+              return `${count} channels selected`;
+            },
+            description: "Leave empty to trigger on all channels",
+          }}
+          tagInputProps={{
+            values: selectedValues,
+            onChange: (selectedIds: string[]) => {
+              updateTriggerData({ channel_ids: selectedIds });
+            },
+            placeholder: "Add another...",
+            emptyPlaceholder: "Enter channel IDs",
+          }}
+          allowManualInput={true}
+        />
+      </TriggerSettingRow>
 
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-foreground-600">
-          Exclude Message Types
-        </p>
-        <div className="flex flex-col gap-2">
-          <Checkbox
-            isSelected={triggerData?.exclude_bot_messages || false}
-            onValueChange={(val) =>
-              updateTriggerData({ exclude_bot_messages: val })
-            }
-          >
-            Exclude bot messages
-          </Checkbox>
-          <Checkbox
-            isSelected={triggerData?.exclude_direct_messages || false}
-            onValueChange={(val) =>
-              updateTriggerData({ exclude_direct_messages: val })
-            }
-          >
-            Exclude direct messages (1:1)
-          </Checkbox>
-          <Checkbox
-            isSelected={triggerData?.exclude_group_messages || false}
-            onValueChange={(val) =>
-              updateTriggerData({ exclude_group_messages: val })
-            }
-          >
-            Exclude private groups
-          </Checkbox>
-          <Checkbox
-            isSelected={triggerData?.exclude_mpim_messages || false}
-            onValueChange={(val) =>
-              updateTriggerData({ exclude_mpim_messages: val })
-            }
-          >
-            Exclude group DMs
-          </Checkbox>
-          <Checkbox
-            isSelected={triggerData?.exclude_thread_replies || false}
-            onValueChange={(val) =>
-              updateTriggerData({ exclude_thread_replies: val })
-            }
-          >
-            Exclude thread replies
-          </Checkbox>
-        </div>
-      </div>
-    </div>
+      <TriggerToggleRow
+        label="Exclude bot messages"
+        hint="Ignore messages posted by bots"
+        isSelected={triggerData?.exclude_bot_messages || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_bot_messages: val })
+        }
+      />
+      <TriggerToggleRow
+        label="Exclude direct messages"
+        hint="Ignore 1:1 conversations"
+        isSelected={triggerData?.exclude_direct_messages || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_direct_messages: val })
+        }
+      />
+      <TriggerToggleRow
+        label="Exclude private groups"
+        isSelected={triggerData?.exclude_group_messages || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_group_messages: val })
+        }
+      />
+      <TriggerToggleRow
+        label="Exclude group DMs"
+        isSelected={triggerData?.exclude_mpim_messages || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_mpim_messages: val })
+        }
+      />
+      <TriggerToggleRow
+        label="Exclude thread replies"
+        isSelected={triggerData?.exclude_thread_replies || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_thread_replies: val })
+        }
+      />
+    </TriggerSettingsCard>
   );
 }
 

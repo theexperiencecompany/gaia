@@ -7,6 +7,9 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
+import { createBotLogger } from "../utils/logger";
+
+const logger = createBotLogger("shared", "command:status");
 
 /** `/status` command definition. */
 export const statusCommand: BotCommand = {
@@ -33,13 +36,15 @@ export const statusCommand: BotCommand = {
           await target.sendEphemeral(
             `❌ Not linked yet.\n\n🔗 Link your account: ${authUrl}`,
           );
-        } catch {
+        } catch (error) {
+          logger.error("status_command_error", undefined, error);
           await target.sendEphemeral(
             "❌ Not linked yet. Use /auth to link your account.",
           );
         }
       }
-    } catch {
+    } catch (error) {
+      logger.error("status_command_error", undefined, error);
       await target.sendEphemeral("Error checking status. Please try again.");
     }
   },

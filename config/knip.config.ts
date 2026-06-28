@@ -120,6 +120,12 @@ const config: KnipConfig = {
     // (ignored above), so knip can't see the import. Kept for the gallery.
     "apps/web/src/features/chat/components/bubbles/bot/ToolCallsSection.tsx",
 
+    // OpenUI playground + example DSLs are consumed only by the
+    // /dev/openui-samples page (page.dev.tsx, ignored above), so knip can't
+    // see the import. Kept for the dev gallery.
+    "apps/web/src/features/chat/components/dev/OpenUIPlayground.tsx",
+    "apps/web/src/config/openui/examples/index.ts",
+
     // BuiltForEveryone: landing "positioning" section, parked — its dynamic
     // import and render are commented out in app/[locale]/(landing)/client.tsx.
     // Kept intact for re-enablement, not dead code.
@@ -202,6 +208,11 @@ const config: KnipConfig = {
         // Invoked dynamically as `pnpm exec jscpd` inside
         // scripts/ci/check-duplication.mjs, so knip can't see the usage.
         "jscpd",
+        // Imported by scripts/openui/generate-prompt.ts (the OpenUI prompt
+        // codegen). Declared in apps/web; resolved here via pnpm workspace
+        // hoisting, so knip reads them as unlisted at the root.
+        "@openuidev/react-lang",
+        "@openuidev/react-ui",
       ],
     },
 

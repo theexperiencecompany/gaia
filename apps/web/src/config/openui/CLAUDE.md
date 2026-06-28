@@ -1,273 +1,84 @@
 # OpenUI System — Maintenance Guide
 
-This file explains the full lifecycle of OpenUI components: how they're built, how the LLM
-generates them, and how to keep everything in sync.
+OpenUI lets the backend LLM emit rich React components inside its chat response, written in
+**OpenUI Lang** (a declarative DSL parsed by `@openuidev/react-lang`).
+
+GAIA **adopts `@openuidev/react-ui`** — the official Generative UI component library — themed to
+match GAIA exactly. We do **not** hand-roll the component set; we extend it only where react-ui
+has no equivalent.
 
 ---
 
-## 1. What OpenUI Is
+## 1. Architecture
 
-OpenUI is a lightweight DSL (domain-specific language) that lets the backend LLM emit rich
-React components directly inside its text response.
-
-**Flow:**
-
-```
-Backend LLM                Frontend (TextBubble)
-──────────────────────     ──────────────────────────────────────────────
-response text with         parseOpenUISegments() splits text at :::openui
-:::openui fences     →     OpenUIRenderer passes code to @openuidev/react-lang
-                           Renderer() parses the code, maps positional args
-                           to named props, renders the React component from
-                           genericLibrary.tsx
+```text
+Backend LLM                         Frontend
+────────────────────────            ──────────────────────────────────────────────
+response text with         →        TextBubble splits at :::openui fences
+:::openui fences                    OpenUIRenderer → <Renderer library={genericLibrary}>
+                                    renders react-ui components under <ThemeProvider>
 ```
 
-**Example backend output:**
-
-```
-Here are the results:
-
-:::openui
-root = ResultList([{"title": "Item A", "badge": "new"}, {"title": "Item B"}])
-:::
+- **Runtime**: `@openuidev/react-lang` (parser + `Renderer` + `createLibrary` + `generatePrompt`).
+- **Components**: `@openuidev/react-ui`'s `openuiLibrary` (Stack, Card, CardHeader, Charts,
+  Table/Col, Tag, Steps, forms, Modal, …) — see `genui-lib`.
+- **Theme**: `theme.ts` (`gaiaOpenUITheme`) maps every `--openui-*` token to GAIA's design
+  system. Mounted once via `<ThemeProvider mode="dark" darkTheme={gaiaOpenUITheme}>` in
+  `apps/web/src/layouts/RootProviders.tsx`. Layered CSS is imported in `globals.css`.
 
-Let me know if you need more detail.
-```
-
-**What the user sees:** "Here are the results:" in a chat bubble → ResultList card rendered
-outside the bubble → "Let me know if you need more detail." in another chat bubble.
-
----
-
-## 2. Why OpenUI Segments Render OUTSIDE the Bubble
-
-`imessage-bubble imessage-from-them` has `background: #27272a` (zinc-800). All OpenUI
-components use `bg-zinc-800` for their outer container — same color = invisible.
-
-The fix (in `TextBubble.tsx`): mixed parts (markdown + openui) are split so that:
-- Markdown segments → wrapped in `imessage-bubble`
-- OpenUI segments → rendered at the same DOM level as TOOL_RENDERERS (outside any bubble)
-
-**Never** render OpenUI components inside an `imessage-bubble` wrapper.
+## 2. The merged library (`genericLibrary.tsx`)
 
----
-
-## 3. Two Rendering Paths — Know Which One You Need
-
-```
-Is this tool output already handled by a dedicated GAIA tool?
-  YES → TOOL_RENDERERS path (native tool card)
-        Files: TextBubble.tsx, apps/api/app/models/chat_models.py (tool_fields)
-        The LLM will NEVER emit :::openui for suppressed tools.
+`genericLibrary` = react-ui's `openuiLibrary.components` **+** GAIA-only components react-ui
+lacks. GAIA components can override react-ui ones by name (only `ImageGallery` does, for
+session-file artifact resolution).
 
-  NO  → OpenUI path (generic component in genericLibrary.tsx)
-        Files: genericLibrary.tsx, openui_prompts.py
-        The LLM will emit :::openui and pick a component from the library.
-```
+GAIA-only components (in `components/`): `GaugeChart`, `MapBlock`, `Timeline` (event feed),
+`FileTree`, `TextDocument`, `NumberTicker`, `AudioPlayer`, `VideoBlock`, `Progress`, `Avatar`,
+`CopyableContent`, `KbdRow`.
 
-A tool can only be in ONE path. Adding it to `tool_fields` (Python) automatically adds it to
-`OPENUI_SUPPRESSED_TOOLS` and the LLM is told not to emit openui for it.
+## 3. Adding / changing a component
 
----
+1. **Does react-ui already have it?** If yes, just use it — nothing to do here. The LLM learns
+   it automatically from the generated prompt.
+2. **Only if react-ui has no equivalent**, add a GAIA component:
+   - Define the React view + `defineComponent` in `components/<area>.tsx`.
+   - Put its Zod schema + name + description in **`promptSpecs.ts`** (the Node-safe single
+     source) and import it back into the component file. **Never** define a GAIA component
+     schema only inside a component file — the prompt generator can't import browser code.
+   - Register the def in `genericLibrary.tsx` (`gaiaComponents` + the `GAIA` component group).
 
-## 4. Styling Contract
+## 4. The LLM prompt is generated — never hand-edit it
 
-All OpenUI components follow a lightweight card-less design - render clean, unboxed components that blend with the chat bubble. No heavy outer wrappers.
+`scripts/openui/generate-prompt.ts` merges `openuiLibrary.toSpec()` with the GAIA specs from
+`promptSpecs.ts` and writes `apps/api/app/agents/prompts/openui_generated.txt`. The Python
+agent (`openui_prompts.py`) reads that artifact and prepends GAIA's SURFACE POLICY +
+`OPENUI_SUPPRESSED_TOOLS` (derived from `tool_fields` in `chat_models.py`).
 
-| Role                  | Exact Tailwind Classes                          |
-|---|---|
-| Outer container (when needed) | `rounded-2xl bg-zinc-800` — never `rounded-xl`, `rounded-3xl`, or any other radius. Padding is per-component (typical: `p-3` or `p-4`; charts can use `p-2`). |
-| Inner content block   | `rounded-2xl bg-zinc-900 p-3` (only when needed) |
-| Section header        | `text-sm font-semibold text-zinc-100` (no mb margin) |
-| Item title            | `text-sm font-medium text-zinc-200`             |
-| Secondary text        | `text-xs text-zinc-400`                         |
-| Item spacing          | `space-y-2`                                     |
-| Width                 | `w-full min-w-fit max-w-lg` (or `max-w-xl`)     |
-| Borders and outer    | REMOVE - no outer `bg-zinc-800 p-4` wrappers   |
-| Status colors        | Use HeroUI `Chip` components with status colors |
+- Regenerate: `pnpm openui:gen-prompt`.
+- A **prek pre-commit hook** regenerates and fails if `openui_generated.txt` is stale, so the
+  prompt can never drift from the library. `openui_generated.txt` is committed.
 
----
+## 5. Styling contract
 
-## 5. Adding a New OpenUI Component (End-to-End Checklist)
+OpenUI renders **outside** the `imessage-bubble` wrapper (both use `bg-zinc-800`, so inside is
+invisible). react-ui components are themed via `theme.ts`; GAIA components use the same zinc
+tokens (`rounded-2xl`, zinc-800 outer / zinc-900 inner, borderless). Status colors: emerald /
+amber / red / blue. Primary `#00bbff`.
 
-### Step 1 — Define the Zod schema in `genericLibrary.tsx`
+## 6. Actions
 
-```typescript
-const myComponentSchema = z.object({
-  title: z.string(),
-  items: z.array(z.object({ label: z.string(), value: z.string() })),
-  // Optional fields must use .optional()
-});
-```
+Interactive components emit through `Renderer`'s `onAction`. `OpenUIRenderer` routes events via
+`dispatchOpenUIAction` (`libs/shared/ts/src/utils/openui-actions.ts`): `continue_conversation`
+→ append to composer, `open_url` → `window.open`.
 
-Prop ORDER in the schema is the positional argument order the LLM will use.
-Example: `root = MyComponent("Title", [{"label": "k", "value": "v"}])`
+## 7. Dev playground
 
-### Step 2 — Write the React component (export with `View` suffix)
+`/dev/openui-samples` (dev-only) — live DSL editor + example dashboards (analytics, kanban,
+GAIA components, form). Client-only (`dynamic({ ssr: false })`) because charts/maps are
+browser-only. Examples live in `examples/index.ts`.
 
-```typescript
-export function MyComponentView(props: z.infer<typeof myComponentSchema>) {
-  return (
-    <div className="w-full min-w-fit max-w-lg space-y-2">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100">{props.title}</p>
-      )}
-      <div className="space-y-2">
-        {props.items.map((item, i) => (
-          <div key={i} className="rounded-2xl bg-zinc-900 p-3">
-            <span className="text-xs text-zinc-500">{item.label}</span>
-            <span className="text-sm font-medium text-zinc-200 ml-2">
-              {item.value}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-```
+## 8. Error handling
 
-### Step 3 — Register with `defineComponent`
-
-```typescript
-const myComponentDef = defineComponent({
-  name: "MyComponent",           // MUST match the name the LLM will use
-  description: "Short description",
-  props: myComponentSchema,
-  component: ({ props }) => React.createElement(MyComponentView, props),
-});
-```
-
-### Step 4 — Add to `createLibrary`
-
-In `genericLibrary.tsx` at the bottom, add to:
-1. `components: [...]` array
-2. Appropriate `componentGroups[*].components` array
-
-### Step 5 — Document in the backend prompt
-
-In `apps/api/app/agents/prompts/openui_prompts.py`, add to `OPENUI_COMPONENT_LIBRARY_PROMPT`:
-
-```
-MyComponent(title, items)
-  title: string; items: {label: string, value: string}[]
-  Use for: <when the LLM should pick this component>
-```
-
-Format: `ComponentName(arg1, arg2, optionalArg?)` — positional order must match schema order.
-Use `?` for optional args.
-
-### Step 6 — Update the test file
-
-In `apps/api/tests/test_openui_prompts.py`, add `"MyComponent"` to the components list in
-`test_instructions_contains_all_component_names`.
-
-### Step 7 — Verify
-
-Run: `cd apps/api && uv run pytest tests/test_openui_prompts.py`
-
----
-
-## 6. The Stack Layout Wrapper
-
-`Stack([c1, c2, ...])` is a special container that renders multiple components vertically:
-
-```
-:::openui
-root = Stack([gauge, card])
-gauge = GaugeChart(73, "CPU Usage", 0, 100)
-card = DataCard("Server", [{"label": "Status", "value": "healthy"}])
-:::
-```
-
-Rules:
-- `root` must always be defined first (or use forward reference)
-- Variables are resolved before rendering
-- Stack items can be any other component
-
----
-
-## 7. LLM Prompt Rules (from `OPENUI_INSTRUCTIONS`)
-
-The LLM follows these rules when emitting openui:
-
-- First line MUST be `root = ComponentName(...)`
-- Arguments are positional — never `name=value` syntax
-- Use `null` to skip an optional middle argument
-- Only emit openui for tool outputs NOT in the suppressed list
-- Do NOT emit openui for greetings, opinions, or conversational text
-
-**Suppressed tools** (auto-generated from `tool_fields` in `chat_models.py`) are listed at the
-top of the `OPENUI_INSTRUCTIONS` string. The LLM is told to use the TOOL_RENDERERS for these.
-
----
-
-## 8. Keeping Frontend and Backend in Sync
-
-The most common drift: adding a component to `genericLibrary.tsx` but forgetting the backend
-prompt (or vice versa).
-
-**The test `test_instructions_contains_all_component_names` catches this.** If you add a
-component to the frontend but forget to document it in `openui_prompts.py`, the test will fail.
-
-Run tests after every component addition:
-```bash
-cd apps/api && uv run pytest tests/test_openui_prompts.py -v
-```
-
-**Checklist for keeping in sync:**
-
-| Change | Frontend | Backend |
-|---|---|---|
-| New component | Add schema + view + def to `genericLibrary.tsx` | Document in `OPENUI_COMPONENT_LIBRARY_PROMPT` |
-| Rename component | Update `defineComponent.name` + `componentGroups` | Update component name in prompt |
-| Change arg order | Update schema field order | Update prompt signature |
-| Remove component | Remove from `components[]` + `componentGroups` | Remove from prompt |
-| Any of the above | — | Update test component list |
-
----
-
-## 9. Async / External Data in Components
-
-Some components need async initialization (e.g., a component that lazy-loads a heavy
-library or fetches data before it can render). Use `useState` + `useEffect` pattern:
-
-```typescript
-export function AsyncComponentView(props: z.infer<typeof someSchema>) {
-  const [data, setData] = React.useState<SomeType | null>(null);
-
-  React.useEffect(() => {
-    // async work here
-    setData(result);
-  }, [props.relevantProp]);
-
-  return data ? <ActualComponent data={data} /> : <LoadingPlaceholder />;
-}
-```
-
-The component must render something during loading — never return `null` from the view.
-
----
-
-## 10. Error Handling
-
-The `OpenUIRenderer` wraps everything in an `OpenUIErrorBoundary`. If the React tree throws,
-the boundary shows the raw openui code as a `<pre>` fallback.
-
-However, if the **parser** fails silently (returns `result.root = null`), nothing is shown.
-This happens when:
-- A required argument is missing or null
-- A component name in the openui code doesn't match any name in `genericLibrary.tsx`
-- The code has syntax errors
-
-To debug: open the browser console and look for `[openui] Parse error:` or
-`[OpenUIRenderer] Render error:` logs.
-
----
-
-## 11. Component Reference
-
-The authoritative list of registered components and their groups lives in
-`genericLibrary.tsx` (the registry) — do not duplicate it here, it drifts. The
-backend prompt copy is generated into `apps/api/app/agents/prompts/openui_prompts.py`.
-To see what exists, read `genericLibrary.tsx`.
+`OpenUIRenderer` wraps the tree in `OpenUIErrorBoundary` (raw-code fallback) and logs structured
+validation errors via the `Renderer`'s `onError`. Tool outputs handled by a native GAIA tool
+card are suppressed — the LLM must not emit `:::openui` for tools in `OPENUI_SUPPRESSED_TOOLS`.

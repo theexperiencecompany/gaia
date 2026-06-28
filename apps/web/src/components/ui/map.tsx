@@ -1,14 +1,11 @@
 "use client";
 
-import type { MarkerOptions, PopupOptions } from "maplibre-gl";
-// maplibre-gl v5 dropped the default export — use a namespace import so
-// `MapLibreGL.Map / Marker / Popup` and the type re-exports continue to work.
-import * as MapLibreGL from "maplibre-gl";
+import MapLibreGL, { type MarkerOptions, type PopupOptions } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { Spinner } from "@heroui/react";
 import {
   Cancel01Icon,
-  Loading03Icon,
-  Location01Icon,
+  Gps01Icon,
   Maximize01Icon,
   MinusSignIcon,
   PlusSignIcon,
@@ -34,6 +31,46 @@ const defaultStyles = {
   dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
 };
+
+// A tile-less, dependency-free style with a transparent background. Use it for
+// data visualizations (choropleths, world arcs, dot maps) where you draw your
+// own layers and don't need a street basemap. The easiest way to opt in is the
+// `blank` prop:
+//   <MapView blank>...</MapView>
+// The transparent background lets the themed container show through.
+const blankMapStyle: MapLibreGL.StyleSpecification = {
+  version: 8,
+  sources: {},
+  layers: [
+    {
+      id: "background",
+      type: "background",
+      paint: { "background-color": "rgba(0, 0, 0, 0)" },
+    },
+  ],
+};
+
+function mergeHoverPaint<T extends Record<string, unknown>>(
+  paint: T,
+  hoverPaint: T | undefined,
+): T {
+  if (!hoverPaint) return paint;
+  const merged: Record<string, unknown> = { ...paint };
+  for (const [key, hoverValue] of Object.entries(hoverPaint)) {
+    if (hoverValue === undefined) continue;
+    const baseValue = merged[key];
+    merged[key] =
+      baseValue === undefined
+        ? hoverValue
+        : [
+            "case",
+            ["boolean", ["feature-state", "hover"], false],
+            hoverValue,
+            baseValue,
+          ];
+  }
+  return merged as T;
+}
 
 type Theme = "light" | "dark";
 
@@ -95,6 +132,7 @@ function useResolvedTheme(themeProp?: "light" | "dark"): Theme {
 type MapContextValue = {
   map: MapLibreGL.Map | null;
   isLoaded: boolean;
+  resolvedTheme: Theme;
 };
 
 const MapContext = createContext<MapContextValue | null>(null);
@@ -102,7 +140,7 @@ const MapContext = createContext<MapContextValue | null>(null);
 function useMap() {
   const context = useContext(MapContext);
   if (!context) {
-    throw new Error("useMap must be used within a Map component");
+    throw new Error("useMap must be used within a MapView component");
   }
   return context;
 }
@@ -137,6 +175,14 @@ type MapProps = {
     light?: MapStyleOption;
     dark?: MapStyleOption;
   };
+  /**
+   * Use a transparent, tile-less basemap instead of the default Carto street
+   * basemap — a blank canvas. Used alone it renders nothing; add your own
+   * layers on top (`<MapGeoJSON>`, `<MapArc>`, markers, etc.). Ideal for data
+   * visualizations (choropleths, arcs, dot maps).
+   * Ignored when an explicit `styles` prop is provided.
+   */
+  blank?: boolean;
   /** Map projection type. Use `{ type: "globe" }` for 3D globe view. */
   projection?: MapLibreGL.ProjectionSpecification;
   /**
@@ -176,13 +222,15 @@ function getViewport(map: MapLibreGL.Map): MapViewport {
   };
 }
 
-// biome-ignore lint/suspicious/noShadowRestrictedNames: component is intentionally named Map
-const Map = forwardRef<MapRef, MapProps>(function MapComponent(
+// Named `MapView` (not `Map`) so it doesn't shadow the JS built-in `Map` —
+// the mapcn registry ships this as `Map`; renamed on vendoring.
+const MapView = forwardRef<MapRef, MapProps>(function MapView(
   {
     children,
     className,
     theme: themeProp,
     styles,
+    blank = false,
     projection,
     viewport,
     onViewportChange,
@@ -205,13 +253,20 @@ const Map = forwardRef<MapRef, MapProps>(function MapComponent(
   const onViewportChangeRef = useRef(onViewportChange);
   onViewportChangeRef.current = onViewportChange;
 
-  const mapStyles = useMemo(
-    () => ({
-      dark: styles?.dark ?? defaultStyles.dark,
-      light: styles?.light ?? defaultStyles.light,
-    }),
-    [styles],
-  );
+  const mapStyles = useMemo(() => {
+    // Explicit styles win. Otherwise `blank` opts into the transparent
+    // tile-less basemap; with neither, fall back to the Carto defaults.
+    if (styles) {
+      return {
+        dark: styles.dark ?? defaultStyles.dark,
+        light: styles.light ?? defaultStyles.light,
+      };
+    }
+    if (blank) {
+      return { dark: blankMapStyle, light: blankMapStyle };
+    }
+    return defaultStyles;
+  }, [styles, blank]);
 
   // Expose the map instance to the parent component
   useImperativeHandle(ref, () => mapInstance as MapLibreGL.Map, [mapInstance]);
@@ -277,7 +332,6 @@ const Map = forwardRef<MapRef, MapProps>(function MapComponent(
       setIsStyleLoaded(false);
       setMapInstance(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync controlled viewport to map
@@ -324,12 +378,20 @@ const Map = forwardRef<MapRef, MapProps>(function MapComponent(
     mapInstance.setStyle(newStyle, { diff: true });
   }, [mapInstance, resolvedTheme, mapStyles, clearStyleTimeout]);
 
+  // Sync projection when the prop changes after mount. Falling back to
+  // `mercator` resets MapLibre to its default when the prop is cleared.
+  useEffect(() => {
+    if (!mapInstance || !isStyleLoaded) return;
+    mapInstance.setProjection(projection ?? { type: "mercator" });
+  }, [mapInstance, isStyleLoaded, projection]);
+
   const contextValue = useMemo(
     () => ({
       map: mapInstance,
       isLoaded: isLoaded && isStyleLoaded,
+      resolvedTheme,
     }),
-    [mapInstance, isLoaded, isStyleLoaded],
+    [mapInstance, isLoaded, isStyleLoaded, resolvedTheme],
   );
 
   return (
@@ -453,8 +515,6 @@ function MapMarker({
     markerInstance.on("dragend", handleDragEnd);
 
     return markerInstance;
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -465,38 +525,48 @@ function MapMarker({
     return () => {
       marker.remove();
     };
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
-  if (
-    marker.getLngLat().lng !== longitude ||
-    marker.getLngLat().lat !== latitude
-  ) {
-    marker.setLngLat([longitude, latitude]);
-  }
-  if (marker.isDraggable() !== draggable) {
-    marker.setDraggable(draggable);
-  }
+  const { offset, rotation, rotationAlignment, pitchAlignment } = markerOptions;
 
-  const currentOffset = marker.getOffset();
-  const newOffset = markerOptions.offset ?? [0, 0];
-  const [newOffsetX, newOffsetY] = Array.isArray(newOffset)
-    ? newOffset
-    : [newOffset.x, newOffset.y];
-  if (currentOffset.x !== newOffsetX || currentOffset.y !== newOffsetY) {
-    marker.setOffset(newOffset);
-  }
+  useEffect(() => {
+    const current = marker.getLngLat();
+    if (current.lng !== longitude || current.lat !== latitude) {
+      marker.setLngLat([longitude, latitude]);
+    }
 
-  if (marker.getRotation() !== markerOptions.rotation) {
-    marker.setRotation(markerOptions.rotation ?? 0);
-  }
-  if (marker.getRotationAlignment() !== markerOptions.rotationAlignment) {
-    marker.setRotationAlignment(markerOptions.rotationAlignment ?? "auto");
-  }
-  if (marker.getPitchAlignment() !== markerOptions.pitchAlignment) {
-    marker.setPitchAlignment(markerOptions.pitchAlignment ?? "auto");
-  }
+    if (marker.isDraggable() !== draggable) {
+      marker.setDraggable(draggable);
+    }
+
+    const currentOffset = marker.getOffset();
+    const newOffset = offset ?? [0, 0];
+    const [newOffsetX, newOffsetY] = Array.isArray(newOffset)
+      ? newOffset
+      : [newOffset.x, newOffset.y];
+    if (currentOffset.x !== newOffsetX || currentOffset.y !== newOffsetY) {
+      marker.setOffset(newOffset);
+    }
+
+    if (marker.getRotation() !== (rotation ?? 0)) {
+      marker.setRotation(rotation ?? 0);
+    }
+    if (marker.getRotationAlignment() !== (rotationAlignment ?? "auto")) {
+      marker.setRotationAlignment(rotationAlignment ?? "auto");
+    }
+    if (marker.getPitchAlignment() !== (pitchAlignment ?? "auto")) {
+      marker.setPitchAlignment(pitchAlignment ?? "auto");
+    }
+  }, [
+    marker,
+    longitude,
+    latitude,
+    draggable,
+    offset,
+    rotation,
+    rotationAlignment,
+    pitchAlignment,
+  ]);
 
   return (
     <MarkerContext.Provider value={{ marker, map }}>
@@ -535,7 +605,7 @@ function PopupCloseButton({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       aria-label="Close popup"
-      className="focus-visible:ring-ring hover:bg-muted text-foreground absolute top-0.5 right-0.5 z-10 inline-flex size-5 cursor-pointer items-center justify-center rounded-sm transition-colors focus:outline-none focus-visible:ring-2"
+      className="focus-visible:ring-ring hover:bg-muted text-foreground absolute top-1 right-1 z-10 inline-flex size-5 cursor-pointer items-center justify-center rounded-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset"
     >
       <Cancel01Icon className="size-3.5" />
     </button>
@@ -559,7 +629,7 @@ function MarkerPopup({
 }: MarkerPopupProps) {
   const { marker, map } = useMarkerContext();
   const container = useMemo(() => document.createElement("div"), []);
-  const prevPopupOptions = useRef(popupOptions);
+  const { offset, maxWidth } = popupOptions;
 
   const popup = useMemo(() => {
     const popupInstance = new MapLibreGL.Popup({
@@ -571,7 +641,6 @@ function MarkerPopup({
       .setDOMContent(container);
 
     return popupInstance;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -583,21 +652,13 @@ function MarkerPopup({
     return () => {
       marker.setPopup(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
-  if (popup.isOpen()) {
-    const prev = prevPopupOptions.current;
-
-    if (prev.offset !== popupOptions.offset) {
-      popup.setOffset(popupOptions.offset ?? 16);
-    }
-    if (prev.maxWidth !== popupOptions.maxWidth && popupOptions.maxWidth) {
-      popup.setMaxWidth(popupOptions.maxWidth ?? "none");
-    }
-
-    prevPopupOptions.current = popupOptions;
-  }
+  // Sync popup options when they change.
+  useEffect(() => {
+    popup.setOffset(offset ?? 16);
+    popup.setMaxWidth(maxWidth ?? "none");
+  }, [popup, offset, maxWidth]);
 
   const handleClose = () => popup.remove();
 
@@ -630,7 +691,7 @@ function MarkerTooltip({
 }: MarkerTooltipProps) {
   const { marker, map } = useMarkerContext();
   const container = useMemo(() => document.createElement("div"), []);
-  const prevTooltipOptions = useRef(popupOptions);
+  const { offset, maxWidth } = popupOptions;
 
   const tooltip = useMemo(() => {
     const tooltipInstance = new MapLibreGL.Popup({
@@ -641,7 +702,6 @@ function MarkerTooltip({
     }).setMaxWidth("none");
 
     return tooltipInstance;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -662,21 +722,13 @@ function MarkerTooltip({
       marker.getElement()?.removeEventListener("mouseleave", handleMouseLeave);
       tooltip.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
-  if (tooltip.isOpen()) {
-    const prev = prevTooltipOptions.current;
-
-    if (prev.offset !== popupOptions.offset) {
-      tooltip.setOffset(popupOptions.offset ?? 16);
-    }
-    if (prev.maxWidth !== popupOptions.maxWidth && popupOptions.maxWidth) {
-      tooltip.setMaxWidth(popupOptions.maxWidth ?? "none");
-    }
-
-    prevTooltipOptions.current = popupOptions;
-  }
+  // Sync tooltip options when they change.
+  useEffect(() => {
+    tooltip.setOffset(offset ?? 16);
+    tooltip.setMaxWidth(maxWidth ?? "none");
+  }, [tooltip, offset, maxWidth]);
 
   return createPortal(
     <div
@@ -877,9 +929,9 @@ function MapControls({
             disabled={waitingForLocation}
           >
             {waitingForLocation ? (
-              <Loading03Icon className="size-4 animate-spin" />
+              <Spinner size="sm" color="current" />
             ) : (
-              <Location01Icon className="size-4" />
+              <Gps01Icon className="size-4" />
             )}
           </ControlButton>
         </ControlGroup>
@@ -927,8 +979,8 @@ function CompassButton({ onClick }: { onClick: () => void }) {
         viewBox="0 0 24 24"
         className="size-5 transition-transform duration-200"
         style={{ transformStyle: "preserve-3d" }}
-        aria-hidden="true"
       >
+        <title>Compass</title>
         <path d="M12 2L16 12H12V2Z" className="fill-red-500" />
         <path d="M12 2L8 12H12V2Z" className="fill-red-300" />
         <path d="M12 22L16 12H12V22Z" className="fill-muted-foreground/60" />
@@ -963,10 +1015,10 @@ function MapPopup({
   ...popupOptions
 }: MapPopupProps) {
   const { map } = useMap();
-  const popupOptionsRef = useRef(popupOptions);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const container = useMemo(() => document.createElement("div"), []);
+  const { offset, maxWidth } = popupOptions;
 
   const popup = useMemo(() => {
     const popupInstance = new MapLibreGL.Popup({
@@ -978,7 +1030,6 @@ function MapPopup({
       .setLngLat([longitude, latitude]);
 
     return popupInstance;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -997,27 +1048,17 @@ function MapPopup({
         popup.remove();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
-  if (popup.isOpen()) {
-    const prev = popupOptionsRef.current;
-
-    if (
-      popup.getLngLat().lng !== longitude ||
-      popup.getLngLat().lat !== latitude
-    ) {
+  // Sync popup position and options when they change.
+  useEffect(() => {
+    const current = popup.getLngLat();
+    if (!current || current.lng !== longitude || current.lat !== latitude) {
       popup.setLngLat([longitude, latitude]);
     }
-
-    if (prev.offset !== popupOptions.offset) {
-      popup.setOffset(popupOptions.offset ?? 16);
-    }
-    if (prev.maxWidth !== popupOptions.maxWidth && popupOptions.maxWidth) {
-      popup.setMaxWidth(popupOptions.maxWidth ?? "none");
-    }
-    popupOptionsRef.current = popupOptions;
-  }
+    popup.setOffset(offset ?? 16);
+    popup.setMaxWidth(maxWidth ?? "none");
+  }, [popup, longitude, latitude, offset, maxWidth]);
 
   const handleClose = () => {
     popup.remove();
@@ -1079,28 +1120,16 @@ function MapRoute({
   const sourceId = `route-source-${id}`;
   const layerId = `route-layer-${id}`;
 
-  // Add source and layer once we have a valid LineString to draw. Skipping
-  // the placeholder empty-coordinates source avoids rendering an invisible
-  // layer that's immediately replaced — and keeps cleanup symmetric.
+  // Add source and layer on mount
   useEffect(() => {
-    if (!isLoaded || !map || coordinates.length < 2) return;
-
-    if (map.getSource(sourceId)) {
-      const existing = map.getSource(sourceId) as MapLibreGL.GeoJSONSource;
-      existing.setData({
-        type: "Feature",
-        properties: {},
-        geometry: { type: "LineString", coordinates },
-      });
-      return;
-    }
+    if (!isLoaded || !map) return;
 
     map.addSource(sourceId, {
       type: "geojson",
       data: {
         type: "Feature",
         properties: {},
-        geometry: { type: "LineString", coordinates },
+        geometry: { type: "LineString", coordinates: [] },
       },
     });
 
@@ -1125,7 +1154,25 @@ function MapRoute({
         // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, map]);
+
+  // When coordinates change, update the source data. Fewer than two points
+  // can't form a line, so push an empty LineString to clear any stale route
+  // rather than leaving the previous one rendered.
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+
+    const source = map.getSource(sourceId) as MapLibreGL.GeoJSONSource;
+    if (source) {
+      source.setData({
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: coordinates.length >= 2 ? coordinates : [],
+        },
+      });
+    }
   }, [isLoaded, map, coordinates, sourceId]);
 
   useEffect(() => {
@@ -1134,9 +1181,7 @@ function MapRoute({
     map.setPaintProperty(layerId, "line-color", color);
     map.setPaintProperty(layerId, "line-width", width);
     map.setPaintProperty(layerId, "line-opacity", opacity);
-    if (dashArray) {
-      map.setPaintProperty(layerId, "line-dasharray", dashArray);
-    }
+    map.setPaintProperty(layerId, "line-dasharray", dashArray);
   }, [isLoaded, map, layerId, color, width, opacity, dashArray]);
 
   // Handle click and hover events
@@ -1177,6 +1222,301 @@ function MapRoute({
   return null;
 }
 
+type MapGeoJSONData<
+  P extends GeoJSON.GeoJsonProperties = GeoJSON.GeoJsonProperties,
+> =
+  | GeoJSON.FeatureCollection<GeoJSON.Geometry, P>
+  | GeoJSON.Feature<GeoJSON.Geometry, P>
+  | GeoJSON.Geometry
+  | string;
+
+type MapFillPaint = NonNullable<MapLibreGL.FillLayerSpecification["paint"]>;
+type MapLinePaint = NonNullable<MapLibreGL.LineLayerSpecification["paint"]>;
+
+/** A rendered feature with strongly-typed `properties`. */
+type MapGeoJSONFeature<
+  P extends GeoJSON.GeoJsonProperties = GeoJSON.GeoJsonProperties,
+> = Omit<MapLibreGL.MapGeoJSONFeature, "properties"> & { properties: P };
+
+/** Event payload passed to MapGeoJSON interaction callbacks. */
+type MapGeoJSONEvent<
+  P extends GeoJSON.GeoJsonProperties = GeoJSON.GeoJsonProperties,
+> = {
+  /** The feature under the cursor, with its typed GeoJSON properties. */
+  feature: MapGeoJSONFeature<P>;
+  /** Longitude of the cursor at the time of the event. */
+  longitude: number;
+  /** Latitude of the cursor at the time of the event. */
+  latitude: number;
+  /** The underlying MapLibre mouse event for advanced use cases. */
+  originalEvent: MapLibreGL.MapLayerMouseEvent;
+};
+
+type MapGeoJSONProps<
+  P extends GeoJSON.GeoJsonProperties = GeoJSON.GeoJsonProperties,
+> = {
+  /** GeoJSON data (FeatureCollection, Feature, Geometry) or a URL to fetch it from. */
+  data: MapGeoJSONData<P>;
+  /** Optional unique identifier prefix for the source/layers. Auto-generated if not provided. */
+  id?: string;
+  /**
+   * Feature property to promote to the feature `id`. Required for hover
+   * feature-state (`fillHoverPaint`) and stable `onHover`/`onClick` payloads.
+   */
+  promoteId?: string;
+  /**
+   * Paint for the polygon fill layer. Merged on top of a theme-aware monochrome
+   * surface tone (`fill-color`). Pass `false` to omit the fill layer entirely
+   * (e.g. outlines only).
+   */
+  fillPaint?: MapFillPaint | false;
+  /**
+   * Paint for the outline layer. Merged on top of a theme-aware hairline
+   * default (`line-color` = page background, `line-width` = 0.5). Pass `false`
+   * to omit the outline layer.
+   */
+  linePaint?: MapLinePaint | false;
+  /**
+   * Paint merged onto the fill layer for the feature under the cursor, applied
+   * as a `case` expression keyed on hover feature-state. Requires `promoteId`.
+   */
+  fillHoverPaint?: MapFillPaint;
+  /** Callback when a feature is clicked. */
+  onClick?: (e: MapGeoJSONEvent<P>) => void;
+  /** Callback fired when the hovered feature changes; `null` when the cursor leaves. */
+  onHover?: (e: MapGeoJSONEvent<P> | null) => void;
+  /** Whether features respond to mouse events (default: false). */
+  interactive?: boolean;
+  /** Optional MapLibre layer id to insert the layers before (z-order control). */
+  beforeId?: string;
+};
+
+// Theme-aware monochrome defaults so MapGeoJSON reads
+// clearly on the light/dark surface out of the box: a visible neutral-gray fill
+// with page-background separators between shapes. Override either via
+// `fillPaint` / `linePaint`.
+const GEOJSON_DEFAULT_COLORS = {
+  light: { fill: "#d4d4d4", line: "#fafafa" },
+  dark: { fill: "#404040", line: "#0a0a0a" },
+} satisfies Record<Theme, { fill: string; line: string }>;
+
+// Apply every entry of a paint spec to a layer. Fill and line layers share this
+// loop, so it lives here rather than being duplicated inside the sync effect.
+function applyPaintProperties(
+  map: MapLibreGL.Map,
+  layerId: string,
+  paint: MapFillPaint | MapLinePaint,
+): void {
+  for (const [key, value] of Object.entries(paint)) {
+    map.setPaintProperty(layerId, key, value as never);
+  }
+}
+
+/**
+ * Renders arbitrary GeoJSON as fill + outline layers on the map. Composes like
+ * `MapRoute` / `MapArc` — drop it inside `<MapView>` (typically with `blank`) for
+ * choropleths and region/data maps. For full control over expressions and
+ * multiple layers, manage layers directly via `useMap()` instead.
+ */
+function MapGeoJSON<
+  P extends GeoJSON.GeoJsonProperties = GeoJSON.GeoJsonProperties,
+>({
+  data,
+  id: propId,
+  promoteId,
+  fillPaint,
+  linePaint,
+  fillHoverPaint,
+  onClick,
+  onHover,
+  interactive = false,
+  beforeId,
+}: MapGeoJSONProps<P>) {
+  const { map, isLoaded, resolvedTheme } = useMap();
+  const autoId = useId();
+  const id = propId ?? autoId;
+  const sourceId = `geojson-source-${id}`;
+  const fillLayerId = `geojson-fill-${id}`;
+  const lineLayerId = `geojson-line-${id}`;
+
+  const defaults = GEOJSON_DEFAULT_COLORS[resolvedTheme];
+
+  const showFill = fillPaint !== false;
+  const showLine = linePaint !== false;
+
+  const mergedFillPaint = useMemo(
+    () =>
+      mergeHoverPaint(
+        { "fill-color": defaults.fill, ...(fillPaint || {}) },
+        fillHoverPaint,
+      ),
+    [defaults.fill, fillPaint, fillHoverPaint],
+  );
+  const mergedLinePaint = useMemo(
+    () => ({
+      "line-color": defaults.line,
+      "line-width": 0.5,
+      ...(linePaint || {}),
+    }),
+    [defaults.line, linePaint],
+  );
+  const latestRef = useRef({ onClick, onHover });
+  latestRef.current = { onClick, onHover };
+
+  // Add source on mount.
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+
+    map.addSource(sourceId, {
+      type: "geojson",
+      data,
+      ...(promoteId ? { promoteId } : {}),
+    });
+
+    return () => {
+      try {
+        if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
+        if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+      } catch {
+        // style may be mid-reload
+      }
+    };
+  }, [isLoaded, map]);
+
+  // Sync data when it changes.
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+    const source = map.getSource(sourceId) as
+      | MapLibreGL.GeoJSONSource
+      | undefined;
+    source?.setData(data as never);
+  }, [isLoaded, map, data, sourceId]);
+
+  // Sync layers and paint when visibility or styling changes.
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+
+    const source = map.getSource(sourceId);
+    if (!source) return;
+
+    if (showFill && !map.getLayer(fillLayerId)) {
+      map.addLayer(
+        {
+          id: fillLayerId,
+          type: "fill",
+          source: sourceId,
+          paint: mergedFillPaint,
+        },
+        beforeId,
+      );
+    } else if (!showFill && map.getLayer(fillLayerId)) {
+      map.removeLayer(fillLayerId);
+    }
+
+    if (showLine && !map.getLayer(lineLayerId)) {
+      map.addLayer(
+        {
+          id: lineLayerId,
+          type: "line",
+          source: sourceId,
+          paint: mergedLinePaint,
+        },
+        beforeId,
+      );
+    } else if (!showLine && map.getLayer(lineLayerId)) {
+      map.removeLayer(lineLayerId);
+    }
+
+    if (showFill && map.getLayer(fillLayerId)) {
+      applyPaintProperties(map, fillLayerId, mergedFillPaint);
+    }
+    if (showLine && map.getLayer(lineLayerId)) {
+      applyPaintProperties(map, lineLayerId, mergedLinePaint);
+    }
+  }, [
+    isLoaded,
+    map,
+    sourceId,
+    fillLayerId,
+    lineLayerId,
+    showFill,
+    showLine,
+    mergedFillPaint,
+    mergedLinePaint,
+    beforeId,
+  ]);
+
+  // Interaction handlers (bound to the fill layer).
+  useEffect(() => {
+    if (!isLoaded || !map || !interactive || !showFill) return;
+
+    let hoveredId: string | number | null = null;
+
+    const setHover = (next: string | number | null) => {
+      if (next === hoveredId) return;
+      const sourceExists = !!map.getSource(sourceId);
+      if (hoveredId != null && sourceExists) {
+        map.setFeatureState(
+          { source: sourceId, id: hoveredId },
+          { hover: false },
+        );
+      }
+      hoveredId = next;
+      if (next != null && sourceExists) {
+        map.setFeatureState({ source: sourceId, id: next }, { hover: true });
+      }
+    };
+
+    const handleMouseMove = (e: MapLibreGL.MapLayerMouseEvent) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      map.getCanvas().style.cursor = "pointer";
+
+      const featureId = feature.id;
+      if (featureId === hoveredId) return;
+      setHover(featureId ?? null);
+      latestRef.current.onHover?.({
+        feature: feature as unknown as MapGeoJSONFeature<P>,
+        longitude: e.lngLat.lng,
+        latitude: e.lngLat.lat,
+        originalEvent: e,
+      });
+    };
+
+    const handleMouseLeave = () => {
+      setHover(null);
+      map.getCanvas().style.cursor = "";
+      latestRef.current.onHover?.(null);
+    };
+
+    const handleClick = (e: MapLibreGL.MapLayerMouseEvent) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      latestRef.current.onClick?.({
+        feature: feature as unknown as MapGeoJSONFeature<P>,
+        longitude: e.lngLat.lng,
+        latitude: e.lngLat.lat,
+        originalEvent: e,
+      });
+    };
+
+    map.on("mousemove", fillLayerId, handleMouseMove);
+    map.on("mouseleave", fillLayerId, handleMouseLeave);
+    map.on("click", fillLayerId, handleClick);
+
+    return () => {
+      map.off("mousemove", fillLayerId, handleMouseMove);
+      map.off("mouseleave", fillLayerId, handleMouseLeave);
+      map.off("click", fillLayerId, handleClick);
+      setHover(null);
+      map.getCanvas().style.cursor = "";
+    };
+  }, [isLoaded, map, fillLayerId, sourceId, interactive, showFill]);
+
+  return null;
+}
+
 /** A single arc to render inside <MapArc data={...}>. */
 type MapArcDatum = {
   /** Unique identifier for this arc. Required for hover state tracking and event payloads. */
@@ -1212,8 +1552,9 @@ type MapArcProps<T extends MapArcDatum = MapArcDatum> = {
   /**
    * How far each arc bows away from a straight line. `0` renders straight
    * lines; higher values bend further. Negative values bend to the opposite
-   * side. Arcs are computed as a quadratic Bézier in lng/lat space and do not
-   * account for the antimeridian. (default: 0.2)
+   * side. Arcs are computed as a quadratic Bézier in lng/lat space; the
+   * destination longitude is unwrapped relative to the origin so that arcs
+   * cross the antimeridian via the shorter great-circle direction. (default: 0.2)
    */
   curvature?: number;
   /** Number of samples used to render each curve. Higher = smoother. (default: 64) */
@@ -1263,28 +1604,6 @@ const DEFAULT_ARC_LAYOUT: MapArcLineLayout = {
   "line-cap": "round",
 };
 
-function mergeArcPaint(
-  paint: MapArcLinePaint,
-  hoverPaint: MapArcLinePaint | undefined,
-): MapArcLinePaint {
-  if (!hoverPaint) return paint;
-  const merged: Record<string, unknown> = { ...paint };
-  for (const [key, hoverValue] of Object.entries(hoverPaint)) {
-    if (hoverValue === undefined) continue;
-    const baseValue = merged[key];
-    merged[key] =
-      baseValue === undefined
-        ? hoverValue
-        : [
-            "case",
-            ["boolean", ["feature-state", "hover"], false],
-            hoverValue,
-            baseValue,
-          ];
-  }
-  return merged as MapArcLinePaint;
-}
-
 function buildArcCoordinates(
   from: [number, number],
   to: [number, number],
@@ -1292,12 +1611,19 @@ function buildArcCoordinates(
   samples: number,
 ): [number, number][] {
   const [x0, y0] = from;
-  const [x2, y2] = to;
+  const [xTo, y2] = to;
+  // Unwrap the destination longitude so |dx| <= 180. This makes arcs that
+  // straddle the antimeridian (e.g. Tokyo -> San Francisco) bow the short way
+  // across the Pacific instead of the long way around the globe. Resulting
+  // longitudes may fall outside [-180, 180]; MapLibre renders them correctly
+  // on the globe projection, and on mercator when world copies are enabled.
+  const rawDx = xTo - x0;
+  const x2 = rawDx > 180 ? xTo - 360 : rawDx < -180 ? xTo + 360 : xTo;
   const dx = x2 - x0;
   const dy = y2 - y0;
   const distance = Math.hypot(dx, dy);
 
-  if (distance === 0 || curvature === 0) return [from, to];
+  if (distance === 0 || curvature === 0) return [from, [x2, y2]];
 
   const mx = (x0 + x2) / 2;
   const my = (y0 + y2) / 2;
@@ -1340,7 +1666,7 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
   const hitLayerId = `arc-hit-layer-${id}`;
 
   const mergedPaint = useMemo(
-    () => mergeArcPaint({ ...DEFAULT_ARC_PAINT, ...paint }, hoverPaint),
+    () => mergeHoverPaint({ ...DEFAULT_ARC_PAINT, ...paint }, hoverPaint),
     [paint, hoverPaint],
   );
   const mergedLayout = useMemo(
@@ -1420,7 +1746,6 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
         // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, map]);
 
   // Sync features when data / curvature / samples change.
@@ -1561,14 +1886,21 @@ type MapClusterLayerProps<
   ) => void;
 };
 
+const DEFAULT_CLUSTER_COLORS: [string, string, string] = [
+  "#22c55e",
+  "#eab308",
+  "#ef4444",
+];
+const DEFAULT_CLUSTER_THRESHOLDS: [number, number] = [100, 750];
+
 function MapClusterLayer<
   P extends GeoJSON.GeoJsonProperties = GeoJSON.GeoJsonProperties,
 >({
   data,
   clusterMaxZoom = 14,
   clusterRadius = 50,
-  clusterColors = ["#22c55e", "#eab308", "#ef4444"],
-  clusterThresholds = [100, 750],
+  clusterColors = DEFAULT_CLUSTER_COLORS,
+  clusterThresholds = DEFAULT_CLUSTER_THRESHOLDS,
   pointColor = "#3b82f6",
   onPointClick,
   onClusterClick,
@@ -1672,7 +2004,6 @@ function MapClusterLayer<
         // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, map, sourceId]);
 
   // Update source data when data prop changes (only for non-URL data)
@@ -1837,7 +2168,7 @@ function MapClusterLayer<
 }
 
 export {
-  Map,
+  MapView,
   useMap,
   MapMarker,
   MarkerContent,
@@ -1848,7 +2179,8 @@ export {
   MapControls,
   MapRoute,
   MapArc,
+  MapGeoJSON,
   MapClusterLayer,
 };
 
-export type { MapRef, MapViewport, MapArcDatum, MapArcEvent };
+export type { MapRef, MapViewport, MapArcDatum, MapArcEvent, MapGeoJSONEvent };

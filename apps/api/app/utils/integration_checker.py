@@ -9,6 +9,7 @@ import httpx
 from langgraph.config import get_config, get_stream_writer
 
 from app.config.oauth_config import get_integration_by_id, get_integration_scopes
+from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.log_tags import LogTag
 from app.models.chat_models import SourceCategory
@@ -39,26 +40,36 @@ def _current_source_category() -> str | None:
     return config.get("configurable", {}).get("source_category")
 
 
-def build_integration_connection_message(integration_name: str, connect_url: str) -> str:
+def build_integration_connection_message(
+    integration_name: str, connect_url: str | None = None
+) -> str:
     """Agent-facing instruction for getting an integration connected.
 
-    On UI clients a connect card/button is rendered alongside the reply. The
-    agent receives the URL for context but must NOT include it in its reply —
-    the card already gives the user a one-click button. On bot/background
-    clients there is no UI, so the agent must put the link directly in its
-    text reply so the user can navigate to it.
+    On UI clients a one-click connect card is rendered alongside the reply, so
+    the agent text must stay URL-free — the card handles it. On bot/background
+    (text-only) clients there is no UI, so the agent relays the single-use
+    login-free link (valid for 1 hour) directly. When no link could be minted
+    (``connect_url is None`` — e.g. Redis down) the user is pointed at the
+    integrations page, which requires a normal GAIA login.
     """
     if _current_source_category() == SourceCategory.UI.value:
         return (
             f"{integration_name} needs to be connected. A connect button has been shown to the "
             f"user — do NOT include any URL in your reply, the UI card handles it. "
-            f"Ask the user to click the connect button, then try again. "
-            f"(connect URL for context only, do not render: {connect_url})"
+            f"Ask the user to click the connect button, then try again."
         )
+
+    if not connect_url:
+        integrations_url = f"{settings.FRONTEND_URL.rstrip('/')}/integrations"
+        return (
+            f"{integration_name} needs to be connected. The user is on a text-only platform "
+            f"(no UI). Ask them to open {integrations_url} and connect {integration_name} there."
+        )
+
     return (
         f"{integration_name} needs to be connected. The user is on a text-only platform (no UI). "
-        f"Include this URL verbatim in your result so the comms agent can relay it to the user: "
-        f"{connect_url}"
+        f"Include this URL verbatim in your result so the comms agent can relay it to the user, "
+        f"and tell them it is valid for 1 hour: {connect_url}"
     )
 
 

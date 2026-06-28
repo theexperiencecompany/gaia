@@ -130,13 +130,25 @@ export default function WorkflowPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Open the modal from a deep link (`?id=`). This must react ONLY to a genuine
+  // `workflowId` change — not to `workflows` list refreshes. The list is a
+  // dependency only because on initial load it may be empty when the id is read,
+  // so we wait for it to populate. Without the ref guard, any background refetch
+  // (e.g. the one fired after toggling activation) would re-run this and clobber
+  // a selection the user has since navigated to.
+  const openedWorkflowIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (workflowId && workflows.length > 0) {
-      const workflow = workflows.find((w) => w.id === workflowId);
-      if (workflow) {
-        setSelectedWorkflow(workflow);
-        onEditOpen();
-      }
+    if (!workflowId) {
+      openedWorkflowIdRef.current = null;
+      return;
+    }
+    if (workflowId === openedWorkflowIdRef.current) return;
+
+    const workflow = workflows.find((w) => w.id === workflowId);
+    if (workflow) {
+      openedWorkflowIdRef.current = workflowId;
+      setSelectedWorkflow(workflow);
+      onEditOpen();
     }
   }, [workflowId, workflows, onEditOpen]);
 

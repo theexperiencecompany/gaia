@@ -47,6 +47,15 @@ export function hashLogIdentifier(
   return `h_${digest.slice(0, 16)}`;
 }
 
+/**
+ * Extracts the HTTP status from an Axios-style error (`error.response.status`),
+ * or `undefined` if absent. Centralizes the repeated `unknown`-cast that every
+ * call site (API client, streaming, media, formatters) was duplicating.
+ */
+export function getHttpStatus(error: unknown): number | undefined {
+  return (error as { response?: { status?: number } } | null)?.response?.status;
+}
+
 export function sanitizeErrorForLog(error: unknown): BotLogFields {
   if (error instanceof Error) {
     return {
