@@ -40,7 +40,6 @@ import DemoSidebar from "./DemoSidebar";
 import DemoToolCalls from "./DemoToolCalls";
 import DemoDashboardView from "./dashboard-demo/DemoDashboardView";
 import { BASE_TIMINGS, slideUp, tx, USE_CASES } from "./demoConstants";
-import DemoGoalsView from "./goals-demo/DemoGoalsView";
 import DemoIntegrationsView from "./integrations-demo/DemoIntegrationsView";
 import MiniWaveSpinner from "./MiniWaveSpinner";
 import DemoTodosView from "./todos-demo/DemoTodosView";
@@ -96,7 +95,11 @@ const MemoDemoNotificationsPopover = memo(DemoNotificationsPopover);
 const MemoDemoDashboardView = memo(DemoDashboardView);
 const MemoDemoCalendarView = memo(DemoCalendarView);
 const MemoDemoWorkflowsView = memo(DemoWorkflowsView);
-const MemoDemoGoalsView = memo(DemoGoalsView);
+// Goals demo disabled (the goals feature is currently parked). Keeping it out
+// removes @xyflow/react + dagre (~100 KB) from the homepage bundle entirely.
+// Re-enable alongside the goals feature:
+// import DemoGoalsView from "./goals-demo/DemoGoalsView";
+// const MemoDemoGoalsView = memo(DemoGoalsView);
 const MemoDemoIntegrationsView = memo(DemoIntegrationsView);
 const MemoDemoTodosView = memo(DemoTodosView);
 
@@ -426,12 +429,12 @@ export default function ChatDemoSection() {
             <MemoDemoWorkflowsView />
           </div>
         );
-      case "goals":
-        return (
-          <div className="flex flex-1 overflow-hidden">
-            <MemoDemoGoalsView />
-          </div>
-        );
+      // case "goals": demo disabled (goals feature parked) — see note above.
+      //   return (
+      //     <div className="flex flex-1 overflow-hidden">
+      //       <MemoDemoGoalsView />
+      //     </div>
+      //   );
       case "integrations":
         return (
           <div className="flex flex-1 overflow-hidden">

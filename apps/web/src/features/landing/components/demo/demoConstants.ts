@@ -4,7 +4,6 @@ import {
   ConnectIcon,
   DashboardSquare02Icon,
   MessageMultiple02Icon,
-  Target02Icon,
   ZapIcon,
 } from "@icons";
 import type { DemoPage, UseCase } from "./types";
@@ -39,7 +38,9 @@ export const NAV_BUTTONS: {
 }[] = [
   { Icon: DashboardSquare02Icon, label: "Dashboard", page: "dashboard" },
   { Icon: Calendar03Icon, label: "Calendar", page: "calendar" },
-  { Icon: Target02Icon, label: "Goals", page: "goals" },
+  // Goals demo disabled (goals feature parked): keeps it out of the demo and
+  // drops @xyflow/react + dagre from the homepage bundle.
+  // { Icon: Target02Icon, label: "Goals", page: "goals" },
   { Icon: CheckListIcon, label: "Todos", page: "todos" },
   { Icon: ConnectIcon, label: "Integrations", page: "integrations" },
   { Icon: ZapIcon, label: "Workflows", page: "workflows" },

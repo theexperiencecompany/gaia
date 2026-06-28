@@ -118,7 +118,6 @@ const nextConfig = {
       "node:diagnostics_channel": "diagnostics_channel",
     },
   },
-  serverExternalPackages: ["moment", "moment-timezone"],
   experimental: {
     // optimizeCss disabled: @opennextjs/aws unconditionally cpSyncs
     // .next/static/css when this is on, but Next 16 + Turbopack does not

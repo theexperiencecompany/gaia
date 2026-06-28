@@ -265,9 +265,6 @@ const config: KnipConfig = {
         // Used by SWC compilation (no direct import in source)
         "@swc-node/register",
         "@swc/core",
-        // Used by next-mdx-remote or mdx compilation pipeline
-        "mdx",
-        "@types/mdx",
         // Radix primitives consumed only inside src/components/ui/** (ignored above).
         "@radix-ui/.*",
         // CSS imported via subpath ("katex/dist/katex.min.css"); katex is a
@@ -287,9 +284,7 @@ const config: KnipConfig = {
         "glob", // used in apps/web/scripts/** (ignored)
 
         // Referenced in config / type augmentation, not via a normal import.
-        "moment-timezone", // next.config.mjs serverExternalPackages
         "@react-types/shared", // `declare module` augmentation in HeroUIProvider
-        "animated-number-react", // ambient module declaration in src/types
 
         "madge", // dev-only circular-dep tool, invoked via script
         // Next.js CSS inliner — optimizeCss is disabled in next.config.mjs, so

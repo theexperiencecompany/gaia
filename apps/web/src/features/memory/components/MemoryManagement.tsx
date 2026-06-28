@@ -13,16 +13,30 @@ import {
   NeuralNetworkIcon,
   Note01Icon,
 } from "@icons";
+import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import type { MemoryOverviewResponse } from "@/features/memory/api/types";
 import { CoreDocuments } from "@/features/memory/components/CoreDocuments";
 import { MemoryDocsBanner } from "@/features/memory/components/MemoryDocsBanner";
-import { MemoryGraphView } from "@/features/memory/components/MemoryGraphView";
 import { MemoryList } from "@/features/memory/components/MemoryList";
 import { MemoryTimeline } from "@/features/memory/components/MemoryTimeline";
 import { MemoryTree } from "@/features/memory/components/MemoryTree";
+
+// The graph view pulls @supermemory/memory-graph + d3 + dagre (~1 MB), but is
+// only shown when the "graph" tab is selected. Lazy-load it so the memory page
+// doesn't ship the graph stack to users who never open that tab.
+const MemoryGraphView = dynamic(
+  () =>
+    import("@/features/memory/components/MemoryGraphView").then((m) => ({
+      default: m.MemoryGraphView,
+    })),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[400px] w-full rounded-2xl" />,
+  },
+);
 
 export interface MemoryManagementProps {
   className?: string;
