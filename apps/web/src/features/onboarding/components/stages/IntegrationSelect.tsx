@@ -36,19 +36,18 @@ export function IntegrationSelect({ state, dispatch }: IntegrationSelectProps) {
     <m.div className="mt-4 flex w-full flex-col gap-4" {...MOTION_FADE_UP}>
       <ChatBubbleBot
         {...BOT_BUBBLE_DEFAULTS}
-        text="Which apps do you use most? Pick at least 3 so I can build your first workflows around them. You're not connecting anything yet, that happens later. This just helps me learn what you actually use."
+        text="Which apps do you use most? Pick at least 3 so I can build your first workflows around them.<NEW_MESSAGE_BREAK>You're not connecting anything yet, that happens later. This just helps me learn what you actually use."
       />
-      <div className="ml-10.75">
-        <IntegrationChipsSelector
-          source="catalog"
-          variant="pills"
-          priorityNames={priorityNames}
-          selectedSlugs={state.selectedIntegrations}
-          onChange={(slugs) =>
-            dispatch({ type: "integrationSelectUpdate", integrations: slugs })
-          }
-        />
-      </div>
+      <IntegrationChipsSelector
+        source="catalog"
+        variant="pills"
+        priorityNames={priorityNames}
+        pillContentClassName="pl-10.75"
+        selectedSlugs={state.selectedIntegrations}
+        onChange={(slugs) =>
+          dispatch({ type: "integrationSelectUpdate", integrations: slugs })
+        }
+      />
     </m.div>
   );
 }

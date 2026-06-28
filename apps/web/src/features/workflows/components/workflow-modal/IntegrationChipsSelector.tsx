@@ -6,6 +6,7 @@ import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { Skeleton } from "@heroui/skeleton";
 import { PlusSignIcon, Search01Icon } from "@icons";
+import * as m from "motion/react-m";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -53,6 +54,12 @@ interface IntegrationChipsSelectorProps {
    * the "pills" picker, in order. Falls back to a general popular set.
    */
   readonly priorityNames?: string[];
+  /**
+   * Extra classes for the "pills" search + cloud wrapper (e.g. a left inset to
+   * align with surrounding chat messages). The "Show more" button stays
+   * centered on the full width regardless.
+   */
+  readonly pillContentClassName?: string;
   /** Override the Autocomplete input width class (default: "max-w-sm"). */
   readonly autocompleteClassName?: string;
 }
@@ -77,6 +84,7 @@ function IntegrationChipsSelector({
   source = "connected",
   variant = "autocomplete",
   priorityNames,
+  pillContentClassName,
   autocompleteClassName = "max-w-sm",
 }: IntegrationChipsSelectorProps) {
   const { integrations, isLoading } = useIntegrations();
@@ -136,6 +144,7 @@ function IntegrationChipsSelector({
         selectedSlugSet={selectedSlugSet}
         onToggle={toggleIntegration}
         priorityNames={priorityNames ?? DEFAULT_PRIORITY_NAMES}
+        contentClassName={pillContentClassName}
       />
     );
   }
@@ -274,6 +283,23 @@ interface IntegrationPillCloudProps {
   readonly selectedSlugSet: Set<string>;
   readonly onToggle: (slug: string) => void;
   readonly priorityNames: string[];
+  readonly contentClassName?: string;
+}
+
+/** Scroll the nearest scrollable ancestor to the bottom (to reveal new rows). */
+function scrollAncestorToBottom(node: HTMLElement | null): void {
+  let el = node?.parentElement ?? null;
+  while (el) {
+    const overflowY = getComputedStyle(el).overflowY;
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      el.scrollHeight > el.clientHeight
+    ) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      return;
+    }
+    el = el.parentElement;
+  }
 }
 
 function IntegrationPillCloud({
@@ -282,16 +308,24 @@ function IntegrationPillCloud({
   selectedSlugSet,
   onToggle,
   priorityNames,
+  contentClassName,
 }: IntegrationPillCloudProps) {
   const [query, setQuery] = useState("");
   const [visibleRows, setVisibleRows] = useState(INITIAL_ROWS);
-  const wrapRef = useRef<HTMLDivElement>(null);
   // Seed with an estimate so the first paint is already roughly clamped;
   // the measure effect refines it to an exact row boundary.
   const [clampHeight, setClampHeight] = useState<number | null>(
     INITIAL_ROWS * ESTIMATED_ROW_PX,
   );
   const [hasMore, setHasMore] = useState(false);
+  // Row each pill landed on, by position in `filtered` (measured from the DOM).
+  const [rowByPosition, setRowByPosition] = useState<number[]>([]);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  // Rows already shown before the latest "Show more"; stagger the new batch
+  // relative to this so each reveal cascades from its first new pill.
+  const revealedFromRowRef = useRef(0);
+  // Skip the scroll-into-view on first mount; only run it after a reveal.
+  const revealPendingRef = useRef(false);
 
   const isSearching = query.trim().length > 0;
 
@@ -316,21 +350,17 @@ function IntegrationPillCloud({
     return ordered.filter((i) => i.name.toLowerCase().includes(q));
   }, [ordered, query]);
 
-  // Measure pill rows (by distinct offsetTop) and clamp to `visibleRows` whole
-  // rows. Re-runs on resize and whenever the rendered set changes. While
-  // searching, everything is shown (no clamp, no "Show more").
+  // Measure pill rows (by distinct offsetTop): record each pill's row, and
+  // clamp the cloud to `visibleRows` whole rows. Re-runs on resize and whenever
+  // the rendered set changes. While searching everything shows (no clamp).
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
 
     const measure = () => {
-      if (isSearching) {
-        setClampHeight(null);
-        setHasMore(false);
-        return;
-      }
       const children = Array.from(el.children) as HTMLElement[];
-      if (children.length === 0) {
+      if (isSearching || children.length === 0) {
+        setRowByPosition([]);
         setClampHeight(null);
         setHasMore(false);
         return;
@@ -341,6 +371,7 @@ function IntegrationPillCloud({
         if (!rowTops.includes(child.offsetTop)) rowTops.push(child.offsetTop);
       }
       rowTops.sort((a, b) => a - b);
+      setRowByPosition(children.map((c) => rowTops.indexOf(c.offsetTop)));
 
       if (visibleRows >= rowTops.length) {
         setClampHeight(null);
@@ -360,67 +391,117 @@ function IntegrationPillCloud({
     return () => observer.disconnect();
   }, [isSearching, visibleRows, filtered]);
 
+  // After a "Show more" reveal, wait for the clamp transition then scroll the
+  // freshly revealed rows into view once.
+  useEffect(() => {
+    if (!revealPendingRef.current) return;
+    revealPendingRef.current = false;
+    const id = setTimeout(() => scrollAncestorToBottom(wrapRef.current), 260);
+    return () => clearTimeout(id);
+  }, [visibleRows]);
+
+  const handleShowMore = () => {
+    revealedFromRowRef.current = visibleRows;
+    revealPendingRef.current = true;
+    setVisibleRows((rows) => rows + ROWS_PER_CLICK);
+  };
+
+  const batchStart = revealedFromRowRef.current;
+  const batchStartIndex = Math.max(
+    0,
+    rowByPosition.findIndex((row) => row >= batchStart),
+  );
+
   return (
     <div className="flex flex-col gap-3">
-      <Input
-        aria-label="Search apps"
-        placeholder="Search apps…"
-        size="md"
-        variant="flat"
-        value={query}
-        onValueChange={setQuery}
-        isClearable
-        onClear={() => setQuery("")}
-        startContent={
-          <Search01Icon width={16} height={16} className="text-zinc-500" />
-        }
-        classNames={{ base: "max-w-xs" }}
-      />
+      {/* Search + pills are inset (via contentClassName) to align with the
+          surrounding chat messages; "Show more" below stays centered. */}
+      <div className={`flex flex-col gap-3 ${contentClassName ?? ""}`}>
+        <Input
+          aria-label="Search apps"
+          placeholder="Search apps…"
+          size="md"
+          variant="flat"
+          value={query}
+          onValueChange={setQuery}
+          isClearable
+          onClear={() => setQuery("")}
+          startContent={
+            <Search01Icon width={16} height={16} className="text-zinc-500" />
+          }
+          classNames={{ base: "max-w-xs" }}
+        />
 
-      {/* Fixed min-height so filtering swaps pills in place without resizing
-          the page (which would shift scroll position). */}
-      <div className="min-h-[7.5rem]">
-        {isLoading ? (
-          <div className="flex flex-wrap gap-2">
-            {SKELETON_KEYS.map((key) => (
-              <Skeleton key={key} className="h-9 w-28 rounded-full" />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <p className="py-6 text-center text-xs text-zinc-500">
-            No apps match “{query}”.
-          </p>
-        ) : (
-          <div
-            ref={wrapRef}
-            className="flex flex-wrap gap-2 overflow-hidden transition-[max-height] duration-200"
-            style={clampHeight != null ? { maxHeight: clampHeight } : undefined}
-          >
-            {filtered.map((integration) => {
-              const isSelected = selectedSlugSet.has(integration.slug);
-              return (
-                <Chip
-                  key={integration.slug}
-                  as="button"
-                  type="button"
-                  onClick={() => onToggle(integration.slug)}
-                  aria-pressed={isSelected}
-                  size="lg"
-                  variant="flat"
-                  color={isSelected ? "success" : "default"}
-                  startContent={
-                    <span className="ml-1 flex items-center">
-                      <IntegrationIcon integration={integration} size={16} />
-                    </span>
-                  }
-                  className="cursor-pointer"
-                >
-                  {integration.name}
-                </Chip>
-              );
-            })}
-          </div>
-        )}
+        {/* Fixed min-height so filtering swaps pills in place without resizing
+            the page (which would shift scroll position). */}
+        <div className="min-h-[7.5rem]">
+          {isLoading ? (
+            <div className="flex flex-wrap gap-2">
+              {SKELETON_KEYS.map((key) => (
+                <Skeleton key={key} className="h-9 w-28 rounded-full" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="py-6 text-center text-xs text-zinc-500">
+              No apps match “{query}”.
+            </p>
+          ) : (
+            <div
+              ref={wrapRef}
+              className="flex flex-wrap gap-2 overflow-hidden transition-[max-height] duration-200"
+              style={
+                clampHeight != null ? { maxHeight: clampHeight } : undefined
+              }
+            >
+              {filtered.map((integration, index) => {
+                const isSelected = selectedSlugSet.has(integration.slug);
+                const row = rowByPosition[index] ?? 0;
+                const shown = isSearching || row < visibleRows;
+                // Stagger relative to the first pill of the current reveal batch,
+                // so each "Show more" cascades from its start (not the list start).
+                const order = Math.max(0, index - batchStartIndex);
+                return (
+                  <m.div
+                    key={integration.slug}
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{
+                      opacity: shown ? 1 : 0,
+                      scale: shown ? 1 : 0.96,
+                    }}
+                    transition={{
+                      duration: 0.22,
+                      // Capped so a large batch still settles quickly. Transforms
+                      // and opacity don't affect layout, so measurement stays valid.
+                      delay: shown ? Math.min(order, 18) * 0.025 : 0,
+                      ease: "easeOut",
+                    }}
+                  >
+                    <Chip
+                      as="button"
+                      type="button"
+                      onClick={() => onToggle(integration.slug)}
+                      aria-pressed={isSelected}
+                      size="lg"
+                      variant="flat"
+                      color={isSelected ? "success" : "default"}
+                      startContent={
+                        <span className="ml-1 flex items-center">
+                          <IntegrationIcon
+                            integration={integration}
+                            size={16}
+                          />
+                        </span>
+                      }
+                      className="cursor-pointer"
+                    >
+                      {integration.name}
+                    </Chip>
+                  </m.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Fixed-height slot so the cloud doesn't shrink (shifting layout) when
@@ -431,8 +512,12 @@ function IntegrationPillCloud({
             size="sm"
             variant="flat"
             radius="full"
-            onPress={() => setVisibleRows((rows) => rows + ROWS_PER_CLICK)}
-            startContent={<PlusSignIcon width={14} height={14} />}
+            onPress={handleShowMore}
+            startContent={
+              <span className="flex items-center">
+                <PlusSignIcon width={14} height={14} />
+              </span>
+            }
             className="text-zinc-300"
           >
             Show more
