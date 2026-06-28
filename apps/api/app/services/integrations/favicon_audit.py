@@ -1,4 +1,4 @@
-"""Dev diagnostic: legacy vs patched favicon resolution for every MCP server."""
+"""Dev diagnostic: the favicon every production public integration resolves to."""
 
 import asyncio
 
@@ -11,9 +11,12 @@ from app.utils.favicon_utils import fetch_favicon_uncached, legacy_favicon_url
 # into timeouts, which would make the audit report unstable results.
 _AUDIT_CONCURRENCY = 12
 
+# (integration_id, name, source, managed_by, server_url, stored_icon_url)
+Entry = tuple[str, str, str, str, str | None, str | None]
+
 # Self-hosted MCP servers not (yet) registered as integrations, surfaced in the
 # audit so their before/after favicon resolution is visible.
-_EXTRA_SERVERS: list[tuple[str, str, str, str, str, str | None]] = [
+_EXTRA_SERVERS: list[Entry] = [
     (
         "whoop-mcp",
         "WHOOP MCP (test)",
@@ -25,32 +28,23 @@ _EXTRA_SERVERS: list[tuple[str, str, str, str, str, str | None]] = [
 ]
 
 
-async def _collect_entries() -> list[tuple[str, str, str, str, str, str | None]]:
-    """(integration_id, name, source, managed_by, server_url, stored_icon_url)."""
-    entries: list[tuple[str, str, str, str, str, str | None]] = list(_EXTRA_SERVERS)
+async def _collect_entries() -> list[Entry]:
+    """Every production public integration: platform (available) + custom public."""
+    entries: list[Entry] = list(_EXTRA_SERVERS)
 
     for integ in OAUTH_INTEGRATIONS:
-        if integ.mcp_config and integ.mcp_config.server_url:
-            entries.append(
-                (
-                    integ.id,
-                    integ.name,
-                    "platform",
-                    integ.managed_by,
-                    integ.mcp_config.server_url,
-                    None,
-                )
-            )
-
-    async for doc in integrations_collection.find({"mcp_config.server_url": {"$exists": True}}):
-        server_url = (doc.get("mcp_config") or {}).get("server_url")
-        if not server_url:
+        if not integ.available:
             continue
+        server_url = integ.mcp_config.server_url if integ.mcp_config else None
+        entries.append((integ.id, integ.name, "platform", integ.managed_by, server_url, None))
+
+    async for doc in integrations_collection.find({"source": "custom", "is_public": True}):
+        server_url = (doc.get("mcp_config") or {}).get("server_url")
         entries.append(
             (
                 doc.get("integration_id", ""),
                 doc.get("name", ""),
-                doc.get("source", "custom"),
+                "custom",
                 doc.get("managed_by", "mcp"),
                 server_url,
                 doc.get("icon_url"),
@@ -61,11 +55,13 @@ async def _collect_entries() -> list[tuple[str, str, str, str, str, str | None]]
 
 
 async def get_favicon_audit() -> list[FaviconAuditItem]:
-    """Compute legacy vs patched favicon URLs for every MCP server, concurrently."""
+    """Resolve the favicon for every public integration (MCP ones via the patched resolver)."""
     entries = await _collect_entries()
     semaphore = asyncio.Semaphore(_AUDIT_CONCURRENCY)
 
-    async def resolve(server_url: str) -> str | None:
+    async def resolve(server_url: str | None) -> str | None:
+        if not server_url:
+            return None
         async with semaphore:
             return await fetch_favicon_uncached(server_url)
 
@@ -75,7 +71,7 @@ async def get_favicon_audit() -> list[FaviconAuditItem]:
     for entry, after in zip(entries, afters, strict=True):
         integration_id, name, source, managed_by, server_url, stored_icon_url = entry
         after_url = after if isinstance(after, str) else None
-        before_url = legacy_favicon_url(server_url)
+        before_url = legacy_favicon_url(server_url) if server_url else None
         items.append(
             FaviconAuditItem(
                 integration_id=integration_id,
@@ -86,7 +82,7 @@ async def get_favicon_audit() -> list[FaviconAuditItem]:
                 stored_icon_url=stored_icon_url,
                 before_url=before_url,
                 after_url=after_url,
-                changed=after_url != before_url,
+                changed=bool(server_url) and after_url != before_url,
             )
         )
 

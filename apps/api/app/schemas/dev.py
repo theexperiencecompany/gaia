@@ -13,12 +13,18 @@ class FaviconAuditItem(_CamelModel):
     name: str
     source: str = Field(description="platform or custom")
     managed_by: str
-    server_url: str
+    server_url: str | None = Field(
+        None, description="MCP server URL, if this is an MCP integration"
+    )
     stored_icon_url: str | None = Field(
         None, description="icon_url currently persisted on the integration (custom only)"
     )
-    before_url: str = Field(description="Legacy resolver: Google S2 on the registered domain")
-    after_url: str | None = Field(description="Patched resolver: per-host resolution")
+    before_url: str | None = Field(
+        None, description="Legacy resolver: Google S2 on the registered domain (MCP only)"
+    )
+    after_url: str | None = Field(
+        None, description="Patched resolver: per-host resolution (MCP only)"
+    )
     changed: bool = Field(description="Whether before and after differ")
 
 

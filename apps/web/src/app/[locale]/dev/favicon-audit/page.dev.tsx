@@ -1,12 +1,10 @@
 "use client";
 
-import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import { useQuery } from "@tanstack/react-query";
-import Image from "next/image";
-import { useState } from "react";
 
+import { IntegrationIcon } from "@/features/integrations/components/PublicIntegrationCard";
 import { apiService } from "@/lib/api/service";
 
 interface FaviconAuditItem {
@@ -14,9 +12,9 @@ interface FaviconAuditItem {
   name: string;
   source: string;
   managedBy: string;
-  serverUrl: string;
+  serverUrl: string | null;
   storedIconUrl: string | null;
-  beforeUrl: string;
+  beforeUrl: string | null;
   afterUrl: string | null;
   changed: boolean;
 }
@@ -26,41 +24,6 @@ interface FaviconAuditResponse {
   total: number;
   changed: number;
   items: FaviconAuditItem[];
-}
-
-function FaviconImg({ url }: { url: string | null }) {
-  const [hasError, setHasError] = useState(false);
-  if (!url || hasError) {
-    return (
-      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-zinc-700 text-[10px] text-zinc-400">
-        none
-      </div>
-    );
-  }
-  // unoptimized: before/after URLs are arbitrary remote favicon hosts that
-  // aren't (and can't be) enumerated in next/image remotePatterns.
-  return (
-    <Image
-      src={url}
-      alt="favicon"
-      width={48}
-      height={48}
-      unoptimized
-      className="h-12 w-12 rounded-lg bg-zinc-900 object-contain p-1"
-      onError={() => setHasError(true)}
-    />
-  );
-}
-
-function Column({ label, url }: { label: string; url: string | null }) {
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-[10px] uppercase tracking-wide text-zinc-500">
-        {label}
-      </span>
-      <FaviconImg url={url} />
-    </div>
-  );
 }
 
 export default function FaviconAuditPage() {
@@ -74,13 +37,14 @@ export default function FaviconAuditPage() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
+    <div className="mx-auto max-w-6xl px-6 py-10">
       <h1 className="text-2xl font-semibold text-white">
-        Favicon resolver — before / after
+        Public integration icons
       </h1>
       <p className="mt-1 text-sm text-zinc-400">
-        Legacy (Google S2 on registered domain) vs patched (per-host) favicon
-        resolution for every MCP server in production.
+        How every production public integration renders in the marketplace. MCP
+        servers use the patched per-host favicon resolver; a green ring marks
+        one whose icon the patch improved.
       </p>
 
       {isLoading && (
@@ -100,52 +64,37 @@ export default function FaviconAuditPage() {
         <>
           <div className="mt-4 flex gap-2">
             <Chip size="sm" variant="flat">
-              {data.total} MCP servers
+              {data.total} integrations
             </Chip>
-            <Chip size="sm" variant="flat" color="warning">
-              {data.changed} changed
+            <Chip size="sm" variant="flat" color="success">
+              {data.changed} favicons improved
             </Chip>
             <Chip size="sm" variant="flat">
               env: {data.environment}
             </Chip>
           </div>
 
-          <div className="mt-6 flex flex-col gap-3">
+          <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
             {data.items.map((item) => (
-              <Card
+              <div
                 key={`${item.source}:${item.integrationId}`}
-                className={
-                  item.changed
-                    ? "border border-warning-500/40 bg-zinc-800"
-                    : "bg-zinc-800"
-                }
+                className="flex flex-col items-center gap-2 rounded-xl bg-zinc-800 p-3 text-center"
+                title={`${item.name} (${item.source}/${item.managedBy})`}
               >
-                <CardBody className="flex flex-row items-center gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-medium text-white">
-                        {item.name}
-                      </span>
-                      <Chip size="sm" variant="flat">
-                        {item.source}
-                      </Chip>
-                      <Chip size="sm" variant="flat">
-                        {item.managedBy}
-                      </Chip>
-                      {item.changed && (
-                        <Chip size="sm" variant="flat" color="warning">
-                          changed
-                        </Chip>
-                      )}
-                    </div>
-                    <p className="mt-1 truncate text-xs text-zinc-500">
-                      {item.serverUrl}
-                    </p>
-                  </div>
-                  <Column label="Before" url={item.beforeUrl} />
-                  <Column label="After" url={item.afterUrl} />
-                </CardBody>
-              </Card>
+                <div
+                  className={`flex h-12 w-12 items-center justify-center rounded-lg bg-zinc-900 ${
+                    item.changed ? "ring-2 ring-success-500" : ""
+                  }`}
+                >
+                  <IntegrationIcon
+                    integrationId={item.integrationId}
+                    iconUrl={item.afterUrl ?? item.storedIconUrl}
+                  />
+                </div>
+                <span className="line-clamp-2 text-[11px] leading-tight text-zinc-300">
+                  {item.name}
+                </span>
+              </div>
             ))}
           </div>
         </>
