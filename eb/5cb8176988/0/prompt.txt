@@ -1,0 +1,81 @@
+<system_instruction>
+You are working inside Conductor, a Mac app that lets the user run many coding agents in parallel.
+Your work should take place in the /Users/dhruvmaradiya/conductor/workspaces/whatsapp-sender/sao-paulo directory (unless otherwise directed), which has been set up for you to work in.
+Each workspace has a .context directory (gitignored) where you can save files to collaborate with other agents.
+The target branch for this workspace is origin/develop. Use this for actions like diffing (`git diff origin/develop...`) or creating PRs (`gh pr create --base develop`).
+
+Do not rename the current branch unless the user explicitly tells you to do so.
+
+By default, the user will only see the last message that you send before stopping. Include all essential information in the last message. The intermediate messages will be collapsed and accessible by the user but not displayed by default.
+
+If the user asks you to work on several unrelated tasks, you can suggest they start new workspaces.
+Sometimes the user might send you a message they meant to send in a different workspace or a different chat. If something doesn't make sense in the context of your work, just ask. 
+If the user asks for help with Conductor, you can ask them to go to "Help -> Send Feedback" to get in touch with our team.
+</system_instruction>
+
+I connected new redis instance to juicefs and thata new instance is only used by me for testing and I did that in span of last 24h and now it shows 800k request and most of the time in last 24h I didn't even started backend and I see around 90 tcp connections constantly
+and most used command is SMEMEBERS (270k) and ZSCORE(227k)
+
+I think something must be wrong with our implementation and implementation of sandbox
+
+---
+
+Practically speaking for juicefs what will be fastter postgresql or redis? I heard redis will have fewer round trips compared to postgresql and we should have --no-bgjob
+yes we should do gracefull unmount
+3rd point what is this and how its currently and what u are suggesting and what it will change
+
+---
+
+what other two deamons are there?
+lets add them in sandbox template does it make sandbox initializing slow??
+
+---
+
+Why can't we merge 1st and 2nd?
+
+and lets implement no-bg and other optimizations and lets bake _system
+
+---
+
+and also if we can do something like don't try to sync skills and stuff bcz it doesn't change frequently
+and also create new e2b sandbox template and override it in local for development and also mention in this pr's description that e2b template needs to be built
+
+---
+
+<system_instruction>
+The user has attached these files. Read them before proceeding.
+- .context/attachments/nfZsru/pasted_text_2026-06-28_03-35-46.txt (5.8 KB)
+</system_instruction>
+
+
+
+“Don’t sync skills if they don’t change” -> what I mean is if juicefs tries to bgsync any of the stuff for skills we can stop that if we can
+Yes I like to have new pr for this but before that lets go over below conversations on caching
+
+.context/attachments/nfZsru/pasted_text_2026-06-28_03-35-46.txt
+
+---
+
+Okk I want u to spawn 3 independent agents to research and reason over these caching values and their positive/negative impacts and any missing things that can gain us more performance for our usecase
+
+---
+
+Okay at few places u mention that without verification lets not do this or not worth the risk but why not serach it in docs and other places its simple so lets validate or invalidate our claiims and Lets server skills like /_system since its low to medium effort lets alsos scope artifact watcher
+
+---
+
+Okk why we need     await _push_skills(sbx, user_id)
+and why we need tar and everything for skills? aren't we going to shit it in sandbox itself?
+
+---
+
+.
+
+---
+
+Okk why we need     await _push_skills(sbx, user_id)
+and why we need tar and everything for skills? aren't we going to shit it in sandbox itself?
+
+---
+
+Okk revert that and add relavant caching
