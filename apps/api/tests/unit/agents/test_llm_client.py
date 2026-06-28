@@ -5,9 +5,9 @@ Covers:
 - _get_available_providers: registry lookups
 - _get_ordered_providers: priority ordering with/without preferred provider
 - _create_configurable_llm: primary-only vs. primary+alternatives
-- get_free_llm_chain: OpenRouter / Gemini fallback chain
-- invoke_with_fallback: success, partial failure with fallback, total failure
-- chatbot: free-llm path, paid-llm path, error handling
+- get_default_llm: the default model for auxiliary tasks
+- ainvoke_llm: the single invoke primitive — retry, fallback to default, fail-loud
+- chatbot: default-model one-shot path, error handling
 """
 
 from typing import Any
@@ -24,9 +24,9 @@ from app.agents.llm.client import (
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
-    get_free_llm_chain,
+    ainvoke_llm,
+    get_default_llm,
     init_llm,
-    invoke_with_fallback,
     register_llm_providers,
 )
 
@@ -377,116 +377,73 @@ class TestInitLlm:
 
 
 # ---------------------------------------------------------------------------
-# get_free_llm_chain
+# get_default_llm
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestGetFreeLlmChain:
+class TestGetDefaultLlm:
     @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
-    @patch("app.agents.llm.client.ChatOpenAI")
     @patch("app.agents.llm.client.settings")
-    def test_returns_gemini_only(
-        self,
-        mock_settings: MagicMock,
-        mock_chat_openai: MagicMock,
-        mock_chat_google: MagicMock,
-    ) -> None:
+    def test_returns_gemini(self, mock_settings: MagicMock, mock_chat_google: MagicMock) -> None:
         mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
         mock_chat_google.return_value = MagicMock()
 
-        chain = get_free_llm_chain()
-
-        assert len(chain) == 1
+        assert get_default_llm() is mock_chat_google.return_value
         mock_chat_google.assert_called_once()
-        mock_chat_openai.assert_not_called()
 
     @patch("app.agents.llm.client.settings")
     def test_no_google_key_raises(self, mock_settings: MagicMock) -> None:
         mock_settings.GOOGLE_API_KEY = None
 
-        with pytest.raises(RuntimeError, match="No LLM provider configured for auxiliary tasks"):
-            get_free_llm_chain()
+        with pytest.raises(RuntimeError, match="Default LLM not configured"):
+            get_default_llm()
 
 
 # ---------------------------------------------------------------------------
-# invoke_with_fallback
+# ainvoke_llm — the single LLM invocation primitive (retry + fallback)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestInvokeWithFallback:
-    async def test_first_llm_succeeds(self) -> None:
-        llm1 = MagicMock()
-        llm1.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
-        llm2 = MagicMock()
-        llm2.ainvoke = AsyncMock(return_value=AIMessage(content="fallback"))
+class TestAinvokeLlm:
+    @staticmethod
+    def _runnable(side_effect: Any = None, result: Any = None) -> MagicMock:
+        # with_llm_retry calls runnable.with_retry(...) -> return self so the mock
+        # .ainvoke is what actually runs (the real retry is LangChain's concern).
+        runnable = MagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(side_effect=side_effect, return_value=result)
+        return runnable
 
-        result = await invoke_with_fallback([llm1, llm2], [HumanMessage(content="hi")])
-
+    async def test_primary_success(self) -> None:
+        primary = self._runnable(result=AIMessage(content="ok"))
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")])
         assert result.content == "ok"
-        llm2.ainvoke.assert_not_called()
 
     @patch("app.agents.llm.client.log")
-    async def test_first_fails_second_succeeds(self, mock_log: MagicMock) -> None:
-        llm1 = MagicMock()
-        llm1.ainvoke = AsyncMock(side_effect=Exception("rate limit"))
-        llm2 = MagicMock()
-        llm2.ainvoke = AsyncMock(return_value=AIMessage(content="fallback-ok"))
+    async def test_falls_back_to_default_on_provider_error(self, mock_log: MagicMock) -> None:
+        primary = self._runnable(side_effect=ConnectionError("provider down"))
+        fallback = MagicMock()
+        fallback.ainvoke = AsyncMock(return_value=AIMessage(content="fallback-ok"))
 
-        result = await invoke_with_fallback([llm1, llm2], [HumanMessage(content="hi")])
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
 
         assert result.content == "fallback-ok"
 
-    @patch("app.agents.llm.client.log")
-    async def test_all_fail_raises_runtime_error(self, mock_log: MagicMock) -> None:
-        llm1 = MagicMock()
-        llm1.ainvoke = AsyncMock(side_effect=Exception("error1"))
-        llm2 = MagicMock()
-        llm2.ainvoke = AsyncMock(side_effect=Exception("error2"))
+    async def test_reraises_provider_error_when_no_fallback(self) -> None:
+        primary = self._runnable(side_effect=ConnectionError("provider down"))
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")])
 
-        with pytest.raises(RuntimeError, match="All LLM providers failed"):
-            await invoke_with_fallback([llm1, llm2], [HumanMessage(content="hi")])
+    async def test_programming_error_propagates_not_downgraded(self) -> None:
+        primary = self._runnable(side_effect=ValueError("a real bug"))
+        fallback = MagicMock()
+        fallback.ainvoke = AsyncMock(return_value=AIMessage(content="must-not-be-used"))
 
-    async def test_single_llm_success(self) -> None:
-        llm = MagicMock()
-        llm.ainvoke = AsyncMock(return_value=AIMessage(content="single"))
-
-        result = await invoke_with_fallback([llm], [HumanMessage(content="hi")])
-
-        assert result.content == "single"
-
-    @patch("app.agents.llm.client.log")
-    async def test_single_llm_failure(self, mock_log: MagicMock) -> None:
-        llm = MagicMock()
-        llm.ainvoke = AsyncMock(side_effect=ValueError("bad"))
-
-        with pytest.raises(RuntimeError, match="All LLM providers failed"):
-            await invoke_with_fallback([llm], [HumanMessage(content="hi")])
-
-    async def test_passes_config_through(self) -> None:
-        llm = MagicMock()
-        llm.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
-        config = {"configurable": {"thread_id": "t1"}}
-
-        await invoke_with_fallback([llm], [HumanMessage(content="hi")], config=config)  # type: ignore[arg-type]
-
-        llm.ainvoke.assert_called_once()
-        _, kwargs = llm.ainvoke.call_args
-        assert kwargs["config"] == config
-
-    @patch("app.agents.llm.client.log")
-    async def test_three_llms_first_two_fail(self, mock_log: MagicMock) -> None:
-        llm1 = MagicMock()
-        llm1.ainvoke = AsyncMock(side_effect=Exception("fail1"))
-        llm2 = MagicMock()
-        llm2.ainvoke = AsyncMock(side_effect=Exception("fail2"))
-        llm3 = MagicMock()
-        llm3.ainvoke = AsyncMock(return_value=AIMessage(content="third-ok"))
-
-        result = await invoke_with_fallback([llm1, llm2, llm3], [HumanMessage(content="hi")])
-
-        assert result.content == "third-ok"
+        with pytest.raises(ValueError):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+        fallback.ainvoke.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -538,6 +495,9 @@ class TestConstants:
             ServiceUnavailable,
         )
 
+        # Gemini (google-api-core) + stdlib transient types must all be retryable.
+        # The tuple is provider-agnostic, so it is a superset (also covers the
+        # OpenRouter SDK transient errors) — assert containment, not equality.
         expected = {
             ResourceExhausted,
             ServiceUnavailable,
@@ -546,8 +506,7 @@ class TestConstants:
             ConnectionError,
             TimeoutError,
         }
-        actual = set(_LLM_RETRYABLE_EXCEPTIONS)
-        assert actual == expected
+        assert expected.issubset(set(_LLM_RETRYABLE_EXCEPTIONS))
 
     def test_retryable_exceptions_isinstance_check(self) -> None:
         from google.api_core.exceptions import ResourceExhausted
@@ -567,86 +526,43 @@ class TestConstants:
 
 @pytest.mark.unit
 class TestChatbot:
-    @patch("app.agents.llm.chatbot.invoke_with_fallback")
-    @patch("app.agents.llm.chatbot.get_free_llm_chain")
-    async def test_chatbot_free_llm_path(
-        self,
-        mock_get_chain: MagicMock,
-        mock_invoke: AsyncMock,
+    @patch("app.agents.llm.chatbot.ainvoke_llm")
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_default_path(
+        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
     ) -> None:
-        mock_chain = [MagicMock()]
-        mock_get_chain.return_value = mock_chain
-        mock_invoke.return_value = AIMessage(content="free response")
+        mock_model = MagicMock()
+        mock_get_default.return_value = mock_model
+        mock_ainvoke.return_value = AIMessage(content="default response")
 
         messages = [HumanMessage(content="hello")]
+        result = await chatbot(messages)
 
-        result = await chatbot(messages, use_free_llm=True)
-
-        mock_get_chain.assert_called_once()
-        mock_invoke.assert_called_once_with(mock_chain, messages)
-        assert len(result["messages"]) == 1
-        assert result["messages"][0].content == "free response"
-
-    @patch("app.agents.llm.chatbot.init_llm")
-    async def test_chatbot_paid_llm_path(self, mock_init_llm: MagicMock) -> None:
-        mock_llm = MagicMock()
-        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="paid response"))
-        mock_init_llm.return_value = mock_llm
-
-        messages = [HumanMessage(content="hello")]
-
-        result = await chatbot(messages, use_free_llm=False)
-
-        mock_init_llm.assert_called_once_with()
-        mock_llm.ainvoke.assert_called_once_with(messages)
-        assert result["messages"][0].content == "paid response"
+        mock_get_default.assert_called_once()
+        mock_ainvoke.assert_called_once_with(mock_model, messages, label="chatbot")
+        assert result["messages"][0].content == "default response"
 
     @patch("app.agents.llm.chatbot.log")
-    @patch("app.agents.llm.chatbot.get_free_llm_chain")
-    async def test_chatbot_error_returns_fallback_message(
-        self,
-        mock_get_chain: MagicMock,
-        mock_log: MagicMock,
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_no_provider_returns_fallback_message(
+        self, mock_get_default: MagicMock, mock_log: MagicMock
     ) -> None:
-        mock_get_chain.side_effect = RuntimeError("no providers")
+        mock_get_default.side_effect = RuntimeError("no providers")
 
-        messages = [HumanMessage(content="hello")]
+        result = await chatbot([HumanMessage(content="hello")])
 
-        result = await chatbot(messages, use_free_llm=True)
-
-        assert len(result["messages"]) == 1
-        assert "trouble processing" in result["messages"][0].content
         assert isinstance(result["messages"][0], AIMessage)
-
-    @patch("app.agents.llm.chatbot.log")
-    @patch("app.agents.llm.chatbot.init_llm")
-    async def test_chatbot_paid_llm_error_returns_fallback(
-        self,
-        mock_init_llm: MagicMock,
-        mock_log: MagicMock,
-    ) -> None:
-        mock_init_llm.side_effect = RuntimeError("no providers")
-
-        messages = [HumanMessage(content="hello")]
-
-        result = await chatbot(messages, use_free_llm=False)
-
         assert "trouble processing" in result["messages"][0].content
 
     @patch("app.agents.llm.chatbot.log")
-    @patch("app.agents.llm.chatbot.invoke_with_fallback")
-    @patch("app.agents.llm.chatbot.get_free_llm_chain")
-    async def test_chatbot_invoke_fallback_error(
-        self,
-        mock_get_chain: MagicMock,
-        mock_invoke: AsyncMock,
-        mock_log: MagicMock,
+    @patch("app.agents.llm.chatbot.ainvoke_llm")
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_invoke_error_returns_fallback_message(
+        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock, mock_log: MagicMock
     ) -> None:
-        mock_get_chain.return_value = [MagicMock()]
-        mock_invoke.side_effect = RuntimeError("all failed")
+        mock_get_default.return_value = MagicMock()
+        mock_ainvoke.side_effect = RuntimeError("provider error")
 
-        messages = [HumanMessage(content="hello")]
-
-        result = await chatbot(messages, use_free_llm=True)
+        result = await chatbot([HumanMessage(content="hello")])
 
         assert "trouble processing" in result["messages"][0].content

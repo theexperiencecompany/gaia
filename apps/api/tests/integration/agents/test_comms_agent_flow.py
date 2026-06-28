@@ -78,11 +78,11 @@ def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
             return_value=checkpointer_return,
         ),
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+            "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
             return_value=[],
         ),
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+            "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
             new_callable=AsyncMock,
             return_value=AIMessage(content='{"actions": []}'),
         ),

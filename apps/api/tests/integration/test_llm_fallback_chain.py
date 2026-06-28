@@ -6,9 +6,7 @@ app.agents.llm.client — mocking only external LLM API calls at the I/O
 boundary. Covers:
 - Provider priority ordering
 - Preferred provider selection
-- Fallback on primary failure (invoke_with_fallback)
-- All-providers-fail error propagation
-- Free LLM chain construction
+- Configurable-alternatives wiring
 - Model pricing lookup
 - Token cost calculation
 """
@@ -18,7 +16,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
 from app.agents.llm.client import (
@@ -27,9 +24,7 @@ from app.agents.llm.client import (
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
-    get_free_llm_chain,
     init_llm,
-    invoke_with_fallback,
 )
 from app.config.model_pricing import (
     DEFAULT_PRICING,
@@ -47,14 +42,6 @@ def _make_mock_llm(name: str = "mock_llm") -> MagicMock:
     mock.configurable_fields.return_value = mock
     mock.__class__.__name__ = name
     return mock
-
-
-def _make_async_llm(response_content: str = "ok") -> AsyncMock:
-    """Create an async-invocable mock LLM."""
-    llm = AsyncMock()
-    llm.ainvoke.return_value = AIMessage(content=response_content)
-    llm.__class__ = type("MockLLM", (), {"__name__": "MockLLM"})
-    return llm
 
 
 @pytest.mark.integration
@@ -211,119 +198,6 @@ class TestProviderInitialization:
 
         # Since openai is not available and ordered is empty, gemini fills in
         assert result is mock_gemini
-
-
-@pytest.mark.integration
-class TestFreeLLMMode:
-    """Verify get_free_llm_chain()."""
-
-    def test_get_free_llm_chain_returns_gemini(self) -> None:
-        """get_free_llm_chain returns a single Gemini LLM when GOOGLE_API_KEY exists."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.GOOGLE_API_KEY = "google-key"
-
-            with patch("app.agents.llm.client.ChatGoogleGenerativeAI") as mock_gemini:
-                mock_gemini.return_value = _make_mock_llm("gemini")
-
-                chain = get_free_llm_chain()
-
-                assert len(chain) == 1
-                mock_gemini.assert_called_once()
-
-    def test_get_free_llm_chain_no_google_key_raises(self) -> None:
-        """get_free_llm_chain raises RuntimeError when GOOGLE_API_KEY is missing."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.GOOGLE_API_KEY = None
-
-            with pytest.raises(
-                RuntimeError, match="No LLM provider configured for auxiliary tasks"
-            ):
-                get_free_llm_chain()
-
-
-@pytest.mark.integration
-class TestInvokeWithFallback:
-    """Test the invoke_with_fallback function that tries LLMs in sequence."""
-
-    async def test_first_llm_succeeds(self) -> None:
-        """When the first LLM succeeds, its response is returned and the second is never called."""
-        llm1 = _make_async_llm("response from llm1")
-        llm2 = _make_async_llm("response from llm2")
-
-        messages = [HumanMessage(content="hello")]
-        result = await invoke_with_fallback([llm1, llm2], messages)
-
-        assert result.content == "response from llm1"
-        llm1.ainvoke.assert_awaited_once()
-        llm2.ainvoke.assert_not_awaited()
-
-    async def test_fallback_on_primary_failure(self) -> None:
-        """When the first LLM raises, the second is tried and its response returned."""
-        llm1 = _make_async_llm()
-        llm1.ainvoke.side_effect = Exception("API rate limit exceeded")
-
-        llm2 = _make_async_llm("fallback response")
-
-        messages = [HumanMessage(content="hello")]
-        result = await invoke_with_fallback([llm1, llm2], messages)
-
-        assert result.content == "fallback response"
-        llm1.ainvoke.assert_awaited_once()
-        llm2.ainvoke.assert_awaited_once()
-
-    async def test_all_providers_fail_raises_runtime_error(self) -> None:
-        """When all LLMs in the chain fail, a RuntimeError is raised with the last error."""
-        llm1 = _make_async_llm()
-        llm1.ainvoke.side_effect = Exception("provider 1 down")
-
-        llm2 = _make_async_llm()
-        llm2.ainvoke.side_effect = Exception("provider 2 down")
-
-        messages = [HumanMessage(content="hello")]
-
-        with pytest.raises(RuntimeError, match="All LLM providers failed.*provider 2 down"):
-            await invoke_with_fallback([llm1, llm2], messages)
-
-        llm1.ainvoke.assert_awaited_once()
-        llm2.ainvoke.assert_awaited_once()
-
-    async def test_single_provider_failure_raises(self) -> None:
-        """A single-provider chain that fails raises RuntimeError."""
-        llm1 = _make_async_llm()
-        llm1.ainvoke.side_effect = ConnectionError("connection refused")
-
-        messages = [HumanMessage(content="hello")]
-
-        with pytest.raises(RuntimeError, match="All LLM providers failed"):
-            await invoke_with_fallback([llm1], messages)
-
-    async def test_config_forwarded_to_llm(self) -> None:
-        """The optional RunnableConfig is forwarded to each LLM invoke call."""
-        llm1 = _make_async_llm("ok")
-        config = {"configurable": {"thread_id": "test-thread"}}
-
-        messages = [HumanMessage(content="hello")]
-        await invoke_with_fallback([llm1], messages, config=config)
-
-        llm1.ainvoke.assert_awaited_once_with(messages, config=config)
-
-    async def test_third_provider_succeeds_after_two_failures(self) -> None:
-        """Chain of three: first two fail, third succeeds."""
-        llm1 = _make_async_llm()
-        llm1.ainvoke.side_effect = Exception("llm1 error")
-
-        llm2 = _make_async_llm()
-        llm2.ainvoke.side_effect = Exception("llm2 error")
-
-        llm3 = _make_async_llm("llm3 success")
-
-        messages = [HumanMessage(content="hello")]
-        result = await invoke_with_fallback([llm1, llm2, llm3], messages)
-
-        assert result.content == "llm3 success"
-        llm1.ainvoke.assert_awaited_once()
-        llm2.ainvoke.assert_awaited_once()
-        llm3.ainvoke.assert_awaited_once()
 
 
 @pytest.mark.integration

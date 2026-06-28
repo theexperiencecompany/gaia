@@ -11,7 +11,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
+from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
@@ -63,10 +63,9 @@ async def generate_follow_up_actions(
         f"Context: {context_text}"
     )
 
-    llm_chain = get_free_llm_chain()
     try:
-        result = await invoke_with_fallback(
-            llm_chain,
+        result = await ainvoke_llm(
+            get_default_llm(),
             [
                 SystemMessage(content=SUGGEST_FOLLOW_UP_ACTIONS),
                 SystemMessage(
@@ -92,6 +91,7 @@ async def generate_follow_up_actions(
                     "metadata": {**config.get("metadata", {}), "silent": True},
                 },
             ),
+            label="follow_up_actions",
         )
         actions = parser.parse(result if isinstance(result, str) else result.text)
         return actions.actions if actions.actions else []

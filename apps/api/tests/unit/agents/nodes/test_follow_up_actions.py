@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 import pytest
 
 from app.agents.core.nodes.follow_up_actions_node import (
+    SUGGEST_FOLLOW_UP_ACTIONS,
     FollowUpActions,
     _pretty_print_messages,
     follow_up_actions_node,
@@ -84,7 +85,7 @@ class TestFollowUpActionsNode:
                 return_value=mock_writer,
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -109,7 +110,7 @@ class TestFollowUpActionsNode:
                 return_value=mock_writer,
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -140,7 +141,7 @@ class TestFollowUpActionsNode:
 
         captured_llm_inputs = []
 
-        async def capture_invoke(_chain, msgs, config):
+        async def capture_invoke(_model, msgs, *, config=None, label=None):
             captured_llm_inputs.append(msgs)
             return "raw llm output"
 
@@ -150,7 +151,7 @@ class TestFollowUpActionsNode:
                 return_value=mock_writer,
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
             patch(
@@ -158,7 +159,7 @@ class TestFollowUpActionsNode:
                 new=AsyncMock(return_value={"tool_names": ["calendar", "gmail"]}),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
                 new=capture_invoke,
             ),
             patch(
@@ -181,9 +182,9 @@ class TestFollowUpActionsNode:
         dynamic_context = msgs[1].content
         assert "calendar" in dynamic_context
         assert "gmail" in dynamic_context
-        # Static prefix must NOT embed per-user data.
-        assert "calendar" not in msgs[0].content
-        assert "gmail" not in msgs[0].content
+        # Static prefix must be the unmodified prompt — no per-user data injected,
+        # so the prompt-cache prefix stays byte-identical across users.
+        assert msgs[0].content == SUGGEST_FOLLOW_UP_ACTIONS
 
     @pytest.mark.asyncio
     async def test_happy_path_no_user_id_falls_back_to_tool_registry(self):
@@ -215,7 +216,7 @@ class TestFollowUpActionsNode:
                 return_value=mock_writer,
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
             patch(
@@ -223,7 +224,7 @@ class TestFollowUpActionsNode:
                 new=AsyncMock(return_value=mock_registry),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
                 new=AsyncMock(return_value="raw llm output"),
             ),
             patch(
@@ -251,7 +252,7 @@ class TestFollowUpActionsNode:
         mock_parser.get_format_instructions.return_value = "FORMAT_SENTINEL"
         mock_parser.parse.return_value = follow_up
 
-        async def capture_invoke(_chain, msgs, config):
+        async def capture_invoke(_model, msgs, *, config=None, label=None):
             captured_invocations.append(msgs)
             return "raw output"
 
@@ -261,7 +262,7 @@ class TestFollowUpActionsNode:
                 return_value=MagicMock(),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
             patch(
@@ -269,7 +270,7 @@ class TestFollowUpActionsNode:
                 new=AsyncMock(return_value={"tool_names": []}),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
                 new=capture_invoke,
             ),
             patch(
@@ -319,7 +320,7 @@ class TestFollowUpActionsNode:
                 return_value=mock_writer,
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
             patch(
@@ -327,7 +328,7 @@ class TestFollowUpActionsNode:
                 new=AsyncMock(return_value={"tool_names": []}),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
                 new=AsyncMock(return_value="garbage output"),
             ),
             patch(
@@ -366,7 +367,7 @@ class TestFollowUpActionsNode:
                 return_value=mock_writer,
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
             patch(
@@ -374,7 +375,7 @@ class TestFollowUpActionsNode:
                 new=AsyncMock(return_value={"tool_names": []}),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
                 new=AsyncMock(side_effect=RuntimeError("LLM timeout")),
             ),
             patch(
@@ -411,7 +412,7 @@ class TestFollowUpActionsNode:
                 return_value=mock_writer,
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -443,7 +444,7 @@ class TestFollowUpActionsNode:
                 return_value=MagicMock(),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
             patch(
@@ -451,7 +452,7 @@ class TestFollowUpActionsNode:
                 new=AsyncMock(return_value={"tool_names": []}),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
                 new=AsyncMock(return_value="raw output"),
             ),
             patch(
@@ -502,7 +503,7 @@ class TestFollowUpActionsNode:
                 return_value=mock_writer,
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
                 return_value=MagicMock(),
             ),
             patch(
@@ -510,7 +511,7 @@ class TestFollowUpActionsNode:
                 new=AsyncMock(return_value={"tool_names": []}),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
                 new=AsyncMock(return_value=mock_result),
             ),
             patch(

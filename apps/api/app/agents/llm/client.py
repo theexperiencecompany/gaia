@@ -12,7 +12,7 @@ from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
 from langchain_core.messages import BaseMessage
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -97,6 +97,18 @@ _LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
 
 # Attempts for the model-level transient-error retry in the agent model node.
 LLM_RETRY_MAX_ATTEMPTS = 3
+
+
+def with_llm_retry(runnable: Runnable) -> Runnable:
+    """The single, canonical LLM retry. Wraps a (tool-bound) model runnable so
+    transient provider/infra errors are retried with exponential backoff before
+    the caller falls back to the default model. Applied AFTER ``bind_tools`` so
+    the ``RunnableRetry`` wrapper never has to expose ``bind_tools``."""
+    return runnable.with_retry(
+        retry_if_exception_type=_LLM_RETRYABLE_EXCEPTIONS,
+        stop_after_attempt=LLM_RETRY_MAX_ATTEMPTS,
+        wait_exponential_jitter=True,
+    )
 
 
 PROVIDER_MODELS = {
@@ -337,43 +349,60 @@ def init_fallback_llm() -> BaseChatModel | None:
     return gemini.with_config(configurable={"model_name": DEFAULT_MODEL_NAME})
 
 
-def get_free_llm_chain() -> list[BaseChatModel]:
-    """Get a chain of low-cost LLMs for auxiliary tasks (suggestions, follow-ups,
-    research helpers), tried in order. Uses the direct Gemini API."""
+def get_default_llm() -> BaseChatModel:
+    """The default model (direct Gemini) for every auxiliary LLM task — follow-ups,
+    research, memory extraction, integration inference, one-shot helpers. The pro
+    model is reserved for the main chat agent (see ``plan_model``); auxiliary tasks
+    never use it. Raises if Google is not configured."""
     if not settings.GOOGLE_API_KEY:
-        raise RuntimeError("No LLM provider configured for auxiliary tasks. Set GOOGLE_API_KEY.")
-
-    return [
-        ChatGoogleGenerativeAI(
-            model=DEFAULT_GEMINI_MODEL_NAME,
-            temperature=0.1,
-        )
-    ]
+        raise RuntimeError("Default LLM not configured. Set GOOGLE_API_KEY.")
+    return ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=0.1)
 
 
-async def invoke_with_fallback(
-    llm_chain: list[BaseChatModel],
+async def ainvoke_llm(
+    primary: Runnable,
     messages: Sequence[BaseMessage],
+    *,
+    fallback: Runnable | None = None,
     config: RunnableConfig | None = None,
-) -> BaseMessage:
-    """Invoke LLMs in sequence until one succeeds, returning its response.
+    label: str = "model",
+) -> Any:
+    """The single way to invoke an LLM. Retries transient provider/infra errors
+    (``with_llm_retry``), then falls back to ``fallback`` (if given) on a provider
+    failure (``_LLM_FALLBACK_EXCEPTIONS``). Programming bugs and
+    ``asyncio.CancelledError`` propagate — they are never silently downgraded.
+    Returns whatever the runnable returns: a ``BaseMessage`` for a chat model, or
+    the parsed object for a ``with_structured_output`` runnable."""
+    try:
+        return await with_llm_retry(primary).ainvoke(messages, config=config)
+    except _LLM_FALLBACK_EXCEPTIONS as primary_error:
+        if fallback is None:
+            raise
+        log.warning(
+            f"{LogTag.AGENT} llm '{label}' failed; falling back to the default model",
+            llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
+            error=str(primary_error),
+        )
+        return await fallback.ainvoke(messages, config=config)
 
-    Tries each LLM in the chain, falling back to the next on failure. Raises
-    RuntimeError if all fail.
-    """
-    last_error: Exception | None = None
 
-    for i, llm in enumerate(llm_chain):
-        try:
-            return await llm.ainvoke(messages, config=config)
-        except Exception as e:
-            provider_name = type(llm).__name__
-            last_error = e
-            if i < len(llm_chain) - 1:
-                log.warning(
-                    f"{LogTag.AGENT} LLM {provider_name} failed, falling back to next provider: {e}"
-                )
-            else:
-                log.error(f"{LogTag.AGENT} All LLM providers failed. Last error: {e}")
-
-    raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
+def invoke_llm(
+    primary: Runnable,
+    messages: Sequence[BaseMessage],
+    *,
+    fallback: Runnable | None = None,
+    config: RunnableConfig | None = None,
+    label: str = "model",
+) -> Any:
+    """Sync counterpart of :func:`ainvoke_llm`."""
+    try:
+        return with_llm_retry(primary).invoke(messages, config=config)
+    except _LLM_FALLBACK_EXCEPTIONS as primary_error:
+        if fallback is None:
+            raise
+        log.warning(
+            f"{LogTag.AGENT} llm '{label}' failed; falling back to the default model",
+            llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
+            error=str(primary_error),
+        )
+        return fallback.invoke(messages, config=config)

@@ -76,11 +76,11 @@ def _follow_up_io_patches() -> list:
     """Return patches for follow_up_actions_node I/O boundaries."""
     return [
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+            "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
             return_value=MagicMock(),
         ),
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+            "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
             new_callable=AsyncMock,
             return_value=AIMessage(
                 content='{"actions": ["Action 1", "Action 2", "Action 3", "Action 4"]}'

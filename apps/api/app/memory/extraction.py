@@ -1,21 +1,19 @@
 """Transcript -> structured memories: the write-path LLM calls.
 
-Two operations, both built on the free LLM chain with per-model structured
-output and graceful degradation — extraction failures must never break the
-conversation flow that spawned them, so total failure returns an empty
-batch / all-NEW decisions instead of raising.
+Two operations, both built on the default model with structured output and
+graceful degradation — extraction failures must never break the conversation
+flow that spawned them, so total failure returns an empty batch / all-NEW
+decisions instead of raising.
 """
 
-import asyncio
 from datetime import datetime
 from typing import TypeVar
 
-from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import get_free_llm_chain
+from app.agents.llm.client import _LLM_FALLBACK_EXCEPTIONS, ainvoke_llm, get_default_llm
 from app.constants.memory import (
     EXTRACTION_TRANSCRIPT_HEAD_CHARS,
     EXTRACTION_TRANSCRIPT_MAX_CHARS,
@@ -42,31 +40,6 @@ from shared.py.wide_events import log
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 
 _TRANSCRIPT_TRUNCATION_MARKER = "\n[... transcript truncated ...]\n"
-
-# Background ingestion retries transient LLM errors (rate limits, overload)
-# instead of dropping the memory. Latency does not matter off the request path.
-_MAX_STRUCTURED_RETRIES = 4
-_RETRY_BASE_DELAY_SECONDS = 2.0
-_TRANSIENT_ERROR_MARKERS = (
-    "429",
-    "rate limit",
-    "ratelimit",
-    "resource_exhausted",
-    "resourceexhausted",
-    "quota",
-    "503",
-    "overloaded",
-    "unavailable",
-    "timeout",
-    "timed out",
-)
-
-
-def _is_transient_error(error: Exception) -> bool:
-    """Whether an LLM error is a rate-limit/overload worth retrying."""
-    text = str(error).lower()
-    return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
-
 
 # These LLM calls run inside the LangGraph run that spawned them (the
 # add_memory tool, or a background ingestion task that inherited the graph's
@@ -108,101 +81,39 @@ def format_transcript(messages: list[dict[str, str]]) -> str:
     return f"{head}{_TRANSCRIPT_TRUNCATION_MARKER}{tail}"
 
 
-async def _try_one_provider(
-    llm: BaseChatModel,
-    output_model: type[_StructuredT],
-    messages: list[BaseMessage],
-    operation: str,
-    *,
-    is_last: bool,
-) -> _StructuredT | None:
-    """Attempt structured output from a single LLM provider with retry-backoff.
-
-    Retries transient errors (rate limits, overload) up to ``_MAX_STRUCTURED_RETRIES``
-    times with exponential backoff, then returns None so the caller can fall
-    through to the next provider. Returns None immediately on non-transient
-    failures.
-    """
-    provider_name = type(llm).__name__
-    structured_llm = llm.with_structured_output(output_model)
-    for attempt in range(_MAX_STRUCTURED_RETRIES):
-        try:
-            result = await structured_llm.ainvoke(messages, config=_SILENT_CONFIG)
-            if isinstance(result, output_model):
-                return result
-            return output_model.model_validate(result)
-        except Exception as e:
-            # Rate limits / transient errors must NOT silently drop a memory:
-            # ingestion is a background task, so retry the same provider with
-            # backoff before falling through to the next one.
-            if _is_transient_error(e) and attempt < _MAX_STRUCTURED_RETRIES - 1:
-                delay = _RETRY_BASE_DELAY_SECONDS * (2**attempt)
-                log.warning(
-                    "memory_llm_transient_retry",
-                    operation=operation,
-                    provider=provider_name,
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_STRUCTURED_RETRIES,
-                    delay_s=delay,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-                await asyncio.sleep(delay)
-                continue
-            if not is_last:
-                log.warning(
-                    "memory_llm_provider_failed",
-                    operation=operation,
-                    provider=provider_name,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-            else:
-                log.error(
-                    "memory_llm_all_providers_failed",
-                    operation=operation,
-                    provider=provider_name,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-            break
-    return None
-
-
 async def _invoke_structured(
     output_model: type[_StructuredT],
     messages: list[BaseMessage],
     *,
     operation: str,
 ) -> _StructuredT | None:
-    """Invoke the free LLM chain with structured output, falling back per model.
-
-    ``with_structured_output`` binds per model, so the fallback loop re-binds
-    the schema for each LLM in the chain. Returns None if every model fails
-    (including when no provider is configured) — callers degrade gracefully.
-    """
+    """Structured-output call on the default model. Returns None on any provider
+    failure (or when no provider is configured) so extraction degrades gracefully
+    and never breaks the chat that spawned it. ``_SILENT_CONFIG`` keeps the
+    structured-output tokens out of the chat stream; transient-error retry is
+    built into ``ainvoke_llm``."""
     try:
-        llm_chain = get_free_llm_chain()
+        model = get_default_llm()
     except RuntimeError as e:
         log.error(
-            "memory_llm_no_provider",
-            operation=operation,
-            error_type=type(e).__name__,
-            error=str(e),
+            "memory_llm_no_provider", operation=operation, error_type=type(e).__name__, error=str(e)
         )
         return None
 
-    for index, llm in enumerate(llm_chain):
-        result = await _try_one_provider(
-            llm,
-            output_model,
-            messages,
-            operation,
-            is_last=(index == len(llm_chain) - 1),
+    structured_llm = model.with_structured_output(output_model)
+    try:
+        result = await ainvoke_llm(
+            structured_llm, messages, config=_SILENT_CONFIG, label=f"memory:{operation}"
         )
-        if result is not None:
-            return result
-    return None
+    except _LLM_FALLBACK_EXCEPTIONS as e:
+        log.error(
+            "memory_llm_failed", operation=operation, error_type=type(e).__name__, error=str(e)
+        )
+        return None
+
+    if isinstance(result, output_model):
+        return result
+    return output_model.model_validate(result)
 
 
 async def extract_memories(

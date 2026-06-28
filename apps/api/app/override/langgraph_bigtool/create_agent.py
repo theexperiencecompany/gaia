@@ -44,15 +44,13 @@ from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.llm.client import (
-    _LLM_FALLBACK_EXCEPTIONS,
-    _LLM_RETRYABLE_EXCEPTIONS,
-    LLM_RETRY_MAX_ATTEMPTS,
+    ainvoke_llm,
     init_fallback_llm,
+    invoke_llm,
 )
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME
-from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 from app.override.langgraph_bigtool.hooks import (
     HookType,
@@ -81,70 +79,17 @@ def _is_default_model(configurable: Mapping[str, Any]) -> bool:
     )
 
 
-def _build_model_runnables(
-    llm_with_tools: Runnable,
+def _prepare_fallback(
     fallback_llm: Runnable | None,
     tools_to_bind: list[BaseTool],
     model_configurations: Mapping[str, Any],
-) -> tuple[Runnable, Runnable | None]:
-    """Wrap the bound model with transient-error retries (applied after
-    ``bind_tools``, so the ``RunnableRetry`` wrapper never needs to expose it) and
-    prepare the default model as a fallback bound with the same tools — skipped
-    when the selected model already is the default model."""
-    primary = llm_with_tools.with_retry(
-        retry_if_exception_type=_LLM_RETRYABLE_EXCEPTIONS,
-        stop_after_attempt=LLM_RETRY_MAX_ATTEMPTS,
-        wait_exponential_jitter=True,
-    )
-    fallback: Runnable | None = None
-    if fallback_llm is not None and not _is_default_model(model_configurations):
-        fallback = fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-    return primary, fallback
-
-
-async def _ainvoke_with_fallback(
-    primary: Runnable,
-    fallback: Runnable | None,
-    agent_name: str,
-    messages: Any,
-) -> AIMessage:
-    """Invoke the selected model (already wrapped with transient-error retries);
-    on a provider/infra failure (``_LLM_FALLBACK_EXCEPTIONS`` — e.g. OpenRouter
-    402 out-of-credits, auth, server errors) fall back once to the default model.
-    Re-raises when there is no fallback or the fallback also fails. Programming
-    errors and ``asyncio.CancelledError`` (stream cancellation) are not in the
-    set, so they propagate and fail loud rather than silently downgrade."""
-    try:
-        return await primary.ainvoke(messages)
-    except _LLM_FALLBACK_EXCEPTIONS as primary_error:
-        if fallback is None:
-            raise
-        log.warning(
-            f"{LogTag.AGENT} selected model failed; falling back to the default model",
-            agent=agent_name,
-            error=str(primary_error),
-        )
-        return await fallback.ainvoke(messages)
-
-
-def _invoke_with_fallback(
-    primary: Runnable,
-    fallback: Runnable | None,
-    agent_name: str,
-    messages: Any,
-) -> AIMessage:
-    """Sync counterpart of :func:`_ainvoke_with_fallback`."""
-    try:
-        return primary.invoke(messages)
-    except _LLM_FALLBACK_EXCEPTIONS as primary_error:
-        if fallback is None:
-            raise
-        log.warning(
-            f"{LogTag.AGENT} selected model failed; falling back to the default model",
-            agent=agent_name,
-            error=str(primary_error),
-        )
-        return fallback.invoke(messages)
+) -> Runnable | None:
+    """Bind the default fallback model with the same tools as the primary —
+    skipped when no fallback is configured or the selected model already is the
+    default model (no point falling back to itself)."""
+    if fallback_llm is None or _is_default_model(model_configurations):
+        return None
+    return fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
 
 
 def create_agent(
@@ -268,10 +213,10 @@ def create_agent(
         _llm = llm.with_config(configurable=model_configurations)
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        primary, fallback = _build_model_runnables(
-            llm_with_tools, fallback_llm, tools_to_bind, model_configurations
+        fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
+        response = invoke_llm(
+            llm_with_tools, state["messages"], fallback=fallback, label=agent_name
         )
-        response = _invoke_with_fallback(primary, fallback, agent_name, state["messages"])
 
         if not response.tool_calls and not response.content:
             response.content = "Empty response from model."
@@ -293,10 +238,10 @@ def create_agent(
 
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        primary, fallback = _build_model_runnables(
-            llm_with_tools, fallback_llm, tools_to_bind, model_configurations
+        fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
+        invoke_fn = functools.partial(
+            ainvoke_llm, llm_with_tools, fallback=fallback, label=agent_name
         )
-        invoke_fn = functools.partial(_ainvoke_with_fallback, primary, fallback, agent_name)
 
         try:
             recent_messages = state.get("messages", [])[-6:]

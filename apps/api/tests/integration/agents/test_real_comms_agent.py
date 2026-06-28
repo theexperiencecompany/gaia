@@ -60,9 +60,9 @@ def _make_chroma_store_mock() -> MagicMock:
 # Boundary-only patches for follow_up_actions_node
 #
 # We mock ONLY the two external I/O boundaries:
-#   1. get_free_llm_chain  – prevents real LLM client initialisation
+#   1. get_default_llm  – prevents real LLM client initialisation
 #   2. get_stream_writer   – prevents LangGraph stream context requirement
-#   3. invoke_with_fallback – the actual LLM network call
+#   3. ainvoke_llm – the actual LLM network call
 #   4. get_user_integration_capabilities – external HTTP/DB call
 #
 # The node's internal logic RUNS FOR REAL:
@@ -71,7 +71,7 @@ def _make_chroma_store_mock() -> MagicMock:
 #   - PydanticOutputParser.parse() parsing
 #   - _pretty_print_messages() formatting
 #
-# invoke_with_fallback is mocked to return valid JSON so that the parser
+# ainvoke_llm is mocked to return valid JSON so that the parser
 # actually exercises its code path.
 # ---------------------------------------------------------------------------
 
@@ -109,12 +109,12 @@ def _follow_up_node_io_patches(
     return [
         # I/O boundary 1: LLM chain initialisation (no real client)
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+            "app.agents.core.nodes.follow_up_actions_node.get_default_llm",
             return_value=MagicMock(),
         ),
         # I/O boundary 2: actual LLM network call
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+            "app.agents.core.nodes.follow_up_actions_node.ainvoke_llm",
             new_callable=AsyncMock,
             return_value=AIMessage(content=llm_response),
         ),
