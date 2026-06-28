@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "21e930ce0f80",
+  "strategy": "manual-commit",
+  "branch": "perf/sandbox-juicefs-metadata-load",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/app/services/sandbox/artifact_watcher.py",
+    "apps/api/app/services/storage/__init__.py",
+    "apps/api/app/services/storage/sessions/__init__.py",
+    "apps/api/app/services/storage/sessions/artifacts.py",
+    "apps/api/app/services/storage/sessions/lifecycle.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/21/e930ce0f80/0/metadata.json",
+      "transcript": "/21/e930ce0f80/0/full.jsonl",
+      "content_hash": "/21/e930ce0f80/0/content_hash.txt",
+      "prompt": "/21/e930ce0f80/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1683,
+    "cache_creation_tokens": 65587,
+    "cache_read_tokens": 17145156,
+    "output_tokens": 54386,
+    "api_call_count": 29
+  }
+}

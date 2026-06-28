@@ -1,0 +1,2 @@
+Still open (task #6, your call): artifact-watcher rescan scoping — deferred pending the inode→conversation map (accesslog gives inodes, not paths). Want me to pick that up as its own branch/PR, or leave it?
+lets do this as well
