@@ -95,11 +95,6 @@ const MemoDemoNotificationsPopover = memo(DemoNotificationsPopover);
 const MemoDemoDashboardView = memo(DemoDashboardView);
 const MemoDemoCalendarView = memo(DemoCalendarView);
 const MemoDemoWorkflowsView = memo(DemoWorkflowsView);
-// Goals demo disabled (the goals feature is currently parked). Keeping it out
-// removes @xyflow/react + dagre (~100 KB) from the homepage bundle entirely.
-// Re-enable alongside the goals feature:
-// import DemoGoalsView from "./goals-demo/DemoGoalsView";
-// const MemoDemoGoalsView = memo(DemoGoalsView);
 const MemoDemoIntegrationsView = memo(DemoIntegrationsView);
 const MemoDemoTodosView = memo(DemoTodosView);
 
@@ -429,12 +424,6 @@ export default function ChatDemoSection() {
             <MemoDemoWorkflowsView />
           </div>
         );
-      // case "goals": demo disabled (goals feature parked) — see note above.
-      //   return (
-      //     <div className="flex flex-1 overflow-hidden">
-      //       <MemoDemoGoalsView />
-      //     </div>
-      //   );
       case "integrations":
         return (
           <div className="flex flex-1 overflow-hidden">
