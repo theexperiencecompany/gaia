@@ -119,8 +119,12 @@ async def infer_integration_content(
         faq_count=FAQ_COUNT,
     )
     try:
+        # get_free_llm_chain yields the cheap auxiliary model (gemini-3.1-flash-lite);
+        # with_structured_output returns the parsed IntegrationContent directly.
+        structured_llm = get_free_llm_chain()[0].with_structured_output(IntegrationContent)
         async with asyncio.timeout(_CONTENT_GENERATION_TIMEOUT_SECONDS):
-            content = await _generate_structured_content(prompt)
+            result = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        content = IntegrationContent.model_validate(result)
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Failed to generate content for integration '{name}': {e}",
@@ -128,7 +132,7 @@ async def infer_integration_content(
         )
         return None
 
-    if content is None or not _is_complete(content):
+    if not _is_complete(content):
         log.warning(
             f"{LogTag.INTEGRATION} LLM returned incomplete content for integration '{name}'"
         )
@@ -136,30 +140,6 @@ async def infer_integration_content(
 
     log.info(f"{LogTag.INTEGRATION} Generated marketplace content for integration '{name}'")
     return content
-
-
-async def _generate_structured_content(prompt: str) -> IntegrationContent | None:
-    """Invoke the free LLM chain with structured output; first success wins.
-
-    ``with_structured_output`` binds the schema per model (and tolerates the
-    camelCase aliases on :class:`IntegrationContent`), so it is re-bound for each
-    LLM in the chain. Re-raises the last error if every provider fails.
-    """
-    messages = [HumanMessage(content=prompt)]
-    last_error: Exception | None = None
-    for llm in get_free_llm_chain():
-        try:
-            result = await llm.with_structured_output(IntegrationContent).ainvoke(messages)
-            return (
-                result
-                if isinstance(result, IntegrationContent)
-                else IntegrationContent.model_validate(result)
-            )
-        except Exception as e:  # fall through to the next provider in the chain
-            last_error = e
-    if last_error is not None:
-        raise last_error
-    return None
 
 
 def _is_complete(content: IntegrationContent) -> bool:
