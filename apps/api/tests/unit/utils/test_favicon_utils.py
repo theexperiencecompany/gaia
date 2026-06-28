@@ -28,18 +28,25 @@ class TestGetDomainCacheKey:
     """Tests for _get_domain_cache_key — caches per full host."""
 
     def test_simple_url(self) -> None:
-        """Standard URL yields favicon:<host> cache key."""
-        assert _get_domain_cache_key("https://example.com/some/path") == "favicon:example.com"
+        """Standard URL yields favicon:<scheme>://<host> cache key."""
+        key = _get_domain_cache_key("https://example.com/some/path")
+        assert key == "favicon:https://example.com"
 
     def test_subdomain_is_kept(self) -> None:
         """Subdomains are preserved so co-hosted MCP servers don't collide."""
         key = _get_domain_cache_key("https://sub.deep.example.com")
-        assert key == "favicon:sub.deep.example.com"
+        assert key == "favicon:https://sub.deep.example.com"
 
     def test_url_with_port_kept(self) -> None:
         """Host (with port) is used verbatim."""
         key = _get_domain_cache_key("https://app.example.org:8443/path")
-        assert key == "favicon:app.example.org:8443"
+        assert key == "favicon:https://app.example.org:8443"
+
+    def test_scheme_is_part_of_key(self) -> None:
+        """http and https for the same host get distinct cache keys."""
+        assert _get_domain_cache_key("http://example.com") != _get_domain_cache_key(
+            "https://example.com"
+        )
 
     def test_host_url_includes_scheme_and_full_host(self) -> None:
         """_get_host_url returns scheme + full host, no path."""
@@ -76,8 +83,9 @@ class TestSmitheryQualifiedName:
             ("https://server.smithery.ai/google/scholar/mcp", "google/scholar"),
             ("https://server.smithery.ai/@owner/name/sse", "@owner/name"),
             ("https://smithery.ai/@owner/name", "@owner/name"),
+            ("https://server.smithery.ai:443/brave", "brave"),
         ],
-        ids=["owner_name", "slug", "strips_mcp", "strips_sse", "apex_host"],
+        ids=["owner_name", "slug", "strips_mcp", "strips_sse", "apex_host", "with_port"],
     )
     def test_smithery_hosts(self, url: str, expected: str) -> None:
         """Smithery hosts yield the path as the qualified name (transport stripped)."""
@@ -85,11 +93,15 @@ class TestSmitheryQualifiedName:
 
     @pytest.mark.parametrize(
         "url",
-        ["https://example.com/foo", "https://mcp.notsmithery.io/x"],
-        ids=["other_host", "lookalike"],
+        [
+            "https://example.com/foo",
+            "https://mcp.notsmithery.io/x",
+            "https://notsmithery.ai/x",
+        ],
+        ids=["other_host", "lookalike_tld", "lookalike_suffix"],
     )
     def test_non_smithery_returns_none(self, url: str) -> None:
-        """Non-Smithery hosts return None."""
+        """Non-Smithery hosts (incl. suffix lookalikes) return None."""
         assert _smithery_qualified_name(url) is None
 
 

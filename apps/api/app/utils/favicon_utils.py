@@ -54,9 +54,8 @@ def _get_host_url(server_url: str) -> str:
 
 
 def _get_domain_cache_key(server_url: str) -> str:
-    """Cache key by full host so each MCP server resolves its own icon."""
-    parsed = urlparse(server_url if "://" in server_url else f"https://{server_url}")
-    return f"favicon:{parsed.netloc}"
+    """Cache key by scheme + full host so each MCP server resolves its own icon."""
+    return f"favicon:{_get_host_url(server_url)}"
 
 
 def _smithery_qualified_name(server_url: str) -> str | None:
@@ -66,7 +65,8 @@ def _smithery_qualified_name(server_url: str) -> str | None:
     optionally with a transport suffix (``/mcp``, ``/sse``, ``/stdio``).
     """
     parsed = urlparse(server_url if "://" in server_url else f"https://{server_url}")
-    if not parsed.netloc.endswith(SMITHERY_SUFFIX):
+    hostname = parsed.hostname or ""
+    if hostname != SMITHERY_SUFFIX and not hostname.endswith(f".{SMITHERY_SUFFIX}"):
         return None
     qualified_name = parsed.path.strip("/")
     for suffix in SMITHERY_TRANSPORT_SUFFIXES:
