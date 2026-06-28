@@ -37,6 +37,8 @@ from app.services.storage.sessions import (
     pin_session_artifact,
     provision_user_workspace,
     resolve_session_path,
+    session_dir_inodes,
+    sessions_root_inode,
     stat_artifact,
     touch_session_last_active,
 )
@@ -69,7 +71,9 @@ __all__ = [
     "record_fs_op",
     "resolve_session_path",
     "sandbox_session_path",
+    "session_dir_inodes",
     "session_root",
+    "sessions_root_inode",
     "stat_artifact",
     "touch_session_last_active",
     "user_skills_path",
