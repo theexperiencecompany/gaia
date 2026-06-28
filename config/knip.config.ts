@@ -107,6 +107,13 @@ const config: KnipConfig = {
     "apps/web/src/features/calendar/**",
     "apps/web/src/components/layout/sidebar/**/Calendar*.tsx",
 
+    // Parked feature: the homepage goals DEMO is commented out (ChatDemoSection
+    // + demoConstants) because the /goals app routes render notFound(). The
+    // demo (and its @xyflow/react + dagre deps) is kept intact for re-enablement
+    // alongside the goals feature, not dead code.
+    // TODO(team): re-enable the goals feature or remove the demo.
+    "apps/web/src/features/landing/components/demo/goals-demo/**",
+
     // Dev-only galleries/pages: *.dev.tsx are excluded from production builds
     // and exist for local component/tool exploration.
     "apps/web/src/app/**/dev/**",
@@ -282,6 +289,11 @@ const config: KnipConfig = {
         "@gaia/wake-word", // wake-word feature (ignored, WIP)
         "onnxruntime-web", // wake-word ONNX runtime (dynamic/worklet load)
         "glob", // used in apps/web/scripts/** (ignored)
+        // Used only by the parked goals demo (goals-demo/**, ignored above),
+        // kept for re-enablement with the goals feature.
+        "@xyflow/react", // goals demo flow graph
+        "dagre", // goals demo graph layout
+        "@types/dagre", // type stub for dagre
 
         // Referenced in config / type augmentation, not via a normal import.
         "@react-types/shared", // `declare module` augmentation in HeroUIProvider
