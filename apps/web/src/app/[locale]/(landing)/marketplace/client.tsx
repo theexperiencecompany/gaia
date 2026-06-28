@@ -206,12 +206,16 @@ export function IntegrationsPageClient() {
         ) : (
           <>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {filteredNativeIntegrations.map((integration) => (
-                <PublicIntegrationCard
-                  key={integration.integrationId}
-                  integration={integration}
-                />
-              ))}
+              {/* Native integrations are not paginated by the community endpoint,
+                  so show them once on the first page instead of re-pinning them
+                  on top of every page. */}
+              {currentPage === 1 &&
+                filteredNativeIntegrations.map((integration) => (
+                  <PublicIntegrationCard
+                    key={integration.integrationId}
+                    integration={integration}
+                  />
+                ))}
               {integrations.map((integration) => (
                 <PublicIntegrationCard
                   key={integration.integrationId}
