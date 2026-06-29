@@ -397,7 +397,7 @@ HARD RULES
 - Keep the whole message under 75 words. Tight is better than long.
 """
 
-WORKFLOW_CREATION_PROMPT = """You are GAIA setting up recurring automations for a new user. Create exactly 4 workflows that fit how this person actually works.
+WORKFLOW_CREATION_PROMPT = """You are GAIA setting up recurring automations for a new user. Create exactly 4 workflows that fit how this person actually works and will make them return to GAIA every day.
 
 User profile (PRIMARY signal — weigh this most):
 - Profession: {profession}
@@ -410,11 +410,11 @@ User profile (PRIMARY signal — weigh this most):
 - Writing style: {writing_style_summary}
 
 How to think about this:
-1. Anchor every workflow to the person's profession, focus, and any clarifying context they shared (scope, blocker, constraint) — that is who they are. When the clarifying context names a specific area or blocker, at least 2 of the 4 workflows should directly attack that area, not the broader focus.
-2. Inbox patterns are ONE input, not the brief. Do not design every workflow around their email categories. The user is more than their inbox.
-3. At least THREE of the four workflows should NOT be primarily about email filtering, sorting, or summarizing. They should help the user move their actual work forward — research, drafting, planning, monitoring, follow-ups, prep, briefings.
-4. At most ONE workflow may incorporate inbox signal, and only if it produces a tangible deliverable beyond "summarize emails" — e.g. a weekly digest of relevant external news, a prep brief before recurring meetings, a draft of a recurring outbound message.
-5. All four workflows must be distinct in shape and intent — do not return variants of the same idea.
+1. Anchor every workflow to the person's profession, focus, and any clarifying context they shared — that is who they are. When the clarifying context names a specific area or blocker, at least 2 of the 4 workflows should directly attack that area, not just the broader focus.
+2. Think retention first: what automation would make this person open GAIA tomorrow, not just today? Workflows must produce recurring value they will notice and rely on.
+3. Inbox patterns are ONE input, not the brief. At least THREE workflows should help the user move their actual work forward — research, drafting, planning, monitoring, follow-ups, prep, briefings — not email management.
+4. At most ONE workflow may incorporate inbox signal, and only if it produces a tangible deliverable beyond "summarize emails."
+5. All four workflows must be distinct in BOTH shape and trigger — no two should have the same timing or trigger mechanism. Vary: one morning, one midday or afternoon, one triggered by an external event, one on-demand or end-of-week.
 
 Requirements for each workflow:
 - Must save this person 20+ minutes per week
@@ -422,18 +422,24 @@ Requirements for each workflow:
 - Title: under 60 chars, starts with a verb, no buzzwords, no "Daily/Weekly X" templates
 - Description: 1-2 sentences explaining what triggers it, what GAIA does, what output the user receives
 
+TRIGGER DIVERSITY — MANDATORY:
+- You MUST NOT schedule all workflows. Use a spread of times across the day and week.
+- At least ONE workflow must use an integration trigger (fires when something happens — a new email matching a pattern, a calendar event starting, a GitHub PR opened, a Slack message, etc.) rather than a fixed schedule.
+- At least ONE workflow must run at a different time of day from the others (afternoon, evening, end-of-week).
+- Manual/on-demand triggers are valid for one workflow when the task is naturally ad-hoc.
+
 BANNED patterns (auto-reject):
 - "Daily Email Summary" / "Weekly Inbox Digest" / "Inbox Triage" — too generic
 - "Flag X emails" as more than one workflow — at most one workflow can be email-filtering
 - "Task Reminder" / "Meeting Reminder" — vague, no specificity
+- All four workflows on a schedule with identical cron times
 - Anything that just restates an inbox category without producing new value
 
-GOOD examples (specific, anchored to who the person is):
-- Founder, focus = raise Series A → "Brief me on the 5 most relevant VC moves each Monday" (industry monitoring, not inbox)
-- Engineer, focus = ship v2 launch → "Prep release-day checklist every Thursday from open PRs and issues" (work-in-progress synthesis)
-- Designer, focus = land freelance clients → "Draft weekly portfolio outreach to 3 new prospects" (proactive outbound)
-- PM, focus = align cross-team roadmap → "Compile cross-team status into a Friday digest" (synthesis, not filtering)
-- Researcher, focus = literature review → "Summarize new papers in my field every Tuesday" (external monitoring)
+PERSONA EXAMPLES — specific, persona-anchored, high-retention:
+- Founder raising Series A: "Brief me on 5 relevant VC moves every Monday 8 AM" + "Prep pitch deck follow-up when an investor replies to my intro email" (integration trigger) + "Compile this week's traction metrics every Friday 4 PM" + "Draft cold outreach to a target investor" (manual)
+- Engineer shipping v2: "Prep release checklist from open PRs every Thursday noon" + "Post a standup summary to Slack when I close a PR" (integration trigger) + "Surface blockers from the issue tracker every Wednesday 10 AM" + "Draft a post-mortem outline after an incident label is added" (integration trigger)
+- Designer landing freelance clients: "Draft portfolio outreach to 3 new prospects every Monday morning" + "Send a follow-up when a client hasn't replied in 5 days" (integration trigger) + "Compile project feedback into a case study brief every Friday 3 PM" + "Research competitors in a new niche" (manual)
+- PM aligning roadmap: "Cross-team status digest every Friday 4 PM from Notion + Linear" + "Summarize meeting notes and surface action items when a recurring meeting ends" (integration trigger) + "Flag scope-creep signals in open tickets every Wednesday noon" + "Draft a stakeholder update" (manual)
 
 Return JSON only. The "workflows" array must contain exactly 4 entries:
 {{

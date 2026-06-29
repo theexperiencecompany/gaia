@@ -941,16 +941,14 @@ export default function WorkflowModal({
         isOpen={isOpen}
         onOpenChange={onOpenChange}
         hideCloseButton
-        size={isTwoColumn ? "5xl" : "2xl"}
-        // Width is widened past HeroUI's 5xl/2xl presets (via max-w-*) so the
-        // inline schedule sentence ("Run every … in <timezone>") fits on one
-        // line without overflowing. Two-column mode also gets a definite height
-        // so the side panel's flex/overflow chain (h-full → min-h-0 →
-        // overflow-y-auto) resolves and the Steps panel doesn't clip.
+        size={isTwoColumn ? "5xl" : "4xl"}
+        // Two-column mode uses a definite height so the side panel's
+        // flex/overflow chain (h-full → min-h-0 → overflow-y-auto) resolves
+        // and the Steps panel doesn't clip.
         className={
           isTwoColumn
-            ? "h-[85vh] max-h-[52rem] max-w-6xl bg-secondary-bg"
-            : "max-h-[90vh] max-w-3xl bg-secondary-bg"
+            ? "h-[85vh] max-h-208 max-w-6xl bg-secondary-bg"
+            : "max-h-[90vh] bg-secondary-bg"
         }
         backdrop="blur"
       >
@@ -1066,7 +1064,7 @@ export default function WorkflowModal({
                     existingWorkflow && (
                       <fieldset
                         disabled={mode === "preview"}
-                        className="flex min-h-0 shrink-0 flex-col disabled:cursor-default lg:w-[22rem] lg:pb-6"
+                        className="flex min-h-0 shrink-0 flex-col disabled:cursor-default lg:w-88 lg:pb-6"
                       >
                         <WorkflowRightPanel
                           workflow={currentWorkflow}

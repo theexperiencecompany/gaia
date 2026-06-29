@@ -1,10 +1,17 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
+} from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
 import {
   Alert01Icon,
+  ArrowDown01Icon,
   CursorMagicSelection03Icon,
   DateTimeIcon,
   Mail01Icon,
@@ -309,6 +316,8 @@ export function MissingIntegrationsAlert({
   connectingId,
   onConnect,
 }: MissingIntegrationsAlertProps) {
+  const { getIntegrationIconUrl } = useIntegrationLookup();
+
   if (!missingIntegrations.length) return null;
 
   return (
@@ -317,21 +326,56 @@ export function MissingIntegrationsAlert({
         <Alert01Icon width={16} height={16} className="shrink-0" />
         <span>{missingIntegrationsMessage(missingIntegrations)}</span>
       </span>
-      <div className="flex flex-wrap gap-2">
-        {missingIntegrations.map((integration) => (
-          <Button
-            key={integration.id}
-            color="warning"
-            variant="flat"
-            size="sm"
-            isLoading={connectingId === integration.id}
-            isDisabled={!!connectingId && connectingId !== integration.id}
-            onPress={() => onConnect(integration.id)}
-          >
-            Connect {integration.name}
+
+      {missingIntegrations.length === 1 ? (
+        <Button
+          color="warning"
+          variant="flat"
+          size="sm"
+          isLoading={!!connectingId}
+          isDisabled={!!connectingId}
+          onPress={() => onConnect(missingIntegrations[0].id)}
+        >
+          Connect {missingIntegrations[0].name}
+        </Button>
+      ) : (
+        <ButtonGroup color="warning" variant="flat" size="sm">
+          <Button isLoading={!!connectingId} isDisabled={!!connectingId}>
+            Connect Apps
           </Button>
-        ))}
-      </div>
+          <Dropdown placement="bottom-end">
+            <DropdownTrigger>
+              <Button isIconOnly isDisabled={!!connectingId}>
+                <ArrowDown01Icon className="size-3.5" />
+              </Button>
+            </DropdownTrigger>
+            <DropdownMenu aria-label="Missing integrations to connect">
+              {missingIntegrations.map((integration) => {
+                const iconUrl = getIntegrationIconUrl(integration.id);
+                return (
+                  <DropdownItem
+                    key={integration.id}
+                    onPress={() => onConnect(integration.id)}
+                    startContent={
+                      iconUrl ? (
+                        <Image
+                          src={iconUrl}
+                          alt={integration.name}
+                          width={16}
+                          height={16}
+                          className="rounded-sm"
+                        />
+                      ) : undefined
+                    }
+                  >
+                    Connect {integration.name}
+                  </DropdownItem>
+                );
+              })}
+            </DropdownMenu>
+          </Dropdown>
+        </ButtonGroup>
+      )}
     </div>
   );
 }
