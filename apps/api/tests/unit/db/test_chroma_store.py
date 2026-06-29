@@ -604,8 +604,9 @@ class TestPutOps:
         col.upsert = AsyncMock(side_effect=Exception("upsert fail"))
         store = _make_store(collection=col)
         op = PutOp(namespace=("ns",), key="k", value={"data": 1})
-        # Should not raise
-        await store._upsert_item("ns::k", op, col)
+        # Production re-raises so _apply_put_ops's gather(return_exceptions=True) can count failures.
+        with pytest.raises(Exception, match="upsert fail"):
+            await store._upsert_item("ns::k", op, col)
 
     async def test_delete_item(self):
         col = _make_collection()
@@ -617,7 +618,9 @@ class TestPutOps:
         col = AsyncMock()
         col.delete = AsyncMock(side_effect=Exception("delete fail"))
         store = _make_store(collection=col)
-        await store._delete_item("ns::k", col)
+        # Production re-raises so _apply_put_ops's gather(return_exceptions=True) can count failures.
+        with pytest.raises(Exception, match="delete fail"):
+            await store._delete_item("ns::k", col)
 
     async def test_apply_put_ops_delete(self):
         col = _make_collection()

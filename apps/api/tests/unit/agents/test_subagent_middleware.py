@@ -76,7 +76,7 @@ class TestSubagentMiddlewareInit:
         mw = _make_middleware()
         assert mw._tool_runtime_config.enable_retrieve_tools is True
         assert mw._tool_runtime_config.include_subagents_in_retrieve is False
-        assert "vfs_read" in mw._tool_runtime_config.initial_tool_names
+        assert "read" in mw._tool_runtime_config.initial_tool_names
 
 
 # ---------------------------------------------------------------------------

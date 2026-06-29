@@ -169,19 +169,35 @@ class TestCheckAndIncrement:
         mock_limits: MagicMock,
         mock_reset: MagicMock,
     ) -> None:
-        """When limit is 0 for a period, that period is skipped entirely."""
+        """When one period limit is 0, only that period is skipped; the other is still enforced."""
         from app.config.rate_limits import RateLimitConfig
 
-        mock_limits.return_value = RateLimitConfig(day=0, month=0)
+        # day=0 should be skipped; month=1000 should be enforced.
+        mock_limits.return_value = RateLimitConfig(day=0, month=1000)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
+        self.limiter.redis.get = AsyncMock(return_value="5")
+
+        pipe_mock = AsyncMock()
+        pipe_mock.watch = AsyncMock()
+        pipe_mock.multi = MagicMock()
+        pipe_mock.incr = AsyncMock()
+        pipe_mock.expire = AsyncMock()
+        pipe_mock.execute = AsyncMock()
+        pipe_mock.__aenter__ = AsyncMock(return_value=pipe_mock)
+        pipe_mock.__aexit__ = AsyncMock(return_value=False)
+        redis_mock = MagicMock()
+        redis_mock.pipeline = MagicMock(return_value=pipe_mock)
+        self.limiter.redis.redis = redis_mock
 
         with patch(
             "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
             side_effect=_noop_create_task,
         ):
-            result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+            result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.PRO)
 
-        assert result == {}
+        # day period (limit=0) must be absent; month (limit=1000) must appear.
+        assert "day" not in result
+        assert "month" in result
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")

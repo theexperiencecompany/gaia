@@ -52,7 +52,7 @@ class TestTargetToSubagent:
         ],
     )
     def test_maps_target_to_subagent_id(self, target: str, expected: str) -> None:
-        assert sl._target_to_subagent(target) == expected
+        assert sl.target_to_subagent(target) == expected
 
 
 @pytest.mark.unit

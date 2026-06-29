@@ -154,6 +154,18 @@ jobs:
             | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
           sudo mv ./bin/dagger /usr/local/bin/dagger
           dagger version
+      - name: Pre-pull Dagger engine
+        # The engine image pull off the public registry is intermittently flaky
+        # ('start engine: failed to pull image' -> exit 254 before tests run).
+        # Pre-pull with bounded retries so a transient blip doesn't redden CI.
+        run: |
+          for attempt in 1 2 3; do
+            docker pull "registry.dagger.io/engine:v${{ env.DAGGER_VERSION }}" && exit 0
+            echo "engine pull attempt ${attempt} failed; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "::error::Dagger engine image pull failed after 3 attempts"
+          exit 1
       - name: Run Python tests
         timeout-minutes: 18
         env:
@@ -288,6 +300,18 @@ jobs:
             | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
           sudo mv ./bin/dagger /usr/local/bin/dagger
           dagger version
+      - name: Pre-pull Dagger engine
+        # The engine image pull off the public registry is intermittently flaky
+        # ('start engine: failed to pull image' -> exit 254 before tests run).
+        # Pre-pull with bounded retries so a transient blip doesn't redden CI.
+        run: |
+          for attempt in 1 2 3; do
+            docker pull "registry.dagger.io/engine:v${{ env.DAGGER_VERSION }}" && exit 0
+            echo "engine pull attempt ${attempt} failed; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "::error::Dagger engine image pull failed after 3 attempts"
+          exit 1
       - name: Run coverage
         timeout-minutes: 28
         env:

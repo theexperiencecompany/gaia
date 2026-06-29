@@ -1,10 +1,11 @@
 """Unit tests for profile card utilities."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 import random
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from bson import ObjectId
 import pytest
 
 from app.utils.profile_card import (
@@ -14,6 +15,17 @@ from app.utils.profile_card import (
     generate_random_color,
     get_user_metadata,
 )
+
+# The account_number is now derived from the ObjectId creation timestamp,
+# not from a count_documents query. Pre-compute for the test ObjectId.
+_TEST_OID = "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+_EXPECTED_ACCOUNT_NUMBER = int(ObjectId(_TEST_OID).generation_time.timestamp()) % 1_000_000
+
+
+def _today() -> str:
+    """Return today's date in the same format as the production fallback."""
+    return datetime.now(UTC).strftime("%b %d, %Y")
+
 
 # ---------------------------------------------------------------------------
 # Helper factories
@@ -185,19 +197,22 @@ class TestGenerateProfileCardDesign:
 
 @pytest.mark.unit
 class TestGetUserMetadata:
+    """account_number is now derived from the ObjectId creation timestamp
+    (``int(oid.generation_time.timestamp()) % 1_000_000``) rather than a
+    ``count_documents`` query.  member_since falls back to today's date (UTC)
+    when the stored created_at is missing or not a datetime instance.
+    """
+
     @pytest.mark.asyncio
     async def test_user_found_with_valid_created_at(self) -> None:
         dt = datetime(2025, 6, 15, 12, 0, 0)
         mock_collection = AsyncMock()
         mock_collection.find_one = AsyncMock(return_value={"created_at": dt})
-        mock_collection.count_documents = AsyncMock(return_value=5)
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(
-                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
-            )
+            result = await get_user_metadata(_TEST_OID)
 
-        assert result["account_number"] == 6
+        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
         assert result["member_since"] == "Jun 15, 2025"
 
     @pytest.mark.asyncio
@@ -206,11 +221,10 @@ class TestGetUserMetadata:
         mock_collection.find_one = AsyncMock(return_value=None)
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(
-                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
-            )
+            result = await get_user_metadata(_TEST_OID)
 
-        assert result == {"account_number": 1, "member_since": "Nov 21, 2024"}
+        assert result["account_number"] == 1
+        assert result["member_since"] == _today()
 
     @pytest.mark.asyncio
     async def test_created_at_is_none(self) -> None:
@@ -218,12 +232,10 @@ class TestGetUserMetadata:
         mock_collection.find_one = AsyncMock(return_value={"created_at": None})
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(
-                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
-            )
+            result = await get_user_metadata(_TEST_OID)
 
-        assert result["account_number"] == 1
-        assert result["member_since"] == "Nov 21, 2024"
+        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
+        assert result["member_since"] == _today()
 
     @pytest.mark.asyncio
     async def test_created_at_is_not_datetime(self) -> None:
@@ -231,12 +243,10 @@ class TestGetUserMetadata:
         mock_collection.find_one = AsyncMock(return_value={"created_at": "2025-01-01"})
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(
-                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
-            )
+            result = await get_user_metadata(_TEST_OID)
 
-        assert result["account_number"] == 1
-        assert result["member_since"] == "Nov 21, 2024"
+        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
+        assert result["member_since"] == _today()
 
     @pytest.mark.asyncio
     async def test_exception_returns_defaults(self) -> None:
@@ -244,26 +254,24 @@ class TestGetUserMetadata:
         mock_collection.find_one = AsyncMock(side_effect=Exception("DB connection lost"))
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(
-                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
-            )
+            result = await get_user_metadata(_TEST_OID)
 
-        assert result == {"account_number": 1, "member_since": "Nov 21, 2024"}
+        assert result["account_number"] == 1
+        assert result["member_since"] == _today()
 
     @pytest.mark.asyncio
-    async def test_count_documents_called_with_correct_filter(self) -> None:
+    async def test_account_number_derived_from_objectid(self) -> None:
+        """account_number is now the ObjectId timestamp modulo 1 000 000 —
+        count_documents is never called."""
         dt = datetime(2025, 3, 10, 8, 30, 0)
         mock_collection = AsyncMock()
         mock_collection.find_one = AsyncMock(return_value={"created_at": dt})
-        mock_collection.count_documents = AsyncMock(return_value=0)
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(
-                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
-            )
+            result = await get_user_metadata(_TEST_OID)
 
-        mock_collection.count_documents.assert_awaited_once_with({"created_at": {"$lt": dt}})
-        assert result["account_number"] == 1
+        mock_collection.count_documents.assert_not_awaited()
+        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
         assert result["member_since"] == "Mar 10, 2025"
 
     @pytest.mark.asyncio
@@ -273,9 +281,7 @@ class TestGetUserMetadata:
         mock_collection.find_one = AsyncMock(return_value={"name": "Test"})
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(
-                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
-            )
+            result = await get_user_metadata(_TEST_OID)
 
-        assert result["account_number"] == 1
-        assert result["member_since"] == "Nov 21, 2024"
+        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
+        assert result["member_since"] == _today()

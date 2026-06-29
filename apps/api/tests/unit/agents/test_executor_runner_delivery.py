@@ -273,7 +273,9 @@ class TestDeliverResultToolDataOwnership:
         ):
             await rd.deliver_result(run, "raw", "final")
 
-        source.assert_not_awaited()
+        # _get_conversation_source is now called before update_messages to
+        # determine the delivery path; it IS called even when save fails.
+        source.assert_awaited_once()
         platform.assert_not_awaited()
         ws.assert_not_awaited()
 

@@ -484,8 +484,13 @@ class TestGetChannelPrefs:
             prefs = await orch._get_channel_prefs("user-1")
             assert prefs == {"telegram": True, "discord": False}
 
-    async def test_returns_all_disabled_on_error(self) -> None:
-        """On DB failure, all channels default to disabled (safe fallback)."""
+    async def test_returns_all_enabled_on_error(self) -> None:
+        """On DB failure, all channels default to enabled (DEFAULT_CHANNEL_PREFERENCES).
+
+        An unreadable preference document means the preference is *unknown*, not
+        opted-out.  Erring toward delivery (one stray message during a rare outage)
+        is safer than silently dropping notifications the user asked for.
+        """
         orch = NotificationOrchestrator(storage=MagicMock())
         with patch(
             "app.utils.notification.orchestrator.fetch_channel_preferences",
@@ -493,9 +498,9 @@ class TestGetChannelPrefs:
             side_effect=RuntimeError("db down"),
         ):
             prefs = await orch._get_channel_prefs("user-1")
-            # Every key should be False
+            # Every key should be True (DEFAULT_CHANNEL_PREFERENCES — all enabled)
             for val in prefs.values():
-                assert val is False
+                assert val is True
 
 
 # ---------------------------------------------------------------------------

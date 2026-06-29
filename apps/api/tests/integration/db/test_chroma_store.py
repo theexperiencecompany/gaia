@@ -677,14 +677,20 @@ class TestGetExistingToolsFromChroma:
         col = await ephemeral_client.create_collection(
             "test_tools", metadata={"hnsw:space": "cosine"}
         )
+        # Supply pre-computed dummy embeddings so the client does not try to
+        # download the 79 MB ONNX model to compute them.  Without embeddings
+        # the default EF triggers a ~10-min download that causes the Chroma
+        # server connection to time out before the upsert can complete.
+        # The tests only inspect metadata and IDs, not vector content.
+        dummy_embedding = [0.1] * 384
         await col.upsert(
             ids=["general::web_search"],
-            documents=["dummy"],
+            embeddings=[dummy_embedding],
             metadatas=[{"namespace": "general", "tool_hash": "hash_ws"}],
         )
         await col.upsert(
             ids=["gmail::send_email"],
-            documents=["dummy"],
+            embeddings=[dummy_embedding],
             metadatas=[{"namespace": "gmail", "tool_hash": "hash_se"}],
         )
         return col

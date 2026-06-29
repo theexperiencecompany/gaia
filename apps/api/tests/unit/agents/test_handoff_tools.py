@@ -11,6 +11,7 @@ from app.agents.core.subagents.handoff_tools import (
     check_integration_connection,
     index_custom_mcp_as_subagent,
 )
+from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
 
@@ -366,12 +367,12 @@ class TestResolveSubagent:
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
                 new_callable=AsyncMock,
-                return_value=None,
+                side_effect=SubagentUnavailableError("connection failed"),
             ),
         ):
             graph, name, error, is_custom = await _resolve_subagent("abc", "user1")
         assert graph is None
-        assert "Failed to create" in error
+        assert "is unavailable" in error
 
     async def test_platform_mcp_requires_auth_connected(self):
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
@@ -508,7 +509,7 @@ class TestResolveSubagent:
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
                 new_callable=AsyncMock,
-                return_value=None,
+                side_effect=SubagentUnavailableError("server error"),
             ),
         ):
             mock_ts = AsyncMock()
@@ -516,4 +517,4 @@ class TestResolveSubagent:
             mock_ts_cls.return_value = mock_ts
             graph, name, error, is_custom = await _resolve_subagent("mcp_int", "user1")
         assert graph is None
-        assert "Failed to create" in error
+        assert "is unavailable" in error

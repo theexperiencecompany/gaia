@@ -173,43 +173,43 @@ class TestGetTokenExpiration:
         self.repo = TokenRepository()
 
     def test_uses_expires_at_timestamp(self) -> None:
-        future_ts = (datetime.now() + timedelta(hours=2)).timestamp()
+        future_ts = (datetime.now(UTC) + timedelta(hours=2)).timestamp()
         result = self.repo._get_token_expiration({"expires_at": future_ts})
-        expected = datetime.fromtimestamp(future_ts)
+        expected = datetime.fromtimestamp(future_ts, UTC)
         assert abs((result - expected).total_seconds()) < 1
 
     def test_uses_expires_at_as_string(self) -> None:
-        future_ts = str((datetime.now() + timedelta(hours=2)).timestamp())
+        future_ts = str((datetime.now(UTC) + timedelta(hours=2)).timestamp())
         result = self.repo._get_token_expiration({"expires_at": future_ts})
-        expected = datetime.fromtimestamp(float(future_ts))
+        expected = datetime.fromtimestamp(float(future_ts), UTC)
         assert abs((result - expected).total_seconds()) < 1
 
     def test_falls_back_to_expires_in(self) -> None:
-        before = datetime.now()
+        before = datetime.now(UTC)
         result = self.repo._get_token_expiration({"expires_in": 7200})
-        after = datetime.now()
+        after = datetime.now(UTC)
         expected_min = before + timedelta(seconds=7200)
         expected_max = after + timedelta(seconds=7200)
         assert expected_min <= result <= expected_max
 
     def test_default_expires_in_when_missing(self) -> None:
-        before = datetime.now()
+        before = datetime.now(UTC)
         result = self.repo._get_token_expiration({})
-        after = datetime.now()
+        after = datetime.now(UTC)
         # Default is 3500 seconds
         expected_min = before + timedelta(seconds=3500)
         expected_max = after + timedelta(seconds=3500)
         assert expected_min <= result <= expected_max
 
     def test_invalid_expires_at_falls_back_to_expires_in(self) -> None:
-        before = datetime.now()
+        before = datetime.now(UTC)
         result = self.repo._get_token_expiration(
             {
                 "expires_at": "not-a-number",
                 "expires_in": 1800,
             }
         )
-        after = datetime.now()
+        after = datetime.now(UTC)
         expected_min = before + timedelta(seconds=1800)
         expected_max = after + timedelta(seconds=1800)
         assert expected_min <= result <= expected_max

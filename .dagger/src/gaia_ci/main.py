@@ -367,6 +367,17 @@ class GaiaCi:
                     "postgresql://gaia:gaia@postgres:5432/gaia_test",  # pragma: allowlist secret
                 ),
             )
+            # POSTGRES_URL is the env var that settings.POSTGRES_URL reads (Pydantic
+            # field). Memory tests (tests/memory/conftest.py) read settings.POSTGRES_URL
+            # directly, so it must be set in addition to DATABASE_URL (which the
+            # integration/service/e2e conftest reads via os.environ directly).
+            .with_secret_variable(
+                "POSTGRES_URL",
+                dag.set_secret(
+                    "postgres-url",
+                    "postgresql://gaia:gaia@postgres:5432/gaia_test",  # pragma: allowlist secret
+                ),
+            )
             .with_secret_variable(
                 "REDIS_URL",
                 dag.set_secret("redis-url", "redis://redis:6379/0"),
