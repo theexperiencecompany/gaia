@@ -349,6 +349,7 @@ class TestAddPublicIntegration:
         connect_result.redirect_url = None
         connect_result.tools_count = 5
         connect_result.message = "Done"
+        connect_result.error = None
 
         with (
             patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
@@ -395,6 +396,7 @@ class TestAddPublicIntegration:
         connect_result.redirect_url = None
         connect_result.tools_count = 3
         connect_result.message = None
+        connect_result.error = None
 
         with (
             patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
@@ -434,6 +436,7 @@ class TestAddPublicIntegration:
         connect_result.redirect_url = None
         connect_result.tools_count = 0
         connect_result.message = "ok"
+        connect_result.error = None
 
         with (
             patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,

@@ -99,16 +99,16 @@ class TestIsAuthenticated:
     async def test_returns_true_when_linked(self, mock_users_collection, sample_user_doc):
         mock_users_collection.find_one = AsyncMock(return_value=sample_user_doc)
 
-        result = await PlatformLinkService.is_authenticated("discord", "discord123")
+        result = await PlatformLinkService.get_user_by_platform_id("discord", "discord123")
 
-        assert result is True
+        assert result is not None
 
     async def test_returns_false_when_not_linked(self, mock_users_collection):
         mock_users_collection.find_one = AsyncMock(return_value=None)
 
-        result = await PlatformLinkService.is_authenticated("discord", "unknown")
+        result = await PlatformLinkService.get_user_by_platform_id("discord", "unknown")
 
-        assert result is False
+        assert result is None
 
 
 # ---------------------------------------------------------------------------

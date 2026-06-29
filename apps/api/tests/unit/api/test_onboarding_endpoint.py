@@ -214,7 +214,7 @@ class TestUpdateOnboardingPhase:
         assert data["phase"] == "getting_started"
 
     async def test_update_phase_user_not_found_returns_404(self, client: AsyncClient):
-        mock_result = MagicMock(modified_count=0)
+        mock_result = MagicMock(matched_count=0)
         with patch(
             _USERS_COLLECTION + ".update_one",
             new_callable=AsyncMock,

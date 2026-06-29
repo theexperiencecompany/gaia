@@ -51,7 +51,7 @@ class TestCallAgentReal:
 
                 with (
                     patch(
-                        "app.agents.core.agent.store_user_message_memory",
+                        "app.agents.core.agent.apply_plan_model",
                         new=AsyncMock(),
                     ),
                     # GraphManager.get_graph uses providers.aget which is patched

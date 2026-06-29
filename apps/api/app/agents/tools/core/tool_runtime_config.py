@@ -58,15 +58,14 @@ def build_provider_parent_tool_runtime_config(
 ) -> ToolRuntimeConfig:
     """Build parent provider-agent tool runtime config."""
     finish = [FINISH_TASK_NAME] if include_finish_task else []
-    # When `use_direct_tools=True`, `provider_tool_names` already contains every
-    # tool in the subagent's tool_space, so any overlap with `auto_bind_tool_names`
-    # would duplicate entries in `initial`. Filter the auto-bind list against
-    # the provider tools to keep `initial` deduplicated.
     provider_tool_set = set(provider_tool_names)
-    extra_auto_bind = [
-        name for name in (auto_bind_tool_names or []) if name not in provider_tool_set
-    ]
     if use_direct_tools:
+        # Provider tools are pre-bound; filter auto-bind list against them to
+        # keep `initial` deduplicated (auto_bind_tool_names already appear via
+        # provider_tool_names when use_direct_tools=True).
+        extra_auto_bind = [
+            name for name in (auto_bind_tool_names or []) if name not in provider_tool_set
+        ]
         initial = [
             *provider_tool_names,
             *extra_auto_bind,
@@ -76,6 +75,11 @@ def build_provider_parent_tool_runtime_config(
             "bash",
         ]
     else:
+        # Dynamic mode: provider tools are NOT pre-bound (they're retrieved on
+        # demand via retrieve_tools).  Include auto_bind_tool_names in full so
+        # latency-critical tools are immediately available at agent startup
+        # regardless of whether they're provider-space tools.
+        extra_auto_bind = list(auto_bind_tool_names or [])
         initial = [
             "search_memory",
             "read",

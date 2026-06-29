@@ -72,7 +72,7 @@ class TestMCPTestConnectionEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.invalidate_mcp_status_cache",
+        "app.api.v1.endpoints.mcp.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     async def test_connect_mcp_endpoint_returns_connected(
@@ -214,7 +214,7 @@ class TestMCPTestConnectionEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.invalidate_mcp_status_cache",
+        "app.api.v1.endpoints.mcp.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     async def test_connect_mcp_endpoint_returns_failed_when_connect_raises(
@@ -266,7 +266,7 @@ class TestMCPTestConnectionEndpoint:
         mock_get_client.return_value = mock_client
 
         with patch(
-            "app.api.v1.endpoints.mcp.invalidate_mcp_status_cache",
+            "app.api.v1.endpoints.mcp.invalidate_user_integration_caches",
             new_callable=AsyncMock,
         ) as mock_invalidate:
             await test_client.post("/api/v1/mcp/test/cache-check-integration")
@@ -291,11 +291,7 @@ class TestMCPOAuthCallbackEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.invalidate_mcp_status_cache",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.api.v1.endpoints.mcp.delete_cache",
+        "app.api.v1.endpoints.mcp.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(
@@ -305,7 +301,6 @@ class TestMCPOAuthCallbackEndpoint:
     async def test_mcp_oauth_callback_success_redirects(
         self,
         mock_frontend_url,
-        mock_delete_cache,
         mock_invalidate,
         mock_resolve,
         mock_get_client,
@@ -318,6 +313,8 @@ class TestMCPOAuthCallbackEndpoint:
         mock_client = _make_mcp_client(
             handle_oauth_tools=[MagicMock(name="tool1"), MagicMock(name="tool2")]
         )
+        mock_client.token_store = MagicMock()
+        mock_client.token_store.clear_excluded_scopes = AsyncMock()
         mock_get_client.return_value = mock_client
 
         # state format: "token:integration_id:redirect_path"
@@ -335,15 +332,25 @@ class TestMCPOAuthCallbackEndpoint:
         assert "test-integration" in location
 
     @patch(
+        "app.api.v1.endpoints.mcp.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
         return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_error_from_provider_redirects_with_error(
         self,
         mock_frontend_url,
+        mock_get_client,
         test_client,
     ):
         """GET /api/v1/mcp/oauth/callback with error param should redirect with error code."""
+        mock_client = MagicMock()
+        mock_client.token_store = MagicMock()
+        mock_client.token_store.clear_excluded_scopes = AsyncMock()
+        mock_get_client.return_value = mock_client
+
         state = "token-abc:my-integration:/integrations"
         response = await test_client.get(
             "/api/v1/mcp/oauth/callback",
@@ -382,15 +389,22 @@ class TestMCPOAuthCallbackEndpoint:
         assert "invalid_state" in location
 
     @patch(
+        "app.api.v1.endpoints.mcp.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
         return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_missing_code_redirects_with_error(
         self,
         mock_frontend_url,
+        mock_get_client,
         test_client,
     ):
         """GET /api/v1/mcp/oauth/callback without code param should redirect with missing_code."""
+        mock_get_client.return_value = MagicMock()
+
         state = "token-xyz:my-integration:/integrations"
         response = await test_client.get(
             "/api/v1/mcp/oauth/callback",
@@ -468,11 +482,7 @@ class TestMCPOAuthCallbackEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.invalidate_mcp_status_cache",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.api.v1.endpoints.mcp.delete_cache",
+        "app.api.v1.endpoints.mcp.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(
@@ -482,7 +492,6 @@ class TestMCPOAuthCallbackEndpoint:
     async def test_mcp_oauth_callback_uses_default_redirect_path(
         self,
         mock_frontend_url,
-        mock_delete_cache,
         mock_invalidate,
         mock_resolve,
         mock_get_client,
@@ -493,6 +502,8 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve.return_value.name = "Some Integration"
 
         mock_client = _make_mcp_client(handle_oauth_tools=[MagicMock()])
+        mock_client.token_store = MagicMock()
+        mock_client.token_store.clear_excluded_scopes = AsyncMock()
         mock_get_client.return_value = mock_client
 
         # State without redirect_path (only two parts)
@@ -509,15 +520,25 @@ class TestMCPOAuthCallbackEndpoint:
         assert "/integrations" in location
 
     @patch(
+        "app.api.v1.endpoints.mcp.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
         return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_server_error_mapped_to_oauth_server_error(
         self,
         mock_frontend_url,
+        mock_get_client,
         test_client,
     ):
         """OAuth 'server_error' from provider is remapped to 'oauth_server_error' code."""
+        mock_client = MagicMock()
+        mock_client.token_store = MagicMock()
+        mock_client.token_store.clear_excluded_scopes = AsyncMock()
+        mock_get_client.return_value = mock_client
+
         state = "token:some-integration:/integrations"
         response = await test_client.get(
             "/api/v1/mcp/oauth/callback",
@@ -534,15 +555,25 @@ class TestMCPOAuthCallbackEndpoint:
         assert "oauth_server_error" in location
 
     @patch(
+        "app.api.v1.endpoints.mcp.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
         return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_unknown_error_uses_generic_code(
         self,
         mock_frontend_url,
+        mock_get_client,
         test_client,
     ):
         """Unknown OAuth error codes from provider fall back to 'authorization_failed'."""
+        mock_client = MagicMock()
+        mock_client.token_store = MagicMock()
+        mock_client.token_store.clear_excluded_scopes = AsyncMock()
+        mock_get_client.return_value = mock_client
+
         state = "token:some-integration:/integrations"
         response = await test_client.get(
             "/api/v1/mcp/oauth/callback",

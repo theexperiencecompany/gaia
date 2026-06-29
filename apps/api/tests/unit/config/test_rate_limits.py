@@ -145,11 +145,14 @@ class TestTieredRateLimits:
 class TestFeatureLimits:
     """Tests for the FEATURE_LIMITS configuration dictionary."""
 
-    # All feature keys that should be present
+    # All feature keys that should be present (keep in sync with FEATURE_LIMITS in rate_limits.py)
     EXPECTED_FEATURES = [
         "chat_messages",
+        "voice_mode",
         "file_upload",
         "file_analysis",
+        "audio_transcription",
+        "session_files",
         "skill_operations",
         "generate_image",
         "deep_research",
@@ -165,10 +168,12 @@ class TestFeatureLimits:
         "mail_actions",
         "notes",
         "memory",
-        "vfs_write",
-        "vfs_cmd",
+        "sandbox_creation",
+        "bash_execution",
+        "workspace_read",
+        "workspace_write",
+        "workspace_edit",
         "flowchart_creation",
-        "code_execution",
         "weather_checks",
         "notification_operations",
         "integration_publish",
@@ -215,11 +220,19 @@ class TestFeatureLimits:
             assert limits.info.title, f"{key} has empty title"
             assert limits.info.description, f"{key} has empty description"
 
+    # Features intentionally restricted to paid-only (free limits are 0).
+    PAID_ONLY_FEATURES = {"voice_mode"}
+
     def test_free_limits_are_positive(self) -> None:
-        """All features should have at least some free tier allowance."""
+        """Non-paid-only features should have at least some free tier allowance."""
         for key, limits in FEATURE_LIMITS.items():
-            assert limits.free.day > 0, f"{key}: free day is 0"
-            assert limits.free.month > 0, f"{key}: free month is 0"
+            if key in self.PAID_ONLY_FEATURES:
+                # Paid-only features deliberately have free.day == free.month == 0
+                assert limits.free.day == 0, f"{key}: expected free day == 0 (paid-only)"
+                assert limits.free.month == 0, f"{key}: expected free month == 0 (paid-only)"
+            else:
+                assert limits.free.day > 0, f"{key}: free day is 0"
+                assert limits.free.month > 0, f"{key}: free month is 0"
 
     def test_specific_chat_messages_limits(self) -> None:
         chat = FEATURE_LIMITS["chat_messages"]
@@ -237,10 +250,10 @@ class TestFeatureLimits:
 
     def test_specific_deep_research_limits(self) -> None:
         dr = FEATURE_LIMITS["deep_research"]
-        assert dr.free.day == 2
-        assert dr.free.month == 10
-        assert dr.pro.day == 20
-        assert dr.pro.month == 600
+        assert dr.free.day == 5
+        assert dr.free.month == 30
+        assert dr.pro.day == 100
+        assert dr.pro.month == 2000
 
 
 # ---------------------------------------------------------------------------
