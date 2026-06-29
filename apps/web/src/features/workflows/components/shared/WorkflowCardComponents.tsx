@@ -18,6 +18,7 @@ import {
   UserCircle02Icon,
 } from "@icons";
 import Image from "next/image";
+import { useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import {
@@ -317,6 +318,7 @@ export function MissingIntegrationsAlert({
   onConnect,
 }: MissingIntegrationsAlertProps) {
   const { getIntegrationIconUrl } = useIntegrationLookup();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   if (!missingIntegrations.length) return null;
 
@@ -340,10 +342,18 @@ export function MissingIntegrationsAlert({
         </Button>
       ) : (
         <ButtonGroup color="warning" variant="flat" size="sm">
-          <Button isLoading={!!connectingId} isDisabled={!!connectingId}>
+          <Button
+            isLoading={!!connectingId}
+            isDisabled={!!connectingId}
+            onPress={() => setIsDropdownOpen((o) => !o)}
+          >
             Connect Apps
           </Button>
-          <Dropdown placement="bottom-end">
+          <Dropdown
+            placement="bottom-end"
+            isOpen={isDropdownOpen}
+            onOpenChange={setIsDropdownOpen}
+          >
             <DropdownTrigger>
               <Button isIconOnly isDisabled={!!connectingId}>
                 <ArrowDown01Icon className="size-3.5" />
