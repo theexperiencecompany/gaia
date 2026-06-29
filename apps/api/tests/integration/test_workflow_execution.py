@@ -965,6 +965,8 @@ class TestGenerationServiceParsing:
         mock_llm = MagicMock()
         mock_llm.with_structured_output = MagicMock(side_effect=NotImplementedError)
         mock_llm.ainvoke = AsyncMock(return_value=MagicMock(content="bad json"))
+        # ainvoke_llm wraps the model in with_llm_retry before invoking.
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
 
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
@@ -972,7 +974,7 @@ class TestGenerationServiceParsing:
 
         with (
             patch(
-                "app.services.workflow.generation_service.init_llm",
+                "app.services.workflow.generation_service.get_default_llm",
                 return_value=mock_llm,
             ),
             # Patch the local binding in generation_service (where it is imported),
