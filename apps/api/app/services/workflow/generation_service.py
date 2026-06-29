@@ -1,7 +1,9 @@
 """Workflow generation service for LLM-based step creation."""
 
+from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import ValidationError
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.prompts.trigger_prompts import generate_trigger_context
@@ -296,9 +298,19 @@ class WorkflowGenerationService:
                 log.info(f"{LogTag.WORKFLOW} Regeneration attempt {attempt} for: {title}")
 
             if structured_llm:
-                result = await ainvoke_llm(
-                    structured_llm, formatted_prompt, label="workflow_generation"
-                )
+                try:
+                    result = await ainvoke_llm(
+                        structured_llm, formatted_prompt, label="workflow_generation"
+                    )
+                except (ValidationError, OutputParserException) as e:
+                    # Schema-invalid structured output is regenerable; transient
+                    # provider errors keep propagating so ainvoke_llm owns retry/fallback.
+                    last_error = e
+                    log.warning(
+                        f"{LogTag.WORKFLOW} Structured output invalid "
+                        f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating: {e}"
+                    )
+                    continue
             else:
                 # No native structured output: ask for raw JSON and parse it.
                 fallback_prompt = (

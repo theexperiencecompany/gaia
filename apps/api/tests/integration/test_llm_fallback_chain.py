@@ -16,6 +16,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from google.api_core.exceptions import GoogleAPICallError
+from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
 from app.agents.llm.client import (
@@ -24,6 +26,7 @@ from app.agents.llm.client import (
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
+    ainvoke_llm,
     init_llm,
 )
 from app.config.model_pricing import (
@@ -370,3 +373,40 @@ class TestGetAvailableProviders:
             available = _get_available_providers()
 
         assert available == {}
+
+
+@pytest.mark.integration
+class TestAinvokeFallbackRouting:
+    """End-to-end routing of ainvoke_llm from a failing primary to the default fallback."""
+
+    @staticmethod
+    def _retrying(primary: MagicMock, retried: MagicMock) -> None:
+        # ainvoke_llm wraps via with_llm_retry(primary) -> primary.with_retry(...).
+        primary.with_retry = MagicMock(return_value=retried)
+
+    async def test_primary_failure_routes_to_default_fallback(self) -> None:
+        primary = MagicMock()
+        retried = MagicMock()
+        # GoogleAPICallError (base) is a fallback exception but not a retryable
+        # subclass, so the retry wrapper raises immediately into the fallback path.
+        retried.ainvoke = AsyncMock(side_effect=GoogleAPICallError("primary provider down"))
+        self._retrying(primary, retried)
+
+        fallback = MagicMock()
+        fallback.ainvoke = AsyncMock(return_value=AIMessage(content="from default model"))
+
+        result = await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], fallback=fallback, label="test"
+        )
+
+        assert result.content == "from default model"
+        fallback.ainvoke.assert_awaited_once()
+
+    async def test_primary_failure_without_fallback_propagates(self) -> None:
+        primary = MagicMock()
+        retried = MagicMock()
+        retried.ainvoke = AsyncMock(side_effect=GoogleAPICallError("primary provider down"))
+        self._retrying(primary, retried)
+
+        with pytest.raises(GoogleAPICallError):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], label="test")

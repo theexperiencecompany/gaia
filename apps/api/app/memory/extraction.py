@@ -11,7 +11,7 @@ from typing import TypeVar
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.llm.client import _LLM_FALLBACK_EXCEPTIONS, ainvoke_llm, get_default_llm
 from app.constants.memory import (
@@ -51,6 +51,13 @@ _SILENT_CONFIG: RunnableConfig = {
     "metadata": {"silent": True},  # canonical location the messages-stream consumers read
     "tags": ["memory_internal"],
 }  # type: ignore[typeddict-unknown-key]
+
+# Provider failures and malformed structured output both degrade to None so the
+# memory helper never breaks the chat that spawned it.
+_STRUCTURED_FAILURE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *_LLM_FALLBACK_EXCEPTIONS,
+    ValidationError,
+)
 
 
 class SimilarMemory(BaseModel):
@@ -105,15 +112,15 @@ async def _invoke_structured(
         result = await ainvoke_llm(
             structured_llm, messages, config=_SILENT_CONFIG, label=f"memory:{operation}"
         )
-    except _LLM_FALLBACK_EXCEPTIONS as e:
+        if isinstance(result, output_model):
+            return result
+        # Malformed structured output must stay on the graceful path, not raise.
+        return output_model.model_validate(result)
+    except _STRUCTURED_FAILURE_EXCEPTIONS as e:
         log.error(
             "memory_llm_failed", operation=operation, error_type=type(e).__name__, error=str(e)
         )
         return None
-
-    if isinstance(result, output_model):
-        return result
-    return output_model.model_validate(result)
 
 
 async def extract_memories(

@@ -914,7 +914,8 @@ class TestGenerateRoadmapWithLlmStream:
             async for item in generate_roadmap_with_llm_stream("No LLM"):
                 results.append(item)
 
-        # The initial progress is yielded before get_default_llm is called
+        # get_default_llm() runs before the first yield, so the failure surfaces
+        # directly as an error item.
         error_items = [r for r in results if "error" in r]
         assert len(error_items) >= 1
         assert "Roadmap generation failed" in error_items[0]["error"]

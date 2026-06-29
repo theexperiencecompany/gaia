@@ -1,8 +1,15 @@
 from langchain_core.messages import AIMessage, AnyMessage, BaseMessage
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.client import _LLM_FALLBACK_EXCEPTIONS, ainvoke_llm, get_default_llm
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
+
+# Operational failures degrade to a friendly message; programming bugs
+# (TypeError, KeyError, ...) and CancelledError stay fail-loud and propagate.
+_CHATBOT_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    RuntimeError,
+    *_LLM_FALLBACK_EXCEPTIONS,
+)
 
 
 async def chatbot(messages: list[AnyMessage]) -> dict[str, list[BaseMessage]]:
@@ -13,7 +20,7 @@ async def chatbot(messages: list[AnyMessage]) -> dict[str, list[BaseMessage]]:
     try:
         response = await ainvoke_llm(get_default_llm(), messages, label="chatbot")
         return {"messages": [response]}
-    except Exception as e:
+    except _CHATBOT_FALLBACK_EXCEPTIONS as e:
         log.error(
             f"{LogTag.AGENT} chatbot LLM call failed", error_type=type(e).__name__, error=str(e)
         )
