@@ -211,7 +211,7 @@ async def pg_checkpointer():
         # the pg_checkpointer_manager fixture's behaviour.
         if os.environ.get("USE_REAL_SERVICES") == "1":
             raise  # In CI with real services, Postgres must be running
-        pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
+        pytest.skip("PostgreSQL not available (set USE_REAL_SERVICES=1 to require it)")
 
     checkpointer = AsyncPostgresSaver(conn=pool)
     await checkpointer.setup()
@@ -232,7 +232,7 @@ async def pg_checkpointer_manager():
     try:
         await manager.setup()
     except Exception:
-        pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
+        pytest.skip("PostgreSQL not available (set USE_REAL_SERVICES=1 to require it)")
 
     yield manager
 
@@ -906,7 +906,7 @@ class TestCheckpointerManagerProduction:
         try:
             await manager.setup()
         except Exception:
-            pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
+            pytest.skip("PostgreSQL not available (set USE_REAL_SERVICES=1 to require it)")
 
         try:
             checkpointer = manager.get_checkpointer()
@@ -928,7 +928,7 @@ class TestCheckpointerManagerProduction:
         try:
             await manager.setup()
         except Exception:
-            pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
+            pytest.skip("PostgreSQL not available (set USE_REAL_SERVICES=1 to require it)")
         await manager.close()
         # Second close should not raise
         await manager.close()

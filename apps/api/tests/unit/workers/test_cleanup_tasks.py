@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.user_models import OnboardingPhase
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
 
 
@@ -16,7 +17,7 @@ def _make_stuck_user(
     updated_at = datetime.now(UTC) - timedelta(minutes=updated_at_minutes_ago)
     return {
         "_id": MagicMock(__str__=lambda s: user_id),
-        "onboarding": {"phase": "personalization_pending"},
+        "onboarding": {"phase": OnboardingPhase.PERSONALIZATION_PENDING.value},
         "updated_at": updated_at,
     }
 
@@ -33,7 +34,7 @@ class TestCleanupStuckPersonalization:
     # Boundary: 0 users
     # ------------------------------------------------------------------
 
-    async def test_no_stuck_users_returns_early(self, ctx):
+    async def test_no_stuck_users_returns_early(self, ctx: dict) -> None:
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
 
@@ -43,7 +44,7 @@ class TestCleanupStuckPersonalization:
 
         assert "No stuck users found" in result
 
-    async def test_zero_stuck_users_never_enqueues_job(self, ctx):
+    async def test_zero_stuck_users_never_enqueues_job(self, ctx: dict) -> None:
         """When there are 0 stuck users, enqueue_intelligence_job must never be called."""
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
@@ -64,7 +65,7 @@ class TestCleanupStuckPersonalization:
     # Boundary: 1 user
     # ------------------------------------------------------------------
 
-    async def test_one_stuck_user_is_requeued_with_correct_id(self, ctx):
+    async def test_one_stuck_user_is_requeued_with_correct_id(self, ctx: dict) -> None:
         """Exactly the one user's ID must be passed to enqueue_intelligence_job."""
         users = [_make_stuck_user("only_user_id")]
         mock_cursor = MagicMock()
@@ -94,7 +95,7 @@ class TestCleanupStuckPersonalization:
     # Pagination limit validation
     # ------------------------------------------------------------------
 
-    async def test_to_list_called_with_length_50(self, ctx):
+    async def test_to_list_called_with_length_50(self, ctx: dict) -> None:
         """to_list MUST be called with length=50 — changing it to any other
         value must cause this test to fail."""
         mock_cursor = MagicMock()
@@ -106,7 +107,7 @@ class TestCleanupStuckPersonalization:
 
         mock_cursor.to_list.assert_awaited_once_with(length=50)
 
-    async def test_pagination_limit_50_processes_exactly_50_users(self, ctx):
+    async def test_pagination_limit_50_processes_exactly_50_users(self, ctx: dict) -> None:
         """The DB cursor is capped at 50; the task must process exactly those
         50 users and not request more.  If the limit in the production code is
         changed (e.g. to 100 or removed), the to_list assertion above fails AND
@@ -136,7 +137,9 @@ class TestCleanupStuckPersonalization:
         assert "50 re-queued" in result
         assert "found 50 candidates" in result
 
-    async def test_pagination_limit_does_not_exceed_50_even_with_large_mock_return(self, ctx):
+    async def test_pagination_limit_does_not_exceed_50_even_with_large_mock_return(
+        self, ctx: dict
+    ) -> None:
         """Simulate the cursor honouring the limit by returning only 50 of 100
         users.  The task itself must enqueue exactly the users it received."""
         # The cursor mock returns only 50 — mirroring MongoDB honouring length=50
@@ -169,7 +172,7 @@ class TestCleanupStuckPersonalization:
     # Which users are re-queued
     # ------------------------------------------------------------------
 
-    async def test_stuck_users_are_requeued_with_correct_ids(self, ctx):
+    async def test_stuck_users_are_requeued_with_correct_ids(self, ctx: dict) -> None:
         """Both user IDs must appear as arguments to enqueue_intelligence_job."""
         users = [
             _make_stuck_user("id_1"),
@@ -208,7 +211,7 @@ class TestCleanupStuckPersonalization:
     # Enqueue function called with correct user id
     # ------------------------------------------------------------------
 
-    async def test_enqueue_called_with_correct_user_id(self, ctx):
+    async def test_enqueue_called_with_correct_user_id(self, ctx: dict) -> None:
         users = [_make_stuck_user("id_1")]
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=users)
@@ -235,7 +238,7 @@ class TestCleanupStuckPersonalization:
     # Error counting
     # ------------------------------------------------------------------
 
-    async def test_failed_enqueue_returns_none_counts_as_error(self, ctx):
+    async def test_failed_enqueue_returns_none_counts_as_error(self, ctx: dict) -> None:
         users = [_make_stuck_user("id_1")]
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=users)
@@ -259,7 +262,7 @@ class TestCleanupStuckPersonalization:
         assert "0 re-queued" in result
         assert "1 errors" in result
 
-    async def test_enqueue_exception_counts_as_error_not_raised(self, ctx):
+    async def test_enqueue_exception_counts_as_error_not_raised(self, ctx: dict) -> None:
         users = [_make_stuck_user("id_1")]
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=users)
@@ -284,7 +287,7 @@ class TestCleanupStuckPersonalization:
         assert "0 re-queued" in result
         assert "1 errors" in result
 
-    async def test_mixed_success_and_failure_counts_correctly(self, ctx):
+    async def test_mixed_success_and_failure_counts_correctly(self, ctx: dict) -> None:
         users = [
             _make_stuck_user("id_ok"),
             _make_stuck_user("id_fail"),
@@ -294,7 +297,7 @@ class TestCleanupStuckPersonalization:
 
         call_count = 0
 
-        async def selective_enqueue(user_id):
+        async def selective_enqueue(user_id: str) -> str:
             nonlocal call_count
             call_count += 1
             if user_id == "id_ok":
@@ -330,7 +333,7 @@ class TestCleanupStuckPersonalization:
     # Query validation
     # ------------------------------------------------------------------
 
-    async def test_custom_max_age_minutes_used_in_query(self, ctx):
+    async def test_custom_max_age_minutes_used_in_query(self, ctx: dict) -> None:
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
 
@@ -353,10 +356,8 @@ class TestCleanupStuckPersonalization:
             expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
         )
 
-    async def test_query_uses_personalization_pending_phase(self, ctx):
+    async def test_query_uses_personalization_pending_phase(self, ctx: dict) -> None:
         """Query must filter by onboarding.phase == PERSONALIZATION_PENDING."""
-        from app.models.user_models import OnboardingPhase
-
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
 
@@ -371,7 +372,7 @@ class TestCleanupStuckPersonalization:
     # Exception handling
     # ------------------------------------------------------------------
 
-    async def test_db_exception_returns_error_string_not_raises(self, ctx):
+    async def test_db_exception_returns_error_string_not_raises(self, ctx: dict) -> None:
         with patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col:
             mock_col.find = MagicMock(side_effect=RuntimeError("MongoDB down"))
             result = await cleanup_stuck_personalization(ctx)
@@ -383,7 +384,7 @@ class TestCleanupStuckPersonalization:
     # Result message contents
     # ------------------------------------------------------------------
 
-    async def test_result_message_contains_found_count(self, ctx):
+    async def test_result_message_contains_found_count(self, ctx: dict) -> None:
         users = [
             _make_stuck_user("id_1"),
             _make_stuck_user("id_2"),

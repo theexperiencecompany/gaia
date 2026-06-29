@@ -10,6 +10,7 @@ Route layout:
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -36,7 +37,7 @@ _USER_BASE = "/api/v1/integrations/users/me/integrations"
 _BASE = _USER_BASE
 
 
-def _make_my_integration_item(**overrides) -> MyIntegrationItem:
+def _make_my_integration_item(**overrides: Any) -> MyIntegrationItem:
     defaults = {
         "id": "gmail",
         "name": "Gmail",
@@ -53,7 +54,7 @@ def _make_my_integration_item(**overrides) -> MyIntegrationItem:
     return MyIntegrationItem(**defaults)
 
 
-def _make_my_integrations_response(**overrides) -> MyIntegrationsResponse:
+def _make_my_integrations_response(**overrides: Any) -> MyIntegrationsResponse:
     integrations = overrides.pop("integrations", [_make_my_integration_item()])
     total = overrides.pop("total", len(integrations))
     return MyIntegrationsResponse(integrations=integrations, total=total)

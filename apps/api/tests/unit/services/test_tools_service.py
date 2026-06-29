@@ -1,5 +1,6 @@
 """Comprehensive unit tests for tools_service (app/services/tools/tools_service.py)."""
 
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,7 +19,7 @@ from app.services.tools.tools_service import (
 # ---------------------------------------------------------------------------
 
 
-def _mock_tool(name: str = "tool_1"):
+def _mock_tool(name: str = "tool_1") -> MagicMock:
     t = MagicMock()
     t.name = name
     return t
@@ -30,7 +31,7 @@ def _mock_category(
     require_integration: bool = False,
     space: str = "default",
     internal: bool = False,
-):
+) -> MagicMock:
     cat = MagicMock()
     cat.tools = tools or [_mock_tool()]
     cat.integration_name = integration_name
@@ -47,7 +48,7 @@ def _mock_category(
 
 @pytest.mark.unit
 class TestGetIntegrationName:
-    def test_returns_name_for_known_integration(self):
+    def test_returns_name_for_known_integration(self) -> None:
         # _INTEGRATION_NAME_MAP is built from OAUTH_INTEGRATIONS at module load
         # We verify the function works by patching the map
         with patch(
@@ -57,7 +58,7 @@ class TestGetIntegrationName:
             assert get_integration_name("gmail") == "Gmail"
             assert get_integration_name("Gmail") == "Gmail"
 
-    def test_returns_none_for_unknown(self):
+    def test_returns_none_for_unknown(self) -> None:
         with patch("app.services.tools.tools_service._INTEGRATION_NAME_MAP", {}):
             assert get_integration_name("unknown") is None
 
@@ -69,7 +70,7 @@ class TestGetIntegrationName:
 
 @pytest.mark.unit
 class TestGetAvailableTools:
-    async def test_coalesces_when_no_user(self):
+    async def test_coalesces_when_no_user(self) -> None:
         fake_response = ToolsListResponse(tools=[], total_count=0, categories=[])
         with patch(
             "app.services.tools.tools_service.coalesce_request",
@@ -80,7 +81,7 @@ class TestGetAvailableTools:
             mock_coalesce.assert_called_once_with("global_tools", _build_tools_response)
             assert result == fake_response
 
-    async def test_calls_user_catalog_with_user(self):
+    async def test_calls_user_catalog_with_user(self) -> None:
         """With a user_id, get_available_tools delegates to the caching layer."""
         fake_response = ToolsListResponse(tools=[], total_count=0, categories=[])
         with patch(
@@ -105,7 +106,7 @@ class TestWorkspaceScoping:
     workspace using get_user_integration_records. These tests verify that
     scoping contract at the _build_tools_response boundary."""
 
-    async def test_no_user_means_no_mcp_tools(self):
+    async def test_no_user_means_no_mcp_tools(self) -> None:
         """Anonymous call: get_user_integration_records is never called;
         `added` stays empty so all MCP tools are filtered out."""
         global_mcp = {"my_mcp": {"name": "X", "icon_url": None, "tools": [{"name": "t"}]}}
@@ -129,7 +130,7 @@ class TestWorkspaceScoping:
 
         assert result.total_count == 0
 
-    async def test_user_with_added_integration_sees_tools(self):
+    async def test_user_with_added_integration_sees_tools(self) -> None:
         global_mcp = {
             "custom_1": {
                 "name": "My MCP",
@@ -164,7 +165,7 @@ class TestWorkspaceScoping:
         names = {t.name for t in result.tools}
         assert names == {"tool_a", "tool_b"}
 
-    async def test_user_without_integration_sees_nothing(self):
+    async def test_user_without_integration_sees_nothing(self) -> None:
         global_mcp = {
             "custom_1": {"name": "My MCP", "icon_url": None, "tools": [{"name": "tool_a"}]}
         }
@@ -210,7 +211,7 @@ class TestBuildToolsResponse:
         global_mcp: dict,
         user_records: list | None = None,
         mcp_raises: bool = False,
-    ):
+    ) -> ExitStack:
         """Context manager factory that patches the three external dependencies."""
         mock_registry = AsyncMock()
         mock_registry.get_all_category_objects = MagicMock(return_value=registry_cats)
@@ -219,8 +220,6 @@ class TestBuildToolsResponse:
             mock_mcp_store.get_all_mcp_tools = AsyncMock(side_effect=Exception("mcp fail"))
         else:
             mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
-
-        from contextlib import ExitStack
 
         stack = ExitStack()
         stack.enter_context(
@@ -246,7 +245,7 @@ class TestBuildToolsResponse:
             )
         return stack
 
-    async def test_builds_from_registry_tools(self):
+    async def test_builds_from_registry_tools(self) -> None:
         tool = _mock_tool("my_tool")
         cat = _mock_category(tools=[tool], integration_name=None)
 
@@ -259,7 +258,7 @@ class TestBuildToolsResponse:
         assert result.tools[0].name == "my_tool"
         assert "general" in result.categories
 
-    async def test_skips_duplicate_tools_from_registry(self):
+    async def test_skips_duplicate_tools_from_registry(self) -> None:
         tool = _mock_tool("dup_tool")
         cat = _mock_category(tools=[tool, tool])
 
@@ -269,7 +268,7 @@ class TestBuildToolsResponse:
 
         assert result.total_count == 1
 
-    async def test_includes_mcp_tools_for_workspace_user(self):
+    async def test_includes_mcp_tools_for_workspace_user(self) -> None:
         """Tools from MCP integrations appear when the user has that integration added."""
         mock_registry = AsyncMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
@@ -291,7 +290,7 @@ class TestBuildToolsResponse:
         assert result.tools[0].name == "custom_tool_1"
         assert result.tools[0].icon_url == "https://example.com/icon.png"
 
-    async def test_excludes_mcp_tools_not_in_workspace(self):
+    async def test_excludes_mcp_tools_not_in_workspace(self) -> None:
         """MCP tools are not shown when the user hasn't added that integration."""
         global_mcp = {
             "deepwiki": {
@@ -306,7 +305,7 @@ class TestBuildToolsResponse:
 
         assert result.total_count == 0
 
-    async def test_includes_global_mcp_tools_when_in_workspace(self):
+    async def test_includes_global_mcp_tools_when_in_workspace(self) -> None:
         """Platform MCP tools appear when the user has that integration added."""
         global_mcp = {
             "deepwiki": {
@@ -324,7 +323,7 @@ class TestBuildToolsResponse:
         assert result.tools[0].name == "search_wiki"
         assert result.tools[0].display_name == "DeepWiki"
 
-    async def test_anonymous_user_gets_no_mcp_tools(self):
+    async def test_anonymous_user_gets_no_mcp_tools(self) -> None:
         """Anonymous callers (user_id=None) get no MCP tools — workspace is empty."""
         global_mcp = {
             "deepwiki": {
@@ -338,13 +337,13 @@ class TestBuildToolsResponse:
 
         assert result.total_count == 0
 
-    async def test_mcp_fetch_failure_graceful(self):
+    async def test_mcp_fetch_failure_graceful(self) -> None:
         with self._patch_deps({}, {}, mcp_raises=True, user_records=[]):
             result = await _build_tools_response("user_a")
 
         assert result.total_count == 0
 
-    async def test_mcp_skips_empty_tools_list(self):
+    async def test_mcp_skips_empty_tools_list(self) -> None:
         global_mcp = {"my_int": {"name": "My Int", "icon_url": None, "tools": []}}
         user_records = [{"integration_id": "my_int", "status": "connected"}]
 
@@ -353,7 +352,7 @@ class TestBuildToolsResponse:
 
         assert result.total_count == 0
 
-    async def test_mcp_skips_tool_without_name(self):
+    async def test_mcp_skips_tool_without_name(self) -> None:
         global_mcp = {
             "cust_1": {
                 "name": "Cust",
@@ -369,7 +368,7 @@ class TestBuildToolsResponse:
         assert result.total_count == 1
         assert result.tools[0].name == "valid_tool"
 
-    async def test_mcp_skips_duplicate_tool_names(self):
+    async def test_mcp_skips_duplicate_tool_names(self) -> None:
         tool = _mock_tool("shared_tool")
         cat = _mock_category(tools=[tool])
         global_mcp = {
@@ -387,7 +386,7 @@ class TestBuildToolsResponse:
         assert names.count("shared_tool") == 1
         assert "unique_tool" in names
 
-    async def test_added_but_not_connected_is_locked(self):
+    async def test_added_but_not_connected_is_locked(self) -> None:
         """Tools for integrations in `added` but not `connected` are marked locked=True."""
         global_mcp = {
             "my_mcp": {
@@ -413,7 +412,7 @@ class TestBuildToolsResponse:
 
 @pytest.mark.unit
 class TestGetToolsByCategory:
-    async def test_returns_tools_for_category(self):
+    async def test_returns_tools_for_category(self) -> None:
         tool = _mock_tool("my_tool")
         cat = _mock_category(tools=[tool])
         mock_registry = AsyncMock()
@@ -437,7 +436,7 @@ class TestGetToolsByCategory:
         assert result.tools[0].name == "my_tool"
         assert result.tools[0].display_name == "My Cat"
 
-    async def test_returns_empty_for_unknown_category(self):
+    async def test_returns_empty_for_unknown_category(self) -> None:
         mock_registry = AsyncMock()
         mock_registry.get_category = MagicMock(return_value=None)
 
@@ -459,7 +458,7 @@ class TestGetToolsByCategory:
 
 @pytest.mark.unit
 class TestGetToolCategories:
-    async def test_returns_category_counts(self):
+    async def test_returns_category_counts(self) -> None:
         cat1 = _mock_category(tools=[_mock_tool("t1"), _mock_tool("t2")])
         cat2 = _mock_category(tools=[_mock_tool("t3")])
         mock_registry = AsyncMock()
@@ -511,24 +510,24 @@ class TestLockedAndFilteredTools:
         ):
             return await _build_tools_response("user_123")
 
-    async def test_connected_integration_tools_not_locked(self):
+    async def test_connected_integration_tools_not_locked(self) -> None:
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
         result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
         assert result.total_count == 1
         assert result.tools[0].locked is False
 
-    async def test_added_not_connected_tools_are_locked(self):
+    async def test_added_not_connected_tools_are_locked(self) -> None:
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
         result = await self._build([{"integration_id": "m1", "status": "added"}], global_mcp)
         assert result.total_count == 1
         assert result.tools[0].locked is True
 
-    async def test_unadded_integration_filtered_out(self):
+    async def test_unadded_integration_filtered_out(self) -> None:
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
         result = await self._build([], global_mcp)
         assert result.total_count == 0
 
-    async def test_icon_url_forwarded_from_mcp_store(self):
+    async def test_icon_url_forwarded_from_mcp_store(self) -> None:
         global_mcp = {
             "m1": {
                 "name": "MCP One",
@@ -540,7 +539,7 @@ class TestLockedAndFilteredTools:
         assert result.total_count == 2
         assert all(t.icon_url == "https://example.com/icon.png" for t in result.tools)
 
-    async def test_duplicate_tool_names_deduplicated(self):
+    async def test_duplicate_tool_names_deduplicated(self) -> None:
         """The same tool name from two different MCPs counts only once."""
         global_mcp = {
             "m1": {"name": "M1", "icon_url": None, "tools": [{"name": "same_tool"}]},
@@ -555,12 +554,12 @@ class TestLockedAndFilteredTools:
         )
         assert result.total_count == 1
 
-    async def test_empty_tools_list_skipped(self):
+    async def test_empty_tools_list_skipped(self) -> None:
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": []}}
         result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
         assert result.total_count == 0
 
-    async def test_tool_with_no_name_skipped(self):
+    async def test_tool_with_no_name_skipped(self) -> None:
         global_mcp = {
             "m1": {
                 "name": "M1",

@@ -764,12 +764,17 @@ class TestUpdateWorkflow:
         mock_get.side_effect = [wf, updated_wf]
         mock_collection.update_one = AsyncMock(return_value=_mock_update_result())
 
-        request = _make_update_request(trigger_config=new_trigger)
+        request = _make_update_request(trigger_config=new_trigger, activated=False)
         result = await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
 
-        # Disabling a schedule no longer explicitly cancels ARQ jobs — the claim
-        # gate rejects any in-flight job once activated=False is persisted.
         assert result is not None
+        # Disabling a schedule must actually persist the disabled state: without
+        # activated=False the service rewrites trigger_config.enabled back to the
+        # current activation, so assert both reached the $set update. (ARQ jobs are
+        # no longer explicitly cancelled — the claim gate rejects in-flight runs.)
+        set_doc = mock_collection.update_one.await_args.args[1]["$set"]
+        assert set_doc["activated"] is False
+        assert set_doc["trigger_config"]["enabled"] is False
 
     @patch(
         "app.services.workflow.service.TriggerService.unregister_triggers",
