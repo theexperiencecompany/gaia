@@ -30,9 +30,6 @@ export type GoalAction =
   | "fetching"
   | "deleting"
   | "updating_progress"
-  | "generating_roadmap"
-  | "roadmap_generated"
-  | "roadmap_needed"
   | "node_updated"
   | "error";
 

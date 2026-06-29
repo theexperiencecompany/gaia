@@ -291,11 +291,6 @@ const dummyTools = {
       required_integration: null,
     },
     {
-      name: "generate_roadmap",
-      category: "goal_tracking",
-      required_integration: null,
-    },
-    {
       name: "update_goal_node",
       category: "goal_tracking",
       required_integration: null,

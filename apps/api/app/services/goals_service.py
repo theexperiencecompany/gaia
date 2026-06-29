@@ -3,101 +3,16 @@ import json
 
 from bson import ObjectId
 from fastapi import HTTPException
-from langchain_core.messages import HumanMessage
 
-from app.agents.llm.client import get_default_llm, with_llm_retry
-from app.agents.prompts.goal_prompts import (
-    ROADMAP_GENERATOR,
-    ROADMAP_INSTRUCTIONS,
-    ROADMAP_JSON_STRUCTURE,
-)
 from app.db.mongodb.collections import goals_collection
 from app.db.redis import ONE_YEAR_TTL, get_cache, set_cache
 from app.models.goals_models import GoalCreate, GoalResponse, UpdateNodeRequest
 from app.services.todos.sync_service import (
     _invalidate_goal_caches,
-    create_goal_project_and_todo,
     sync_goal_node_completion,
 )
 from app.utils.goals_utils import goal_helper
 from shared.py.wide_events import log
-
-
-async def generate_roadmap_with_llm_stream(title: str):
-    """
-    Generate a roadmap using LLM streaming for real-time updates.
-
-    Args:
-        title (str): The goal title to generate a roadmap for
-
-    Yields:
-        dict: Streaming progress updates and final roadmap data
-    """
-    detailed_prompt = ROADMAP_GENERATOR.format(
-        title=title,
-        instructions=ROADMAP_INSTRUCTIONS,
-        json_structure=json.dumps(ROADMAP_JSON_STRUCTURE, indent=2),
-    )
-
-    try:
-        # Default model with the canonical transient-error retry; streamed below.
-        llm = with_llm_retry(get_default_llm())
-
-        # Send initial progress message
-        yield {"progress": f"Starting roadmap generation for '{title}'..."}
-
-        # Create message for LLM
-        messages = [HumanMessage(content=detailed_prompt)]
-
-        # Stream the response
-        complete_response = ""
-        chunk_count = 0
-
-        async for chunk in llm.astream(messages):
-            chunk_count += 1
-            content = chunk if isinstance(chunk, str) else chunk.text
-
-            if content:
-                complete_response += str(content)
-
-                # Send progress updates every 10 chunks
-                if chunk_count % 10 == 0:
-                    yield {
-                        "progress": f"Generating roadmap... ({len(complete_response)} characters)"
-                    }
-
-        # Send completion message
-        yield {"progress": "Processing generated roadmap..."}
-
-        # Try to parse the complete response as JSON
-        try:
-            # Clean the response - sometimes LLM adds extra text
-            json_start = complete_response.find("{")
-            json_end = complete_response.rfind("}") + 1
-
-            if json_start != -1 and json_end != 0:
-                json_str = complete_response[json_start:json_end]
-                roadmap_data = json.loads(json_str)
-
-                # Validate the structure
-                if "nodes" in roadmap_data and "edges" in roadmap_data:
-                    yield {"progress": "Roadmap generation completed successfully!"}
-                    yield {"roadmap": roadmap_data}
-                else:
-                    log.error("Generated roadmap missing required fields")
-                    yield {"error": "Generated roadmap is missing required structure"}
-            else:
-                log.error("No valid JSON found in LLM response")
-                yield {"error": "Could not parse roadmap from LLM response"}
-
-        except json.JSONDecodeError as e:
-            log.error(f"JSON parsing error: {e}")
-            log.error(f"Raw response: {complete_response}")
-            yield {"error": f"Failed to parse roadmap JSON: {e!s}"}
-
-    except Exception as e:
-        log.error(f"LLM Generation Error: {e}")
-        yield {"error": f"Roadmap generation failed: {e!s}"}
 
 
 async def create_goal_service(goal: GoalCreate, user: dict) -> GoalResponse:
@@ -320,54 +235,3 @@ async def update_node_status_service(
 
     log.info(f"Node status updated for node {node_id} in goal {goal_id}.")
     return goal_helper(updated_goal)
-
-
-async def update_goal_with_roadmap_service(goal_id: str, roadmap_data: dict) -> bool:
-    """
-    Update a goal with generated roadmap data, create todo project, and invalidate caches.
-
-    Args:
-        goal_id (str): The ID of the goal to update
-        roadmap_data (dict): The roadmap data to save
-
-    Returns:
-        bool: True if update was successful, False otherwise
-    """
-    try:
-        # Get the goal to find the user_id - we need this for create_goal_project_and_todo
-        goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
-        if not goal:
-            log.error(f"Goal {goal_id} not found for roadmap update")
-            return False
-
-        user_id = goal.get("user_id")
-        goal_title = goal.get("title", "Untitled Goal")
-        node_count = len(roadmap_data.get("nodes", []))
-        edge_count = len(roadmap_data.get("edges", []))
-
-        log.set(
-            service="goals_service",
-            operation="update_goal_with_roadmap",
-            goal={
-                "id": goal_id,
-                "title": goal_title,
-                "node_count": node_count,
-                "edge_count": edge_count,
-            },
-        )
-
-        # Create project and todo with subtasks for the roadmap
-        # This function will update the goal with subtask_ids and todo info
-        project_id = await create_goal_project_and_todo(goal_id, goal_title, roadmap_data, user_id)
-
-        # Invalidate relevant caches
-        if user_id:
-            await _invalidate_goal_caches(user_id, goal_id)
-            log.info(f"Goal caches invalidated for goal {goal_id} and user {user_id}")
-
-        log.info(f"Goal {goal_id} successfully updated with roadmap and todo project {project_id}")
-        return True
-
-    except Exception as e:
-        log.error(f"Error updating goal {goal_id} with roadmap: {e!s}")
-        return False

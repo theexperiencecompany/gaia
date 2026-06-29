@@ -87,31 +87,6 @@ DELETE_GOAL = """
     Warning: This will also remove any associated todos and project data.
     """
 
-GENERATE_ROADMAP = """
-    Generate an AI-powered roadmap for a goal with streaming progress updates.
-
-    This tool uses AI to break down a goal into actionable tasks and milestones,
-    creating a visual roadmap that can be tracked and managed.
-
-    When to use:
-    - When user asks to create a plan for their goal
-    - When user wants to break down a goal into steps
-    - When user asks how to achieve a specific goal
-    - When user wants a roadmap or action plan
-
-    Input:
-    - goal_id: Required, the goal to generate a roadmap for
-    - regenerate: Optional boolean, whether to overwrite existing roadmap
-
-    Output:
-    - Streaming progress updates during generation
-    - Complete roadmap with nodes (tasks) and connections
-    - Associated todo project with subtasks for each roadmap item
-    - Error message if generation fails
-
-    Note: This creates both a visual roadmap and actionable todos for tracking progress.
-    """
-
 UPDATE_GOAL_NODE = """
     Update the completion status of a specific task in a goal's roadmap.
 

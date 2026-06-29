@@ -6,7 +6,6 @@ import {
   CheckmarkCircle02Icon,
   Target02Icon,
   Timer02Icon,
-  UserGroupIcon,
   ZapIcon,
 } from "@icons";
 import { useRouter } from "next/navigation";
@@ -20,7 +19,6 @@ export default function GoalSection({
   stats,
   action = "list",
   message,
-  goal_id,
   deleted_goal_id: _deleted_goal_id,
   error,
 }: GoalSectionProps) {
@@ -129,13 +127,7 @@ export default function GoalSection({
 
   // Progress/Loading Messages
   if (
-    [
-      "creating",
-      "fetching",
-      "deleting",
-      "updating_progress",
-      "generating_roadmap",
-    ].includes(action)
+    ["creating", "fetching", "deleting", "updating_progress"].includes(action)
   ) {
     const icons = {
       creating: <ZapIcon className="h-4 w-4 text-blue-500" />,
@@ -144,7 +136,6 @@ export default function GoalSection({
       updating_progress: (
         <ChartIncreaseIcon className="h-4 w-4 text-green-500" />
       ),
-      generating_roadmap: <UserGroupIcon className="h-4 w-4 text-primary" />,
     };
 
     return (
@@ -155,25 +146,6 @@ export default function GoalSection({
           )}
           <p className="text-sm">{message}</p>
         </div>
-      </div>
-    );
-  }
-
-  // Roadmap needed message
-  if (action === "roadmap_needed" && message) {
-    return (
-      <div className="mt-3 w-fit min-w-[350px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <UserGroupIcon className="h-4 w-4 text-primary" />
-          <p className="text-sm text-zinc-300">{message}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => router.push(`/goals/${goal_id}`)}
-          className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          Generate Roadmap
-        </button>
       </div>
     );
   }
@@ -202,11 +174,9 @@ export default function GoalSection({
             <Target02Icon className="h-4 w-4 text-primary" />
             {action === "search"
               ? "Search Results"
-              : action === "roadmap_generated"
-                ? "Goal with Roadmap"
-                : action === "node_updated"
-                  ? "Updated Progress"
-                  : "Your Goals"}
+              : action === "node_updated"
+                ? "Updated Progress"
+                : "Your Goals"}
           </div>
           <span className="text-xs text-zinc-500">
             {goals.length} {goals.length === 1 ? "goal" : "goals"}
@@ -246,11 +216,7 @@ export default function GoalSection({
   // Success/Action Message
   if (message && !goals && !stats) {
     const isDeleteAction = action === "delete";
-    const isSuccessAction = [
-      "create",
-      "roadmap_generated",
-      "node_updated",
-    ].includes(action);
+    const isSuccessAction = ["create", "node_updated"].includes(action);
     const iconColor = isDeleteAction
       ? "text-red-500"
       : isSuccessAction

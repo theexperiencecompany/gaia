@@ -1,7 +1,6 @@
 import json
 from typing import Annotated, Any
 
-from bson import ObjectId
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
@@ -14,16 +13,13 @@ from app.decorators import with_doc, with_rate_limiting
 from app.models.goals_models import GoalCreate, UpdateNodeRequest
 from app.services.goals_service import (
     delete_goal_service,
-    generate_roadmap_with_llm_stream,
     get_goal_service,
     get_user_goals_service,
-    update_goal_with_roadmap_service,
     update_node_status_service,
 )
 from app.templates.docstrings.goal_tool_docs import (
     CREATE_GOAL,
     DELETE_GOAL,
-    GENERATE_ROADMAP,
     GET_GOAL,
     GET_GOAL_STATISTICS,
     LIST_GOALS,
@@ -282,118 +278,6 @@ async def delete_goal(
         error_msg = f"Error deleting goal: {e!s}"
         log.error(f"{LogTag.TOOL} {error_msg}")
         return {"error": error_msg, "success": False}
-
-
-@tool
-@with_doc(GENERATE_ROADMAP)
-async def generate_roadmap(
-    config: RunnableConfig,
-    goal_id: Annotated[str, "ID of the goal to generate roadmap for (required)"],
-    regenerate: Annotated[bool | None, "Whether to overwrite existing roadmap"] = False,
-) -> dict[str, Any]:
-    try:
-        log.set(tool={"name": "generate_roadmap", "action": "generate"})
-        log.info(f"{LogTag.TOOL} Goal Tool: Generating roadmap for goal {goal_id}")
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "roadmap": None}
-        user = {"user_id": user_id}
-
-        # Get the goal to check if it exists and get the title
-        goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
-        if not goal:
-            return {"error": "Goal not found", "roadmap": None}
-
-        # Check if roadmap already exists and regenerate is False
-        existing_roadmap = goal.get("roadmap", {})
-        if (
-            not regenerate
-            and existing_roadmap.get("nodes")
-            and len(existing_roadmap.get("nodes", [])) > 0
-        ):
-            return {
-                "error": "Roadmap already exists. Use regenerate=True to overwrite.",
-                "roadmap": None,
-            }
-
-        goal_title = goal.get("title", "Untitled Goal")
-
-        writer = get_stream_writer()
-
-        # Stream initial progress
-        writer(
-            {
-                "goal_data": {
-                    "action": "generating_roadmap",
-                    "message": f"Starting roadmap generation for '{goal_title}'...",
-                    "goal_id": goal_id,
-                }
-            }
-        )
-
-        # Generate roadmap with streaming updates
-        final_roadmap = None
-        async for update in generate_roadmap_with_llm_stream(goal_title):
-            if "progress" in update:
-                # Stream progress updates
-                writer(
-                    {
-                        "goal_data": {
-                            "action": "generating_roadmap",
-                            "message": update["progress"],
-                            "goal_id": goal_id,
-                        }
-                    }
-                )
-            elif "roadmap" in update:
-                final_roadmap = update["roadmap"]
-            elif "error" in update:
-                writer(
-                    {
-                        "goal_data": {
-                            "action": "error",
-                            "message": update["error"],
-                            "goal_id": goal_id,
-                        }
-                    }
-                )
-                return {"error": update["error"], "roadmap": None}
-
-        if final_roadmap and isinstance(final_roadmap, dict):
-            # Update the goal with the roadmap and create todos
-            success = await update_goal_with_roadmap_service(goal_id, final_roadmap)
-            if success:
-                # Get the updated goal
-                updated_goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
-                if updated_goal:
-                    from app.utils.goals_utils import goal_helper
-
-                    goal_dict = goal_helper(updated_goal)
-
-                    # Invalidate caches since we generated a roadmap
-                    await invalidate_goal_caches(user["user_id"], goal_id)
-
-                    # Stream the completed roadmap
-                    writer(
-                        {
-                            "goal_data": {
-                                "goals": [goal_dict],
-                                "action": "roadmap_generated",
-                                "message": f"Roadmap generated and todos created for '{goal_title}'",
-                                "goal_id": goal_id,
-                            }
-                        }
-                    )
-
-                    return {"roadmap": final_roadmap, "goal": goal_dict, "error": None}
-
-            return {"error": "Failed to save roadmap", "roadmap": None}
-        return {"error": "Failed to generate roadmap", "roadmap": None}
-
-    except Exception as e:
-        error_msg = f"Error generating roadmap: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
-        return {"error": error_msg, "roadmap": None}
 
 
 @tool
@@ -656,7 +540,6 @@ tools = [
     list_goals,
     get_goal,
     delete_goal,
-    generate_roadmap,
     update_goal_node,
     search_goals,
     get_goal_statistics,
