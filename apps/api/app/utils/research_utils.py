@@ -56,7 +56,9 @@ async def decompose_research_queries(
         response = await ainvoke_llm(
             get_default_llm(), [HumanMessage(content=prompt)], label="research_queries"
         )
-        content = str(response.content).strip()
+        # ``.text`` flattens the message's content blocks to a string; ``.content``
+        # may be a list (Gemini), whose repr would never parse as JSON.
+        content = response.text.strip()
         match = re.search(r"\[.*\]", content, re.DOTALL)
         if match:
             queries = json.loads(match.group())

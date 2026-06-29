@@ -117,8 +117,10 @@ async def _describe_screenshot(image_b64: str, query: str) -> str | None:
     except Exception as exc:  # noqa: BLE001 - any provider failure degrades gracefully
         log.warning(f"{LogTag.TOOL} Screenshot vision call failed: {exc}")
         return None
-    content = getattr(response, "content", response)
-    return content if isinstance(content, str) else str(content)
+    # ``.text`` flattens the message's content blocks to a string; ``.content``
+    # may be a list (Gemini), whose repr would leak into the description.
+    description = response.text.strip()
+    return description or None
 
 
 @tool
