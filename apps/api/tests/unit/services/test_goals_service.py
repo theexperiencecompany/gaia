@@ -761,8 +761,11 @@ class TestGenerateRoadmapWithLlmStream:
                 yield c
 
         mock_llm.astream = fake_astream
+        # Production wraps via with_llm_retry(get_default_llm()) -> model.with_retry(...);
+        # pass through so the fake astream is the one iterated.
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
 
-        with patch("app.services.goals_service.init_llm", return_value=mock_llm):
+        with patch("app.services.goals_service.get_default_llm", return_value=mock_llm):
             results = []
             async for item in generate_roadmap_with_llm_stream("Learn AI"):
                 results.append(item)
@@ -795,8 +798,11 @@ class TestGenerateRoadmapWithLlmStream:
             yield self._make_chunk("This is not JSON at all, just plain text")
 
         mock_llm.astream = fake_astream
+        # Production wraps via with_llm_retry(get_default_llm()) -> model.with_retry(...);
+        # pass through so the fake astream is the one iterated.
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
 
-        with patch("app.services.goals_service.init_llm", return_value=mock_llm):
+        with patch("app.services.goals_service.get_default_llm", return_value=mock_llm):
             results = []
             async for item in generate_roadmap_with_llm_stream("Bad Goal"):
                 results.append(item)
@@ -814,8 +820,11 @@ class TestGenerateRoadmapWithLlmStream:
             yield self._make_chunk('Here is the result: {"nodes": [broken}')
 
         mock_llm.astream = fake_astream
+        # Production wraps via with_llm_retry(get_default_llm()) -> model.with_retry(...);
+        # pass through so the fake astream is the one iterated.
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
 
-        with patch("app.services.goals_service.init_llm", return_value=mock_llm):
+        with patch("app.services.goals_service.get_default_llm", return_value=mock_llm):
             results = []
             async for item in generate_roadmap_with_llm_stream("Broken JSON"):
                 results.append(item)
@@ -833,8 +842,11 @@ class TestGenerateRoadmapWithLlmStream:
             yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_llm.astream = fake_astream
+        # Production wraps via with_llm_retry(get_default_llm()) -> model.with_retry(...);
+        # pass through so the fake astream is the one iterated.
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
 
-        with patch("app.services.goals_service.init_llm", return_value=mock_llm):
+        with patch("app.services.goals_service.get_default_llm", return_value=mock_llm):
             results = []
             async for item in generate_roadmap_with_llm_stream("Fail Goal"):
                 results.append(item)
@@ -853,8 +865,11 @@ class TestGenerateRoadmapWithLlmStream:
             yield self._make_chunk(incomplete_json)
 
         mock_llm.astream = fake_astream
+        # Production wraps via with_llm_retry(get_default_llm()) -> model.with_retry(...);
+        # pass through so the fake astream is the one iterated.
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
 
-        with patch("app.services.goals_service.init_llm", return_value=mock_llm):
+        with patch("app.services.goals_service.get_default_llm", return_value=mock_llm):
             results = []
             async for item in generate_roadmap_with_llm_stream("Incomplete"):
                 results.append(item)
@@ -877,8 +892,11 @@ class TestGenerateRoadmapWithLlmStream:
             yield roadmap_json
 
         mock_llm.astream = fake_astream
+        # Production wraps via with_llm_retry(get_default_llm()) -> model.with_retry(...);
+        # pass through so the fake astream is the one iterated.
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
 
-        with patch("app.services.goals_service.init_llm", return_value=mock_llm):
+        with patch("app.services.goals_service.get_default_llm", return_value=mock_llm):
             results = []
             async for item in generate_roadmap_with_llm_stream("String Chunks"):
                 results.append(item)
@@ -886,17 +904,17 @@ class TestGenerateRoadmapWithLlmStream:
         roadmap_items = [r for r in results if "roadmap" in r]
         assert len(roadmap_items) == 1
 
-    async def test_init_llm_failure_yields_error(self):
-        """When init_llm itself raises, the generator catches it."""
+    async def test_get_default_llm_failure_yields_error(self):
+        """When get_default_llm itself raises, the generator catches it."""
         with patch(
-            "app.services.goals_service.init_llm",
+            "app.services.goals_service.get_default_llm",
             side_effect=RuntimeError("No API key"),
         ):
             results = []
             async for item in generate_roadmap_with_llm_stream("No LLM"):
                 results.append(item)
 
-        # The initial progress is yielded before init_llm is called
+        # The initial progress is yielded before get_default_llm is called
         error_items = [r for r in results if "error" in r]
         assert len(error_items) >= 1
         assert "Roadmap generation failed" in error_items[0]["error"]

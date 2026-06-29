@@ -213,9 +213,9 @@ class TestExtractUsernameWithLLM:
         assert result == "NOT_FOUND"
 
     @patch("app.agents.memory.profile_extractor.settings")
-    @patch("app.agents.memory.profile_extractor.init_llm")
+    @patch("app.agents.memory.profile_extractor.get_default_llm")
     async def test_successful_extraction(
-        self, mock_init_llm: MagicMock, mock_settings: MagicMock
+        self, mock_get_default_llm: MagicMock, mock_settings: MagicMock
     ) -> None:
         mock_settings.DEBUG_EMAIL_PROCESSING = False
 
@@ -224,9 +224,9 @@ class TestExtractUsernameWithLLM:
         mock_response.content = '{"username": "octocat", "confidence": "high"}'
 
         mock_llm = MagicMock()
-        mock_llm.with_config = MagicMock(return_value=mock_llm)
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        mock_init_llm.return_value = mock_llm
+        mock_get_default_llm.return_value = mock_llm
 
         emails = [
             {
@@ -239,9 +239,9 @@ class TestExtractUsernameWithLLM:
         assert result == "octocat"
 
     @patch("app.agents.memory.profile_extractor.settings")
-    @patch("app.agents.memory.profile_extractor.init_llm")
+    @patch("app.agents.memory.profile_extractor.get_default_llm")
     async def test_cleans_at_symbol(
-        self, mock_init_llm: MagicMock, mock_settings: MagicMock
+        self, mock_get_default_llm: MagicMock, mock_settings: MagicMock
     ) -> None:
         mock_settings.DEBUG_EMAIL_PROCESSING = False
 
@@ -249,9 +249,9 @@ class TestExtractUsernameWithLLM:
         mock_response.content = '{"username": "@octocat", "confidence": "high"}'
 
         mock_llm = MagicMock()
-        mock_llm.with_config = MagicMock(return_value=mock_llm)
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        mock_init_llm.return_value = mock_llm
+        mock_get_default_llm.return_value = mock_llm
 
         emails = [{"messageText": "Hello @octocat from GitHub", "subject": "Test"}]
 
@@ -259,16 +259,16 @@ class TestExtractUsernameWithLLM:
         assert result == "octocat"
 
     @patch("app.agents.memory.profile_extractor.settings")
-    @patch("app.agents.memory.profile_extractor.init_llm")
+    @patch("app.agents.memory.profile_extractor.get_default_llm")
     async def test_llm_error_returns_not_found(
-        self, mock_init_llm: MagicMock, mock_settings: MagicMock
+        self, mock_get_default_llm: MagicMock, mock_settings: MagicMock
     ) -> None:
         mock_settings.DEBUG_EMAIL_PROCESSING = False
 
         mock_llm = MagicMock()
-        mock_llm.with_config = MagicMock(return_value=mock_llm)
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(side_effect=RuntimeError("LLM error"))
-        mock_init_llm.return_value = mock_llm
+        mock_get_default_llm.return_value = mock_llm
 
         emails = [{"messageText": "Hello from GitHub notifications", "subject": "Test"}]
 
@@ -276,9 +276,9 @@ class TestExtractUsernameWithLLM:
         assert result == "NOT_FOUND"
 
     @patch("app.agents.memory.profile_extractor.settings")
-    @patch("app.agents.memory.profile_extractor.init_llm")
+    @patch("app.agents.memory.profile_extractor.get_default_llm")
     async def test_with_user_name_context(
-        self, mock_init_llm: MagicMock, mock_settings: MagicMock
+        self, mock_get_default_llm: MagicMock, mock_settings: MagicMock
     ) -> None:
         mock_settings.DEBUG_EMAIL_PROCESSING = False
 
@@ -286,9 +286,9 @@ class TestExtractUsernameWithLLM:
         mock_response.content = '{"username": "jdoe", "confidence": "high"}'
 
         mock_llm = MagicMock()
-        mock_llm.with_config = MagicMock(return_value=mock_llm)
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        mock_init_llm.return_value = mock_llm
+        mock_get_default_llm.return_value = mock_llm
 
         emails = [{"messageText": "Welcome @jdoe to GitHub", "subject": "Test"}]
 
@@ -296,9 +296,9 @@ class TestExtractUsernameWithLLM:
         assert result == "jdoe"
 
     @patch("app.agents.memory.profile_extractor.settings")
-    @patch("app.agents.memory.profile_extractor.init_llm")
+    @patch("app.agents.memory.profile_extractor.get_default_llm")
     async def test_short_content_skipped(
-        self, mock_init_llm: MagicMock, mock_settings: MagicMock
+        self, mock_get_default_llm: MagicMock, mock_settings: MagicMock
     ) -> None:
         """Emails with very short cleaned content are skipped."""
         mock_settings.DEBUG_EMAIL_PROCESSING = False
@@ -307,9 +307,9 @@ class TestExtractUsernameWithLLM:
         mock_response.content = '{"username": "NOT_FOUND", "confidence": "low"}'
 
         mock_llm = MagicMock()
-        mock_llm.with_config = MagicMock(return_value=mock_llm)
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        mock_init_llm.return_value = mock_llm
+        mock_get_default_llm.return_value = mock_llm
 
         # Email with very short content after cleaning
         emails = [{"messageText": "hi", "subject": "Test"}]

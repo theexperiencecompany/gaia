@@ -19,6 +19,9 @@ def _mock_llm(invoke_return: Any = "Mock summary", batch_return: Any = None) -> 
     llm = AsyncMock()
     llm.ainvoke = AsyncMock(return_value=invoke_return)
     llm.abatch = AsyncMock(return_value=batch_return or [])
+    # ainvoke_llm wraps the model in with_llm_retry(model) -> model.with_retry(...);
+    # pass through so the configured ainvoke/abatch responses are used.
+    llm.with_retry = MagicMock(return_value=llm)
     return llm
 
 
@@ -39,7 +42,7 @@ def processor() -> DocumentProcessor:
     """Return a DocumentProcessor with mocked parser and llm."""
     with (
         patch("app.utils.file_utils.LlamaParse"),
-        patch("app.utils.file_utils.init_llm", return_value=_mock_llm()),
+        patch("app.utils.file_utils.get_default_llm", return_value=_mock_llm()),
     ):
         proc = DocumentProcessor()
     return proc
@@ -144,7 +147,7 @@ class TestProcessImage:
         await processor.process_image(raw)
 
         call_args = processor.llm.ainvoke.call_args
-        content_blocks = call_args[1]["input"][0]["content"]
+        content_blocks = call_args[0][0][0]["content"]
         image_block = [b for b in content_blocks if b["type"] == "image_url"][0]
         assert expected_b64 in image_block["image_url"]["url"]
 
@@ -299,7 +302,7 @@ class TestProcessText:
 
         # Verify _generate_text_summary was called with truncated text
         call_args = processor.llm.ainvoke.call_args
-        user_content = call_args[1]["input"][1]["content"]
+        user_content = call_args[0][0][1]["content"]
         # The text in the prompt should be <= 4000 chars from the source
         # (the prompt wrapping adds more, but the source slice is 4000)
         assert "x" * 4000 in user_content
