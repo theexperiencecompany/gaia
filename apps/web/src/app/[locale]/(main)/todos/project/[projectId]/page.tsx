@@ -6,7 +6,7 @@ interface ProjectTodosPageProps {
 
 export default async function ProjectTodosPage({
   params,
-}: ProjectTodosPageProps) {
+}: Readonly<ProjectTodosPageProps>) {
   const { projectId } = await params;
 
   return <TodoListPage filters={{ project_id: projectId, completed: false }} />;

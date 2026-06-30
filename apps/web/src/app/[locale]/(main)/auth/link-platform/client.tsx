@@ -43,7 +43,7 @@ interface LinkPlatformClientProps {
 export default function LinkPlatformClient({
   platform,
   token,
-}: LinkPlatformClientProps) {
+}: Readonly<LinkPlatformClientProps>) {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
 
@@ -80,7 +80,9 @@ export default function LinkPlatformClient({
   useEffect(() => {
     if (token) {
       apiService
-        .get(`/bot/link-token-info/${token}`, { silent: true })
+        .get(`/bot/link-token-info/${encodeURIComponent(token)}`, {
+          silent: true,
+        })
         .then((data) => {
           const { username, display_name } = data as {
             username?: string;
@@ -202,9 +204,9 @@ export default function LinkPlatformClient({
       {(accountInfo?.displayName || accountInfo?.username) && (
         <p className="mb-1 text-sm font-medium text-zinc-300">
           {accountInfo.displayName ?? accountInfo.username}
-          {accountInfo.username && accountInfo.displayName
-            ? ` · @${accountInfo.username}`
-            : ""}
+          {accountInfo.username && accountInfo.displayName ? (
+            <span className="ml-1 text-zinc-500">@{accountInfo.username}</span>
+          ) : null}
         </p>
       )}
       <p className="mb-6 text-sm text-zinc-400">

@@ -19,10 +19,18 @@ if (!process.env.NEXT_PUBLIC_API_BASE_URL) {
 
 /**
  * Global axios timeout configuration. Defaults to 5 minutes to handle
- * long-running requests; override with API_TIMEOUT_MS (e.g. to fail fast during
- * builds when the API is slow/unreachable during generateStaticParams).
+ * long-running requests; override with API_TIMEOUT_MS — a server-only,
+ * build-time var used to fail fast when the API is slow/unreachable during
+ * generateStaticParams. Only a finite, positive override is honored (so a
+ * malformed, negative, or Infinity value can't disable timeouts for every
+ * request); on the client the var is undefined and the default applies.
  */
-axios.defaults.timeout = Number(process.env.API_TIMEOUT_MS) || 300_000;
+const DEFAULT_API_TIMEOUT_MS = 300_000;
+const parsedApiTimeoutMs = Number(process.env.API_TIMEOUT_MS);
+axios.defaults.timeout =
+  Number.isFinite(parsedApiTimeoutMs) && parsedApiTimeoutMs > 0
+    ? parsedApiTimeoutMs
+    : DEFAULT_API_TIMEOUT_MS;
 
 /**
  * Base axios instance for public API calls

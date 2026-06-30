@@ -1,5 +1,6 @@
+import { notFound } from "next/navigation";
 import TodoListPage from "@/features/todo/components/TodoListPage";
-import type { Priority } from "@/types/features/todoTypes";
+import { Priority } from "@/types/features/todoTypes";
 
 interface PriorityTodosPageProps {
   params: Promise<{ priority: string }>;
@@ -7,12 +8,15 @@ interface PriorityTodosPageProps {
 
 export default async function PriorityTodosPage({
   params,
-}: PriorityTodosPageProps) {
+}: Readonly<PriorityTodosPageProps>) {
   const { priority } = await params;
+  const parsedPriority = priority as Priority;
+
+  if (!Object.values(Priority).includes(parsedPriority)) {
+    notFound();
+  }
 
   return (
-    <TodoListPage
-      filters={{ priority: priority as Priority, completed: false }}
-    />
+    <TodoListPage filters={{ priority: parsedPriority, completed: false }} />
   );
 }

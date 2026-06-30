@@ -17,11 +17,12 @@ interface RouteErrorProps {
  */
 export default function RouteError({ error, reset }: RouteErrorProps) {
   useEffect(() => {
+    // Full diagnostics stay in the console (and Sentry). Only the stable,
+    // non-sensitive digest is sent to analytics — error.message/stack can carry
+    // backend responses, URLs, query params, or user content.
     console.error("Route error boundary caught:", error);
     trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
       error_type: "app_router_error_boundary",
-      error_message: error.message,
-      error_stack: error.stack,
       error_digest: error.digest,
     });
   }, [error]);
@@ -29,9 +30,9 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
   return (
     <div className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-2 p-6 text-center">
       <h1 className="text-2xl font-bold text-white">Something went wrong</h1>
-      {error.message ? (
-        <p className="max-w-md text-zinc-400">{error.message}</p>
-      ) : null}
+      <p className="max-w-md text-zinc-400">
+        An unexpected error occurred. Please try again or return home.
+      </p>
       <div className="flex items-center gap-3 pt-4">
         <Button color="primary" onPress={reset}>
           Try again

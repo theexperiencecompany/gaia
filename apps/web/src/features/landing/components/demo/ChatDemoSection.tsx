@@ -32,6 +32,7 @@ import { appConfig } from "@/config/appConfig";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import { cn } from "@/lib/utils";
+import { InViewMount } from "../shared/InViewMount";
 import DemoCalendarView from "./calendar-demo/DemoCalendarView";
 import DemoChatHeader from "./DemoChatHeader";
 import { DemoFinalCard } from "./DemoFinalCards";
@@ -166,7 +167,7 @@ const OgImage = memo(function OgImage() {
   );
 });
 
-export default function ChatDemoSection() {
+function ChatDemoWindow() {
   const [activePage, setActivePage] = useState<DemoPage>("chats");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
@@ -449,17 +450,6 @@ export default function ChatDemoSection() {
       ref={containerRef}
       className="relative flex w-full flex-col items-center"
     >
-      <div
-        className={`mb-4 text-center ${isInView ? "animate-in fade-in slide-in-from-bottom-4 duration-[400ms]" : "opacity-0"}`}
-      >
-        <p className="mb-2 text-sm uppercase tracking-widest text-primary">
-          See it in action
-        </p>
-        <h2 className="text-5xl sm:text-6xl font-serif tracking-tight text-white font-normal">
-          Your GAIA, actually working
-        </h2>
-      </div>
-
       {/* Demo window */}
       <div
         className={cn(
@@ -802,6 +792,28 @@ export default function ChatDemoSection() {
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Section shell: the heading is server-rendered for SEO; the heavy animated demo
+ * window is lazy-mounted only when it scrolls near the viewport.
+ */
+export default function ChatDemoSection() {
+  return (
+    <div className="relative flex w-full flex-col items-center">
+      <div className="mb-4 text-center">
+        <p className="mb-2 text-sm uppercase tracking-widest text-primary">
+          See it in action
+        </p>
+        <h2 className="text-5xl sm:text-6xl font-serif tracking-tight text-white font-normal">
+          Your GAIA, actually working
+        </h2>
+      </div>
+      <InViewMount minHeight="600px" className="flex w-full justify-center">
+        <ChatDemoWindow />
+      </InViewMount>
     </div>
   );
 }

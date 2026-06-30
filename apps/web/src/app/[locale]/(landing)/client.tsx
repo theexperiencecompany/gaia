@@ -6,7 +6,6 @@ import { useCallback, useEffect, useState } from "react";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
-import { InViewMount } from "@/features/landing/components/shared/InViewMount";
 import { TimeOfDayToggle } from "@/features/landing/components/shared/TimeOfDayToggle";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import {
@@ -166,9 +165,7 @@ export default function LandingPageClient({
             className="-z-10 opacity-90"
             loading="lazy"
           />
-          <InViewMount minHeight="90vh">
-            <ChatDemoSection />
-          </InViewMount>
+          <ChatDemoSection />
         </section>
 
         <TimeSavedCounter />
@@ -178,22 +175,14 @@ export default function LandingPageClient({
           <TiredBoringAssistants />
 
           {/* Reach — where you can use it */}
-          <InViewMount minHeight="80vh">
-            <BotsShowcaseSection />
-          </InViewMount>
+          <BotsShowcaseSection />
 
-          <InViewMount minHeight="80vh">
-            <WorkflowSection />
-          </InViewMount>
+          <WorkflowSection />
           <UseCasesSectionLanding />
 
           {/* Memory — an assistant that actually knows you */}
-          <InViewMount minHeight="80vh">
-            <MemoryShowcaseSection />
-          </InViewMount>
-          <InViewMount minHeight="80vh">
-            <TodoShowcaseSection />
-          </InViewMount>
+          <MemoryShowcaseSection />
+          <TodoShowcaseSection />
 
           {/* Decision — how it stacks up, trust, price */}
           <ComparisonGrid />

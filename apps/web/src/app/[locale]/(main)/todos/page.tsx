@@ -9,7 +9,9 @@ interface TodosPageProps {
   }>;
 }
 
-export default async function TodosPage({ searchParams }: TodosPageProps) {
+export default async function TodosPage({
+  searchParams,
+}: Readonly<TodosPageProps>) {
   const { project, priority, completed } = await searchParams;
 
   const filters: TodoFilters = {};
