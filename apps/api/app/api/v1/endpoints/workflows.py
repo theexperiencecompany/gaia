@@ -34,6 +34,7 @@ from app.models.workflow_models import (
     WorkflowResponse,
     WorkflowStatusResponse,
 )
+from app.services.oauth.oauth_service import get_all_integrations_status
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.services.workflow import WorkflowService
 from app.services.workflow.execution_service import (
@@ -74,6 +75,11 @@ async def create_workflow(
         request.is_system_workflow = False
         request.source_integration = None
         request.system_workflow_key = None
+        # Default selected_integrations to the user's connected integrations so
+        # step generation is grounded in tools the user can actually use.
+        if request.selected_integrations is None:
+            status_map = await get_all_integrations_status(user["user_id"])
+            request.selected_integrations = [iid for iid, ok in status_map.items() if ok] or None
         # Pass user timezone to the service for automatic population
         workflow = await WorkflowService.create_workflow(
             request, user["user_id"], user_timezone=user_timezone
@@ -266,6 +272,12 @@ async def activate_workflow(
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except ValueError as e:
+        # Missing step integrations or other validation failures
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),

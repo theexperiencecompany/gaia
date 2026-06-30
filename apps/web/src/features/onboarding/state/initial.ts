@@ -25,6 +25,9 @@ export const initialState: OnboardingState = {
 
   isRestarting: false,
 
+  integrationSelectDone: false,
+  selectedIntegrations: [],
+
   clarifyQuestions: null,
   clarifyAnswers: {},
   clarifyActiveTab: null,

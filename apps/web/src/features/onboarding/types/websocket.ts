@@ -36,6 +36,7 @@ export interface PersonalizationData {
       cron_expression?: string;
       timezone?: string;
     };
+    missing_integrations?: Array<{ id: string; name: string }>;
   }>;
   writing_style?: {
     style_summary: string;

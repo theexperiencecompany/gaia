@@ -586,6 +586,15 @@ class TestGetWorkflow:
 class TestListWorkflows:
     """Tests for WorkflowService.list_workflows."""
 
+    @pytest.fixture(autouse=True)
+    def mock_integrations_status(self):
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            yield
+
     @patch("app.services.workflow.service.workflows_collection")
     async def test_list_workflows_returns_workflows(self, mock_collection):
         wf = _make_workflow()

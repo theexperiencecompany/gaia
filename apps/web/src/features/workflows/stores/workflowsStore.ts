@@ -11,6 +11,7 @@ interface WorkflowsState {
   lastFetched: number | null;
 
   fetchWorkflows: () => Promise<void>;
+  invalidateCache: () => void;
   addWorkflow: (workflow: Workflow) => void;
   updateWorkflow: (workflowId: string, updates: Partial<Workflow>) => void;
   removeWorkflow: (workflowId: string) => void;
@@ -51,6 +52,8 @@ export const useWorkflowsStore = create<WorkflowsState>((set, get) => ({
       set({ isLoading: false });
     }
   },
+
+  invalidateCache: () => set({ lastFetched: null }),
 
   addWorkflow: (workflow) => {
     set((state) => ({

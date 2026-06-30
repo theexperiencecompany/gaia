@@ -1,6 +1,10 @@
 export { Chat, ChatComposer, useChatStage } from "./Chat";
 export { ClarifyComposer } from "./Clarify";
 export { FocusComposer } from "./Focus";
+export {
+  IntegrationSelect,
+  IntegrationSelectComposer,
+} from "./IntegrationSelect";
 export { Platforms, PlatformsComposer } from "./Platforms";
 export { QuestionsComposer } from "./Questions";
 export { RevealTodos, RevealTodosComposer } from "./RevealTodos";

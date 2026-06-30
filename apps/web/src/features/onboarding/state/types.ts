@@ -12,6 +12,7 @@ export type Stage =
   | "questions"
   | "focus"
   | "clarify"
+  | "integrationSelect"
   | "processing"
   | "revealWriting"
   | "revealTodos"
@@ -47,6 +48,9 @@ export interface OnboardingState {
   } | null;
 
   isRestarting: boolean;
+
+  integrationSelectDone: boolean;
+  selectedIntegrations: string[];
 
   clarifyQuestions: ClarifyQuestion[] | null;
   clarifyAnswers: Record<string, ClarifyAnswer>;
@@ -95,4 +99,6 @@ export type Action =
   | { type: "clarifyCustomCommit"; questionId: string }
   | { type: "clarifySkip"; questionId: string }
   | { type: "clarifyTab"; questionId: string }
-  | { type: "clarifySubmit" };
+  | { type: "clarifySubmit" }
+  | { type: "integrationSelectUpdate"; integrations: string[] }
+  | { type: "integrationSelectConfirm" };

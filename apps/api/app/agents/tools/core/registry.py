@@ -284,6 +284,7 @@ class ToolRegistry:
             "goal_tracking",
             tools=goal_tool.tools,
             is_delegated=True,
+            require_integration=True,
             integration_name="goals",
             space="goals",
         )
