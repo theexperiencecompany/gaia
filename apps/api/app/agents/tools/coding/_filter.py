@@ -21,14 +21,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import resource
 import shutil
+import sys
 
 from langchain_core.runnables.config import RunnableConfig
 
 from app.agents.tools.coding._context import canonical_path, get_session_id, get_user_id
 from app.agents.workspace.paths import WORKSPACE_ROOT
 from app.constants.log_tags import LogTag
-from app.constants.offload import FILTER_TIMEOUT_SECONDS, MAX_FILTER_OUTPUT_CHARS
+from app.constants.offload import (
+    FILTER_MAX_MEMORY_BYTES,
+    FILTER_TIMEOUT_SECONDS,
+    MAX_FILTER_OUTPUT_CHARS,
+)
 from app.services.storage import resolve_user_file
 from shared.py.wide_events import log
 
@@ -44,6 +50,30 @@ _READ_CHUNK = 65536
 _SAFE_ENV = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
 
 _BIN_CACHE: dict[str, str] = {}
+
+
+def _apply_child_limits() -> None:
+    """Cap the child's memory/CPU/file-writes (runs post-fork, pre-exec).
+
+    The wall-clock timeout doesn't catch a jq program that allocates gigabytes
+    in-memory before producing any output, so bound address space directly.
+    RLIMIT_FSIZE=0 enforces the read-only contract (stdout is a pipe, unaffected).
+
+    Each limit is set independently and tolerantly: macOS (dev) rejects
+    ``RLIMIT_AS``, and a failure here would otherwise abort the whole exec. The
+    memory ceiling is the one that matters in prod (Linux), where it applies.
+    """
+    limits = [
+        (resource.RLIMIT_CPU, FILTER_TIMEOUT_SECONDS + 5),
+        (resource.RLIMIT_FSIZE, 0),
+    ]
+    # RLIMIT_AS is the prod (Linux) memory ceiling; macOS (dev) rejects it with a
+    # ValueError, so only attempt it where it's supported.
+    if sys.platform == "linux":
+        limits.append((resource.RLIMIT_AS, FILTER_MAX_MEMORY_BYTES))
+    for res, limit in limits:
+        with contextlib.suppress(ValueError, OSError):
+            resource.setrlimit(res, (limit, limit))
 
 
 def _resolve_binary(name: str) -> str:
@@ -117,6 +147,7 @@ async def _run(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=_SAFE_ENV,
+        preexec_fn=_apply_child_limits,  # noqa: PLW1509 — setrlimit only (sandboxing), no locks
     )
     try:
         out, err, truncated = await asyncio.wait_for(

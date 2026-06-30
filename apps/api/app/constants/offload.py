@@ -17,6 +17,11 @@ GREP_TOOL_NAME = "grep"
 OFFLOAD_JSON_FORMATS = frozenset({"json", "jsonl"})
 
 # Host-side execution bounds for jq/grep. They run in the API process (not the
-# sandbox), so cap output to protect the process memory and kill runaways.
+# sandbox), so bound output, wall-clock time, and child memory to protect the
+# process — a jq program can build a huge structure in-memory and emit nothing
+# until done, so the output cap alone wouldn't catch it.
 FILTER_TIMEOUT_SECONDS = 20
 MAX_FILTER_OUTPUT_CHARS = 30_000
+# Address-space ceiling for the child (jq/grep). 512 MiB is far above any real
+# mining workload but well below the multi-GB a malicious `[range(2e7)]` needs.
+FILTER_MAX_MEMORY_BYTES = 512 * 1024 * 1024

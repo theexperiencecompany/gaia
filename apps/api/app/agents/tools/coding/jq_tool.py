@@ -6,6 +6,7 @@ Runs the `jq` binary over a single workspace file. Execution hardening
 
 from __future__ import annotations
 
+import re
 from typing import Annotated
 
 from langchain_core.runnables.config import RunnableConfig
@@ -16,6 +17,14 @@ from app.decorators import with_doc, with_rate_limiting
 from app.services.storage import FsOps, fs_timer
 from app.templates.docstrings.coding_tools_docs import JQ_TOOL
 from shared.py.wide_events import log
+
+# jq's module system (`import "x" as $d {search:"/path"};`, `include "x";`) reads
+# files OFF DISK from a program-supplied path — argv `--` cannot stop it because
+# it's in-language, not a flag. That is an arbitrary cross-workspace file-read
+# primitive, so reject any module directive. The negative lookbehind avoids
+# false-positives on a field literally named "import" (e.g. `.["import"]`). Data
+# mining never needs jq modules.
+_MODULE_DIRECTIVE = re.compile(r'(?<![\w"])(?:import|include)\s*"')
 
 
 @tool
@@ -29,6 +38,8 @@ async def jq(
 ) -> str:
     """Filter a workspace JSON/JSONL file with jq, host-side (no sandbox)."""
     log.set(tool={"name": "jq", "action": "filter"})
+    if _MODULE_DIRECTIVE.search(query):
+        return "Error: jq module loading (import/include) is not allowed."
     # `--` ends option parsing so a query starting with `-` is treated as the
     # filter, never a jq flag.
     args = ["-r", "--", query] if raw else ["--", query]
