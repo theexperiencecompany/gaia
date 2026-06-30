@@ -13,7 +13,8 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError
 
-from app.agents.llm.client import _LLM_FALLBACK_EXCEPTIONS, ainvoke_llm, get_default_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.exceptions import _LLM_FALLBACK_EXCEPTIONS
 from app.constants.memory import (
     EXTRACTION_TRANSCRIPT_HEAD_CHARS,
     EXTRACTION_TRANSCRIPT_MAX_CHARS,

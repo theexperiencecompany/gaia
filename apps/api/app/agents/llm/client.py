@@ -1,12 +1,5 @@
 from typing import Any
 
-from google.api_core.exceptions import (
-    DeadlineExceeded,
-    GoogleAPICallError,
-    InternalServerError,
-    ResourceExhausted,
-    ServiceUnavailable,
-)
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
@@ -15,19 +8,13 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openrouter import ChatOpenRouter
-from openrouter.errors import (
-    BadGatewayResponseError,
-    EdgeNetworkTimeoutResponseError,
-    InternalServerResponseError,
-    NoResponseError,
-    OpenRouterError,
-    ProviderOverloadedResponseError,
-    RequestTimeoutResponseError,
-    ServiceUnavailableResponseError,
-    TooManyRequestsResponseError,
-)
 from typing_extensions import TypedDict
 
+from app.agents.llm.exceptions import (
+    _LLM_FALLBACK_EXCEPTIONS,
+    _LLM_RETRYABLE_EXCEPTIONS,
+    LLM_RETRY_MAX_ATTEMPTS,
+)
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
@@ -41,60 +28,6 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
-
-# OpenRouter SDK (the ``openrouter`` package used by ``langchain-openrouter``)
-# transient response/network failures — worth retrying. The non-transient ones
-# (402 out-of-credits, 401/403 auth, 404, 400/422) are deliberately excluded so
-# they fall straight through to the fallback instead of burning retries.
-_OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
-    TooManyRequestsResponseError,
-    InternalServerResponseError,
-    BadGatewayResponseError,
-    ServiceUnavailableResponseError,
-    RequestTimeoutResponseError,
-    EdgeNetworkTimeoutResponseError,
-    ProviderOverloadedResponseError,
-    NoResponseError,
-)
-
-# Transient provider/infra errors — safe to retry, usually succeed on a second
-# attempt. The agent model node wraps the bound model in ``with_retry`` on these
-# (applied AFTER ``bind_tools`` so the ``RunnableRetry`` wrapper need not expose
-# it). Provider 429s (``ResourceExhausted`` / ``TooManyRequestsResponseError``)
-# are the provider's own quota, distinct from the application rate limiter
-# (``LangChainRateLimitException``) which must NOT be retried and never reaches
-# the model node. Covers both Gemini (google-api-core) and OpenRouter so retry
-# is provider-agnostic.
-_LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    # Gemini (google-api-core)
-    ResourceExhausted,
-    ServiceUnavailable,
-    DeadlineExceeded,
-    InternalServerError,
-    # OpenRouter SDK
-    *_OPENROUTER_TRANSIENT_ERRORS,
-    # stdlib
-    ConnectionError,
-    TimeoutError,
-)
-
-# Provider/infra failures that trigger a fallback to the default model once
-# retries are exhausted — or immediately for the non-transient ones like 402
-# out-of-credits and 401 auth. Deliberately a curated provider-error set, NOT a
-# bare ``Exception``: a programming bug must fail loud, not silently downgrade
-# the model. ``OpenRouterError`` is the base of every OpenRouter response error
-# (so new error types are covered automatically); ``NoResponseError`` is the
-# SDK's connection failure and is not an ``OpenRouterError`` subclass.
-_LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    OpenRouterError,  # every OpenRouter response error, incl. 402 insufficient credits
-    NoResponseError,
-    GoogleAPICallError,  # every Gemini google-api-core error
-    ConnectionError,
-    TimeoutError,
-)
-
-# Attempts for the model-level transient-error retry in the agent model node.
-LLM_RETRY_MAX_ATTEMPTS = 3
 
 
 def with_llm_retry(runnable: Runnable) -> Runnable:
@@ -353,12 +286,8 @@ async def ainvoke_llm(
     config: RunnableConfig | None = None,
     label: str = "model",
 ) -> Any:
-    """The single way to invoke an LLM. Retries transient provider/infra errors
-    (``with_llm_retry``), then falls back to ``fallback`` (if given) on a provider
-    failure (``_LLM_FALLBACK_EXCEPTIONS``). Programming bugs and
-    ``asyncio.CancelledError`` propagate — they are never silently downgraded.
-    Returns whatever the runnable returns: a ``BaseMessage`` for a chat model, or
-    the parsed object for a ``with_structured_output`` runnable."""
+    """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
+    given) on a provider failure. Bugs and CancelledError propagate."""
     try:
         return await with_llm_retry(primary).ainvoke(messages, config=config)
     except _LLM_FALLBACK_EXCEPTIONS as primary_error:
