@@ -141,11 +141,20 @@ img {
    on-page duplicate is suppressed. Scoped via `#content:has(> div > .frame)` so
    it only affects the main release-notes page (the only one with a page header);
    `:not(.update-container ~ .update-container)` selects just the first/newest
-   release, so older releases and the year/sub-pages keep their in-block images. */
+   release, so older releases and the year/sub-pages keep their in-block images.
+
+   Match the first child generically (`> :first-child:has(img)`) instead of a
+   specific wrapper element: Mintlify wraps a lone leading image differently
+   between environments. The local `mintlify dev` CLI emits a paragraph span
+   (`span[data-as="p"]`), while production wraps it in the image-zoom span
+   (`span[data-rmiz]`) and drops the paragraph. Targeting `span[data-as="p"]`
+   only matched in dev, so the duplicate leaked through in prod. `:first-child`
+   plus the newest-release scope keeps this limited to the one image that
+   duplicates the page hero. */
 #content:has(> div > .frame)
   .update-container:not(.update-container ~ .update-container)
   [data-component-part="update-content"]
-  > span[data-as="p"]:first-child:has(img) {
+  > :first-child:has(img) {
   display: none !important;
 }
 
