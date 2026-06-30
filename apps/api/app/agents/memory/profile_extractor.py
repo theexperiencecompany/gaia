@@ -448,15 +448,8 @@ async def extract_username_with_llm(
         # Generate response using LLM
         llm_response = await ainvoke_llm(llm, formatted_prompt, label="profile_extraction")
 
-        # Parse the response content — Gemini may return a list of content blocks
-        raw_content = getattr(llm_response, "content", str(llm_response))
-        if isinstance(raw_content, list):
-            response_content = "".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in raw_content
-            )
-        else:
-            response_content = raw_content
+        # ``.text`` flattens Gemini's content blocks (and plain strings) to text.
+        response_content = llm_response.text
         result: UsernameExtraction = parser.parse(response_content)
 
         username = result.username.strip()

@@ -90,13 +90,7 @@ async def generate_first_message(
             llm, [HumanMessage(content=prompt)], label="onboarding_first_message"
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
-        content = response.content
-        if isinstance(content, list):
-            content = "".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in content
-            )
-        message = content.strip()
+        message = response.text.strip()
 
         log.info(
             f"{LogTag.ONBOARDING} first_message generated",

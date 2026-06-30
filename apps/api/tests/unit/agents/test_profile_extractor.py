@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessage
 import pytest
 
 from app.agents.memory.profile_extractor import (
@@ -220,8 +221,7 @@ class TestExtractUsernameWithLLM:
         mock_settings.DEBUG_EMAIL_PROCESSING = False
 
         # Mock the LLM chain
-        mock_response = MagicMock()
-        mock_response.content = '{"username": "octocat", "confidence": "high"}'
+        mock_response = AIMessage(content='{"username": "octocat", "confidence": "high"}')
 
         mock_llm = MagicMock()
         mock_llm.with_retry = MagicMock(return_value=mock_llm)
@@ -245,8 +245,7 @@ class TestExtractUsernameWithLLM:
     ) -> None:
         mock_settings.DEBUG_EMAIL_PROCESSING = False
 
-        mock_response = MagicMock()
-        mock_response.content = '{"username": "@octocat", "confidence": "high"}'
+        mock_response = AIMessage(content='{"username": "@octocat", "confidence": "high"}')
 
         mock_llm = MagicMock()
         mock_llm.with_retry = MagicMock(return_value=mock_llm)
@@ -282,8 +281,7 @@ class TestExtractUsernameWithLLM:
     ) -> None:
         mock_settings.DEBUG_EMAIL_PROCESSING = False
 
-        mock_response = MagicMock()
-        mock_response.content = '{"username": "jdoe", "confidence": "high"}'
+        mock_response = AIMessage(content='{"username": "jdoe", "confidence": "high"}')
 
         mock_llm = MagicMock()
         mock_llm.with_retry = MagicMock(return_value=mock_llm)

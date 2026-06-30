@@ -103,10 +103,7 @@ class DocumentProcessor:
                 label="file_image_summary",
             )
 
-            description = response
-            if not isinstance(description, str):
-                description = str(description)
-            return description
+            return response.text.strip()
 
         except Exception as e:
             log.error(f"{LogTag.TOOL} Failed to process image: {e!s}", exc_info=True)
@@ -228,7 +225,7 @@ class DocumentProcessor:
                 label="file_text_summary",
             )
 
-            return str(response)
+            return response.text.strip()
 
         except Exception as e:
             log.error(f"{LogTag.TOOL} Failed to generate summary: {e!s}", exc_info=True)

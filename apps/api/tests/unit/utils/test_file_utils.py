@@ -4,6 +4,7 @@ import base64
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessage
 import pytest
 
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
@@ -15,9 +16,17 @@ from app.utils.file_utils import DocumentProcessor, generate_file_summary
 
 
 def _mock_llm(invoke_return: Any = "Mock summary", batch_return: Any = None) -> AsyncMock:
-    """Return an AsyncMock LLM with configurable ainvoke/abatch responses."""
+    """Return an AsyncMock LLM with configurable ainvoke/abatch responses.
+
+    ``ainvoke_llm`` returns the model's ``AIMessage`` and callers read ``.text``,
+    so a plain-string ``invoke_return`` is wrapped in an ``AIMessage`` to match
+    that contract.
+    """
     llm = AsyncMock()
-    llm.ainvoke = AsyncMock(return_value=invoke_return)
+    ainvoke_return = (
+        AIMessage(content=invoke_return) if isinstance(invoke_return, str) else invoke_return
+    )
+    llm.ainvoke = AsyncMock(return_value=ainvoke_return)
     llm.abatch = AsyncMock(return_value=batch_return or [])
     # ainvoke_llm wraps the model in with_llm_retry(model) -> model.with_retry(...);
     # pass through so the configured ainvoke/abatch responses are used.
@@ -133,10 +142,15 @@ class TestProcessImage:
         result = await processor.process_image(b"\x89PNG\r\n")
         assert result == "A scenic mountain view"
 
-    async def test_non_string_response_converted(self, processor: DocumentProcessor) -> None:
-        processor.llm = _mock_llm(invoke_return=12345)
+    async def test_list_content_blocks_flattened(self, processor: DocumentProcessor) -> None:
+        """Gemini returns content as a list of blocks; ``.text`` flattens it to a string."""
+        processor.llm = _mock_llm(
+            invoke_return=AIMessage(
+                content=[{"type": "text", "text": "A scenic "}, {"type": "text", "text": "view"}]
+            )
+        )
         result = await processor.process_image(b"img")
-        assert result == "12345"
+        assert result == "A scenic view"
 
     async def test_base64_encoding_in_prompt(self, processor: DocumentProcessor) -> None:
         """Verify the image is base64-encoded in the LLM prompt."""
@@ -321,10 +335,18 @@ class TestGenerateTextSummary:
         result = await processor._generate_text_summary("Some text to summarize")
         assert result == "A concise summary"
 
-    async def test_non_string_response_converted(self, processor: DocumentProcessor) -> None:
-        processor.llm = _mock_llm(invoke_return=42)
+    async def test_list_content_blocks_flattened(self, processor: DocumentProcessor) -> None:
+        """Gemini returns content as a list of blocks; ``.text`` flattens it to a string."""
+        processor.llm = _mock_llm(
+            invoke_return=AIMessage(
+                content=[
+                    {"type": "text", "text": "A concise "},
+                    {"type": "text", "text": "summary"},
+                ]
+            )
+        )
         result = await processor._generate_text_summary("text")
-        assert result == "42"
+        assert result == "A concise summary"
 
     async def test_exception_returns_fallback(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm()

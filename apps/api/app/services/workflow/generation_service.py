@@ -412,13 +412,7 @@ class WorkflowGenerationService:
         ]
 
         response = await ainvoke_llm(llm, messages, label="workflow_prompt")
-        raw_content = getattr(response, "content", str(response))
-        if isinstance(raw_content, list):
-            raw_content = "".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in raw_content
-            )
-        response_content = raw_content.strip()
+        response_content = response.text.strip()
 
         result = prompt_output_parser.parse(response_content)
 

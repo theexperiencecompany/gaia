@@ -304,7 +304,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             messages.append(response)
 
             if not response.tool_calls:
-                return str(response.content) if response.content else "Task completed."
+                return response.text or "Task completed."
 
             for tc in response.tool_calls:
                 if tc["name"] == FINISH_TASK_NAME:
@@ -410,7 +410,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         # Max turns reached — get final answer without tools
         final = await ainvoke_llm(llm, messages, config=config, label="subagent_final")
         if isinstance(final, AIMessage) and final.content:
-            return str(final.content)
+            return final.text
         return str(final) if final else "Max turns reached."
 
     def _build_child_toolset(
