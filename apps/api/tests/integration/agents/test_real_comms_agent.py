@@ -15,6 +15,7 @@ renamed these tests will fail immediately — which is the desired behaviour.
 
 import asyncio
 import contextlib
+import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -28,7 +29,37 @@ import pytest
 # the tests fail – which is exactly what we want.
 # ---------------------------------------------------------------------------
 from app.agents.core.graph_builder.build_graph import build_comms_graph
+from app.config.settings import settings
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
+
+
+@pytest.fixture
+def full_production_middleware():
+    """Build the SAME middleware stack as production, not the degraded test default.
+
+    One middleware (summarization) needs a real model, so it is gated on
+    GOOGLE_API_KEY. With the key unset (the test default) it is silently dropped, so
+    build_comms_graph constructs a *different graph than production* — and that gap is
+    how a middleware-construction regression shipped green. Set a throwaway key (never
+    used for a network call — this only affects graph CONSTRUCTION) so the test builds
+    the real composition and any middleware that fails to construct fails here.
+
+    Opt-in (not autouse): the key also enables the model fallback, which would change
+    behaviour for tests that deliberately run without it (e.g. the timeout test).
+    """
+    import app.agents.middleware.factory as factory_mod
+
+    prev = os.environ.get("GOOGLE_API_KEY")
+    os.environ["GOOGLE_API_KEY"] = "test-key"  # pragma: allowlist secret
+    factory_mod._summarization_llm = None
+    with patch.object(settings, "GOOGLE_API_KEY", "test-key"):  # pragma: allowlist secret
+        yield
+    factory_mod._summarization_llm = None
+    if prev is None:
+        os.environ.pop("GOOGLE_API_KEY", None)
+    else:
+        os.environ["GOOGLE_API_KEY"] = prev
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -236,14 +267,17 @@ class TestRealCommsAgent:
     # 1. Compilation
     # ------------------------------------------------------------------
 
-    async def test_graph_can_be_compiled(self):
+    async def test_graph_can_be_compiled(self, full_production_middleware):
         """
-        build_comms_graph() must compile without raising.
+        build_comms_graph() must compile without raising, with the FULL production
+        middleware stack (see the full_production_middleware fixture — without it the
+        key-gated summarization middleware is silently dropped and the test builds a
+        different graph than production).
 
-        This directly validates that the production wiring (tool_registry dict,
-        create_agent call, pre_model_hooks list, end_graph_hooks list) is intact.
-        If any import or construction step inside build_comms_graph breaks, this
-        test is the first to catch it.
+        This validates that the production wiring (tool_registry dict, create_agent
+        call, every middleware, pre_model_hooks, end_graph_hooks) constructs. If any
+        import or construction step inside build_comms_graph or its middleware breaks,
+        this test is the first to catch it.
         """
         store_mock = _make_chroma_store_mock()
         fake_llm = create_fake_llm(["ok"])
