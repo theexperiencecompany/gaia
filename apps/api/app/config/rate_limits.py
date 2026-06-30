@@ -154,8 +154,14 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         ),
     ),
     "trigger_workflow_executions": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=20),  # Keep restrictive
-        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
+        # Integration triggers fire one execution per event (Gmail's account-level
+        # trigger fires on EVERY new email). A monthly cap meant a single busy day
+        # exhausted the budget, after which every triggered workflow — across ALL
+        # integrations — failed with 429 for the rest of the month. The daily limit
+        # is the cost guard; month=0 (no monthly cap) keeps automations alive
+        # day-to-day instead of locking the user out for weeks.
+        free=RateLimitConfig(day=15, month=0),
+        pro=RateLimitConfig(day=150, month=0),
         info=FeatureInfo(
             title="Trigger Workflow Executions",
             description="Automated workflow executions triggered by integrations",

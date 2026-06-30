@@ -206,14 +206,16 @@ class TestFeatureLimits:
             )
 
     def test_monthly_limits_gte_daily_limits(self) -> None:
-        """Monthly limits should be >= daily limits for both tiers."""
+        """Monthly limits should be >= daily limits, unless 0 (0 = no monthly cap)."""
         for key, limits in FEATURE_LIMITS.items():
-            assert limits.free.month >= limits.free.day, (
-                f"{key}: free month ({limits.free.month}) < free day ({limits.free.day})"
-            )
-            assert limits.pro.month >= limits.pro.day, (
-                f"{key}: pro month ({limits.pro.month}) < pro day ({limits.pro.day})"
-            )
+            if limits.free.month:
+                assert limits.free.month >= limits.free.day, (
+                    f"{key}: free month ({limits.free.month}) < free day ({limits.free.day})"
+                )
+            if limits.pro.month:
+                assert limits.pro.month >= limits.pro.day, (
+                    f"{key}: pro month ({limits.pro.month}) < pro day ({limits.pro.day})"
+                )
 
     def test_all_features_have_nonempty_info(self) -> None:
         for key, limits in FEATURE_LIMITS.items():
@@ -224,15 +226,22 @@ class TestFeatureLimits:
     PAID_ONLY_FEATURES = {"voice_mode"}
 
     def test_free_limits_are_positive(self) -> None:
-        """Non-paid-only features should have at least some free tier allowance."""
+        """Non-paid-only features should grant some free allowance.
+
+        A 0 in a single period means "no limit" for that period (see
+        RateLimitConfig), so a feature is valid as long as it grants free access
+        through at least one window — e.g. trigger executions are capped daily
+        but uncapped monthly (month=0).
+        """
         for key, limits in FEATURE_LIMITS.items():
             if key in self.PAID_ONLY_FEATURES:
                 # Paid-only features deliberately have free.day == free.month == 0
                 assert limits.free.day == 0, f"{key}: expected free day == 0 (paid-only)"
                 assert limits.free.month == 0, f"{key}: expected free month == 0 (paid-only)"
             else:
-                assert limits.free.day > 0, f"{key}: free day is 0"
-                assert limits.free.month > 0, f"{key}: free month is 0"
+                assert limits.free.day > 0 or limits.free.month > 0, (
+                    f"{key}: free tier has no allowance (day and month both 0)"
+                )
 
     def test_specific_chat_messages_limits(self) -> None:
         chat = FEATURE_LIMITS["chat_messages"]
