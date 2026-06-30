@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from bson import ObjectId
@@ -221,9 +222,17 @@ async def delete_conversation(conversation_id: str, user: dict) -> dict:
     }
 
 
-async def update_messages(request: UpdateMessagesRequest, user: dict) -> dict:
+async def update_messages(
+    request: UpdateMessagesRequest, user: dict, max_messages: int | None = None
+) -> dict:
     """
     Add messages to an existing conversation, including any file IDs attached to the messages.
+
+    When ``max_messages`` is set, the ``messages`` array is capped to the most recent
+    ``max_messages`` entries (via ``$slice``). System-generated conversations that append
+    on every run — e.g. the single per-workflow thread reused across executions — must
+    bound their history, or the document eventually exceeds MongoDB's 16MB limit and
+    every subsequent write fails with WriteError 17419.
     """
     user_id = user.get("user_id")
     conversation_id = request.conversation_id
@@ -236,10 +245,15 @@ async def update_messages(request: UpdateMessagesRequest, user: dict) -> dict:
         message_dict.setdefault("message_id", str(ObjectId()))
         messages.append(message_dict)
 
+    push_spec: dict[str, Any] = {"$each": messages}
+    if max_messages is not None:
+        # Negative slice keeps only the most recent ``max_messages`` entries.
+        push_spec["$slice"] = -max_messages
+
     update_result = await conversations_collection.update_one(
         {"user_id": user_id, "conversation_id": conversation_id},
         {
-            "$push": {"messages": {"$each": messages}},
+            "$push": {"messages": push_spec},
             "$currentDate": {"updatedAt": True},
         },
     )

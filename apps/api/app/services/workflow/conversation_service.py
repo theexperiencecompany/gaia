@@ -11,6 +11,12 @@ from app.services.conversation_service import (
 )
 from shared.py.wide_events import log
 
+# A workflow reuses ONE conversation across every execution, appending the trigger
+# message + result each run. Left unbounded that document grows past MongoDB's 16MB
+# limit and every run then fails with WriteError 17419. Cap the thread to its most
+# recent N messages — enough recent context for the agent, far under the size cap.
+WORKFLOW_CONVERSATION_MAX_MESSAGES = 50
+
 
 async def get_or_create_workflow_conversation(
     workflow_id: str, user_id: str, workflow_title: str
@@ -84,9 +90,12 @@ async def add_workflow_execution_messages(
             conversation_id=conversation_id, messages=workflow_execution_messages
         )
 
-        # Use existing update_messages service
+        # Use existing update_messages service, capping the per-workflow thread so it
+        # can't grow past MongoDB's 16MB document limit over many executions.
         user_dict = {"user_id": user_id}
-        await update_messages(messages_request, user_dict)
+        await update_messages(
+            messages_request, user_dict, max_messages=WORKFLOW_CONVERSATION_MAX_MESSAGES
+        )
 
     except Exception as e:
         log.error(
