@@ -22,7 +22,6 @@ import type { DeepResearchResults, SearchResults } from "./searchTypes";
 import type { TodoToolData } from "./todoToolTypes";
 import type {
   CodeData,
-  GoalDataMessageType,
   GoogleDocsData,
   ImageData,
   MemoryData,
@@ -95,7 +94,6 @@ export type {
   EmailComposeData,
   EmailSentData,
   EmailThreadData,
-  GoalDataMessageType,
   GoogleDocsData,
   ImageData,
   MemoryData,

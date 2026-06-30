@@ -228,7 +228,6 @@ class ToolRegistry:
             file_tools,
             finish_task_tool,
             flowchart_tool,
-            goal_tool,
             image_tool,
             integration_instructions_tools,
             integration_tool,
@@ -279,13 +278,6 @@ class ToolRegistry:
             is_delegated=True,
             integration_name="reminders",
             space="reminders",
-        )
-        self._add_category(
-            "goal_tracking",
-            tools=goal_tool.tools,
-            is_delegated=True,
-            integration_name="goals",
-            space="goals",
         )
         self._add_category(
             "skills",

@@ -8,7 +8,6 @@ import {
   ConnectIcon,
   DashboardSquare02Icon,
   MessageMultiple02Icon,
-  Target02Icon,
   ZapIcon,
 } from "@icons";
 import { Fragment } from "react";
@@ -83,13 +82,6 @@ const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     icon: <CheckListIcon width={16} height={16} />,
   },
   {
-    id: "create_goal",
-    keys: "c",
-    description: "New Goal (on Goals page)",
-    category: "create",
-    icon: <Target02Icon width={16} height={16} />,
-  },
-  {
     id: "create_workflow",
     keys: "c",
     description: "New Workflow (on Workflows page)",
@@ -135,14 +127,6 @@ const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     category: "navigation",
     path: "/todos",
     icon: <CheckListIcon width={16} height={16} />,
-  },
-  {
-    id: "goto_goals",
-    keys: "g>o",
-    description: "Go to Goals",
-    category: "navigation",
-    path: "/goals",
-    icon: <Target02Icon width={16} height={16} />,
   },
   {
     id: "goto_workflows",

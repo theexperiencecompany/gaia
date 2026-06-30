@@ -14,7 +14,6 @@ export type {
   EmailThreadData,
   EnhancedWebResult,
   GenericToolData,
-  GoalDataMessageType,
   GoogleDocsData,
   ImageResult,
   MCPAppData,

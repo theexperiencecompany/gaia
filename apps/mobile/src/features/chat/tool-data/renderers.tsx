@@ -48,8 +48,6 @@ import {
   EmailSentCard,
   EmailThreadCard,
   type EmailThreadData,
-  GoalCard,
-  type GoalData,
   GoogleDocsCard,
   type GoogleDocsData,
   IntegrationConnectionCard,
@@ -228,10 +226,6 @@ const TOOL_RENDERERS: Record<
 
   todo_data: (data, baseKey) => (
     <TodoCard key={baseKey} data={data as TodoData} />
-  ),
-
-  goal_data: (data, baseKey) => (
-    <GoalCard key={baseKey} data={data as GoalData} />
   ),
 
   google_docs_data: (data, baseKey) => (

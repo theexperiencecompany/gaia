@@ -78,7 +78,7 @@ export interface WorkflowParameters {
   user_id?: string;
   notification_id?: string;
   entity_id?: string;
-  entity_type?: "todo" | "calendar" | "email" | "goal" | "note";
+  entity_type?: "todo" | "calendar" | "email" | "note";
 
   // Action parameters
   action?: string;
@@ -115,7 +115,6 @@ export interface ModalProps {
   emailId?: string;
   email_id?: string; // Alternative naming for email ID
   calendarEventId?: string;
-  goalId?: string;
   noteId?: string;
 
   // Action contexts
@@ -246,7 +245,6 @@ export interface NotificationMetadata {
   todo_id?: string;
   calendar_event_id?: string;
   email_id?: string;
-  goal_id?: string;
   project_id?: string;
 
   // Context information

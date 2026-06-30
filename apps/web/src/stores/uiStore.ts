@@ -15,8 +15,7 @@ export type SidebarVariant =
   | "mail"
   | "todos"
   | "calendar"
-  | "notes"
-  | "goals";
+  | "notes";
 
 interface UIState {
   // Image dialog
