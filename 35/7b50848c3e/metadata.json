@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "357b50848c3e",
+  "strategy": "manual-commit",
+  "branch": "perf/sandbox-juicefs-metadata-load",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/api/app/agents/tools/coding/_filter.py",
+    "apps/api/app/agents/tools/coding/jq_tool.py",
+    "apps/api/app/agents/workspace/offload.py",
+    "apps/api/tests/unit/tools/coding/test_jq_grep_tools.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/35/7b50848c3e/0/metadata.json",
+      "transcript": "/35/7b50848c3e/0/full.jsonl",
+      "content_hash": "/35/7b50848c3e/0/content_hash.txt",
+      "prompt": "/35/7b50848c3e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 68625,
+    "cache_creation_tokens": 2177550,
+    "cache_read_tokens": 82777131,
+    "output_tokens": 352025,
+    "api_call_count": 233
+  }
+}
