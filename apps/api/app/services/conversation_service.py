@@ -225,14 +225,10 @@ async def delete_conversation(conversation_id: str, user: dict) -> dict:
 async def update_messages(
     request: UpdateMessagesRequest, user: dict, max_messages: int | None = None
 ) -> dict:
-    """
-    Add messages to an existing conversation, including any file IDs attached to the messages.
+    """Append messages to a conversation.
 
-    When ``max_messages`` is set, the ``messages`` array is capped to the most recent
-    ``max_messages`` entries (via ``$slice``). System-generated conversations that append
-    on every run — e.g. the single per-workflow thread reused across executions — must
-    bound their history, or the document eventually exceeds MongoDB's 16MB limit and
-    every subsequent write fails with WriteError 17419.
+    ``max_messages`` caps stored history to the most recent N (via ``$slice``) so
+    per-workflow threads can't outgrow MongoDB's 16MB document limit.
     """
     user_id = user.get("user_id")
     conversation_id = request.conversation_id

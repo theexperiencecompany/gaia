@@ -154,8 +154,10 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         ),
     ),
     "trigger_workflow_executions": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=20),  # Keep restrictive
-        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
+        free=RateLimitConfig(day=5, month=20),  # Keep restrictive (trial)
+        # Account-level triggers (e.g. Gmail) fire one execution per event, so Pro
+        # needs real headroom; the cap stays as a cost guard, not a daily blocker.
+        pro=RateLimitConfig(day=1500, month=45000),
         info=FeatureInfo(
             title="Trigger Workflow Executions",
             description="Automated workflow executions triggered by integrations",
