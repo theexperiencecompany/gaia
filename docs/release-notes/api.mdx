@@ -4,6 +4,24 @@ description: "Version history and changelog for the GAIA API backend, including 
 icon: "server"
 ---
 
+<Update label="Jun 30, 2026" description="API, Web, Desktop, Bots">
+
+## [API v0.21.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.21.0)
+
+### Features
+- **Automatic Model Fallback**: If your selected model fails — for example a paid model that runs out of provider credits — GAIA retries transient errors and then falls back to the default model, so the turn still completes instead of erroring out.
+- **Resilient Web Search**: Web search now fails over across multiple providers (Exa, SearXNG, Tavily, Brave, and DuckDuckGo), so it keeps working when one is rate-limited or down. Webpage fetching in production was also repaired.
+- **Workflow Results in Your Chats**: When a workflow finishes, its result now arrives as a real, continuable message in GAIA's voice inside your linked platform conversations — not just a templated "workflow done" notification.
+- **Richer Marketplace Listings**: Publishing a custom integration now auto-generates tailored "What you can do", "How it works", and FAQ content instead of falling back to generic copy.
+- **Shorter Connect Links**: Integration connect links are now short, single-use codes on the branded domain instead of long token URLs.
+- **Per-Server MCP Icons**: MCP server icons now resolve per host, so servers that share a domain each get their own favicon.
+
+### Performance
+- **Faster Agent State**: Reworked conversation checkpoint storage to remove O(N²) growth, keeping long conversations fast.
+- **Faster Code Sandbox**: A more reliable sandbox file mount cut cold starts from roughly 76–104s to about 31s, and warm starts to about 2s.
+
+</Update>
+
 <Update label="Jun 21, 2026" description="API, Web, Desktop, Mobile, Bots">
 
 ## [API v0.20.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.20.0)

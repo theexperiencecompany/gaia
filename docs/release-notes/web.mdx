@@ -4,6 +4,30 @@ description: "Version history and changelog for the GAIA web application, includ
 icon: "browser"
 ---
 
+<Update label="Jun 30, 2026" description="API, Web, Desktop, Bots">
+
+## [Web v0.22.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.22.0)
+
+### Features
+- **The New Workflow Builder**: A redesigned builder — describe a workflow in plain language, @-mention the apps it should use (Gmail, Google Calendar, Slack, and more appear as inline chips), and let "Improve with AI" turn it into runnable steps.
+- **Flexible Triggers**: Run a workflow yourself, on a schedule, or from an app event, each with its own settings card — which calendars to watch, how far ahead to run with preset or custom intervals, whether to include all-day events — plus a toggle to notify you when runs finish.
+- **Redesigned Generated UI**: Adopted the official OpenUI React component library, themed to GAIA, so agent-generated charts, tables, and forms render consistently and support more layouts.
+- **Resume Checkout After Signup**: Picking a paid plan while logged out now sends you through signup and back into checkout, instead of showing an error.
+
+### Improvements
+- **Instant Navigation**: Upgraded to Next.js 16.2.9 with streaming loading states and per-section error boundaries, so pages load and transition faster.
+- **Marketplace Detail Pages**: Integration detail pages now show their curated content, correct tool names, and a cleaner layout.
+- **Smoother Publishing**: The publish dialog now closes immediately and takes you straight to your published integration, and stale connect parameters are cleared.
+
+### Bug Fixes
+- **Reliable Attachments**: Sending is now blocked until composer attachments finish uploading, so images are never dropped by sending mid-upload.
+- **Workflow Trigger Options**: Restored the trigger-option dropdowns in the workflow builder.
+- **Planning Header**: The chat planning header now shows an integration's name instead of its internal id.
+- **Readable Links**: Links inside your own chat bubbles are now legible.
+- **Notifications**: Fixed the notification tool's schema and UI.
+
+</Update>
+
 <Update label="Jun 21, 2026" description="API, Web, Desktop, Mobile, Bots">
 
 ## [Web v0.21.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.21.0)
