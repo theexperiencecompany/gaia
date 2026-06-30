@@ -12,7 +12,7 @@ from typing import Union
 from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm, with_llm_retry
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
@@ -114,18 +114,9 @@ class DocumentProcessor:
         data: bytes,
         suffix: str = ".pdf",
     ) -> list[DocumentSummaryModel]:
-        """
-        Process a PDF file using LlamaIndex, extract page images, and generate summaries.
-
-        Args:
-            pdf_data: Raw PDF file bytes
-            filename: Name of the PDF file
-
-        Returns:
-            List of DocumentSummaryModel with page images and summaries
-        """
+        """Parse a document (``data`` bytes, ``suffix`` extension) into pages and
+        summarize each page with the default model for retrieval."""
         try:
-            # Save PDF to temporary file for LlamaIndex processing
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
                 temp_path = temp_file.name
                 temp_file.write(data)
@@ -134,7 +125,6 @@ class DocumentProcessor:
                 file_path=temp_path,
             )
 
-            # Clean up temporary file
             os.remove(temp_path)
 
             if isinstance(result, list):
@@ -142,7 +132,9 @@ class DocumentProcessor:
 
             md_documents = await result.aget_markdown_documents(split_by_page=True)
 
-            summarized_pages = await self.llm.abatch(
+            # with_llm_retry adds the same transient-error retry every other LLM
+            # call gets; abatch summarizes all pages concurrently.
+            summarized_pages = await with_llm_retry(self.llm).abatch(
                 inputs=[
                     [
                         {
@@ -167,7 +159,7 @@ class DocumentProcessor:
                         page_number=i + 1,
                         content=md_documents[i].text,
                     ),
-                    summary=str(summarized_pages[i]),
+                    summary=summarized_pages[i].text,
                 )
                 for i in range(len(md_documents))
             ]

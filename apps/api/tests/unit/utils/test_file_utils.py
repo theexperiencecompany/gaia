@@ -187,7 +187,9 @@ class TestProcessDoc:
         mock_parse_result.aget_markdown_documents = AsyncMock(return_value=[md_doc_1, md_doc_2])
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(return_value=mock_parse_result)
-        processor.llm = _mock_llm(batch_return=["Summary 1", "Summary 2"])
+        processor.llm = _mock_llm(
+            batch_return=[AIMessage(content="Summary 1"), AIMessage(content="Summary 2")]
+        )
 
         result = await processor.process_doc(b"pdf-bytes")
 
@@ -206,7 +208,7 @@ class TestProcessDoc:
 
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(return_value=[inner_result])
-        processor.llm = _mock_llm(batch_return=["Sum"])
+        processor.llm = _mock_llm(batch_return=[AIMessage(content="Sum")])
 
         result = await processor.process_doc(b"data")
 
@@ -220,7 +222,7 @@ class TestProcessDoc:
         mock_result.aget_markdown_documents = AsyncMock(return_value=[md_doc])
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(return_value=mock_result)
-        processor.llm = _mock_llm(batch_return=["Sum"])
+        processor.llm = _mock_llm(batch_return=[AIMessage(content="Sum")])
 
         with patch("app.utils.file_utils.tempfile.NamedTemporaryFile") as mock_tmp:
             mock_file = MagicMock()
@@ -249,7 +251,7 @@ class TestProcessDoc:
         mock_result.aget_markdown_documents = AsyncMock(return_value=[md_doc])
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(return_value=mock_result)
-        processor.llm = _mock_llm(batch_return=["Sum"])
+        processor.llm = _mock_llm(batch_return=[AIMessage(content="Sum")])
 
         with patch("app.utils.file_utils.os.remove") as mock_remove:
             await processor.process_doc(b"data")

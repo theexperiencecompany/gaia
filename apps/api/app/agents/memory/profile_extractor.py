@@ -17,10 +17,9 @@ import time
 
 from bs4 import BeautifulSoup  # For HTML cleaning
 import ftfy
-from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.client import ainvoke_structured
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
@@ -223,8 +222,6 @@ Extract: "NOT_FOUND" (this is org/repo path, not a user profile)
 
 Email: "https://github.com/microsoft/vscode/pull/123"
 Extract: "NOT_FOUND" (PR URL, not a profile)
-
-{format_instructions}
 
 Platform: {platform}
 
@@ -432,25 +429,12 @@ async def extract_username_with_llm(
             )
 
     try:
-        # Create parser
-        parser = PydanticOutputParser(pydantic_object=UsernameExtraction)
-
-        llm = get_default_llm()
-
-        # Format the prompt with parser instructions
-        formatted_prompt = EXTRACTION_PROMPT.format(
+        prompt = EXTRACTION_PROMPT.format(
             platform=platform,
             user_context=user_context,
             emails_text=emails_text,
-            format_instructions=parser.get_format_instructions(),
         )
-
-        # Generate response using LLM
-        llm_response = await ainvoke_llm(llm, formatted_prompt, label="profile_extraction")
-
-        # ``.text`` flattens Gemini's content blocks (and plain strings) to text.
-        response_content = llm_response.text
-        result: UsernameExtraction = parser.parse(response_content)
+        result = await ainvoke_structured(UsernameExtraction, prompt, label="profile_extraction")
 
         username = result.username.strip()
         confidence = result.confidence
@@ -464,7 +448,6 @@ async def extract_username_with_llm(
             f"(confidence: {confidence}) in {elapsed:.2f}s"
         )
 
-        # Debug: Log LLM response
         if settings.DEBUG_EMAIL_PROCESSING:
             debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
             llm_output_file = os.path.join(debug_dir, f"{platform}_llm_output.json")
@@ -475,7 +458,7 @@ async def extract_username_with_llm(
                         "username": username,
                         "confidence": confidence,
                         "elapsed_seconds": elapsed,
-                        "raw_response": response_content,
+                        "result": result.model_dump(),
                     },
                     f,
                     indent=2,
