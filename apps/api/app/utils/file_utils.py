@@ -34,12 +34,10 @@ class DocumentProcessor:
     async def process_file(
         self, file_content: bytes, content_type: str, filename: str
     ) -> Union[str, list[DocumentSummaryModel], DocumentSummaryModel]:
-        """
-        Process and summarize a file based on its content type.
+        """Process and summarize a file based on its content type.
 
         Args:
             file_content: Raw file bytes
-            file_url: URL of the uploaded file
             content_type: MIME type of the file
             filename: Name of the file
 
@@ -76,10 +74,8 @@ class DocumentProcessor:
             Summary of the image content
         """
         try:
-            # Convert the image to base64 for the LLM
             base64_image = base64.b64encode(image_data).decode("utf-8")
 
-            # Process with vision model
             response = await ainvoke_llm(
                 self.llm,
                 [
@@ -169,20 +165,10 @@ class DocumentProcessor:
             return []
 
     async def process_text(self, text_data: bytes) -> DocumentSummaryModel:
-        """
-        Process and summarize a text file.
-
-        Args:
-            text_data: Raw text file bytes
-
-        Returns:
-            Summary of the text content
-        """
+        """Process and summarize a text file."""
         try:
-            # Decode text
             text_content = text_data.decode("utf-8", errors="replace")
 
-            # Generate summary
             summary = await self._generate_text_summary(
                 text_content[:4000]
             )  # Limit to avoid token issues
@@ -224,17 +210,13 @@ class DocumentProcessor:
             return "Summary could not be generated."
 
 
-# Function to implement file description generation interface compatible with existing code
 async def generate_file_summary(
     file_content: bytes, content_type: str, filename: str
 ) -> Union[str, list[DocumentSummaryModel], DocumentSummaryModel]:
-    """
-    Generate a description for a file based on its content type.
-    Compatible with existing code interface.
+    """Generate a description for a file based on its content type.
 
     Args:
         file_content: Raw file bytes
-        file_url: URL of the uploaded file
         content_type: MIME type of the file
         filename: Name of the file
 

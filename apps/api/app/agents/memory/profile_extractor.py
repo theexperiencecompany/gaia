@@ -120,7 +120,6 @@ PLATFORM_CONFIG = {
 }
 
 
-# Structured output model
 class UsernameExtraction(BaseModel):
     """Structured output for username extraction."""
 
@@ -132,7 +131,6 @@ class UsernameExtraction(BaseModel):
     )
 
 
-# Prompt template string
 EXTRACTION_PROMPT = """You are extracting the EMAIL RECIPIENT'S username/handle on {platform} from notification emails they RECEIVED.
 
 USER CONTEXT:
@@ -406,7 +404,6 @@ async def extract_username_with_llm(
 
     emails_text = "\n---\n".join(email_context)
 
-    # Build user context
     user_context = "The recipient's name is unknown."
     if user_name:
         user_context = f"The recipient's name is {user_name}. Look for usernames/handles associated with this person."
@@ -439,7 +436,6 @@ async def extract_username_with_llm(
         username = result.username.strip()
         confidence = result.confidence
 
-        # Clean up response
         username = username.replace("@", "").replace("\\n", "").strip()
 
         elapsed = time.time() - start_time

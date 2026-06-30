@@ -56,12 +56,10 @@ class _ModerationResult(BaseModel):
     )
 
 
-# ---------------------------------------------------------------------------
 # Offline wordlist fallback. Used only when the LLM is unavailable or errors.
 # Kept intentionally small — it does not need to be a content-moderation
 # pipeline, just a safety net so publish doesn't open up to obvious slurs when
 # the moderator LLM is degraded.
-# ---------------------------------------------------------------------------
 _PROFANITY: frozenset[str] = frozenset(
     {
         "fuck",

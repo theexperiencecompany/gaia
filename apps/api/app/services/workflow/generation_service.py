@@ -124,7 +124,6 @@ def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
 def _parse_workflow_response(content: str) -> GeneratedWorkflow:
     """Parse raw LLM text into GeneratedWorkflow, handling markdown fences."""
     cleaned = content.strip()
-    # Strip markdown code fences (```json ... ``` or ``` ... ```)
     if cleaned.startswith("```"):
         first_newline = cleaned.find("\n")
         if first_newline != -1:
@@ -243,9 +242,7 @@ class WorkflowGenerationService:
 
         llm = get_default_llm()
 
-        # Use native structured output for reliable JSON generation.
-        # with_structured_output uses the LLM's function-calling / JSON schema
-        # instead of fragile prompt-based text parsing.
+        # Use native structured output (function-calling / JSON schema) instead of fragile text parsing.
         use_native_structured = hasattr(llm, "with_structured_output")
         structured_llm = None
         if use_native_structured:
