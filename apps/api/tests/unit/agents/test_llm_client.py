@@ -18,7 +18,7 @@ import pytest
 
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
-    _LLM_RETRYABLE_EXCEPTIONS,
+    LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
     _create_configurable_llm,
@@ -479,17 +479,17 @@ class TestConstants:
             ConnectionError,
             TimeoutError,
         }
-        assert expected.issubset(set(_LLM_RETRYABLE_EXCEPTIONS))
+        assert expected.issubset(set(LLM_RETRYABLE_EXCEPTIONS))
 
     def test_retryable_exceptions_isinstance_check(self) -> None:
         from google.api_core.exceptions import ResourceExhausted
 
         exc = ResourceExhausted("rate limited")
-        assert isinstance(exc, _LLM_RETRYABLE_EXCEPTIONS)
+        assert isinstance(exc, LLM_RETRYABLE_EXCEPTIONS)
 
     def test_non_retryable_exception_not_in_tuple(self) -> None:
-        assert not isinstance(ValueError("bad"), _LLM_RETRYABLE_EXCEPTIONS)
-        assert not isinstance(KeyError("missing"), _LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(KeyError("missing"), LLM_RETRYABLE_EXCEPTIONS)
 
 
 # ---------------------------------------------------------------------------

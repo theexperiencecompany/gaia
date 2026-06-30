@@ -1368,14 +1368,18 @@ def _build_workflow_prompt_context(
     )
 
 
+# Retries for the workflow-spec generation LLM call before giving up.
+_WORKFLOW_SPEC_MAX_ATTEMPTS = 3
+
+
 async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
-    """Invoke the LLM up to 3 times until it returns exactly 4 workflow specs.
-    Raises if no valid result is produced after the retries."""
+    """Invoke the LLM up to ``_WORKFLOW_SPEC_MAX_ATTEMPTS`` times until it returns
+    exactly 4 workflow specs. Raises if no valid result is produced after the retries."""
     llm = get_default_llm()
     structured_llm = llm.with_structured_output(_WorkflowList)
 
     last_error: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(_WORKFLOW_SPEC_MAX_ATTEMPTS):
         try:
             candidate: _WorkflowList = await ainvoke_llm(
                 structured_llm,
@@ -1403,7 +1407,9 @@ async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
 
     if last_error is not None:
         raise last_error
-    raise RuntimeError("LLM did not return exactly 4 workflow specs after 3 attempts")
+    raise RuntimeError(
+        f"LLM did not return exactly 4 workflow specs after {_WORKFLOW_SPEC_MAX_ATTEMPTS} attempts"
+    )
 
 
 async def _build_one_workflow(

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, TypeVar
 
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import (
@@ -8,18 +8,19 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openrouter import ChatOpenRouter
+from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 from app.agents.llm.exceptions import (
-    _LLM_FALLBACK_EXCEPTIONS,
-    _LLM_RETRYABLE_EXCEPTIONS,
-    LLM_RETRY_MAX_ATTEMPTS,
+    LLM_FALLBACK_EXCEPTIONS,
+    LLM_RETRYABLE_EXCEPTIONS,
 )
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
     DEFAULT_MAX_TOKENS,
+    LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
@@ -29,6 +30,8 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
+_StructuredT = TypeVar("_StructuredT", bound=BaseModel)
+
 
 def with_llm_retry(runnable: Runnable) -> Runnable:
     """The single, canonical LLM retry. Wraps a (tool-bound) model runnable so
@@ -36,7 +39,7 @@ def with_llm_retry(runnable: Runnable) -> Runnable:
     the caller falls back to the default model. Applied AFTER ``bind_tools`` so
     the ``RunnableRetry`` wrapper never has to expose ``bind_tools``."""
     return runnable.with_retry(
-        retry_if_exception_type=_LLM_RETRYABLE_EXCEPTIONS,
+        retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS,
         stop_after_attempt=LLM_RETRY_MAX_ATTEMPTS,
         wait_exponential_jitter=True,
     )
@@ -290,7 +293,7 @@ async def ainvoke_llm(
     given) on a provider failure. Bugs and CancelledError propagate."""
     try:
         return await with_llm_retry(primary).ainvoke(messages, config=config)
-    except _LLM_FALLBACK_EXCEPTIONS as primary_error:
+    except LLM_FALLBACK_EXCEPTIONS as primary_error:
         if fallback is None:
             raise
         log.warning(
@@ -312,7 +315,7 @@ def invoke_llm(
     """Sync counterpart of :func:`ainvoke_llm`."""
     try:
         return with_llm_retry(primary).invoke(messages, config=config)
-    except _LLM_FALLBACK_EXCEPTIONS as primary_error:
+    except LLM_FALLBACK_EXCEPTIONS as primary_error:
         if fallback is None:
             raise
         log.warning(
@@ -321,3 +324,21 @@ def invoke_llm(
             error=str(primary_error),
         )
         return fallback.invoke(messages, config=config)
+
+
+async def ainvoke_structured(
+    schema: type[_StructuredT],
+    prompt: LanguageModelInput,
+    *,
+    label: str,
+    temperature: float = 0.1,
+    config: RunnableConfig | None = None,
+) -> _StructuredT:
+    """The single canonical one-shot structured call on the default model. ``prompt``
+    is any LangChain input — a plain string (sent as one human message) or a full
+    message list — and ``config`` carries optional run config (e.g. silent tags that
+    keep internal tokens out of the chat stream). Adds the transient-retry + fallback
+    of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
+    is not configured (see ``get_default_llm``)."""
+    structured = get_default_llm(temperature=temperature).with_structured_output(schema)
+    return await ainvoke_llm(structured, prompt, config=config, label=label)

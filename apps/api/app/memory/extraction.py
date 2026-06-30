@@ -14,7 +14,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm
-from app.agents.llm.exceptions import _LLM_FALLBACK_EXCEPTIONS
+from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS
 from app.constants.memory import (
     EXTRACTION_TRANSCRIPT_HEAD_CHARS,
     EXTRACTION_TRANSCRIPT_MAX_CHARS,
@@ -56,7 +56,7 @@ _SILENT_CONFIG: RunnableConfig = {
 # Provider failures and malformed structured output both degrade to None so the
 # memory helper never breaks the chat that spawned it.
 _STRUCTURED_FAILURE_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    *_LLM_FALLBACK_EXCEPTIONS,
+    *LLM_FALLBACK_EXCEPTIONS,
     ValidationError,
 )
 

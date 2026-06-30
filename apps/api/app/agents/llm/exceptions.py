@@ -23,9 +23,6 @@ from openrouter.errors import (
     TooManyRequestsResponseError,
 )
 
-# Attempts for the model-level transient-error retry in the agent model node.
-LLM_RETRY_MAX_ATTEMPTS = 3
-
 # OpenRouter SDK (the ``openrouter`` package used by ``langchain-openrouter``)
 # transient response/network failures — worth retrying. The non-transient ones
 # (402 out-of-credits, 401/403 auth, 404, 400/422) are deliberately excluded so
@@ -47,7 +44,7 @@ _OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
 # provider's own quota, distinct from the application rate limiter
 # (``LangChainRateLimitException``) which must NOT be retried. Covers both Gemini
 # (google-api-core) and OpenRouter so retry is provider-agnostic.
-_LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     # Gemini (google-api-core)
     ResourceExhausted,
     ServiceUnavailable,
@@ -66,7 +63,7 @@ _LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
 # must fail loud, not silently downgrade the model. ``OpenRouterError`` is the base of
 # every OpenRouter response error (new error types are covered automatically);
 # ``NoResponseError`` is the SDK's connection failure and is not an ``OpenRouterError``.
-_LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
+LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     OpenRouterError,  # every OpenRouter response error, incl. 402 insufficient credits
     NoResponseError,
     GoogleAPICallError,  # every Gemini google-api-core error
@@ -76,7 +73,7 @@ _LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
 
 # chatbot.py one-shot helper: operational failures degrade to a friendly message;
 # programming bugs (TypeError, KeyError, ...) and CancelledError stay fail-loud.
-_CHATBOT_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
+CHATBOT_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     RuntimeError,
-    *_LLM_FALLBACK_EXCEPTIONS,
+    *LLM_FALLBACK_EXCEPTIONS,
 )

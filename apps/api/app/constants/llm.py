@@ -15,6 +15,11 @@ SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
+
+# Attempts for the model-level transient-error retry before the caller falls back
+# to the default model (see with_llm_retry in app/agents/llm/client.py).
+LLM_RETRY_MAX_ATTEMPTS = 3
+
 # Context window of the default model below, in input tokens. The summarization /
 # compaction middleware trigger on a fraction of this, and get_default_llm() feeds
 # it to the model's profile (LangChain has no profile for newer models). Update it
