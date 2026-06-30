@@ -37,7 +37,9 @@ def mark_offload(additional_kwargs: dict, info: OffloadInfo) -> dict:
 
 def read_offload(message: ToolMessage) -> OffloadInfo | None:
     """Extract the offload marker from a tool message, or None if absent."""
-    kwargs = getattr(message, "additional_kwargs", None) or {}
+    kwargs = getattr(message, "additional_kwargs", None)
+    if not isinstance(kwargs, dict):
+        return None
     info = kwargs.get(OFFLOAD_KEY)
     if isinstance(info, dict) and isinstance(info.get("path"), str):
         return info  # type: ignore[return-value]
@@ -60,7 +62,11 @@ def pop_offload_descriptor(result: object) -> OffloadInfo | None:
 
 
 def tools_for_offload(info: OffloadInfo) -> list[str]:
-    """Mining tools to surface for an offload: jq for structured data, grep for text."""
-    if info["fmt"] in OFFLOAD_JSON_FORMATS:
+    """Mining tools to surface for an offload: jq for structured data, grep for text.
+
+    Tolerant of a missing/unknown ``fmt`` (defaults to grep) so it never raises on
+    a marker that only satisfied ``read_offload``'s ``path`` check.
+    """
+    if info.get("fmt") in OFFLOAD_JSON_FORMATS:
         return [JQ_TOOL_NAME, GREP_TOOL_NAME]
     return [GREP_TOOL_NAME]

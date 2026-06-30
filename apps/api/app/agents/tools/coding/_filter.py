@@ -118,6 +118,8 @@ async def run_file_filter(
         return f"Error: {e}"
 
     rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
+    if not rel:
+        return "Error: path must be a file inside the workspace, not the workspace root"
 
     try:
         program = _resolve_binary(binary)
@@ -175,26 +177,48 @@ async def _run(
 
 
 async def _read_bounded(proc: asyncio.subprocess.Process) -> tuple[bytes, bytes, bool]:
-    """Drain stdout up to the cap (killing the process if it overruns), then stderr."""
+    """Drain stdout (to the cap, killing on overrun) and stderr CONCURRENTLY.
+
+    Reading stdout fully before stderr would deadlock: a child that fills the
+    stderr pipe (64 KiB on Linux) blocks on its stderr write and never closes
+    stdout, so the stdout read never sees EOF and the call wastes the full
+    timeout. Draining both in parallel — and continuing to drain (discard) stderr
+    past the kept cap — ensures the child can never back-pressure.
+    """
     if proc.stdout is None:
         return b"", b"", False
-    chunks: list[bytes] = []
-    total = 0
     truncated = False
-    while True:
-        chunk = await proc.stdout.read(_READ_CHUNK)
-        if not chunk:
-            break
-        chunks.append(chunk)
-        total += len(chunk)
-        if total > _MAX_OUTPUT_BYTES:
-            truncated = True
-            await _terminate(proc)
-            break
-    out = b"".join(chunks)[:_MAX_OUTPUT_BYTES]
-    err = b""
-    if proc.stderr is not None and not truncated:
-        err = await proc.stderr.read(_MAX_STDERR_BYTES)
+
+    async def drain_stdout() -> bytes:
+        nonlocal truncated
+        chunks: list[bytes] = []
+        total = 0
+        assert proc.stdout is not None
+        while True:
+            chunk = await proc.stdout.read(_READ_CHUNK)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > _MAX_OUTPUT_BYTES:
+                truncated = True
+                await _terminate(proc)
+                break
+        return b"".join(chunks)[:_MAX_OUTPUT_BYTES]
+
+    async def drain_stderr() -> bytes:
+        if proc.stderr is None:
+            return b""
+        kept = bytearray()
+        while True:
+            chunk = await proc.stderr.read(_READ_CHUNK)
+            if not chunk:
+                break
+            if len(kept) < _MAX_STDERR_BYTES:
+                kept.extend(chunk[: _MAX_STDERR_BYTES - len(kept)])
+        return bytes(kept)
+
+    out, err = await asyncio.gather(drain_stdout(), drain_stderr())
     await proc.wait()
     return out, err, truncated
 

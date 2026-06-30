@@ -21,10 +21,23 @@ from shared.py.wide_events import log
 # jq's module system (`import "x" as $d {search:"/path"};`, `include "x";`) reads
 # files OFF DISK from a program-supplied path — argv `--` cannot stop it because
 # it's in-language, not a flag. That is an arbitrary cross-workspace file-read
-# primitive, so reject any module directive. The negative lookbehind avoids
-# false-positives on a field literally named "import" (e.g. `.["import"]`). Data
-# mining never needs jq modules.
-_MODULE_DIRECTIVE = re.compile(r'(?<![\w"])(?:import|include)\s*"')
+# primitive, so reject any module directive. Data mining never needs jq modules.
+#
+# A naive `\b(import|include)\s*"` regex is bypassable: jq treats a `#` line
+# comment as inter-token whitespace, so `include #x<newline> "mod"` is a valid
+# directive that the regex misses. Neutralize string literals first (so the word
+# inside data like `contains(" import ")` isn't flagged), THEN strip `#` comments
+# (so they can't smuggle the keyword away from its string), THEN match the bare
+# keyword token. Strings are stripped before comments because a `#` inside a
+# string is not a comment.
+_JQ_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
+_JQ_COMMENT = re.compile(r"#[^\n]*")
+_MODULE_KEYWORD = re.compile(r"(?<![\w.])(?:import|include)\b")
+
+
+def _has_module_directive(query: str) -> bool:
+    stripped = _JQ_COMMENT.sub(" ", _JQ_STRING.sub('""', query))
+    return bool(_MODULE_KEYWORD.search(stripped))
 
 
 @tool
@@ -38,7 +51,7 @@ async def jq(
 ) -> str:
     """Filter a workspace JSON/JSONL file with jq, host-side (no sandbox)."""
     log.set(tool={"name": "jq", "action": "filter"})
-    if _MODULE_DIRECTIVE.search(query):
+    if _has_module_directive(query):
         return "Error: jq module loading (import/include) is not allowed."
     # `--` ends option parsing so a query starting with `-` is treated as the
     # filter, never a jq flag.
