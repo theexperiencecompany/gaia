@@ -224,10 +224,7 @@ async def read_user_file(
     start, end = page_bounds(offset, limit)
 
     def _read() -> tuple[list[str], int]:
-        base, rel = _host_base_and_rel(user_id, workspace_rel_path)
-        target = _contained(base, rel, root_label="workspace root")
-        if not target.is_file():
-            raise FileNotFoundError(workspace_rel_path)
+        target = _resolve_user_file_sync(user_id, workspace_rel_path)
         sliced: list[str] = []
         total = 0
         with target.open("r", encoding="utf-8", errors="replace") as handle:
@@ -238,6 +235,25 @@ async def read_user_file(
         return sliced, total
 
     return await asyncio.to_thread(_read)
+
+
+def _resolve_user_file_sync(user_id: str, workspace_rel_path: str) -> Path:
+    base, rel = _host_base_and_rel(user_id, workspace_rel_path)
+    target = _contained(base, rel, root_label="workspace root")
+    if not target.is_file():
+        raise FileNotFoundError(workspace_rel_path)
+    return target
+
+
+async def resolve_user_file(user_id: str, workspace_rel_path: str) -> Path:
+    """Resolve a ``/workspace``-relative path to its contained host ``Path``.
+
+    Same containment as ``read_user_file`` (``..``/symlink-escape proof). Raises
+    ``FileNotFoundError`` if missing/not a regular file and ``JuiceFSUnavailable``
+    if the host mount is absent. Use this when a caller needs the file path itself
+    (e.g. to run ``jq``/``grep`` over it) rather than paged lines.
+    """
+    return await asyncio.to_thread(_resolve_user_file_sync, user_id, workspace_rel_path)
 
 
 async def user_owns_regular_file(user_id: str, workspace_rel_path: str) -> bool:

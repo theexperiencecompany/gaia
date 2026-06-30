@@ -21,7 +21,7 @@ from app.agents.core.nodes import (
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.llm.retry_policies import SUBAGENT_RETRY_POLICY
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
-from app.agents.tools.coding import bash, read
+from app.agents.tools.coding import bash, grep, jq, read
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
@@ -77,6 +77,11 @@ def _build_scoped_tool_dict(
     scoped_tool_dict[search_memory.name] = search_memory
     scoped_tool_dict[read.name] = read
     scoped_tool_dict[bash.name] = bash
+    # Resolvable but NOT in initial_tool_ids: the offload-tools middleware binds
+    # jq/grep on demand (appends to selected_tool_ids) the moment a tool output
+    # is offloaded to a file, so they cost no default context.
+    scoped_tool_dict[jq.name] = jq
+    scoped_tool_dict[grep.name] = grep
     scoped_tool_dict[web_search_tool.name] = web_search_tool
     scoped_tool_dict[fetch_webpages.name] = fetch_webpages
     scoped_tool_dict[deep_research.name] = deep_research

@@ -134,3 +134,47 @@ EXAMPLES:
 ✅ edit("config.py", "DEBUG = False", "DEBUG = True")
 ✅ edit("script.py", "old_name", "new_name", replace_all=True)
 """
+
+JQ_TOOL = """
+Filter a single JSON or JSONL workspace file with a jq program.
+
+Built for mining files that a tool offloaded (e.g. a large Gmail fetch writes a
+JSONL file, one JSON object per line). Extracts just what you need instead of
+reading the whole file back into context. Read-only.
+
+PARAMETERS:
+- query (str): A jq program, e.g. `select(.from | contains("github")) | .subject`.
+  For JSONL, the query runs once per line (jq streams concatenated values).
+- path (str): Workspace path to ONE JSON/JSONL file. Relative paths resolve
+  against your session root; absolute `/workspace/...` paths also work.
+- raw (bool): If true (-r), emit raw strings without JSON quotes. Default false.
+
+OUTPUT:
+The jq output (one result per line), truncated with a note if very large —
+narrow the query if you hit the cap.
+
+EXAMPLES:
+- jq("select(.from | contains(\\"github\\")) | .subject", "gmail/inbox_summary.jsonl", raw=True)
+- jq("[.[] | .id] | length", "scratch/items.json")
+"""
+
+GREP_TOOL = """
+Search a single workspace file for a pattern with grep.
+
+Built for mining offloaded files when you only need the matching lines, instead
+of reading the whole file back into context. Read-only; searches ONE file.
+
+PARAMETERS:
+- pattern (str): A regular expression (or literal text) to match.
+- path (str): Workspace path to ONE file. Relative paths resolve against your
+  session root; absolute `/workspace/...` paths also work.
+- ignore_case (bool): If true (-i), match case-insensitively. Default false.
+
+OUTPUT:
+Matching lines prefixed with their 1-indexed line number (`12:matched text`),
+or "(no matches)" when nothing matches. Truncated with a note if very large.
+
+EXAMPLES:
+- grep("ERROR", "scratch/run.log")
+- grep("invoice", "gmail/inbox_summary.jsonl", ignore_case=True)
+"""

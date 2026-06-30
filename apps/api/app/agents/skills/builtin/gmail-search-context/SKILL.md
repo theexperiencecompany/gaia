@@ -70,7 +70,8 @@ Each line is one email (JSON). <extraction instructions>. Return a compact resul
 ```
 
 Then merge subagent results; dedupe by `threadId`/`id` if a chunk boundary split a thread.
-For ad-hoc filtering you can also mine the file directly: `jq -r 'select(.from | contains("github")) | .subject' <path>`.
+For ad-hoc filtering, prefer the `jq` tool, e.g.
+`jq(query='select(.from | contains("github")) | .subject', path=<path>, raw=True)`.
 
 ## Step 3: Progressive Search (when a query comes back empty)
 1. Start specific: `"quarterly report from:finance@company.com after:2025/01/01 has:attachment"`

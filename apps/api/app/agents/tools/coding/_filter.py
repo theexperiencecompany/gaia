@@ -1,0 +1,175 @@
+"""Shared execution for the read-only file-mining tools (jq, grep).
+
+Resolves a workspace path with the same canonical resolver `read` uses, then runs
+the binary over a SINGLE workspace file. Hardening (these run in the API process,
+not the sandbox):
+
+- **No shell.** ``create_subprocess_exec`` takes an argv list, so the model's
+  program/pattern is data, never parsed by a shell — `;`, `|`, `$()`, backticks,
+  redirects cannot escape. The file is passed as a separate arg and is always an
+  absolute path, so it can't be read as a flag.
+- **No inherited environment.** The child gets a minimal, secret-free env, so
+  jq's ``env``/``$ENV`` builtins (or any child) can't exfiltrate the process
+  environment (DB creds, Infisical secrets).
+- **No stdin, absolute binary.** stdin is closed; the binary is resolved to an
+  absolute path so PATH can't be hijacked.
+- **Bounded.** A wall-clock timeout and a hard output cap kill the process, so a
+  pathological program (`jq 'range(1e12)'`, ReDoS) can't hang or OOM the process.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import shutil
+
+from langchain_core.runnables.config import RunnableConfig
+
+from app.agents.tools.coding._context import canonical_path, get_session_id, get_user_id
+from app.agents.workspace.paths import WORKSPACE_ROOT
+from app.constants.log_tags import LogTag
+from app.constants.offload import FILTER_TIMEOUT_SECONDS, MAX_FILTER_OUTPUT_CHARS
+from app.services.storage import resolve_user_file
+from shared.py.wide_events import log
+
+# Read a little past the char cap (bytes ≈ chars) so multibyte output still fills
+# the display budget before truncation.
+_MAX_OUTPUT_BYTES = MAX_FILTER_OUTPUT_CHARS * 4
+_MAX_STDERR_BYTES = 4096
+_READ_CHUNK = 65536
+
+# Minimal, secret-free environment for the child. PATH is unused (we exec an
+# absolute path) but kept for any child that consults it; LC_ALL=C keeps byte
+# handling predictable.
+_SAFE_ENV = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
+
+_BIN_CACHE: dict[str, str] = {}
+
+
+def _resolve_binary(name: str) -> str:
+    path = _BIN_CACHE.get(name)
+    if path is None:
+        path = shutil.which(name)
+        if path is None:
+            raise FileNotFoundError(f"{name} binary not available on host")
+        _BIN_CACHE[name] = path
+    return path
+
+
+def _cap(text: str, *, truncated: bool) -> str:
+    if truncated or len(text) > MAX_FILTER_OUTPUT_CHARS:
+        return (
+            text[:MAX_FILTER_OUTPUT_CHARS]
+            + f"\n... [truncated at {MAX_FILTER_OUTPUT_CHARS} chars — narrow your query]"
+        )
+    return text
+
+
+async def run_file_filter(
+    *,
+    config: RunnableConfig,
+    binary: str,
+    args: list[str],
+    path: str,
+    ok_returncodes: tuple[int, ...],
+    empty_message: str,
+    error_label: str,
+) -> str:
+    """Run ``binary args… <file>`` over ONE workspace file and return its output.
+
+    ``ok_returncodes`` lists non-error exit codes (e.g. grep returns 1 for "no
+    match"); ``empty_message`` is returned when the run succeeds with no output.
+    """
+    try:
+        user_id = get_user_id(config)
+        session_id = get_session_id(config)
+        abs_path, _, _ = canonical_path(path, session_id=session_id)
+    except ValueError as e:
+        return f"Error: {e}"
+
+    rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
+
+    try:
+        program = _resolve_binary(binary)
+        target = await resolve_user_file(user_id, rel)
+        return await _run(program, args, str(target), ok_returncodes, empty_message, error_label)
+    except FileNotFoundError as e:
+        # Either the binary or the file is missing; the message says which.
+        return f"Error: {e}"
+    except Exception as e:
+        log.error(f"{LogTag.SANDBOX} {error_label} tool failed: {e}", exc_info=True)
+        return f"Error running {error_label}: {e}"
+
+
+async def _run(
+    program: str,
+    args: list[str],
+    target: str,
+    ok_returncodes: tuple[int, ...],
+    empty_message: str,
+    error_label: str,
+) -> str:
+    proc = await asyncio.create_subprocess_exec(
+        program,
+        *args,
+        target,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=_SAFE_ENV,
+    )
+    try:
+        out, err, truncated = await asyncio.wait_for(
+            _read_bounded(proc), timeout=FILTER_TIMEOUT_SECONDS
+        )
+    except TimeoutError:
+        await _terminate(proc)
+        return f"Error: {error_label} timed out after {FILTER_TIMEOUT_SECONDS}s"
+
+    # A truncated run is killed mid-stream (returncode is the kill signal), but we
+    # already have enough output — return it rather than reporting the kill.
+    if truncated:
+        return _cap(out.decode("utf-8", "replace"), truncated=True)
+
+    if proc.returncode not in ok_returncodes:
+        msg = err.decode("utf-8", "replace").strip()
+        return (
+            f"{error_label} error: {msg}"
+            if msg
+            else f"{error_label} exited with code {proc.returncode}"
+        )
+
+    text = out.decode("utf-8", "replace")
+    return _cap(text, truncated=False) if text else empty_message
+
+
+async def _read_bounded(proc: asyncio.subprocess.Process) -> tuple[bytes, bytes, bool]:
+    """Drain stdout up to the cap (killing the process if it overruns), then stderr."""
+    if proc.stdout is None:
+        return b"", b"", False
+    chunks: list[bytes] = []
+    total = 0
+    truncated = False
+    while True:
+        chunk = await proc.stdout.read(_READ_CHUNK)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > _MAX_OUTPUT_BYTES:
+            truncated = True
+            await _terminate(proc)
+            break
+    out = b"".join(chunks)[:_MAX_OUTPUT_BYTES]
+    err = b""
+    if proc.stderr is not None and not truncated:
+        err = await proc.stderr.read(_MAX_STDERR_BYTES)
+    await proc.wait()
+    return out, err, truncated
+
+
+async def _terminate(proc: asyncio.subprocess.Process) -> None:
+    if proc.returncode is None:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+            await proc.wait()

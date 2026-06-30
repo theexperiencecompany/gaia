@@ -23,6 +23,12 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
+from app.agents.workspace.offload import (
+    OffloadInfo,
+    mark_offload,
+    read_offload,
+    tools_for_offload,
+)
 from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.storage import JuiceFSUnavailable, write_session_file
@@ -68,16 +74,37 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
         context_usage = self._get_context_usage(request)
         should_compact, reason = self._should_compact(result, tool_name, context_usage)
-        if not should_compact:
+        if should_compact:
+            try:
+                result = await self._persist(result, request, reason)
+            except JuiceFSUnavailable as e:
+                log.warning(f"{LogTag.AGENT} Compaction skipped (workspace unavailable): {e}")
+            except Exception as e:
+                log.error(f"{LogTag.AGENT} Compaction failed for {tool_name}: {e}")
+
+        # Whether we just offloaded the output or the tool self-offloaded (gmail),
+        # surface the file-mining tools the moment a marker is present. Keyed on
+        # the offload itself, so it covers every producer uniformly.
+        return self._bind_offload_tools(result, request)
+
+    def _bind_offload_tools(
+        self, result: ToolMessage, request: ToolCallRequest
+    ) -> ToolMessage | Command[Any]:
+        """Append jq/grep to ``selected_tool_ids`` if ``result`` carries an offload marker.
+
+        Binds only the mining tools not already selected — selected_tool_ids is an
+        append-only reducer, so this avoids re-binding the same tool every offload
+        and never touches/overrides any other tool.
+        """
+        info = read_offload(result)
+        if info is None:
             return result
-        try:
-            return await self._persist(result, request, reason)
-        except JuiceFSUnavailable as e:
-            log.warning(f"{LogTag.AGENT} Compaction skipped (workspace unavailable): {e}")
+        state = getattr(request, "state", None) or {}
+        already = set(state.get("selected_tool_ids", []) or [])
+        to_bind = [name for name in tools_for_offload(info) if name not in already]
+        if not to_bind:
             return result
-        except Exception as e:
-            log.error(f"{LogTag.AGENT} Compaction failed for {tool_name}: {e}")
-            return result
+        return Command(update={"messages": [result], "selected_tool_ids": to_bind})
 
     def _get_context_usage(self, request: ToolCallRequest) -> float:
         try:
@@ -159,9 +186,17 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             f"[Full output ({size_kb:.1f} KB / {len(content_str)} chars) "
             f"stored at: {sandbox_path}]\n"
             f"[Do NOT `read` the whole file back into context, that undoes the offload. "
-            f"Spawn a subagent (spawn_subagent) to read and summarize {sandbox_path}, "
-            f"or use `bash`/`jq`/`grep` to extract only what you need.]"
+            f"To pull just what you need, prefer the `jq`/`grep` tools; `bash` and "
+            f"spawn_subagent also work for {sandbox_path}.]"
         )
+
+        offload: OffloadInfo = {
+            "path": sandbox_path,
+            "bytes": len(content_str.encode("utf-8")),
+            "fmt": "json",
+            "producer": tool_name,
+            "records": None,
+        }
 
         log.info(
             f"{LogTag.AGENT} Compacted {tool_name} output ({len(content_str)} chars) to {sandbox_path} ({reason})"
@@ -170,13 +205,16 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             content=body,
             tool_call_id=tool_call_id,
             name=tool_name,
-            additional_kwargs={
-                **getattr(result, "additional_kwargs", {}),
-                "workspace_path": sandbox_path,
-                "original_length": len(content_str),
-                "compacted": True,
-                "compaction_reason": reason,
-            },
+            additional_kwargs=mark_offload(
+                {
+                    **getattr(result, "additional_kwargs", {}),
+                    "workspace_path": sandbox_path,
+                    "original_length": len(content_str),
+                    "compacted": True,
+                    "compaction_reason": reason,
+                },
+                offload,
+            ),
         )
 
     def _summary(self, content: str, tool_name: str) -> str:
