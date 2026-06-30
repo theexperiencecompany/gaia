@@ -71,6 +71,19 @@ export default function LandingLayoutShell({
                 unoptimized
               />
             </Link>
+            <Link
+              href="https://www.producthunt.com/products/heygaia/launches/gaia-v0?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-gaia-v0"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Image
+                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1000528&theme=dark&t=1782806818421"
+                alt="GAIA v0 - Your Personal AI assistant for email, calendar, tasks & more | Product Hunt"
+                width={250}
+                height={54}
+                unoptimized
+              />
+            </Link>
           </div>
         )}
 
