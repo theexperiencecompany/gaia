@@ -320,7 +320,7 @@ class WorkflowGenerationService:
                     '"description": "..."}]}'
                 )
                 llm_response = await ainvoke_llm(llm, fallback_prompt, label="workflow_generation")
-                response_content = getattr(llm_response, "content", str(llm_response))
+                response_content = llm_response.text
                 try:
                     result = _parse_workflow_response(response_content)
                 except Exception as e:

@@ -2,14 +2,9 @@
 
 from typing import Any
 
-from langchain_core.output_parsers import PydanticOutputParser
-
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import mail_collection
-from app.models.mail_models import EmailComprehensiveAnalysis
 from shared.py.wide_events import MailContext, log
-
-email_comprehensive_parser = PydanticOutputParser(pydantic_object=EmailComprehensiveAnalysis)
 
 
 async def get_email_importance_summaries(

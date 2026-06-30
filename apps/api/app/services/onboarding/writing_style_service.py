@@ -4,9 +4,8 @@ from collections.abc import Awaitable, Callable
 import time
 
 from bson import ObjectId
-from langchain_core.messages import HumanMessage
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.onboarding_prompts import (
     WRITING_STYLE_EXAMPLE_PROMPT,
     WRITING_STYLE_PROMPT,
@@ -92,9 +91,6 @@ async def learn_writing_style(
 
         email_samples_text = "\n---\n".join(samples)
 
-        llm = get_default_llm()
-
-        structured_llm = llm.with_structured_output(WritingStyleOutput)
         prompt = WRITING_STYLE_PROMPT.format(
             profession=profession or "professional",
             email_samples=email_samples_text,
@@ -102,8 +98,8 @@ async def learn_writing_style(
         if on_status is not None:
             await on_status("Analyzing tone and phrasing")
         t_llm = time.monotonic()
-        result_data: WritingStyleOutput = await ainvoke_llm(
-            structured_llm, [HumanMessage(content=prompt)], label="onboarding_writing_style"
+        result_data: WritingStyleOutput = await ainvoke_structured(
+            WritingStyleOutput, prompt, label="onboarding_writing_style"
         )
 
         profile = WritingStyleProfile(
@@ -144,15 +140,12 @@ async def regenerate_example_for_style(
 ) -> WritingStyleExampleBlocks | None:
     """Generate a new example email from an edited writing style summary."""
     try:
-        llm = get_default_llm()
-
-        structured_llm = llm.with_structured_output(WritingStyleExampleOutput)
         prompt = WRITING_STYLE_EXAMPLE_PROMPT.format(
             summary=summary,
             profession=profession or "professional",
         )
-        result_data: WritingStyleExampleOutput = await ainvoke_llm(
-            structured_llm, [HumanMessage(content=prompt)], label="onboarding_writing_style_example"
+        result_data: WritingStyleExampleOutput = await ainvoke_structured(
+            WritingStyleExampleOutput, prompt, label="onboarding_writing_style_example"
         )
         return result_data.example
 

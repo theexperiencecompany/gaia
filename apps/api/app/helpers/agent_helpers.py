@@ -459,7 +459,7 @@ async def execute_graph_silent(
                 continue  # Skip silent chunks (e.g. follow-up actions generation)
 
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
-                content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
+                content = chunk.text
                 if content and config.get("agent_name") == "comms_agent":
                     complete_message += content
 

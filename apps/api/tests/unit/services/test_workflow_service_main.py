@@ -1674,7 +1674,7 @@ class TestGenerateStepsWithLLM:
         mock_llm = MagicMock(spec=["with_retry", "ainvoke"])
         mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_response = MagicMock()
-        mock_response.content = (
+        mock_response.text = (
             '{"steps": [{"title": "Parsed", "category": "gaia", "description": "From text"}]}'
         )
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
@@ -1797,7 +1797,7 @@ class TestGenerateStepsWithLLM:
         mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.with_structured_output.side_effect = NotImplementedError("Not supported")
         mock_response = MagicMock()
-        mock_response.content = (
+        mock_response.text = (
             '{"steps": [{"title": "Fallback", "category": "gaia", "description": "Worked"}]}'
         )
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)

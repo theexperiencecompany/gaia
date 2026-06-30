@@ -26,10 +26,9 @@ import time
 from typing import TypeVar
 
 from bson import ObjectId
-from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.client import ainvoke_structured
 from app.agents.memory.email_processor import fetch_emails_for_onboarding
 from app.agents.prompts.onboarding_prompts import (
     FOCUS_TODOS_PROMPT,
@@ -1131,11 +1130,9 @@ async def _create_focus_todos(
     )
 
     try:
-        llm = get_default_llm()
-        structured_llm = llm.with_structured_output(_FocusTodoList)
         t_llm = time.monotonic()
-        parsed: _FocusTodoList = await ainvoke_llm(
-            structured_llm, [HumanMessage(content=prompt)], label="onboarding_focus_todos"
+        parsed: _FocusTodoList = await ainvoke_structured(
+            _FocusTodoList, prompt, label="onboarding_focus_todos"
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
@@ -1216,11 +1213,9 @@ async def _create_todos_from_triage(
 
     t0 = time.monotonic()
     try:
-        llm = get_default_llm()
-        structured_llm = llm.with_structured_output(_TodoListFromEmails)
         t_llm = time.monotonic()
-        parsed: _TodoListFromEmails = await ainvoke_llm(
-            structured_llm, [HumanMessage(content=prompt)], label="onboarding_todos_from_emails"
+        parsed: _TodoListFromEmails = await ainvoke_structured(
+            _TodoListFromEmails, prompt, label="onboarding_todos_from_emails"
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
@@ -1375,16 +1370,11 @@ _WORKFLOW_SPEC_MAX_ATTEMPTS = 3
 async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
     """Invoke the LLM up to ``_WORKFLOW_SPEC_MAX_ATTEMPTS`` times until it returns
     exactly 4 workflow specs. Raises if no valid result is produced after the retries."""
-    llm = get_default_llm()
-    structured_llm = llm.with_structured_output(_WorkflowList)
-
     last_error: Exception | None = None
     for attempt in range(_WORKFLOW_SPEC_MAX_ATTEMPTS):
         try:
-            candidate: _WorkflowList = await ainvoke_llm(
-                structured_llm,
-                [HumanMessage(content=prompt)],
-                label="onboarding_workflow_suggestions",
+            candidate: _WorkflowList = await ainvoke_structured(
+                _WorkflowList, prompt, label="onboarding_workflow_suggestions"
             )
             if len(candidate.workflows) == 4:
                 return candidate

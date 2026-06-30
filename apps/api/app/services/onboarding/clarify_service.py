@@ -16,10 +16,9 @@ from __future__ import annotations
 import time
 from typing import Any, Literal
 
-from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.onboarding_prompts import CLARIFY_QUESTIONS_PROMPT
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -98,10 +97,8 @@ async def generate_clarify_questions(
     )
 
     try:
-        llm = get_default_llm()
-        structured_llm = llm.with_structured_output(_ClarifyQuestionList)
-        parsed: _ClarifyQuestionList = await ainvoke_llm(
-            structured_llm, [HumanMessage(content=prompt)], label="onboarding_clarify"
+        parsed: _ClarifyQuestionList = await ainvoke_structured(
+            _ClarifyQuestionList, prompt, label="onboarding_clarify"
         )
 
         by_kind = {q.kind: q for q in parsed.questions}

@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from langchain_core.messages import HumanMessage
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.client import ainvoke_llm, ainvoke_structured, get_default_llm
 from app.constants.integrations import (
     CATEGORY_INFERENCE_PROMPT,
     CONTENT_INFERENCE_PROMPT,
@@ -128,11 +128,9 @@ async def infer_integration_content(
     # any failure or an incomplete result returns None so publishing is never blocked.
     try:
         async with asyncio.timeout(_CONTENT_GENERATION_TIMEOUT_SECONDS):
-            structured_llm = get_default_llm().with_structured_output(IntegrationContent)
-            result = await ainvoke_llm(
-                structured_llm, [HumanMessage(content=prompt)], label="integration_content"
+            content = await ainvoke_structured(
+                IntegrationContent, prompt, label="integration_content"
             )
-            content = IntegrationContent.model_validate(result)
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Content generation errored for integration '{name}': {e}",
