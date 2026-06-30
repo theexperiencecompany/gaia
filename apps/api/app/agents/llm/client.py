@@ -32,6 +32,7 @@ from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
+    DEFAULT_MAX_TOKENS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
@@ -333,7 +334,15 @@ def get_default_llm(*, temperature: float = 0.1) -> BaseChatModel:
     is not configured."""
     if not settings.GOOGLE_API_KEY:
         raise RuntimeError("Default LLM not configured. Set GOOGLE_API_KEY.")
-    return ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=temperature)
+    llm = ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=temperature)
+    # LangChain resolves a model's context window from its curated profile registry,
+    # which lags new model releases (it has no profile for the current default model).
+    # Consumers that express limits as a FRACTION of the window — the summarization
+    # and compaction middleware — raise at construction without it, which fails the
+    # whole agent graph build. Supply the window here so the default model always
+    # carries it; harmless metadata for every other caller.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
 
 
 async def ainvoke_llm(

@@ -36,8 +36,8 @@ _summarization_llm: BaseChatModel | None = None
 
 
 def get_summarization_llm() -> BaseChatModel | None:
-    """Get the cached summarization LLM (Gemini Flash 2), or None if the Google
-    API key is not configured."""
+    """Get the cached summarization LLM (the default Gemini model), or None if the
+    Google API key is not configured."""
     global _summarization_llm
 
     if _summarization_llm is not None:
@@ -49,6 +49,8 @@ def get_summarization_llm() -> BaseChatModel | None:
         )
         return None
 
+    # get_default_llm() carries the model's context-window profile, which the
+    # summarization/compaction fractional triggers below require to build.
     _summarization_llm = get_default_llm()
     return _summarization_llm
 
