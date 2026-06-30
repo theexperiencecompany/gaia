@@ -575,7 +575,7 @@ function WhatsAppDemo({
           scrollbarWidth: "none",
           gap: 8,
           backgroundColor: bg,
-          backgroundImage: 'url("/whatsapp-doodle.png")',
+          backgroundImage: 'url("/whatsapp-doodle.webp")',
           backgroundRepeat: "repeat",
           backgroundSize: "404px auto",
           paddingTop: 8,

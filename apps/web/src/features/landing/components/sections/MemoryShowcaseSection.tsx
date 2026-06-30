@@ -5,6 +5,7 @@ import type { ComponentType } from "react";
 import MemoryFoldersCard from "../demo/memory-bento/MemoryFoldersCard";
 import MemoryJournalCard from "../demo/memory-bento/MemoryJournalCard";
 import MemoryRecallCard from "../demo/memory-bento/MemoryRecallCard";
+import { InViewMount } from "../shared/InViewMount";
 import LargeHeader from "../shared/LargeHeader";
 
 interface BentoCard {
@@ -52,7 +53,9 @@ export default function MemoryShowcaseSection() {
               className="flex flex-col gap-3 overflow-hidden rounded-2xl bg-zinc-800 p-3 sm:gap-4 sm:p-4 text-left"
             >
               <div className="flex-1">
-                <Visual />
+                <InViewMount minHeight="200px">
+                  <Visual />
+                </InViewMount>
               </div>
               <div>
                 <h3 className="text-base font-medium text-zinc-100">{title}</h3>
