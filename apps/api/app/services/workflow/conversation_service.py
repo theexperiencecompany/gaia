@@ -11,6 +11,10 @@ from app.services.conversation_service import (
 )
 from shared.py.wide_events import log
 
+# A workflow reuses one conversation across all runs; cap it so the doc can't grow
+# past MongoDB's 16MB limit (and fail every run with WriteError 17419).
+WORKFLOW_CONVERSATION_MAX_MESSAGES = 50
+
 
 async def get_or_create_workflow_conversation(
     workflow_id: str, user_id: str, workflow_title: str
@@ -84,9 +88,10 @@ async def add_workflow_execution_messages(
             conversation_id=conversation_id, messages=workflow_execution_messages
         )
 
-        # Use existing update_messages service
         user_dict = {"user_id": user_id}
-        await update_messages(messages_request, user_dict)
+        await update_messages(
+            messages_request, user_dict, max_messages=WORKFLOW_CONVERSATION_MAX_MESSAGES
+        )
 
     except Exception as e:
         log.error(
