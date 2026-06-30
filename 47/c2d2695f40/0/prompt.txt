@@ -1,0 +1,31 @@
+<task-notification>
+<task-id>afbbfe19b42de49b9</task-id>
+<tool-use-id>toolu_01W1gyg7GN7V23TKwgwbfo2A</tool-use-id>
+<output-file>/private/tmp/claude-502/-Users-dhruvmaradiya-conductor-workspaces-whatsapp-sender-sao-paulo/783a553b-c9e2-4006-aa59-84d97d3c36a6/tasks/afbbfe19b42de49b9.output</output-file>
+<status>completed</status>
+<summary>Agent "Security audit bash tool" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited</result>
+<usage><subagent_tokens>69</subagent_tokens><tool_uses>20</tool_uses><duration_ms>66083</duration_ms></usage>
+</task-notification>
+
+---
+
+continue
+
+---
+
+<task-notification>
+<task-id>a58de61a976f6a777</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-502/-Users-dhruvmaradiya-conductor-workspaces-whatsapp-sender-sao-paulo/783a553b-c9e2-4006-aa59-84d97d3c36a6/tasks/a58de61a976f6a777.output</output-file>
+<status>completed</status>
+<summary>Agent "Security audit bash tool" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited</result>
+<usage><subagent_tokens>193</subagent_tokens><tool_uses>17</tool_uses><duration_ms>55525</duration_ms></usage>
+</task-notification>
+
+---
+
+I now need u to write test cases for jq and grep tool and make sure it passes and write test cases that fails the code left and right that is only right test cases otherwise they are useless
