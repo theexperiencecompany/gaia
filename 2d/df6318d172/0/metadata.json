@@ -1,0 +1,208 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "2ddf6318d172",
+  "session_id": "783a553b-c9e2-4006-aa59-84d97d3c36a6",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-01T20:37:04.659647Z",
+  "branch": "perf/sandbox-juicefs-metadata-load",
+  "checkpoints_count": 7,
+  "save_step_count": 1,
+  "files_touched": [
+    "apps/api/app/agents/middleware/compaction.py",
+    "apps/api/app/agents/tools/coding/_filter.py",
+    "apps/api/app/agents/tools/coding/query_json_tool.py",
+    "apps/api/app/agents/workspace/offload.py",
+    "apps/api/tests/unit/agents/test_offload.py",
+    "apps/api/tests/unit/middleware/test_compaction_offload_bind.py",
+    "apps/api/tests/unit/tools/coding/test_query_json_tool.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e09452cf82ea",
+  "token_usage": {
+    "input_tokens": 103053,
+    "cache_creation_tokens": 4125408,
+    "cache_read_tokens": 182509106,
+    "output_tokens": 556783,
+    "api_call_count": 362
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-code-review-2026-07-01T20:11:47.065436Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "9ed3d9caba2b",
+      "timestamp": "2026-07-01T20:11:47.065436Z",
+      "native": {
+        "command": "/code-review"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/code-review",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01VANPA6tahS9eRpMpRf9vK9",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "writing-plans"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "e09452cf82ea",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 104,
+        "end": 105,
+        "entry_ids": [
+          "797a3013-65c5-4791-931e-0125c1e24fa9"
+        ],
+        "tool_use_id": "toolu_01VANPA6tahS9eRpMpRf9vK9"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01VANPA6tahS9eRpMpRf9vK9"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: writing-plans",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01Pf5Ep4CfFCEEKLKHLRA8nw",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "accurate-testing"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "e09452cf82ea",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 748,
+        "end": 749,
+        "entry_ids": [
+          "514c87ed-116d-4a7c-99d8-283be5141731"
+        ],
+        "tool_use_id": "toolu_01Pf5Ep4CfFCEEKLKHLRA8nw"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Pf5Ep4CfFCEEKLKHLRA8nw"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: accurate-testing",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 33
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-01T20:37:04.539385Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 237,
+    "human_modified": 60,
+    "human_removed": 0,
+    "total_committed": 237,
+    "total_lines_changed": 315,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 8409,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".context/attachments/1JlnAH/setup-logs.txt": 6,
+        ".context/attachments/20Yyt3/Transcript of Claude.md": 268,
+        ".context/attachments/2oO6FB/Fix errors instructions.md": 2,
+        ".context/attachments/3sYUh1/plan.md": 104,
+        ".context/attachments/7EURCs/Review request.md": 92,
+        ".context/attachments/9ppLbI/pasted_text_2026-06-29_23-18-09.txt": 837,
+        ".context/attachments/Cz7K5A/Fix errors instructions.md": 2,
+        ".context/attachments/GxXiyT/Review request.md": 92,
+        ".context/attachments/NfMEJP/Transcript of Investigate Redis issue.md": 799,
+        ".context/attachments/O1DM5F/Review request.md": 92,
+        ".context/attachments/ZWJCjM/pasted_text_2026-06-25_23-45-34.txt": 26,
+        ".context/attachments/bFSoxb/setup-logs.txt": 6,
+        ".context/attachments/comments/0dc12109-7aa8-47fe-9c5b-a2e467649523.md": 14,
+        ".context/attachments/comments/10959a9a-019c-42ee-bc26-4d884dea52e3.md": 11,
+        ".context/attachments/comments/14400083-0a04-43ae-9bea-b6f3302d92ed.md": 11,
+        ".context/attachments/comments/539fafeb-02ec-43fa-a87a-232fe04946cb.md": 13,
+        ".context/attachments/comments/55e40685-2a27-4386-8c6a-dd447dbcc33d.md": 11,
+        ".context/attachments/comments/6c2c4ada-e690-4760-b83a-53790af2c78f.md": 11,
+        ".context/attachments/comments/6ca4bab7-254d-4341-b621-c43b905e90d6.md": 11,
+        ".context/attachments/comments/70d14d53-dcee-485f-8a91-8cf1604195db.md": 11,
+        ".context/attachments/comments/7688b951-d97d-487a-be80-07c7af434eea.md": 14,
+        ".context/attachments/comments/7a299fba-1838-4360-b620-a4128c3758a1.md": 11,
+        ".context/attachments/comments/7ca620c9-c6c9-4da5-b3b9-b5c7f9a7310b.md": 11,
+        ".context/attachments/comments/82c5d3b8-f18a-454b-9440-9b3e639a2fd5.md": 11,
+        ".context/attachments/comments/9454d2eb-51d0-487b-aee3-96fb765edde6.md": 11,
+        ".context/attachments/comments/96147df5-4e04-4e81-b122-05b0f96327eb.md": 11,
+        ".context/attachments/comments/97232766-e231-4b02-b4f1-f00df8b750c2.md": 11,
+        ".context/attachments/comments/9afe9c37-505b-45a0-b588-6ba96659383d.md": 11,
+        ".context/attachments/comments/a14fd752-3bac-427f-800e-2d21629c761d.md": 11,
+        ".context/attachments/comments/a61b3033-36da-4f2e-ba4d-bbc9a32eb8b3.md": 11,
+        ".context/attachments/comments/b0d453a9-1817-4436-bb01-395350a2dfa6.md": 11,
+        ".context/attachments/comments/bbb4445c-5dc2-49c5-b970-2ed61db10593.md": 11,
+        ".context/attachments/comments/be354026-1e75-4b63-872e-2e552c5105ef.md": 11,
+        ".context/attachments/comments/c9d6830e-bf0c-4c24-99e0-367ca3718735.md": 14,
+        ".context/attachments/comments/d6775d79-aa2b-4d9b-8d89-74b19d2bc997.md": 11,
+        ".context/attachments/comments/d9d6d504-627d-47a4-b52c-057b581bffb3.md": 11,
+        ".context/attachments/comments/de87c24a-8d96-4c93-8964-369b0eebfcb7.md": 11,
+        ".context/attachments/comments/ea783ede-15bc-4392-9b5a-ea2a35064b1b.md": 11,
+        ".context/attachments/comments/ec4b9997-ff5c-4e5c-8c99-444b8ad4a5eb.md": 21,
+        ".context/attachments/comments/ecb91429-8142-483a-a7a0-b82bcc27218a.md": 11,
+        ".context/attachments/comments/f2078513-450d-4571-a536-80d4afbfe7d9.md": 11,
+        ".context/attachments/comments/f6323b67-8601-4fcb-9388-ccb5c901ba57.md": 11,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD14-3441698609.md": 97,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD18-3441698615.md": 53,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD19-3441698616.md": 57,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD1_-3441698621.md": 244,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD1l-3441698586.md": 56,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD1n-3441698590.md": 43,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD1s-3441698595.md": 41,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD1v-3441698600.md": 208,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD2H-3441698629.md": 43,
+        ".context/attachments/comments/github-PRRT_kwDOPJLSKs6KzD2J-3441698633.md": 92,
+        ".context/attachments/comments/github-general-4750454456.md": 177,
+        ".context/attachments/comments/github-general-4803864723.md": 23,
+        ".context/attachments/eyrZmb/Fix errors instructions.md": 2,
+        ".context/attachments/fb9KEX/PR instructions.md": 19,
+        ".context/attachments/gyS3Js/pasted_text_2026-06-27_18-55-43.txt": 2528,
+        ".context/attachments/nfZsru/pasted_text_2026-06-28_03-35-46.txt": 108,
+        ".context/attachments/pIpaWF/setup-logs.txt": 6,
+        ".context/attachments/qXMBUz/plan.md": 154,
+        ".context/attachments/soSxcu/pasted_text_2026-06-21_22-37-34.txt": 1305,
+        ".context/plans/conversation-level-artifact-registry-implementatio.md": 154,
+        ".context/plans/stop-comms-over-spawning-executors-on-file-uploads.md": 111,
+        ".context/plans/stop-comms-over-spawning-executors-on-uploads-crea.md": 103,
+        ".context/plans/surface-uploaded-file-content-restore-file-query.md": 104,
+        ".context/todos.md": 4
+      }
+    }
+  ]
+}
