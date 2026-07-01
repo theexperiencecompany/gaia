@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "d615842e0eee",
+  "strategy": "manual-commit",
+  "branch": "perf/sandbox-juicefs-metadata-load",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "apps/api/Dockerfile",
+    "apps/api/app/agents/core/subagents/base_subagent.py",
+    "apps/api/app/agents/middleware/compaction.py",
+    "apps/api/app/agents/middleware/factory.py",
+    "apps/api/app/agents/skills/builtin/gmail-search-context/SKILL.md",
+    "apps/api/app/agents/tools/coding/__init__.py",
+    "apps/api/app/agents/tools/coding/_filter.py",
+    "apps/api/app/agents/tools/coding/jq_tool.py",
+    "apps/api/app/agents/workspace/offload.py",
+    "apps/api/app/constants/offload.py",
+    "apps/api/app/services/composio/custom_tools/gmail_tools.py",
+    "apps/api/app/services/storage/juicefs.py",
+    "apps/api/app/services/storage/metrics.py",
+    "apps/api/app/templates/docstrings/coding_tools_docs.py",
+    "apps/api/tests/unit/agents/test_offload.py",
+    "apps/api/tests/unit/middleware/test_compaction_offload_bind.py",
+    "apps/api/tests/unit/tools/coding/test_jq_grep_tools.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d6/15842e0eee/0/metadata.json",
+      "transcript": "/d6/15842e0eee/0/full.jsonl",
+      "content_hash": "/d6/15842e0eee/0/content_hash.txt",
+      "prompt": "/d6/15842e0eee/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 95098,
+    "cache_creation_tokens": 3985030,
+    "cache_read_tokens": 123745793,
+    "output_tokens": 454908,
+    "api_call_count": 293
+  }
+}
