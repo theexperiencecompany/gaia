@@ -438,12 +438,13 @@ def _format_offload_result(
             f"Spawn {read_plan['recommended_subagents']} subagent(s) to read the line "
             f"ranges in read_plan.chunks in parallel (read offset/limit), each "
             f"triaging its slice, then merge. Or mine the file directly with the "
-            f"`jq` tool, e.g. jq(query='select(.from|contains(\"github\"))|.subject', "
-            f"path='{sandbox_path}', raw=True)."
+            f"`query_json` tool, e.g. query_json(path='{sandbox_path}', "
+            f"where=[{{\"field\":\"from\",\"op\":\"contains\",\"value\":\"github\"}}], "
+            f"fields=['subject','from'])."
         ),
         # Lifted into the structured offload marker by the tool node (this tool
         # returns a dict and cannot set additional_kwargs itself); stripped from
-        # the model-facing content. Drives the jq/grep auto-bind on offload.
+        # the model-facing content. Drives the query_json/grep auto-bind on offload.
         OFFLOAD_RESULT_KEY: offload,
     }
 
@@ -900,7 +901,7 @@ def register_gmail_custom_tools(composio: Composio):
         returned inline. When the aggregate is too large to inline, the
         tool writes a JSONL file to the session workspace and returns a
         digest + read_plan; the agent fans out parallel reads over the
-        chunks or mines it with ``bash``/``jq``/``grep``.
+        chunks or mines it with ``query_json``/``grep``.
         """
         return _summarize(_user_id(auth_credentials), request)
 

@@ -135,27 +135,36 @@ EXAMPLES:
 ✅ edit("script.py", "old_name", "new_name", replace_all=True)
 """
 
-JQ_TOOL = """
-Filter a single JSON or JSONL workspace file with a jq program.
+QUERY_JSON_TOOL = """
+Query a single JSON or JSONL workspace file: filter, project, sort, count, dedupe, group.
 
 Built for mining files that a tool offloaded (e.g. a large Gmail fetch writes a
-JSONL file, one JSON object per line). Extracts just what you need instead of
-reading the whole file back into context. Read-only.
+JSONL file, one JSON object per line — each line a record). Extracts just what
+you need instead of reading the whole file back into context. Read-only.
 
 PARAMETERS:
-- query (str): A jq program, e.g. `select(.from | contains("github")) | .subject`.
-  For JSONL, the query runs once per line (jq streams concatenated values).
-- path (str): Workspace path to ONE JSON/JSONL file. Relative paths resolve
-  against your session root; absolute `/workspace/...` paths also work.
-- raw (bool): If true (-r), emit raw strings without JSON quotes. Default false.
+- path (str): Workspace path to ONE JSON/JSONL file (relative = session root).
+- where (list): Filters as [{"field","op","value"}], combined by `match`.
+    ops: contains (case-insensitive substring), equals, not_equals, is_true,
+    is_false, exists, gt, lt, in (value is in a list-valued field like labels).
+    For regex / free-text search, use `grep` instead.
+- match (str): 'all' (AND, default) or 'any' (OR) across the filters.
+- fields (list): Only return these fields (omit = all fields).
+- sort_by (str) + order ('asc'|'desc', default 'desc').
+- limit (int): Max records to return (default 50).
+- count_only (bool): Return just the number of matches.
+- unique_by (str): Dedupe by this field (e.g. "threadId").
+- group_count_by (str): Return counts per distinct value (e.g. senders).
 
 OUTPUT:
-The jq output (one result per line), truncated with a note if very large —
-narrow the query if you hit the cap.
+Matching records as JSONL (one per line), or {"count": N}, or grouped counts.
+"(no matches)" when nothing matches. Truncated with a note if very large.
 
 EXAMPLES:
-- jq("select(.from | contains(\\"github\\")) | .subject", "gmail/inbox_summary.jsonl", raw=True)
-- jq("[.[] | .id] | length", "scratch/items.json")
+- query_json("gmail/inbox.jsonl", where=[{"field":"from","op":"contains","value":"github"}], fields=["subject","from"])
+- query_json("gmail/inbox.jsonl", where=[{"field":"isRead","op":"is_false"}], count_only=True)
+- query_json("gmail/inbox.jsonl", sort_by="time", order="desc", limit=5, fields=["subject"])
+- query_json("gmail/inbox.jsonl", group_count_by="from")
 """
 
 GREP_TOOL = """

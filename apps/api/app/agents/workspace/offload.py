@@ -15,10 +15,10 @@ from langchain_core.messages import ToolMessage
 
 from app.constants.offload import (
     GREP_TOOL_NAME,
-    JQ_TOOL_NAME,
     OFFLOAD_JSON_FORMATS,
     OFFLOAD_KEY,
     OFFLOAD_RESULT_KEY,
+    QUERY_JSON_TOOL_NAME,
 )
 
 
@@ -62,11 +62,11 @@ def pop_offload_descriptor(result: object) -> OffloadInfo | None:
 
 
 def tools_for_offload(info: OffloadInfo) -> list[str]:
-    """Mining tools to surface for an offload: jq for structured data, grep for text.
+    """Mining tools to surface for an offload: query_json for records, grep for text.
 
     Tolerant of a missing/unknown ``fmt`` (defaults to grep) so it never raises on
     a marker that only satisfied ``read_offload``'s ``path`` check.
     """
     if info.get("fmt") in OFFLOAD_JSON_FORMATS:
-        return [JQ_TOOL_NAME, GREP_TOOL_NAME]
+        return [QUERY_JSON_TOOL_NAME, GREP_TOOL_NAME]
     return [GREP_TOOL_NAME]

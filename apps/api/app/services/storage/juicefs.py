@@ -251,7 +251,7 @@ async def resolve_user_file(user_id: str, workspace_rel_path: str) -> Path:
     Same containment as ``read_user_file`` (``..``/symlink-escape proof). Raises
     ``FileNotFoundError`` if missing/not a regular file and ``JuiceFSUnavailable``
     if the host mount is absent. Use this when a caller needs the file path itself
-    (e.g. to run ``jq``/``grep`` over it) rather than paged lines.
+    (e.g. to run ``grep`` over it) rather than paged lines.
     """
     return await asyncio.to_thread(_resolve_user_file_sync, user_id, workspace_rel_path)
 

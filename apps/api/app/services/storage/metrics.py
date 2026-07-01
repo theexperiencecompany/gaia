@@ -313,7 +313,7 @@ class FsOps:
     TOOL_READ: Final[str] = "tool_read"
     TOOL_WRITE: Final[str] = "tool_write"
     TOOL_EDIT: Final[str] = "tool_edit"
-    TOOL_JQ: Final[str] = "tool_jq"
+    TOOL_QUERY_JSON: Final[str] = "tool_query_json"
     TOOL_GREP: Final[str] = "tool_grep"
 
     # Tool-internal sub-steps worth separating (writes are dominated by the

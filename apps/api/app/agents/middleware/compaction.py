@@ -90,7 +90,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
     def _bind_offload_tools(
         self, result: ToolMessage, request: ToolCallRequest
     ) -> ToolMessage | Command[Any]:
-        """Append jq/grep to ``selected_tool_ids`` if ``result`` carries an offload marker.
+        """Append query_json/grep to ``selected_tool_ids`` if ``result`` carries an offload marker.
 
         Binds only the mining tools not already selected — selected_tool_ids is an
         append-only reducer, so this avoids re-binding the same tool every offload
@@ -186,8 +186,8 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             f"[Full output ({size_kb:.1f} KB / {len(content_str)} chars) "
             f"stored at: {sandbox_path}]\n"
             f"[Do NOT `read` the whole file back into context, that undoes the offload. "
-            f"To pull just what you need, prefer the `jq`/`grep` tools; `bash` and "
-            f"spawn_subagent also work for {sandbox_path}.]"
+            f"To pull just what you need, prefer `query_json` (structured records) or "
+            f"`grep` (text); `bash` and spawn_subagent also work for {sandbox_path}.]"
         )
 
         offload: OffloadInfo = {

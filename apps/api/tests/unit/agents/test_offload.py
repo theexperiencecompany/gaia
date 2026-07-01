@@ -20,7 +20,7 @@ from app.agents.workspace.offload import (
     read_offload,
     tools_for_offload,
 )
-from app.constants.offload import GREP_TOOL_NAME, JQ_TOOL_NAME, OFFLOAD_KEY
+from app.constants.offload import GREP_TOOL_NAME, OFFLOAD_KEY, QUERY_JSON_TOOL_NAME
 
 pytestmark = pytest.mark.unit
 
@@ -93,7 +93,7 @@ def test_pop_descriptor_no_key_or_non_dict_is_none(result: object) -> None:
 
 @pytest.mark.parametrize("fmt", ["json", "jsonl"])
 def test_tools_for_offload_structured_gets_jq_and_grep(fmt: str) -> None:
-    assert tools_for_offload({**INFO, "fmt": fmt}) == [JQ_TOOL_NAME, GREP_TOOL_NAME]  # type: ignore[arg-type]
+    assert tools_for_offload({**INFO, "fmt": fmt}) == [QUERY_JSON_TOOL_NAME, GREP_TOOL_NAME]  # type: ignore[arg-type]
 
 
 def test_tools_for_offload_text_gets_grep_only() -> None:

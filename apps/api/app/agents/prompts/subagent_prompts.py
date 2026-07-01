@@ -233,9 +233,9 @@ so a nextPageToken never escapes our process, and applies a body
 normalization that strips signatures / disclaimers / unsubscribe footers
 / utm tracking (quoted replies are kept). When the aggregate response is
 large it is automatically offloaded to a JSONL file you can mine with
-`bash`/`jq`/`grep` — use `jq` to filter (e.g.
-`jq 'select(.from | contains("github")) | .subject'`),
-don't re-fetch the same window. Default fields are metadata + snippet;
+`query_json` (structured filters) or `grep` (text). e.g. filter by sender with
+query_json(path=..., where=[{"field":"from","op":"contains","value":"github"}],
+fields=["subject"]). Don't re-fetch the same window. Default fields are metadata + snippet;
 add "body" to fields when full content is needed.
 
 — SURFACING RESULTS (don't re-narrate what the card already shows)

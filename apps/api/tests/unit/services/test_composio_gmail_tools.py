@@ -590,7 +590,7 @@ class TestFetchMessages:
         assert "inline_preview" in result
         assert len(result["inline_preview"]) <= 10
         assert "hint" in result
-        assert "jq" in result["hint"]
+        assert "query_json" in result["hint"]
 
     def test_offload_skipped_when_no_conversation_id(self, mock_proxy):
         """If the run config has no vfs_session_id/thread_id, return inline."""

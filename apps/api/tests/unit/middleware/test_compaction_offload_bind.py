@@ -1,4 +1,4 @@
-"""Compaction middleware: jq/grep auto-bind on offload.
+"""Compaction middleware: query_json/grep auto-bind on offload.
 
 The bind appends the mining tools to `selected_tool_ids` (append-only reducer)
 only when a tool result carries an offload marker, deduped against what's already
@@ -37,22 +37,22 @@ def _req(selected: list) -> SimpleNamespace:
 # --- _bind_offload_tools (direct) -------------------------------------------- #
 
 
-def test_bind_appends_jq_grep_when_marker_present() -> None:
+def test_bind_appends_query_json_grep_when_marker_present() -> None:
     r = WorkspaceCompactionMiddleware()._bind_offload_tools(_marked(), _req([]))
     assert isinstance(r, Command)
-    assert r.update["selected_tool_ids"] == ["jq", "grep"]
+    assert r.update["selected_tool_ids"] == ["query_json", "grep"]
     assert r.update["messages"][0].content == "digest"  # the result still flows through
 
 
 def test_bind_dedups_already_selected() -> None:
-    r = WorkspaceCompactionMiddleware()._bind_offload_tools(_marked(), _req(["jq"]))
+    r = WorkspaceCompactionMiddleware()._bind_offload_tools(_marked(), _req(["query_json"]))
     assert isinstance(r, Command)
     assert r.update["selected_tool_ids"] == ["grep"]  # only the missing one
 
 
 def test_bind_passthrough_when_all_present() -> None:
     msg = _marked()
-    r = WorkspaceCompactionMiddleware()._bind_offload_tools(msg, _req(["jq", "grep"]))
+    r = WorkspaceCompactionMiddleware()._bind_offload_tools(msg, _req(["query_json", "grep"]))
     assert r is msg  # nothing to bind -> plain ToolMessage, no Command
 
 
@@ -70,13 +70,13 @@ def test_bind_no_marker_passthrough() -> None:
 def test_bind_handles_none_state() -> None:
     r = WorkspaceCompactionMiddleware()._bind_offload_tools(_marked(), SimpleNamespace(state=None))
     assert isinstance(r, Command)
-    assert r.update["selected_tool_ids"] == ["jq", "grep"]
+    assert r.update["selected_tool_ids"] == ["query_json", "grep"]
 
 
 def test_bind_ignores_non_str_junk_in_selected_tool_ids() -> None:
-    r = WorkspaceCompactionMiddleware()._bind_offload_tools(_marked(), _req([123, None, "jq"]))
+    r = WorkspaceCompactionMiddleware()._bind_offload_tools(_marked(), _req([123, None, "query_json"]))
     assert isinstance(r, Command)
-    assert r.update["selected_tool_ids"] == ["grep"]  # jq already there, junk ignored
+    assert r.update["selected_tool_ids"] == ["grep"]  # query_json already there, junk ignored
 
 
 # --- awrap_tool_call ordering ------------------------------------------------ #
@@ -84,7 +84,7 @@ def test_bind_ignores_non_str_junk_in_selected_tool_ids() -> None:
 
 async def test_awrap_excluded_self_offloading_tool_still_binds() -> None:
     # GMAIL_FETCH_MESSAGES is excluded from compaction, yet its lifted marker must
-    # still surface jq/grep — the bind keys on the marker, not on compaction firing.
+    # still surface query_json/grep — the bind keys on the marker, not on compaction firing.
     mw = WorkspaceCompactionMiddleware(excluded_tools={"GMAIL_FETCH_MESSAGES"})
     req = SimpleNamespace(
         tool_call={"name": "GMAIL_FETCH_MESSAGES", "id": "1"},
@@ -96,7 +96,7 @@ async def test_awrap_excluded_self_offloading_tool_still_binds() -> None:
 
     res = await mw.awrap_tool_call(req, handler)
     assert isinstance(res, Command)
-    assert res.update["selected_tool_ids"] == ["jq", "grep"]
+    assert res.update["selected_tool_ids"] == ["query_json", "grep"]
 
 
 async def test_awrap_command_result_passes_through_untouched() -> None:

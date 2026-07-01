@@ -45,7 +45,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     tesseract-ocr \
     fuse3 \
     postgresql-client \
-    jq \
     curl
 
 # JuiceFS client — needed by the host-side sidecar mount that the API writes

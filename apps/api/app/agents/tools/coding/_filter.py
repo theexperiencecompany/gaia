@@ -1,20 +1,19 @@
-"""Shared execution for the read-only file-mining tools (jq, grep).
+"""Shared execution for the read-only `grep` file-mining tool.
 
 Resolves a workspace path with the same canonical resolver `read` uses, then runs
-the binary over a SINGLE workspace file. Hardening (these run in the API process,
+the binary over a SINGLE workspace file. Hardening (this runs in the API process,
 not the sandbox):
 
 - **No shell.** ``create_subprocess_exec`` takes an argv list, so the model's
-  program/pattern is data, never parsed by a shell — `;`, `|`, `$()`, backticks,
-  redirects cannot escape. The file is passed as a separate arg and is always an
-  absolute path, so it can't be read as a flag.
-- **No inherited environment.** The child gets a minimal, secret-free env, so
-  jq's ``env``/``$ENV`` builtins (or any child) can't exfiltrate the process
-  environment (DB creds, Infisical secrets).
+  pattern is data, never parsed by a shell (`;`, `|`, `$()`, backticks, redirects
+  cannot escape). The file is a separate, absolute-path arg, so it can't be read
+  as a flag.
+- **No inherited environment.** The child gets a minimal, secret-free env, so it
+  can't exfiltrate the process environment (DB creds, Infisical secrets).
 - **No stdin, absolute binary.** stdin is closed; the binary is resolved to an
   absolute path so PATH can't be hijacked.
-- **Bounded.** A wall-clock timeout and a hard output cap kill the process, so a
-  pathological program (`jq 'range(1e12)'`, ReDoS) can't hang or OOM the process.
+- **Bounded.** A wall-clock timeout, a hard output cap, and child rlimits stop a
+  pathological pattern (ReDoS) from hanging or OOMing the process.
 """
 
 from __future__ import annotations
@@ -55,9 +54,9 @@ _BIN_CACHE: dict[str, str] = {}
 def _apply_child_limits() -> None:
     """Cap the child's memory/CPU/file-writes (runs post-fork, pre-exec).
 
-    The wall-clock timeout doesn't catch a jq program that allocates gigabytes
-    in-memory before producing any output, so bound address space directly.
-    RLIMIT_FSIZE=0 enforces the read-only contract (stdout is a pipe, unaffected).
+    Defense-in-depth for the grep child: bound address space (RLIMIT_AS) and CPU,
+    and RLIMIT_FSIZE=0 to enforce the read-only contract (stdout is a pipe, so it
+    is unaffected).
 
     Each limit is set independently and tolerantly: macOS (dev) rejects
     ``RLIMIT_AS``, and a failure here would otherwise abort the whole exec. The
