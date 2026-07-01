@@ -9,6 +9,7 @@ read path — no content parsing.
 
 from __future__ import annotations
 
+import json
 from typing import Literal, TypedDict
 
 from langchain_core.messages import ToolMessage
@@ -59,6 +60,28 @@ def pop_offload_descriptor(result: object) -> OffloadInfo | None:
     if isinstance(info, dict) and isinstance(info.get("path"), str):
         return info  # type: ignore[return-value]
     return None
+
+
+def _is_json_object(line: str) -> bool:
+    try:
+        return isinstance(json.loads(line), dict)
+    except (json.JSONDecodeError, ValueError):
+        return False
+
+
+def sniff_offload_fmt(text: str) -> Literal["json", "jsonl", "text"]:
+    """Classify an offloaded payload so the right miner (query_json/grep) is bound.
+
+    Cheap heuristic (samples a few lines, never full-parses a big blob): a leading
+    ``[`` is treated as a JSON array; a file whose first non-empty lines are all
+    JSON objects is JSONL; anything else is free text.
+    """
+    if text.lstrip()[:1] == "[":
+        return "json"
+    sample = [ln for ln in text.splitlines() if ln.strip()][:5]
+    if sample and all(_is_json_object(ln) for ln in sample):
+        return "jsonl"
+    return "text"
 
 
 def tools_for_offload(info: OffloadInfo) -> list[str]:

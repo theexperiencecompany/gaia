@@ -18,6 +18,7 @@ from app.agents.workspace.offload import (
     mark_offload,
     pop_offload_descriptor,
     read_offload,
+    sniff_offload_fmt,
     tools_for_offload,
 )
 from app.constants.offload import GREP_TOOL_NAME, OFFLOAD_KEY, QUERY_JSON_TOOL_NAME
@@ -110,3 +111,23 @@ def test_tools_for_offload_missing_fmt_defaults_to_grep() -> None:
     assert tools_for_offload({"path": "/w/x", "bytes": 1, "producer": "p", "records": None}) == [  # type: ignore[arg-type]
         GREP_TOOL_NAME
     ]
+
+
+# --- sniff_offload_fmt ------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "text,fmt",
+    [
+        ('[{"a":1}]', "json"),
+        ('   [ {"a": 1} ]', "json"),
+        ('{"a":1}\n{"b":2}', "jsonl"),
+        ('{"a": 1}', "jsonl"),
+        ("plain text\nmore text", "text"),
+        ('{"a":1}\nnot json\n{"b":2}', "text"),  # not every sampled line is an object
+        ("", "text"),
+        ("42\n43", "text"),  # bare numbers are not objects
+    ],
+)
+def test_sniff_offload_fmt(text: str, fmt: str) -> None:
+    assert sniff_offload_fmt(text) == fmt

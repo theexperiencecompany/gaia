@@ -26,8 +26,7 @@ import sys
 
 from langchain_core.runnables.config import RunnableConfig
 
-from app.agents.tools.coding._context import canonical_path, get_session_id, get_user_id
-from app.agents.workspace.paths import WORKSPACE_ROOT
+from app.agents.tools.coding._context import canonical_rel, get_session_id, get_user_id
 from app.constants.log_tags import LogTag
 from app.constants.offload import (
     FILTER_MAX_MEMORY_BYTES,
@@ -111,14 +110,9 @@ async def run_file_filter(
     """
     try:
         user_id = get_user_id(config)
-        session_id = get_session_id(config)
-        abs_path, _, _ = canonical_path(path, session_id=session_id)
+        abs_path, rel = canonical_rel(path, session_id=get_session_id(config))
     except ValueError as e:
         return f"Error: {e}"
-
-    rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
-    if not rel:
-        return "Error: path must be a file inside the workspace, not the workspace root"
 
     try:
         program = _resolve_binary(binary)

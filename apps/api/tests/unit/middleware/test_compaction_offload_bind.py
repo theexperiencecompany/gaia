@@ -7,16 +7,29 @@ selected, and it fires even for tools excluded from compaction (gmail self-offlo
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 import pytest
 
+from app.agents.middleware import compaction as compaction_mod
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
-from app.agents.workspace.offload import mark_offload
+from app.agents.tools.coding import query_json_tool
+from app.agents.tools.coding.query_json_tool import query_json
+from app.agents.workspace.offload import mark_offload, read_offload, tools_for_offload
 
 pytestmark = pytest.mark.unit
+
+
+def _persist_request() -> SimpleNamespace:
+    return SimpleNamespace(
+        tool_call={"name": "search", "id": "1", "args": {}},
+        runtime=SimpleNamespace(config={"configurable": {"user_id": "u1", "thread_id": "c1"}}),
+    )
 
 INFO = {"path": "/w/x.jsonl", "bytes": 10, "fmt": "jsonl", "producer": "GMAIL_FETCH_MESSAGES", "records": 3}
 
@@ -119,3 +132,61 @@ async def test_awrap_plain_small_output_passes_through() -> None:
         return msg
 
     assert await mw.awrap_tool_call(req, handler) is msg
+
+
+# --- _persist writes a file query_json can actually mine (the P0 regression) -- #
+
+
+async def test_persist_writes_raw_jsonl_and_query_json_can_mine_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records = [{"from": "github", "subject": "a"}, {"from": "bob", "subject": "b"}]
+    content = "\n".join(json.dumps(r) for r in records)
+    captured: dict = {}
+
+    async def fake_write(*, user_id, conversation_id, relative_path, content):
+        p = tmp_path / "offloaded"
+        p.write_text(content)
+        captured.update(path=p, rel=relative_path, content=content)
+        return p, f"/workspace/sessions/{conversation_id}/{relative_path}"
+
+    monkeypatch.setattr(compaction_mod, "write_session_file", fake_write)
+    out = await WorkspaceCompactionMiddleware()._persist(
+        ToolMessage(content=content, tool_call_id="1", name="search"), _persist_request(), "large_output"
+    )
+
+    assert captured["content"] == content  # RAW jsonl written, not a metadata wrapper
+    assert captured["rel"].endswith(".jsonl")
+    info = read_offload(out)
+    assert info is not None and info["fmt"] == "jsonl"
+
+    # THE POINT: query_json can actually query the file compaction produced.
+    with patch.object(query_json_tool, "resolve_user_file", AsyncMock(return_value=captured["path"])):
+        q = await query_json.ainvoke(
+            {"path": "tool_outputs/x.jsonl",
+             "where": [{"field": "from", "op": "contains", "value": "github"}],
+             "fields": ["subject"]},
+            config={"configurable": {"user_id": "u1", "conversation_id": "c1"}},
+        )
+    assert json.loads(q) == {"subject": "a"}
+
+
+async def test_persist_text_output_marks_grep_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = "\n".join(f"log line {i} with error" for i in range(500))
+    captured: dict = {}
+
+    async def fake_write(*, user_id, conversation_id, relative_path, content):
+        captured.update(rel=relative_path, content=content)
+        return tmp_path / "x", f"/workspace/x/{relative_path}"
+
+    monkeypatch.setattr(compaction_mod, "write_session_file", fake_write)
+    out = await WorkspaceCompactionMiddleware()._persist(
+        ToolMessage(content=content, tool_call_id="1", name="run"), _persist_request(), "large_output"
+    )
+
+    assert captured["content"] == content and captured["rel"].endswith(".txt")
+    info = read_offload(out)
+    assert info is not None and info["fmt"] == "text"
+    assert tools_for_offload(info) == ["grep"]  # query_json NOT surfaced for plain text

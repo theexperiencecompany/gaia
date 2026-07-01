@@ -27,6 +27,7 @@ from app.agents.workspace.offload import (
     OffloadInfo,
     mark_offload,
     read_offload,
+    sniff_offload_fmt,
     tools_for_offload,
 )
 from app.constants.log_tags import LogTag
@@ -160,40 +161,43 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         if not conversation_id:
             raise ValueError("compaction requires 'vfs_session_id' or 'thread_id' in configurable")
 
+        # Write the RAW output (not a metadata wrapper) so query_json/grep can mine
+        # it directly, and mark it with the sniffed format so the right miner binds.
+        # (The tool name + reason already live in the ToolMessage body below; no
+        # consumer reads a wrapper.)
+        fmt = sniff_offload_fmt(content_str)
+        ext = {"json": "json", "jsonl": "jsonl", "text": "txt"}[fmt]
         content_hash = hashlib.md5(content_str.encode(), usedforsecurity=False).hexdigest()[:8]  # nosec B324
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        relative_path = f"tool_outputs/{tool_name}_{timestamp}_{content_hash}.json"
+        relative_path = f"tool_outputs/{tool_name}_{timestamp}_{content_hash}.{ext}"
 
-        output_data: dict[str, Any] = {
-            "tool_name": tool_name,
-            "tool_call_id": tool_call_id,
-            "args": (tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args),
-            "content": content,
-            "stored_at": datetime.now(UTC).isoformat(),
-            "compaction_reason": reason,
-        }
         _, sandbox_path = await write_session_file(
             user_id=user_id,
             conversation_id=conversation_id,
             relative_path=relative_path,
-            content=json.dumps(output_data, indent=2, default=str),
+            content=content_str,
         )
 
         summary = self._summary(content_str, tool_name)
         size_kb = len(content_str) / 1024
+        mine = (
+            "prefer `query_json` (structured records) or `grep` (text)"
+            if fmt in ("json", "jsonl")
+            else "use `grep` to pull matching lines"
+        )
         body = (
             f"{summary}\n\n"
             f"[Full output ({size_kb:.1f} KB / {len(content_str)} chars) "
             f"stored at: {sandbox_path}]\n"
             f"[Do NOT `read` the whole file back into context, that undoes the offload. "
-            f"To pull just what you need, prefer `query_json` (structured records) or "
-            f"`grep` (text); `bash` and spawn_subagent also work for {sandbox_path}.]"
+            f"To pull just what you need, {mine}; `bash` and spawn_subagent also work "
+            f"for {sandbox_path}.]"
         )
 
         offload: OffloadInfo = {
             "path": sandbox_path,
             "bytes": len(content_str.encode("utf-8")),
-            "fmt": "json",
+            "fmt": fmt,
             "producer": tool_name,
             "records": None,
         }

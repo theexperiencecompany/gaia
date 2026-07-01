@@ -17,8 +17,7 @@ from typing import Annotated, Any
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.tools.coding._context import canonical_path, get_session_id, get_user_id
-from app.agents.workspace.paths import WORKSPACE_ROOT
+from app.agents.tools.coding._context import canonical_rel, get_session_id, get_user_id
 from app.constants.log_tags import LogTag
 from app.constants.offload import (
     MAX_FILTER_OUTPUT_CHARS,
@@ -29,6 +28,7 @@ from app.constants.offload import (
 from app.decorators import with_doc, with_rate_limiting
 from app.services.storage import FsOps, fs_timer, resolve_user_file
 from app.templates.docstrings.coding_tools_docs import QUERY_JSON_TOOL
+from app.utils.concurrency import loop_bound_semaphore
 from shared.py.wide_events import log
 
 # Condition operators. All are pure comparisons over already-parsed JSON values —
@@ -38,19 +38,25 @@ _OPS = frozenset(
     {"contains", "equals", "not_equals", "is_true", "is_false", "exists", "gt", "lt", "in"}
 )
 
-# Bound how many queries hold a parsed (up-to-16 MiB) record set in memory at once.
-# Created lazily and rebound if the running loop changes (test loops differ).
-_sem: asyncio.Semaphore | None = None
-_sem_loop: asyncio.AbstractEventLoop | None = None
+
+def _hashable(value: Any) -> Any:
+    """A stable hashable key for grouping/dedup — list/dict fields become a JSON string."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return json.dumps(value, sort_keys=True, default=str)
 
 
-def _query_slot() -> asyncio.Semaphore:
-    global _sem, _sem_loop
-    loop = asyncio.get_running_loop()
-    if _sem is None or _sem_loop is not loop:
-        _sem = asyncio.Semaphore(MAX_QUERY_CONCURRENCY)
-        _sem_loop = loop
-    return _sem
+def _sort_key(value: Any) -> tuple[int, Any]:
+    """Type-ranked key so heterogeneous field values never compare across types."""
+    if value is None:
+        return (0, 0)
+    if isinstance(value, bool):  # bool before int (bool is an int subclass)
+        return (1, value)
+    if isinstance(value, (int, float)):
+        return (2, value)
+    if isinstance(value, str):
+        return (3, value)
+    return (4, json.dumps(value, sort_keys=True, default=str))
 
 
 @tool
@@ -76,14 +82,9 @@ async def query_json(
     log.set(tool={"name": "query_json", "action": "query"})
     try:
         user_id = get_user_id(config)
-        session_id = get_session_id(config)
-        abs_path, _, _ = canonical_path(path, session_id=session_id)
+        abs_path, rel = canonical_rel(path, session_id=get_session_id(config))
     except ValueError as e:
         return f"Error: {e}"
-
-    rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
-    if not rel:
-        return "Error: path must be a file inside the workspace, not the workspace root"
 
     if match not in ("all", "any"):
         return "Error: match must be 'all' or 'any'"
@@ -94,7 +95,10 @@ async def query_json(
     try:
         # Hold a concurrency slot across the read + query so only a bounded number
         # of large record sets are alive at once (cap total memory).
-        async with _query_slot(), fs_timer(FsOps.TOOL_QUERY_JSON):
+        async with (
+            loop_bound_semaphore("query_json", MAX_QUERY_CONCURRENCY),
+            fs_timer(FsOps.TOOL_QUERY_JSON),
+        ):
             target = await resolve_user_file(user_id, rel)
             records, dropped, truncated = await asyncio.to_thread(_load_records, target)
             result = _apply_query(
@@ -133,13 +137,15 @@ def _load_records(target: Path) -> tuple[list[dict], int, bool]:
         try:
             data = json.loads(text)
         except (json.JSONDecodeError, RecursionError, ValueError):
-            data = None  # truncated/invalid/too-deep array — fall through to line parsing
-        if isinstance(data, list):
-            records = [r for r in data if isinstance(r, dict)]
-            if len(records) > MAX_QUERY_RECORDS:
-                records = records[:MAX_QUERY_RECORDS]
-                truncated = True
-            return records, 0, truncated
+            # Array-shaped but unparseable — almost always the byte cap cut it off.
+            # Signal truncation instead of re-parsing as JSONL (which would drop
+            # every pretty-printed line and hide the real cause).
+            return [], 0, True
+        records = [r for r in data if isinstance(r, dict)] if isinstance(data, list) else []
+        if len(records) > MAX_QUERY_RECORDS:
+            records = records[:MAX_QUERY_RECORDS]
+            truncated = True
+        return records, 0, truncated
 
     records = []
     dropped = 0
@@ -166,20 +172,21 @@ def _match_condition(record: dict, cond: dict) -> bool:
     field = cond.get("field")
     op = cond.get("op")
     value = cond.get("value")
+    present = isinstance(field, str) and field in record
     actual = record.get(field) if isinstance(field, str) else None
 
     if op == "exists":
-        return actual is not None
-    if op == "is_true":
-        return bool(actual) is True
+        return present
+    if op == "is_true":  # present AND truthy (a missing field is neither true nor false)
+        return present and bool(actual)
     if op == "is_false":
-        return not bool(actual)
+        return present and not bool(actual)
     if op == "equals":
         return actual == value
     if op == "not_equals":
         return actual != value
-    if op == "contains":
-        return isinstance(actual, str) and str(value).lower() in actual.lower()
+    if op == "contains":  # value=None must not become the literal "none"
+        return value is not None and isinstance(actual, str) and str(value).lower() in actual.lower()
     if op == "in":  # value is present in a list-valued field (e.g. labels)
         return isinstance(actual, list) and value in actual
     if op in ("gt", "lt"):
@@ -217,9 +224,13 @@ def _apply_query(
 
     if group_count_by:
         counts: dict[Any, int] = {}
+        originals: dict[Any, Any] = {}
         for r in matched:
-            counts[r.get(group_count_by)] = counts.get(r.get(group_count_by), 0) + 1
-        grouped = [{"value": v, "count": n} for v, n in counts.items()]
+            v = r.get(group_count_by)
+            k = _hashable(v)  # list/dict values would be unhashable otherwise
+            counts[k] = counts.get(k, 0) + 1
+            originals.setdefault(k, v)
+        grouped = [{"value": originals[k], "count": n} for k, n in counts.items()]
         grouped.sort(key=lambda g: g["count"], reverse=True)
         return grouped
 
@@ -227,16 +238,16 @@ def _apply_query(
         seen: set[Any] = set()
         deduped = []
         for r in matched:
-            key = r.get(unique_by)
+            key = _hashable(r.get(unique_by))
             if key not in seen:
                 seen.add(key)
                 deduped.append(r)
         matched = deduped
 
     if sort_by:
-        matched.sort(key=lambda r: (r.get(sort_by) is None, r.get(sort_by)), reverse=(order == "desc"))
+        matched.sort(key=lambda r: _sort_key(r.get(sort_by)), reverse=(order == "desc"))
 
-    matched = matched[: max(1, limit)]
+    matched = matched[: max(0, limit)]  # limit<=0 -> empty (count_only exists for counts)
 
     if fields:
         matched = [{k: r.get(k) for k in fields} for r in matched]

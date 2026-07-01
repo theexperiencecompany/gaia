@@ -10,7 +10,7 @@ Pure functions, no side effects. Safe to apply multiple times (idempotent).
 Used by ``GMAIL_FETCH_MESSAGES`` to keep typical inbox responses
 under the inline-context threshold. When the aggregate is still too big,
 ``WorkspaceCompactionMiddleware`` writes the result to a file the agent
-mines with ``bash``/``jq``/``grep``; the offloaded JSONL is meaningfully
+mines with ``query_json``/``grep``; the offloaded JSONL is meaningfully
 smaller too because every message was already normalized.
 """
 

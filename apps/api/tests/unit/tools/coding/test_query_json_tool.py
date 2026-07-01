@@ -259,3 +259,71 @@ async def test_tool_file_not_found() -> None:
     with patch.object(query_json_tool, "resolve_user_file", AsyncMock(side_effect=FileNotFoundError("x"))):
         out = await query_json.ainvoke({"path": "x.jsonl"}, config=CONFIG)
     assert out.startswith("Error: file not found")
+
+
+# --- correctness-fix regressions (brutal) ------------------------------------ #
+
+
+def test_group_count_by_list_field_does_not_crash() -> None:
+    # Gmail `labels` is a list -> was TypeError: unhashable type: 'list'.
+    recs = [{"labels": ["A", "B"]}, {"labels": ["A", "B"]}, {"labels": ["C"]}]
+    out = _apply_query(recs, where=[], match="all", fields=None, sort_by=None, order="desc",
+                       limit=50, count_only=False, unique_by=None, group_count_by="labels")
+    assert {"value": ["A", "B"], "count": 2} in out
+    assert {"value": ["C"], "count": 1} in out
+
+
+def test_unique_by_list_field_does_not_crash() -> None:
+    recs = [{"t": ["x"]}, {"t": ["x"]}, {"t": ["y"]}]
+    out = _apply_query(recs, where=[], match="all", fields=None, sort_by=None, order="desc",
+                       limit=50, count_only=False, unique_by="t", group_count_by=None)
+    assert [r["t"] for r in out] == [["x"], ["y"]]
+
+
+def test_sort_mixed_types_does_not_crash() -> None:
+    # A field that is int in some records and str in others -> was TypeError.
+    recs = [{"s": 5}, {"s": "high"}, {"s": None}, {"s": 2}]
+    out = _apply_query(recs, where=[], match="all", fields=None, sort_by="s", order="asc",
+                       limit=50, count_only=False, unique_by=None, group_count_by=None)
+    assert [r["s"] for r in out] == [None, 2, 5, "high"]  # type-ranked, no crash
+
+
+@pytest.mark.parametrize("op", ["is_false", "is_true", "exists"])
+def test_missing_field_is_neither_true_nor_false(op: str) -> None:
+    # is_false previously matched a record that simply lacked the field.
+    assert _match_condition({}, {"field": "read", "op": op}) is False
+
+
+def test_is_false_matches_explicit_false_only() -> None:
+    assert _match_condition({"read": False}, {"field": "read", "op": "is_false"}) is True
+    assert _match_condition({"read": True}, {"field": "read", "op": "is_false"}) is False
+
+
+def test_contains_none_value_no_spurious_match() -> None:
+    # value=None must not become the literal 'none' and match text containing 'none'.
+    assert _match_condition({"body": "error: none found"},
+                            {"field": "body", "op": "contains", "value": None}) is False
+
+
+def test_limit_zero_returns_empty() -> None:
+    out = _apply_query([{"a": 1}, {"a": 2}], where=[], match="all", fields=None, sort_by=None,
+                       order="desc", limit=0, count_only=False, unique_by=None, group_count_by=None)
+    assert out == []
+
+
+def test_large_array_truncation_signals_truncated_not_all_dropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A JSON array cut off by the byte cap must signal truncation, not silently
+    # reinterpret as JSONL and report every line as 'unparseable'.
+    monkeypatch.setattr(query_json_tool, "MAX_QUERY_INPUT_BYTES", 40)
+    f = tmp_path / "arr.json"
+    f.write_text(json.dumps([{"n": i} for i in range(100)]))
+    records, dropped, truncated = _load_records(f)
+    assert records == [] and truncated is True and dropped == 0
+
+
+async def test_tool_group_count_by_labels_end_to_end(tmp_path: Path) -> None:
+    with _mock_resolve(_jsonl(tmp_path)):
+        out = await query_json.ainvoke({"path": "inbox.jsonl", "group_count_by": "labels"}, config=CONFIG)
+    assert "count" in out and "Error" not in out  # list-valued group key, no crash
