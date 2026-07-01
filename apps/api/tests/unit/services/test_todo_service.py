@@ -2488,7 +2488,7 @@ class TestSyncCacheInvalidation:
         await _invalidate_goal_caches(FAKE_USER_ID, goal_id)
         m_del.assert_any_await(f"goals_cache:{FAKE_USER_ID}")
         m_del.assert_any_await(f"goal_stats_cache:{FAKE_USER_ID}")
-        m_del.assert_any_await(f"goal_cache:{goal_id}")
+        m_del.assert_any_await(f"goal_cache:{FAKE_USER_ID}:{goal_id}")
 
     async def test_invalidate_goal_caches_without_goal_id(self, mock_sync_cache):
         m_del, _ = mock_sync_cache

@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Annotated, Any
 
 from bson import ObjectId
@@ -6,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-from app.constants.cache import DEFAULT_CACHE_TTL
+from app.constants.cache import DEFAULT_CACHE_TTL, GOAL_CACHE_KEY
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import goals_collection
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -59,7 +60,7 @@ async def invalidate_goal_caches(user_id: str, goal_id: str | None = None) -> No
 
         # Invalidate specific goal cache if provided
         if goal_id:
-            cache_key_goal = f"goal_cache:{goal_id}"
+            cache_key_goal = GOAL_CACHE_KEY.format(user_id=user_id, goal_id=goal_id)
             await delete_cache(cache_key_goal)
 
         log.info(
@@ -361,7 +362,9 @@ async def generate_roadmap(
 
         if final_roadmap and isinstance(final_roadmap, dict):
             # Update the goal with the roadmap and create todos
-            success = await update_goal_with_roadmap_service(goal_id, final_roadmap)
+            success = await update_goal_with_roadmap_service(
+                goal_id, final_roadmap, user["user_id"]
+            )
             if success:
                 # Get the updated goal
                 updated_goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
@@ -481,11 +484,12 @@ async def search_goals(
 
         # Perform text search on goals collection
         # Using MongoDB text search on title and description
+        escaped_query = re.escape(query)
         search_filter = {
             "user_id": user["user_id"],
             "$or": [
-                {"title": {"$regex": query, "$options": "i"}},
-                {"description": {"$regex": query, "$options": "i"}},
+                {"title": {"$regex": escaped_query, "$options": "i"}},
+                {"description": {"$regex": escaped_query, "$options": "i"}},
             ],
         }
 
