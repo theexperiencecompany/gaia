@@ -122,13 +122,12 @@ class TestUpdateUserProfile:
         set_data = update_call[0][1]["$set"]
         assert "name" not in set_data
 
-    async def test_updates_with_extra_data(self, mock_users_collection, sample_user_doc):
+    async def test_only_allowlisted_fields_are_written(
+        self, mock_users_collection, sample_user_doc
+    ):
+        """Only name/picture/updated_at may be set — arbitrary fields are never written."""
         oid_str = str(sample_user_doc["_id"])
-        updated_doc = {
-            **sample_user_doc,
-            "_id": oid_str,
-            "timezone": "America/New_York",
-        }
+        updated_doc = {**sample_user_doc, "_id": oid_str}
 
         mock_users_collection.find_one = AsyncMock(return_value=sample_user_doc)
         mock_users_collection.update_one = AsyncMock()
@@ -138,9 +137,12 @@ class TestUpdateUserProfile:
             new_callable=AsyncMock,
             return_value=updated_doc,
         ):
-            result = await update_user_profile(oid_str, data={"timezone": "America/New_York"})
+            await update_user_profile(oid_str, name="Alice")
 
-        assert result["name"] == "Alice"
+        update_call = mock_users_collection.update_one.call_args
+        set_data = update_call[0][1]["$set"]
+        assert set(set_data.keys()) <= {"name", "picture", "updated_at"}
+        assert "timezone" not in set_data
 
     async def test_raises_500_on_picture_upload_failure(
         self, mock_users_collection, sample_user_doc

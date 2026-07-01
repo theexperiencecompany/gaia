@@ -639,7 +639,7 @@ class TestUpdateGoalWithRoadmapService:
         mock_create_project_todo.return_value = "project_123"
 
         roadmap_data = {"nodes": [{"id": "n1"}], "edges": [{"id": "e1"}]}
-        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, roadmap_data)
+        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, roadmap_data, FAKE_USER_ID)
 
         assert result is True
         mock_create_project_todo.assert_awaited_once_with(
@@ -653,7 +653,7 @@ class TestUpdateGoalWithRoadmapService:
     ):
         mock_goals_collection.find_one = AsyncMock(return_value=None)
 
-        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, {"nodes": []})
+        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, {"nodes": []}, FAKE_USER_ID)
 
         assert result is False
 
@@ -663,28 +663,27 @@ class TestUpdateGoalWithRoadmapService:
     ):
         mock_goals_collection.find_one = AsyncMock(side_effect=Exception("Connection refused"))
 
-        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, {"nodes": []})
+        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, {"nodes": []}, FAKE_USER_ID)
 
         assert result is False
 
-    async def test_skips_cache_invalidation_when_no_user_id(
+    async def test_skips_invalidation_when_goal_not_owned_by_user(
         self,
         mock_goals_collection,
         mock_invalidate_caches,
         mock_create_project_todo,
     ):
-        """If the goal document has no user_id, cache invalidation is skipped."""
-        goal_no_user = {
-            "_id": FAKE_OBJECT_ID,
-            "title": "Orphan Goal",
-            "user_id": None,
-        }
-        mock_goals_collection.find_one = AsyncMock(return_value=goal_no_user)
-        mock_create_project_todo.return_value = "proj_456"
+        """Goal lookup is scoped to the caller's user_id; a goal owned by someone
+        else is not found for this user, so the update returns False and no cache
+        invalidation runs."""
+        mock_goals_collection.find_one = AsyncMock(return_value=None)
 
-        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, {"nodes": [], "edges": []})
+        result = await update_goal_with_roadmap_service(
+            FAKE_GOAL_ID, {"nodes": [], "edges": []}, "other_user"
+        )
 
-        assert result is True
+        assert result is False
+        mock_create_project_todo.assert_not_awaited()
         mock_invalidate_caches.assert_not_awaited()
 
     async def test_uses_untitled_goal_when_title_missing(
@@ -701,7 +700,9 @@ class TestUpdateGoalWithRoadmapService:
         mock_goals_collection.find_one = AsyncMock(return_value=goal_no_title)
         mock_create_project_todo.return_value = "proj_789"
 
-        await update_goal_with_roadmap_service(FAKE_GOAL_ID, {"nodes": [], "edges": []})
+        await update_goal_with_roadmap_service(
+            FAKE_GOAL_ID, {"nodes": [], "edges": []}, FAKE_USER_ID
+        )
 
         call_args = mock_create_project_todo.call_args[0]
         assert call_args[1] == "Untitled Goal"
@@ -721,7 +722,7 @@ class TestUpdateGoalWithRoadmapService:
             "nodes": [{"id": "n1"}, {"id": "n2"}, {"id": "n3"}],
             "edges": [{"id": "e1"}, {"id": "e2"}],
         }
-        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, roadmap)
+        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, roadmap, FAKE_USER_ID)
 
         assert result is True
 

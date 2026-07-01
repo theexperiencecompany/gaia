@@ -334,6 +334,15 @@ class TestMCPClientConnect:
 
 @pytest.mark.unit
 class TestMCPClientDoConnect:
+    @pytest.fixture(autouse=True)
+    def _mock_ssrf_guard(self):
+        """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
+        with patch(
+            "app.services.mcp.mcp_client.assert_public_http_url",
+            new_callable=AsyncMock,
+        ):
+            yield
+
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
     @patch("app.services.mcp.mcp_client.BaseMCPClient")
     @patch("app.services.mcp.mcp_client.ResilientLangChainAdapter")
@@ -1754,6 +1763,15 @@ class TestDiscoverOAuthConfig:
 
 @pytest.mark.unit
 class TestProbeMcpConnection:
+    @pytest.fixture(autouse=True)
+    def _mock_ssrf_guard(self):
+        """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
+        with patch(
+            "app.services.mcp.oauth_discovery.assert_public_http_url",
+            new_callable=AsyncMock,
+        ):
+            yield
+
     async def test_auth_required(self):
         with patch(
             "app.services.mcp.oauth_discovery.extract_auth_challenge",
