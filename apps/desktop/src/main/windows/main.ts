@@ -14,9 +14,48 @@
  */
 
 import { join } from "node:path";
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, type Event, shell } from "electron";
+import { getApiOrigin } from "../api-origin";
+import { getServerUrl } from "../server";
 import { loadAppRoute } from "./load-url";
 import { closeSplashWindow } from "./splash";
+
+/**
+ * Guard top-level navigation of the main window.
+ *
+ * The renderer shares the privileged preload bridge, so any XSS or
+ * rogue redirect that navigates the window to an attacker origin would
+ * hand that origin our IPC surface. We therefore block navigation to any
+ * origin outside the app's known-good set (web server + API origin).
+ *
+ * @param event - The `will-navigate` / `will-redirect` event.
+ * @param url - The target URL being navigated to.
+ */
+function guardNavigation(event: Event, url: string): void {
+  // Web server (dev or embedded prod) and API origin are the only
+  // origins that may drive the main window — reuse the exact helpers the
+  // loader and cookie logic use so this can never drift from them.
+  const allowedOrigins = new Set([
+    new URL(getServerUrl()).origin,
+    new URL(getApiOrigin()).origin,
+  ]);
+
+  let targetOrigin: string;
+  try {
+    targetOrigin = new URL(url).origin;
+  } catch {
+    event.preventDefault();
+    return;
+  }
+
+  if (allowedOrigins.has(targetOrigin)) return;
+
+  event.preventDefault();
+
+  if (url.startsWith("https://") || url.startsWith("http://")) {
+    shell.openExternal(url);
+  }
+}
 
 /** Reference to the current main window (if any). */
 let mainWindow: BrowserWindow | null = null;
@@ -96,7 +135,7 @@ export async function createMainWindow(
       : join(__dirname, "../../resources/icons/256x256.png"),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -118,6 +157,14 @@ export async function createMainWindow(
       shell.openExternal(details.url);
     }
     return { action: "deny" };
+  });
+
+  // Block top-level navigation and redirects to untrusted origins, and
+  // forbid embedding webviews — either would expose the preload bridge.
+  mainWindow.webContents.on("will-navigate", guardNavigation);
+  mainWindow.webContents.on("will-redirect", guardNavigation);
+  mainWindow.webContents.on("will-attach-webview", (event) => {
+    event.preventDefault();
   });
 
   loadAppRoute(mainWindow, "/desktop-login", serverReady).catch(console.error);
