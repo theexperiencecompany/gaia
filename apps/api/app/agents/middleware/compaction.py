@@ -23,6 +23,13 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
+from app.agents.workspace.offload import (
+    OffloadInfo,
+    mark_offload,
+    read_offload,
+    sniff_offload_fmt,
+    tools_for_offload,
+)
 from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.storage import JuiceFSUnavailable, write_session_file
@@ -68,16 +75,37 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
         context_usage = self._get_context_usage(request)
         should_compact, reason = self._should_compact(result, tool_name, context_usage)
-        if not should_compact:
+        if should_compact:
+            try:
+                result = await self._persist(result, request, reason)
+            except JuiceFSUnavailable as e:
+                log.warning(f"{LogTag.AGENT} Compaction skipped (workspace unavailable): {e}")
+            except Exception as e:
+                log.error(f"{LogTag.AGENT} Compaction failed for {tool_name}: {e}")
+
+        # Whether we just offloaded the output or the tool self-offloaded (gmail),
+        # surface the file-mining tools the moment a marker is present. Keyed on
+        # the offload itself, so it covers every producer uniformly.
+        return self._bind_offload_tools(result, request)
+
+    def _bind_offload_tools(
+        self, result: ToolMessage, request: ToolCallRequest
+    ) -> ToolMessage | Command[Any]:
+        """Append query_json/grep to ``selected_tool_ids`` if ``result`` carries an offload marker.
+
+        Binds only the mining tools not already selected — selected_tool_ids is an
+        append-only reducer, so this avoids re-binding the same tool every offload
+        and never touches/overrides any other tool.
+        """
+        info = read_offload(result)
+        if info is None:
             return result
-        try:
-            return await self._persist(result, request, reason)
-        except JuiceFSUnavailable as e:
-            log.warning(f"{LogTag.AGENT} Compaction skipped (workspace unavailable): {e}")
+        state = getattr(request, "state", None) or {}
+        already = set(state.get("selected_tool_ids", []) or [])
+        to_bind = [name for name in tools_for_offload(info) if name not in already]
+        if not to_bind:
             return result
-        except Exception as e:
-            log.error(f"{LogTag.AGENT} Compaction failed for {tool_name}: {e}")
-            return result
+        return Command(update={"messages": [result], "selected_tool_ids": to_bind})
 
     def _get_context_usage(self, request: ToolCallRequest) -> float:
         try:
@@ -133,35 +161,46 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         if not conversation_id:
             raise ValueError("compaction requires 'vfs_session_id' or 'thread_id' in configurable")
 
+        # Write the RAW output (not a metadata wrapper) so query_json/grep can mine
+        # it directly, and mark it with the sniffed format so the right miner binds.
+        # (The tool name + reason already live in the ToolMessage body below; no
+        # consumer reads a wrapper.)
+        fmt = sniff_offload_fmt(content_str)
+        ext = {"json": "json", "jsonl": "jsonl", "text": "txt"}[fmt]
         content_hash = hashlib.md5(content_str.encode(), usedforsecurity=False).hexdigest()[:8]  # nosec B324
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        relative_path = f"tool_outputs/{tool_name}_{timestamp}_{content_hash}.json"
+        relative_path = f"tool_outputs/{tool_name}_{timestamp}_{content_hash}.{ext}"
 
-        output_data: dict[str, Any] = {
-            "tool_name": tool_name,
-            "tool_call_id": tool_call_id,
-            "args": (tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args),
-            "content": content,
-            "stored_at": datetime.now(UTC).isoformat(),
-            "compaction_reason": reason,
-        }
         _, sandbox_path = await write_session_file(
             user_id=user_id,
             conversation_id=conversation_id,
             relative_path=relative_path,
-            content=json.dumps(output_data, indent=2, default=str),
+            content=content_str,
         )
 
         summary = self._summary(content_str, tool_name)
         size_kb = len(content_str) / 1024
+        mine = (
+            "prefer `query_json` (structured records) or `grep` (text)"
+            if fmt in ("json", "jsonl")
+            else "use `grep` to pull matching lines"
+        )
         body = (
             f"{summary}\n\n"
             f"[Full output ({size_kb:.1f} KB / {len(content_str)} chars) "
             f"stored at: {sandbox_path}]\n"
             f"[Do NOT `read` the whole file back into context, that undoes the offload. "
-            f"Spawn a subagent (spawn_subagent) to read and summarize {sandbox_path}, "
-            f"or use `bash`/`jq`/`grep` to extract only what you need.]"
+            f"To pull just what you need, {mine}; `bash` and spawn_subagent also work "
+            f"for {sandbox_path}.]"
         )
+
+        offload: OffloadInfo = {
+            "path": sandbox_path,
+            "bytes": len(content_str.encode("utf-8")),
+            "fmt": fmt,
+            "producer": tool_name,
+            "records": None,
+        }
 
         log.info(
             f"{LogTag.AGENT} Compacted {tool_name} output ({len(content_str)} chars) to {sandbox_path} ({reason})"
@@ -170,13 +209,16 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             content=body,
             tool_call_id=tool_call_id,
             name=tool_name,
-            additional_kwargs={
-                **getattr(result, "additional_kwargs", {}),
-                "workspace_path": sandbox_path,
-                "original_length": len(content_str),
-                "compacted": True,
-                "compaction_reason": reason,
-            },
+            additional_kwargs=mark_offload(
+                {
+                    **getattr(result, "additional_kwargs", {}),
+                    "workspace_path": sandbox_path,
+                    "original_length": len(content_str),
+                    "compacted": True,
+                    "compaction_reason": reason,
+                },
+                offload,
+            ),
         )
 
     def _summary(self, content: str, tool_name: str) -> str:

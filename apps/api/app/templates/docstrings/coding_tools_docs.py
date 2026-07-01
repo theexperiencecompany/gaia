@@ -134,3 +134,56 @@ EXAMPLES:
 ✅ edit("config.py", "DEBUG = False", "DEBUG = True")
 ✅ edit("script.py", "old_name", "new_name", replace_all=True)
 """
+
+QUERY_JSON_TOOL = """
+Query a single JSON or JSONL workspace file: filter, project, sort, count, dedupe, group.
+
+Built for mining files that a tool offloaded (e.g. a large Gmail fetch writes a
+JSONL file, one JSON object per line — each line a record). Extracts just what
+you need instead of reading the whole file back into context. Read-only.
+
+PARAMETERS:
+- path (str): Workspace path to ONE JSON/JSONL file (relative = session root).
+- where (list): Filters as [{"field","op","value"}], combined by `match`.
+    ops: contains (case-insensitive substring), equals, not_equals, is_true,
+    is_false, exists, gt, lt, in (value is in a list-valued field like labels).
+    For regex / free-text search, use `grep` instead.
+- match (str): 'all' (AND, default) or 'any' (OR) across the filters.
+- fields (list): Only return these fields (omit = all fields).
+- sort_by (str) + order ('asc'|'desc', default 'desc').
+- limit (int): Max records to return (default 50).
+- count_only (bool): Return just the number of matches.
+- unique_by (str): Dedupe by this field (e.g. "threadId").
+- group_count_by (str): Return counts per distinct value (e.g. senders).
+
+OUTPUT:
+Matching records as JSONL (one per line), or {"count": N}, or grouped counts.
+"(no matches)" when nothing matches. Truncated with a note if very large.
+
+EXAMPLES:
+- query_json("gmail/inbox.jsonl", where=[{"field":"from","op":"contains","value":"github"}], fields=["subject","from"])
+- query_json("gmail/inbox.jsonl", where=[{"field":"isRead","op":"is_false"}], count_only=True)
+- query_json("gmail/inbox.jsonl", sort_by="time", order="desc", limit=5, fields=["subject"])
+- query_json("gmail/inbox.jsonl", group_count_by="from")
+"""
+
+GREP_TOOL = """
+Search a single workspace file for a pattern with grep.
+
+Built for mining offloaded files when you only need the matching lines, instead
+of reading the whole file back into context. Read-only; searches ONE file.
+
+PARAMETERS:
+- pattern (str): A regular expression (or literal text) to match.
+- path (str): Workspace path to ONE file. Relative paths resolve against your
+  session root; absolute `/workspace/...` paths also work.
+- ignore_case (bool): If true (-i), match case-insensitively. Default false.
+
+OUTPUT:
+Matching lines prefixed with their 1-indexed line number (`12:matched text`),
+or "(no matches)" when nothing matches. Truncated with a note if very large.
+
+EXAMPLES:
+- grep("ERROR", "scratch/run.log")
+- grep("invoice", "gmail/inbox_summary.jsonl", ignore_case=True)
+"""

@@ -262,9 +262,9 @@ Everything below is reachable via relative paths once you're there.
                        other binaries           → download card
                      Pick a descriptive filename with a real extension.
     tool_outputs/    SYSTEM-written. When a tool result is too big for context,
-                     the full payload is offloaded here as JSON and the message
-                     is shortened to a preview + this path. `cat` it to recover
-                     the full result — don't re-run the tool.
+                     the raw payload is offloaded here (JSON/JSONL/text) and the
+                     message is shortened to a preview + this path. Mine it with
+                     query_json/grep, or `cat` to recover it — don't re-run the tool.
     archives/        SYSTEM-written. Before older turns are summarized away, the
                      full history is snapshotted to `pre_summary_<ts>.json`.
                      Read it to recover a detail the summary dropped.

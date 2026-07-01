@@ -34,11 +34,22 @@ unprivileged sandbox user; it has no path to root.
 from __future__ import annotations
 
 import argparse
+import io
 import os
 from pathlib import Path
 import sys
+import tarfile
 
+from dotenv import load_dotenv
 from e2b import Template
+
+# Make `app.*` importable when run directly as `python scripts/build_e2b_template.py`
+# (sys.path[0] is the scripts/ dir, not the backend root). Matches the pattern
+# used by the other apps/api/scripts.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.agents.workspace.system_files import system_files  # noqa: E402
+from app.config.secrets import inject_infisical_secrets  # noqa: E402
 
 JUICEFS_VERSION = "1.3.0"
 JUICEFS_TARBALL = (
@@ -50,14 +61,49 @@ TEMPLATE_NAME_DEFAULT = "gaia-coder"
 MOUNT_SCRIPT_PATH = Path(__file__).parent / "mount_juicefs.sh"
 JFS_LAUNCHER_PATH = Path(__file__).parent / "jfs_launcher.py"
 
+# Shared, read-only, release-pinned system files (INDEX.md, GUIDE.md docs,
+# builtin skill bodies) are baked into the image instead of served by a live
+# JuiceFS read-only mount. They're identical for every user and only change when
+# the skill library ships, so a per-sandbox metadata-engine session for them is
+# pure waste. mount_juicefs.sh bind-mounts this dir read-only at
+# /workspace/.system; the per-user symlinks target /workspace/.system/<rel>.
+SYSTEM_BAKE_DEST = "/etc/gaia/system"
+# Staged under file_context so `.copy()` can pick it up; removed after the build.
+SYSTEM_STAGING_TARBALL = MOUNT_SCRIPT_PATH.parent / "_gaia_system.tar.gz"
+
+
+def _stage_system_tarball() -> None:
+    """Write the shared ``_system`` files to a tarball for baking into the image.
+
+    mtime is pinned to 0 so the artifact is reproducible and doesn't bust E2B's
+    build cache when the file bodies are unchanged.
+    """
+    with tarfile.open(SYSTEM_STAGING_TARBALL, "w:gz") as tar:
+        for f in system_files():
+            data = f.body.encode("utf-8")
+            info = tarfile.TarInfo(name=f.rel_path)
+            info.size = len(data)
+            info.mode = 0o644
+            info.mtime = 0
+            tar.addfile(info, io.BytesIO(data))
+
 
 def build(name: str) -> str:
+    # Load apps/api/.env, then pull secrets from Infisical (E2B_API_KEY lives
+    # there, not in .env). ENV selects the Infisical environment slug; local
+    # env / .env take precedence, and missing Infisical creds in a non-prod ENV
+    # just fall back to local env (see inject_infisical_secrets).
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    inject_infisical_secrets()
     if not os.environ.get("E2B_API_KEY"):
-        raise SystemExit("E2B_API_KEY is not set in the environment")
+        raise SystemExit("E2B_API_KEY is not set (checked Infisical and .env)")
     if not MOUNT_SCRIPT_PATH.exists():
         raise SystemExit(f"Mount script not found at {MOUNT_SCRIPT_PATH}")
     if not JFS_LAUNCHER_PATH.exists():
         raise SystemExit(f"jfs_launcher not found at {JFS_LAUNCHER_PATH}")
+
+    # Stage the baked system files into file_context (removed after the build).
+    _stage_system_tarball()
 
     # All system-level work must run as root: apt_install does (auto), but
     # run_cmd / copy default to the image's user (non-root for python:3.11).
@@ -179,6 +225,22 @@ def build(name: str) -> str:
             "chmod 0755 /etc/gaia/jfs_launcher.py",
             user="root",
         )
+        # Bake the shared, read-only system files into the image (see
+        # SYSTEM_BAKE_DEST). mount_juicefs.sh serves them via a plain read-only
+        # bind-mount — no JuiceFS client, no per-sandbox metadata-engine session.
+        # NOSONAR python:S5443 build-time staging only: fixed, code-controlled
+        # /tmp path (no attacker input), extracted into root-owned
+        # /etc/gaia/system in the next root run_cmd; never read back from /tmp.
+        .copy(SYSTEM_STAGING_TARBALL.name, "/tmp/gaia_system.tar.gz")  # NOSONAR python:S5443
+        .run_cmd(
+            f"mkdir -p {SYSTEM_BAKE_DEST} && "
+            f"tar -xzf /tmp/gaia_system.tar.gz -C {SYSTEM_BAKE_DEST} && "
+            "rm -f /tmp/gaia_system.tar.gz && "
+            f"chown -R root:root {SYSTEM_BAKE_DEST} && "
+            f"find {SYSTEM_BAKE_DEST} -type d -exec chmod 0755 {{}} + && "
+            f"find {SYSTEM_BAKE_DEST} -type f -exec chmod 0644 {{}} +",
+            user="root",
+        )
         # /proc with hidepid=invisible hides PIDs of processes the calling
         # user doesn't own. Combined with the sudo strip above, the sandbox
         # user cannot enumerate (`pgrep`, `ls /proc/`) or read the juicefs
@@ -201,7 +263,10 @@ def build(name: str) -> str:
         # E2B streams build logs; surface them so the user can see progress
         print(f"  [e2b build] {entry}", file=sys.stderr)
 
-    info = Template.build(builder, alias=name, on_build_logs=_on_log)
+    try:
+        info = Template.build(builder, alias=name, on_build_logs=_on_log)
+    finally:
+        SYSTEM_STAGING_TARBALL.unlink(missing_ok=True)
     template_id = (
         getattr(info, "template_id", None)
         or getattr(info, "id", None)

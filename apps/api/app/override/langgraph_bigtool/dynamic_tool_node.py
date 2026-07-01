@@ -21,6 +21,7 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.workspace.offload import mark_offload, pop_offload_descriptor
 from app.override.langgraph_bigtool.utils import State
 
 
@@ -245,10 +246,17 @@ class DynamicToolNode(ToolNode):
             if isinstance(result, ToolMessage):
                 return result
 
+            # A self-offloading tool (returns a dict) can't set additional_kwargs
+            # itself — lift its offload descriptor into the structured marker here,
+            # the one seam where dict results become ToolMessages. pop_* strips the
+            # descriptor so it never leaks into the model-facing content.
+            info = pop_offload_descriptor(result)
+            additional_kwargs = mark_offload({}, info) if info else {}
             return ToolMessage(
                 content=str(result) if not isinstance(result, str) else result,
                 tool_call_id=tc.get("id", ""),
                 name=tc.get("name", ""),
+                additional_kwargs=additional_kwargs,
             )
 
         return await middleware_executor.wrap_tool_invocation(

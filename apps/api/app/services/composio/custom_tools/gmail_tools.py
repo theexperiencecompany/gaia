@@ -18,7 +18,9 @@ from langgraph.config import get_config, get_stream_writer
 from pydantic import BaseModel, Field
 
 from app.agents.templates.mail_templates import build_message_view
+from app.agents.workspace.offload import OffloadInfo
 from app.constants.log_tags import LogTag
+from app.constants.offload import OFFLOAD_RESULT_KEY
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.services.composio.custom_tools.gmail_constants import (
@@ -414,6 +416,13 @@ def _format_offload_result(
         content=body,
     )
     read_plan = _build_read_plan(len(messages), file_size_bytes)
+    offload: OffloadInfo = {
+        "path": sandbox_path,
+        "bytes": file_size_bytes,
+        "fmt": "jsonl",
+        "producer": "GMAIL_FETCH_MESSAGES",
+        "records": len(messages),
+    }
     return {
         "total_messages": len(messages),
         "truncated": truncated,
@@ -428,9 +437,15 @@ def _format_offload_result(
             f"{sandbox_path} (JSONL, one message per line). Too large to read inline. "
             f"Spawn {read_plan['recommended_subagents']} subagent(s) to read the line "
             f"ranges in read_plan.chunks in parallel (read offset/limit), each "
-            f"triaging its slice, then merge. Or mine directly, e.g. "
-            f"jq -r 'select(.from | contains(\"github\")) | .subject' {sandbox_path}"
+            f"triaging its slice, then merge. Or mine the file directly with the "
+            f"`query_json` tool, e.g. query_json(path='{sandbox_path}', "
+            f"where=[{{\"field\":\"from\",\"op\":\"contains\",\"value\":\"github\"}}], "
+            f"fields=['subject','from'])."
         ),
+        # Lifted into the structured offload marker by the tool node (this tool
+        # returns a dict and cannot set additional_kwargs itself); stripped from
+        # the model-facing content. Drives the query_json/grep auto-bind on offload.
+        OFFLOAD_RESULT_KEY: offload,
     }
 
 
@@ -886,7 +901,7 @@ def register_gmail_custom_tools(composio: Composio):
         returned inline. When the aggregate is too large to inline, the
         tool writes a JSONL file to the session workspace and returns a
         digest + read_plan; the agent fans out parallel reads over the
-        chunks or mines it with ``bash``/``jq``/``grep``.
+        chunks or mines it with ``query_json``/``grep``.
         """
         return _summarize(_user_id(auth_credentials), request)
 

@@ -28,9 +28,9 @@ from app.constants.summarization import (
 from shared.py.wide_events import log
 
 # Coding tools operate on the persistent E2B workspace; their outputs are
-# already capped by the bash output limiter and the read tool's pagination,
-# so the compaction middleware should leave them alone.
-CODING_TOOL_NAMES = {"bash", "read", "write", "edit"}
+# already capped by the bash output limiter, the read tool's pagination, and the
+# query_json/grep output cap, so the compaction middleware should leave them alone.
+CODING_TOOL_NAMES = {"bash", "read", "write", "edit", "query_json", "grep"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 
 # Tools that already perform their own context-safe offload (return a small
@@ -161,7 +161,8 @@ def create_middleware_stack(
                 f"{LogTag.AGENT} Summarization middleware enabled: trigger={summarization_trigger}, keep={summarization_keep}"
             )
 
-    # Compaction middleware (always available, but respects enable flag)
+    # Compaction middleware (always available, but respects enable flag). It also
+    # binds query_json/grep when a tool output is offloaded.
     if enable_compaction:
         compaction = WorkspaceCompactionMiddleware(
             compaction_threshold=compaction_threshold,

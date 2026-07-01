@@ -197,6 +197,24 @@ async def list_session_ids(user_id: str) -> list[str]:
         return await asyncio.to_thread(_scan)
 
 
+async def sessions_root_inode(user_id: str) -> int | None:
+    """Inode of the user's ``sessions/`` dir, or None if unmounted/missing.
+
+    The watcher treats a mutating op on this inode (a session dir created or
+    removed) as "rescan to discover new/gone conversations".
+    """
+
+    def _go() -> int | None:
+        if not _is_mounted():
+            return None
+        try:
+            return (_mount_root() / "users" / user_id / "sessions").stat().st_ino
+        except OSError:
+            return None
+
+    return await asyncio.to_thread(_go)
+
+
 def _stale_in_user_dir(user_dir: Path, cutoff: datetime) -> list[tuple[str, str]]:
     sessions_dir = user_dir / "sessions"
     if not sessions_dir.is_dir():
