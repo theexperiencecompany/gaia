@@ -33,6 +33,10 @@ from app.utils.file_utils import generate_file_summary
 from app.utils.upload_validation import validate_upload
 from shared.py.wide_events import log
 
+# Client-editable file metadata fields. Anything else in the incoming payload
+# is ignored to prevent mass-assignment of protected fields (user_id, created_at…).
+ALLOWED_FILE_UPDATE_FIELDS = ("filename", "description")
+
 
 @CacheInvalidator(
     key_patterns=[
@@ -435,16 +439,20 @@ async def update_file_service(
     if not conversation_id:
         conversation_id = file_data.get("conversation_id")
 
-    # Prepare update data
-    current_time = datetime.now(UTC)
-    update_data["updated_at"] = current_time
+    # Build the $set from allowlisted fields only — never spread the raw payload.
+    set_fields: dict[str, Any] = {
+        field: update_data[field]
+        for field in ALLOWED_FILE_UPDATE_FIELDS
+        if update_data.get(field) is not None
+    }
+    set_fields["updated_at"] = datetime.now(UTC)
 
     # Generate new description if file content is provided
     if file_content:
         try:
             # Use the same file description generator as upload_file_service
-            content_type = update_data.get("type") or file_data.get("type")
-            filename = update_data.get("filename") or file_data.get("filename")
+            content_type = file_data.get("type")
+            filename = set_fields.get("filename") or file_data.get("filename")
 
             file_description = await generate_file_summary(
                 file_content=file_content,
@@ -455,18 +463,18 @@ async def update_file_service(
             # Process file description
             summary, page_wise_summary = _process_file_summary(file_description)
 
-            update_data["description"] = summary
-            update_data["page_wise_summary"] = page_wise_summary
+            set_fields["description"] = summary
+            set_fields["page_wise_summary"] = page_wise_summary
         except Exception as e:
             log.error(f"Failed to generate file description: {e!s}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}")
 
     # Check if description is being updated
-    description_updated = "description" in update_data
+    description_updated = "description" in set_fields
 
     # Update in MongoDB
     result = await files_collection.update_one(
-        {"file_id": file_id, "user_id": user_id}, {"$set": update_data}
+        {"file_id": file_id, "user_id": user_id}, {"$set": set_fields}
     )
 
     if result.modified_count == 0:
@@ -481,7 +489,7 @@ async def update_file_service(
     if description_updated:
         try:
             # Generate new embedding for the updated description
-            new_description = update_data["description"]
+            new_description = set_fields["description"]
 
             # Update in ChromaDB
             await update_file_in_chromadb(

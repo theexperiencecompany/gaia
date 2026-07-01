@@ -897,8 +897,8 @@ class TestDodoPaymentServiceInit:
 class TestVerifyWebhookSignature:
     """Tests for PaymentWebhookService.verify_webhook_signature."""
 
-    def test_returns_true_when_no_verifier_configured(self):
-        """When webhook_secret is empty, skip verification and return True."""
+    def test_returns_false_when_no_verifier_configured(self):
+        """When no verifier is configured, fail closed and reject the webhook."""
         with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = ""
             mock_settings.ENV = "production"
@@ -906,21 +906,7 @@ class TestVerifyWebhookSignature:
 
         assert svc.webhook_verifier is None
         result = svc.verify_webhook_signature("{}", {})
-        assert result is True
-
-    def test_returns_true_in_development_mode(self, webhook_service):
-        """In non-production env, skip verification."""
-        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
-            mock_settings.ENV = "development"
-            result = webhook_service.verify_webhook_signature(
-                '{"type":"test"}',
-                {
-                    "webhook-id": "id",
-                    "webhook-timestamp": "ts",
-                    "webhook-signature": "sig",
-                },
-            )
-        assert result is True
+        assert result is False
 
     def test_production_valid_signature(self):
         """In production with valid signature, returns True."""

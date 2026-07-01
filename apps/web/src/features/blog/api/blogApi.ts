@@ -1,5 +1,3 @@
-import axios from "axios";
-
 import { api } from "@/lib/api/client";
 
 interface TeamMember {
@@ -36,20 +34,18 @@ export const blogApi = {
     return response.data;
   },
 
-  createBlogWithFormData: async (
-    formData: FormData,
-    bearerToken: string,
-  ): Promise<BlogPost> => {
-    const response = await axios.post<BlogPost>(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}blogs`,
-      formData,
-      {
-        headers: {
-          Authorization: `Bearer ${bearerToken}`,
-          "Content-Type": "multipart/form-data",
-        },
-      },
-    );
-    return response.data;
+  createBlogWithFormData: async (formData: FormData): Promise<BlogPost> => {
+    // Posts to the same-origin route handler, which attaches the server-only
+    // write credential. The token is never exposed to the browser.
+    const response = await fetch("/api/blog", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create blog post (${response.status})`);
+    }
+
+    return (await response.json()) as BlogPost;
   },
 };

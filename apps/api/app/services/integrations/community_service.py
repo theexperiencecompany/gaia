@@ -1,5 +1,6 @@
 """Community marketplace service functions."""
 
+import re
 from typing import Any
 
 from app.constants.cache import COMMUNITY_CACHE_TTL
@@ -76,7 +77,7 @@ async def _search_community_integrations(
     log.info(
         f"{LogTag.INTEGRATION} ChromaDB returned no results for '{query}', falling back to MongoDB"
     )
-    search_regex = {"$regex": query, "$options": "i"}
+    search_regex = {"$regex": re.escape(query), "$options": "i"}
     mongo_query: dict[str, Any] = {
         "is_public": True,
         "$or": [

@@ -70,15 +70,8 @@ class PaymentWebhookService:
             headers: Dictionary of headers from the webhook request
         """
         if not self.webhook_verifier:
-            log.warning(
-                f"{LogTag.PAYMENT} No webhook verifier configured - skipping signature verification"
-            )
-            return True
-
-        # Skip verification in development
-        if settings.ENV != "production":
-            log.info(f"{LogTag.PAYMENT} Development mode - skipping webhook signature verification")
-            return True
+            log.error(f"{LogTag.PAYMENT} No webhook verifier configured - rejecting webhook")
+            return False
 
         try:
             log.info(

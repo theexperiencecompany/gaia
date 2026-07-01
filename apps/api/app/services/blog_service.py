@@ -2,6 +2,8 @@
 Blog service module for handling blog-related operations with optimization.
 """
 
+import re
+
 from fastapi import HTTPException, status
 
 from app.db.mongodb.collections import blog_collection
@@ -220,6 +222,7 @@ class BlogService:
         log.info(f"Searching blogs: {query}, include_content: {include_content}")
 
         skip = (page - 1) * limit
+        escaped_query = re.escape(query)
 
         # Base projection - exclude content if not needed
         projection = {
@@ -241,8 +244,8 @@ class BlogService:
                 "$match": {
                     "$or": [
                         {"$text": {"$search": query}},
-                        {"title": {"$regex": query, "$options": "i"}},
-                        {"category": {"$regex": query, "$options": "i"}},
+                        {"title": {"$regex": escaped_query, "$options": "i"}},
+                        {"category": {"$regex": escaped_query, "$options": "i"}},
                     ]
                 }
             },

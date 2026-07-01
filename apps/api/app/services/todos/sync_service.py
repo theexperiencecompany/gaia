@@ -8,6 +8,7 @@ import uuid
 
 from bson import ObjectId
 
+from app.constants.cache import GOAL_CACHE_KEY
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     goals_collection,
@@ -358,7 +359,7 @@ async def _invalidate_goal_caches(user_id: str, goal_id: str | None = None):
 
         # Invalidate specific goal cache if provided
         if goal_id:
-            cache_key_goal = f"goal_cache:{goal_id}"
+            cache_key_goal = GOAL_CACHE_KEY.format(user_id=user_id, goal_id=goal_id)
             await delete_cache(cache_key_goal)
 
         log.info(f"{LogTag.TODO} Goal caches invalidated for user {user_id}, goal {goal_id}")

@@ -4,7 +4,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_current_user_ws
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import goals_collection
 from app.decorators import tiered_rate_limit
@@ -125,6 +125,13 @@ async def websocket_generate_roadmap(websocket: WebSocket):
     the generated roadmap back to the client.
     """
     await websocket.accept()
+
+    user = await get_current_user_ws(websocket)
+    user_id = user.get("user_id")
+    if not user_id:
+        # get_current_user_ws already closed the socket with WS_1008_POLICY_VIOLATION
+        return
+
     try:
         data = await websocket.receive_json()
         goal_id = data.get("goal_id")
@@ -135,9 +142,12 @@ async def websocket_generate_roadmap(websocket: WebSocket):
             await websocket.send_json({"error": "Invalid data received"})
             return
 
-        log.set(goal={"operation": "generate_roadmap", "id": goal_id, "title": goal_title})
-        # Verify goal exists before proceeding
-        goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
+        log.set(
+            user={"id": user_id},
+            goal={"operation": "generate_roadmap", "id": goal_id, "title": goal_title},
+        )
+        # Verify the goal exists AND belongs to the authenticated user before proceeding
+        goal = await goals_collection.find_one({"_id": ObjectId(goal_id), "user_id": user_id})
         if not goal:
             log.error(f"{LogTag.API} Goal {goal_id} not found")
             await websocket.send_json({"error": "Goal not found"})
@@ -171,7 +181,9 @@ async def websocket_generate_roadmap(websocket: WebSocket):
 
             # Update the goal with the generated roadmap
             if generated_roadmap:
-                update_success = await update_goal_with_roadmap_service(goal_id, generated_roadmap)
+                update_success = await update_goal_with_roadmap_service(
+                    goal_id, generated_roadmap, user_id
+                )
 
                 if update_success:
                     # Send final success message

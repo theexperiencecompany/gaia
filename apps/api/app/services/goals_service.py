@@ -11,6 +11,7 @@ from app.agents.prompts.goal_prompts import (
     ROADMAP_INSTRUCTIONS,
     ROADMAP_JSON_STRUCTURE,
 )
+from app.constants.cache import GOAL_CACHE_KEY
 from app.db.mongodb.collections import goals_collection
 from app.db.redis import ONE_YEAR_TTL, get_cache, set_cache
 from app.models.goals_models import GoalCreate, GoalResponse, UpdateNodeRequest
@@ -169,7 +170,7 @@ async def get_goal_service(goal_id: str, user: dict) -> dict:
         raise HTTPException(status_code=403, detail="Not authenticated")
 
     log.set(service="goals_service", operation="get_goal", user_id=user_id, goal_id=goal_id)
-    cache_key = f"goal_cache:{goal_id}"
+    cache_key = GOAL_CACHE_KEY.format(user_id=user_id, goal_id=goal_id)
     cached_goal = await get_cache(cache_key)
     if cached_goal:
         log.info(f"Goal {goal_id} fetched from cache.")
@@ -178,7 +179,7 @@ async def get_goal_service(goal_id: str, user: dict) -> dict:
             return json.loads(cached_goal)
         return cached_goal
 
-    goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
+    goal = await goals_collection.find_one({"_id": ObjectId(goal_id), "user_id": user_id})
     if not goal:
         log.error(f"Goal with ID {goal_id} not found.")
         raise HTTPException(status_code=404, detail="Goal not found")
@@ -322,25 +323,25 @@ async def update_node_status_service(
     return goal_helper(updated_goal)
 
 
-async def update_goal_with_roadmap_service(goal_id: str, roadmap_data: dict) -> bool:
+async def update_goal_with_roadmap_service(goal_id: str, roadmap_data: dict, user_id: str) -> bool:
     """
     Update a goal with generated roadmap data, create todo project, and invalidate caches.
 
     Args:
         goal_id (str): The ID of the goal to update
         roadmap_data (dict): The roadmap data to save
+        user_id (str): The ID of the authenticated user who owns the goal
 
     Returns:
         bool: True if update was successful, False otherwise
     """
     try:
-        # Get the goal to find the user_id - we need this for create_goal_project_and_todo
-        goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
+        # Scope to the owning user so a goal can only be overwritten by its owner
+        goal = await goals_collection.find_one({"_id": ObjectId(goal_id), "user_id": user_id})
         if not goal:
             log.error(f"Goal {goal_id} not found for roadmap update")
             return False
 
-        user_id = goal.get("user_id")
         goal_title = goal.get("title", "Untitled Goal")
         node_count = len(roadmap_data.get("nodes", []))
         edge_count = len(roadmap_data.get("edges", []))

@@ -84,6 +84,10 @@ USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
 INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
+# Single-goal cache, namespaced by owner so one user's goal can't be served to
+# another. Read/write and every invalidation site must use this one format —
+# a divergent literal reintroduces the cross-user leak.
+GOAL_CACHE_KEY = "goal_cache:{user_id}:{goal_id}"
 STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
