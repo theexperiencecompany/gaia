@@ -3,6 +3,7 @@ import { Link } from "@heroui/link";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import type { z } from "zod";
+import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
 import { ToolCard } from "../primitives";
 import { timelineSchema } from "../promptSpecs";
@@ -113,20 +114,30 @@ export function TimelineView(props: z.infer<typeof timelineSchema>) {
                   )}
                   {hasExtra && (
                     <div className="flex flex-wrap items-center gap-2 mt-2">
-                      {item.links?.map((link) => (
-                        <Link
-                          key={`${item.title}-${link.label}-${link.url}`}
-                          href={link.url}
-                          isExternal
-                          className={
-                            link.type === "primary"
-                              ? "text-xs text-[#00bbff]"
-                              : "text-xs text-zinc-400"
-                          }
-                        >
-                          {link.label}
-                        </Link>
-                      ))}
+                      {item.links?.map((link) => {
+                        const safeHref = sanitizeRedirectUrl(String(link.url));
+                        const linkClassName =
+                          link.type === "primary"
+                            ? "text-xs text-[#00bbff]"
+                            : "text-xs text-zinc-400";
+                        return safeHref ? (
+                          <Link
+                            key={`${item.title}-${link.label}-${link.url}`}
+                            href={safeHref}
+                            isExternal
+                            className={linkClassName}
+                          >
+                            {link.label}
+                          </Link>
+                        ) : (
+                          <span
+                            key={`${item.title}-${link.label}-${link.url}`}
+                            className={linkClassName}
+                          >
+                            {link.label}
+                          </span>
+                        );
+                      })}
                       {item.actions?.map((action) => (
                         <Button
                           key={`${item.title}-${action.value}`}

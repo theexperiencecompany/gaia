@@ -2,6 +2,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { toast } from "@/lib/toast";
+import { isSafeInternalPath } from "@/lib/url-safety";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { batchSyncConversations } from "@/services/syncService";
 import { useNotificationStore } from "@/stores/notificationStore";
@@ -79,7 +80,16 @@ export function useNotificationWebSocket() {
                         label: redirectAction.label,
                         onClick: () => {
                           const url = redirectAction.config?.redirect?.url;
-                          if (url) router.push(url);
+                          // Backend/LLM-driven payload — only navigate to safe
+                          // internal relative paths to prevent open redirects.
+                          if (url && isSafeInternalPath(url)) {
+                            router.push(url);
+                          } else if (url) {
+                            console.warn(
+                              "[NotificationWS] Blocked unsafe redirect url:",
+                              url,
+                            );
+                          }
                         },
                       }
                     : undefined,
