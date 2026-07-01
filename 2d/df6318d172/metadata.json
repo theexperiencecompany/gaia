@@ -3,12 +3,13 @@
   "checkpoint_id": "2ddf6318d172",
   "strategy": "manual-commit",
   "branch": "perf/sandbox-juicefs-metadata-load",
-  "checkpoints_count": 7,
+  "checkpoints_count": 8,
   "files_touched": [
     "apps/api/app/agents/middleware/compaction.py",
     "apps/api/app/agents/tools/coding/_filter.py",
     "apps/api/app/agents/tools/coding/query_json_tool.py",
     "apps/api/app/agents/workspace/offload.py",
+    "apps/api/app/agents/workspace/operational_docs.py",
     "apps/api/tests/unit/agents/test_offload.py",
     "apps/api/tests/unit/middleware/test_compaction_offload_bind.py",
     "apps/api/tests/unit/tools/coding/test_query_json_tool.py"
@@ -19,6 +20,10 @@
       "transcript": "/2d/df6318d172/0/full.jsonl",
       "content_hash": "/2d/df6318d172/0/content_hash.txt",
       "prompt": "/2d/df6318d172/0/prompt.txt"
+    },
+    {
+      "metadata": "/2d/df6318d172/1/metadata.json",
+      "prompt": ""
     }
   ],
   "token_usage": {
