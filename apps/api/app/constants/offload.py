@@ -17,10 +17,12 @@ QUERY_JSON_TOOL_NAME = "query_json"
 GREP_TOOL_NAME = "grep"
 OFFLOAD_JSON_FORMATS = frozenset({"json", "jsonl"})
 
-# In-process bounds for `query_json`: cap how much of an offloaded file we read
-# and how many records we parse, so a huge file can't exhaust the API process.
+# In-process bounds for `query_json`: cap how much of an offloaded file we read,
+# how many records we parse, and how many queries run at once — so a huge file
+# (or many concurrent queries) can't exhaust the API process memory.
 MAX_QUERY_INPUT_BYTES = 16 * 1024 * 1024
 MAX_QUERY_RECORDS = 20_000
+MAX_QUERY_CONCURRENCY = 4
 
 # Host-side execution bounds for the `grep` subprocess (runs in the API process,
 # not the sandbox): bound output, wall-clock time, and child memory.

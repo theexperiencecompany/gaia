@@ -22,6 +22,7 @@ from app.agents.workspace.paths import WORKSPACE_ROOT
 from app.constants.log_tags import LogTag
 from app.constants.offload import (
     MAX_FILTER_OUTPUT_CHARS,
+    MAX_QUERY_CONCURRENCY,
     MAX_QUERY_INPUT_BYTES,
     MAX_QUERY_RECORDS,
 )
@@ -36,6 +37,20 @@ from shared.py.wide_events import log
 _OPS = frozenset(
     {"contains", "equals", "not_equals", "is_true", "is_false", "exists", "gt", "lt", "in"}
 )
+
+# Bound how many queries hold a parsed (up-to-16 MiB) record set in memory at once.
+# Created lazily and rebound if the running loop changes (test loops differ).
+_sem: asyncio.Semaphore | None = None
+_sem_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _query_slot() -> asyncio.Semaphore:
+    global _sem, _sem_loop
+    loop = asyncio.get_running_loop()
+    if _sem is None or _sem_loop is not loop:
+        _sem = asyncio.Semaphore(MAX_QUERY_CONCURRENCY)
+        _sem_loop = loop
+    return _sem
 
 
 @tool
@@ -77,44 +92,56 @@ async def query_json(
         return f"Error: unknown filter op(s) {bad_ops}; allowed: {sorted(_OPS)}"
 
     try:
-        async with fs_timer(FsOps.TOOL_QUERY_JSON):
+        # Hold a concurrency slot across the read + query so only a bounded number
+        # of large record sets are alive at once (cap total memory).
+        async with _query_slot(), fs_timer(FsOps.TOOL_QUERY_JSON):
             target = await resolve_user_file(user_id, rel)
             records, dropped, truncated = await asyncio.to_thread(_load_records, target)
+            result = _apply_query(
+                records,
+                where=where or [],
+                match=match,
+                fields=fields,
+                sort_by=sort_by,
+                order=order,
+                limit=limit,
+                count_only=count_only,
+                unique_by=unique_by,
+                group_count_by=group_count_by,
+            )
     except FileNotFoundError:
         return f"Error: file not found at {abs_path}"
     except Exception as e:
         log.error(f"{LogTag.SANDBOX} query_json failed: {e}", exc_info=True)
         return f"Error running query_json: {e}"
 
-    result = _apply_query(
-        records,
-        where=where or [],
-        match=match,
-        fields=fields,
-        sort_by=sort_by,
-        order=order,
-        limit=limit,
-        count_only=count_only,
-        unique_by=unique_by,
-        group_count_by=group_count_by,
-    )
     return _format_result(result, dropped=dropped, truncated=truncated)
 
 
 def _load_records(target: Path) -> tuple[list[dict], int, bool]:
-    """Read a JSON-array or JSONL file into a list of dict records (bounded)."""
-    raw = target.read_bytes()[: MAX_QUERY_INPUT_BYTES + 1]
+    """Read a JSON-array or JSONL file into a list of dict records (bounded).
+
+    Reads AT MOST ``MAX_QUERY_INPUT_BYTES`` (never the whole file — a multi-GB file
+    would OOM the process) and parses AT MOST ``MAX_QUERY_RECORDS`` records.
+    """
+    with target.open("rb") as fh:
+        raw = fh.read(MAX_QUERY_INPUT_BYTES + 1)  # cap+1 to detect overflow, no more
     truncated = len(raw) > MAX_QUERY_INPUT_BYTES
     text = raw[:MAX_QUERY_INPUT_BYTES].decode("utf-8", "replace")
 
     if text.lstrip()[:1] == "[":
         try:
             data = json.loads(text)
-            return [r for r in data if isinstance(r, dict)], 0, truncated
-        except json.JSONDecodeError:
-            pass  # truncated/invalid array — fall through to line parsing
+        except (json.JSONDecodeError, RecursionError, ValueError):
+            data = None  # truncated/invalid/too-deep array — fall through to line parsing
+        if isinstance(data, list):
+            records = [r for r in data if isinstance(r, dict)]
+            if len(records) > MAX_QUERY_RECORDS:
+                records = records[:MAX_QUERY_RECORDS]
+                truncated = True
+            return records, 0, truncated
 
-    records: list[dict] = []
+    records = []
     dropped = 0
     for line in text.splitlines():
         line = line.strip()
@@ -122,7 +149,7 @@ def _load_records(target: Path) -> tuple[list[dict], int, bool]:
             continue
         try:
             obj = json.loads(line)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError, ValueError):
             dropped += 1
             continue
         if isinstance(obj, dict):

@@ -161,6 +161,46 @@ def test_load_skips_malformed_lines(tmp_path: Path) -> None:
     assert dropped == 2  # "not json" + bare 42
 
 
+# --- large-file defenses ----------------------------------------------------- #
+
+
+def test_load_bounded_read_caps_input(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The whole file must NOT be read into memory — only the byte cap.
+    monkeypatch.setattr(query_json_tool, "MAX_QUERY_INPUT_BYTES", 30)
+    f = _jsonl(tmp_path, [{"n": i} for i in range(100)])
+    records, _, truncated = _load_records(f)
+    assert truncated is True
+    assert 0 < len(records) < 100  # only the bounded prefix was parsed
+
+
+def test_load_caps_jsonl_record_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(query_json_tool, "MAX_QUERY_RECORDS", 5)
+    records, _, truncated = _load_records(_jsonl(tmp_path, [{"n": i} for i in range(50)]))
+    assert len(records) == 5 and truncated is True
+
+
+def test_load_caps_array_record_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(query_json_tool, "MAX_QUERY_RECORDS", 5)
+    f = tmp_path / "arr.json"
+    f.write_text(json.dumps([{"n": i} for i in range(50)]))
+    records, _, truncated = _load_records(f)
+    assert len(records) == 5 and truncated is True
+
+
+def test_load_pathological_line_is_dropped_not_raised(tmp_path: Path) -> None:
+    f = tmp_path / "bad.jsonl"
+    f.write_text('{"a":1}\n{"broken":\n{"b":2}\n')  # incomplete middle line
+    records, dropped, _ = _load_records(f)
+    assert records == [{"a": 1}, {"b": 2}] and dropped == 1
+
+
+async def test_tool_reports_truncation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(query_json_tool, "MAX_QUERY_RECORDS", 2)
+    with _mock_resolve(_jsonl(tmp_path)):
+        out = await query_json.ainvoke({"path": "inbox.jsonl"}, config=CONFIG)
+    assert "truncated" in out
+
+
 # --- tool end-to-end (mount mocked) ------------------------------------------ #
 
 
