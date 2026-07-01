@@ -25,7 +25,6 @@ async def update_user_profile(
     user_id: str,
     name: str | None = None,
     picture_data: bytes | None = None,
-    data: dict | None = None,
 ) -> dict:
     """Update user profile information."""
     log.set(
@@ -39,9 +38,7 @@ async def update_user_profile(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        update_data: dict = (
-            {"updated_at": datetime.now(UTC), **data} if data else {"updated_at": datetime.now(UTC)}
-        )
+        update_data: dict = {"updated_at": datetime.now(UTC)}
 
         # Update name if provided
         if name is not None and name.strip():

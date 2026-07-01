@@ -2,7 +2,6 @@
 
 from fastapi import (
     APIRouter,
-    Body,
     Depends,
     File,
     Form,
@@ -16,6 +15,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.mongodb.collections import conversations_collection
 from app.decorators import tiered_rate_limit
 from app.models.message_models import FileData
+from app.schemas.file import UpdateFileRequest
 from app.services.file_service import (
     delete_file_service,
     update_file_service,
@@ -93,7 +93,7 @@ async def upload_file_endpoint(
 @router.put("/{file_id}", status_code=status.HTTP_200_OK)
 async def update_file_endpoint(
     file_id: str,
-    update_data: dict = Body(...),
+    payload: UpdateFileRequest,
     user: dict = Depends(get_current_user),
 ):
     """Update file metadata; regenerates the embedding when the description changes."""
@@ -105,7 +105,7 @@ async def update_file_endpoint(
         result = await update_file_service(
             file_id=file_id,
             user_id=user_id,
-            update_data=update_data,
+            update_data=payload.model_dump(exclude_none=True),
         )
 
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
