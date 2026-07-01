@@ -39,6 +39,7 @@ import {
 } from "@gaia/shared";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
+  MAX_WEBHOOK_BODY_BYTES,
   NOTIFICATION_TEMPLATE_LANGUAGE,
   NOTIFICATION_TEMPLATE_NAME,
   NOTIFICATION_TEMPLATE_PARAM_NAME,
@@ -62,6 +63,53 @@ import type {
 
 /** WhatsApp image-message byte cap; larger images are sent as documents. */
 const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Sentinel returned by {@link readBodyBounded} when the body exceeds the cap. */
+const BODY_TOO_LARGE = Symbol("body-too-large");
+
+/**
+ * Reads a request body stream into a UTF-8 string, aborting as soon as the
+ * accumulated bytes exceed {@link maxBytes} so an oversized body is never fully
+ * buffered. Returns {@link BODY_TOO_LARGE} on overflow.
+ *
+ * The bytes are accumulated exactly as received and decoded with a strict
+ * UTF-8 {@link TextDecoder}, so the returned string re-encodes byte-for-byte to
+ * the original body — a requirement for the HMAC signature check downstream.
+ */
+async function readBodyBounded(
+  request: Request,
+  maxBytes: number,
+): Promise<string | typeof BODY_TOO_LARGE> {
+  const body = request.body;
+  if (!body) return "";
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return BODY_TOO_LARGE;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
 
 interface WhatsAppConfig {
   kapsoApiKey: string;
@@ -160,7 +208,30 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    */
   protected async registerEvents(): Promise<void> {
     this.botServer.app.post("/webhook", async (c) => {
-      const rawBody = await c.req.text();
+      // Reject oversized bodies. Kapso payloads are small; anything above the cap
+      // signals an attempt to exhaust memory. The Content-Length header is only a
+      // cheap fast-path — a request can omit it, send 0, or use chunked transfer
+      // encoding to slip past a header-only check — so the real defense is the
+      // bounded stream read below, which aborts once actual bytes exceed the cap.
+      const contentLength = Number(c.req.header("content-length"));
+      if (
+        Number.isFinite(contentLength) &&
+        contentLength > MAX_WEBHOOK_BODY_BYTES
+      ) {
+        this.adapterLogger.warn("webhook_body_too_large", {
+          content_length: contentLength,
+          max_bytes: MAX_WEBHOOK_BODY_BYTES,
+        });
+        return c.text("Payload Too Large", 413);
+      }
+
+      const rawBody = await readBodyBounded(c.req.raw, MAX_WEBHOOK_BODY_BYTES);
+      if (rawBody === BODY_TOO_LARGE) {
+        this.adapterLogger.warn("webhook_body_too_large", {
+          max_bytes: MAX_WEBHOOK_BODY_BYTES,
+        });
+        return c.text("Payload Too Large", 413);
+      }
       const signature = c.req.header("x-webhook-signature") ?? null;
 
       if (

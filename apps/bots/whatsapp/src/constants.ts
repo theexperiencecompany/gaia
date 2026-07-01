@@ -18,6 +18,14 @@ export const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 export const TYPING_REFRESH_MS = 3 * 1000;
 
 /**
+ * Maximum accepted size (in bytes) for a `POST /webhook` request body. Kapso
+ * webhook payloads are small JSON events; a body larger than this is rejected
+ * with HTTP 413 before it is read into memory, preventing a memory-exhaustion
+ * DoS from an oversized request.
+ */
+export const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
+
+/**
  * Approved utility template used to deliver proactive notifications when a
  * free-form send fails (e.g. the 24-hour window is closed). Single body
  * variable named `body`.
