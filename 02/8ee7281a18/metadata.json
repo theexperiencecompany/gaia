@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "028ee7281a18",
+  "strategy": "manual-commit",
+  "branch": "perf/sandbox-juicefs-metadata-load",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/02/8ee7281a18/0/metadata.json",
+      "transcript": "/02/8ee7281a18/0/full.jsonl",
+      "content_hash": "/02/8ee7281a18/0/content_hash.txt",
+      "prompt": "/02/8ee7281a18/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 95974,
+    "cache_creation_tokens": 4006632,
+    "cache_read_tokens": 133166319,
+    "output_tokens": 475026,
+    "api_call_count": 305
+  }
+}
