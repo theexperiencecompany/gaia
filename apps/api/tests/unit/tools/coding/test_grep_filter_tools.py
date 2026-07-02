@@ -64,24 +64,32 @@ def _log(tmp_path: Path) -> Path:
 
 
 async def test_run_grep_match_has_line_numbers(tmp_path: Path) -> None:
-    out = await _run(GREP, ["-n", "-e", "ERROR", "--"], str(_log(tmp_path)), (0, 1), "(no matches)", "grep")
+    out = await _run(
+        GREP, ["-n", "-e", "ERROR", "--"], str(_log(tmp_path)), (0, 1), "(no matches)", "grep"
+    )
     assert out.strip() == "2:ERROR boom"
 
 
 async def test_run_grep_no_match_is_not_error(tmp_path: Path) -> None:
-    out = await _run(GREP, ["-n", "-e", "zzz", "--"], str(_log(tmp_path)), (0, 1), "(no matches)", "grep")
+    out = await _run(
+        GREP, ["-n", "-e", "zzz", "--"], str(_log(tmp_path)), (0, 1), "(no matches)", "grep"
+    )
     assert out == "(no matches)"
 
 
 async def test_run_grep_invalid_regex_is_error(tmp_path: Path) -> None:
-    out = await _run(GREP, ["-n", "-e", "[", "--"], str(_log(tmp_path)), (0, 1), "(no matches)", "grep")
+    out = await _run(
+        GREP, ["-n", "-e", "[", "--"], str(_log(tmp_path)), (0, 1), "(no matches)", "grep"
+    )
     assert out.startswith("grep error:")
 
 
 async def test_run_grep_binary_output_does_not_crash(tmp_path: Path) -> None:
     f = tmp_path / "bin.dat"
     f.write_bytes(b"needle\x00\xff\xfe\x80 here\n")
-    out = await _run(GREP, ["-a", "-n", "-e", "needle", "--"], str(f), (0, 1), "(no matches)", "grep")
+    out = await _run(
+        GREP, ["-a", "-n", "-e", "needle", "--"], str(f), (0, 1), "(no matches)", "grep"
+    )
     assert "needle" in out  # invalid UTF-8 replaced, no UnicodeDecodeError
 
 
@@ -95,9 +103,13 @@ async def test_security_no_shell_metachars(tmp_path: Path) -> None:
     assert not pwn.exists()
 
 
-async def test_security_env_is_not_inherited(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_security_env_is_not_inherited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("GAIA_FAKE_SECRET", "leakme")
-    out = await _py("import os,sys;sys.stdout.write(os.environ.get('GAIA_FAKE_SECRET','ABSENT'))", tmp_path)
+    out = await _py(
+        "import os,sys;sys.stdout.write(os.environ.get('GAIA_FAKE_SECRET','ABSENT'))", tmp_path
+    )
     assert "leakme" not in out
     assert out == "ABSENT"
 
@@ -170,34 +182,58 @@ def test_resolve_binary_known_is_absolute() -> None:
 
 async def test_run_file_filter_bad_path_is_error() -> None:
     out = await run_file_filter(
-        config=CONFIG, binary="grep", args=["-n", "-e", "x", "--"], path="",
-        ok_returncodes=(0, 1), empty_message="(no matches)", error_label="grep",
+        config=CONFIG,
+        binary="grep",
+        args=["-n", "-e", "x", "--"],
+        path="",
+        ok_returncodes=(0, 1),
+        empty_message="(no matches)",
+        error_label="grep",
     )
     assert out.startswith("Error:")
 
 
 async def test_run_file_filter_workspace_root_rejected_clearly() -> None:
     out = await run_file_filter(
-        config=CONFIG, binary="grep", args=["-n", "-e", "x", "--"], path="/workspace",
-        ok_returncodes=(0, 1), empty_message="(no matches)", error_label="grep",
+        config=CONFIG,
+        binary="grep",
+        args=["-n", "-e", "x", "--"],
+        path="/workspace",
+        ok_returncodes=(0, 1),
+        empty_message="(no matches)",
+        error_label="grep",
     )
     assert out.startswith("Error:") and out.strip() != "Error:"
 
 
 async def test_run_file_filter_file_not_found_is_error() -> None:
-    with patch.object(_filter, "resolve_user_file", AsyncMock(side_effect=FileNotFoundError("g/x.jsonl"))):
+    with patch.object(
+        _filter, "resolve_user_file", AsyncMock(side_effect=FileNotFoundError("g/x.jsonl"))
+    ):
         out = await run_file_filter(
-            config=CONFIG, binary="grep", args=["-n", "-e", "x", "--"], path="g/x.jsonl",
-            ok_returncodes=(0, 1), empty_message="(no matches)", error_label="grep",
+            config=CONFIG,
+            binary="grep",
+            args=["-n", "-e", "x", "--"],
+            path="g/x.jsonl",
+            ok_returncodes=(0, 1),
+            empty_message="(no matches)",
+            error_label="grep",
         )
     assert out == "Error: g/x.jsonl"
 
 
 async def test_run_file_filter_surfaces_juicefs_unavailable() -> None:
-    with patch.object(_filter, "resolve_user_file", AsyncMock(side_effect=JuiceFSUnavailable("no mount"))):
+    with patch.object(
+        _filter, "resolve_user_file", AsyncMock(side_effect=JuiceFSUnavailable("no mount"))
+    ):
         out = await run_file_filter(
-            config=CONFIG, binary="grep", args=["-n", "-e", "x", "--"], path="x.jsonl",
-            ok_returncodes=(0, 1), empty_message="(no matches)", error_label="grep",
+            config=CONFIG,
+            binary="grep",
+            args=["-n", "-e", "x", "--"],
+            path="x.jsonl",
+            ok_returncodes=(0, 1),
+            empty_message="(no matches)",
+            error_label="grep",
         )
     assert "Error running grep" in out and "no mount" in out
 
@@ -205,8 +241,13 @@ async def test_run_file_filter_surfaces_juicefs_unavailable() -> None:
 async def test_run_file_filter_happy_path(tmp_path: Path) -> None:
     with _mock_resolve(_log(tmp_path)):
         out = await run_file_filter(
-            config=CONFIG, binary="grep", args=["-n", "-e", "ERROR", "--"], path="run.log",
-            ok_returncodes=(0, 1), empty_message="(no matches)", error_label="grep",
+            config=CONFIG,
+            binary="grep",
+            args=["-n", "-e", "ERROR", "--"],
+            path="run.log",
+            ok_returncodes=(0, 1),
+            empty_message="(no matches)",
+            error_label="grep",
         )
     assert out.strip() == "2:ERROR boom"
 
@@ -218,7 +259,9 @@ async def test_grep_tool_ignore_case(tmp_path: Path) -> None:
     f = tmp_path / "log.txt"
     f.write_text("WARNING here\ninfo there\n")
     with _mock_resolve(f):
-        out = await grep.ainvoke({"pattern": "warning", "path": "log.txt", "ignore_case": True}, config=CONFIG)
+        out = await grep.ainvoke(
+            {"pattern": "warning", "path": "log.txt", "ignore_case": True}, config=CONFIG
+        )
     assert "WARNING here" in out
 
 

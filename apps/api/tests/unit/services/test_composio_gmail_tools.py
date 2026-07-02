@@ -529,12 +529,12 @@ class TestFetchMessages:
         assert len(result["messages"]) == 1
 
     def test_offload_triggered_when_large(self, mock_proxy, tmp_path):
-        """Response > 60KB chars → writes JSONL file and returns digest."""
+        """Response above INLINE_LIMIT_CHARS → writes JSONL file and returns digest."""
         tools = _register_and_get_tools()
 
         # Build a synthetic list response with 5 messages; each message body
-        # is large enough that the aggregate exceeds the 60KB inline limit.
-        big_body = "x" * 20_000  # 20KB per message; 5 messages = 100KB+
+        # is large enough that the aggregate exceeds INLINE_LIMIT_CHARS (120K).
+        big_body = "x" * 30_000  # 30KB per message; 5 messages = 150KB+
         list_response = {"messages": [{"id": f"m{i}"} for i in range(5)]}
         message_response = {
             "id": "m",
@@ -559,7 +559,7 @@ class TestFetchMessages:
 
         with (
             patch(
-                "app.services.composio.custom_tools.gmail_tools._write_session_file_sync"
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync"
             ) as write_mock,
             patch(
                 "app.services.composio.custom_tools.gmail_tools.get_config",

@@ -113,4 +113,3 @@ class FetchMessagesInput(BaseModel):
         ),
     )
     per_page: int = Field(default=100, ge=1, le=500, description="Gmail page size (max 500).")
-    user_id: str | None = Field(default=None, description="Internal. Set from auth.")

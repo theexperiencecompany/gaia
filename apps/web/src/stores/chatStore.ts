@@ -198,12 +198,18 @@ export const useChatStore = create<ChatState>((set) => ({
       };
     }),
 
+  // Server registry entries persist only per-file fields (path, size, mtime,
+  // content type) — the conversation id is the document key, not an element
+  // field. Stamp it back on as session_id so every map entry is a complete
+  // ArtifactData (fetch URLs are built from session_id).
   setConversationArtifacts: (conversationId, artifacts) =>
     set((state) => ({
       artifactsByConversation: {
         ...state.artifactsByConversation,
         [conversationId]: Object.fromEntries(
-          artifacts.filter((a) => a?.path).map((a) => [a.path, a]),
+          artifacts
+            .filter((a) => a?.path)
+            .map((a) => [a.path, { ...a, session_id: conversationId }]),
         ),
       },
     })),

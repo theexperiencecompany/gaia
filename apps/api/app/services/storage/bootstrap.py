@@ -29,6 +29,7 @@ returns — the storage helpers treat the missing mount as a soft-fail.
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 from pathlib import Path
 import shutil
@@ -36,6 +37,7 @@ import subprocess  # nosec B404 - JuiceFS CLI invocation
 import tempfile
 import threading
 import time
+from typing import Literal
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -142,9 +144,38 @@ def _bucket_url() -> str:
     return f"https://{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/{settings.R2_BUCKET}"
 
 
+_MountState = Literal["present", "absent", "broken"]
+
+
+def _mount_state(path: Path) -> _MountState:
+    """Classify a mountpoint path by stat-ing it directly.
+
+    On Python 3.12 ``Path.exists()`` only swallows ENOENT/ENOTDIR/EBADF/ELOOP;
+    a disconnected FUSE mountpoint ("Transport endpoint is not connected")
+    makes stat raise ENOTCONN, which would otherwise escape the mount checks
+    and make the stale-mount recovery below unreachable. Unexpected OSErrors
+    still propagate — they are failures, not "not mounted".
+    """
+    try:
+        path.stat()
+    except OSError as e:
+        if e.errno in (errno.ENOENT, errno.ENOTDIR):
+            return "absent"
+        if e.errno == errno.ENOTCONN:
+            log.warning(
+                f"{LogTag.STORAGE} broken FUSE mountpoint detected",
+                path=str(path),
+                errno=e.errno,
+                detail=str(e),
+            )
+            return "broken"
+        raise
+    return "present"
+
+
 def _is_mounted(path: Path) -> bool:
     """Best-effort mountpoint check that works on Linux + macOS."""
-    if not path.exists():
+    if _mount_state(path) != "present":
         return False
     try:
         result = subprocess.run(  # nosec B603 B607 - fixed argv, no shell
@@ -309,7 +340,9 @@ def _mount(meta_url: str, mount_path: Path) -> str:
     # from a prior container run), JuiceFS will detect it and try a normal umount
     # that can time out for 3 seconds and still fail. Lazy-unmount proactively so
     # the mount call gets a clean directory instead of fighting a stale endpoint.
-    if mount_path.exists():
+    # `_mount_state` (not `Path.exists()`) so a disconnected FUSE endpoint —
+    # which makes stat raise ENOTCONN — deterministically reaches this cleanup.
+    if _mount_state(mount_path) != "absent":
         _run(["fusermount", "-u", "-z", str(mount_path)], timeout=5)
 
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)

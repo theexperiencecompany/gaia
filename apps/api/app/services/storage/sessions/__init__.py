@@ -23,7 +23,6 @@ from app.services.storage.sessions.artifacts import (
 from app.services.storage.sessions.lifecycle import (
     chmod_path,
     delete_session_dir,
-    ensure_session_dirs,
     list_session_ids,
     list_stale_sessions,
     materialize_user_integrations,
@@ -36,7 +35,6 @@ __all__ = [
     "ArtifactInfo",
     "chmod_path",
     "delete_session_dir",
-    "ensure_session_dirs",
     "list_artifacts",
     "list_session_ids",
     "list_stale_sessions",

@@ -25,6 +25,7 @@ from app.templates.docstrings.desktop_tool_docs import (
     TAKE_SCREENSHOT,
     WRITE_CLIPBOARD,
 )
+from app.utils.file_utils import message_text
 from shared.py.wide_events import log
 
 _NOT_DESKTOP_ERROR = (
@@ -117,8 +118,9 @@ async def _describe_screenshot(image_b64: str, query: str) -> str | None:
     except Exception as exc:  # noqa: BLE001 - any provider failure degrades gracefully
         log.warning(f"{LogTag.TOOL} Screenshot vision call failed: {exc}")
         return None
-    content = getattr(response, "content", response)
-    return content if isinstance(content, str) else str(content)
+    # message_text handles Gemini's list-of-parts content — str(content) would
+    # leak the parts' repr into the tool result. Empty text degrades to None.
+    return message_text(response) or None
 
 
 @tool

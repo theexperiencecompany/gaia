@@ -7,10 +7,11 @@ import os
 from pathlib import Path
 import re
 import shutil
+import time
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.services.storage.metrics import FsOps, add_fs_bytes, fs_timer
+from app.services.storage.metrics import FsOps, add_fs_bytes, fs_timer, record_fs_op
 from shared.py.wide_events import log
 
 
@@ -160,16 +161,22 @@ async def write_skill_file(
     return path
 
 
-async def write_session_file(
+def write_session_file_sync(
     user_id: str,
     conversation_id: str,
     relative_path: str,
     content: bytes | str,
 ) -> tuple[Path, str]:
-    """Write a session-scoped file. Returns ``(host_path, sandbox_path)``."""
-    ensure_safe_path_id(conversation_id, label="conversation_id")
+    """Write a session-scoped file. Returns ``(host_path, sandbox_path)``.
 
-    def _write() -> tuple[Path, str]:
+    Sync core of ``write_session_file`` — call it directly only from code
+    already off the event loop (e.g. Composio custom tools, which run
+    synchronously inside the tool node).
+    """
+    ensure_safe_path_id(conversation_id, label="conversation_id")
+    start = time.monotonic()
+    error: BaseException | None = None
+    try:
         base = _require_mount() / "users" / user_id / "sessions" / conversation_id
         target = _contained(base, relative_path, root_label="session root")
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -178,13 +185,29 @@ async def write_session_file(
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        sandbox_view = f"/workspace/sessions/{conversation_id}/{relative_path}"
-        return target, sandbox_view
-
-    async with fs_timer(FsOps.WRITE_SESSION_FILE):
-        result = await asyncio.to_thread(_write)
+    except BaseException as exc:
+        error = exc
+        raise
+    finally:
+        record_fs_op(
+            FsOps.WRITE_SESSION_FILE,
+            duration_ms=(time.monotonic() - start) * 1000.0,
+            error=error,
+        )
     add_fs_bytes(FsOps.WRITE_SESSION_FILE, _content_size(content))
-    return result
+    return target, f"{sandbox_session_path(conversation_id)}/{relative_path}"
+
+
+async def write_session_file(
+    user_id: str,
+    conversation_id: str,
+    relative_path: str,
+    content: bytes | str,
+) -> tuple[Path, str]:
+    """Async wrapper over ``write_session_file_sync`` for event-loop callers."""
+    return await asyncio.to_thread(
+        write_session_file_sync, user_id, conversation_id, relative_path, content
+    )
 
 
 def page_bounds(offset: int, limit: int) -> tuple[int, int]:

@@ -31,7 +31,14 @@ def _persist_request() -> SimpleNamespace:
         runtime=SimpleNamespace(config={"configurable": {"user_id": "u1", "thread_id": "c1"}}),
     )
 
-INFO = {"path": "/w/x.jsonl", "bytes": 10, "fmt": "jsonl", "producer": "GMAIL_FETCH_MESSAGES", "records": 3}
+
+INFO = {
+    "path": "/w/x.jsonl",
+    "bytes": 10,
+    "fmt": "jsonl",
+    "producer": "GMAIL_FETCH_MESSAGES",
+    "records": 3,
+}
 
 
 def _marked(fmt: str = "jsonl") -> ToolMessage:
@@ -87,7 +94,9 @@ def test_bind_handles_none_state() -> None:
 
 
 def test_bind_ignores_non_str_junk_in_selected_tool_ids() -> None:
-    r = WorkspaceCompactionMiddleware()._bind_offload_tools(_marked(), _req([123, None, "query_json"]))
+    r = WorkspaceCompactionMiddleware()._bind_offload_tools(
+        _marked(), _req([123, None, "query_json"])
+    )
     assert isinstance(r, Command)
     assert r.update["selected_tool_ids"] == ["grep"]  # query_json already there, junk ignored
 
@@ -126,7 +135,9 @@ async def test_awrap_command_result_passes_through_untouched() -> None:
 async def test_awrap_plain_small_output_passes_through() -> None:
     mw = WorkspaceCompactionMiddleware()
     msg = ToolMessage(content="small", tool_call_id="1", name="x")
-    req = SimpleNamespace(tool_call={"name": "x", "id": "1"}, state={"messages": [], "selected_tool_ids": []})
+    req = SimpleNamespace(
+        tool_call={"name": "x", "id": "1"}, state={"messages": [], "selected_tool_ids": []}
+    )
 
     async def handler(_req):
         return msg
@@ -152,7 +163,9 @@ async def test_persist_writes_raw_jsonl_and_query_json_can_mine_it(
 
     monkeypatch.setattr(compaction_mod, "write_session_file", fake_write)
     out = await WorkspaceCompactionMiddleware()._persist(
-        ToolMessage(content=content, tool_call_id="1", name="search"), _persist_request(), "large_output"
+        ToolMessage(content=content, tool_call_id="1", name="search"),
+        _persist_request(),
+        "large_output",
     )
 
     assert captured["content"] == content  # RAW jsonl written, not a metadata wrapper
@@ -161,11 +174,15 @@ async def test_persist_writes_raw_jsonl_and_query_json_can_mine_it(
     assert info is not None and info["fmt"] == "jsonl"
 
     # THE POINT: query_json can actually query the file compaction produced.
-    with patch.object(query_json_tool, "resolve_user_file", AsyncMock(return_value=captured["path"])):
+    with patch.object(
+        query_json_tool, "resolve_user_file", AsyncMock(return_value=captured["path"])
+    ):
         q = await query_json.ainvoke(
-            {"path": "tool_outputs/x.jsonl",
-             "where": [{"field": "from", "op": "contains", "value": "github"}],
-             "fields": ["subject"]},
+            {
+                "path": "tool_outputs/x.jsonl",
+                "where": [{"field": "from", "op": "contains", "value": "github"}],
+                "fields": ["subject"],
+            },
             config={"configurable": {"user_id": "u1", "conversation_id": "c1"}},
         )
     assert json.loads(q) == {"subject": "a"}
@@ -183,7 +200,9 @@ async def test_persist_text_output_marks_grep_only(
 
     monkeypatch.setattr(compaction_mod, "write_session_file", fake_write)
     out = await WorkspaceCompactionMiddleware()._persist(
-        ToolMessage(content=content, tool_call_id="1", name="run"), _persist_request(), "large_output"
+        ToolMessage(content=content, tool_call_id="1", name="run"),
+        _persist_request(),
+        "large_output",
     )
 
     assert captured["content"] == content and captured["rel"].endswith(".txt")

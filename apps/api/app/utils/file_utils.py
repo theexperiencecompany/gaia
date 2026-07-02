@@ -19,7 +19,7 @@ from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 from shared.py.wide_events import log
 
 
-def _message_text(response: object) -> str:
+def message_text(response: object) -> str:
     """Extract plain text from an LLM response.
 
     A chat model returns an ``AIMessage`` whose ``.content`` is either a string
@@ -122,7 +122,7 @@ class DocumentProcessor:
                 ],
             )
 
-            return _message_text(response) or "Image description could not be generated."
+            return message_text(response) or "Image description could not be generated."
 
         except Exception as e:
             log.error(f"{LogTag.TOOL} Failed to process image: {e!s}", exc_info=True)
@@ -186,7 +186,7 @@ class DocumentProcessor:
                         page_number=i + 1,
                         content=md_documents[i].text,
                     ),
-                    summary=_message_text(summarized_pages[i]),
+                    summary=message_text(summarized_pages[i]),
                 )
                 for i in range(len(md_documents))
             ]
@@ -242,7 +242,7 @@ class DocumentProcessor:
                 ],
             )
 
-            return _message_text(response) or "Summary could not be generated."
+            return message_text(response) or "Summary could not be generated."
 
         except Exception as e:
             log.error(f"{LogTag.TOOL} Failed to generate summary: {e!s}", exc_info=True)

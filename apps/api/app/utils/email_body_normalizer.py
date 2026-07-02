@@ -56,10 +56,16 @@ _UNSUBSCRIBE_PATTERN = "(?:" + "|".join(_UNSUBSCRIBE_MARKERS) + ")"
 _US_POSTAL_RE = re.compile(
     r"\b\d{1,6}\s+[A-Z][\w\s]{2,40},?\s+Suite\s+\d+,\s+[A-Z][\w\s]+,\s+[A-Z]{2}\s+\d{5}\b"
 )
-# Find the marker anywhere in the body; the surrounding paragraph is
-# considered footer. We split the body on \n\n (paragraph boundary) and
-# drop any paragraph containing the marker.
 _UNSUBSCRIBE_FOOTER_RE = re.compile(_UNSUBSCRIBE_PATTERN, re.IGNORECASE)
+# A trailing paragraph with an unsubscribe marker only counts as a footer
+# when it is footer-shaped: terse ("Click here to unsubscribe from future
+# emails.") or link-carrying. Long link-free prose that merely mentions the
+# keyword is content and must be kept.
+_FOOTER_MAX_LEN = 300
+
+# A URL token in prose. Used both to detect link-carrying footers and to
+# locate URLs for tracking-param stripping.
+_URL_RE = re.compile(r"https?://\S+")
 
 # Tracking URL params. Strip from query strings.
 _TRACKING_PARAMS = {
@@ -113,18 +119,27 @@ def strip_disclaimers(body: str) -> str:
     return "\n\n".join(paragraphs).strip()
 
 
+def _is_footer_paragraph(paragraph: str) -> bool:
+    if not _UNSUBSCRIBE_FOOTER_RE.search(paragraph):
+        return False
+    return len(paragraph) <= _FOOTER_MAX_LEN or _URL_RE.search(paragraph) is not None
+
+
 def strip_unsubscribe_footers(body: str) -> str:
-    """Remove unsubscribe / mailing-address footer paragraphs."""
-    # Drop any paragraph containing an unsubscribe marker.
-    paragraphs = body.split("\n\n")
-    paragraphs = [p for p in paragraphs if not _UNSUBSCRIBE_FOOTER_RE.search(p)]
-    body = "\n\n".join(paragraphs).strip()
+    """Remove unsubscribe / mailing-address footer paragraphs.
+
+    Footers are stripped only from the trailing region: paragraphs are
+    walked from the end and dropped while they look like footers. A marker
+    mid-body — e.g. a human asking to be unsubscribed — is never dropped,
+    and a body that is entirely footer-shaped is kept as-is: losing a
+    footer is cheap, losing content is not.
+    """
     # Drop multi-line address blocks (≥ 2 lines, contains a US postal
-    # address). Inline mentions of addresses in prose are 1-line and
-    # have surrounding sentence content, so they're preserved.
-    paragraphs = body.split("\n\n")
-    kept = []
-    for p in paragraphs:
+    # address) first, so a keyword footer sitting directly above one still
+    # counts as trailing. Inline mentions of addresses in prose are 1-line
+    # and have surrounding sentence content, so they're preserved.
+    kept: list[str] = []
+    for p in body.split("\n\n"):
         if not _US_POSTAL_RE.search(p):
             kept.append(p)
             continue
@@ -132,7 +147,12 @@ def strip_unsubscribe_footers(body: str) -> str:
         if len(lines) >= 2:
             continue  # multi-line address block — drop
         kept.append(p)
-    return "\n\n".join(kept).strip()
+    cutoff = len(kept)
+    while cutoff > 0 and _is_footer_paragraph(kept[cutoff - 1]):
+        cutoff -= 1
+    if cutoff == 0:
+        cutoff = len(kept)
+    return "\n\n".join(kept[:cutoff]).strip()
 
 
 def strip_tracking_params(text: str) -> str:
@@ -143,18 +163,35 @@ def strip_tracking_params(text: str) -> str:
     when the leading '?' was the start of the query, or "?utm_source=x" → ""
     when there are no non-tracking params left.
     """
-    url_re = re.compile(r"https?://\S+")
-    return url_re.sub(_clean_url, text)
+    return _URL_RE.sub(_clean_url, text)
+
+
+# Punctuation that commonly follows a URL in prose rather than belonging to
+# it. Closing brackets are split off only when unbalanced within the match —
+# a ")" without a matching "(" in the URL belongs to the surrounding
+# markdown/prose, e.g. "[View order](https://shop.com/order)".
+_URL_TRAILING_PUNCTUATION = ".,;:!?"
+_URL_CLOSING_BRACKETS = {")": "(", "]": "[", "}": "{"}
+
+
+def _split_trailing_text(url: str) -> tuple[str, str]:
+    """Split a URL regex match into (url, surrounding text to re-emit)."""
+    trailing = ""
+    while url:
+        last = url[-1]
+        if last in _URL_CLOSING_BRACKETS:
+            if url.count(_URL_CLOSING_BRACKETS[last]) >= url.count(last):
+                break
+        elif last not in _URL_TRAILING_PUNCTUATION:
+            break
+        trailing = last + trailing
+        url = url[:-1]
+    return url, trailing
 
 
 def _clean_url(match: re.Match[str]) -> str:
-    """Strip tracking params from a single URL."""
-    url = match.group(0)
-    # Drop trailing punctuation that often follows URLs in prose.
-    trailing = ""
-    while url and url[-1] in ".,;:!?":
-        trailing = url[-1] + trailing
-        url = url[:-1]
+    """Strip tracking params from a single URL, preserving surrounding text."""
+    url, trailing = _split_trailing_text(match.group(0))
     # Split path and query.
     if "?" not in url:
         return url + trailing
@@ -216,16 +253,12 @@ def html_to_text(html: str) -> str:
     return text
 
 
-def normalize_email_body(body: str, *, level: str = "default") -> str:
+def normalize_email_body(body: str) -> str:
     """Normalize an email body for LLM consumption.
 
     Args:
         body: Raw email body text. May be plain text or HTML; the function
-            handles both. Pass an empty string returns an empty string.
-        level: ``"default"`` applies the full rule set. Currently only one
-            level is implemented; the parameter exists for future expansion
-            (e.g. an ``"aggressive"`` mode that also strips mailing-list
-            footers and template artifacts).
+            handles both. Passing an empty string returns an empty string.
 
     Returns:
         The normalized body. All rules are idempotent; calling this function
@@ -246,12 +279,9 @@ def normalize_email_body(body: str, *, level: str = "default") -> str:
     if _HTML_TAG_RE.search(body):
         body = html_to_text(body)
 
-    if level == "default":
-        body = strip_signature(body)
-        body = strip_disclaimers(body)
-        body = strip_unsubscribe_footers(body)
-        body = strip_tracking_params(body)
-        body = collapse_whitespace(body)
-    # Future: handle "aggressive" level with extra rules.
-
+    body = strip_signature(body)
+    body = strip_disclaimers(body)
+    body = strip_unsubscribe_footers(body)
+    body = strip_tracking_params(body)
+    body = collapse_whitespace(body)
     return body

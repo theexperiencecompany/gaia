@@ -5,6 +5,7 @@ The proxy attaches the user's OAuth token server-side; tools only need
 `user_id` from `auth_credentials`.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 import datetime
 import json
 import math
@@ -17,7 +18,11 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config, get_stream_writer
 from pydantic import BaseModel, Field
 
-from app.agents.templates.mail_templates import build_message_view
+from app.agents.templates.mail_templates import (
+    build_message_view,
+    message_view_needs_body,
+    project_message_view,
+)
 from app.agents.workspace.offload import OffloadInfo
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_RESULT_KEY
@@ -27,7 +32,10 @@ from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
     CHUNK_TARGET_BYTES,
     CHUNK_TARGET_MESSAGES,
+    FETCH_CONCURRENCY,
     GMAIL_API_BASE,
+    GMAIL_FORMAT_FULL,
+    GMAIL_FORMAT_METADATA,
     GMAIL_TOOLKIT,
     INLINE_LIMIT_CHARS,
     MAX_ABSOLUTE_MESSAGES,
@@ -40,7 +48,7 @@ from app.services.composio.custom_tools.gmail_constants import (
 )
 from app.services.composio.proxy_client import proxy_request_sync
 from app.services.contact_service import build_contact_index
-from app.services.storage.juicefs import _contained, _require_mount, ensure_safe_path_id
+from app.services.storage.juicefs import write_session_file_sync
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
@@ -100,26 +108,6 @@ def _conversation_id(config: RunnableConfig) -> str | None:
     """
     configurable = config.get("configurable") or {}
     return configurable.get("vfs_session_id") or configurable.get("thread_id")
-
-
-def _write_session_file_sync(
-    user_id: str, conversation_id: str, relative_path: str, content: str
-) -> tuple[Any, str]:
-    """Synchronous session file write for the offload path.
-
-    Custom tool handlers run synchronously (composio's sync ``custom_tool``
-    framework), so we can't await ``write_session_file`` directly. We
-    replicate its safety logic (path containment + parent mkdir) here
-    without the async instrumentation. The body is just a file write;
-    the JuiceFS mount is already on the host filesystem.
-    """
-    ensure_safe_path_id(conversation_id, label="conversation_id")
-    base = _require_mount() / "users" / user_id / "sessions" / conversation_id
-    target = _contained(base, relative_path, root_label="session root")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
-    sandbox_view = f"/workspace/sessions/{conversation_id}/{relative_path}"
-    return target, sandbox_view
 
 
 # =============================================================================
@@ -261,22 +249,30 @@ def _fetch_message_view(
     fields: Any,
     body_processing: str,
 ) -> dict[str, Any] | None:
-    """Fetch one message and project it to the caller-requested fields.
+    """Fetch one message and build its full (unprojected) view.
+
+    Requests ``format=metadata`` (headers + labels + snippet, no MIME payload)
+    unless the caller's field selection will actually carry a body — the
+    default field set doesn't, so the payload download and MIME decode are
+    skipped on that path. Projection to the caller-requested fields happens
+    in ``_summarize`` so the email card keeps id/threadId/time regardless of
+    the selection.
 
     Returns None if the proxy returned something that isn't a dict (we
     don't fail the whole tool call on a single weird response). Lets
     proxy exceptions propagate; the aggregator attaches the partial-
     state context before re-raising.
     """
+    needs_body = message_view_needs_body(fields, body_processing)
     full = _gmail_proxy(
         user_id,
         endpoint=f"{GMAIL_API_BASE}/users/me/messages/{message_id}",
         method="GET",
-        query={"format": "full"},
+        query={"format": GMAIL_FORMAT_FULL if needs_body else GMAIL_FORMAT_METADATA},
     )
     if not isinstance(full, dict):
         return None
-    return build_message_view(full, fields=fields, body_processing=body_processing)
+    return build_message_view(full, body_processing=body_processing if needs_body else "none")
 
 
 def _aggregate_pages(
@@ -288,45 +284,56 @@ def _aggregate_pages(
 ) -> tuple[list[dict[str, Any]], bool]:
     """Drive the list→fetch loop until exhausted, capped, or errored.
 
-    Returns (messages, truncated). Raises ``_PartialResult`` for caller
-    mid-loop errors, carrying the messages already aggregated.
+    Per-message fetches within a page fan out over a bounded thread pool
+    (``FETCH_CONCURRENCY``); results keep the page order. Returns
+    ``(messages, truncated)`` where messages are full (unprojected) views.
+    Raises ``_PartialResult`` for mid-loop errors, carrying the messages
+    already aggregated.
     """
     all_messages: list[dict[str, Any]] = []
     page_token: str | None = None
     truncated = False
 
-    try:
-        while True:
-            data = _fetch_list_page(
-                user_id,
-                query=combined_query,
-                per_page=request.per_page,
-                page_token=page_token,
-            )
-            page_ids = [m["id"] for m in (data or {}).get("messages", []) if m.get("id")]
-            if not page_ids:
-                break
+    def fetch_view(message_id: str) -> dict[str, Any] | None:
+        return _fetch_message_view(
+            user_id,
+            message_id,
+            fields=request.fields,
+            body_processing=request.body_processing,
+        )
 
-            for mid in page_ids:
+    try:
+        with ThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
+            while True:
+                data = _fetch_list_page(
+                    user_id,
+                    query=combined_query,
+                    per_page=request.per_page,
+                    page_token=page_token,
+                )
+                page_ids = [m["id"] for m in (data or {}).get("messages", []) if m.get("id")]
+                if not page_ids:
+                    break
+
+                remaining = effective_max - len(all_messages)
+                if len(page_ids) > remaining:
+                    truncated = True
+                    page_ids = page_ids[:remaining]
+
+                # executor.map preserves input order; a per-message exception
+                # surfaces mid-iteration, keeping the views appended before it
+                # (same partial semantics as a sequential loop).
+                for view in executor.map(fetch_view, page_ids):
+                    if view is not None:
+                        all_messages.append(view)
+
                 if len(all_messages) >= effective_max:
                     truncated = True
                     break
-                view = _fetch_message_view(
-                    user_id,
-                    mid,
-                    fields=request.fields,
-                    body_processing=request.body_processing,
-                )
-                if view is not None:
-                    all_messages.append(view)
 
-            if len(all_messages) >= effective_max:
-                truncated = True
-                break
-
-            page_token = (data or {}).get("nextPageToken")
-            if not page_token:
-                break
+                page_token = (data or {}).get("nextPageToken")
+                if not page_token:
+                    break
     except Exception as exc:
         if not all_messages:
             # Nothing was fetched before the error — this is a total failure
@@ -409,7 +416,7 @@ def _format_offload_result(
     rel_path = _offload_path()
     body = "\n".join(json.dumps(m, default=str) for m in messages)
     file_size_bytes = len(body.encode("utf-8"))
-    _, sandbox_path = _write_session_file_sync(
+    _, sandbox_path = write_session_file_sync(
         user_id=user_id,
         conversation_id=conversation_id,
         relative_path=rel_path,
@@ -439,7 +446,7 @@ def _format_offload_result(
             f"ranges in read_plan.chunks in parallel (read offset/limit), each "
             f"triaging its slice, then merge. Or mine the file directly with the "
             f"`query_json` tool, e.g. query_json(path='{sandbox_path}', "
-            f"where=[{{\"field\":\"from\",\"op\":\"contains\",\"value\":\"github\"}}], "
+            f'where=[{{"field":"from","op":"contains","value":"github"}}], '
             f"fields=['subject','from'])."
         ),
         # Lifted into the structured offload marker by the tool node (this tool
@@ -449,14 +456,15 @@ def _format_offload_result(
     }
 
 
-def _emit_email_card(messages: list[dict[str, Any]]) -> None:
+def _emit_email_card(views: list[dict[str, Any]]) -> None:
     """Stream the interactive email-list card to the chat for an inline result.
 
-    Mirrors what the old GMAIL_FETCH_EMAILS after-hook rendered. No active run
-    (background/silent execution, tests) just means no card; the data is still
-    returned to the agent.
+    Mirrors what the old GMAIL_FETCH_EMAILS after-hook rendered. Takes the
+    full (unprojected) views so the card keeps id/threadId/time even when the
+    caller narrowed ``fields``. No active run (background/silent execution,
+    tests) just means no card; the data is still returned to the agent.
     """
-    if not messages:
+    if not views:
         return
     try:
         writer = get_stream_writer()
@@ -467,20 +475,19 @@ def _emit_email_card(messages: list[dict[str, Any]]) -> None:
         return
     email_fetch_data = [
         {
-            "from": msg.get("from", ""),
-            "subject": msg.get("subject", ""),
-            "time": msg.get("time", ""),
-            "thread_id": msg.get("threadId", ""),
-            "id": msg.get("id", ""),
+            "from": view.get("from", ""),
+            "subject": view.get("subject", ""),
+            "time": view.get("time", ""),
+            "thread_id": view.get("threadId", ""),
+            "id": view.get("id", ""),
         }
-        for msg in messages
+        for view in views
     ]
     writer({"email_fetch_data": email_fetch_data, "resultSize": len(email_fetch_data)})
 
 
 def _format_inline_result(messages: list[dict[str, Any]], *, truncated: bool) -> dict[str, Any]:
-    """Small-result shape: full payload, no offload. Renders the email-list card."""
-    _emit_email_card(messages)
+    """Small-result shape: full payload, no offload."""
     return {
         "fetched_count": len(messages),
         "truncated": truncated,
@@ -499,6 +506,18 @@ def _format_partial_result(messages: list[dict[str, Any]], *, reason: str) -> di
     }
 
 
+def _count_inline_fit(messages: list[dict[str, Any]]) -> int:
+    """How many whole leading messages fit under ``INLINE_LIMIT_CHARS``."""
+    budget = INLINE_LIMIT_CHARS
+    count = 0
+    for message in messages:
+        budget -= len(json.dumps(message, default=str)) + 2  # +2 for separators
+        if budget < 0:
+            break
+        count += 1
+    return count
+
+
 def _summarize(
     user_id: str,
     request: FetchMessagesInput,
@@ -510,28 +529,50 @@ def _summarize(
     cap = _effective_max(request, default_max)
 
     try:
-        all_messages, truncated = _aggregate_pages(
+        full_views, truncated = _aggregate_pages(
             user_id, request, combined_query=combined_query, effective_max=cap
         )
     except _PartialResult as exc:
-        return _format_partial_result(exc.partial_messages, reason=exc.reason)
+        return _format_partial_result(
+            [project_message_view(view, request.fields) for view in exc.partial_messages],
+            reason=exc.reason,
+        )
 
-    serialized = json.dumps({"messages": all_messages}, default=str)
+    messages = [project_message_view(view, request.fields) for view in full_views]
+    serialized = json.dumps({"messages": messages}, default=str)
     over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
-    over_message_limit = len(all_messages) > OFFLOAD_MIN_MESSAGES
+    over_message_limit = len(messages) > OFFLOAD_MIN_MESSAGES
     if not over_char_limit and not over_message_limit:
-        return _format_inline_result(all_messages, truncated=truncated)
+        _emit_email_card(full_views)
+        return _format_inline_result(messages, truncated=truncated)
 
     conversation_id = _conversation_id(config)
     if conversation_id is None:
+        # GMAIL_FETCH_MESSAGES is excluded from the compaction middleware
+        # (SELF_OFFLOADING_TOOL_NAMES in factory.py), so nothing downstream
+        # shrinks an oversized inline result — cap it here to whole messages
+        # that fit.
+        shown_count = _count_inline_fit(messages)
         log.warning(
-            "GMAIL_FETCH_MESSAGES: no conversation_id for offload; "
-            "returning inline (compaction middleware will catch it if needed)"
+            f"GMAIL_FETCH_MESSAGES: no conversation_id for offload; returning "
+            f"{shown_count}/{len(messages)} messages inline"
         )
-        return _format_inline_result(all_messages, truncated=truncated)
+        _emit_email_card(full_views[:shown_count])
+        result = _format_inline_result(
+            messages[:shown_count], truncated=truncated or shown_count < len(messages)
+        )
+        if shown_count < len(messages):
+            result["total_matched"] = len(messages)
+            result["hint"] = (
+                f"Showing {shown_count} of {len(messages)} matched messages; the "
+                f"result was too large to return inline and no session was "
+                f"available to offload it. Narrow the query or timeframe (or "
+                f"reduce fields) to see the rest."
+            )
+        return result
 
     return _format_offload_result(
-        all_messages,
+        messages,
         truncated=truncated,
         user_id=user_id,
         conversation_id=conversation_id,
@@ -1006,7 +1047,7 @@ def _fetch_messages_for_contacts(
                 endpoint=f"{GMAIL_API_BASE}/users/me/messages/{message_id}",
                 method="GET",
                 query={
-                    "format": "metadata",
+                    "format": GMAIL_FORMAT_METADATA,
                     "metadataHeaders": ["From", "To", "Cc", "Reply-To"],
                 },
             )

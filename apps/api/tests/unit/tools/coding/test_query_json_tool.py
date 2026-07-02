@@ -27,9 +27,30 @@ pytestmark = pytest.mark.unit
 CONFIG = {"configurable": {"user_id": "u1", "conversation_id": "c1"}}
 
 RECORDS = [
-    {"from": "github", "subject": "PR merged", "isRead": False, "threadId": "t1", "time": "2026-06-03", "labels": ["INBOX", "UNREAD"]},
-    {"from": "bob@co.com", "subject": "lunch?", "isRead": True, "threadId": "t2", "time": "2026-06-01", "labels": ["INBOX"]},
-    {"from": "github", "subject": "issue opened", "isRead": True, "threadId": "t1", "time": "2026-06-02", "labels": ["INBOX"]},
+    {
+        "from": "github",
+        "subject": "PR merged",
+        "isRead": False,
+        "threadId": "t1",
+        "time": "2026-06-03",
+        "labels": ["INBOX", "UNREAD"],
+    },
+    {
+        "from": "bob@co.com",
+        "subject": "lunch?",
+        "isRead": True,
+        "threadId": "t2",
+        "time": "2026-06-01",
+        "labels": ["INBOX"],
+    },
+    {
+        "from": "github",
+        "subject": "issue opened",
+        "isRead": True,
+        "threadId": "t1",
+        "time": "2026-06-02",
+        "labels": ["INBOX"],
+    },
 ]
 
 
@@ -79,8 +100,14 @@ def test_filter_and_project() -> None:
     out = _apply_query(
         RECORDS,
         where=[{"field": "from", "op": "contains", "value": "github"}],
-        match="all", fields=["subject"], sort_by=None, order="desc", limit=50,
-        count_only=False, unique_by=None, group_count_by=None,
+        match="all",
+        fields=["subject"],
+        sort_by=None,
+        order="desc",
+        limit=50,
+        count_only=False,
+        unique_by=None,
+        group_count_by=None,
     )
     assert out == [{"subject": "PR merged"}, {"subject": "issue opened"}]
 
@@ -88,43 +115,82 @@ def test_filter_and_project() -> None:
 def test_match_any_is_or() -> None:
     out = _apply_query(
         RECORDS,
-        where=[{"field": "from", "op": "equals", "value": "github"},
-               {"field": "subject", "op": "contains", "value": "lunch"}],
-        match="any", fields=["threadId"], sort_by=None, order="desc", limit=50,
-        count_only=False, unique_by=None, group_count_by=None,
+        where=[
+            {"field": "from", "op": "equals", "value": "github"},
+            {"field": "subject", "op": "contains", "value": "lunch"},
+        ],
+        match="any",
+        fields=["threadId"],
+        sort_by=None,
+        order="desc",
+        limit=50,
+        count_only=False,
+        unique_by=None,
+        group_count_by=None,
     )
     assert len(out) == 3  # 2 github + 1 lunch
 
 
 def test_count_only() -> None:
     out = _apply_query(
-        RECORDS, where=[{"field": "isRead", "op": "is_true"}], match="all",
-        fields=None, sort_by=None, order="desc", limit=50,
-        count_only=True, unique_by=None, group_count_by=None,
+        RECORDS,
+        where=[{"field": "isRead", "op": "is_true"}],
+        match="all",
+        fields=None,
+        sort_by=None,
+        order="desc",
+        limit=50,
+        count_only=True,
+        unique_by=None,
+        group_count_by=None,
     )
     assert out == {"count": 2}
 
 
 def test_sort_and_limit() -> None:
     out = _apply_query(
-        RECORDS, where=[], match="all", fields=["time"], sort_by="time", order="desc",
-        limit=1, count_only=False, unique_by=None, group_count_by=None,
+        RECORDS,
+        where=[],
+        match="all",
+        fields=["time"],
+        sort_by="time",
+        order="desc",
+        limit=1,
+        count_only=False,
+        unique_by=None,
+        group_count_by=None,
     )
     assert out == [{"time": "2026-06-03"}]
 
 
 def test_unique_by() -> None:
     out = _apply_query(
-        RECORDS, where=[], match="all", fields=["threadId"], sort_by=None, order="desc",
-        limit=50, count_only=False, unique_by="threadId", group_count_by=None,
+        RECORDS,
+        where=[],
+        match="all",
+        fields=["threadId"],
+        sort_by=None,
+        order="desc",
+        limit=50,
+        count_only=False,
+        unique_by="threadId",
+        group_count_by=None,
     )
     assert [r["threadId"] for r in out] == ["t1", "t2"]  # t1 deduped
 
 
 def test_group_count_by() -> None:
     out = _apply_query(
-        RECORDS, where=[], match="all", fields=None, sort_by=None, order="desc",
-        limit=50, count_only=False, unique_by=None, group_count_by="from",
+        RECORDS,
+        where=[],
+        match="all",
+        fields=None,
+        sort_by=None,
+        order="desc",
+        limit=50,
+        count_only=False,
+        unique_by=None,
+        group_count_by="from",
     )
     assert out == [{"value": "github", "count": 2}, {"value": "bob@co.com", "count": 1}]
 
@@ -132,8 +198,16 @@ def test_group_count_by() -> None:
 def test_sort_with_missing_field_does_not_crash() -> None:
     recs = [{"a": 1}, {"b": 2}]  # second lacks the sort key
     out = _apply_query(
-        recs, where=[], match="all", fields=None, sort_by="a", order="asc",
-        limit=50, count_only=False, unique_by=None, group_count_by=None,
+        recs,
+        where=[],
+        match="all",
+        fields=None,
+        sort_by="a",
+        order="asc",
+        limit=50,
+        count_only=False,
+        unique_by=None,
+        group_count_by=None,
     )
     assert len(out) == 2  # None-sorted last, no TypeError
 
@@ -207,10 +281,14 @@ async def test_tool_reports_truncation(tmp_path: Path, monkeypatch: pytest.Monke
 async def test_tool_filter_project(tmp_path: Path) -> None:
     with _mock_resolve(_jsonl(tmp_path)):
         out = await query_json.ainvoke(
-            {"path": "inbox.jsonl",
-             "where": [{"field": "from", "op": "contains", "value": "github"},
-                       {"field": "isRead", "op": "is_false"}],
-             "fields": ["subject"]},
+            {
+                "path": "inbox.jsonl",
+                "where": [
+                    {"field": "from", "op": "contains", "value": "github"},
+                    {"field": "isRead", "op": "is_false"},
+                ],
+                "fields": ["subject"],
+            },
             config=CONFIG,
         )
     assert json.loads(out) == {"subject": "PR merged"}  # single match, one JSONL line
@@ -219,8 +297,11 @@ async def test_tool_filter_project(tmp_path: Path) -> None:
 async def test_tool_count_only(tmp_path: Path) -> None:
     with _mock_resolve(_jsonl(tmp_path)):
         out = await query_json.ainvoke(
-            {"path": "inbox.jsonl", "where": [{"field": "from", "op": "contains", "value": "github"}],
-             "count_only": True},
+            {
+                "path": "inbox.jsonl",
+                "where": [{"field": "from", "op": "contains", "value": "github"}],
+                "count_only": True,
+            },
             config=CONFIG,
         )
     assert json.loads(out) == {"count": 2}
@@ -229,7 +310,10 @@ async def test_tool_count_only(tmp_path: Path) -> None:
 async def test_tool_no_matches(tmp_path: Path) -> None:
     with _mock_resolve(_jsonl(tmp_path)):
         out = await query_json.ainvoke(
-            {"path": "inbox.jsonl", "where": [{"field": "from", "op": "equals", "value": "nobody"}]},
+            {
+                "path": "inbox.jsonl",
+                "where": [{"field": "from", "op": "equals", "value": "nobody"}],
+            },
             config=CONFIG,
         )
     assert out == "(no matches)"
@@ -256,7 +340,9 @@ async def test_tool_root_path_rejected() -> None:
 
 
 async def test_tool_file_not_found() -> None:
-    with patch.object(query_json_tool, "resolve_user_file", AsyncMock(side_effect=FileNotFoundError("x"))):
+    with patch.object(
+        query_json_tool, "resolve_user_file", AsyncMock(side_effect=FileNotFoundError("x"))
+    ):
         out = await query_json.ainvoke({"path": "x.jsonl"}, config=CONFIG)
     assert out.startswith("Error: file not found")
 
@@ -267,24 +353,54 @@ async def test_tool_file_not_found() -> None:
 def test_group_count_by_list_field_does_not_crash() -> None:
     # Gmail `labels` is a list -> was TypeError: unhashable type: 'list'.
     recs = [{"labels": ["A", "B"]}, {"labels": ["A", "B"]}, {"labels": ["C"]}]
-    out = _apply_query(recs, where=[], match="all", fields=None, sort_by=None, order="desc",
-                       limit=50, count_only=False, unique_by=None, group_count_by="labels")
+    out = _apply_query(
+        recs,
+        where=[],
+        match="all",
+        fields=None,
+        sort_by=None,
+        order="desc",
+        limit=50,
+        count_only=False,
+        unique_by=None,
+        group_count_by="labels",
+    )
     assert {"value": ["A", "B"], "count": 2} in out
     assert {"value": ["C"], "count": 1} in out
 
 
 def test_unique_by_list_field_does_not_crash() -> None:
     recs = [{"t": ["x"]}, {"t": ["x"]}, {"t": ["y"]}]
-    out = _apply_query(recs, where=[], match="all", fields=None, sort_by=None, order="desc",
-                       limit=50, count_only=False, unique_by="t", group_count_by=None)
+    out = _apply_query(
+        recs,
+        where=[],
+        match="all",
+        fields=None,
+        sort_by=None,
+        order="desc",
+        limit=50,
+        count_only=False,
+        unique_by="t",
+        group_count_by=None,
+    )
     assert [r["t"] for r in out] == [["x"], ["y"]]
 
 
 def test_sort_mixed_types_does_not_crash() -> None:
     # A field that is int in some records and str in others -> was TypeError.
     recs = [{"s": 5}, {"s": "high"}, {"s": None}, {"s": 2}]
-    out = _apply_query(recs, where=[], match="all", fields=None, sort_by="s", order="asc",
-                       limit=50, count_only=False, unique_by=None, group_count_by=None)
+    out = _apply_query(
+        recs,
+        where=[],
+        match="all",
+        fields=None,
+        sort_by="s",
+        order="asc",
+        limit=50,
+        count_only=False,
+        unique_by=None,
+        group_count_by=None,
+    )
     assert [r["s"] for r in out] == [None, 2, 5, "high"]  # type-ranked, no crash
 
 
@@ -301,13 +417,27 @@ def test_is_false_matches_explicit_false_only() -> None:
 
 def test_contains_none_value_no_spurious_match() -> None:
     # value=None must not become the literal 'none' and match text containing 'none'.
-    assert _match_condition({"body": "error: none found"},
-                            {"field": "body", "op": "contains", "value": None}) is False
+    assert (
+        _match_condition(
+            {"body": "error: none found"}, {"field": "body", "op": "contains", "value": None}
+        )
+        is False
+    )
 
 
 def test_limit_zero_returns_empty() -> None:
-    out = _apply_query([{"a": 1}, {"a": 2}], where=[], match="all", fields=None, sort_by=None,
-                       order="desc", limit=0, count_only=False, unique_by=None, group_count_by=None)
+    out = _apply_query(
+        [{"a": 1}, {"a": 2}],
+        where=[],
+        match="all",
+        fields=None,
+        sort_by=None,
+        order="desc",
+        limit=0,
+        count_only=False,
+        unique_by=None,
+        group_count_by=None,
+    )
     assert out == []
 
 
@@ -325,5 +455,7 @@ def test_large_array_truncation_signals_truncated_not_all_dropped(
 
 async def test_tool_group_count_by_labels_end_to_end(tmp_path: Path) -> None:
     with _mock_resolve(_jsonl(tmp_path)):
-        out = await query_json.ainvoke({"path": "inbox.jsonl", "group_count_by": "labels"}, config=CONFIG)
+        out = await query_json.ainvoke(
+            {"path": "inbox.jsonl", "group_count_by": "labels"}, config=CONFIG
+        )
     assert "count" in out and "Error" not in out  # list-valued group key, no crash

@@ -186,7 +186,9 @@ def _match_condition(record: dict, cond: dict) -> bool:
     if op == "not_equals":
         return actual != value
     if op == "contains":  # value=None must not become the literal "none"
-        return value is not None and isinstance(actual, str) and str(value).lower() in actual.lower()
+        return (
+            value is not None and isinstance(actual, str) and str(value).lower() in actual.lower()
+        )
     if op == "in":  # value is present in a list-valued field (e.g. labels)
         return isinstance(actual, list) and value in actual
     if op in ("gt", "lt"):
@@ -269,6 +271,8 @@ def _format_result(result: Any, *, dropped: int, truncated: bool) -> str:
         notes.append(f"{dropped} unparseable line(s) skipped")
     if len(body) > MAX_FILTER_OUTPUT_CHARS:
         body = body[:MAX_FILTER_OUTPUT_CHARS]
-        notes.append(f"output truncated at {MAX_FILTER_OUTPUT_CHARS} chars — narrow the filter or lower limit")
+        notes.append(
+            f"output truncated at {MAX_FILTER_OUTPUT_CHARS} chars — narrow the filter or lower limit"
+        )
 
     return body + ("\n\n[" + "; ".join(notes) + "]" if notes else "")

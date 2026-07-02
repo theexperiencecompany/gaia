@@ -14,7 +14,8 @@ COMPACTION_THRESHOLD = 0.40
 # (~4 chars/token, the same estimate this middleware uses for context usage.)
 MAX_OUTPUT_CHARS = 120000
 
-# Floor below which a tool output is never compacted (~30k tokens). Modern
-# models handle this much context comfortably, so small/medium outputs stay
-# inline rather than getting pushed to a file the agent has to re-read.
-MIN_COMPACTION_SIZE = 120000
+# Floor for the context-pressure trigger: when context usage is over the
+# compaction threshold, outputs above this size are compacted even though
+# they are under MAX_OUTPUT_CHARS. Below it, offloading costs more than it
+# saves, so tiny outputs always stay inline.
+MIN_COMPACTION_SIZE = 500
