@@ -9,12 +9,13 @@ decisions instead of raising.
 from datetime import datetime
 from typing import TypeVar
 
+from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
-from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS
+from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 from app.constants.memory import (
     EXTRACTION_TRANSCRIPT_HEAD_CHARS,
     EXTRACTION_TRANSCRIPT_MAX_CHARS,
@@ -54,10 +55,13 @@ _SILENT_CONFIG: RunnableConfig = {
 }  # type: ignore[typeddict-unknown-key]
 
 # Provider failures and malformed structured output both degrade to None so the
-# memory helper never breaks the chat that spawned it.
+# memory helper never breaks the chat that spawned it. ``OutputParserException``
+# is what the structured-output parser raises on malformed/truncated model
+# output (it wraps the underlying ``ValidationError``/JSON error).
 _STRUCTURED_FAILURE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *LLM_FALLBACK_EXCEPTIONS,
     ValidationError,
+    OutputParserException,
 )
 
 
@@ -95,28 +99,20 @@ async def _invoke_structured(
     *,
     operation: str,
 ) -> _StructuredT | None:
-    """Structured-output call on the default model. Returns None on any provider
-    failure (or when no provider is configured) so extraction degrades gracefully
-    and never breaks the chat that spawned it. ``_SILENT_CONFIG`` keeps the
-    structured-output tokens out of the chat stream; transient-error retry is
-    built into ``ainvoke_llm``."""
+    """Structured-output call on the default model via the canonical
+    ``ainvoke_structured`` (which owns retry + validation). Returns None on any
+    provider failure (or when no provider is configured) so extraction degrades
+    gracefully and never breaks the chat that spawned it. ``_SILENT_CONFIG``
+    keeps the structured-output tokens out of the chat stream."""
     try:
-        model = get_default_llm()
-    except RuntimeError as e:
+        return await ainvoke_structured(
+            output_model, messages, label=f"memory:{operation}", config=_SILENT_CONFIG
+        )
+    except LLMNotConfiguredError as e:
         log.error(
             "memory_llm_no_provider", operation=operation, error_type=type(e).__name__, error=str(e)
         )
         return None
-
-    structured_llm = model.with_structured_output(output_model)
-    try:
-        result = await ainvoke_llm(
-            structured_llm, messages, config=_SILENT_CONFIG, label=f"memory:{operation}"
-        )
-        if isinstance(result, output_model):
-            return result
-        # Malformed structured output must stay on the graceful path, not raise.
-        return output_model.model_validate(result)
     except _STRUCTURED_FAILURE_EXCEPTIONS as e:
         log.error(
             "memory_llm_failed", operation=operation, error_type=type(e).__name__, error=str(e)

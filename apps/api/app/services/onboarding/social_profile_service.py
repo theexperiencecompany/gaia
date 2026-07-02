@@ -6,6 +6,7 @@ from bson import ObjectId
 from langchain_core.messages import HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.prompts.onboarding_prompts import SOCIAL_PROFILE_FILTER_PROMPT
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
@@ -247,7 +248,7 @@ async def extract_social_profiles_from_emails(
     try:
         try:
             llm = get_default_llm()
-        except RuntimeError:
+        except LLMNotConfiguredError:
             log.warning(
                 f"{LogTag.ONBOARDING} social_profiles LLM not available, using sent-email fallback"
             )

@@ -1,3 +1,5 @@
+from collections.abc import Callable, Mapping
+from functools import cache
 from typing import Any, TypeVar
 
 from langchain_core.language_models import LanguageModelInput
@@ -14,12 +16,16 @@ from typing_extensions import TypedDict
 from app.agents.llm.exceptions import (
     LLM_FALLBACK_EXCEPTIONS,
     LLM_RETRYABLE_EXCEPTIONS,
+    LLMNotConfiguredError,
 )
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
+    DEFAULT_LLM_PROVIDER,
+    DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
+    DEFAULT_MODEL_NAME,
     LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
@@ -32,16 +38,31 @@ from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 
+# A fallback may be passed as a ready runnable or as a zero-arg factory, so
+# expensive preparation (e.g. re-binding the full tool list) only happens in
+# the rare case the primary actually fails.
+LLMFallback = Runnable | Callable[[], Runnable | None] | None
 
-def with_llm_retry(runnable: Runnable) -> Runnable:
+
+def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS) -> Runnable:
     """The single, canonical LLM retry. Wraps a (tool-bound) model runnable so
     transient provider/infra errors are retried with exponential backoff before
     the caller falls back to the default model. Applied AFTER ``bind_tools`` so
-    the ``RunnableRetry`` wrapper never has to expose ``bind_tools``."""
+    the ``RunnableRetry`` wrapper never has to expose ``bind_tools``.
+    ``max_attempts=1`` disables retry for callers on a hard latency budget."""
     return runnable.with_retry(
         retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS,
-        stop_after_attempt=LLM_RETRY_MAX_ATTEMPTS,
+        stop_after_attempt=max_attempts,
         wait_exponential_jitter=True,
+    )
+
+
+def is_default_model_config(configurable: Mapping[str, Any]) -> bool:
+    """True when the run config already selects the default model — callers use
+    this to skip preparing a fallback to the very same model."""
+    return (
+        configurable.get("provider") == DEFAULT_LLM_PROVIDER
+        and configurable.get("model_name") == DEFAULT_MODEL_NAME
     )
 
 
@@ -70,7 +91,7 @@ def init_gemini_llm():
     """Initialize Gemini LLM with default model."""
     llm = ChatGoogleGenerativeAI(
         model=PROVIDER_MODELS["gemini"],
-        temperature=0.1,
+        temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
     ).configurable_fields(
         model=ConfigurableField(id="model_name", name="Model", description="Which model to use"),
@@ -96,7 +117,7 @@ def init_openrouter_llm():
     """
     return ChatOpenRouter(
         model=PROVIDER_MODELS["openrouter"],
-        temperature=0.1,
+        temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
         stream_usage=True,
         # Output cap; must stay well under the model's shared input+output context
@@ -249,27 +270,23 @@ def register_llm_providers():
     init_openrouter_llm()
 
 
-def init_fallback_llm() -> BaseChatModel | None:
-    """The default model (Gemini) used as the last-resort fallback when the
-    user-selected model keeps failing mid-turn. Acquired through the same
-    ``get_default_llm`` factory as every other default-model call, so there is
-    one way to reach it. Returns ``None`` when Google isn't configured, in which
-    case the agent node skips the fallback instead of crashing."""
-    if not settings.GOOGLE_API_KEY:
-        return None
-    return get_default_llm()
-
-
-def get_default_llm(*, temperature: float = 0.1) -> BaseChatModel:
+def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     """The single factory for the default model (direct Gemini, ``gemini-3.1-flash-lite``)
     used by EVERY auxiliary LLM task — follow-ups, research, memory extraction,
     integration inference, profile/holo cards, vision helpers, workflow generation,
     context summarization, onboarding, one-shot helpers. The pro model is reserved
     for the main chat agent (see ``plan_model``); auxiliary tasks never use it.
-    ``temperature`` lets creative tasks opt into more variation. Raises if Google
-    is not configured."""
+    ``temperature`` lets creative tasks opt into more variation. Instances are
+    cached per temperature so hot paths reuse one HTTP client instead of
+    rebuilding it per call. Raises ``LLMNotConfiguredError`` if Google is not
+    configured."""
     if not settings.GOOGLE_API_KEY:
-        raise RuntimeError("Default LLM not configured. Set GOOGLE_API_KEY.")
+        raise LLMNotConfiguredError("Default LLM not configured. Set GOOGLE_API_KEY.")
+    return _build_default_llm(temperature)
+
+
+@cache
+def _build_default_llm(temperature: float) -> BaseChatModel:
     llm = ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=temperature)
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).
@@ -281,49 +298,56 @@ def get_default_llm(*, temperature: float = 0.1) -> BaseChatModel:
     return llm
 
 
+def _resolve_fallback(fallback: LLMFallback, label: str, primary_error: BaseException) -> Runnable:
+    """Materialize the fallback (calling a factory if one was passed), log the
+    downgrade, and return the retry-wrapped runnable. Re-raises ``primary_error``
+    when no fallback is available."""
+    resolved = fallback() if callable(fallback) and not isinstance(fallback, Runnable) else fallback
+    if resolved is None:
+        raise primary_error
+    log.warning(
+        f"{LogTag.AGENT} llm '{label}' failed; falling back to the default model",
+        llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
+        error=str(primary_error),
+    )
+    return with_llm_retry(resolved)
+
+
 async def ainvoke_llm(
     primary: Runnable,
     messages: LanguageModelInput,
     *,
-    fallback: Runnable | None = None,
+    fallback: LLMFallback = None,
     config: RunnableConfig | None = None,
     label: str = "model",
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
 ) -> Any:
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate."""
     try:
-        return await with_llm_retry(primary).ainvoke(messages, config=config)
-    except LLM_FALLBACK_EXCEPTIONS as primary_error:
-        if fallback is None:
-            raise
-        log.warning(
-            f"{LogTag.AGENT} llm '{label}' failed; falling back to the default model",
-            llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
-            error=str(primary_error),
+        return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
+            messages, config=config
         )
-        return await fallback.ainvoke(messages, config=config)
+    except LLM_FALLBACK_EXCEPTIONS as primary_error:
+        return await _resolve_fallback(fallback, label, primary_error).ainvoke(
+            messages, config=config
+        )
 
 
 def invoke_llm(
     primary: Runnable,
     messages: LanguageModelInput,
     *,
-    fallback: Runnable | None = None,
+    fallback: LLMFallback = None,
     config: RunnableConfig | None = None,
     label: str = "model",
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
 ) -> Any:
     """Sync counterpart of :func:`ainvoke_llm`."""
     try:
-        return with_llm_retry(primary).invoke(messages, config=config)
+        return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
-        if fallback is None:
-            raise
-        log.warning(
-            f"{LogTag.AGENT} llm '{label}' failed; falling back to the default model",
-            llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
-            error=str(primary_error),
-        )
-        return fallback.invoke(messages, config=config)
+        return _resolve_fallback(fallback, label, primary_error).invoke(messages, config=config)
 
 
 async def ainvoke_structured(
@@ -331,7 +355,7 @@ async def ainvoke_structured(
     prompt: LanguageModelInput,
     *,
     label: str,
-    temperature: float = 0.1,
+    temperature: float = DEFAULT_LLM_TEMPERATURE,
     config: RunnableConfig | None = None,
 ) -> _StructuredT:
     """The single canonical one-shot structured call on the default model. ``prompt``

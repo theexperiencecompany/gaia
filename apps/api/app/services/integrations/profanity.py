@@ -25,6 +25,7 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -142,7 +143,7 @@ async def contains_profanity(**fields: str | None) -> bool:
     try:
         try:
             llm = get_default_llm()
-        except RuntimeError:
+        except LLMNotConfiguredError:
             return _wordlist_any(non_empty.values())
 
         structured_llm = llm.with_structured_output(_ModerationResult)
@@ -150,8 +151,15 @@ async def contains_profanity(**fields: str | None) -> bool:
         # not as raw text that could be confused with prompt instructions.
         payload = json.dumps(non_empty, ensure_ascii=False)
         prompt = _MODERATION_PROMPT.format(fields=f"```json\n{payload}\n```")
+        # max_attempts=1: retry backoff would just eat the hard wait_for budget
+        # and get cancelled mid-sleep — on any failure the wordlist answers.
         result: _ModerationResult = await asyncio.wait_for(
-            ainvoke_llm(structured_llm, [HumanMessage(content=prompt)], label="profanity"),
+            ainvoke_llm(
+                structured_llm,
+                [HumanMessage(content=prompt)],
+                label="profanity",
+                max_attempts=1,
+            ),
             timeout=_MODERATION_TIMEOUT_SECONDS,
         )
         return bool(result.is_offensive)

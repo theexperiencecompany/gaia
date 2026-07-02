@@ -28,7 +28,8 @@ from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
-from app.agents.llm.client import ainvoke_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm, is_default_model_config
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
@@ -145,25 +146,28 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     writer = None  # type: ignore[assignment]
 
                 start_time = time.monotonic()
-                result = await middleware._execute_subagent(
-                    task,
-                    context,
-                    config,
-                    inherited_tool_names=selected_tool_ids,
-                    stream_writer=writer,
-                    subagent_id=sa_id,
-                )
-
-                if writer is not None:
-                    duration_ms = int((time.monotonic() - start_time) * 1000)
-                    writer(
-                        {
-                            "subagent_end": format_subagent_end_event(
-                                subagent_id=sa_id,
-                                duration_ms=duration_ms,
-                            )
-                        }
+                try:
+                    result = await middleware._execute_subagent(
+                        task,
+                        context,
+                        config,
+                        inherited_tool_names=selected_tool_ids,
+                        stream_writer=writer,
+                        subagent_id=sa_id,
                     )
+                finally:
+                    # Always terminate the UI's subagent row — a failed spawn must
+                    # not leave it spinning forever.
+                    if writer is not None:
+                        duration_ms = int((time.monotonic() - start_time) * 1000)
+                        writer(
+                            {
+                                "subagent_end": format_subagent_end_event(
+                                    subagent_id=sa_id,
+                                    duration_ms=duration_ms,
+                                )
+                            }
+                        )
 
                 return Command(
                     update={
@@ -290,6 +294,27 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         llm_with_tools = llm.bind_tools(list(tools_by_name.values())) if tools_by_name else llm
 
+        # Same failure policy as the main model node (create_agent): fall back to
+        # the default model on a provider failure instead of erroring the whole
+        # spawn. Lazy factory — binds the subagent's current tool set only if the
+        # primary actually fails; None when the subagent already runs the default
+        # model or Google isn't configured.
+        try:
+            fallback_llm: Any = (
+                None if is_default_model_config(model_configurations) else get_default_llm()
+            )
+        except LLMNotConfiguredError:
+            fallback_llm = None
+
+        def _fallback():
+            if fallback_llm is None:
+                return None
+            return (
+                fallback_llm.bind_tools(list(tools_by_name.values()))
+                if tools_by_name
+                else fallback_llm
+            )
+
         # Build initial messages
         messages: list[Any] = [SystemMessage(content=self._system_prompt)]
         user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
@@ -299,7 +324,13 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         for _turn in range(self._max_turns):
             response = cast(
                 AIMessage,
-                await ainvoke_llm(llm_with_tools, messages, config=config, label="subagent"),
+                await ainvoke_llm(
+                    llm_with_tools,
+                    messages,
+                    fallback=_fallback,
+                    config=config,
+                    label="subagent",
+                ),
             )
             messages.append(response)
 
@@ -407,10 +438,19 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             )
             messages.extend(tool_messages)
 
-        # Max turns reached — get final answer without tools
-        final = await ainvoke_llm(llm, messages, config=config, label="subagent_final")
+        # Max turns reached — get final answer without tools. The fallback binds
+        # no tools here (none are needed for the final answer).
+        final = await ainvoke_llm(
+            llm,
+            messages,
+            fallback=lambda: fallback_llm,
+            config=config,
+            label="subagent_final",
+        )
         if isinstance(final, AIMessage) and final.content:
-            return final.text
+            # .text flattens only text blocks — a reasoning-only final message
+            # yields "", so guard like the in-loop path does.
+            return final.text or "Max turns reached."
         return str(final) if final else "Max turns reached."
 
     def _build_child_toolset(

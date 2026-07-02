@@ -45,12 +45,13 @@ from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.llm.client import (
     ainvoke_llm,
-    init_fallback_llm,
+    get_default_llm,
     invoke_llm,
+    is_default_model_config,
 )
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
-from app.constants.llm import DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME
 from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 from app.override.langgraph_bigtool.hooks import (
     HookType,
@@ -70,26 +71,19 @@ from shared.py.wide_events import log
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
-def _is_default_model(configurable: Mapping[str, Any]) -> bool:
-    """True when the selected model already is the default fallback model, so we
-    don't wrap it in a fallback to itself."""
-    return (
-        configurable.get("provider") == DEFAULT_LLM_PROVIDER
-        and configurable.get("model_name") == DEFAULT_MODEL_NAME
-    )
-
-
 def _prepare_fallback(
     fallback_llm: Runnable | None,
     tools_to_bind: list[BaseTool],
     model_configurations: Mapping[str, Any],
-) -> Runnable | None:
-    """Bind the default fallback model with the same tools as the primary —
-    skipped when no fallback is configured or the selected model already is the
-    default model (no point falling back to itself)."""
-    if fallback_llm is None or _is_default_model(model_configurations):
+) -> Callable[[], Runnable] | None:
+    """Factory that binds the default fallback model with the same tools as the
+    primary. Returned as a zero-arg callable so the (per-turn, tool-list-sized)
+    binding only happens if the primary actually fails. None when no fallback is
+    configured or the selected model already is the default model (no point
+    falling back to itself)."""
+    if fallback_llm is None or is_default_model_config(model_configurations):
         return None
-    return fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+    return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
 
 
 def create_agent(
@@ -198,7 +192,10 @@ def create_agent(
 
     # Default model used as the last-resort fallback when the selected model
     # keeps failing; None when Google isn't configured (fallback then skipped).
-    fallback_llm = init_fallback_llm()
+    try:
+        fallback_llm: Runnable | None = get_default_llm()
+    except LLMNotConfiguredError:
+        fallback_llm = None
 
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         state = sync_execute_hooks(pre_model_hooks, state, config, store)
