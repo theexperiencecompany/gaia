@@ -104,17 +104,6 @@ async def _core_agent_logic(
         ),
         GraphManager.get_graph("comms_agent"),
     )
-    # A None graph means its lazy provider raised while building (e.g. a misconfigured
-    # model/middleware). Fail loud with the actual cause instead of letting a None
-    # propagate into `graph.astream(...)` as a cryptic 'NoneType' has no attribute
-    # 'astream' far downstream. The root cause is logged by the lazy loader as
-    # "[STARTUP] Failed to initialize provider 'comms_agent'".
-    if graph is None:
-        raise RuntimeError(
-            "Failed to build the 'comms_agent' agent graph: its provider raised "
-            "during initialization (see the '[STARTUP] Failed to initialize provider "
-            "'comms_agent'' error logged above for the root cause)."
-        )
 
     initial_state = build_initial_state(
         request, user_id or "", conversation_id, history, trigger_context
