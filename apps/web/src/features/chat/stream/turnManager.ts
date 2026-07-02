@@ -1,10 +1,38 @@
 import { v4 as uuidv4 } from "uuid";
+import { chatApi } from "@/features/chat/api/chatApi";
 import { db } from "@/lib/db/chatDb";
-import { streamLog } from "@/lib/streamLogger";
+import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { useChatStore } from "@/stores/chatStore";
 import { PENDING_KEY_PREFIX } from "@/stores/streamStore";
 import { TurnSession } from "./turnSession";
 import type { SendArgs } from "./types";
+
+/** A resumed turn re-attaches to an existing stream — it never POSTs, so the
+ *  send-time fields are inert placeholders. */
+const buildResumeArgs = (
+  conversationId: string,
+  resumeStreamId: string,
+): SendArgs => ({
+  inputText: "",
+  userMessage: {
+    type: "user",
+    response: "",
+    date: new Date().toISOString(),
+    message_id: "",
+  },
+  options: {
+    fileData: [],
+    selectedTool: null,
+    toolCategory: null,
+    selectedWorkflow: null,
+    selectedCalendarEvent: null,
+    optimisticUserId: null,
+    replyToMessage: null,
+    conversationId,
+    isOnboardingDemo: false,
+    resumeStreamId,
+  },
+});
 
 /**
  * Registry of active turn sessions, keyed by conversation id (or a pending key
@@ -17,6 +45,8 @@ class TurnManager {
   private queues = new Map<string, SendArgs[]>();
   /** Key of the in-flight new-conversation session, if any. */
   private pendingKey: string | null = null;
+  /** Conversations with a resume discovery in flight (guards double-attach). */
+  private resuming = new Set<string>();
 
   /** Resolve which session key a send targets. */
   resolveKey(conversationId: string | null): string {
@@ -46,6 +76,45 @@ class TurnManager {
     }
 
     this.startSession(key, args);
+  }
+
+  /**
+   * Re-attach to a conversation's in-flight turn after a reload, if one
+   * exists. The event log replays everything missed, so the resumed session
+   * renders the turn exactly as if the page had been open the whole time.
+   * No-op when the conversation is idle or already has a session.
+   */
+  async resumeIfActive(conversationId: string): Promise<void> {
+    if (
+      this.sessions.has(conversationId) ||
+      this.resuming.has(conversationId)
+    ) {
+      return;
+    }
+    this.resuming.add(conversationId);
+    try {
+      const streamId = await chatApi.getActiveStream(conversationId);
+      // Re-check: a send may have started a session during the fetch.
+      if (!streamId || this.sessions.has(conversationId)) return;
+      streamLog("lifecycle", "turn:resume", {
+        turnKey: conversationId,
+        conversationId,
+        detail: { streamId },
+      });
+      this.startSession(
+        conversationId,
+        buildResumeArgs(conversationId, streamId),
+      );
+    } catch (error) {
+      // Discovery is a recovery path — a failure must never break the page,
+      // but it must be visible.
+      streamLogError("lifecycle", "turn:resume-discovery-failed", {
+        conversationId,
+        detail: String(error),
+      });
+    } finally {
+      this.resuming.delete(conversationId);
+    }
   }
 
   /** Abort the active turn for a conversation. Returns true if one existed. */

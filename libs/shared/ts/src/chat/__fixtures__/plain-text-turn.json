@@ -1,0 +1,8 @@
+[
+  "{\"conversation_id\":\"conv-1\",\"user_message_id\":\"um-1\",\"bot_message_id\":\"bm-1\",\"stream_id\":\"s-1\"}",
+  "{\"response\":\"Hello\"}",
+  "{\"response\":\", world\"}",
+  "{\"main_response_complete\":true}",
+  "{\"follow_up_actions\":[\"Tell me more\",\"Summarize this\"]}",
+  "[DONE]"
+]

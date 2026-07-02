@@ -31,8 +31,10 @@ from app.helpers.message_helpers import (
     build_current_time_message,
     create_system_message,
 )
+from app.models.stream_events import ReasoningPayload, ToolOutputPayload
+from app.services.chat.chunks import normalize_custom_event
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
-from app.utils.stream_utils import extract_tool_entries_from_update, normalize_custom_event
+from app.utils.stream_utils import extract_tool_entries_from_update
 from shared.py.wide_events import log
 
 
@@ -201,23 +203,22 @@ def _process_messages_payload(
         if stream_writer:
             reasoning_delta = _extract_reasoning_delta(chunk)
             if reasoning_delta:
-                reasoning_event: dict = {"content": reasoning_delta}
-                if subagent_id:
-                    reasoning_event["subagent_id"] = subagent_id
-                stream_writer({"reasoning": reasoning_event})
+                reasoning_payload = ReasoningPayload(
+                    content=reasoning_delta, subagent_id=subagent_id
+                )
+                stream_writer({"reasoning": reasoning_payload.model_dump(exclude_none=True)})
 
     # Emit tool_output when ToolMessage arrives
     elif chunk and isinstance(chunk, ToolMessage):
         content_str = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
         complete_message = _capture_finish_task_content(chunk, complete_message)
         if stream_writer:
-            tool_output_data: dict = {
-                "tool_call_id": chunk.tool_call_id,
-                "output": content_str,
-            }
-            if subagent_id:
-                tool_output_data["subagent_id"] = subagent_id
-            stream_writer({"tool_output": tool_output_data})
+            tool_output_payload = ToolOutputPayload(
+                tool_call_id=chunk.tool_call_id,
+                output=content_str,
+                subagent_id=subagent_id,
+            )
+            stream_writer({"tool_output": tool_output_payload.model_dump(exclude_none=True)})
 
     return complete_message
 

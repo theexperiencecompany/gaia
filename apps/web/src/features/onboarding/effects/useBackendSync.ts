@@ -1,13 +1,13 @@
 /**
  * Drives the live backend connection during onboarding: fetches the initial
- * personalization snapshot via REST, opens a WebSocket for stage events, and
- * falls back to REST polling if the socket goes silent.
+ * personalization snapshot via REST, subscribes to the app-wide WebSocket for
+ * stage events, and falls back to REST polling if the socket goes silent.
  */
 
 "use client";
 
 import { type Dispatch, useEffect, useRef } from "react";
-
+import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { syncSingleConversation } from "@/services/syncService";
 import { getPersonalization } from "../api/onboardingApi";
 import type { Action, OnboardingState, Stage } from "../state/types";
@@ -34,19 +34,8 @@ function mapSuggestedWorkflows(
   }));
 }
 
-const MAX_RECONNECT_ATTEMPTS = 10;
-const RECONNECT_BASE_DELAY_MS = 1000;
 const WS_SILENCE_FALLBACK_MS = 5000;
 const POLL_INTERVAL_MS = 3000;
-
-function getWsUrl(): string {
-  const base =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1/";
-  return (
-    base.replace("http://", "ws://").replace("https://", "wss://") +
-    "ws/connect"
-  );
-}
 
 type StageEnvelope = {
   [K in OnboardingStage]: { stage: K; payload: StagePayloads[K] };
@@ -76,14 +65,12 @@ export function useBackendSync(
     let aborted = false;
     let snapshotResolved = false;
     const buffer: StageEnvelope[] = [];
-    let ws: WebSocket | null = null;
-    let reconnectAttempts = 0;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let silenceTimer: ReturnType<typeof setTimeout> | null = null;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     let silenceFallbackUsed = false;
     let wsReceivedEvent = false;
-    let closed = false;
+    let wasDisconnected = false;
+    let done = false;
 
     type StageHandlers = {
       [K in OnboardingStage]: (payload: StagePayloads[K]) => void;
@@ -173,7 +160,7 @@ export function useBackendSync(
         if (p.conversation_id) {
           void syncSingleConversation(p.conversation_id).catch(() => {});
         }
-        closeWs();
+        finish();
       },
     };
 
@@ -211,25 +198,23 @@ export function useBackendSync(
       }
     };
 
-    const closeWs = () => {
-      closed = true;
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
+    // Tear down onboarding's subscription to the shared socket. Does NOT
+    // disconnect wsManager — the app-wide connection stays alive for chat,
+    // notifications, etc. once onboarding is done.
+    const finish = () => {
+      done = true;
       if (silenceTimer) {
         clearTimeout(silenceTimer);
         silenceTimer = null;
       }
       stopPoll();
-      if (ws) {
-        ws.close();
-        ws = null;
-      }
+      wsManager.off("onboarding_stage", handleMessage);
+      wsManager.offConnect(handleReconnect);
+      wsManager.offDisconnect(handleDisconnect);
     };
 
     const pollOnce = () => {
-      if (closed || aborted || isRestartingRef.current) return;
+      if (done || aborted || isRestartingRef.current) return;
       getPersonalization()
         .then((data) => {
           if (aborted || isRestartingRef.current) return;
@@ -256,7 +241,7 @@ export function useBackendSync(
     };
 
     const startPolling = () => {
-      if (pollTimer || closed || aborted || isRestartingRef.current) return;
+      if (pollTimer || done || aborted || isRestartingRef.current) return;
       pollOnce();
       pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
     };
@@ -264,76 +249,41 @@ export function useBackendSync(
     const runSilenceFallback = () => {
       if (silenceFallbackUsed) return;
       if (wsReceivedEvent) return;
-      if (closed || aborted || isRestartingRef.current) return;
+      if (done || aborted || isRestartingRef.current) return;
       silenceFallbackUsed = true;
       startPolling();
     };
 
-    const connectWs = () => {
-      if (closed || aborted) return;
-      try {
-        const socket = new WebSocket(getWsUrl());
-        ws = socket;
+    const handleMessage = (message: unknown) => {
+      if (aborted || isRestartingRef.current) return;
+      wsReceivedEvent = true;
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
+      stopPoll();
+      const envelope = (message as { data: StageEnvelope }).data;
+      console.debug("[onboarding:ws]", envelope.stage, envelope.payload);
+      if (!snapshotResolved) {
+        buffer.push(envelope);
+        return;
+      }
+      handleStage(envelope);
+    };
 
-        socket.onopen = () => {
-          const isReconnect = reconnectAttempts > 0;
-          reconnectAttempts = 0;
-          if (isReconnect) {
-            // Close the gap with a fresh snapshot — events during the
-            // disconnect window are lost.
-            pollOnce();
-          }
-          if (
-            !silenceFallbackUsed &&
-            !wsReceivedEvent &&
-            silenceTimer === null
-          ) {
-            silenceTimer = setTimeout(
-              runSilenceFallback,
-              WS_SILENCE_FALLBACK_MS,
-            );
-          }
-        };
+    const handleDisconnect = () => {
+      wasDisconnected = true;
+    };
 
-        socket.onmessage = (event) => {
-          if (aborted || isRestartingRef.current) return;
-          wsReceivedEvent = true;
-          if (silenceTimer) {
-            clearTimeout(silenceTimer);
-            silenceTimer = null;
-          }
-          stopPoll();
-          try {
-            const message = JSON.parse(event.data) as {
-              type: string;
-              data: unknown;
-            };
-            if (message.type !== "onboarding_stage") return;
-            const envelope = message.data as StageEnvelope;
-            console.debug("[onboarding:ws]", envelope.stage, envelope.payload);
-            if (!snapshotResolved) {
-              buffer.push(envelope);
-              return;
-            }
-            handleStage(envelope);
-          } catch (error) {
-            console.error("[onboarding:ws] parse error:", error);
-          }
-        };
-
-        socket.onclose = () => {
-          ws = null;
-          if (closed || aborted) return;
-          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            const delay =
-              RECONNECT_BASE_DELAY_MS * 2 ** Math.min(reconnectAttempts, 5);
-            reconnectAttempts += 1;
-            reconnectTimer = setTimeout(connectWs, delay);
-          }
-        };
-
-        socket.onerror = () => {};
-      } catch {}
+    // wsManager reconnects transparently; on the first open after a drop,
+    // close the gap with a fresh snapshot since stage events emitted during
+    // the disconnect window are lost.
+    const handleReconnect = () => {
+      if (done || aborted || isRestartingRef.current) return;
+      if (wasDisconnected) {
+        wasDisconnected = false;
+        pollOnce();
+      }
     };
 
     getPersonalization()
@@ -349,11 +299,17 @@ export function useBackendSync(
         flushBuffer();
       });
 
-    connectWs();
+    wsManager.on("onboarding_stage", handleMessage);
+    wsManager.onConnect(handleReconnect);
+    wsManager.onDisconnect(handleDisconnect);
+
+    // If no stage events flow shortly, fall back to REST polling — guards the
+    // case where the shared socket is down or events never arrive.
+    silenceTimer = setTimeout(runSilenceFallback, WS_SILENCE_FALLBACK_MS);
 
     return () => {
       aborted = true;
-      closeWs();
+      finish();
     };
   }, [active]);
 }

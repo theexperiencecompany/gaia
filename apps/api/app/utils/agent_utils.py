@@ -14,6 +14,13 @@ from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.mongodb.collections import integrations_collection
 from app.decorators.caching import Cacheable
+from app.models.stream_events import (
+    ResponseFrame,
+    SubagentEndPayload,
+    SubagentStartPayload,
+    ToolCallsDataEntry,
+    ToolCallsDataEntryData,
+)
 from app.services.chat.chunks import extract_tool_data
 from shared.py.wide_events import log
 
@@ -104,19 +111,15 @@ def format_subagent_start_event(
     parent_subagent_id: str | None = None,
 ) -> dict:
     """Format a subagent_start SSE payload."""
-    payload: dict = {
-        "subagent_id": subagent_id,
-        "subagent_name": subagent_name,
-        "agent_type": agent_type,
-        "started_at": datetime.now(UTC).isoformat(),
-    }
-    if icon_url:
-        payload["icon_url"] = icon_url
-    if tool_category:
-        payload["tool_category"] = tool_category
-    if parent_subagent_id:
-        payload["parent_subagent_id"] = parent_subagent_id
-    return payload
+    return SubagentStartPayload(
+        subagent_id=subagent_id,
+        subagent_name=subagent_name,
+        agent_type=agent_type,
+        started_at=datetime.now(UTC).isoformat(),
+        icon_url=icon_url,
+        tool_category=tool_category,
+        parent_subagent_id=parent_subagent_id,
+    ).model_dump(exclude_none=True)
 
 
 def format_subagent_end_event(
@@ -125,11 +128,11 @@ def format_subagent_end_event(
     token_count: int | None = None,
 ) -> dict:
     """Format a subagent_end SSE payload."""
-    return {
-        "subagent_id": subagent_id,
-        "duration_ms": duration_ms,
-        "token_count": token_count,
-    }
+    return SubagentEndPayload(
+        subagent_id=subagent_id,
+        duration_ms=duration_ms,
+        token_count=token_count,
+    ).model_dump()
 
 
 async def emit_subagent_tool_calls(
@@ -273,23 +276,23 @@ async def format_tool_call_entry(
     if integration_id and not is_core_tool and not icon_url and user_id:
         icon_url, integration_name = await _resolve_mcp_icon_name(integration_id)
 
-    return {
-        "tool_name": "tool_calls_data",
-        "tool_category": tool_category or "",
-        "data": {
-            "tool_name": tool_name_raw,
-            "tool_category": tool_category or "",
-            "message": tool_display_name,
-            "show_category": show_category,
-            "tool_call_id": tool_call.get("id"),
-            "inputs": tool_call.get("args", {}),
-            "icon_url": icon_url,
-            "integration_name": integration_name,
-        },
-        "timestamp": timestamp,
-        "mcp_ui": mcp_ui,
-        "mcp_server_url": mcp_server_url,
-    }
+    return ToolCallsDataEntry(
+        tool_name="tool_calls_data",
+        tool_category=tool_category or "",
+        data=ToolCallsDataEntryData(
+            tool_name=tool_name_raw,
+            tool_category=tool_category or "",
+            message=tool_display_name,
+            show_category=show_category,
+            tool_call_id=tool_call.get("id"),
+            inputs=tool_call.get("args", {}),
+            icon_url=icon_url,
+            integration_name=integration_name,
+        ),
+        timestamp=timestamp,
+        mcp_ui=mcp_ui,
+        mcp_server_url=mcp_server_url,
+    ).model_dump()
 
 
 async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | None:
@@ -363,7 +366,7 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
 
 def format_sse_response(content: str) -> str:
     """Wrap text content as a JSON-encoded SSE ``data:`` line."""
-    return f"data: {json.dumps({'response': content})}\n\n"
+    return f"data: {json.dumps(ResponseFrame(response=content).model_dump())}\n\n"
 
 
 def format_sse_data(data: dict) -> str:

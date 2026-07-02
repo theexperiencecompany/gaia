@@ -15,6 +15,10 @@ export interface TurnOptions {
   /** Conversation to stream into; null starts a new conversation. */
   conversationId: string | null;
   isOnboardingDemo: boolean;
+  /** Re-attach to an already-running turn's event log instead of POSTing a
+   *  new one (reload-mid-stream recovery). The log replays from the start, so
+   *  the accumulator rebuilds the full turn. */
+  resumeStreamId?: string;
 }
 
 /** One send request — either starts a turn session or waits in its queue. */

@@ -97,6 +97,10 @@ export class TurnSession {
     });
 
     try {
+      if (this.args.options.resumeStreamId) {
+        await this.attachToStream(this.args.options.resumeStreamId);
+        return;
+      }
       await chatApi.fetchChatStream({
         inputText: this.inputText,
         history: this.buildHistory(),
@@ -125,6 +129,30 @@ export class TurnSession {
         this.fail(error instanceof Error ? error : new Error(String(error)));
       }
     }
+  }
+
+  /**
+   * Re-attach to an already-running turn's event log (reload-mid-stream).
+   * The log replays from the beginning, so the same event pipeline rebuilds
+   * the turn — identity frame binds ids, the accumulator rebuilds content,
+   * and the turn keeps streaming live from where the backend actually is.
+   */
+  private async attachToStream(streamId: string): Promise<void> {
+    this.streamId = streamId;
+    await chatApi.subscribeToExecutorStream(
+      streamId,
+      (event) => {
+        void this.handleSSEMessage(event).then((haltError) => {
+          if (haltError && !this.closeHandled) {
+            this.fail(new Error(haltError));
+            this.controller.abort();
+          }
+        });
+      },
+      () => void this.close(),
+      (err) => this.fail(err),
+      this.controller.signal,
+    );
   }
 
   /** User pressed Stop: persist what streamed so far, then cancel everywhere. */
