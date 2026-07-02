@@ -444,7 +444,7 @@ async def _process_search_results(
 
     for idx, result in enumerate(results):
         if isinstance(result, BaseException):
-            log.warning(f"{LogTag.TOOL} Task {idx}: Search error - {result}")
+            # Already logged (with type) at the gather site in retrieve_tools.
             continue
 
         if not result:
