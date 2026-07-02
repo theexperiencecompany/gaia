@@ -141,6 +141,27 @@ async def _run_chat_stream(
     artifact_task: asyncio.Task[None] | None = None
     description_task: asyncio.Task[str] | None = None
 
+    # One comms turn per conversation at a time: concurrent runs (second tab,
+    # bot double-send) raced the same checkpointer thread. The HTTP endpoint
+    # pre-acquires with this stream_id (re-entrant here); direct callers (bots)
+    # acquire here. A foreign holder ends this stream before any state exists.
+    holder = await stream_manager.try_acquire_conversation_lock(conversation_id, stream_id)
+    if holder:
+        log.warning(
+            f"{LogTag.CHAT} Conversation busy - rejecting concurrent stream",
+            conversation_id=conversation_id,
+            holder_stream_id=holder,
+        )
+        await _wait_for_http_subscriber(start_event, stream_id)
+        busy_payload = {
+            "error": "Another response is still streaming in this conversation.",
+            "active_stream_id": holder,
+        }
+        await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(busy_payload)}\n\n")
+        await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
+        await stream_manager.complete_stream(stream_id)
+        return
+
     # Register the executor-done event + tool-event collector before the comms
     # agent runs, so ``call_executor``'s background task can append events while
     # the stream stays open. Drained into the comms ack's tool_data once the
@@ -593,6 +614,7 @@ async def _finalize_stream(
     # session's tool events — tearing down first would leave it nothing to drain.
     teardown_executor_capture(stream_id)
 
+    await stream_manager.release_conversation_lock_if_owned(conversation_id, stream_id)
     await stream_manager.cleanup(stream_id)
 
     tool_entries = state.tool_data.get("tool_data", [])

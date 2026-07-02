@@ -46,6 +46,8 @@ import json
 from typing import Any
 
 from app.constants.cache import (
+    ACTIVE_STREAM_LOCK_PREFIX,
+    ACTIVE_STREAM_LOCK_TTL,
     STREAM_CHANNEL_PREFIX,
     STREAM_PROGRESS_PREFIX,
     STREAM_SIGNAL_PREFIX,
@@ -86,6 +88,45 @@ class StreamManager:
     Provides pub/sub communication between background streaming tasks
     and HTTP response handlers, with progress tracking and cancellation.
     """
+
+    # -------------------------------------------------------------------------
+    # Per-conversation active-stream lock
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    async def try_acquire_conversation_lock(
+        cls, conversation_id: str, stream_id: str
+    ) -> str | None:
+        """Claim the conversation's single active-stream slot for ``stream_id``.
+
+        Returns None when acquired (or already held by this stream_id — the
+        endpoint pre-acquires before spawning the background task). Returns the
+        HOLDER's stream_id when a different run owns the conversation.
+        Redis-unavailable degrades to allow (pre-lock behavior).
+        """
+        client = redis_cache.client
+        if not client or not conversation_id:
+            return None
+        key = f"{ACTIVE_STREAM_LOCK_PREFIX}{conversation_id}"
+        if await client.set(key, stream_id, ex=ACTIVE_STREAM_LOCK_TTL, nx=True):
+            return None
+        raw = await client.get(key)
+        holder = bytes(raw).decode() if isinstance(raw, (bytes, memoryview)) else raw
+        if holder is None or holder == stream_id:
+            return None
+        return str(holder)
+
+    @classmethod
+    async def release_conversation_lock_if_owned(cls, conversation_id: str, stream_id: str) -> None:
+        """Free the conversation's active-stream slot only while we still own it."""
+        client = redis_cache.client
+        if not client or not conversation_id:
+            return
+        key = f"{ACTIVE_STREAM_LOCK_PREFIX}{conversation_id}"
+        raw = await client.get(key)
+        holder = bytes(raw).decode() if isinstance(raw, (bytes, memoryview)) else raw
+        if holder == stream_id:
+            await client.delete(key)
 
     # -------------------------------------------------------------------------
     # Stream Lifecycle
