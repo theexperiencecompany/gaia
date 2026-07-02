@@ -1,25 +1,30 @@
 """
 Integration tests for the Chat Streaming Pipeline (Redis SSE).
 
-Tests the full StreamManager lifecycle using real Redis pub/sub:
-start_stream, publish_chunk, subscribe_stream, cancel_stream,
-progress tracking, concurrent isolation, and error handling.
+Tests the full StreamManager lifecycle using real Redis Streams (a replayable
+XADD/XREAD event log): start_stream, publish_chunk, subscribe_stream,
+cancel_stream, progress tracking, concurrent isolation, and error handling.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import re
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
 from app.constants.cache import (
+    STREAM_EVENTS_PREFIX,
     STREAM_SIGNAL_PREFIX,
 )
 from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
+
+# Redis Stream entry ids ("<ms>-<seq>") double as SSE event ids.
+_SSE_ID_LINE = re.compile(r"^id: \d+-\d+\n")
 
 
 def _stream_id() -> str:
@@ -28,6 +33,13 @@ def _stream_id() -> str:
 
 def _sse_chunk(content: str) -> str:
     return f"data: {json.dumps({'content': content})}\n\n"
+
+
+def _strip_id(frame: str) -> str:
+    """Assert a replayable frame carries an SSE id line and return the payload."""
+    match = _SSE_ID_LINE.match(frame)
+    assert match is not None, f"Missing SSE id line: {frame!r}"
+    return frame[match.end() :]
 
 
 @pytest.mark.integration
@@ -62,8 +74,10 @@ class TestChatStreamingPipeline:
 
         await asyncio.wait_for(asyncio.gather(pub_task, sub_task), timeout=10)
 
-        # Filter out keepalive heartbeats — they're transparent and not part of content
-        content_chunks = [c for c in received if '{"keepalive":true}' not in c]
+        # Filter out keepalive heartbeats — they're transparent and not part of
+        # content. Every content frame is id-tagged; payloads must round-trip
+        # byte-identically, in order.
+        content_chunks = [_strip_id(c) for c in received if '{"keepalive":true}' not in c]
         assert content_chunks == chunks_to_send
         assert len(content_chunks) == 5
 
@@ -91,8 +105,9 @@ class TestChatStreamingPipeline:
 
         # Filter out keepalive heartbeats before asserting
         non_keepalive = [c for c in received if '{"keepalive":true}' not in c]
-        # Should receive the chunk before cancel, plus the [DONE] signal from cancellation
-        assert non_keepalive[0] == _sse_chunk("before-cancel")
+        # Should receive the id-tagged chunk before cancel, plus the [DONE]
+        # marker (no id line) from cancellation
+        assert _strip_id(non_keepalive[0]) == _sse_chunk("before-cancel")
         assert non_keepalive[-1] == "data: [DONE]\n\n"
 
         # Verify cancellation flag was set in Redis
@@ -138,9 +153,9 @@ class TestChatStreamingPipeline:
 
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)
 
-        # Filter keepalives before checking content isolation
-        content_a = [c for c in received_a if '{"keepalive":true}' not in c]
-        content_b = [c for c in received_b if '{"keepalive":true}' not in c]
+        # Filter keepalives and strip SSE id lines before checking content isolation
+        content_a = [_strip_id(c) for c in received_a if '{"keepalive":true}' not in c]
+        content_b = [_strip_id(c) for c in received_b if '{"keepalive":true}' not in c]
         assert content_a == chunks_a
         assert content_b == chunks_b
         # No cross-contamination
@@ -175,7 +190,7 @@ class TestChatStreamingPipeline:
         await asyncio.wait_for(asyncio.gather(pub_task, sub_task), timeout=15)
 
         # Filter keepalives — rapid publish may interleave with heartbeats
-        content_chunks = [c for c in received if '{"keepalive":true}' not in c]
+        content_chunks = [_strip_id(c) for c in received if '{"keepalive":true}' not in c]
         assert content_chunks == chunks
         assert len(content_chunks) == num_chunks
 
@@ -200,6 +215,9 @@ class TestStreamMetadata:
         assert progress["is_cancelled"] is False
         assert progress["complete_message"] == ""
         assert progress["error"] is None
+
+        # The active-stream reverse index lets a reloaded client re-attach
+        assert await StreamManager.get_active_stream_id(user_id, conv_id) == sid
 
     async def test_update_progress_appends_message(self, real_redis):
         """update_progress accumulates message chunks in complete_message."""
@@ -267,12 +285,13 @@ class TestStreamMetadata:
         assert error_data["error"] == "LLM rate limit exceeded"
 
     async def test_cleanup_removes_redis_keys(self, real_redis):
-        """cleanup deletes all Redis keys for the stream."""
+        """cleanup deletes progress/signal/active keys but keeps the replay log."""
         sid = _stream_id()
         await StreamManager.start_stream(sid, "conv-clean", "user-clean")
 
         # Set a cancellation signal too so both keys exist
         await redis_cache.set(f"{STREAM_SIGNAL_PREFIX}{sid}", "cancelled")
+        await StreamManager.publish_chunk(sid, _sse_chunk("kept-for-replay"))
 
         await StreamManager.cleanup(sid)
 
@@ -281,6 +300,14 @@ class TestStreamMetadata:
 
         signal = await redis_cache.get(f"{STREAM_SIGNAL_PREFIX}{sid}")
         assert signal is None
+
+        active = await StreamManager.get_active_stream_id("user-clean", "conv-clean")
+        assert active is None
+
+        # The event log is intentionally kept until TTL so a client that
+        # reloads right at completion can still re-attach and replay.
+        entries = await real_redis.xrange(f"{STREAM_EVENTS_PREFIX}{sid}")
+        assert len(entries) == 1
 
 
 @pytest.mark.integration
@@ -366,7 +393,7 @@ class TestStreamKeepalive:
 
 @pytest.mark.integration
 class TestMultipleSubscribers:
-    """Test multiple subscribers to the same stream channel."""
+    """Test multiple subscribers replaying the same stream event log."""
 
     async def test_multiple_subscribers_receive_same_chunks(self, real_redis):
         """Two subscribers to the same stream both receive all chunks."""
@@ -397,8 +424,8 @@ class TestMultipleSubscribers:
 
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)
 
-        # Filter keepalives before comparing content
-        content_1 = [c for c in received_1 if '{"keepalive":true}' not in c]
-        content_2 = [c for c in received_2 if '{"keepalive":true}' not in c]
+        # Filter keepalives and strip SSE id lines before comparing content
+        content_1 = [_strip_id(c) for c in received_1 if '{"keepalive":true}' not in c]
+        content_2 = [_strip_id(c) for c in received_2 if '{"keepalive":true}' not in c]
         assert content_1 == chunks
         assert content_2 == chunks
