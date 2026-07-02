@@ -23,6 +23,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
+from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.storage import JuiceFSUnavailable, write_session_file
@@ -45,7 +46,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         compaction_threshold: float = 0.65,
         max_output_chars: int = 20000,
         always_persist_tools: list[str] | None = None,
-        context_window: int = 128000,
+        context_window: int = DEFAULT_MAX_TOKENS,
         excluded_tools: set[str] | None = None,
     ) -> None:
         super().__init__()

@@ -485,7 +485,12 @@ class TestLinearGetMyTasks:
         side_effect=lambda i: {"id": i.get("id")},
     )
     def test_get_my_tasks_overdue_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
-        yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
+        # Pin production's "today" to the local date so the overdue comparison
+        # (due_date < today) uses the same reference as the test's date strings.
+        # Without this, _user_local_today() falls back to datetime.now(UTC).date()
+        # which can differ from local date in timezones ahead of UTC.
+        local_today = datetime.now().date()
+        yesterday = (local_today - timedelta(days=1)).isoformat()
         mock_gql.side_effect = [
             {"viewer": {"id": "u1"}},
             {
@@ -515,7 +520,8 @@ class TestLinearGetMyTasks:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_MY_TASKS"]
 
-        result = fn(GetMyTasksInput(filter="overdue"), EXECUTE_REQUEST, AUTH_CREDS)
+        with patch(f"{LINEAR_MODULE}._user_local_today", return_value=local_today):
+            result = fn(GetMyTasksInput(filter="overdue"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["count"] == 1
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
@@ -568,7 +574,10 @@ class TestLinearGetMyTasks:
         side_effect=lambda i: {"id": i.get("id")},
     )
     def test_get_my_tasks_today_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
-        today = datetime.now().date().isoformat()
+        # Pin production's "today" to the local date so the equality check
+        # (due_date == today) uses the same reference as the test's date strings.
+        local_today = datetime.now().date()
+        today = local_today.isoformat()
         mock_gql.side_effect = [
             {"viewer": {"id": "u1"}},
             {
@@ -598,7 +607,8 @@ class TestLinearGetMyTasks:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_MY_TASKS"]
 
-        result = fn(GetMyTasksInput(filter="today"), EXECUTE_REQUEST, AUTH_CREDS)
+        with patch(f"{LINEAR_MODULE}._user_local_today", return_value=local_today):
+            result = fn(GetMyTasksInput(filter="today"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["count"] == 1
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
@@ -1593,7 +1603,10 @@ class TestLinearGetWorkspaceContext:
         side_effect=lambda i: {"id": i.get("id")},
     )
     def test_get_workspace_context(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
-        yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
+        # Pin production's "today" to the local date so the overdue comparison
+        # (due_date < today) uses the same reference as the test's date strings.
+        local_today = datetime.now().date()
+        yesterday = (local_today - timedelta(days=1)).isoformat()
         mock_gql.side_effect = [
             {
                 "viewer": {
@@ -1637,7 +1650,8 @@ class TestLinearGetWorkspaceContext:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_WORKSPACE_CONTEXT"]
 
-        result = fn(GetWorkspaceContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
+        with patch(f"{LINEAR_MODULE}._user_local_today", return_value=local_today):
+            result = fn(GetWorkspaceContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["user"]["name"] == "Alice"
         assert result["user"]["assigned_issue_count"] == 1
         assert len(result["teams"]) == 1

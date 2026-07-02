@@ -15,7 +15,7 @@ from pydantic.alias_generators import to_camel
 
 from app.helpers.integration_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
-from app.models.oauth_models import OAuthIntegration
+from app.models.oauth_models import IntegrationContent, OAuthIntegration
 
 # Type alias for auth_type
 AuthType = Literal["none", "oauth", "bearer"]
@@ -79,6 +79,10 @@ class Integration(BaseModel):
     icon_url: str | None = Field(None, description="Favicon URL fetched from MCP server subdomain")
     display_priority: int = Field(0, description="Higher priority shows first")
     is_featured: bool = Field(False, description="Show in featured section")
+
+    # LLM-generated marketplace detail content (use cases, how-it-works, FAQs).
+    # Generated at publish time; absent until then (frontend falls back to generic copy).
+    content: IntegrationContent | None = None
 
     # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

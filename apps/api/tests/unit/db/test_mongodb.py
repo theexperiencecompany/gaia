@@ -419,7 +419,6 @@ class TestCreateAllIndexes:
             "create_conversation_indexes",
             "create_todo_indexes",
             "create_project_indexes",
-            "create_goal_indexes",
             "create_note_indexes",
             "create_file_indexes",
             "create_mail_indexes",
@@ -434,11 +433,12 @@ class TestCreateAllIndexes:
             "create_ai_models_indexes",
             "create_integration_indexes",
             "create_user_integration_indexes",
+            "create_integration_instructions_indexes",
             "create_device_token_indexes",
-            "create_vfs_indexes",
             "create_installed_skills_indexes",
             "create_workflow_execution_indexes",
             "create_bot_session_indexes",
+            "create_e2b_sandbox_indexes",
         ]
 
         patches = {}
@@ -478,7 +478,6 @@ class TestCreateAllIndexes:
             "create_conversation_indexes",
             "create_todo_indexes",
             "create_project_indexes",
-            "create_goal_indexes",
             "create_note_indexes",
             "create_file_indexes",
             "create_mail_indexes",
@@ -493,11 +492,12 @@ class TestCreateAllIndexes:
             "create_ai_models_indexes",
             "create_integration_indexes",
             "create_user_integration_indexes",
+            "create_integration_instructions_indexes",
             "create_device_token_indexes",
-            "create_vfs_indexes",
             "create_installed_skills_indexes",
             "create_workflow_execution_indexes",
             "create_bot_session_indexes",
+            "create_e2b_sandbox_indexes",
         ]
 
         patches_dict = {}

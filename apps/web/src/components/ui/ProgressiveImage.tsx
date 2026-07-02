@@ -40,21 +40,25 @@ export default function ProgressiveImage({
         width={width}
         height={height}
         priority={priority}
-        fetchPriority="high"
+        fetchPriority={priority ? "high" : undefined}
         sizes={sizes}
         onLoad={() => setInitialLoaded(true)}
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
         className={`${className} transition duration-200 ${initialLoaded || !shouldHaveInitialFade ? "opacity-100" : "opacity-0"}`}
       />
 
-      {/* PNG fades in later */}
+      {/* Higher-quality PNG fades in AFTER the webp. It is always lazy + low
+          priority so it never competes with the LCP image (the webp) for
+          bandwidth — even on priority heroes. This keeps the quality upgrade
+          without pushing out Largest Contentful Paint. */}
       <NextImage
         src={pngSrc}
         alt={`${alt} png`}
         width={width}
         height={height}
         sizes={sizes}
-        loading={priority ? "eager" : "lazy"}
+        loading="lazy"
+        fetchPriority="low"
         onLoad={() => setLoaded(true)}
         style={{
           width: "100%",

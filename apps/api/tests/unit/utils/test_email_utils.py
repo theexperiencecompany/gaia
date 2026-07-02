@@ -65,8 +65,13 @@ class TestSendWelcomeEmail:
 
 @pytest.mark.unit
 class TestAddContactToResend:
+    # The function exits early when RESEND_AUDIENCE_ID is empty (not configured).
+    # All tests must patch settings so the guard passes and the real logic runs.
+
+    @patch("app.utils.email_utils.settings")
     @patch("app.utils.email_utils.resend.Contacts.create")
-    async def test_with_full_name(self, mock_create):
+    async def test_with_full_name(self, mock_create, mock_settings):
+        mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
         await add_contact_to_resend("alice@example.com", "Alice Smith")
 
         mock_create.assert_called_once()
@@ -76,50 +81,62 @@ class TestAddContactToResend:
         assert params["last_name"] == "Smith"
         assert params["unsubscribed"] is False
 
+    @patch("app.utils.email_utils.settings")
     @patch("app.utils.email_utils.resend.Contacts.create")
-    async def test_without_name(self, mock_create):
+    async def test_without_name(self, mock_create, mock_settings):
+        mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
         await add_contact_to_resend("bob@example.com")
 
         params = mock_create.call_args[0][0]
         assert params["first_name"] == ""
         assert params["last_name"] == ""
 
+    @patch("app.utils.email_utils.settings")
     @patch("app.utils.email_utils.resend.Contacts.create")
-    async def test_single_word_name(self, mock_create):
+    async def test_single_word_name(self, mock_create, mock_settings):
+        mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
         await add_contact_to_resend("user@example.com", "Alice")
 
         params = mock_create.call_args[0][0]
         assert params["first_name"] == "Alice"
         assert params["last_name"] == ""
 
+    @patch("app.utils.email_utils.settings")
     @patch("app.utils.email_utils.resend.Contacts.create")
-    async def test_three_word_name(self, mock_create):
+    async def test_three_word_name(self, mock_create, mock_settings):
+        mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
         await add_contact_to_resend("user@example.com", "Alice Marie Smith")
 
         params = mock_create.call_args[0][0]
         assert params["first_name"] == "Alice"
         assert params["last_name"] == "Marie Smith"
 
+    @patch("app.utils.email_utils.settings")
     @patch(
         "app.utils.email_utils.resend.Contacts.create",
         side_effect=Exception("network error"),
     )
-    async def test_exception_swallowed(self, mock_create):
+    async def test_exception_swallowed(self, mock_create, mock_settings):
         """add_contact_to_resend swallows exceptions so user creation still succeeds."""
+        mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
         # Should NOT raise
         await add_contact_to_resend("user@example.com", "Alice")
 
+    @patch("app.utils.email_utils.settings")
     @patch("app.utils.email_utils.resend.Contacts.create")
-    async def test_whitespace_name_trimmed(self, mock_create):
+    async def test_whitespace_name_trimmed(self, mock_create, mock_settings):
+        mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
         await add_contact_to_resend("user@example.com", "  Alice  ")
 
         params = mock_create.call_args[0][0]
         assert params["first_name"] == "Alice"
         assert params["last_name"] == ""
 
+    @patch("app.utils.email_utils.settings")
     @patch("app.utils.email_utils.resend.Contacts.create")
-    async def test_empty_string_name(self, mock_create):
+    async def test_empty_string_name(self, mock_create, mock_settings):
         """An empty string name is falsy, so first/last should be empty."""
+        mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
         await add_contact_to_resend("user@example.com", "")
 
         params = mock_create.call_args[0][0]

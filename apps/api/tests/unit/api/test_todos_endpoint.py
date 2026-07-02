@@ -842,10 +842,6 @@ class TestUpdateSubtask:
                 "app.services.todos.todo_service.TodoService._invalidate_cache",
                 new_callable=AsyncMock,
             ),
-            patch(
-                "app.api.v1.endpoints.todos.sync_subtask_to_goal_completion",
-                new_callable=AsyncMock,
-            ),
         ):
             resp = await client.put(
                 f"{API}/todos/{valid_oid}/subtasks/s1",
@@ -1073,10 +1069,6 @@ class TestToggleSubtaskCompletion:
             ),
             patch(
                 "app.services.todos.todo_service.TodoService._invalidate_cache",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "app.api.v1.endpoints.todos.sync_subtask_to_goal_completion",
                 new_callable=AsyncMock,
             ),
         ):

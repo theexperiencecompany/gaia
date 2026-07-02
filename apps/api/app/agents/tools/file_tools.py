@@ -100,15 +100,15 @@ async def _get_similar_documents(
         log.error(f"{LogTag.TOOL} ChromaDB client is not available.")
         return []
 
-    filters = {
-        "$and": [
-            {"user_id": user_id},
-            # {"conversation_id": conversation_id},
-        ]
-    }
-
+    # ChromaDB rejects a $and/$or with fewer than two clauses, so only wrap in
+    # $and when there is more than one condition; a lone condition is passed
+    # as-is. Without this, an uploaded file queried without a file_id produced a
+    # single-clause $and and the whole document lookup failed.
+    conditions: list[dict[str, object]] = [{"user_id": user_id}]
     if file_id:
-        filters["$and"].append({"file_id": file_id})
+        conditions.append({"file_id": file_id})
+
+    filters: dict[str, object] = conditions[0] if len(conditions) == 1 else {"$and": conditions}
 
     return await chroma_documents_collection.asimilarity_search_with_score(
         query=query,

@@ -316,15 +316,14 @@ class TestGetIntegrationDetails:
 
         resolved = MagicMock()
         resolved.platform_integration = _make_oauth_integration("gmail", "Gmail")
-        resolved.custom_doc = None
+        # custom_doc must be a dict with 'created_by' so the code fetches creator info
+        resolved.custom_doc = {"created_by": "507f1f77bcf86cd799439011"}  # pragma: allowlist secret
         mock_resolver.resolve = AsyncMock(return_value=resolved)
 
-        # Patch the response to have created_by
         from app.services.integrations.marketplace import get_integration_details
 
         with patch(f"{MODULE}.IntegrationResponse.from_oauth_integration") as mock_from_oauth:
             resp = MagicMock()
-            resp.created_by = "507f1f77bcf86cd799439011"  # pragma: allowlist secret
             resp.tools = []
             mock_from_oauth.return_value = resp
             mock_users.find_one = AsyncMock(

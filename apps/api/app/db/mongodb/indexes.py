@@ -25,7 +25,6 @@ from app.db.mongodb.collections import (
     e2b_sandboxes_collection,
     e2b_warm_pool_collection,
     files_collection,
-    goals_collection,
     integration_instructions_collection,
     integrations_collection,
     mail_collection,
@@ -61,7 +60,6 @@ async def create_all_indexes():
             create_conversation_indexes(),
             create_todo_indexes(),
             create_project_indexes(),
-            create_goal_indexes(),
             create_note_indexes(),
             create_file_indexes(),
             create_mail_indexes(),
@@ -92,7 +90,6 @@ async def create_all_indexes():
             "conversations",
             "todos",
             "projects",
-            "goals",
             "notes",
             "files",
             "mail",
@@ -277,25 +274,6 @@ async def create_project_indexes():
 
     except Exception as e:
         log.error(f"{LogTag.MONGO} Error creating project indexes: {e!s}")
-        raise
-
-
-async def create_goal_indexes():
-    """Create indexes for goals collection."""
-    try:
-        # Create all goal indexes concurrently
-        await asyncio.gather(
-            # Primary index for user goals
-            goals_collection.create_index([("user_id", 1), ("created_at", -1)]),
-            # For progress tracking
-            goals_collection.create_index([("user_id", 1), ("progress", 1)]),
-            # For todo integration queries
-            goals_collection.create_index([("user_id", 1), ("todo_project_id", 1)]),
-            goals_collection.create_index([("user_id", 1), ("todo_id", 1)]),
-        )
-
-    except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating goal indexes: {e!s}")
         raise
 
 

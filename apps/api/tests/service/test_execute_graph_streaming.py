@@ -41,7 +41,6 @@ class TestExecuteGraphStreamingReal:
             patches[4],
             patches[5],
             patches[6],
-            patches[7],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 state = {"messages": [HumanMessage(content="What is the meaning?")]}
@@ -80,7 +79,6 @@ class TestExecuteGraphStreamingReal:
             patches[4],
             patches[5],
             patches[6],
-            patches[7],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 state = {"messages": [HumanMessage(content="Say hello")]}
@@ -117,7 +115,6 @@ class TestExecuteGraphStreamingReal:
             patches[4],
             patches[5],
             patches[6],
-            patches[7],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 state = {"messages": [HumanMessage(content="Long task")]}

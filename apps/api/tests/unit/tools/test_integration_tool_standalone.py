@@ -234,7 +234,7 @@ class TestConnectIntegration:
         from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), integration_names=["gmail"]
+            config=_cfg(), integration_ids=["gmail"]
         )
         assert "needs to be connected" in result
         # Writer should be called with integration_connection_required
@@ -266,14 +266,17 @@ class TestConnectIntegration:
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "bot"}},
             ),
-            patch("app.utils.integration_checker.settings") as s,
+            patch(
+                "app.agents.tools.integration_tool.build_connect_link_url",
+                new=AsyncMock(return_value="https://app.example.com/connect/test-token"),
+            ),
         ):
-            s.FRONTEND_URL = "https://app.example.com"
             result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-                config=_cfg(), integration_names=["gmail"]
+                config=_cfg(), integration_ids=["gmail"]
             )
 
-        assert "https://app.example.com/integrations" in result
+        # Bot platforms get the minted login-free connect link inline (verbatim).
+        assert "https://app.example.com/connect/test-token" in result
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
@@ -298,7 +301,7 @@ class TestConnectIntegration:
             return_value={"configurable": {"source_category": "ui"}},
         ):
             result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-                config=_cfg(), integration_names=["gmail"]
+                config=_cfg(), integration_ids=["gmail"]
             )
 
         assert "http" not in result
@@ -320,7 +323,7 @@ class TestConnectIntegration:
         from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), integration_names=["gmail"]
+            config=_cfg(), integration_ids=["gmail"]
         )
         assert "already connected" in result
 
@@ -332,7 +335,7 @@ class TestConnectIntegration:
         from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), integration_names=["nonexistent"]
+            config=_cfg(), integration_ids=["nonexistent"]
         )
         assert "not found" in result
 
@@ -347,7 +350,7 @@ class TestConnectIntegration:
         from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), integration_names=["gmail"]
+            config=_cfg(), integration_ids=["gmail"]
         )
         assert "not available yet" in result
 
@@ -355,7 +358,7 @@ class TestConnectIntegration:
         from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg_no_user(), integration_names=["gmail"]
+            config=_cfg_no_user(), integration_ids=["gmail"]
         )
         assert "Error" in result
 
@@ -367,7 +370,7 @@ class TestConnectIntegration:
         from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), integration_names=[]
+            config=_cfg(), integration_ids=[]
         )
         assert result == "No integrations to connect."
 
@@ -387,7 +390,7 @@ class TestConnectIntegration:
         from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), integration_names=["gmail"]
+            config=_cfg(), integration_ids=["gmail"]
         )
         assert "Error connecting" in result
 

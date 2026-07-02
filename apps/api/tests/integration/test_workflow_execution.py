@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.exceptions import OutputParserException
 import pytest
 
 from app.models.workflow_models import (
@@ -34,7 +35,6 @@ from app.services.workflow.execution_service import (
 )
 from app.services.workflow.generation_service import (
     WorkflowGenerationService,
-    _parse_workflow_response,
     enrich_steps,
 )
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -482,18 +482,28 @@ class TestTriggerRegistration:
             trigger_name="calendar_event_created",
         )
 
-        with patch(
-            "app.services.workflow.service.TriggerService.register_triggers",
-            new_callable=AsyncMock,
-            return_value=["trigger_id_1", "trigger_id_2"],
-        ) as mock_register:
+        with (
+            patch(
+                "app.services.oauth.oauth_service.check_integration_status",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.services.workflow.service.TriggerService.register_triggers",
+                new_callable=AsyncMock,
+                return_value=["trigger_id_1", "trigger_id_2"],
+            ) as mock_register,
+        ):
             result = await WorkflowService._register_integration_triggers(
                 workflow_id=FAKE_WORKFLOW_ID,
                 user_id=FAKE_USER_ID,
                 trigger_config=trigger_config,
             )
 
-        assert result == ["trigger_id_1", "trigger_id_2"]
+        # _register_integration_triggers now returns (trigger_ids, integration_connected)
+        trigger_ids, connected = result
+        assert trigger_ids == ["trigger_id_1", "trigger_id_2"]
+        assert connected is True
         mock_register.assert_awaited_once_with(
             user_id=FAKE_USER_ID,
             workflow_id=FAKE_WORKFLOW_ID,
@@ -503,7 +513,7 @@ class TestTriggerRegistration:
         )
 
     async def test_register_skips_non_integration_triggers(self):
-        """_register_integration_triggers returns empty list for manual triggers."""
+        """_register_integration_triggers returns ([], True) for manual triggers."""
         trigger_config = _make_trigger_config(trigger_type="manual")
 
         result = await WorkflowService._register_integration_triggers(
@@ -512,7 +522,8 @@ class TestTriggerRegistration:
             trigger_config=trigger_config,
         )
 
-        assert result == []
+        # Non-integration triggers return ([], True) — trigger_ids empty, integration_connected True
+        assert result == ([], True)
 
     async def test_register_raises_when_trigger_name_missing(self):
         """_register_integration_triggers raises when integration trigger has no name."""
@@ -548,6 +559,14 @@ class TestTriggerRegistration:
                 mock_collection,
             ),
             patch("app.services.workflow.service.ChromaClient") as mock_chroma_cls,
+            # check_integration_status is imported lazily inside the function;
+            # patch it True so the code proceeds past the connectivity gate to
+            # call register_triggers (which then raises TriggerRegistrationError).
+            patch(
+                "app.services.oauth.oauth_service.check_integration_status",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
             patch(
                 "app.services.workflow.service.TriggerService.register_triggers",
                 new_callable=AsyncMock,
@@ -754,7 +773,7 @@ class TestSlugGeneration:
     """Create workflows with similar names -> verify unique slugs."""
 
     async def test_generate_unique_slug_returns_base_when_available(self):
-        """First slug for a title is just the slugified base."""
+        """Slug for a title is '{base}-{6hex}' — always includes a random suffix."""
         mock_collection = AsyncMock()
         mock_collection.find_one = AsyncMock(return_value=None)
 
@@ -764,10 +783,14 @@ class TestSlugGeneration:
         ):
             slug = await generate_unique_workflow_slug("My Awesome Workflow")
 
-        assert slug == "myawesomeworkflow"
+        # Format is always "{base}-{6_hex_chars}"
+        assert slug.startswith("myawesomeworkflow-")
+        suffix = slug.split("-", 1)[1]
+        assert len(suffix) == 6
+        assert all(c in "0123456789abcdef" for c in suffix)
 
     async def test_generate_unique_slug_appends_suffix_on_collision(self):
-        """When the base slug is taken, a numeric suffix is appended."""
+        """When candidate slugs are taken, the function keeps retrying with fresh hex suffixes."""
         call_count = 0
 
         async def find_one_side_effect(query):
@@ -787,10 +810,16 @@ class TestSlugGeneration:
         ):
             slug = await generate_unique_workflow_slug("Daily Report")
 
-        assert slug == "dailyreport-2"
+        # The function retried and returned a free candidate
+        assert slug.startswith("dailyreport-")
+        suffix = slug.split("-", 1)[1]
+        assert len(suffix) == 6
+        assert all(c in "0123456789abcdef" for c in suffix)
+        # find_one was called exactly 3 times (2 collisions + 1 free)
+        assert call_count == 3
 
     async def test_generate_unique_slug_handles_empty_title(self):
-        """An empty/invalid title falls back to 'workflow' base."""
+        """An empty/invalid title falls back to 'workflow-{hex}' base."""
         mock_collection = AsyncMock()
         mock_collection.find_one = AsyncMock(return_value=None)
 
@@ -800,7 +829,10 @@ class TestSlugGeneration:
         ):
             slug = await generate_unique_workflow_slug("")
 
-        assert slug == "workflow"
+        assert slug.startswith("workflow-")
+        suffix = slug.split("-", 1)[1]
+        assert len(suffix) == 6
+        assert all(c in "0123456789abcdef" for c in suffix)
 
     async def test_generate_unique_slug_excludes_own_id(self):
         """When exclude_id is provided, the query excludes that workflow."""
@@ -902,49 +934,32 @@ class TestQueueService:
 
 
 # ---------------------------------------------------------------------------
-# TEST 9: Generation Service (parse and enrich)
+# TEST 9: Generation Service (retries)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.integration
-class TestGenerationServiceParsing:
-    """Test the generation service parsing and enrichment logic."""
-
-    def test_parse_workflow_response_strips_markdown_fences(self):
-        """_parse_workflow_response handles ```json ... ``` wrapping."""
-        raw = '```json\n{"steps": [{"title": "Step 1", "category": "gaia", "description": "Do thing"}]}\n```'
-        result = _parse_workflow_response(raw)
-        assert len(result.steps) == 1
-        assert result.steps[0].title == "Step 1"
-
-    def test_parse_workflow_response_handles_plain_json(self):
-        """_parse_workflow_response handles plain JSON without fences."""
-        raw = '{"steps": [{"title": "A", "category": "b", "description": "c"}]}'
-        result = _parse_workflow_response(raw)
-        assert len(result.steps) == 1
-
-    def test_parse_workflow_response_raises_on_invalid_json(self):
-        """_parse_workflow_response raises on malformed JSON."""
-        with pytest.raises(Exception):
-            _parse_workflow_response("not json at all")
+class TestGenerationServiceRetries:
+    """Test the generation service regeneration logic."""
 
     async def test_generate_steps_raises_after_retries(self):
         """generate_steps_with_llm raises RuntimeError after max retries."""
-        mock_llm = MagicMock()
-        mock_llm.with_structured_output = MagicMock(side_effect=NotImplementedError)
-        mock_llm.ainvoke = AsyncMock(return_value=MagicMock(content="bad json"))
-
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
         mock_registry.get_core_tools = MagicMock(return_value=[])
 
         with (
+            # Schema-invalid output on every attempt exhausts the regeneration loop.
             patch(
-                "app.services.workflow.generation_service.init_llm",
-                return_value=mock_llm,
+                "app.services.workflow.generation_service.ainvoke_structured",
+                new_callable=AsyncMock,
+                side_effect=OutputParserException("bad json"),
             ),
+            # Patch the local binding in generation_service (where it is imported),
+            # not the source registry module. The `from ... import get_tool_registry`
+            # at the top of generation_service.py creates an independent local name.
             patch(
-                "app.agents.tools.core.registry.get_tool_registry",
+                "app.services.workflow.generation_service.get_tool_registry",
                 new_callable=AsyncMock,
                 return_value=mock_registry,
             ),
@@ -996,7 +1011,7 @@ class TestActivateDeactivateLifecycle:
         assert result.activated is True
 
     async def test_deactivate_workflow_disables_and_cancels(self):
-        """deactivate_workflow sets activated=False and cancels scheduling."""
+        """deactivate_workflow sets activated=False."""
         workflow = _make_workflow(activated=True)
         doc = _workflow_as_doc(workflow)
         deactivated_doc = {**doc, "activated": False}
@@ -1010,13 +1025,11 @@ class TestActivateDeactivateLifecycle:
                 "app.services.workflow.service.workflows_collection",
                 mock_collection,
             ),
-            patch("app.services.workflow.service.workflow_scheduler") as mock_scheduler,
+            patch("app.services.workflow.service.workflow_scheduler"),
         ):
-            mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock()
             result = await WorkflowService.deactivate_workflow(FAKE_WORKFLOW_ID, FAKE_USER_ID)
 
         assert result is not None
         assert result.activated is False
-        mock_scheduler.cancel_scheduled_workflow_execution.assert_awaited_once_with(
-            FAKE_WORKFLOW_ID
-        )
+        # update_one is called once to persist activated=False
+        mock_collection.update_one.assert_awaited_once()

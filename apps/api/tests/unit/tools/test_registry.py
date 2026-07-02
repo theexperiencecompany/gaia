@@ -311,7 +311,6 @@ _CORE_CATEGORY_NAMES = [
     "notifications",
     "todos",
     "reminders",
-    "goal_tracking",
     "skills",
     "workflows",
     "support",
@@ -399,7 +398,7 @@ class TestToolRegistryAsync:
 
         with (
             patch(
-                "app.services.composio.composio_service.get_composio_service",
+                "app.agents.tools.core.registry.get_composio_service",
                 return_value=mock_composio_service,
             ),
             patch.object(

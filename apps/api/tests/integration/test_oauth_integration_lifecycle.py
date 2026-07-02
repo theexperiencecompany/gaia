@@ -1194,7 +1194,7 @@ class TestMCPIntegrationConnection:
                 AsyncMock(return_value=mock_mcp_client),
             ),
             patch(
-                "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
+                "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
                 AsyncMock(),
             ),
         ):
@@ -1232,10 +1232,8 @@ class TestMCPIntegrationConnection:
                 "app.services.integrations.integration_connection_service.update_user_integration_status",
                 AsyncMock(return_value=True),
             ),
-            patch(
-                "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
-                AsyncMock(),
-            ),
+            # Bearer success path: invalidate_user_integration_caches is NOT called;
+            # only update_user_integration_status is (no patch needed for caches here)
         ):
             response = await connect_mcp_integration(
                 user_id=USER_ID,
@@ -1272,7 +1270,7 @@ class TestMCPIntegrationConnection:
                 return_value=mock_token_store,
             ),
             patch(
-                "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
+                "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
                 AsyncMock(),
             ),
         ):

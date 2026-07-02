@@ -585,66 +585,6 @@ export interface TodoToolData {
 }
 
 // ---------------------------------------------------------------------------
-// Goals
-// ---------------------------------------------------------------------------
-
-export interface GoalRoadmapNode {
-  id: string;
-  data: {
-    id?: string;
-    title?: string;
-    label?: string;
-    isComplete?: boolean;
-    type?: string;
-    subtask_id?: string;
-  };
-}
-
-export interface GoalRoadmap {
-  nodes?: GoalRoadmapNode[];
-  edges?: Array<{
-    id: string;
-    source: string;
-    target: string;
-  }>;
-}
-
-export interface GoalItem {
-  id: string;
-  title: string;
-  description?: string;
-  progress?: number;
-  roadmap?: GoalRoadmap;
-  created_at?: string;
-  todo_project_id?: string;
-  todo_id?: string;
-}
-
-export interface GoalStats {
-  total_goals: number;
-  goals_with_roadmaps: number;
-  total_tasks: number;
-  completed_tasks: number;
-  overall_completion_rate: number;
-  active_goals: Array<{
-    id: string;
-    title: string;
-    progress: number;
-  }>;
-  active_goals_count: number;
-}
-
-export interface GoalDataMessageType {
-  goals?: GoalItem[];
-  action?: string;
-  message?: string;
-  goal_id?: string;
-  deleted_goal_id?: string;
-  stats?: GoalStats;
-  error?: string;
-}
-
-// ---------------------------------------------------------------------------
 // Documents & Code
 // ---------------------------------------------------------------------------
 
@@ -843,7 +783,6 @@ export type ToolName =
   | "google_docs_data"
   | "code_data"
   | "todo_data"
-  | "goal_data"
   | "integration_connection_required"
   | "integration_list_data"
   | "connection_status_data"
@@ -883,7 +822,6 @@ export interface ToolDataMap {
   google_docs_data: GoogleDocsData;
   code_data: CodeData;
   todo_data: TodoToolData;
-  goal_data: GoalDataMessageType;
   integration_connection_required: GenericToolData;
   integration_list_data: GenericToolData;
   connection_status_data: GenericToolData;
@@ -930,7 +868,6 @@ export function isKnownTool(name: string): name is ToolName {
     "google_docs_data",
     "code_data",
     "todo_data",
-    "goal_data",
     "integration_connection_required",
     "integration_list_data",
     "connection_status_data",

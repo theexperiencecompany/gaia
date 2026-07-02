@@ -54,6 +54,7 @@
     "dotenv": "^16.4.5",
     "hono": "^4.12.12",
     "posthog-node": "^5.28.11",
+    "slackify-markdown": "^5.0.0",
     "string-similarity": "^4.0.4",
     "zod": "^4.0.0"
   },

@@ -41,7 +41,6 @@ def mock_mongodb():
         "calendars_collection",
         "files_collection",
         "notifications_collection",
-        "goals_collection",
         "feedback_collection",
         "mail_collection",
         "blog_collection",
