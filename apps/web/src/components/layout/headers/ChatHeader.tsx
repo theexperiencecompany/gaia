@@ -6,35 +6,21 @@ import Link from "next/link";
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import ModelSelectorDevControls from "@/components/layout/headers/ModelSelectorDevControls";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
+import { preloadCommandMenu } from "@/features/command/CommandMenuProvider";
+import { useCommandMenuStore } from "@/features/command/store";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 
-function preloadCommandMenu() {
-  void import("@/features/search/components/CommandMenu");
-}
-
 export default function ChatHeader() {
-  const { isMac, modifierKeyName } = usePlatform();
-
-  // Command menu is now handled globally in the layout
-  // Just trigger it to open via the global keyboard shortcut
-  const handleSearchClick = () => {
-    // Dispatch a keyboard event to trigger the command menu
-    const event = new KeyboardEvent("keydown", {
-      key: "k",
-      metaKey: isMac,
-      ctrlKey: !isMac,
-      bubbles: true,
-    });
-    document.dispatchEvent(event);
-  };
+  const { modifierKeyName } = usePlatform();
+  const openCommandMenu = useCommandMenuStore((s) => s.open);
 
   return (
     <div className="flex w-full justify-between">
       <div className="relative ml-auto flex items-center">
         <ModelSelectorDevControls />
         <SidebarHeaderButton
-          onClick={handleSearchClick}
+          onClick={openCommandMenu}
           onMouseEnter={preloadCommandMenu}
           onFocus={preloadCommandMenu}
           aria-label="Search"
