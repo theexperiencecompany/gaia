@@ -579,29 +579,40 @@ class TestListWorkflows:
 
         mock_cursor = MagicMock()
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
+        mock_cursor.skip = MagicMock(return_value=mock_cursor)
+        mock_cursor.limit = MagicMock(return_value=mock_cursor)
         mock_cursor.to_list = AsyncMock(return_value=[doc])
         mock_collection.find = MagicMock(return_value=mock_cursor)
+        mock_collection.count_documents = AsyncMock(return_value=1)
 
-        result = await WorkflowService.list_workflows(USER_ID)
+        result, total = await WorkflowService.list_workflows(USER_ID)
         assert len(result) == 1
         assert isinstance(result[0], Workflow)
+        assert total == 1
 
     @patch("app.services.workflow.service.workflows_collection")
     async def test_list_workflows_empty(self, mock_collection):
         mock_cursor = MagicMock()
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
+        mock_cursor.skip = MagicMock(return_value=mock_cursor)
+        mock_cursor.limit = MagicMock(return_value=mock_cursor)
         mock_cursor.to_list = AsyncMock(return_value=[])
         mock_collection.find = MagicMock(return_value=mock_cursor)
+        mock_collection.count_documents = AsyncMock(return_value=0)
 
-        result = await WorkflowService.list_workflows(USER_ID)
+        result, total = await WorkflowService.list_workflows(USER_ID)
         assert result == []
+        assert total == 0
 
     @patch("app.services.workflow.service.workflows_collection")
     async def test_list_workflows_excludes_todo_workflows_by_default(self, mock_collection):
         mock_cursor = MagicMock()
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
+        mock_cursor.skip = MagicMock(return_value=mock_cursor)
+        mock_cursor.limit = MagicMock(return_value=mock_cursor)
         mock_cursor.to_list = AsyncMock(return_value=[])
         mock_collection.find = MagicMock(return_value=mock_cursor)
+        mock_collection.count_documents = AsyncMock(return_value=0)
 
         await WorkflowService.list_workflows(USER_ID, exclude_todo_workflows=True)
 
@@ -612,8 +623,11 @@ class TestListWorkflows:
     async def test_list_workflows_includes_todo_workflows_when_false(self, mock_collection):
         mock_cursor = MagicMock()
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
+        mock_cursor.skip = MagicMock(return_value=mock_cursor)
+        mock_cursor.limit = MagicMock(return_value=mock_cursor)
         mock_cursor.to_list = AsyncMock(return_value=[])
         mock_collection.find = MagicMock(return_value=mock_cursor)
+        mock_collection.count_documents = AsyncMock(return_value=0)
 
         await WorkflowService.list_workflows(USER_ID, exclude_todo_workflows=False)
 
@@ -628,16 +642,19 @@ class TestListWorkflows:
 
         mock_cursor = MagicMock()
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
+        mock_cursor.skip = MagicMock(return_value=mock_cursor)
+        mock_cursor.limit = MagicMock(return_value=mock_cursor)
         mock_cursor.to_list = AsyncMock(return_value=[good_doc, bad_doc])
         mock_collection.find = MagicMock(return_value=mock_cursor)
+        mock_collection.count_documents = AsyncMock(return_value=2)
 
-        result = await WorkflowService.list_workflows(USER_ID)
+        result, _total = await WorkflowService.list_workflows(USER_ID)
         # Only the good document should be returned
         assert len(result) == 1
 
     @patch("app.services.workflow.service.workflows_collection")
     async def test_list_workflows_db_error_raises(self, mock_collection):
-        mock_collection.find = MagicMock(side_effect=Exception("DB error"))
+        mock_collection.count_documents = AsyncMock(side_effect=Exception("DB error"))
 
         with pytest.raises(Exception, match="DB error"):
             await WorkflowService.list_workflows(USER_ID)

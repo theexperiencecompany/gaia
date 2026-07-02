@@ -1,8 +1,35 @@
 """Integration-specific helper functions."""
 
+import re
 from typing import Any
 
 from app.helpers.slug_helpers import slugify
+
+# Stopwords filtered out of free-text integration/tool search queries.
+SEARCH_STOPWORDS = {
+    "a",
+    "an",
+    "the",
+    "to",
+    "for",
+    "with",
+    "and",
+    "or",
+    "in",
+    "on",
+    "my",
+}
+
+
+def build_search_patterns(query: str) -> list[str]:
+    """Split a query into individual lowercase words for flexible matching.
+
+    E.g. "Render deployment" -> ["render", "deployment"], so "Render" still
+    matches when the query is "Render deployment". Short and common words are
+    dropped so they do not match everything.
+    """
+    words = re.split(r"[\s,;]+", query.lower())
+    return [w for w in words if len(w) >= 2 and w not in SEARCH_STOPWORDS]
 
 
 def generate_integration_slug(

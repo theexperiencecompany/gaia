@@ -51,6 +51,14 @@ class FinalizedOutput(BaseModel):
     trigger_slug: str | None = Field(
         default=None, description="Trigger slug for integration triggers"
     )
+    integration_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Integration ids this workflow depends on (e.g. ['gmail', 'slack']), "
+            "including the trigger integration. Used to warn the user about "
+            "disconnected dependencies; record them whether connected or not."
+        ),
+    )
     direct_create: bool = Field(
         default=False,
         description="True only for simple, unambiguous workflows where no user feedback is needed",
@@ -65,6 +73,7 @@ class FinalizedOutput(BaseModel):
                 "prompt": self.prompt,
                 "trigger_type": self.trigger_type,
                 "trigger_slug": self.trigger_slug,
+                "integration_ids": self.integration_ids,
                 "cron_expression": self.cron_expression,
                 "direct_create": self.direct_create,
             }
@@ -122,10 +131,11 @@ For finalized workflow:
     "type": "finalized",
     "title": "Workflow Title",
     "description": "Short 1-2 sentence summary for display in UI cards",
-    "prompt": "Detailed step-by-step instructions for the workflow. Include numbered steps (1, 2, 3...), specific integrations to use, what data to gather, actions to take, and expected outputs.",
+    "prompt": "Detailed step-by-step instructions for the workflow. Include numbered steps (1, 2, 3...), the integrations and capabilities to use, what data to gather, actions to take, and expected outputs.",
     "trigger_type": "manual|scheduled|integration",
     "cron_expression": "0 9 * * *",
     "trigger_slug": "GMAIL_NEW_MESSAGE",
+    "integration_ids": ["gmail", "slack"],
     "direct_create": false
 }
 ```
@@ -134,11 +144,12 @@ IMPORTANT:
 - description: Keep SHORT (1-2 sentences) - just for UI display
 - prompt: Be DETAILED and COMPREHENSIVE - this is what the AI uses to execute the workflow
   • Include numbered steps (1, 2, 3...)
-  • Mention integrations by name (Gmail, Slack, Calendar, etc.)
+  • Name integrations and what to do with them (Gmail, Slack, Calendar, etc.) - NOT exact tool names
   • What data to gather and from where
   • Expected format of outputs
 - cron_expression: Required for scheduled, omit for others (use USER'S LOCAL TIME, not UTC)
-- trigger_slug: Required for integration, omit for others  
+- trigger_slug: Required for integration, omit for others
+- integration_ids: integration ids this workflow depends on (incl. the trigger integration), connected or not
 - direct_create: Set true ONLY for simple, unambiguous manual/scheduled workflows
 """
 

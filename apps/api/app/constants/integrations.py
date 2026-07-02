@@ -5,6 +5,11 @@ MAX_CONNECTED_FOR_LLM = 20
 MAX_AVAILABLE_FOR_LLM = 15
 MAX_SUGGESTED_FOR_LLM = 10
 
+# Caps for the workflow assistant's discovery tools (search_integrations /
+# search_integration_tools) so a single call stays compact.
+MAX_INTEGRATION_SEARCH_RESULTS = 25
+MAX_INTEGRATION_TOOLS_FOR_LLM = 40
+
 # Integration connection status values
 INTEGRATION_STATUS_CONNECTED = "connected"
 

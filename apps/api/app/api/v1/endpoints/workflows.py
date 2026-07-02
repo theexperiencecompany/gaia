@@ -118,7 +118,7 @@ async def list_workflows(request: Request, user: dict = Depends(get_current_user
     )
 
     try:
-        workflows = await WorkflowService.list_workflows(user["user_id"])
+        workflows, _total = await WorkflowService.list_workflows(user["user_id"])
         log.set(
             workflow=WorkflowContext(result_count=len(workflows)),
             outcome="success",

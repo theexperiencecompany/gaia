@@ -243,6 +243,15 @@ class Workflow(BaseScheduledTask):
         description="Integration slugs the user picked to bias step generation.",
     )
 
+    integration_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Integration ids this workflow depends on (incl. the trigger integration), "
+            "determined by the workflow assistant. Used to warn the user when a "
+            "required integration is not connected."
+        ),
+    )
+
     creator: dict[str, Any] | None = Field(
         default=None,
         description="Creator info hydrated for public workflow lookups.",
@@ -337,6 +346,10 @@ class CreateWorkflowRequest(BaseModel):
         default=None,
         description="Integration slugs selected by the user to hint step generation.",
     )
+    integration_ids: list[str] | None = Field(
+        default=None,
+        description="Integration ids this workflow depends on (for disconnected-dependency warnings).",
+    )
 
     # System workflow fields — set by provisioner, not by regular API users
     is_system_workflow: bool = Field(
@@ -380,6 +393,7 @@ class UpdateWorkflowRequest(BaseModel):
     activated: bool | None = Field(default=None)
     notify_on_completion: bool | None = Field(default=None)
     selected_integrations: list[str] | None = Field(default=None)
+    integration_ids: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")
     @classmethod

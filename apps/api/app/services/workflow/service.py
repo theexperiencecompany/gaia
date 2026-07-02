@@ -36,6 +36,7 @@ from app.utils.exceptions import TriggerRegistrationError
 from app.utils.trigger_utils import get_integration_for_trigger
 from app.utils.workflow_utils import (
     ensure_trigger_config_object,
+    filter_existing_integration_ids,
     handle_workflow_error,
     transform_workflow_document,
 )
@@ -239,6 +240,7 @@ class WorkflowService:
                 source_integration=request.source_integration,
                 system_workflow_key=request.system_workflow_key,
                 selected_integrations=request.selected_integrations,
+                integration_ids=await filter_existing_integration_ids(request.integration_ids),
             )
 
             # Python mode keeps datetimes native (BSON dates) so the scheduler's
@@ -443,8 +445,17 @@ class WorkflowService:
             raise
 
     @staticmethod
-    async def list_workflows(user_id: str, exclude_todo_workflows: bool = True) -> list[Workflow]:
-        """List all workflows for a user, excluding auto-generated todo workflows by default."""
+    async def list_workflows(
+        user_id: str,
+        exclude_todo_workflows: bool = True,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[list[Workflow], int]:
+        """List a user's workflows (newest first), excluding auto-generated todo workflows by default.
+
+        Returns ``(workflows, total)`` where ``total`` is the full match count
+        ignoring ``limit``/``offset``. Pass ``limit=None`` to fetch every match.
+        """
         try:
             # Build query - filter out todo workflows by default
             query: dict[str, Any] = {"user_id": user_id}
@@ -454,10 +465,14 @@ class WorkflowService:
                     {"is_todo_workflow": False},
                 ]
 
-            # Use to_list() for better performance
-            docs = (
-                await workflows_collection.find(query).sort("created_at", -1).to_list(length=None)
-            )
+            total = await workflows_collection.count_documents(query)
+
+            cursor = workflows_collection.find(query).sort("created_at", -1)
+            if offset:
+                cursor = cursor.skip(offset)
+            if limit is not None:
+                cursor = cursor.limit(limit)
+            docs = await cursor.to_list(length=limit)
 
             workflows = []
             for doc in docs:
@@ -470,8 +485,10 @@ class WorkflowService:
                     )
                     continue
 
-            log.debug(f"{LogTag.WORKFLOW} Retrieved {len(workflows)} workflows for user {user_id}")
-            return workflows
+            log.debug(
+                f"{LogTag.WORKFLOW} Retrieved {len(workflows)}/{total} workflows for user {user_id}"
+            )
+            return workflows, total
 
         except Exception as e:
             log.error(f"{LogTag.WORKFLOW} Error listing workflows for user {user_id}: {e!s}")
