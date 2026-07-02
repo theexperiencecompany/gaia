@@ -81,8 +81,16 @@ TOOLKIT_FOR_TRIGGER = {
 }
 
 
+def _trigger_config_of(t) -> dict:
+    for attr in ("trigger_config", "triggerConfig"):
+        value = getattr(t, attr, None)
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
 def list_active_triggers(client: Composio) -> dict[str, dict]:
-    """All triggers active on Composio: nano-id -> {slug, user_id} (paginated)."""
+    """All triggers active on Composio: nano-id -> {slug, user_id, interval} (paginated)."""
     triggers: dict[str, dict] = {}
     cursor: str | None = None
     for _ in range(100):
@@ -97,6 +105,7 @@ def list_active_triggers(client: Composio) -> dict[str, dict]:
                 triggers[tid] = {
                     "slug": getattr(t, "trigger_name", None),
                     "user_id": getattr(t, "user_id", None),
+                    "interval": _trigger_config_of(t).get("interval"),
                 }
         cursor = getattr(res, "next_cursor", None)
         if not items or not cursor:
@@ -421,7 +430,7 @@ async def disable_orphans(client: Composio, apply: bool) -> int:
     }
 
     to_disable: list[str] = []
-    kept_account_level = kept_gmail_in_use = kept_unknown = 0
+    kept_account_level = kept_gmail_in_use = kept_gmail_connect_time = kept_unknown = 0
     for tid, meta in active.items():
         if tid in stored:
             continue
@@ -431,7 +440,14 @@ async def disable_orphans(client: Composio, apply: bool) -> int:
         elif slug == GMAIL_SLUG:
             if meta.get("user_id") in gmail_account_level_users:
                 kept_gmail_in_use += 1
+            elif meta.get("interval") == 1:
+                # Connect-time account-level subscription (handle_subscribe_trigger
+                # registers GMAIL with interval=1 on every OAuth connect). It is
+                # unreferenced BY DESIGN and becomes load-bearing the moment the
+                # user activates a gmail_new_message workflow — never disable.
+                kept_gmail_connect_time += 1
             else:
+                # Poll-shaped (interval 15/30/...) per-workflow leftover.
                 to_disable.append(tid)
         elif slug.endswith("_EVENT_CREATED_TRIGGER"):
             kept_account_level += 1
@@ -444,6 +460,7 @@ async def disable_orphans(client: Composio, apply: bool) -> int:
     )
     print(
         f"  to_disable={len(to_disable)} | kept: gmail-account-level-in-use={kept_gmail_in_use}, "
+        f"gmail-connect-time={kept_gmail_connect_time}, "
         f"auto-activated-account-level={kept_account_level}, unknown-slug={kept_unknown}"
     )
     if not apply:
