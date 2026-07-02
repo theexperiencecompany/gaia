@@ -34,11 +34,16 @@ from shared.py.wide_events import log
 
 
 def user_message_content_from(body: MessageRequestWithHistory) -> str:
-    """The turn's user message text — single derivation for init + persist."""
-    last_content = (
-        body.messages[-1].get("content") if body.messages and len(body.messages) > 0 else None
-    )
-    return last_content or body.message
+    """The turn's user message text — single derivation for init + persist.
+
+    Clients omit empty-text turns (file-only sends) from ``messages``, so the
+    last history entry is the current turn only when its role is ``user`` —
+    otherwise it is the previous assistant reply and must not be used.
+    """
+    last = body.messages[-1] if body.messages else None
+    if last and last.get("role") == "user":
+        return last.get("content") or body.message
+    return body.message
 
 
 async def initialize_new_conversation(

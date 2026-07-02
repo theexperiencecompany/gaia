@@ -458,20 +458,18 @@ export class TurnSession {
 
     // Single identity: the client's send id IS the server's user_message_id,
     // so the optimistic record already carries the final key — confirm it in
-    // place. If no local record exists (a reload beat the fire-and-forget
-    // write), rebuild it from the replayed identity frame: the event log is
-    // the turn's source of truth, not local persistence timing.
+    // place. IndexedDB is the durability check (the Zustand store is per-tab
+    // and must not gate a shared-DB write): only when the record is missing
+    // there (a reload beat the fire-and-forget write) is it rebuilt from the
+    // replayed identity frame — and only if the frame gave it content to
+    // show; a file-only turn is unreconstructable from the log and arrives
+    // via sync instead.
     try {
-      const hasLocalRecord = (
-        useChatStore.getState().messagesByConversation[this.conversationId] ??
-        []
-      ).some((message) => message.id === userMessageId);
-      if (hasLocalRecord) {
-        await db.updateMessage(userMessageId, {
-          status: "sent",
-          optimistic: false,
-        });
-      } else {
+      const confirmed = await db.updateMessage(userMessageId, {
+        status: "sent",
+        optimistic: false,
+      });
+      if (!confirmed && this.args.userMessage.response) {
         const userRecord = buildUserMessageRecord(
           userMessageId,
           this.conversationId,
