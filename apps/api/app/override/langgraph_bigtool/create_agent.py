@@ -39,7 +39,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
-from langgraph.types import Send
+from langgraph.types import RetryPolicy, Send
 from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
@@ -528,7 +528,15 @@ def create_agent(
         RunnableCallable(call_model, acall_model),
     )
     if not disable_retrieve_tools:
-        builder.add_node("select_tools", select_tools_node)  # type: ignore[possibly-undefined]
+        # Tool retrieval is a pure read (Chroma/Postgres searches), so the
+        # default retry predicate is safe here. The tools node deliberately has
+        # NO retry policy: exceptions escaping it come from parent-routed tool
+        # execution, and re-running a side-effectful tool can double-execute it.
+        builder.add_node(
+            "select_tools",
+            select_tools_node,  # type: ignore[possibly-undefined]
+            retry_policy=RetryPolicy(),
+        )
     builder.add_node("tools", tool_node)
     builder.add_node(
         FINISH_TASK_NAME,
