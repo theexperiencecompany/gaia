@@ -43,7 +43,6 @@ tool_fields = [
     "send_notification_data",
     "memory_data",
     "todo_data",
-    "goal_data",
     "code_data",
     "google_docs_data",
     "integration_connection_required",

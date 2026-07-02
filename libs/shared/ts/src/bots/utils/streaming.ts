@@ -27,7 +27,14 @@ import {
 import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
 import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
+import {
+  createBotLogger,
+  hashLogIdentifier,
+  sanitizeErrorForLog,
+} from "./logger";
 import { chunkResponse, truncateResponse } from "./text";
+
+const logger = createBotLogger("shared", "streaming");
 
 export interface StreamingOptions {
   editIntervalMs: number;
@@ -119,8 +126,14 @@ async function _handleStream(
     try {
       await currentEditor(truncated);
       sentText = truncated;
-    } catch {
-      // Message may have been deleted or interaction expired
+    } catch (err) {
+      // Transient: the live bubble may have been deleted or the interaction
+      // expired. The next edit or finalizeDelivery recovers, so this is debug,
+      // not a failure — but it is logged so a persistent edit problem is visible.
+      logger.debug("stream_edit_skipped", {
+        platform,
+        ...sanitizeErrorForLog(err),
+      });
     }
   };
 
@@ -165,8 +178,13 @@ async function _handleStream(
       try {
         await currentEditor(overflow);
         sentText = overflow;
-      } catch {
-        // ignore
+      } catch (err) {
+        // An overflow segment was dropped — the user is missing part of the
+        // response, so surface it rather than swallowing silently.
+        logger.warn("stream_overflow_chunk_dropped", {
+          platform,
+          ...sanitizeErrorForLog(err),
+        });
       }
     }
   };
@@ -197,8 +215,18 @@ async function _handleStream(
       try {
         await currentEditor(firstChunk);
         sentText = firstChunk;
-      } catch {
-        // current bubble may have been deleted or expired
+      } catch (editError) {
+        // The live bubble may have been deleted/expired (streaming platforms),
+        // so fall back to a fresh message. This is the FINAL delivery of the
+        // whole response — if it can't be delivered at all, surface the failure
+        // instead of silently reporting success (a swallowed send here means the
+        // user got nothing while the bot logged chat_stream_completed).
+        if (wrappedSendNewMessage) {
+          currentEditor = await wrappedSendNewMessage(firstChunk);
+          sentText = firstChunk;
+        } else {
+          throw editError;
+        }
       }
     }
 
@@ -307,6 +335,24 @@ export async function handleStreamingChat(
   const startMs = Date.now();
   let responseLength = 0;
   let hadError = false;
+  // Latency + high-cardinality observability for the chat pipeline. user_hash
+  // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
+  const userHash = hashLogIdentifier(request.platformUserId);
+  // channelId can be a raw PII identifier (e.g. the WhatsApp phone/waId), so it
+  // is hashed like user_hash before it reaches the logs.
+  const channelHash = hashLogIdentifier(request.channelId);
+  let firstChunkMs: number | null = null;
+  let chunkCount = 0;
+  let conversationId = "";
+
+  logger.info("chat_stream_started", {
+    platform: request.platform,
+    user_hash: userHash,
+    channel_hash: channelHash,
+    message_length: request.message.length,
+    has_files: Boolean(request.fileIds?.length || request.fileData?.length),
+    streaming_enabled: options.streaming,
+  });
 
   analytics?.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
     interaction_type: "chat",
@@ -328,6 +374,17 @@ export async function handleStreamingChat(
 
   const wrappedOnGenericError = async (formattedError: string) => {
     hadError = true;
+    // Surface the failure with full latency context so every error is visible.
+    logger.error("chat_stream_failed", {
+      platform: request.platform,
+      user_hash: userHash,
+      channel_hash: channelHash,
+      duration_ms: Date.now() - startMs,
+      ttfb_ms: firstChunkMs,
+      chunk_count: chunkCount,
+      response_length: responseLength,
+      context: "chat:streaming",
+    });
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
     analytics?.capture(distinctId, BOT_EVENTS.ERROR, {
@@ -345,10 +402,23 @@ export async function handleStreamingChat(
   ) =>
     gaia.chatStream(
       request,
-      onChunk,
-      async (fullText, conversationId) => {
+      (text) => {
+        chunkCount++;
+        if (firstChunkMs === null) {
+          firstChunkMs = Date.now() - startMs;
+          logger.info("chat_stream_first_chunk", {
+            platform: request.platform,
+            user_hash: userHash,
+            channel_hash: channelHash,
+            ttfb_ms: firstChunkMs,
+          });
+        }
+        return onChunk(text);
+      },
+      async (fullText, convId) => {
         responseLength = fullText.length;
-        await onDone(fullText, conversationId);
+        conversationId = convId;
+        await onDone(fullText, convId);
       },
       onError,
     );
@@ -366,6 +436,17 @@ export async function handleStreamingChat(
     );
   } finally {
     if (!hadError) {
+      logger.info("chat_stream_completed", {
+        platform: request.platform,
+        user_hash: userHash,
+        channel_hash: channelHash,
+        total_ms: Date.now() - startMs,
+        ttfb_ms: firstChunkMs,
+        response_length: responseLength,
+        chunk_count: chunkCount,
+        conversation_id: conversationId,
+        streaming_enabled: options.streaming,
+      });
       analytics?.capture(distinctId, BOT_EVENTS.CHAT_COMPLETED, {
         channel_id: request.channelId,
         duration_ms: Date.now() - startMs,

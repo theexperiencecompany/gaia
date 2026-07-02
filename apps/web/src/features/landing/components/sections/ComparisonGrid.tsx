@@ -283,7 +283,7 @@ export default function ComparisonGrid() {
           </table>
         </div>
 
-        <p className="text-center text-xs text-zinc-500">
+        <p className="text-center text-xs text-zinc-400">
           Sourced from official websites and documentation.{" "}
           <Link
             href="/compare"

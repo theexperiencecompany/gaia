@@ -199,4 +199,5 @@ def format_public_integration_response(doc: dict) -> dict:
         "tool_count": len(tools),
         "published_at": doc.get("published_at"),
         "source": "custom",  # MongoDB integrations are always custom
+        "content": doc.get("content"),  # LLM-generated; None until published/backfilled
     }

@@ -1,5 +1,3 @@
-from enum import Enum
-
 from pydantic import BaseModel, Field
 
 
@@ -10,6 +8,13 @@ class EmailRequest(BaseModel):
     writingStyle: str | None = None
     contentLength: str | None = None
     clarityOption: str | None = None
+
+
+class ComposedEmailOutput(BaseModel):
+    """Structured output of the AI email composer."""
+
+    subject: str = Field(description="Generated email subject line")
+    body: str = Field(description="Generated email body")
 
 
 class EmailSummaryRequest(BaseModel):
@@ -71,35 +76,3 @@ class DraftRequest(BaseModel):
     body: str
     cc: list[str] | None = None
     bcc: list[str] | None = None
-
-
-class EmailImportanceLevelEnum(str, Enum):
-    """Enumeration for email importance levels."""
-
-    URGENT = "URGENT"
-    HIGH = "HIGH"
-    MEDIUM = "MEDIUM"
-    LOW = "LOW"
-
-    @classmethod
-    def list(cls) -> list[str]:
-        """Return a list of all importance levels."""
-        return [level.value for level in cls]
-
-
-class EmailComprehensiveAnalysis(BaseModel):
-    """Combined response model for email importance and semantic analysis."""
-
-    # Importance analysis fields
-    is_important: bool = Field(description="Whether the email is important and requires attention")
-    importance_level: EmailImportanceLevelEnum = Field(
-        description="Importance level: URGENT, HIGH, MEDIUM, or LOW"
-    )
-    summary: str = Field(
-        description="Brief summary of the email if important, empty string if not important"
-    )
-
-    # Semantic labeling fields
-    semantic_labels: list[str] = Field(
-        description="List of semantic labels that categorize the email content and context"
-    )

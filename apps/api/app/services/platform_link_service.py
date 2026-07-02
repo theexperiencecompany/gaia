@@ -48,6 +48,23 @@ class PlatformLinkService:
         return await users_collection.find_one({f"platform_links.{platform}.id": platform_user_id})
 
     @staticmethod
+    async def list_platform_user_ids(platform: str, limit: int = 500) -> list[str]:
+        """List the platform_user_ids of every account linked to the given platform.
+
+        Used by bots (e.g. Discord) to pre-warm DM-channel caches on startup so
+        inbound DMs resolve even on a cold restart. Bounded by ``limit`` to keep
+        startup cost predictable.
+        """
+        field = f"platform_links.{platform}.id"
+        cursor = users_collection.find({field: {"$exists": True}}, {field: 1}).limit(limit)
+        ids: list[str] = []
+        async for doc in cursor:
+            pid = doc.get("platform_links", {}).get(platform, {}).get("id")
+            if pid:
+                ids.append(str(pid))
+        return ids
+
+    @staticmethod
     async def link_account(
         user_id: str,
         platform: str,
@@ -108,11 +125,20 @@ class PlatformLinkService:
         if result.matched_count == 0:
             raise ValueError("User not found")
 
+        previously_linked_same = bool(
+            user
+            and isinstance(user.get("platform_links", {}).get(platform), dict)
+            and user["platform_links"][platform].get("id") == platform_user_id
+        )
+
         return {
             "status": "linked",
             "platform": platform,
             "platform_user_id": platform_user_id,
             "connected_at": now,
+            # True only when this call created a brand-new link (not a re-link of
+            # the same id) — lets the caller fire a one-off "connected" greeting.
+            "is_new_link": not previously_linked_same,
         }
 
     @staticmethod

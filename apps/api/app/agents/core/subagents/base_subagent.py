@@ -19,7 +19,6 @@ from app.agents.core.nodes import (
     memory_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
-from app.agents.llm.retry_policies import SUBAGENT_RETRY_POLICY
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.coding import bash, grep, query_json, read
 from app.agents.tools.core.registry import get_tool_registry
@@ -194,7 +193,6 @@ class SubAgentFactory:
                 todo_hook,
             ],
             "end_graph_hooks": [memory_node],
-            "agent_retry_policy": SUBAGENT_RETRY_POLICY,
         }
 
         valid_auto_bind = (

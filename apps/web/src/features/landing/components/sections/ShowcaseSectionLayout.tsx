@@ -2,6 +2,7 @@
 
 import type React from "react";
 
+import { InViewMount } from "../shared/InViewMount";
 import { SoftBlurInBlock, TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
 interface ShowcaseSectionLayoutProps {
@@ -38,8 +39,12 @@ export default function ShowcaseSectionLayout({
 
       {/* 70/30 split */}
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
-        {/* Left: 70% — Animation showcase */}
-        <div className="w-full lg:w-[70%]">{DemoComponent}</div>
+        {/* Left: 70% — Animation showcase. Lazy-mounted so its heavy animation
+            stays off the initial-load path, while the header/subheader/sidebar
+            copy stays server-rendered for SEO. */}
+        <div className="w-full lg:w-[70%]">
+          <InViewMount minHeight="70vh">{DemoComponent}</InViewMount>
+        </div>
 
         {/* Right: 30% — Sidebar content */}
         <div className={sidebarClassName}>{SidebarContent}</div>

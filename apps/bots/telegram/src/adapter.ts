@@ -45,13 +45,34 @@ import {
   sanitizeErrorForLog,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
-import { Bot, type Context, InputFile } from "grammy";
+import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
 /** Telegram's sendPhoto byte cap; larger images are sent as documents. */
 const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 // Telegram caps media captions (sendPhoto/sendDocument) at 1024 chars; an
 // over-limit caption rejects the whole upload, so the file would never arrive.
 const TELEGRAM_CAPTION_MAX_CHARS = 1024;
+
+/** Telegram clears the "typing…" chat action after ~5s; refresh on that cadence. */
+const TELEGRAM_TYPING_REFRESH_INTERVAL_MS = 5000;
+
+/**
+ * True when Telegram rejected a message because of its HTML markup — a 400 whose
+ * text mentions entity/tag parsing. Network, rate-limit (429), and server (5xx)
+ * failures do not match, so the caller re-throws them instead of pointlessly
+ * resending as plain text over a broken connection. grammY carries the Telegram
+ * reason in `GrammyError.description`; other throwers put it in `message`.
+ */
+function isTelegramHtmlParseError(error: unknown): boolean {
+  if (error instanceof GrammyError) {
+    if (error.error_code !== 400) return false;
+    return /can't parse|parse entities|start tag|end tag|entities/i.test(
+      error.description,
+    );
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /can't parse|parse entities|start tag|end tag|entities/i.test(message);
+}
 
 /**
  * Telegram-specific implementation of the GAIA bot adapter.
@@ -373,7 +394,16 @@ export class TelegramAdapter extends BaseBotAdapter {
   ): Promise<Message.TextMessage> {
     try {
       return await send(html, { parse_mode: "HTML" });
-    } catch {
+    } catch (error) {
+      // Only recover from genuine HTML parse rejections. Network timeouts, 429
+      // rate limits, and 5xx errors must re-throw so the normal retry/failure
+      // path handles them instead of hammering a broken connection with a resend.
+      if (!isTelegramHtmlParseError(error)) throw error;
+      // Telegram rejected the HTML (usually an unbalanced entity). Recover by
+      // sending plain text, but log it — silent fallback hides markdown bugs.
+      this.adapterLogger.warn("telegram_html_parse_fallback", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
       return await send(htmlToPlainText(html));
     }
   }
@@ -501,7 +531,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     // Typing indicator with 5s refresh (Telegram expires it after ~5s).
     const clearTyping = this.startTypingIndicator(
       () => ctx.api.sendChatAction(chatId, "typing"),
-      5000,
+      TELEGRAM_TYPING_REFRESH_INTERVAL_MS,
     );
 
     try {
@@ -821,7 +851,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         // richMessageToMarkdown renders Telegram-flavoured CommonMark; convert
         // it to HTML through the same chokepoint as every other outbound send.
         const html = renderForPlatform(
-          richMessageToMarkdown(richMsg, "telegram"),
+          richMessageToMarkdown(richMsg),
           "telegram",
         );
         // In groups, DM rich content for privacy; in private chats, send normally
@@ -840,7 +870,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         if (!chatId) return () => {};
         return this.startTypingIndicator(
           () => api.sendChatAction(chatId, "typing"),
-          5000,
+          TELEGRAM_TYPING_REFRESH_INTERVAL_MS,
         );
       },
     };

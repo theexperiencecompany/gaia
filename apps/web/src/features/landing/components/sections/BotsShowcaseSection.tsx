@@ -26,6 +26,7 @@ import {
   cascadeDurationMs,
   useStaggeredMessages as useStaggeredMessagesShared,
 } from "../iphone/useStaggeredMessages";
+import { InViewMount } from "../shared/InViewMount";
 import LargeHeader from "../shared/LargeHeader";
 
 interface ActionLink {
@@ -278,7 +279,7 @@ const PLATFORMS: Platform[] = [
   },
 ];
 
-export default function BotsShowcaseSection() {
+function BotsShowcaseDemo() {
   const [activeId, setActiveId] = useState<ChatPlatform>(PLATFORMS[0].id);
   const [autoRotate, setAutoRotate] = useState(true);
   const active = PLATFORMS.find((p) => p.id === activeId) ?? PLATFORMS[0];
@@ -333,10 +334,37 @@ export default function BotsShowcaseSection() {
   }, [inView, autoRotate, active]);
 
   return (
-    <section
-      ref={sectionRef}
-      className="relative flex w-full flex-col items-center px-4 py-20 sm:px-6 sm:py-24 lg:px-8"
-    >
+    <div ref={sectionRef} className="flex w-full flex-col items-center gap-8">
+      <PlatformChips
+        platforms={PLATFORMS}
+        activeId={activeId}
+        onSelect={handleSelect}
+      />
+
+      <div ref={phoneRef}>
+        <PhoneFrame platform={active} messages={visibleMessages} />
+      </div>
+
+      <FloatingCTA
+        isFloating={isCtaFloating}
+        action={active.primaryAction}
+        actionKey={active.id}
+        iconSrc={typeof active.icon === "string" ? active.icon : undefined}
+        comingSoon={active.comingSoon}
+        onPrev={handlePrev}
+        onNext={handleNext}
+      />
+    </div>
+  );
+}
+
+/**
+ * Section shell: the heading/copy is server-rendered for SEO; the heavy
+ * interactive phone demo is lazy-mounted only when it scrolls near the viewport.
+ */
+export default function BotsShowcaseSection() {
+  return (
+    <section className="relative flex w-full flex-col items-center px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
       <div className="flex w-full max-w-6xl flex-col items-center gap-8">
         <LargeHeader
           chipText="Available everywhere"
@@ -344,26 +372,9 @@ export default function BotsShowcaseSection() {
           subHeadingText="No new app to learn. Just open the one you already have open."
           centered
         />
-
-        <PlatformChips
-          platforms={PLATFORMS}
-          activeId={activeId}
-          onSelect={handleSelect}
-        />
-
-        <div ref={phoneRef}>
-          <PhoneFrame platform={active} messages={visibleMessages} />
-        </div>
-
-        <FloatingCTA
-          isFloating={isCtaFloating}
-          action={active.primaryAction}
-          actionKey={active.id}
-          iconSrc={typeof active.icon === "string" ? active.icon : undefined}
-          comingSoon={active.comingSoon}
-          onPrev={handlePrev}
-          onNext={handleNext}
-        />
+        <InViewMount minHeight="640px" className="w-full">
+          <BotsShowcaseDemo />
+        </InViewMount>
       </div>
     </section>
   );

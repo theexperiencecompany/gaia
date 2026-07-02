@@ -1,6 +1,3 @@
-# Default model for summarization — small/fast/cheap provider model.
-SUMMARIZATION_MODEL = "gemini-2.0-flash"
-
 # Summarization kicks in earlier (0.60) so large multi-step runs never
 # balloon to tens-of-thousands of tokens. Keeps steady-state context narrower.
 SUMMARIZATION_TRIGGER_FRACTION = 0.60

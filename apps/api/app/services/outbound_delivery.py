@@ -125,6 +125,36 @@ async def publish_outbound_message(
     return OutboundResult.PUBLISHED
 
 
+# Friendly platform names for user-facing copy (e.g. the link confirmation).
+_PLATFORM_DISPLAY_NAMES: dict[ConversationSource, str] = {
+    ConversationSource.TELEGRAM: "Telegram",
+    ConversationSource.DISCORD: "Discord",
+    ConversationSource.SLACK: "Slack",
+    ConversationSource.WHATSAPP: "WhatsApp",
+}
+
+
+async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
+    """Send a one-off "you're connected" confirmation to a freshly linked bot account.
+
+    Resolves the bot platform, builds the confirmation copy as CommonMark (each
+    bot renders its own platform-native markdown), and enqueues it. Non-bot
+    sources (web OAuth links, etc.) and unsupported/unlinked platforms are
+    skipped. Best-effort: never raises into the caller's linking flow.
+    """
+    source = ConversationSource.coerce(platform)
+    if source is None or source not in OUTBOUND_QUEUES:
+        return OutboundResult.SKIPPED
+
+    display_name = _PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
+    text = (
+        "✅ **You're connected!**\n\n"
+        f"Your {display_name} account is now linked to GAIA. "
+        "Send me a message or use `/help` to see everything I can do."
+    )
+    return await publish_outbound_message(source, user_id, [text])
+
+
 async def publish_outbound_file(
     platform: ConversationSource,
     user_id: str,

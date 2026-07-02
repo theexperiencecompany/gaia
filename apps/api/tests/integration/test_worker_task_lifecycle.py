@@ -18,7 +18,7 @@ from bson import ObjectId
 from freezegun import freeze_time as _freeze_time
 import pytest
 
-from app.models.user_models import BioStatus
+from app.models.user_models import OnboardingPhase
 from app.workers.lifecycle.startup import startup
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
 from app.workers.tasks.memory_email_tasks import process_gmail_emails_to_memory
@@ -194,14 +194,13 @@ class TestCleanupTaskSafety:
     """Verify cleanup only touches stuck users, not active/completed ones."""
 
     async def test_cleanup_requeues_stuck_users(self):
-        """Stuck users (PROCESSING for > max_age_minutes) should be re-queued."""
+        """Stuck users at PERSONALIZATION_PENDING phase should be re-queued."""
 
         stuck_user_id = ObjectId()
         stuck_user = {
             "_id": stuck_user_id,
             "onboarding": {
-                "completed": True,
-                "bio_status": BioStatus.PROCESSING,
+                "phase": OnboardingPhase.PERSONALIZATION_PENDING.value,
             },
             "updated_at": datetime(2026, 3, 31, 10, 0, 0, tzinfo=UTC),
         }
@@ -209,33 +208,31 @@ class TestCleanupTaskSafety:
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[stuck_user])
 
-        mock_pool = AsyncMock()
-        mock_job = MagicMock()
-        mock_job.job_id = "job-123"
-        mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
-
         with (
             patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_users,
-            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_rpm,
+            patch(
+                "app.workers.tasks.cleanup_tasks.is_intelligence_job_live",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                new_callable=AsyncMock,
+                return_value="job-123",
+            ) as mock_enqueue,
         ):
             mock_users.find.return_value = mock_cursor
-            mock_rpm.get_pool = AsyncMock(return_value=mock_pool)
 
             result = await cleanup_stuck_personalization(ARQ_CTX, max_age_minutes=30)
 
-            # Verify the query filters for stuck statuses
+            # Verify the query filters for the personalization-pending phase
             find_call = mock_users.find.call_args[0][0]
-            assert find_call["onboarding.completed"] is True
-            statuses = find_call["onboarding.bio_status"]["$in"]
-            assert BioStatus.PROCESSING in statuses
-            assert BioStatus.PENDING in statuses
+            assert find_call["onboarding.phase"] == OnboardingPhase.PERSONALIZATION_PENDING.value
 
-            # Verify re-queue was called
-            mock_pool.enqueue_job.assert_awaited_once_with(
-                "process_personalization_task", str(stuck_user_id)
-            )
+            # Verify re-queue was called with the correct user id
+            mock_enqueue.assert_awaited_once_with(str(stuck_user_id))
 
-            assert "1 users re-queued" in result
+            assert "1 re-queued" in result
             assert "0 errors" in result
 
     async def test_cleanup_no_stuck_users(self):
@@ -252,30 +249,35 @@ class TestCleanupTaskSafety:
             assert "No stuck users found" in result
 
     async def test_cleanup_handles_enqueue_failure_gracefully(self):
-        """If enqueue_job returns None for a user, count it as an error."""
+        """If enqueue_intelligence_job returns None for a user, count it as an error."""
 
         stuck_user = {
             "_id": ObjectId(),
-            "onboarding": {"completed": True, "bio_status": "processing"},
+            "onboarding": {"phase": OnboardingPhase.PERSONALIZATION_PENDING.value},
             "updated_at": datetime(2026, 3, 30, tzinfo=UTC),
         }
 
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[stuck_user])
 
-        mock_pool = AsyncMock()
-        mock_pool.enqueue_job = AsyncMock(return_value=None)
-
         with (
             patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_users,
-            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_rpm,
+            patch(
+                "app.workers.tasks.cleanup_tasks.is_intelligence_job_live",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                new_callable=AsyncMock,
+                return_value=None,  # None means enqueue failed
+            ),
         ):
             mock_users.find.return_value = mock_cursor
-            mock_rpm.get_pool = AsyncMock(return_value=mock_pool)
 
             result = await cleanup_stuck_personalization(ARQ_CTX, max_age_minutes=30)
 
-            assert "0 users re-queued" in result
+            assert "0 re-queued" in result
             assert "1 errors" in result
 
     async def test_cleanup_handles_db_error(self):
@@ -381,9 +383,6 @@ class TestWorkflowTaskExecution:
         mock_execution = MagicMock()
         mock_execution.execution_id = "exec-456"
 
-        mock_messages = [MagicMock(), MagicMock()]
-        mock_conversation = {"conversation_id": "conv-789"}
-
         with (
             patch(
                 "app.workers.tasks.workflow_tasks.WorkflowScheduler",
@@ -398,17 +397,13 @@ class TestWorkflowTaskExecution:
                 "app.services.workflow.execution_service.complete_execution",
                 new_callable=AsyncMock,
             ) as mock_complete_exec,
+            # execute_workflow_as_chat now returns a conversation_id str (not a list of messages)
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 new_callable=AsyncMock,
-                return_value=mock_messages,
+                return_value="conv-789",
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
-            patch(
-                "app.workers.tasks.workflow_tasks.create_workflow_completion_notification",
-                new_callable=AsyncMock,
-                return_value=mock_conversation,
-            ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
 
@@ -425,7 +420,7 @@ class TestWorkflowTaskExecution:
                 "wf-123", FAKE_USER_ID, is_successful=True
             )
 
-            # Verify execution completed with success
+            # Verify execution completed with the conversation_id returned by execute_workflow_as_chat
             mock_complete_exec.assert_awaited_once()
             complete_kwargs = mock_complete_exec.call_args[1]
             assert complete_kwargs["status"] == "success"

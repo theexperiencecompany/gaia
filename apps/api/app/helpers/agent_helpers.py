@@ -426,7 +426,7 @@ async def execute_graph_silent(
                             tool_name = tc.get("name")
                             tool_metadata: dict = {}
 
-                            # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_data noise.
+                            # Todo tools already stream todo_progress; suppress tool_data noise.
                             # Safe: doesn't affect agent state; only avoids redundant UI events.
                             if tool_name in {"plan_tasks", "update_tasks"}:
                                 continue
@@ -459,7 +459,7 @@ async def execute_graph_silent(
                 continue  # Skip silent chunks (e.g. follow-up actions generation)
 
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
-                content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
+                content = chunk.text
                 if content and config.get("agent_name") == "comms_agent":
                     complete_message += content
 
@@ -620,7 +620,7 @@ async def execute_graph_streaming(
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
-                # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_output noise.
+                # Todo tools already stream todo_progress; suppress tool_output noise.
                 # Safe: doesn't affect agent state; only avoids redundant UI events.
                 if getattr(chunk, "name", None) in {
                     "plan_tasks",

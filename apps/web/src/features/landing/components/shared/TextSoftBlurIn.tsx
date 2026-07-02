@@ -94,6 +94,7 @@ const GRADIENT_INHERIT: CSSProperties = {
 
 /** Shared inner renderer for both immediate and scroll-triggered text variants. */
 function TextInner({
+  text,
   parts,
   splitBy,
   gradient,
@@ -101,6 +102,7 @@ function TextInner({
   innerRef,
   baseId,
 }: Readonly<{
+  text: string;
   parts: string[];
   splitBy: "char" | "word";
   gradient?: string;
@@ -108,46 +110,60 @@ function TextInner({
   innerRef?: React.RefObject<HTMLSpanElement | null>;
   baseId?: string;
 }>) {
+  // The per-character spans are decorative (aria-hidden); a visually-hidden copy
+  // of the full string is the real accessible text. This gives the wrapping
+  // element an accessible name via its content, instead of an `aria-label` —
+  // which ARIA prohibits on generic <span>/<div> elements that have no role.
   if (splitBy === "char") {
     return (
-      <span ref={innerRef} aria-hidden="true" style={gradientCss(gradient)}>
-        {groupIntoWords(parts).map(({ chars, start, isSpace }) => (
-          <span
-            key={start}
-            style={{
-              display: isSpace ? "inline" : "inline-block",
-              ...(gradient && !isSpace ? GRADIENT_INHERIT : null),
-            }}
-          >
-            {chars.map(({ ch, gid }) => (
-              <span key={gid} className="sbi-anim" style={buildCharStyle(gid)}>
-                {ch}
-              </span>
-            ))}
-          </span>
-        ))}
-      </span>
+      <>
+        <span className="sr-only">{text}</span>
+        <span ref={innerRef} aria-hidden="true" style={gradientCss(gradient)}>
+          {groupIntoWords(parts).map(({ chars, start, isSpace }) => (
+            <span
+              key={start}
+              style={{
+                display: isSpace ? "inline" : "inline-block",
+                ...(gradient && !isSpace ? GRADIENT_INHERIT : null),
+              }}
+            >
+              {chars.map(({ ch, gid }) => (
+                <span
+                  key={gid}
+                  className="sbi-anim"
+                  style={buildCharStyle(gid)}
+                >
+                  {ch}
+                </span>
+              ))}
+            </span>
+          ))}
+        </span>
+      </>
     );
   }
 
   return (
-    <span
-      ref={innerRef}
-      aria-hidden="true"
-      className="inline-block"
-      style={gradientCss(gradient)}
-    >
-      {parts.map((part, i) => (
-        <span
-          // biome-ignore lint/suspicious/noArrayIndexKey: stable id + index
-          key={baseId ? `${baseId}-${i}` : i}
-          className="sbi-anim"
-          style={buildCharStyle(i)}
-        >
-          {part}
-        </span>
-      ))}
-    </span>
+    <>
+      <span className="sr-only">{text}</span>
+      <span
+        ref={innerRef}
+        aria-hidden="true"
+        className="inline-block"
+        style={gradientCss(gradient)}
+      >
+        {parts.map((part, i) => (
+          <span
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable id + index
+            key={baseId ? `${baseId}-${i}` : i}
+            className="sbi-anim"
+            style={buildCharStyle(i)}
+          >
+            {part}
+          </span>
+        ))}
+      </span>
+    </>
   );
 }
 
@@ -189,8 +205,9 @@ function TextSoftBlurInImmediate({
 
   return createElement(
     as,
-    { className: cn(className), "aria-label": text },
+    { className: cn(className) },
     <TextInner
+      text={text}
       parts={parts}
       splitBy={splitBy}
       gradient={gradient}
@@ -280,8 +297,9 @@ function TextSoftBlurInOnScroll({
 
   return createElement(
     as,
-    { className: cn(className), "aria-label": text },
+    { className: cn(className) },
     <TextInner
+      text={text}
       parts={parts}
       splitBy={splitBy}
       gradient={gradient}

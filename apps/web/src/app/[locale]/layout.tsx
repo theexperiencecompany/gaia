@@ -113,6 +113,9 @@ export async function generateMetadata({
     },
     other: {
       "msapplication-TileColor": "#00bbff",
+      // Standard key (Chrome/Edge) + the Apple-specific one (iOS Safari still
+      // requires the apple- prefix); both are needed for full coverage.
+      "mobile-web-app-capable": "yes",
       "apple-mobile-web-app-capable": "yes",
     },
     authors: [
@@ -165,12 +168,10 @@ export default async function LocaleLayout({ children, params }: Props) {
           crossOrigin="anonymous"
         />
         <link rel="dns-prefetch" href="https://uptime.betterstackcdn.com" />
-        <link
-          rel="preload"
-          as="image"
-          href="/images/logos/text_w_logo_white.webp"
-          fetchPriority="high"
-        />
+        {/* The header/footer logo is rendered via next/image (which emits its
+            own preload where appropriate) and sits below the fold, so a manual
+            high-priority preload here only competed with the hero LCP image and
+            was flagged "preloaded but not used". Removed. */}
         <link
           rel="alternate"
           type="application/rss+xml"

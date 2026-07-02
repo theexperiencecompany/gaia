@@ -154,6 +154,18 @@ jobs:
             | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
           sudo mv ./bin/dagger /usr/local/bin/dagger
           dagger version
+      - name: Pre-pull Dagger engine
+        # The engine image pull off the public registry is intermittently flaky
+        # ('start engine: failed to pull image' -> exit 254 before tests run).
+        # Pre-pull with bounded retries so a transient blip doesn't redden CI.
+        run: |
+          for attempt in 1 2 3; do
+            docker pull "registry.dagger.io/engine:v${{ env.DAGGER_VERSION }}" && exit 0
+            echo "engine pull attempt ${attempt} failed; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "::error::Dagger engine image pull failed after 3 attempts"
+          exit 1
       - name: Run Python tests
         timeout-minutes: 18
         env:
@@ -161,7 +173,8 @@ jobs:
         run: |
           set +e
           dagger --silent call test-python 2>&1 | tee /tmp/dagger-test.log
-          CODE=$?
+          # PIPESTATUS[0] is dagger's exit; $? would be tee's (always 0) and mask failures.
+          CODE=${PIPESTATUS[0]}
           if [ "$CODE" -ne 0 ]; then
             # pytest emits its real exit code as `GAIA_PYTEST_EXIT=0` (final line)
             # only when it actually passed. A non-zero CLI exit is safe to ignore
@@ -287,6 +300,18 @@ jobs:
             | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
           sudo mv ./bin/dagger /usr/local/bin/dagger
           dagger version
+      - name: Pre-pull Dagger engine
+        # The engine image pull off the public registry is intermittently flaky
+        # ('start engine: failed to pull image' -> exit 254 before tests run).
+        # Pre-pull with bounded retries so a transient blip doesn't redden CI.
+        run: |
+          for attempt in 1 2 3; do
+            docker pull "registry.dagger.io/engine:v${{ env.DAGGER_VERSION }}" && exit 0
+            echo "engine pull attempt ${attempt} failed; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "::error::Dagger engine image pull failed after 3 attempts"
+          exit 1
       - name: Run coverage
         timeout-minutes: 28
         env:
@@ -294,7 +319,8 @@ jobs:
         run: |
           set +e
           dagger --silent call test-python-coverage 2>&1 | tee /tmp/dagger-coverage.log
-          CODE=$?
+          # PIPESTATUS[0] is dagger's exit; $? would be tee's (always 0) and mask failures.
+          CODE=${PIPESTATUS[0]}
           if [ "$CODE" -ne 0 ]; then
             # Same contract as test-python: ignore a non-zero CLI exit only when
             # pytest itself passed (GAIA_PYTEST_EXIT=0). A coverage shortfall makes

@@ -1,7 +1,7 @@
 """Unit tests for the memory API endpoints.
 
 Tests cover CRUD operations on memories (get all, create, delete one, clear all).
-The memory_service singleton is mocked; only HTTP status codes, response shapes,
+The memory_engine singleton is mocked; only HTTP status codes, response shapes,
 and error handling are verified.
 """
 
@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.memory_models import MemoryEntry, MemorySearchResult
+from app.models.memory_models import MemoryEntry, MemoryListResponse
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -18,22 +18,37 @@ from app.models.memory_models import MemoryEntry, MemorySearchResult
 
 API = "/api/v1/memory"
 
+# Valid UUID used for path-param tests (endpoint enforces UUID_PATH_PATTERN).
+_MEM_UUID = "00000000-0000-0000-0000-000000000001"
 
-def _search_result(memories: list | None = None) -> MemorySearchResult:
-    """Build a MemorySearchResult with sensible defaults."""
+
+def _list_response(memories: list | None = None) -> MemoryListResponse:
+    """Build a MemoryListResponse with sensible defaults."""
     mems = memories or []
-    return MemorySearchResult(
+    return MemoryListResponse(
         memories=mems,
+        page=1,
+        page_size=20,
         total_count=len(mems),
     )
 
 
-def _memory_entry(memory_id: str = "mem_1", content: str = "User likes coffee") -> MemoryEntry:
+def _memory_entry(memory_id: str = _MEM_UUID, content: str = "User likes coffee") -> MemoryEntry:
     return MemoryEntry(id=memory_id, content=content)
 
 
+def _retained_memory(memory_id: str = "mem_new") -> MagicMock:
+    """Build a RetainedMemory-shaped mock with .entry.id."""
+    entry = MagicMock()
+    entry.id = memory_id
+    entry.category_path = "general"
+    retained = MagicMock()
+    retained.entry = entry
+    return retained
+
+
 # ===========================================================================
-# GET /api/v1/memory  -- get_all_memories
+# GET /api/v1/memory  -- list_memories
 # ===========================================================================
 
 
@@ -42,9 +57,9 @@ class TestGetAllMemories:
     """GET /api/v1/memory"""
 
     async def test_get_all_memories_success(self, client: AsyncClient) -> None:
-        result = _search_result([_memory_entry()])
+        result = _list_response([_memory_entry()])
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.get_all_memories",
+            "app.api.v1.endpoints.memory.memory_engine.list_memories",
             new_callable=AsyncMock,
             return_value=result,
         ):
@@ -55,9 +70,9 @@ class TestGetAllMemories:
         assert data["memories"][0]["content"] == "User likes coffee"
 
     async def test_get_all_memories_empty(self, client: AsyncClient) -> None:
-        result = _search_result([])
+        result = _list_response([])
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.get_all_memories",
+            "app.api.v1.endpoints.memory.memory_engine.list_memories",
             new_callable=AsyncMock,
             return_value=result,
         ):
@@ -82,12 +97,11 @@ class TestCreateMemory:
     """POST /api/v1/memory"""
 
     async def test_create_memory_success(self, client: AsyncClient) -> None:
-        mock_entry = MagicMock()
-        mock_entry.id = "mem_new"
+        mock_retained = _retained_memory("mem_new")
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.store_memory",
+            "app.api.v1.endpoints.memory.memory_engine.retain_single",
             new_callable=AsyncMock,
-            return_value=mock_entry,
+            return_value=mock_retained,
         ):
             resp = await client.post(API, json={"content": "I love Python"})
         assert resp.status_code == 200
@@ -96,11 +110,12 @@ class TestCreateMemory:
         assert data["memory_id"] == "mem_new"
         assert "created" in data["message"].lower()
 
-    async def test_create_memory_service_returns_none(self, client: AsyncClient) -> None:
+    async def test_create_memory_exception_returns_failure(self, client: AsyncClient) -> None:
+        """When retain_single raises, the endpoint returns success=False (caught by try/except)."""
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.store_memory",
+            "app.api.v1.endpoints.memory.memory_engine.retain_single",
             new_callable=AsyncMock,
-            return_value=None,
+            side_effect=RuntimeError("storage unavailable"),
         ):
             resp = await client.post(API, json={"content": "Something"})
         assert resp.status_code == 200
@@ -108,12 +123,11 @@ class TestCreateMemory:
         assert data["success"] is False
 
     async def test_create_memory_with_category_path(self, client: AsyncClient) -> None:
-        mock_entry = MagicMock()
-        mock_entry.id = "mem_categorized"
+        mock_retained = _retained_memory("mem_categorized")
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.store_memory",
+            "app.api.v1.endpoints.memory.memory_engine.retain_single",
             new_callable=AsyncMock,
-            return_value=mock_entry,
+            return_value=mock_retained,
         ):
             resp = await client.post(
                 API,
@@ -144,30 +158,28 @@ class TestDeleteMemory:
 
     async def test_delete_memory_success(self, client: AsyncClient) -> None:
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.delete_memory",
+            "app.api.v1.endpoints.memory.memory_engine.forget_memory",
             new_callable=AsyncMock,
             return_value=True,
         ):
-            resp = await client.delete(f"{API}/mem_1")
+            resp = await client.delete(f"{API}/{_MEM_UUID}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
         assert "deleted" in data["message"].lower()
 
-    async def test_delete_memory_not_found_returns_success_false(self, client: AsyncClient) -> None:
-        """The endpoint returns success=False (200) when the service cannot delete."""
+    async def test_delete_memory_not_found_returns_404(self, client: AsyncClient) -> None:
+        """When forget_memory returns False the endpoint raises 404."""
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.delete_memory",
+            "app.api.v1.endpoints.memory.memory_engine.forget_memory",
             new_callable=AsyncMock,
             return_value=False,
         ):
-            resp = await client.delete(f"{API}/nonexistent")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["success"] is False
+            resp = await client.delete(f"{API}/{_MEM_UUID}")
+        assert resp.status_code == 404
 
     async def test_delete_memory_requires_auth(self, unauthed_client: AsyncClient) -> None:
-        resp = await unauthed_client.delete(f"{API}/mem_1")
+        resp = await unauthed_client.delete(f"{API}/{_MEM_UUID}")
         assert resp.status_code == 401
 
 
@@ -181,38 +193,38 @@ class TestClearAllMemories:
     """DELETE /api/v1/memory"""
 
     async def test_clear_all_success(self, client: AsyncClient) -> None:
+        # delete_all returns the count of deleted memories (int).
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.delete_all_memories",
+            "app.api.v1.endpoints.memory.memory_engine.delete_all",
             new_callable=AsyncMock,
-            return_value=True,
+            return_value=5,
         ):
             resp = await client.delete(API)
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
 
-    async def test_clear_all_failure(self, client: AsyncClient) -> None:
+    async def test_clear_all_zero_deleted(self, client: AsyncClient) -> None:
+        """Clearing when there are no memories still returns success=True."""
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.delete_all_memories",
+            "app.api.v1.endpoints.memory.memory_engine.delete_all",
             new_callable=AsyncMock,
-            return_value=False,
+            return_value=0,
         ):
             resp = await client.delete(API)
         assert resp.status_code == 200
         data = resp.json()
-        assert data["success"] is False
+        assert data["success"] is True
 
-    async def test_clear_all_service_exception(self, client: AsyncClient) -> None:
-        """On exception the endpoint still returns 200 with success=False."""
+    async def test_clear_all_service_exception_returns_500(self, client: AsyncClient) -> None:
+        """On unhandled exception the endpoint propagates a 500 (no try/except on delete_all)."""
         with patch(
-            "app.api.v1.endpoints.memory.memory_service.delete_all_memories",
+            "app.api.v1.endpoints.memory.memory_engine.delete_all",
             new_callable=AsyncMock,
             side_effect=Exception("memory engine unreachable"),
         ):
             resp = await client.delete(API)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["success"] is False
+        assert resp.status_code == 500
 
     async def test_clear_all_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.delete(API)

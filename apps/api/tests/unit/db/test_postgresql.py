@@ -250,7 +250,7 @@ class TestInitPostgresqlEngine:
             assert result is mock_engine
 
     async def test_creates_tables_on_init(self) -> None:
-        """Should run Base.metadata.create_all during initialization."""
+        """Should run run_sync twice during initialization: create_all then _ensure_timestamptz_columns."""
         mock_engine = MagicMock()
         mock_conn = AsyncMock()
         mock_ctx = AsyncMock()
@@ -267,7 +267,9 @@ class TestInitPostgresqlEngine:
 
             await _get_original_init_fn()()
 
-            mock_conn.run_sync.assert_awaited_once()
+            # Production calls run_sync twice: Base.metadata.create_all and
+            # _ensure_timestamptz_columns (promotes legacy timestamp columns to timestamptz).
+            assert mock_conn.run_sync.await_count == 2
 
     async def test_engine_pool_configuration(self) -> None:
         """Engine should be created with expected pool settings."""

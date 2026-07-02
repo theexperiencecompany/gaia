@@ -226,13 +226,18 @@ class TestTrackSubscriptionEvent:
         assert set_props["plan"] == "pro"
         assert set_props["subscription_status"] == "active"
 
-    def test_non_activated_event_no_identify(self, mock_posthog):
+    def test_cancelled_event_updates_subscription_status(self, mock_posthog):
+        """SUBSCRIPTION_CANCELLED now updates user properties with cancellation status."""
+        from app.models.payment_models import SubscriptionStatus
+
         track_subscription_event(
             "user1",
             AnalyticsEvents.SUBSCRIPTION_CANCELLED,
         )
 
-        mock_posthog.set.assert_not_called()
+        mock_posthog.set.assert_called_once()
+        set_props = mock_posthog.set.call_args.kwargs.get("properties")
+        assert set_props["subscription_status"] == SubscriptionStatus.CANCELLED
 
     def test_extra_properties_merged(self, mock_posthog):
         track_subscription_event(

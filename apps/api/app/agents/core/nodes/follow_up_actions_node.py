@@ -4,14 +4,13 @@ conversation context and tool usage."""
 from typing import cast
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
+from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
@@ -52,21 +51,14 @@ async def generate_follow_up_actions(
         tool_registry = await get_tool_registry()
         tool_names = tool_registry.get_tool_names()
 
-    parser = PydanticOutputParser(pydantic_object=FollowUpActions)
+    # STATIC prompt prefix (the system message) + DYNAMIC per-user/per-turn
+    # context. The byte-identical static prefix lets this call benefit from any
+    # upstream prompt caching and reduces throughput/latency.
+    dynamic_context = f"Available tools: {tool_names}\nContext: {context_text}"
 
-    # STATIC prompt prefix + DYNAMIC per-user/per-turn context message.
-    # Static byte-identical prefix lets even this free-tier chain benefit
-    # from any upstream caching and reduces throughput/latency.
-    dynamic_context = (
-        f"{parser.get_format_instructions()}\n\n"
-        f"Available tools: {tool_names}\n"
-        f"Context: {context_text}"
-    )
-
-    llm_chain = get_free_llm_chain()
     try:
-        result = await invoke_with_fallback(
-            llm_chain,
+        result = await ainvoke_structured(
+            FollowUpActions,
             [
                 SystemMessage(content=SUGGEST_FOLLOW_UP_ACTIONS),
                 SystemMessage(
@@ -78,6 +70,7 @@ async def generate_follow_up_actions(
                 ),
                 HumanMessage(content=context_text),
             ],
+            label="follow_up_actions",
             config=cast(
                 RunnableConfig,
                 {
@@ -93,8 +86,7 @@ async def generate_follow_up_actions(
                 },
             ),
         )
-        actions = parser.parse(result if isinstance(result, str) else result.text)
-        return actions.actions if actions.actions else []
+        return result.actions if result.actions else []
     except Exception as e:
         log.debug(f"{LogTag.AGENT} Follow-up action generation failed: {e}")
         return []

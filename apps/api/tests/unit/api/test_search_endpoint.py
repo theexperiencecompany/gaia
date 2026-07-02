@@ -88,7 +88,7 @@ class TestSearchEmail:
             "web": [
                 {
                     "title": "Contact Us",
-                    "snippet": "Email us at support@example.com",
+                    "content": "Email us at support@example.com",
                 }
             ]
         }
@@ -131,8 +131,8 @@ class TestSearchEmail:
     ):
         mock_perform.return_value = {
             "web": [
-                {"title": "Page1", "snippet": "info@test.com hello info@test.com"},
-                {"title": "Page2", "snippet": "info@test.com again"},
+                {"title": "Page1", "content": "info@test.com hello info@test.com"},
+                {"title": "Page2", "content": "info@test.com again"},
             ]
         }
         response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "test"})

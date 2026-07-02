@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { del } from "idb-keyval";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
+import { useElectron } from "@/hooks/useElectron";
 import { resetUser } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { authApi } from "../api/authApi";
@@ -9,6 +10,7 @@ import { authApi } from "../api/authApi";
 export const useLogout = () => {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const { isElectron } = useElectron();
 
   const clearAllStorage = useCallback(async () => {
     // 1. Close all database connections first
@@ -91,9 +93,12 @@ export const useLogout = () => {
 
     // Redirection will be handled by the authApi.logout method
     // but in case it doesn't (for example, if there's no logout_url),
-    // we redirect to the homepage
-    router.push("/");
-  }, [clearAllStorage, router]);
+    // we redirect to the post-logout landing. In Electron the marketing
+    // homepage lives in the (landing) group, which has no ElectronRouteGuard
+    // to bounce logged-out users — so send desktop users straight to the
+    // desktop login screen instead of the public landing page.
+    router.push(isElectron ? "/desktop-login" : "/");
+  }, [clearAllStorage, router, isElectron]);
 
   return { logout };
 };

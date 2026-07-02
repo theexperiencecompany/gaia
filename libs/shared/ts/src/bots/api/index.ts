@@ -1,4 +1,3 @@
-import type { Readable } from "node:stream";
 import axios, { type AxiosInstance } from "axios";
 import type {
   AuthStatus,
@@ -16,9 +15,13 @@ import type {
   ChatRequest,
   SettingsResponse,
 } from "../types";
-import { createBotLogger } from "../utils/logger";
-
-const logger = createBotLogger("shared", "gaia-client");
+import { getHttpStatus } from "../utils/logger";
+import { streamChat } from "./chat-stream";
+import {
+  downloadArtifactRequest,
+  transcribeAudioRequest,
+  uploadFileRequest,
+} from "./media";
 
 export class GaiaApiError extends Error {
   status?: number;
@@ -56,13 +59,11 @@ const TOKEN_TTL_MS = 12 * 60 * 1000;
 
 export class GaiaClient {
   private client: AxiosInstance;
-  private baseUrl: string;
   private frontendUrl: string;
   private apiKey: string;
   private sessionTokens: Map<string, TokenEntry> = new Map();
 
   constructor(baseUrl: string, apiKey: string, frontendUrl: string) {
-    this.baseUrl = baseUrl;
     this.frontendUrl = frontendUrl;
     this.apiKey = apiKey;
     this.client = axios.create({
@@ -113,8 +114,7 @@ export class GaiaClient {
     } catch (error: unknown) {
       if (error instanceof GaiaApiError) throw error;
       const message = error instanceof Error ? error.message : "Unknown error";
-      const status = (error as { response?: { status?: number } })?.response
-        ?.status;
+      const status = getHttpStatus(error);
       throw new GaiaApiError(`API error: ${status || message}`, status);
     }
   }
@@ -127,8 +127,7 @@ export class GaiaClient {
     try {
       return await fn();
     } catch (error: unknown) {
-      const status = (error as { response?: { status?: number } })?.response
-        ?.status;
+      const status = getHttpStatus(error);
 
       if (status === 401 && !retried) {
         this.clearSessionToken(ctx);
@@ -142,6 +141,16 @@ export class GaiaClient {
   }
 
   /**
+   * Stores a fresh session token for the user with the client-side TTL.
+   */
+  private storeSessionToken(ctx: BotUserContext, token: string): void {
+    this.sessionTokens.set(this.getSessionKey(ctx), {
+      token,
+      expiresAt: Date.now() + TOKEN_TTL_MS,
+    });
+  }
+
+  /**
    * Streams a chat response via SSE (authenticated users only).
    */
   async chatStream(
@@ -150,330 +159,19 @@ export class GaiaClient {
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
   ): Promise<string> {
-    return this._chatStreamWithRetry(
+    return streamChat(
+      {
+        client: this.client,
+        userHeaders: (ctx) => this.userHeaders(ctx),
+        storeSessionToken: (ctx, token) => this.storeSessionToken(ctx, token),
+        clearSessionToken: (ctx) => this.clearSessionToken(ctx),
+      },
       request,
       onChunk,
       onDone,
       onError,
       "/api/v1/bot/chat-stream",
     );
-  }
-
-  /**
-   * Wrapper that adds retry logic for transient failures.
-   */
-  private async _chatStreamWithRetry(
-    request: ChatRequest,
-    onChunk: (text: string) => void | Promise<void>,
-    onDone: (fullText: string, conversationId: string) => void | Promise<void>,
-    onError: (error: Error) => void | Promise<void>,
-    endpoint: string,
-    maxRetries = 2,
-  ): Promise<string> {
-    const retryableErrors = [
-      "ECONNRESET",
-      "socket hang up",
-      "ETIMEDOUT",
-      "ECONNREFUSED",
-      "Connection interrupted",
-      "Connection lost before receiving a response",
-    ];
-
-    let lastError: Error | null = null;
-    let attemptedRetries = 0;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        return await this._chatStreamInternal(
-          request,
-          onChunk,
-          onDone,
-          onError,
-          attempt > 0,
-          endpoint,
-        );
-      } catch (error: unknown) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        const errorMsg = lastError.message;
-
-        // Check if this is a retryable error
-        const isRetryable = retryableErrors.some((retryableErr) =>
-          errorMsg.includes(retryableErr),
-        );
-
-        if (!isRetryable || attempt === maxRetries) {
-          // Non-retryable error or max retries reached
-          await onError(lastError);
-          throw lastError;
-        }
-
-        // Wait before retrying (exponential backoff)
-        const delayMs = Math.min(1000 * 2 ** attempt, 5000);
-        attemptedRetries++;
-        logger.warn("chat_stream_retrying", {
-          attempt: attemptedRetries,
-          max_retries: maxRetries,
-          delay_ms: delayMs,
-          error_message: lastError.message,
-        });
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-    }
-
-    // Should never reach here, but just in case
-    const finalError = lastError || new Error("Stream failed after retries");
-    await onError(finalError);
-    throw finalError;
-  }
-
-  private async _chatStreamInternal(
-    request: ChatRequest,
-    onChunk: (text: string) => void | Promise<void>,
-    onDone: (fullText: string, conversationId: string) => void | Promise<void>,
-    onError: (error: Error) => void | Promise<void>,
-    retried: boolean,
-    endpoint: string,
-  ): Promise<string> {
-    let fullText = "";
-    let conversationId = "";
-    let streamError: Error | null = null;
-
-    // Increased timeouts for slow API operations (lazy loading, cold starts, etc.)
-    const STREAM_TIMEOUT_MS = 600_000; // 10 minutes - overall connection timeout
-    const INACTIVITY_TIMEOUT_MS = 300_000; // 5 minutes - no data received timeout
-
-    const ctx = {
-      platform: request.platform,
-      platformUserId: request.platformUserId,
-      channelId: request.channelId,
-    };
-
-    try {
-      const response = await this.client.post(
-        endpoint,
-        {
-          message: request.message,
-          platform: request.platform,
-          platform_user_id: request.platformUserId,
-          channel_id: request.channelId,
-          ...(request.fileIds && request.fileIds.length > 0
-            ? { file_ids: request.fileIds }
-            : {}),
-          ...(request.fileData && request.fileData.length > 0
-            ? { file_data: request.fileData }
-            : {}),
-        },
-        {
-          responseType: "stream",
-          timeout: STREAM_TIMEOUT_MS,
-          headers: {
-            Accept: "text/event-stream",
-            ...this.userHeaders(ctx),
-          },
-        },
-      );
-
-      const stream = response.data as Readable;
-      let buffer = "";
-      let finished = false;
-      let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
-      let receivedKeepalive = false;
-
-      const resetInactivityTimer = (resolve: () => void) => {
-        if (inactivityTimer) clearTimeout(inactivityTimer);
-        inactivityTimer = setTimeout(async () => {
-          if (!finished) {
-            finished = true;
-            stream.destroy();
-            if (fullText) {
-              // If we got some content, consider it a success
-              await onDone(fullText, conversationId);
-            } else {
-              // No content after timeout - this is an error
-              const errorMsg = receivedKeepalive
-                ? "The AI is taking longer than expected. Please try a simpler request or try again later."
-                : "Connection timeout - no response from server. Please try again.";
-              await onError(new Error(errorMsg));
-            }
-            resolve();
-          }
-        }, INACTIVITY_TIMEOUT_MS);
-      };
-
-      await new Promise<void>((resolve) => {
-        resetInactivityTimer(resolve);
-
-        stream.on("data", async (rawChunk: Buffer) => {
-          if (finished) return;
-          try {
-            resetInactivityTimer(resolve);
-            buffer += rawChunk.toString();
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (finished) return;
-              const trimmed = line.trim();
-
-              if (!trimmed || !trimmed.startsWith("data: ")) continue;
-              const raw = trimmed.slice(6);
-              if (raw === "[DONE]") continue;
-
-              try {
-                const data = JSON.parse(raw);
-                if (data.keepalive) {
-                  // Server keepalive ping to keep the connection alive
-                  receivedKeepalive = true;
-                  continue;
-                }
-                if (data.error === "not_authenticated") {
-                  finished = true;
-                  if (inactivityTimer) clearTimeout(inactivityTimer);
-                  await onError(new Error("not_authenticated"));
-                  resolve();
-                  return;
-                }
-                if (data.error) {
-                  finished = true;
-                  if (inactivityTimer) clearTimeout(inactivityTimer);
-                  await onError(new Error(data.error));
-                  resolve();
-                  return;
-                }
-                if (data.session_token) {
-                  const sessionKey = this.getSessionKey(ctx);
-                  this.sessionTokens.set(sessionKey, {
-                    token: data.session_token,
-                    expiresAt: Date.now() + TOKEN_TTL_MS,
-                  });
-                }
-                if (data.text) {
-                  fullText += data.text;
-                  onChunk(data.text);
-                }
-                if (data.done) {
-                  finished = true;
-                  if (inactivityTimer) clearTimeout(inactivityTimer);
-                  conversationId = data.conversation_id || "";
-                  await onDone(fullText, conversationId);
-                  resolve();
-                  return;
-                }
-              } catch (parseErr) {
-                if (!(parseErr instanceof SyntaxError)) {
-                  finished = true;
-                  if (inactivityTimer) clearTimeout(inactivityTimer);
-                  await onError(
-                    parseErr instanceof Error
-                      ? parseErr
-                      : new Error("Stream processing failed"),
-                  );
-                  resolve();
-                  return;
-                }
-              }
-            }
-          } catch {
-            // Prevent unhandled rejection if a callback throws
-            if (!finished) {
-              finished = true;
-              if (inactivityTimer) clearTimeout(inactivityTimer);
-              resolve();
-            }
-          }
-        });
-
-        stream.on("end", async () => {
-          if (inactivityTimer) clearTimeout(inactivityTimer);
-          try {
-            if (!finished) {
-              finished = true;
-              if (fullText) {
-                // Got partial response - return what we have
-                await onDone(fullText, conversationId);
-              } else if (receivedKeepalive) {
-                // Received keepalive but no content - server is working but slow
-                await onError(
-                  new Error(
-                    "The AI is processing your request but hasn't responded yet. Please try again.",
-                  ),
-                );
-              } else {
-                // No keepalive, no content - connection issue
-                await onError(
-                  new Error(
-                    "Connection lost before receiving a response. Please try again.",
-                  ),
-                );
-              }
-            }
-          } catch {
-            // Prevent unhandled rejection if a callback throws
-          } finally {
-            resolve();
-          }
-        });
-
-        stream.on("error", async (err: Error) => {
-          if (inactivityTimer) clearTimeout(inactivityTimer);
-          try {
-            if (!finished) {
-              finished = true;
-              const isRetryable =
-                err.message.includes("ECONNRESET") ||
-                err.message.includes("socket hang up") ||
-                err.message.includes("ETIMEDOUT");
-
-              if (isRetryable && !fullText) {
-                // No content received yet — store for re-throw so _chatStreamWithRetry can retry
-                streamError = err;
-              } else {
-                // Has partial content or non-retryable — surface to user
-                const errorMsg =
-                  err.message.includes("ECONNRESET") ||
-                  err.message.includes("socket hang up")
-                    ? "Connection interrupted. Please try again."
-                    : err.message.includes("timeout")
-                      ? "Request timed out. The server may be busy - please try again."
-                      : err.message;
-                await onError(new Error(errorMsg));
-              }
-            }
-          } catch {
-            // Prevent unhandled rejection if callback throws
-          } finally {
-            resolve();
-          }
-        });
-      });
-    } catch (error: unknown) {
-      const status = (error as { response?: { status?: number } })?.response
-        ?.status;
-
-      if (status === 401 && !retried) {
-        this.clearSessionToken(ctx);
-        return this._chatStreamInternal(
-          request,
-          onChunk,
-          onDone,
-          onError,
-          true,
-          endpoint,
-        );
-      }
-
-      // Re-throw so _chatStreamWithRetry can classify the error and retry if appropriate
-      throw error;
-    }
-
-    // Re-throw retryable mid-stream errors so _chatStreamWithRetry can retry them.
-    // These are stored rather than thrown inside the stream event handler because
-    // stream errors resolve the promise (not reject it).
-    if (streamError) {
-      throw streamError;
-    }
-
-    return conversationId;
   }
 
   /**
@@ -495,6 +193,26 @@ export class GaiaClient {
         },
       );
       return data;
+    });
+  }
+
+  /**
+   * Lists the platform_user_ids linked on a platform. Bots use this on startup
+   * to pre-warm caches (e.g. Discord DM channels) so cold inbound messages
+   * resolve after a restart.
+   */
+  async listLinkedPlatformUserIds(platform: string): Promise<string[]> {
+    return this.request(async () => {
+      const { data } = await this.client.get<{ platform_user_ids: string[] }>(
+        `/api/v1/bot/linked-users/${platform}`,
+        {
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": platform,
+          },
+        },
+      );
+      return data.platform_user_ids ?? [];
     });
   }
 
@@ -664,21 +382,6 @@ export class GaiaClient {
   }
 
   /**
-   * Gets a specific todo by ID.
-   */
-  async getTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
-    return this.requestWithAuth(async () => {
-      const { data } = await this.client.get(
-        `/api/v1/todos/${encodeURIComponent(todoId)}`,
-        {
-          headers: this.userHeaders(ctx),
-        },
-      );
-      return mapTodoResponse(data);
-    }, ctx);
-  }
-
-  /**
    * Updates a todo.
    */
   async updateTodo(
@@ -748,33 +451,9 @@ export class GaiaClient {
     }, ctx);
   }
 
-  /**
-   * Gets a specific conversation by ID.
-   */
-  async getConversation(
-    conversationId: string,
-    ctx: BotUserContext,
-  ): Promise<BotConversation> {
-    return this.requestWithAuth(async () => {
-      const { data } = await this.client.get(
-        `/api/v1/conversations/${encodeURIComponent(conversationId)}`,
-        { headers: this.userHeaders(ctx) },
-      );
-      return mapConversationResponse(data);
-    }, ctx);
-  }
-
-  getConversationUrl(conversationId: string): string {
-    return `${this.frontendUrl}/c/${conversationId}`;
-  }
-
   /** Upgrade/pricing page, surfaced in rate-limit replies for free users. */
   getPricingUrl(): string {
     return `${this.frontendUrl}/pricing`;
-  }
-
-  getBaseUrl(): string {
-    return this.baseUrl;
   }
 
   getFrontendUrl(): string {
@@ -830,14 +509,8 @@ export class GaiaClient {
   }
 
   /**
-   * Uploads a binary file to GAIA's shared file storage on behalf of the
-   * authenticated bot user. The returned {@link BotFileData} can be sent
-   * alongside the next chat request via `fileIds` / `fileData` so the agent
-   * grounds its reply in the uploaded content.
-   *
-   * Uses the same `/api/v1/upload` endpoint as the web app — the bot auth
-   * middleware resolves the linked user from `X-Bot-API-Key` + platform
-   * headers, so no separate bot-only upload route is required.
+   * Uploads a file to GAIA on behalf of the authenticated bot user. See
+   * {@link uploadFileRequest}.
    */
   async uploadFile(
     input: {
@@ -848,90 +521,36 @@ export class GaiaClient {
     },
     ctx: BotUserContext,
   ): Promise<BotFileData> {
-    return this.requestWithAuth(async () => {
-      const form = new FormData();
-      // A File (carrying name + type) preserves the mime type for FastAPI's
-      // UploadFile content_type, which file_service.py uses to dispatch
-      // image/PDF/text summarisation. A File with a 2-arg append (vs a Blob
-      // with a 3-arg append) keeps the typings consistent under lib:ESNext,
-      // where the 3-arg FormData.append overload isn't resolved.
-      const file = new File([new Uint8Array(input.data)], input.filename, {
-        type: input.mimeType,
-      });
-      form.append("file", file);
-      if (input.conversationId) {
-        form.append("conversation_id", input.conversationId);
-      }
-
-      const { data } = await this.client.post("/api/v1/upload", form, {
-        headers: {
-          ...this.userHeaders(ctx),
-          // The axios instance defaults Content-Type to application/json, which
-          // makes axios JSON-encode FormData instead of sending multipart (the
-          // backend then sees no `file` field and returns 422). Force multipart
-          // here — axios fills in the boundary from the FormData.
-          "Content-Type": "multipart/form-data",
-        },
-        // Allow uploads up to the backend's 10 MB cap plus multipart overhead.
-        maxBodyLength: 12 * 1024 * 1024,
-        maxContentLength: 12 * 1024 * 1024,
-      });
-
-      return {
-        fileId: data.fileId,
-        url: data.url,
-        filename: data.filename,
-        type: data.type ?? "file",
-        message: data.message,
-      };
-    }, ctx);
+    return this.requestWithAuth(
+      () => uploadFileRequest(this.client, this.userHeaders(ctx), input),
+      ctx,
+    );
   }
 
   /**
-   * Downloads a session artifact's bytes (a file the agent wrote to
-   * `artifacts/`) on behalf of the authenticated bot user. Used to deliver
-   * agent-generated documents to a messaging platform: the bot fetches the
-   * bytes here, then uploads them via the platform's media API.
-   *
-   * Hits the same authenticated `GET /api/v1/sessions/{conv}/artifacts/{path}`
-   * route the web app uses; the bot auth middleware resolves the linked user
-   * and the endpoint enforces conversation ownership.
+   * Downloads a session artifact's bytes on behalf of the authenticated bot
+   * user. See {@link downloadArtifactRequest}.
    */
   async downloadArtifact(
     conversationId: string,
     path: string,
     ctx: BotUserContext,
   ): Promise<{ data: Buffer; contentType: string }> {
-    return this.requestWithAuth(async () => {
-      const encodedPath = path
-        .split("/")
-        .map((seg) => encodeURIComponent(seg))
-        .join("/");
-      const { data, headers } = await this.client.get(
-        `/api/v1/sessions/${encodeURIComponent(conversationId)}/artifacts/${encodedPath}`,
-        {
-          responseType: "arraybuffer",
-          headers: this.userHeaders(ctx),
-          // 100 MB = the largest per-platform outbound cap (WhatsApp). A lower
-          // cap here would reject 50–100 MB artifacts as transport errors before
-          // OUTBOUND_FILE_LIMITS can apply the platform limit or graceful note.
-          maxContentLength: 100 * 1024 * 1024,
-          maxBodyLength: 100 * 1024 * 1024,
-        },
-      );
-      const contentType = String(
-        headers["content-type"] ?? "application/octet-stream",
-      );
-      return { data: Buffer.from(data as ArrayBuffer), contentType };
-    }, ctx);
+    return this.requestWithAuth(
+      () =>
+        downloadArtifactRequest(
+          this.client,
+          this.userHeaders(ctx),
+          conversationId,
+          path,
+        ),
+      ctx,
+    );
   }
 
   /**
-   * Transcribes a short audio clip (voice note or audio file) to text via the
-   * bot transcription endpoint, which proxies to OpenAI Whisper server-side.
-   *
-   * Returns the transcribed text. Throws {@link GaiaApiError} on failure so
-   * callers can fall back to a "couldn't understand audio" reply.
+   * Transcribes a short audio clip to text on behalf of the authenticated bot
+   * user. See {@link transcribeAudioRequest}.
    */
   async transcribeAudio(
     input: {
@@ -941,26 +560,10 @@ export class GaiaClient {
     },
     ctx: BotUserContext,
   ): Promise<string> {
-    return this.requestWithAuth(async () => {
-      const form = new FormData();
-      const file = new File([new Uint8Array(input.data)], input.filename, {
-        type: input.mimeType,
-      });
-      form.append("file", file);
-
-      const { data } = await this.client.post("/api/v1/bot/transcribe", form, {
-        headers: {
-          ...this.userHeaders(ctx),
-          // Force multipart so axios doesn't JSON-encode the FormData (the
-          // instance default Content-Type is application/json). See uploadFile.
-          "Content-Type": "multipart/form-data",
-        },
-        maxBodyLength: 30 * 1024 * 1024,
-        maxContentLength: 30 * 1024 * 1024,
-      });
-
-      return String(data.text ?? "").trim();
-    }, ctx);
+    return this.requestWithAuth(
+      () => transcribeAudioRequest(this.client, this.userHeaders(ctx), input),
+      ctx,
+    );
   }
 
   /**
