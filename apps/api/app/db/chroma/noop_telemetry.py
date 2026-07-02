@@ -15,10 +15,6 @@ posthog call entirely regardless of the installed posthog version.
 from chromadb.telemetry.product import ProductTelemetryClient, ProductTelemetryEvent
 from overrides import override
 
-# Dotted path chromadb imports to resolve the telemetry client (see
-# `chroma_product_telemetry_impl` in the ChromaDB client Settings).
-NOOP_PRODUCT_TELEMETRY_IMPL = "app.db.chroma.noop_telemetry.NoopProductTelemetry"
-
 
 class NoopProductTelemetry(ProductTelemetryClient):
     """Discards every telemetry event instead of shipping it to posthog."""
@@ -26,3 +22,11 @@ class NoopProductTelemetry(ProductTelemetryClient):
     @override
     def capture(self, event: ProductTelemetryEvent) -> None:
         del event
+
+
+# Dotted path chromadb imports to resolve the telemetry client (see
+# `chroma_product_telemetry_impl` in the ChromaDB client Settings). Derived from
+# the class so it can never drift from the definition above.
+NOOP_PRODUCT_TELEMETRY_IMPL = (
+    f"{NoopProductTelemetry.__module__}.{NoopProductTelemetry.__qualname__}"
+)

@@ -339,7 +339,8 @@ async def edit_workflow(
 
         if not user_request or not user_request.strip():
             return error_response(
-                "missing_request", "user_request is required — pass the user's change in their words."
+                "missing_request",
+                "user_request is required — pass the user's change in their words.",
             )
 
         workflow = await WorkflowService.get_workflow(workflow_id, user_id)
