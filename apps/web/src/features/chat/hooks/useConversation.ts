@@ -38,6 +38,7 @@ const mapStoredMessageToConversationMessage = (
     todo_progress: message.todo_progress ?? undefined,
     pinned: message.pinned ?? undefined,
     isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
+    error: message.error ?? undefined,
     replyToMessage: message.replyToMessageData ?? undefined,
   } as MessageType;
 

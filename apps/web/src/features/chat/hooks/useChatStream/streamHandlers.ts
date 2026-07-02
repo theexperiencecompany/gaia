@@ -68,6 +68,13 @@ function formatStreamError(error: unknown, eventData: string): string {
 
 const REASONING_CATEGORY = "reasoning";
 
+// The model-fallback frame arrives via the parser's `unknown` catch-all (it is
+// not a first-class ChatStreamEvent). Detect its shape to fire the notice.
+function isModelFallbackPayload(payload: Record<string, unknown>): boolean {
+  const fallback = payload.model_fallback;
+  return typeof fallback === "object" && fallback !== null;
+}
+
 // A thinking step: a ToolCallEntry carrying `reasoning` (rendered as a collapsible
 // "Thinking" row, not a tool call). Rides the same ordered tool-call stream.
 function makeReasoningStep(content: string): ToolCallEntry {
@@ -577,6 +584,14 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
         void relayDesktopToolRequest(parsed.request);
         return undefined;
       case "unknown":
+        // The backend emits `{"model_fallback": {"model": "..."}}` at most once
+        // per stream when the primary model failed and the backup answered.
+        // Surface it as a quiet one-time notice; it carries no response content,
+        // so it must not fall through into streamingData/parseStreamData.
+        if (isModelFallbackPayload(parsed.payload)) {
+          toast.info("Answered with backup model");
+          return undefined;
+        }
         Object.assign(streamingData, parsed.payload);
         return undefined;
     }

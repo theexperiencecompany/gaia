@@ -74,6 +74,25 @@ function ReplyQuote({
   );
 }
 
+/** Quiet failed-response bubble shown when a bot turn died with no text. */
+function FailedResponse({ error }: Readonly<{ error: string }>) {
+  return (
+    <div className="imessage-bubble imessage-from-them imessage-grouped-last">
+      <div className="flex items-start gap-2">
+        <Alert01Icon
+          className="mt-0.5 shrink-0 text-zinc-400"
+          height={17}
+          width={17}
+        />
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm text-zinc-200">This response failed</span>
+          <span className="line-clamp-2 text-xs text-zinc-400">{error}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TextBubble({
   text,
   disclaimer,
@@ -82,6 +101,7 @@ export default function TextBubble({
   systemPurpose,
   loading,
   replyToMessage,
+  error,
 }: Readonly<ChatBubbleBotProps>) {
   const baseId = useId();
 
@@ -304,6 +324,12 @@ export default function TextBubble({
             </div>
           );
         })()}
+
+      {/* Failed turn with no response text — render a quiet error bubble so
+          reloads don't show an empty bubble. */}
+      {!!error && !parsedContent.cleanText.trim() && (
+        <FailedResponse error={error} />
+      )}
     </>
   );
 }
