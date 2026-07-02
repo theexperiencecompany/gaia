@@ -31,6 +31,7 @@ from app.models.workflow_models import CreateWorkflowRequest, TriggerType
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
 from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
+from app.services.user_service import get_user_by_id
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.workflow_utils import ensure_trigger_config_object
@@ -83,6 +84,7 @@ async def provision_system_workflows(
     )
 
     created: list[CreateWorkflowRequest] = []
+    user_timezone: str | None = None
 
     for key, factory in entries:
         # Idempotency: skip if this key already exists for this user
@@ -97,6 +99,16 @@ async def provision_system_workflows(
 
         try:
             request = factory()
+            trigger_config = ensure_trigger_config_object(request.trigger_config)
+            # Factories can't know the user, so scheduled definitions carry no
+            # timezone — stamp the profile timezone here so the cron fires at
+            # the user's local time instead of UTC.
+            if trigger_config.type == TriggerType.SCHEDULE and not trigger_config.timezone:
+                if user_timezone is None:
+                    user = await get_user_by_id(user_id) or {}
+                    user_timezone = (user.get("timezone") or "").strip() or "UTC"
+                trigger_config.timezone = user_timezone
+                request.trigger_config = trigger_config
             await WorkflowService.create_workflow(request, user_id)
             created.append(request)
             log.info(f"{LogTag.WORKFLOW} Provisioned system workflow '{key}' for user {user_id}")
