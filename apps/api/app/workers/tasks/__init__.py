@@ -2,6 +2,7 @@
 Task modules for ARQ worker.
 """
 
+from .checkpoint_retention_tasks import prune_checkpoint_versions
 from .cleanup_tasks import cleanup_stuck_personalization
 from .memory_backfill_tasks import backfill_active_users, backfill_user_memories
 from .memory_email_tasks import process_gmail_emails_to_memory
@@ -30,6 +31,7 @@ __all__ = [
     "regenerate_workflow_steps",
     "execute_workflow_as_chat",
     "cleanup_stuck_personalization",
+    "prune_checkpoint_versions",
     "sweep_idle_sandboxes",
     "prune_inactive_sessions",
     "backfill_active_users",
