@@ -1,5 +1,9 @@
 import { useCallback, useEffect } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import {
+  isViewingConversation,
+  markConversationUnread,
+} from "@/features/chat/stream/unread";
 import type { IMessage } from "@/lib/db/chatDb";
 import { db } from "@/lib/db/chatDb";
 import { streamLog } from "@/lib/streamLogger";
@@ -93,17 +97,12 @@ export function useBgMessageWebSocket() {
     }
 
     // Also update store directly for immediate render if viewing this conversation
-    const activeConvoId = useChatStore.getState().activeConversationId;
-    if (conversation_id === activeConvoId) {
+    if (isViewingConversation(conversation_id)) {
       useChatStore.getState().addOrUpdateMessage(iMessage);
     } else {
       // A background result landing in a conversation the user isn't viewing
       // surfaces as unread in the sidebar (cleared by ChatPage's mark-as-read).
-      db.updateConversationFields(conversation_id, { isUnread: true }).catch(
-        (err) => {
-          console.error("[useBgMessageWebSocket] Failed to mark unread:", err);
-        },
-      );
+      markConversationUnread(conversation_id);
     }
 
     // End the awaiting-executor session AFTER the result message is in the

@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
+import {
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
 import "../desktop-popup.css";
-
-/** Distance from the bottom (px) within which auto-scroll stays engaged. */
-const STICK_THRESHOLD_PX = 80;
 
 /** Default BlurStack stops already read bottom-heavy — reuse for the
  * bottom edge while more content waits below. */
@@ -38,77 +41,44 @@ const TOP_BLUR_LAYERS: BlurLayer[] = [
 
 /**
  * The conversation island — rendered in its own liquid-glass window.
- * Scrollable, smooth-scrolls to follow streaming content (unless the
- * user scrolled up), with a progressive top blur while scrolled.
+ * The message scroller owns scroll position: it follows streaming content
+ * at the live edge and releases when the user scrolls up. Progressive
+ * edge blurs appear only while content continues past that edge.
  */
 export default function PopupFeed() {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
   const [scrolled, setScrolled] = useState(false);
   const [moreBelow, setMoreBelow] = useState(false);
 
-  useEffect(() => {
-    const scroller = scrollRef.current;
-    const content = contentRef.current;
-    if (!scroller || !content) return;
-    let raf = 0;
-
-    // Wheel-up is explicit user intent: release the bottom-stick so
-    // streaming growth can't yank the view back down. Reaching the
-    // bottom again re-engages it.
-    const handleWheel = (event: WheelEvent) => {
-      if (event.deltaY < 0) stickToBottomRef.current = false;
-    };
-    const handleScroll = () => {
-      const distance =
-        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-      if (distance < STICK_THRESHOLD_PX) stickToBottomRef.current = true;
-      setScrolled(scroller.scrollTop > 0);
-      setMoreBelow(distance > 4);
-    };
-    scroller.addEventListener("wheel", handleWheel, { passive: true });
-    scroller.addEventListener("scroll", handleScroll, { passive: true });
-
-    // Instant, rAF-coalesced follow during content growth — queueing
-    // smooth scrolls every resize tick fights the user and stutters.
-    const observer = new ResizeObserver(() => {
-      if (!stickToBottomRef.current) return;
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        scroller.scrollTop = scroller.scrollHeight;
-      });
-    });
-    observer.observe(content);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      scroller.removeEventListener("wheel", handleWheel);
-      scroller.removeEventListener("scroll", handleScroll);
-      observer.disconnect();
-    };
-  }, []);
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setScrolled(el.scrollTop > 0);
+    setMoreBelow(distance > 4);
+  };
 
   return (
     <div className="relative h-full">
-      {/* Horizontal padding lives on the CONTENT (not the scroller):
-          overflow clips at the scroller's padding edge, which was
-          slicing the iMessage bubble tails on both sides. */}
-      <div
-        ref={scrollRef}
-        className="compact-chat h-full overflow-y-auto no-scrollbar"
-      >
-        <div
-          ref={contentRef}
-          data-popup-feed-content
-          // Equal 32px breathing room on all four sides. gap-3 keeps the
-          // turns readable now that action/follow-up rows (which used to
-          // provide the separation) are gone in compact mode.
-          className="flex flex-col gap-3 p-8"
-        >
-          <ChatRenderer compact />
-        </div>
-      </div>
+      <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+        <MessageScroller className="h-full">
+          {/* Horizontal padding lives on the CONTENT (not the viewport):
+              overflow clips at the scroller's padding edge, which was
+              slicing the iMessage bubble tails on both sides. */}
+          <MessageScrollerViewport
+            className="compact-chat no-scrollbar"
+            onScroll={handleScroll}
+          >
+            <MessageScrollerContent
+              data-popup-feed-content
+              // Equal 32px breathing room on all four sides. gap-3 keeps the
+              // turns readable now that action/follow-up rows (which used to
+              // provide the separation) are gone in compact mode.
+              className="gap-3 p-8"
+            >
+              <ChatRenderer compact />
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+        </MessageScroller>
+      </MessageScrollerProvider>
       {/* Progressive edge blurs — instant (150ms) and only while content
           actually continues past that edge. */}
       <div
