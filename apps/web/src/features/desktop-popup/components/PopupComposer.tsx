@@ -7,7 +7,7 @@ import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useElectron } from "@/hooks/useElectron";
 import { useSendMessage } from "@/hooks/useSendMessage";
-import { useIsMainResponseStreaming } from "@/stores/loadingStore";
+import { useIsInitialResponseStreaming } from "@/stores/streamStore";
 import { usePopupDismissGuard } from "../hooks/usePopupEscapeDismiss";
 import type { PopupAgentState } from "../hooks/usePopupVoice";
 import PopupOrb from "./PopupOrb";
@@ -34,7 +34,7 @@ export default function PopupComposer({
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const sendMessage = useSendMessage();
-  const isStreaming = useIsMainResponseStreaming();
+  const isStreaming = useIsInitialResponseStreaming();
   const { dismissPopup } = useElectron();
   const dismissIfIdle = usePopupDismissGuard();
   const { convoMessages } = useConversation();

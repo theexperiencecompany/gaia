@@ -51,8 +51,11 @@ const ChatPage = React.memo(function MainChat() {
   const router = useRouter();
 
   // --- Workflow auto-send ---
-  // This runs at the ChatPage level (not inside Composer) so that the
-  // useChatStream refs survive the NewChatLayout → ChatWithMessages remount.
+  // Hosted at ChatPage (not Composer) because ChatPage is memoized and never
+  // remounts, whereas Composer remounts across the NewChatLayout →
+  // ChatWithMessages layout switch that fires when the optimistic message
+  // flips hasMessages to true. Keeping the once-only guard (autoSendFiredRef)
+  // here stops that remount from resetting it and firing the workflow twice.
   const sendMessage = useSendMessage();
   const selectedWorkflow = useWorkflowSelectionStore((s) => s.selectedWorkflow);
   const autoSend = useWorkflowSelectionStore((s) => s.autoSend);

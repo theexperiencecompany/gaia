@@ -3,6 +3,8 @@
  * Single WebSocket connection for the entire application
  */
 
+import { streamLog } from "@/lib/streamLogger";
+
 type MessageHandler = (message: unknown) => void;
 type ConnectionHandler = () => void;
 type ErrorHandler = (error: Error) => void;
@@ -51,6 +53,7 @@ class WebSocketManager {
       this.isIntentionalClose = false;
 
       this.ws.onopen = () => {
+        streamLog("ws", "connected");
         this.reconnectAttempts = 0;
         this.connectionHandlers.forEach((handler) => handler());
       };
@@ -67,6 +70,9 @@ class WebSocketManager {
 
           // Notify all handlers for this message type
           const handlers = this.messageHandlers.get(message.type);
+          streamLog("ws", `dispatch:${message.type}`, {
+            detail: { handlers: handlers?.size ?? 0 },
+          });
           if (handlers) {
             handlers.forEach((handler) => handler(message));
           }
@@ -83,6 +89,7 @@ class WebSocketManager {
       };
 
       this.ws.onclose = (event) => {
+        streamLog("ws", "disconnected", { detail: { code: event.code } });
         this.ws = null;
         this.disconnectionHandlers.forEach((handler) => handler());
 
