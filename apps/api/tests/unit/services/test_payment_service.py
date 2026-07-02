@@ -897,7 +897,7 @@ class TestDodoPaymentServiceInit:
 class TestVerifyWebhookSignature:
     """Tests for PaymentWebhookService.verify_webhook_signature."""
 
-    def test_returns_false_when_no_verifier_configured(self):
+    def test_returns_false_when_no_verifier_configured(self) -> None:
         """When no verifier is configured, fail closed and reject the webhook."""
         with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = ""

@@ -40,20 +40,22 @@ function guardNavigation(event: Event, url: string): void {
     new URL(getApiOrigin()).origin,
   ]);
 
-  let targetOrigin: string;
+  let targetUrl: URL;
   try {
-    targetOrigin = new URL(url).origin;
+    targetUrl = new URL(url);
   } catch {
     event.preventDefault();
     return;
   }
 
-  if (allowedOrigins.has(targetOrigin)) return;
+  if (allowedOrigins.has(targetUrl.origin)) return;
 
   event.preventDefault();
 
-  if (url.startsWith("https://") || url.startsWith("http://")) {
-    shell.openExternal(url);
+  if (targetUrl.protocol === "https:" || targetUrl.protocol === "http:") {
+    shell.openExternal(url).catch((err) => {
+      console.error("[Main] Failed to open external URL:", err);
+    });
   }
 }
 

@@ -1,12 +1,13 @@
 """Shared fixtures for MCP integration tests."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _mock_ssrf_guard():
+def _mock_ssrf_guard() -> Iterator[None]:
     """Neutralize the DNS-resolving SSRF guard for the whole MCP integration suite.
 
     ``_do_connect`` and ``probe_mcp_connection`` call ``assert_public_http_url``,

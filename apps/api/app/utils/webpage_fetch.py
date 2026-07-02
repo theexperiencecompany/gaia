@@ -152,6 +152,7 @@ class HttpxFetcher(WebpageFetcher):
         private/metadata address, bypassing the entry validation. Every hop is
         re-run through ``_ensure_url_allowed`` before it is requested.
         """
+        await _ensure_url_allowed(url)
         for _ in range(_MAX_HTTPX_REDIRECTS + 1):
             response = await client.get(url)
             if not response.is_redirect:

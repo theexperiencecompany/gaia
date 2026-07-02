@@ -7,6 +7,7 @@ LangChain adapter schema sanitization, and resilient adapter retry/skip logic.
 """
 
 import asyncio
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import json
@@ -335,7 +336,7 @@ class TestMCPClientConnect:
 @pytest.mark.unit
 class TestMCPClientDoConnect:
     @pytest.fixture(autouse=True)
-    def _mock_ssrf_guard(self):
+    def _mock_ssrf_guard(self) -> Iterator[None]:
         """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
         with patch(
             "app.services.mcp.mcp_client.assert_public_http_url",
@@ -1764,7 +1765,7 @@ class TestDiscoverOAuthConfig:
 @pytest.mark.unit
 class TestProbeMcpConnection:
     @pytest.fixture(autouse=True)
-    def _mock_ssrf_guard(self):
+    def _mock_ssrf_guard(self) -> Iterator[None]:
         """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
         with patch(
             "app.services.mcp.oauth_discovery.assert_public_http_url",
