@@ -1,7 +1,9 @@
 /**
  * Drives the live backend connection during onboarding: fetches the initial
  * personalization snapshot via REST, subscribes to the app-wide WebSocket for
- * stage events, and falls back to REST polling if the socket goes silent.
+ * stage events, and covers two socket gaps with REST — a one-shot polling
+ * fallback if no stage event arrives during the initial silence window, and
+ * a snapshot refetch on the first reconnect after a disconnect.
  */
 
 "use client";

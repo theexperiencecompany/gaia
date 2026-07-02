@@ -70,6 +70,39 @@ const appendReasoningStep = (
   return [...steps, makeReasoningStep(content)];
 };
 
+const subagentGroupContains = (
+  group: SubagentGroupData,
+  targetId: string,
+): boolean =>
+  group.subagent_id === targetId ||
+  group.nested_subagents.some((nested) =>
+    subagentGroupContains(nested, targetId),
+  );
+
+/**
+ * Advisory only (mirrors warnIfFrameUnrecognized in streaming.ts): a subagent
+ * update whose target group doesn't exist is a silent no-op — e.g. a mid-turn
+ * Redis Streams attach that missed the subagent_start. Never affects the
+ * reducer's returned state.
+ */
+const warnIfSubagentTargetMissing = (
+  toolData: StreamToolDataEntry[],
+  targetId: string,
+): void => {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    !toolData.some(
+      (entry) =>
+        entry.tool_name === SUBAGENT_GROUP_TOOL_NAME &&
+        subagentGroupContains(entry.data as SubagentGroupData, targetId),
+    )
+  ) {
+    console.error(
+      `[turn-accumulator] no subagent group "${targetId}" in tool_data — the frame targeting it was dropped (missed subagent_start, e.g. a mid-turn stream attach?)`,
+    );
+  }
+};
+
 /** Recursively find and update a SubagentGroupData by ID anywhere in the tree. */
 const updateSubagentGroup = (
   group: SubagentGroupData,
@@ -90,8 +123,9 @@ export const updateSubagentInToolData = <T extends StreamToolDataEntry>(
   toolData: T[],
   targetId: string,
   updater: (g: SubagentGroupData) => SubagentGroupData,
-): T[] =>
-  toolData.map((entry) => {
+): T[] => {
+  warnIfSubagentTargetMissing(toolData, targetId);
+  return toolData.map((entry) => {
     if (entry.tool_name !== SUBAGENT_GROUP_TOOL_NAME) return entry;
     return {
       ...entry,
@@ -102,6 +136,7 @@ export const updateSubagentInToolData = <T extends StreamToolDataEntry>(
       ),
     };
   });
+};
 
 const applyToolData = (
   acc: TurnAccumulator,

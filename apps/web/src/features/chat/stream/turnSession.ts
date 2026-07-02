@@ -548,7 +548,7 @@ export class TurnSession {
   // ── Store / DB flushes ─────────────────────────────────────────────────────
 
   private buildRecord(
-    status: "sending" | "sent",
+    status: IMessage["status"],
   ): ReturnType<typeof buildTurnMessageRecord> | null {
     if (!this.conversationId || !this.botMessageId) return null;
     const meta: TurnMessageMeta = {
@@ -690,6 +690,21 @@ export class TurnSession {
       );
       // Give the user their prompt back to retry.
       useComposerStore.getState().setInputText(this.inputText);
+    }
+
+    // Content already flushed with status "sending" must still land in a
+    // terminal state — mirror abort()'s finalization, with "failed" status.
+    if (this.conversationId && this.botMessageId) {
+      const record = this.buildRecord("failed");
+      if (record) {
+        useChatStore.getState().addOrUpdateMessage(record);
+        db.putMessage(record).catch((persistError) => {
+          console.error(
+            "[TurnSession] Failed to persist on fail:",
+            persistError,
+          );
+        });
+      }
     }
 
     this.markUserMessageFailed();

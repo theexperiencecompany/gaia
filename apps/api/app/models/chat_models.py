@@ -82,6 +82,12 @@ class MessageModel(BaseModel):
     replyToMessage: ReplyToMessageData | None = None
 
 
+class ActiveStreamResponse(BaseModel):
+    """Stream id of a conversation's in-flight chat turn, ``None`` when idle."""
+
+    stream_id: str | None
+
+
 class SystemPurpose(str, Enum):
     """Why a system-generated conversation was created."""
 

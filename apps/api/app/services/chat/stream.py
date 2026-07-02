@@ -207,7 +207,7 @@ async def _run_chat_stream(
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
 
-    except Exception as e:  # noqa: BLE001 — surface to client + flag the stream
+    except Exception as e:  # surface to client + flag the stream
         await _handle_stream_error(stream_id, e)
     finally:
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
@@ -275,7 +275,7 @@ async def _publish_description_if_ready(
             stream_id,
             f"data: {json.dumps(ConversationDescriptionFrame(conversation_description=description).model_dump())}\n\n",
         )
-    except Exception as e:  # noqa: BLE001 — description is non-critical
+    except Exception as e:  # description is non-critical
         log.error(f"{LogTag.CHAT} Failed to get conversation description: {e}")
     return None
 
@@ -367,7 +367,7 @@ async def _consume_agent_stream(
                     state.todo_progress_accumulated,
                     state.follow_up_actions,
                 )
-            except Exception as e:  # noqa: BLE001 — fall back to passthrough
+            except Exception as e:  # fall back to passthrough
                 log.error(f"{LogTag.CHAT} Error processing chunk: {e}")
                 await stream_manager.publish_chunk(stream_id, chunk)
         else:
@@ -427,7 +427,7 @@ async def _finalize_description(
             stream_id,
             f"data: {json.dumps(ConversationDescriptionFrame(conversation_description=description).model_dump())}\n\n",
         )
-    except Exception as e:  # noqa: BLE001 — description is non-critical
+    except Exception as e:  # description is non-critical
         log.error(f"{LogTag.CHAT} Failed to get conversation description: {e}")
 
 
@@ -519,7 +519,7 @@ async def _attach_executor_tool_data(
             },
             {"$push": {"messages.$.tool_data": {"$each": executor_td}}},
         )
-    except Exception as e:  # noqa: BLE001 — executor tool_data attach is best-effort
+    except Exception as e:  # executor tool_data attach is best-effort
         log.error(f"{LogTag.CHAT} Failed to update bot message tool_data: {e}")
 
 
@@ -551,7 +551,7 @@ async def _finalize_stream(
             # Gated on ``not state.saved`` so this never double-attaches with the
             # happy/cancel path, which always runs the attach itself.
             await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
-        except Exception as save_err:  # noqa: BLE001 — best-effort fallback save
+        except Exception as save_err:  # best-effort fallback save
             log.error(f"{LogTag.CHAT} Fallback save failed for stream {stream_id}: {save_err}")
 
     # Teardown must come AFTER the fallback save: the backstop attach drains the

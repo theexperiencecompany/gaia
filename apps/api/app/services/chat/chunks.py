@@ -50,12 +50,17 @@ async def process_data_chunk(
     chunk_payload = chunk[6:]
 
     chunk_json = _parse_chunk_json(chunk_payload)
+    lifecycle_forwarded = False
     if forward_subagents and chunk_json:
-        await _forward_subagent_lifecycle(stream_id, chunk_json, tool_data)
+        lifecycle_forwarded = await _forward_subagent_lifecycle(stream_id, chunk_json, tool_data)
     accumulate_todo_progress(chunk_json, todo_progress_accumulated)
 
     new_data = extract_tool_data(chunk_payload)
     if not new_data:
+        if lifecycle_forwarded:
+            # Already published as dedicated lifecycle frames — republishing the
+            # raw chunk would send the same event twice.
+            return follow_up_actions, True
         # No tool data — pass through as-is.
         await stream_manager.publish_chunk(stream_id, chunk)
         response_text = extract_response_text(chunk)
@@ -88,8 +93,13 @@ async def process_data_chunk(
 
 async def _forward_subagent_lifecycle(
     stream_id: str, chunk_json: dict[str, Any], tool_data: dict[str, Any]
-) -> None:
-    """Forward subagent start/end events to the client and accumulate them."""
+) -> bool:
+    """Forward subagent start/end events to the client and accumulate them.
+
+    Returns ``True`` when a lifecycle frame was published, so the caller skips
+    the generic passthrough that would republish the same event.
+    """
+    forwarded = False
     if "subagent_start" in chunk_json:
         start = chunk_json["subagent_start"]
         tool_data.setdefault("subagent_starts", {})[start["subagent_id"]] = start
@@ -97,6 +107,7 @@ async def _forward_subagent_lifecycle(
             stream_id,
             f"data: {json.dumps({'subagent_start': start})}\n\n",
         )
+        forwarded = True
     if "subagent_end" in chunk_json:
         end = chunk_json["subagent_end"]
         tool_data.setdefault("subagent_ends", {})[end["subagent_id"]] = end
@@ -104,6 +115,8 @@ async def _forward_subagent_lifecycle(
             stream_id,
             f"data: {json.dumps({'subagent_end': end})}\n\n",
         )
+        forwarded = True
+    return forwarded
 
 
 def _parse_chunk_json(chunk_payload: str) -> dict[str, Any] | None:

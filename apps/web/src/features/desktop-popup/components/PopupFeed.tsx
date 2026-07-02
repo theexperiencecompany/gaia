@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import {
   MessageScroller,
   MessageScrollerContent,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScrollerScrollable,
 } from "@/components/ui/message-scroller";
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
 import "../desktop-popup.css";
@@ -46,16 +46,6 @@ const TOP_BLUR_LAYERS: BlurLayer[] = [
  * edge blurs appear only while content continues past that edge.
  */
 export default function PopupFeed() {
-  const [scrolled, setScrolled] = useState(false);
-  const [moreBelow, setMoreBelow] = useState(false);
-
-  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
-    const el = event.currentTarget;
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setScrolled(el.scrollTop > 0);
-    setMoreBelow(distance > 4);
-  };
-
   return (
     <div className="relative h-full">
       <MessageScrollerProvider autoScroll defaultScrollPosition="end">
@@ -63,10 +53,7 @@ export default function PopupFeed() {
           {/* Horizontal padding lives on the CONTENT (not the viewport):
               overflow clips at the scroller's padding edge, which was
               slicing the iMessage bubble tails on both sides. */}
-          <MessageScrollerViewport
-            className="compact-chat no-scrollbar"
-            onScroll={handleScroll}
-          >
+          <MessageScrollerViewport className="compact-chat no-scrollbar">
             <MessageScrollerContent
               data-popup-feed-content
               // Equal 32px breathing room on all four sides. gap-3 keeps the
@@ -78,9 +65,24 @@ export default function PopupFeed() {
             </MessageScrollerContent>
           </MessageScrollerViewport>
         </MessageScroller>
+        <PopupEdgeBlurs />
       </MessageScrollerProvider>
-      {/* Progressive edge blurs — instant (150ms) and only while content
-          actually continues past that edge. */}
+    </div>
+  );
+}
+
+/**
+ * Progressive edge blurs — instant (150ms) and only while content actually
+ * continues past that edge. Driven by the scroller's own scrollable state,
+ * which the primitive keeps fresh on scroll AND on content resize (streamed
+ * tokens grow the transcript without a scroll event), so the indicators
+ * never go stale mid-stream.
+ */
+function PopupEdgeBlurs() {
+  const { start: scrolled, end: moreBelow } = useMessageScrollerScrollable();
+
+  return (
+    <>
       <div
         className={`pointer-events-none absolute inset-x-0 top-0 h-14 transition-opacity duration-150 ${scrolled ? "opacity-100" : "opacity-0"}`}
       >
@@ -91,6 +93,6 @@ export default function PopupFeed() {
       >
         <BlurStack config={BOTTOM_BLUR_LAYERS} className="absolute inset-0" />
       </div>
-    </div>
+    </>
   );
 }
