@@ -269,42 +269,6 @@ const dummyTools = {
       category: "productivity",
       required_integration: null,
     },
-    // Goal tracking tools
-    {
-      name: "create_goal",
-      category: "goal_tracking",
-      required_integration: null,
-    },
-    {
-      name: "list_goals",
-      category: "goal_tracking",
-      required_integration: null,
-    },
-    {
-      name: "get_goal",
-      category: "goal_tracking",
-      required_integration: null,
-    },
-    {
-      name: "delete_goal",
-      category: "goal_tracking",
-      required_integration: null,
-    },
-    {
-      name: "update_goal_node",
-      category: "goal_tracking",
-      required_integration: null,
-    },
-    {
-      name: "search_goals",
-      category: "goal_tracking",
-      required_integration: null,
-    },
-    {
-      name: "get_goal_statistics",
-      category: "goal_tracking",
-      required_integration: null,
-    },
     // Support tools
     {
       name: "create_support_ticket",
@@ -515,7 +479,6 @@ const dummyTools = {
     "development",
     "documents",
     "gmail",
-    "goal_tracking",
     "googledocs",
     "googlesheets",
     "linkedin",

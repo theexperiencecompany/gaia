@@ -396,14 +396,6 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#f472b6",
     isImage: false,
   },
-  goal_tracking: {
-    icon: "Target02Icon",
-    bgColor: "bg-emerald-500/20 backdrop-blur",
-    iconColor: "text-emerald-400",
-    bgColorRaw: "rgba(16, 185, 129, 0.2)",
-    iconColorRaw: "#34d399",
-    isImage: false,
-  },
   notifications: {
     icon: "NotificationIcon",
     bgColor: "bg-yellow-500/20 backdrop-blur",
