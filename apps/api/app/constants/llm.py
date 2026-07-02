@@ -15,6 +15,10 @@ SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
+# When this few supersteps remain before the recursion limit, acall_model
+# injects a wrap-up notice so the model finishes with a summary instead of
+# dying mid-exploration on GraphRecursionError.
+RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 
 # Per-tool-call execution timeout. A hung integration call previously hung the
 # entire run forever (no timeout existed at any dispatch layer). Orchestration
