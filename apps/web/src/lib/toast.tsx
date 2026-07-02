@@ -109,9 +109,9 @@ function translate(message: string, opts?: ToastOptions): SileoOptions {
   const out: SileoOptions = {};
 
   if (message.length > TITLE_MAX_CHARS && opts?.description === undefined) {
-    // Long title, no description: move full message to description so it wraps
+    // Long title, no description: move full message to description so it wraps.
+    // The full text shows on hover (expansion is hover-only, see Toaster.tsx).
     out.description = message;
-    out.autopilot = true;
     // title intentionally omitted — sileo defaults to state name ("error", "success", etc.)
   } else {
     out.title = message;
@@ -135,8 +135,9 @@ type SileoFn = (opts: SileoOptions) => string;
 // Wire up the toast's controls. We deliberately DON'T use sileo's native
 // `button` slot — it renders one full-width button. Instead we render our own
 // compact, auto-width control row in the description, which keeps buttons small
-// and lets an action and a dismiss sit side by side. autopilot makes the panel
-// visible (not hover-only). Returns a binder called with sileo's returned id.
+// and lets an action and a dismiss sit side by side. The panel (and thus the
+// controls) shows on hover only (autopilot is disabled in Toaster.tsx).
+// Returns a binder called with sileo's returned id.
 function attachControls(
   out: SileoOptions,
   state: ToastState,
@@ -158,7 +159,6 @@ function attachControls(
         />
       </>
     );
-    out.autopilot = true;
   }
 
   return (id) => {
