@@ -2,18 +2,30 @@
 import { useEffect } from "react";
 
 import { turnManager } from "@/features/chat/stream/turnManager";
+import { syncSingleConversation } from "@/services/syncService";
 
 /**
- * Re-attach to a conversation's in-flight turn after a page reload.
+ * Reconcile a conversation with the server when it's opened: resume first,
+ * then sync.
  *
- * When the viewed conversation changes, asks the backend whether a turn is
- * still streaming for it; if so, the turn manager attaches to the stream's
- * event log, which replays everything missed — the answer continues streaming
- * live instead of sitting on a stuck "sending" bubble until sync catches up.
+ * Order is load-bearing. Resume asks the backend whether a turn is still
+ * streaming and, if so, attaches to its event log (replaying everything
+ * missed) — registering a live session. Only THEN does the freshness sync
+ * run: mid-turn the server hasn't persisted the turn's messages yet, so a
+ * sync that races ahead of resume would see no server copy of the user's
+ * optimistic message and sweep it as an orphan — the "my message vanished
+ * until the stream finished" bug. With a session registered, the sync is
+ * blocked for the streaming conversation; with no live turn, it proceeds
+ * and any orphan sweep is legitimate.
  */
 export const useStreamResume = (conversationId: string | null): void => {
   useEffect(() => {
     if (!conversationId) return;
-    void turnManager.resumeIfActive(conversationId);
+    // resumeIfActive never rejects (discovery failures are logged internally).
+    void turnManager.resumeIfActive(conversationId).then(() => {
+      syncSingleConversation(conversationId).catch((error) => {
+        console.error("[useStreamResume] post-resume sync failed:", error);
+      });
+    });
   }, [conversationId]);
 };
