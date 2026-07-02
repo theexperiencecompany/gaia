@@ -110,8 +110,11 @@ function translate(message: string, opts?: ToastOptions): SileoOptions {
 
   if (message.length > TITLE_MAX_CHARS && opts?.description === undefined) {
     // Long title, no description: move full message to description so it wraps.
-    // The full text shows on hover (expansion is hover-only, see Toaster.tsx).
+    // The collapsed pill would show only the state name, hiding the entire
+    // message — so this case opts back into auto-expansion (expansion is
+    // otherwise hover-only, see Toaster.tsx).
     out.description = message;
+    out.autopilot = true;
     // title intentionally omitted — sileo defaults to state name ("error", "success", etc.)
   } else {
     out.title = message;
