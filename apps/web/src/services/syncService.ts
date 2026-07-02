@@ -65,18 +65,10 @@ const mergeMessageLists = (
     }
   });
 
-  // CRITICAL: Clean up orphaned optimistic messages
-  // These are optimistic messages whose backend counterparts have different IDs
-  // This happens when the stream was interrupted before replaceOptimisticMessage was called
-  if (remoteMessages.length > 0) {
-    for (const [id, msg] of messageMap) {
-      if (msg.optimistic && !isConversationStreamingNow(msg.conversationId)) {
-        // This optimistic message wasn't replaced and we're not streaming
-        // It's orphaned - the backend has the real version with a different ID
-        messageMap.delete(id);
-      }
-    }
-  }
+  // No orphan sweep: the client's send id IS the persisted message id (single
+  // identity), so the server copy lands on the same key above and replaces the
+  // optimistic record naturally. Sends the server never received stay visible
+  // and are marked failed by the turn lifecycle — never silently deleted.
 
   // Convert back to array and sort by creation time
   return Array.from(messageMap.values()).toSorted(

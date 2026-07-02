@@ -7,6 +7,26 @@ import { PENDING_KEY_PREFIX } from "@/stores/streamStore";
 import { TurnSession } from "./turnSession";
 import type { SendArgs } from "./types";
 
+/**
+ * Flip a conversation's dead in-flight user messages to failed. Called when
+ * discovery confirms no turn is running: an optimistic record still marked
+ * sending/queued belongs to a send whose page died — the user keeps the text
+ * and sees the failure, rather than a zombie or a silent deletion.
+ */
+const markDeadSendsFailed = async (conversationId: string): Promise<void> => {
+  const messages =
+    useChatStore.getState().messagesByConversation[conversationId] ?? [];
+  const dead = messages.filter(
+    (message) =>
+      message.role === "user" &&
+      message.optimistic === true &&
+      (message.status === "sending" || message.status === "queued"),
+  );
+  await Promise.all(
+    dead.map((message) => db.updateMessageStatus(message.id, "failed")),
+  );
+};
+
 /** A resumed turn re-attaches to an existing stream — it never POSTs, so the
  *  send-time fields are inert placeholders. */
 const buildResumeArgs = (
@@ -95,7 +115,15 @@ class TurnManager {
     try {
       const streamId = await chatApi.getActiveStream(conversationId);
       // Re-check: a send may have started a session during the fetch.
-      if (!streamId || this.sessions.has(conversationId)) return;
+      if (this.sessions.has(conversationId)) return;
+      if (!streamId) {
+        // Authoritative verdict: no turn is running for this conversation.
+        // Any record still claiming to be in flight is a dead send from a
+        // previous page — surface it as failed (visible, retryable) instead
+        // of leaving a zombie spinner or silently deleting the message.
+        await markDeadSendsFailed(conversationId);
+        return;
+      }
       streamLog("lifecycle", "turn:resume", {
         turnKey: conversationId,
         conversationId,
@@ -106,8 +134,7 @@ class TurnManager {
         buildResumeArgs(conversationId, streamId),
       );
     } catch (error) {
-      // Discovery is a recovery path — a failure must never break the page,
-      // but it must be visible.
+      // Discovery is a recovery path — a failure must never break the page.
       streamLogError("lifecycle", "turn:resume-discovery-failed", {
         conversationId,
         detail: String(error),
