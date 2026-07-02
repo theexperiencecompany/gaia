@@ -1,7 +1,7 @@
 """
 Service tests: call real construct_langchain_messages().
 
-Mock only: build_dynamic_context_message (needs the memory engine/Redis/Mongo).
+Mock only: build_dynamic_context_messages (needs the memory engine/Redis/Mongo).
 Real: create_system_message, format_files_list, format_reply_context,
 format_tool_selection_message, message list construction.
 """
@@ -14,6 +14,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.core.messages import construct_langchain_messages
+from app.helpers.message_helpers import DynamicContextMessages
+
+_EMPTY_DYNAMIC = DynamicContextMessages(stable=SystemMessage(content=""), memory_recall=None)
 
 
 @pytest.mark.service
@@ -24,8 +27,8 @@ class TestConstructMessagesReal:
         """A simple message must produce at least a SystemMessage and HumanMessage."""
         with (
             patch(
-                "app.agents.core.messages.build_dynamic_context_message",
-                new=AsyncMock(return_value=SystemMessage(content="")),
+                "app.agents.core.messages.build_dynamic_context_messages",
+                new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
             messages = await construct_langchain_messages(
@@ -37,15 +40,17 @@ class TestConstructMessagesReal:
 
         assert len(messages) >= 2
         assert isinstance(messages[0], SystemMessage)
+        # Last message is the current-time HumanMessage; the task is before it.
         assert isinstance(messages[-1], HumanMessage)
-        assert "Hello" in messages[-1].content
+        assert messages[-1].additional_kwargs.get("time_context") is True
+        assert "Hello" in messages[-2].content
 
     async def test_tool_selection_adds_instruction(self):
         """selected_tool must add a tool selection instruction."""
         with (
             patch(
-                "app.agents.core.messages.build_dynamic_context_message",
-                new=AsyncMock(return_value=SystemMessage(content="")),
+                "app.agents.core.messages.build_dynamic_context_messages",
+                new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
             messages = await construct_langchain_messages(
@@ -63,8 +68,8 @@ class TestConstructMessagesReal:
         """First message must always be a SystemMessage."""
         with (
             patch(
-                "app.agents.core.messages.build_dynamic_context_message",
-                new=AsyncMock(return_value=SystemMessage(content="")),
+                "app.agents.core.messages.build_dynamic_context_messages",
+                new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
             messages = await construct_langchain_messages(

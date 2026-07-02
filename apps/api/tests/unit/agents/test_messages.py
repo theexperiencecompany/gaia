@@ -2,14 +2,16 @@
 
 After the caching optimisation work, the message-construction contract is:
 
-    [static_main_prompt, dynamic_context_message, human_task]
+    [static_main_prompt, dynamic_stable, memory_recall?, human_task, time_msg]
 
-The static main prompt is byte-identical across users/channels. Everything
-per-user/per-turn (user name, memories, platform restrictions, OpenUI
-availability) lives in the dynamic-context message built by
-``build_dynamic_context_message``. These tests exercise the orchestration —
-they patch ``create_system_message`` and ``build_dynamic_context_message``
-and verify the assembled message list.
+The static main prompt is byte-identical across users/channels. Per-user
+identity (name, timezone, preferences, integrations) lives in the stable
+dynamic-context message; volatile per-turn content (memory recall, knowledge,
+skills, todos) lives in an optional memory-recall message. Both are built by
+``build_dynamic_context_messages``. The current-time HumanMessage is appended
+LAST so minute ticks never shift the cacheable prefix. These tests exercise the
+orchestration — they patch ``create_system_message`` and
+``build_dynamic_context_messages`` and verify the assembled message list.
 """
 
 from typing import Any
@@ -19,6 +21,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.core.messages import construct_langchain_messages
+from app.helpers.message_helpers import DynamicContextMessages
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -36,6 +39,7 @@ DYNAMIC_MSG = SystemMessage(
 def _patches(
     system_msg: SystemMessage = SYSTEM_MSG,
     dynamic_msg: SystemMessage = DYNAMIC_MSG,
+    memory_recall_msg: SystemMessage | None = None,
     workflow_msg: str = "Workflow exec",
     calendar_msg: str = "Calendar context",
     tool_msg: str = "Tool selection",
@@ -49,9 +53,11 @@ def _patches(
             return_value=system_msg,
         ),
         "build_dynamic": patch(
-            "app.agents.core.messages.build_dynamic_context_message",
+            "app.agents.core.messages.build_dynamic_context_messages",
             new_callable=AsyncMock,
-            return_value=dynamic_msg,
+            return_value=DynamicContextMessages(
+                stable=dynamic_msg, memory_recall=memory_recall_msg
+            ),
         ),
         "format_workflow": patch(
             "app.agents.core.messages.format_workflow_execution_message",
@@ -83,10 +89,11 @@ class TestConstructLangchainMessages:
 
     @pytest.mark.asyncio
     async def test_basic_user_message(self) -> None:
-        """Shape is [static, dynamic_context, time_msg, human_task].
+        """Shape is [static, dynamic_stable, human_task, time_msg].
 
-        The time HumanMessage is split off from the task so minute ticks
-        don't invalidate the ``system_instruction`` prefix.
+        The time HumanMessage is split off from the task AND appended last so
+        minute ticks never shift the cacheable prefix. With no volatile content
+        the memory-recall message is omitted.
         """
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
@@ -98,12 +105,35 @@ class TestConstructLangchainMessages:
         assert isinstance(result[0], SystemMessage)
         assert isinstance(result[1], SystemMessage)
         assert result[1].additional_kwargs.get("dynamic_context") is True
-        # Third is the current-time HumanMessage.
+        # Third is the actual user task.
         assert isinstance(result[2], HumanMessage)
-        assert result[2].additional_kwargs.get("time_context") is True
-        # Fourth is the actual user task.
+        assert result[2].content == "Hi there"
+        # Fourth (last) is the current-time HumanMessage.
+        assert isinstance(result[3], HumanMessage)
+        assert result[3].additional_kwargs.get("time_context") is True
+
+    @pytest.mark.asyncio
+    async def test_memory_recall_message_slotted_when_present(self) -> None:
+        """When build returns a memory-recall message it sits after the stable
+        dynamic message and before the human task; time stays last.
+
+        Shape: [static, dynamic_stable, memory_recall, human_task, time_msg].
+        """
+        recall = SystemMessage(
+            content="Recalled memories", additional_kwargs={"memory_recall": True}
+        )
+        p = _patches(memory_recall_msg=recall)
+        with p["create_system"], p["build_dynamic"], p["format_files"]:
+            result = await construct_langchain_messages(
+                messages=[{"role": "user", "content": "Hi there"}],
+            )
+
+        assert len(result) == 5
+        assert result[1].additional_kwargs.get("dynamic_context") is True
+        assert result[2].additional_kwargs.get("memory_recall") is True
         assert isinstance(result[3], HumanMessage)
         assert result[3].content == "Hi there"
+        assert result[4].additional_kwargs.get("time_context") is True
 
     @pytest.mark.asyncio
     async def test_create_system_receives_agent_type_and_source(self) -> None:
@@ -189,7 +219,8 @@ class TestContentPriority:
             )
 
         mock_wf.assert_awaited_once()
-        assert result[-1].content == "WORKFLOW OUTPUT"
+        # result[-1] is the current-time message; the task is second-to-last.
+        assert result[-2].content == "WORKFLOW OUTPUT"
 
     @pytest.mark.asyncio
     async def test_calendar_when_no_workflow(self) -> None:
@@ -214,7 +245,7 @@ class TestContentPriority:
             )
 
         mock_cal.assert_called_once()
-        assert result[-1].content == "CALENDAR OUTPUT"
+        assert result[-2].content == "CALENDAR OUTPUT"
 
     @pytest.mark.asyncio
     async def test_tool_selection_when_no_workflow_or_calendar(self) -> None:
@@ -231,7 +262,7 @@ class TestContentPriority:
             )
 
         mock_tool.assert_called_once()
-        assert result[-1].content == "TOOL OUTPUT"
+        assert result[-2].content == "TOOL OUTPUT"
 
     @pytest.mark.asyncio
     async def test_tool_category_passed(self) -> None:
@@ -260,7 +291,7 @@ class TestContentPriority:
                 messages=[{"role": "user", "content": "plain text"}],
             )
 
-        assert result[-1].content == "plain text"
+        assert result[-2].content == "plain text"
 
 
 @pytest.mark.unit
@@ -311,7 +342,7 @@ class TestReplyContext:
             )
 
         mock_reply.assert_called_once_with(reply, "user content")
-        assert result[-1].content == "[reply context]\n\nuser content"
+        assert result[-2].content == "[reply context]\n\nuser content"
 
     @pytest.mark.asyncio
     async def test_no_reply_context_without_data(self) -> None:
@@ -349,8 +380,8 @@ class TestFileContext:
             )
 
         mock_files.assert_called_once_with(files_data, ["f1"], None)
-        assert "Uploaded Files" in result[-1].content
-        assert result[-1].content.startswith("check this")
+        assert "Uploaded Files" in result[-2].content
+        assert result[-2].content.startswith("check this")
 
     @pytest.mark.asyncio
     async def test_no_files_when_ids_empty(self) -> None:
@@ -366,7 +397,7 @@ class TestFileContext:
             )
 
         mock_files.assert_not_called()
-        assert result[-1].content == "hello"
+        assert result[-2].content == "hello"
 
     @pytest.mark.asyncio
     async def test_files_empty_string_not_appended(self) -> None:
@@ -381,7 +412,7 @@ class TestFileContext:
                 currently_uploaded_file_ids=["f1"],
             )
 
-        assert result[-1].content == "hello"
+        assert result[-2].content == "hello"
 
     @pytest.mark.asyncio
     async def test_no_files_when_ids_none(self) -> None:
