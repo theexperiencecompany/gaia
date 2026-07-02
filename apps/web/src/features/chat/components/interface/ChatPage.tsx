@@ -105,7 +105,9 @@ const MainChat = React.memo(function MainChat() {
   } = useChatLayout();
 
   // Reload-mid-stream recovery: if this conversation has a turn still running
-  // server-side, re-attach to its event log and keep streaming live.
+  // server-side, re-attach to its event log and keep streaming live. Also owns
+  // the on-open freshness sync, sequenced AFTER resume — syncing first would
+  // race the live-turn discovery and sweep the optimistic user message.
   useStreamResume(convoIdParam || null);
 
   // Set active conversation ID and mark as read when opening.
@@ -129,8 +131,8 @@ const MainChat = React.memo(function MainChat() {
         db.updateConversationFields(convoIdParam, { isUnread: false });
         chatApi.markAsRead(convoIdParam).catch(console.error);
       }
-
-      syncSingleConversation(convoIdParam);
+      // Freshness sync happens in useStreamResume, sequenced after the
+      // live-turn discovery so it can't sweep an in-flight optimistic message.
     }
 
     return () => {
