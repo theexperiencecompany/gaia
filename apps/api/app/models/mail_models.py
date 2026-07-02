@@ -10,6 +10,13 @@ class EmailRequest(BaseModel):
     clarityOption: str | None = None
 
 
+class ComposedEmailOutput(BaseModel):
+    """Structured output of the AI email composer."""
+
+    subject: str = Field(description="Generated email subject line")
+    body: str = Field(description="Generated email body")
+
+
 class EmailSummaryRequest(BaseModel):
     message_id: str
     include_action_items: bool | None = None

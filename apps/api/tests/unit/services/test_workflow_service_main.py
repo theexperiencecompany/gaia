@@ -20,9 +20,9 @@ Covers:
   - generate_unique_workflow_slug (unique, collision, empty title)
 
 Also covers:
-  - WorkflowGenerationService.generate_steps_with_llm (structured output, fallback,
-    retry, empty steps, max retries)
-  - WorkflowGenerationService.generate_workflow_prompt (success, LLM failure)
+  - WorkflowGenerationService.generate_steps_with_llm (structured output,
+    regeneration, empty steps, max attempts, provider error propagation)
+  - WorkflowGenerationService.generate_workflow_prompt (success, parse failure)
   - WorkflowScheduler (schedule, cancel, reschedule, get_task, get_pending_task,
     update_task_status, get_workflow_status)
   - WorkflowQueueService (queue_workflow_generation, queue_workflow_execution,
@@ -32,13 +32,14 @@ Also covers:
     register_triggers, unregister_triggers)
   - WorkflowValidator (validate_for_execution: pass, deactivated, no steps,
     no trigger config, multiple errors)
-  - generation_service helpers (enrich_steps, _parse_workflow_response,
-    _build_trigger_hint, _build_available_triggers)
+  - generation_service helpers (enrich_steps, _build_trigger_hint,
+    _build_available_triggers)
 """
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.exceptions import OutputParserException
 import pytest
 
 from app.models.workflow_execution_models import (
@@ -47,6 +48,7 @@ from app.models.workflow_execution_models import (
 )
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    GeneratedPromptOutput,
     GeneratedStep,
     GeneratedWorkflow,
     TriggerConfig,
@@ -67,7 +69,6 @@ from app.services.workflow.generation_service import (
     WorkflowGenerationService,
     _build_available_triggers,
     _build_trigger_hint,
-    _parse_workflow_response,
     enrich_steps,
 )
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -1542,31 +1543,6 @@ class TestEnrichSteps:
         assert result == []
 
 
-class TestParseWorkflowResponse:
-    """Tests for _parse_workflow_response."""
-
-    def test_parse_clean_json(self):
-        content = '{"steps": [{"title": "Test", "category": "gaia", "description": "Do it"}]}'
-        result = _parse_workflow_response(content)
-        assert isinstance(result, GeneratedWorkflow)
-        assert len(result.steps) == 1
-
-    def test_parse_json_with_markdown_fences(self):
-        content = '```json\n{"steps": [{"title": "Test", "category": "gaia", "description": "Do it"}]}\n```'
-        result = _parse_workflow_response(content)
-        assert isinstance(result, GeneratedWorkflow)
-        assert len(result.steps) == 1
-
-    def test_parse_json_with_bare_fences(self):
-        content = '```\n{"steps": [{"title": "T", "category": "c", "description": "d"}]}\n```'
-        result = _parse_workflow_response(content)
-        assert isinstance(result, GeneratedWorkflow)
-
-    def test_parse_invalid_json_raises(self):
-        with pytest.raises(Exception):
-            _parse_workflow_response("not valid json at all")
-
-
 class TestBuildTriggerHint:
     """Tests for _build_trigger_hint."""
 
@@ -1617,13 +1593,16 @@ class TestGenerateStepsWithLLM:
     """Tests for WorkflowGenerationService.generate_steps_with_llm."""
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.get_default_llm")
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
     @patch(
         "app.services.workflow.generation_service.get_tool_registry",
         new_callable=AsyncMock,
     )
-    async def test_generate_with_structured_output(
-        self, mock_registry_fn: AsyncMock, mock_get_default: MagicMock
+    async def test_generate_success(
+        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
     ) -> None:
         # Setup tool registry mock
         mock_registry = MagicMock()
@@ -1635,17 +1614,9 @@ class TestGenerateStepsWithLLM:
         mock_registry.get_core_tools.return_value = []
         mock_registry_fn.return_value = mock_registry
 
-        # Setup LLM mock with structured output
-        generated = GeneratedWorkflow(
+        mock_structured.return_value = GeneratedWorkflow(
             steps=[GeneratedStep(title="Step 1", category="gaia", description="Do something")]
         )
-        mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_structured_llm = MagicMock()
-        mock_structured_llm.with_retry = MagicMock(return_value=mock_structured_llm)
-        mock_structured_llm.ainvoke = AsyncMock(return_value=generated)
-        mock_llm.with_structured_output.return_value = mock_structured_llm
-        mock_get_default.return_value = mock_llm
 
         result = await WorkflowGenerationService.generate_steps_with_llm(
             "Test prompt", "Test Title"
@@ -1654,31 +1625,30 @@ class TestGenerateStepsWithLLM:
         assert len(result) == 1
         assert result[0]["id"] == "step_0"
         assert result[0]["title"] == "Step 1"
+        assert mock_structured.await_args[0][0] is GeneratedWorkflow
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.get_default_llm")
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
     @patch(
         "app.services.workflow.generation_service.get_tool_registry",
         new_callable=AsyncMock,
     )
-    async def test_generate_fallback_text_parsing(
-        self, mock_registry_fn: AsyncMock, mock_get_default: MagicMock
+    async def test_generate_invalid_output_regenerates_then_succeeds(
+        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
     ) -> None:
-        """When with_structured_output is not available, fall back to text parsing."""
+        """A schema-invalid first attempt triggers one regeneration, which succeeds."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects.return_value = {}
         mock_registry.get_core_tools.return_value = []
         mock_registry_fn.return_value = mock_registry
 
-        # LLM without with_structured_output
-        mock_llm = MagicMock(spec=["with_retry", "ainvoke"])
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_response = MagicMock()
-        mock_response.text = (
-            '{"steps": [{"title": "Parsed", "category": "gaia", "description": "From text"}]}'
+        generated = GeneratedWorkflow(
+            steps=[GeneratedStep(title="Parsed", category="gaia", description="Second try")]
         )
-        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        mock_get_default.return_value = mock_llm
+        mock_structured.side_effect = [OutputParserException("bad output"), generated]
 
         result = await WorkflowGenerationService.generate_steps_with_llm(
             "Test prompt", "Test Title"
@@ -1686,15 +1656,19 @@ class TestGenerateStepsWithLLM:
 
         assert len(result) == 1
         assert result[0]["title"] == "Parsed"
+        assert mock_structured.await_count == 2
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.get_default_llm")
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
     @patch(
         "app.services.workflow.generation_service.get_tool_registry",
         new_callable=AsyncMock,
     )
     async def test_generate_empty_steps_retries_then_fails(
-        self, mock_registry_fn: AsyncMock, mock_get_default: MagicMock
+        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
     ) -> None:
         """If LLM returns empty steps, retry and ultimately raise RuntimeError."""
         mock_registry = MagicMock()
@@ -1702,56 +1676,51 @@ class TestGenerateStepsWithLLM:
         mock_registry.get_core_tools.return_value = []
         mock_registry_fn.return_value = mock_registry
 
-        empty_result = GeneratedWorkflow(steps=[])
-        mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_structured_llm = MagicMock()
-        mock_structured_llm.with_retry = MagicMock(return_value=mock_structured_llm)
-        mock_structured_llm.ainvoke = AsyncMock(return_value=empty_result)
-        mock_llm.with_structured_output.return_value = mock_structured_llm
-        mock_get_default.return_value = mock_llm
+        mock_structured.return_value = GeneratedWorkflow(steps=[])
 
         with pytest.raises(RuntimeError, match="failed"):
             await WorkflowGenerationService.generate_steps_with_llm("Test prompt", "Test Title")
 
+        assert mock_structured.await_count == 2
+
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.get_default_llm")
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
     @patch(
         "app.services.workflow.generation_service.get_tool_registry",
         new_callable=AsyncMock,
     )
     async def test_generate_llm_error_propagates(
-        self, mock_registry_fn: AsyncMock, mock_get_default: MagicMock
+        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
     ) -> None:
-        """Provider errors propagate — transient retry lives in ainvoke_llm, not the
-        generation loop, so the loop does not re-issue the request on an LLM failure."""
+        """Provider errors propagate — transient retry lives in ainvoke_structured, not
+        the generation loop, so the loop does not re-issue the request on an LLM failure."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects.return_value = {}
         mock_registry.get_core_tools.return_value = []
         mock_registry_fn.return_value = mock_registry
 
-        mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_structured_llm = MagicMock()
-        mock_structured_llm.with_retry = MagicMock(return_value=mock_structured_llm)
-        mock_structured_llm.ainvoke = AsyncMock(side_effect=RuntimeError("provider down"))
-        mock_llm.with_structured_output.return_value = mock_structured_llm
-        mock_get_default.return_value = mock_llm
+        mock_structured.side_effect = RuntimeError("provider down")
 
         with pytest.raises(RuntimeError, match="provider down"):
             await WorkflowGenerationService.generate_steps_with_llm("Test prompt", "Test Title")
 
         # Called exactly once — the loop does not retry provider errors.
-        assert mock_structured_llm.ainvoke.await_count == 1
+        assert mock_structured.await_count == 1
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.get_default_llm")
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
     @patch(
         "app.services.workflow.generation_service.get_tool_registry",
         new_callable=AsyncMock,
     )
     async def test_generate_with_description(
-        self, mock_registry_fn: AsyncMock, mock_get_default: MagicMock
+        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
     ) -> None:
         """Description should be appended to the prompt context."""
         mock_registry = MagicMock()
@@ -1759,53 +1728,42 @@ class TestGenerateStepsWithLLM:
         mock_registry.get_core_tools.return_value = []
         mock_registry_fn.return_value = mock_registry
 
-        generated = GeneratedWorkflow(
+        mock_structured.return_value = GeneratedWorkflow(
             steps=[GeneratedStep(title="S1", category="gaia", description="D")]
         )
-        mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_structured_llm = MagicMock()
-        mock_structured_llm.with_retry = MagicMock(return_value=mock_structured_llm)
-        mock_structured_llm.ainvoke = AsyncMock(return_value=generated)
-        mock_llm.with_structured_output.return_value = mock_structured_llm
-        mock_get_default.return_value = mock_llm
 
         await WorkflowGenerationService.generate_steps_with_llm(
             "Prompt text", "Title", description="Short description"
         )
 
         # Verify description was included in the formatted prompt
-        invoke_arg = mock_structured_llm.ainvoke.call_args[0][0]
-        assert "Short description" in invoke_arg
+        formatted_prompt = mock_structured.await_args[0][1]
+        assert "Short description" in formatted_prompt
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.get_default_llm")
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
     @patch(
         "app.services.workflow.generation_service.get_tool_registry",
         new_callable=AsyncMock,
     )
-    async def test_generate_structured_output_not_implemented_fallback(
-        self, mock_registry_fn: AsyncMock, mock_get_default: MagicMock
+    async def test_generate_invalid_output_exhausts_attempts(
+        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
     ) -> None:
-        """If with_structured_output raises NotImplementedError, fall back to text."""
+        """Schema-invalid output on every attempt raises RuntimeError after retries."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects.return_value = {}
         mock_registry.get_core_tools.return_value = []
         mock_registry_fn.return_value = mock_registry
 
-        mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_llm.with_structured_output.side_effect = NotImplementedError("Not supported")
-        mock_response = MagicMock()
-        mock_response.text = (
-            '{"steps": [{"title": "Fallback", "category": "gaia", "description": "Worked"}]}'
-        )
-        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        mock_get_default.return_value = mock_llm
+        mock_structured.side_effect = OutputParserException("bad output")
 
-        result = await WorkflowGenerationService.generate_steps_with_llm("Prompt", "Title")
-        assert len(result) == 1
-        assert result[0]["title"] == "Fallback"
+        with pytest.raises(RuntimeError, match="failed"):
+            await WorkflowGenerationService.generate_steps_with_llm("Prompt", "Title")
+
+        assert mock_structured.await_count == 2
 
 
 # ===========================================================================
@@ -1817,25 +1775,16 @@ class TestGenerateWorkflowPrompt:
     """Tests for WorkflowGenerationService.generate_workflow_prompt."""
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.prompt_output_parser")
-    @patch("app.services.workflow.generation_service.get_default_llm")
-    async def test_generate_prompt_success(
-        self, mock_get_default: MagicMock, mock_parser: MagicMock
-    ) -> None:
-        mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_response = MagicMock()
-        mock_response.content = "parsed content"
-        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        mock_get_default.return_value = mock_llm
-
-        mock_parsed = MagicMock()
-        mock_parsed.instructions = "Step-by-step instructions here"
-        mock_parsed.trigger_type = "schedule"
-        mock_parsed.cron_expression = "0 9 * * 1-5"
-        mock_parsed.trigger_name = None
-        mock_parser.parse.return_value = mock_parsed
-        mock_parser.get_format_instructions.return_value = "Format: JSON"
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_generate_prompt_success(self, mock_structured: AsyncMock) -> None:
+        mock_structured.return_value = GeneratedPromptOutput(
+            instructions="Step-by-step instructions here",
+            trigger_type="schedule",
+            cron_expression="0 9 * * 1-5",
+        )
 
         result = await WorkflowGenerationService.generate_workflow_prompt(
             title="Morning Briefing",
@@ -1848,25 +1797,17 @@ class TestGenerateWorkflowPrompt:
         assert result["suggested_trigger"].cron_expression == "0 9 * * 1-5"
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.prompt_output_parser")
-    @patch("app.services.workflow.generation_service.get_default_llm")
-    async def test_generate_prompt_manual_no_suggested_trigger(
-        self, mock_get_default: MagicMock, mock_parser: MagicMock
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_generate_prompt_manual_suggested_trigger(
+        self, mock_structured: AsyncMock
     ) -> None:
-        mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_response = MagicMock()
-        mock_response.content = "content"
-        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        mock_get_default.return_value = mock_llm
-
-        mock_parsed = MagicMock()
-        mock_parsed.instructions = "Manual instructions"
-        mock_parsed.trigger_type = "manual"
-        mock_parsed.cron_expression = None
-        mock_parsed.trigger_name = None
-        mock_parser.parse.return_value = mock_parsed
-        mock_parser.get_format_instructions.return_value = ""
+        mock_structured.return_value = GeneratedPromptOutput(
+            instructions="Manual instructions",
+            trigger_type="manual",
+        )
 
         result = await WorkflowGenerationService.generate_workflow_prompt(title="Task")
 
@@ -1875,25 +1816,17 @@ class TestGenerateWorkflowPrompt:
         assert result["suggested_trigger"].type == "manual"
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.prompt_output_parser")
-    @patch("app.services.workflow.generation_service.get_default_llm")
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
     async def test_generate_prompt_invalid_trigger_type_no_suggestion(
-        self, mock_get_default: MagicMock, mock_parser: MagicMock
+        self, mock_structured: AsyncMock
     ) -> None:
-        mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_response = MagicMock()
-        mock_response.content = "content"
-        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        mock_get_default.return_value = mock_llm
-
-        mock_parsed = MagicMock()
-        mock_parsed.instructions = "Instructions"
-        mock_parsed.trigger_type = "webhook"  # Not in the valid set
-        mock_parsed.cron_expression = None
-        mock_parsed.trigger_name = None
-        mock_parser.parse.return_value = mock_parsed
-        mock_parser.get_format_instructions.return_value = ""
+        mock_structured.return_value = GeneratedPromptOutput(
+            instructions="Instructions",
+            trigger_type="webhook",  # Not in the valid set
+        )
 
         result = await WorkflowGenerationService.generate_workflow_prompt(title="Task")
 
@@ -1901,14 +1834,17 @@ class TestGenerateWorkflowPrompt:
         assert result["suggested_trigger"] is None
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
-    @patch("app.services.workflow.generation_service.get_default_llm")
-    async def test_generate_prompt_llm_failure_raises(self, mock_get_default: MagicMock) -> None:
-        mock_llm = MagicMock()
-        mock_llm.with_retry = MagicMock(return_value=mock_llm)
-        mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM unavailable"))
-        mock_get_default.return_value = mock_llm
+    @patch(
+        "app.services.workflow.generation_service.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_generate_prompt_parse_failure_propagates(
+        self, mock_structured: AsyncMock
+    ) -> None:
+        """OutputParserException from ainvoke_structured propagates — no fallback."""
+        mock_structured.side_effect = OutputParserException("LLM unavailable")
 
-        with pytest.raises(Exception, match="LLM unavailable"):
+        with pytest.raises(OutputParserException, match="LLM unavailable"):
             await WorkflowGenerationService.generate_workflow_prompt(title="Test")
 
 

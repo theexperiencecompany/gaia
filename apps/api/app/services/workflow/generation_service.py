@@ -2,10 +2,9 @@
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import ValidationError
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
@@ -22,8 +21,6 @@ from app.models.workflow_models import (
     SuggestedTrigger,
 )
 from shared.py.wide_events import log
-
-prompt_output_parser = PydanticOutputParser(pydantic_object=GeneratedPromptOutput)
 
 _MAX_GENERATION_ATTEMPTS = 2
 
@@ -121,20 +118,6 @@ def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
     ]
 
 
-def _parse_workflow_response(content: str) -> GeneratedWorkflow:
-    """Parse raw LLM text into GeneratedWorkflow, handling markdown fences."""
-    cleaned = content.strip()
-    if cleaned.startswith("```"):
-        first_newline = cleaned.find("\n")
-        if first_newline != -1:
-            cleaned = cleaned[first_newline + 1 :]
-        else:
-            cleaned = cleaned[3:]
-    cleaned = cleaned.removesuffix("```")
-    cleaned = cleaned.strip()
-    return GeneratedWorkflow.model_validate_json(cleaned)
-
-
 class WorkflowGenerationService:
     """Service for generating workflow steps using LLM."""
 
@@ -147,11 +130,7 @@ class WorkflowGenerationService:
         selected_integrations: list[str] | None = None,
         user_id: str | None = None,
     ) -> list:
-        """Generate workflow steps using LLM with structured output.
-
-        Uses the LLM's native structured output (function calling / JSON schema)
-        for reliable generation. Falls back to text parsing if the provider
-        doesn't support with_structured_output. Retries once on failure.
+        """Generate workflow steps using the LLM's native structured output.
 
         Raises:
             RuntimeError: If generation fails after all retry attempts.
@@ -240,20 +219,6 @@ class WorkflowGenerationService:
 
         trigger_context = generate_trigger_context(trigger_config)
 
-        llm = get_default_llm()
-
-        # Use native structured output (function-calling / JSON schema) instead of fragile text parsing.
-        use_native_structured = hasattr(llm, "with_structured_output")
-        structured_llm = None
-        if use_native_structured:
-            try:
-                structured_llm = llm.with_structured_output(GeneratedWorkflow)
-            except (NotImplementedError, TypeError):
-                log.info(
-                    f"{LogTag.WORKFLOW} LLM does not support with_structured_output, "
-                    "using text parsing fallback"
-                )
-
         log.info(f"{LogTag.WORKFLOW} Formatting prompt...")
         prompt_context = prompt
         if description:
@@ -287,46 +252,26 @@ class WorkflowGenerationService:
         )
         log.info(f"{LogTag.WORKFLOW} Prompt: {len(formatted_prompt)} chars")
 
-        # Transient provider errors are retried inside ainvoke_llm; this loop only
-        # regenerates when the model returns an empty or unparseable result.
+        # Transient provider errors are retried inside ainvoke_structured; this loop
+        # only regenerates when the model returns an empty or schema-invalid result.
         last_error: Exception | None = None
         for attempt in range(_MAX_GENERATION_ATTEMPTS):
             if attempt > 0:
                 log.info(f"{LogTag.WORKFLOW} Regeneration attempt {attempt} for: {title}")
 
-            if structured_llm:
-                try:
-                    result = await ainvoke_llm(
-                        structured_llm, formatted_prompt, label="workflow_generation"
-                    )
-                except (ValidationError, OutputParserException) as e:
-                    # Schema-invalid structured output is regenerable; transient
-                    # provider errors keep propagating so ainvoke_llm owns retry/fallback.
-                    last_error = e
-                    log.warning(
-                        f"{LogTag.WORKFLOW} Structured output invalid "
-                        f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating: {e}"
-                    )
-                    continue
-            else:
-                # No native structured output: ask for raw JSON and parse it.
-                fallback_prompt = (
-                    formatted_prompt + "\n\nRespond with ONLY a JSON object in this exact format, "
-                    "no other text:\n"
-                    '{"steps": [{"title": "...", "category": "...", '
-                    '"description": "..."}]}'
+            try:
+                result = await ainvoke_structured(
+                    GeneratedWorkflow, formatted_prompt, label="workflow_generation"
                 )
-                llm_response = await ainvoke_llm(llm, fallback_prompt, label="workflow_generation")
-                response_content = llm_response.text
-                try:
-                    result = _parse_workflow_response(response_content)
-                except Exception as e:
-                    last_error = e
-                    log.warning(
-                        f"{LogTag.WORKFLOW} Parse failed "
-                        f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating: {e}"
-                    )
-                    continue
+            except (ValidationError, OutputParserException) as e:
+                # Schema-invalid structured output is regenerable; provider errors
+                # keep propagating so ainvoke_structured owns retry/fallback.
+                last_error = e
+                log.warning(
+                    f"{LogTag.WORKFLOW} Structured output invalid "
+                    f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating: {e}"
+                )
+                continue
 
             if result and result.steps:
                 steps_data = enrich_steps(result.steps)
@@ -383,8 +328,6 @@ class WorkflowGenerationService:
         else:
             integrations_hint = ""
 
-        llm = get_default_llm()
-
         formatted = WORKFLOW_PROMPT_GENERATION_TEMPLATE.format(
             title_section=f"Title: {title}\n" if title else "",
             description_section=f"Description: {description}" if description else "",
@@ -400,7 +343,6 @@ class WorkflowGenerationService:
                 if existing_prompt
                 else "Generate comprehensive workflow instructions from scratch."
             ),
-            format_instructions=prompt_output_parser.get_format_instructions(),
         )
 
         messages = [
@@ -408,10 +350,7 @@ class WorkflowGenerationService:
             HumanMessage(content=formatted),
         ]
 
-        response = await ainvoke_llm(llm, messages, label="workflow_prompt")
-        response_content = response.text.strip()
-
-        result = prompt_output_parser.parse(response_content)
+        result = await ainvoke_structured(GeneratedPromptOutput, messages, label="workflow_prompt")
 
         suggested: SuggestedTrigger | None = None
         if result.trigger_type in ("manual", "schedule", "integration"):
