@@ -4,6 +4,7 @@ import { db } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { useChatStore } from "@/stores/chatStore";
 import { PENDING_KEY_PREFIX } from "@/stores/streamStore";
+import { buildSendArgsFromRecord } from "./messageRecord";
 import { TurnSession } from "./turnSession";
 import type { SendArgs } from "./types";
 
@@ -114,8 +115,12 @@ class TurnManager {
     this.resuming.add(conversationId);
     try {
       const streamId = await chatApi.getActiveStream(conversationId);
-      // Re-check: a send may have started a session during the fetch.
-      if (this.sessions.has(conversationId)) return;
+      // Re-check: a send may have started a session during the fetch. Its
+      // queue is live, but sends queued BEFORE the reload still need restoring.
+      if (this.sessions.has(conversationId)) {
+        await this.restoreQueuedSends(conversationId);
+        return;
+      }
       if (!streamId) {
         // Authoritative verdict: no turn is running for this conversation.
         // Any record still claiming to be in flight is a dead send from a
@@ -133,6 +138,7 @@ class TurnManager {
         conversationId,
         buildResumeArgs(conversationId, streamId),
       );
+      await this.restoreQueuedSends(conversationId);
     } catch (error) {
       // Discovery is a recovery path — a failure must never break the page.
       streamLogError("lifecycle", "turn:resume-discovery-failed", {
@@ -164,6 +170,40 @@ class TurnManager {
     }
     await session.abort();
     return true;
+  }
+
+  /**
+   * Rebuild this conversation's send queue from its persisted "queued"
+   * records. The optimistic records ARE the queue — each carries the full
+   * send payload — so a reload loses nothing: sends held behind the in-flight
+   * turn are re-queued ahead of anything queued since (they were typed
+   * first) and dispatch FIFO when the resumed turn ends.
+   */
+  private async restoreQueuedSends(conversationId: string): Promise<void> {
+    const messages = await db.getMessagesForConversation(conversationId);
+    const inMemory = new Set(
+      (this.queues.get(conversationId) ?? []).map(
+        (args) => args.options.optimisticUserId,
+      ),
+    );
+    const restored = messages
+      .filter(
+        (message) =>
+          message.role === "user" &&
+          message.optimistic === true &&
+          message.status === "queued" &&
+          !inMemory.has(message.id),
+      )
+      .map(buildSendArgsFromRecord);
+    if (restored.length === 0) return;
+
+    const queue = this.queues.get(conversationId) ?? [];
+    this.queues.set(conversationId, [...restored, ...queue]);
+    streamLog("lifecycle", "send:queue-restored", {
+      turnKey: conversationId,
+      conversationId,
+      detail: { restored: restored.length },
+    });
   }
 
   private startSession(key: string, args: SendArgs): void {
