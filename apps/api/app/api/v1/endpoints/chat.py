@@ -22,7 +22,7 @@ from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
-from app.models.chat_models import ActiveStreamResponse, ConversationSource
+from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
 from shared.py.wide_events import ChatContext, log
@@ -276,36 +276,3 @@ async def subscribe_executor_stream(
             "Access-Control-Allow-Origin": "*",
         },
     )
-
-
-@router.get(
-    "/conversations/{conversation_id}/active-stream",
-    response_model=ActiveStreamResponse,
-)
-async def get_active_stream(
-    conversation_id: str,
-    user: Annotated[dict, Depends(get_current_user)],
-) -> ActiveStreamResponse:
-    """Stream id of the conversation's in-flight chat turn, if any.
-
-    Lets a reloaded client rediscover a live turn and re-attach via
-    ``GET /stream/{stream_id}`` — the event log replays everything missed.
-    Returns ``{"stream_id": null}`` when nothing is streaming (or the turn
-    already completed/cancelled), so the client treats absence as normal.
-    """
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=_USER_ID_REQUIRED,
-        )
-
-    stream_id = await stream_manager.get_active_stream_id(user_id, conversation_id)
-    if not stream_id:
-        return ActiveStreamResponse(stream_id=None)
-
-    progress = await stream_manager.get_progress(stream_id)
-    if not progress or progress.get("is_complete") or progress.get("is_cancelled"):
-        return ActiveStreamResponse(stream_id=None)
-
-    return ActiveStreamResponse(stream_id=stream_id)

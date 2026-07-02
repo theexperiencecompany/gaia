@@ -118,6 +118,23 @@ export interface ConversationSyncItem {
   last_updated?: string;
 }
 
+export interface SyncedConversation {
+  conversation_id: string;
+  description: string;
+  starred?: boolean;
+  is_system_generated?: boolean;
+  is_onboarding_conversation?: boolean;
+  system_purpose?: SystemPurpose;
+  is_unread?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  messages: MessageType[];
+  /** Stream id of the conversation's in-flight turn, null when idle — the
+   *  re-attach discovery for reloads, carried on the sync response so opening
+   *  a conversation costs a single request. */
+  active_stream_id: string | null;
+}
+
 export const chatApi = {
   // Fetch conversations with pagination
   fetchConversations: async (
@@ -135,20 +152,7 @@ export const chatApi = {
   // Batch sync conversations - only fetch stale conversations
   batchSyncConversations: async (
     conversations: ConversationSyncItem[],
-  ): Promise<{
-    conversations: {
-      conversation_id: string;
-      description: string;
-      starred?: boolean;
-      is_system_generated?: boolean;
-      is_onboarding_conversation?: boolean;
-      system_purpose?: SystemPurpose;
-      is_unread?: boolean;
-      createdAt: string;
-      updatedAt?: string;
-      messages: MessageType[];
-    }[];
-  }> => {
+  ): Promise<{ conversations: SyncedConversation[] }> => {
     return apiService.post(
       "/conversations/batch-sync",
       { conversations },
@@ -411,16 +415,6 @@ export const chatApi = {
         },
       },
     );
-  },
-
-  /** Stream id of the conversation's in-flight turn, or null when idle —
-   *  the re-attach discovery for reloads (event log replays what was missed). */
-  getActiveStream: async (conversationId: string): Promise<string | null> => {
-    const response = await apiService.get<{ stream_id: string | null }>(
-      `/conversations/${conversationId}/active-stream`,
-      { silent: true },
-    );
-    return response.stream_id;
   },
 
   subscribeToExecutorStream: async (

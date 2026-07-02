@@ -31,6 +31,12 @@ import { isViewingConversation, markConversationUnread } from "./unread";
 // result message — clears the "awaiting executor result" UI so it can't stick.
 const EXECUTOR_RESULT_TIMEOUT_MS = 120_000;
 
+// Cadence for caching the in-flight turn to IndexedDB during streaming, so a
+// reload's first paint shows the partial turn instead of an empty bubble. A
+// cache of tape-derived state only: the event-log replay overwrites it on
+// resume, so staleness (≤ one interval) never affects correctness.
+const STREAM_PERSIST_INTERVAL_MS = 500;
+
 export interface TurnSessionCallbacks {
   /** Session finished (any terminal path). Manager dispatches the queue. */
   onEnd: (session: TurnSession) => void;
@@ -59,6 +65,7 @@ export class TurnSession {
 
   private acc: TurnAccumulator = createTurnAccumulator();
   private flushHandle: number | null = null;
+  private lastPartialPersistAt = 0;
   private closeHandled = false;
   private aborted = false;
   private readonly isNewConversation: boolean;
@@ -579,9 +586,22 @@ export class TurnSession {
     const record = this.buildRecord("sending");
     if (!record) return;
     useChatStore.getState().updateMessageInPlace(record);
+    this.persistPartialTurn(record);
     streamLog("store", "flush", {
       turnKey: this.key,
       conversationId: this.conversationId,
+    });
+  }
+
+  /** Throttled IndexedDB cache of the streaming record (see
+   *  STREAM_PERSIST_INTERVAL_MS). Store flushes stay per-frame; only the
+   *  durable copy is rate-limited. */
+  private persistPartialTurn(record: IMessage): void {
+    const now = Date.now();
+    if (now - this.lastPartialPersistAt < STREAM_PERSIST_INTERVAL_MS) return;
+    this.lastPartialPersistAt = now;
+    db.putMessage(record).catch((error) => {
+      console.error("Failed to cache streaming turn:", error);
     });
   }
 

@@ -2,6 +2,7 @@ import {
   type Conversation,
   type ConversationSyncItem,
   chatApi,
+  type SyncedConversation,
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
@@ -337,6 +338,56 @@ export const batchSyncConversations = async (): Promise<void> => {
 };
 
 /**
+ * Merge an already-fetched conversation payload into IndexedDB. No-op while
+ * the conversation streams or a save is pending — a live turn's messages must
+ * never be overwritten by the server's not-yet-persisted copy.
+ */
+export const applySyncedConversation = async (
+  conversationId: string,
+  conversation: SyncedConversation,
+): Promise<void> => {
+  if (shouldBlockSyncForConversation(conversationId)) {
+    return;
+  }
+
+  const messages = conversation.messages ?? [];
+
+  // Map conversation to IndexedDB format
+  const mappedConversation: IConversation = {
+    id: conversationId,
+    title: conversation.description || "Untitled conversation",
+    description: conversation.description,
+    starred: conversation.starred ?? false,
+    isSystemGenerated: conversation.is_system_generated ?? false,
+    isOnboardingConversation: conversation.is_onboarding_conversation ?? false,
+    systemPurpose: conversation.system_purpose ?? null,
+    isUnread: conversation.is_unread ?? false,
+    createdAt: new Date(conversation.createdAt),
+    updatedAt: conversation.updatedAt
+      ? new Date(conversation.updatedAt)
+      : new Date(conversation.createdAt),
+  };
+
+  // Map messages
+  const remoteMessages = mapApiMessagesToStored(messages, conversationId);
+  const localMessages = await db.getMessagesForConversation(conversationId);
+
+  const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
+
+  // Persist to IndexedDB
+  await Promise.allSettled([
+    db.putConversation(mappedConversation),
+    messages.length > 0
+      ? db.syncMessages(conversationId, mergedMessages)
+      : Promise.resolve(),
+  ]);
+
+  console.debug(
+    `[SyncService] Synced conversation ${conversationId} with ${messages.length} messages`,
+  );
+};
+
+/**
  * Sync a single conversation from backend to IndexedDB.
  * Used after stream cancellation to ensure local data matches backend.
  */
@@ -360,43 +411,7 @@ export const syncSingleConversation = async (
       return;
     }
 
-    const conversation = freshConversations[0];
-    const messages = conversation.messages ?? [];
-
-    // Map conversation to IndexedDB format
-    const mappedConversation: IConversation = {
-      id: conversationId,
-      title: conversation.description || "Untitled conversation",
-      description: conversation.description,
-      starred: conversation.starred ?? false,
-      isSystemGenerated: conversation.is_system_generated ?? false,
-      isOnboardingConversation:
-        conversation.is_onboarding_conversation ?? false,
-      systemPurpose: conversation.system_purpose ?? null,
-      isUnread: conversation.is_unread ?? false,
-      createdAt: new Date(conversation.createdAt),
-      updatedAt: conversation.updatedAt
-        ? new Date(conversation.updatedAt)
-        : new Date(conversation.createdAt),
-    };
-
-    // Map messages
-    const remoteMessages = mapApiMessagesToStored(messages, conversationId);
-    const localMessages = await db.getMessagesForConversation(conversationId);
-
-    const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
-
-    // Persist to IndexedDB
-    await Promise.allSettled([
-      db.putConversation(mappedConversation),
-      messages.length > 0
-        ? db.syncMessages(conversationId, mergedMessages)
-        : Promise.resolve(),
-    ]);
-
-    console.debug(
-      `[SyncService] Synced conversation ${conversationId} with ${messages.length} messages`,
-    );
+    await applySyncedConversation(conversationId, freshConversations[0]);
   } catch (error) {
     console.error(
       `[SyncService] Failed to sync conversation ${conversationId}:`,

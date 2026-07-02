@@ -6,6 +6,7 @@ from uuid import uuid4
 from bson import ObjectId
 from fastapi import HTTPException, status
 
+from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -461,7 +462,9 @@ def _convert_ids(conversations):
 async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dict:
     """
     Batch sync conversations - returns only conversations that have been updated
-    since the provided timestamp, including their messages.
+    since the provided timestamp, including their messages and the stream id of
+    an in-flight turn (``active_stream_id``) so a reloaded client can re-attach
+    without a separate discovery request.
     """
     user_id = user.get("user_id")
     if not user_id:
@@ -520,7 +523,7 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
     conversations = await conversations_collection.aggregate(pipeline).to_list(None)
 
     # Convert datetime objects to ISO strings
-    for conv in conversations:
+    for index, conv in enumerate(conversations):
         _convert_datetime_to_iso(conv, "createdAt", "updatedAt")
 
         # Convert message timestamps
@@ -528,7 +531,13 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
             for message in conv["messages"]:
                 _convert_datetime_to_iso(message, "timestamp", "createdAt", "date")
 
-        # Convert legacy tool data
+        # convert_conversation_messages returns a copy — write it back, or the
+        # conversion and every field set after it are silently discarded.
         conv = convert_conversation_messages(conv)
+
+        conv["active_stream_id"] = await stream_manager.get_resumable_stream_id(
+            user_id, conv["conversation_id"]
+        )
+        conversations[index] = conv
 
     return {"conversations": conversations}

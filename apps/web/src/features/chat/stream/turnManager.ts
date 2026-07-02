@@ -28,7 +28,6 @@
  *    survive in tab memory.
  */
 import { v4 as uuidv4 } from "uuid";
-import { chatApi } from "@/features/chat/api/chatApi";
 import { db } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { useChatStore } from "@/stores/chatStore";
@@ -130,27 +129,30 @@ class TurnManager {
 
   /**
    * Re-attach to a conversation's in-flight turn after a reload, if one
-   * exists. The event log replays everything missed, so the resumed session
-   * renders the turn exactly as if the page had been open the whole time.
-   * No-op when the conversation is idle or already has a session.
+   * exists. The caller supplies the server's verdict — the active stream id,
+   * or null when nothing is streaming — fetched alongside the conversation
+   * sync, so opening a conversation costs a single request. The event log
+   * replays everything missed, so the resumed session renders the turn
+   * exactly as if the page had been open the whole time. No-op when a resume
+   * for this conversation is already in flight.
    */
-  async resumeIfActive(conversationId: string): Promise<void> {
-    if (
-      this.sessions.has(conversationId) ||
-      this.resuming.has(conversationId)
-    ) {
+  async resumeIfActive(
+    conversationId: string,
+    activeStreamId: string | null,
+  ): Promise<void> {
+    if (this.resuming.has(conversationId)) {
       return;
     }
     this.resuming.add(conversationId);
     try {
-      const streamId = await chatApi.getActiveStream(conversationId);
-      // Re-check: a send may have started a session during the fetch. Its
-      // queue is live, but sends queued BEFORE the reload still need restoring.
+      // A send may have started a session while the caller fetched the
+      // verdict. Its queue is live, but sends queued BEFORE the reload still
+      // need restoring.
       if (this.sessions.has(conversationId)) {
         await this.restoreQueuedSends(conversationId);
         return;
       }
-      if (!streamId) {
+      if (!activeStreamId) {
         // Authoritative verdict: no turn is running for this conversation.
         // Any record still claiming to be in flight is a dead send from a
         // previous page — surface it as failed (visible, retryable) instead
@@ -161,16 +163,16 @@ class TurnManager {
       streamLog("lifecycle", "turn:resume", {
         turnKey: conversationId,
         conversationId,
-        detail: { streamId },
+        detail: { streamId: activeStreamId },
       });
       this.startSession(
         conversationId,
-        buildResumeArgs(conversationId, streamId),
+        buildResumeArgs(conversationId, activeStreamId),
       );
       await this.restoreQueuedSends(conversationId);
     } catch (error) {
-      // Discovery is a recovery path — a failure must never break the page.
-      streamLogError("lifecycle", "turn:resume-discovery-failed", {
+      // Resume is a recovery path — a failure must never break the page.
+      streamLogError("lifecycle", "turn:resume-failed", {
         conversationId,
         detail: String(error),
       });

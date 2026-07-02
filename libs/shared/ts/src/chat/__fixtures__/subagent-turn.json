@@ -1,5 +1,5 @@
 [
-  "{\"conversation_id\":\"conv-1\",\"bot_message_id\":\"bm-1\"}",
+  "{\"conversation_id\":\"conv-1\",\"conversation_description\":null,\"user_message_id\":\"um-1\",\"user_message_content\":\"hello\",\"bot_message_id\":\"bm-1\",\"stream_id\":\"s-1\"}",
   "{\"subagent_start\":{\"subagent_id\":\"sa-1\",\"subagent_name\":\"Gmail Agent\",\"agent_type\":\"handoff\",\"started_at\":\"2026-01-01T00:00:00.000Z\",\"tool_category\":\"gmail\",\"icon_url\":\"https://cdn.example.com/gmail.png\"}}",
   "{\"reasoning\":{\"content\":\"Let me check \",\"subagent_id\":\"sa-1\"}}",
   "{\"reasoning\":{\"content\":\"your inbox.\",\"subagent_id\":\"sa-1\"}}",

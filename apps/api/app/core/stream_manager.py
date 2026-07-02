@@ -190,6 +190,22 @@ class StreamManager:
         stream_id = await redis_cache.get(f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}")
         return stream_id if isinstance(stream_id, str) else None
 
+    @classmethod
+    async def get_resumable_stream_id(cls, user_id: str, conversation_id: str) -> str | None:
+        """Stream id a reloaded client can re-attach to, or None when idle.
+
+        Validates the reverse index against progress: an indexed turn that
+        already completed/cancelled (index clear still pending) is not
+        resumable, so absence is reported instead of a stale stream id.
+        """
+        stream_id = await cls.get_active_stream_id(user_id, conversation_id)
+        if not stream_id:
+            return None
+        progress = await cls.get_progress(stream_id)
+        if not progress or progress.get("is_complete") or progress.get("is_cancelled"):
+            return None
+        return stream_id
+
     # -------------------------------------------------------------------------
     # Event-log Communication
     # -------------------------------------------------------------------------
