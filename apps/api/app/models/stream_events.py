@@ -33,6 +33,20 @@ Two frames are intentionally not modeled here:
   frontend Zod schema, which the parser validates against.
 
 The frontend mirror of this vocabulary is ``libs/shared/ts/src/chat/schema.ts``.
+
+Replay-completeness contract: the event log built from these frames is the
+turn's source of truth. A client attaching mid-turn (reload, second tab)
+reconstructs the ENTIRE turn from replay alone — so any new client-visible
+fact about a turn must be carried in a frame, never assumed to survive in
+client memory or local persistence (this is why ``conversation_initialized``
+carries the user's message text, not just ids).
+
+Frames must not encode implicit request-shape assumptions. Example of the bug
+class: ``messages[-1]`` is the current user turn only when its role is
+``user`` — clients omit empty-text (file-only) turns from history, so the last
+entry can be the previous assistant reply. Derive such values defensively and
+in exactly one helper, so the frame and the persisted record can never
+disagree.
 """
 
 from typing import Any
