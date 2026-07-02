@@ -14,6 +14,7 @@ from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
+from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
 from app.services.integrations.user_integrations import (
     get_user_integration_capabilities,
@@ -100,7 +101,7 @@ async def follow_up_actions_node(state: State, config: RunnableConfig, store: Ba
     # Send completion marker as soon as follow-up actions start
     writer = get_stream_writer()
     try:
-        writer({"main_response_complete": True})
+        writer(MainResponseCompleteFrame(main_response_complete=True).model_dump())
     except Exception as write_error:
         # Stream is closed (user disconnected), no need to continue
         log.debug(

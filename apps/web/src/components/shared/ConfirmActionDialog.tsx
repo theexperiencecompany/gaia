@@ -12,7 +12,6 @@ import { useRouter } from "next/navigation";
 
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { useConversation } from "@/features/chat/hooks/useConversation";
 import { db } from "@/lib/db/chatDb";
 import { batchSyncConversations } from "@/services/syncService";
 
@@ -39,7 +38,6 @@ export function ConfirmActionDialog({
 }: ConfirmActionDialogProps) {
   const { logout } = useLogout();
   const router = useRouter();
-  const { updateConvoMessages } = useConversation();
 
   const getActionConfig = (): ActionConfig | null => {
     switch (action) {
@@ -70,7 +68,6 @@ export function ConfirmActionDialog({
               await db.clearAll();
               // Sync from API to get fresh state after clearing
               await batchSyncConversations();
-              updateConvoMessages();
             } catch (error) {
               console.error("Error clearing chats:", error);
             }

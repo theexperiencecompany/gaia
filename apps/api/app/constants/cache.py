@@ -84,9 +84,15 @@ USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
 INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
-STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
+# Replayable per-stream event log (Redis Stream). Entry ids double as SSE ids,
+# so any subscriber can attach late or reconnect with Last-Event-ID and replay.
+STREAM_EVENTS_PREFIX = "stream:events:"
+STREAM_EVENTS_MAXLEN = 4096
+# Reverse index {user_id}:{conversation_id} -> stream_id for the in-flight chat
+# turn, so a reloaded client can rediscover and re-attach to a live stream.
+STREAM_ACTIVE_PREFIX = "stream:active:"
 # Turn-send dedup: {user_id}:{turn_id} -> stream_id, claimed atomically (SETNX)
 # so a retried POST can't persist the same turn twice.
 STREAM_TURN_DEDUP_PREFIX = "stream:turn:"

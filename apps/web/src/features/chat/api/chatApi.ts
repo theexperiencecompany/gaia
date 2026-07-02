@@ -413,12 +413,23 @@ export const chatApi = {
     );
   },
 
+  /** Stream id of the conversation's in-flight turn, or null when idle —
+   *  the re-attach discovery for reloads (event log replays what was missed). */
+  getActiveStream: async (conversationId: string): Promise<string | null> => {
+    const response = await apiService.get<{ stream_id: string | null }>(
+      `/conversations/${conversationId}/active-stream`,
+      { silent: true },
+    );
+    return response.stream_id;
+  },
+
   subscribeToExecutorStream: async (
     streamId: string,
     onMessage: (event: EventSourceMessage) => void,
     onClose: () => void,
     onError: (err: Error) => void,
     signal: AbortSignal,
+    lastEventId?: string,
   ): Promise<void> => {
     let doneReceived = false;
 
@@ -430,6 +441,8 @@ export const chatApi = {
         headers: {
           Accept: "text/event-stream",
           ...desktopClientHeaders(),
+          // Resume cursor — the backend replays everything after this entry.
+          ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}),
         },
         credentials: "include",
         signal,

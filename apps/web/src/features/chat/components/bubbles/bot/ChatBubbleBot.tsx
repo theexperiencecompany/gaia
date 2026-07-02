@@ -71,11 +71,14 @@ export default function ChatBubbleBot(
     }
   }, [disableActions]);
 
-  const renderedComponent = useMemo(() => {
-    if (image_data) return <ImageBubble {...props} image_data={image_data} />;
-
-    return <TextBubble {...props} />;
-  }, [image_data, props]);
+  // Not memoized on purpose: `props` is rebuilt by getMessageProps every
+  // render, so a useMemo keyed on it never hits. Real render protection lives
+  // one level up in ChatMessageItem's memo (stable idle message refs).
+  const renderedComponent = image_data ? (
+    <ImageBubble {...props} image_data={image_data} />
+  ) : (
+    <TextBubble {...props} />
+  );
 
   const itShouldShowTextBubble = shouldShowTextBubble(
     text,

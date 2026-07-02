@@ -70,17 +70,20 @@ def _build_chat_context(
 
 
 async def _stream_from_redis(
-    stream_id: str, request: Request, start_event: asyncio.Event | None = None
+    stream_id: str, request: Request, last_event_id: str | None = None
 ) -> AsyncGenerator[str, None]:
+    """Forward the stream's event log to the client, following live.
+
+    The log replays from ``last_event_id`` (or the beginning), so this can be
+    attached at any point in the turn's lifetime without losing frames.
+    """
     if not redis_cache.redis:
         log.error(f"{LogTag.CHAT} Redis unavailable for stream {stream_id}")
-        if start_event and not start_event.is_set():
-            start_event.set()
         yield "data: [STREAM_ERROR]\n\n"
         return
 
     try:
-        async for chunk in stream_manager.subscribe_stream(stream_id, start_event=start_event):
+        async for chunk in stream_manager.subscribe_stream(stream_id, last_event_id=last_event_id):
             if await request.is_disconnected():
                 log.info(
                     f"{LogTag.CHAT} Client disconnected, stream {stream_id} continues in background"
@@ -91,9 +94,6 @@ async def _stream_from_redis(
         log.info(f"{LogTag.CHAT} Stream {stream_id}: client connection cancelled")
     except Exception as e:
         log.error(f"{LogTag.CHAT} Error streaming to client: {e}")
-    finally:
-        if start_event and not start_event.is_set():
-            start_event.set()
 
 
 @router.post("/chat-stream")
@@ -146,7 +146,6 @@ async def chat_stream_endpoint(
         user_id=user_id,
     )
 
-    start_event = asyncio.Event()
     task = asyncio.create_task(
         run_chat_stream_background(
             stream_id=stream_id,
@@ -154,7 +153,6 @@ async def chat_stream_endpoint(
             user=user,
             conversation_id=conversation_id,
             source=_resolve_source(request),
-            start_event=start_event,
         )
     )
     _background_tasks.add(task)
@@ -164,7 +162,7 @@ async def chat_stream_endpoint(
     # request Origin per-request against the allowlist; hardcoding it would
     # pin a single origin and break the desktop app + alternate domains.
     return StreamingResponse(
-        _stream_from_redis(stream_id, request, start_event=start_event),
+        _stream_from_redis(stream_id, request),
         media_type=_SSE_MEDIA_TYPE,
         headers={
             "Cache-Control": "no-cache",
@@ -269,7 +267,7 @@ async def subscribe_executor_stream(
     log.info(f"{LogTag.CHAT} Client subscribed to executor stream {stream_id}")
 
     return StreamingResponse(
-        _stream_from_redis(stream_id, request),
+        _stream_from_redis(stream_id, request, last_event_id=request.headers.get("Last-Event-ID")),
         media_type=_SSE_MEDIA_TYPE,
         headers={
             "Cache-Control": "no-cache",
@@ -278,3 +276,33 @@ async def subscribe_executor_stream(
             "Access-Control-Allow-Origin": "*",
         },
     )
+
+
+@router.get("/conversations/{conversation_id}/active-stream")
+async def get_active_stream(
+    conversation_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> dict:
+    """Stream id of the conversation's in-flight chat turn, if any.
+
+    Lets a reloaded client rediscover a live turn and re-attach via
+    ``GET /stream/{stream_id}`` — the event log replays everything missed.
+    Returns ``{"stream_id": null}`` when nothing is streaming (or the turn
+    already completed/cancelled), so the client treats absence as normal.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_USER_ID_REQUIRED,
+        )
+
+    stream_id = await stream_manager.get_active_stream_id(user_id, conversation_id)
+    if not stream_id:
+        return {"stream_id": None}
+
+    progress = await stream_manager.get_progress(stream_id)
+    if not progress or progress.get("is_complete") or progress.get("is_cancelled"):
+        return {"stream_id": None}
+
+    return {"stream_id": stream_id}

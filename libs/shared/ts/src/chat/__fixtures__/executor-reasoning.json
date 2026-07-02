@@ -1,0 +1,9 @@
+[
+  "{\"conversation_id\":\"conv-1\",\"bot_message_id\":\"bm-1\"}",
+  "{\"reasoning\":{\"content\":\"First I \"}}",
+  "{\"reasoning\":{\"content\":\"think about the request.\"}}",
+  "{\"tool_data\":{\"tool_name\":\"tool_calls_data\",\"tool_category\":\"search\",\"data\":{\"tool_name\":\"web_search\",\"tool_category\":\"search\",\"message\":\"Searching\",\"tool_call_id\":\"tc-1\"}}}",
+  "{\"reasoning\":{\"content\":\"Now I conclude.\"}}",
+  "{\"response\":\"Answer.\"}",
+  "[DONE]"
+]

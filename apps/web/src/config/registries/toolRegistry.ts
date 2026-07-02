@@ -1,4 +1,8 @@
 import type {
+  SubagentGroupData as SharedSubagentGroupData,
+  ToolCallEntry as SharedToolCallEntry,
+} from "@shared/chat";
+import type {
   IntegrationConnectionData,
   IntegrationListStreamData,
 } from "@/features/integrations/types";
@@ -139,45 +143,14 @@ export interface RateLimitData {
   reset_time?: string;
 }
 
-// Entry for a single tool call progress
-export interface ToolCallEntry {
-  tool_name: string;
-  tool_category: string;
-  message: string;
-  show_category?: boolean;
-  tool_call_id?: string;
-  inputs?: Record<string, unknown>;
-  output?: string;
-  icon_url?: string; // For custom integrations with dynamic icons
-  integration_name?: string; // Friendly name (e.g., 'Researcher')
-  // When set, this entry is the model's thinking for the step (not a tool call).
-  // It rides the same ordered tool_calls stream so it interleaves between steps,
-  // and renders as a collapsible "Thinking" row at both the root (executor) and
-  // subagent levels. See REASONING_TOOL_NAME.
-  reasoning?: string;
-}
-
-// tool_name marker for a thinking/reasoning step (a ToolCallEntry with `reasoning`).
-export const REASONING_TOOL_NAME = "reasoning";
-
-export interface SubagentGroupData {
-  subagent_id: string;
-  subagent_name: string;
-  /** "handoff" = integration subagent (Gmail, GitHub etc); "spawned" = lightweight task agent */
-  agent_type: "handoff" | "spawned";
-  /** Accumulated tool calls from this subagent, in order of emission */
-  tool_calls: ToolCallEntry[];
-  duration_ms: number | null;
-  token_count: number | null;
-  started_at: string;
-  completed_at: string | null;
-  /** Integration icon URL forwarded from the backend (used by SubagentThread) */
-  icon_url: string | null;
-  /** Integration category ID used for icon lookup (e.g. "gmail", "googlecalendar") */
-  tool_category: string | null;
-  /** Spawned subagents launched from within this subagent (nested in the UI) */
-  nested_subagents: SubagentGroupData[];
-}
+// The canonical ToolCallEntry / SubagentGroupData shapes live in @shared/chat
+// (they're what the shared turn accumulator assembles); re-exported here so
+// existing web imports keep one source of truth instead of a drifting copy.
+export {
+  REASONING_TOOL_NAME,
+  type SubagentGroupData,
+  type ToolCallEntry,
+} from "@shared/chat";
 
 export const TOOL_REGISTRY = {
   search_results: null as unknown as SearchResults,
@@ -203,8 +176,8 @@ export const TOOL_REGISTRY = {
   send_notification_data: null as unknown as SendNotificationData,
   integration_connection_required: null as unknown as IntegrationConnectionData,
   integration_list_data: null as unknown as IntegrationListStreamData,
-  tool_calls_data: null as unknown as ToolCallEntry[],
-  subagent_group: null as unknown as SubagentGroupData,
+  tool_calls_data: null as unknown as SharedToolCallEntry[],
+  subagent_group: null as unknown as SharedSubagentGroupData,
   twitter_search_data: null as unknown as TwitterSearchData,
   twitter_user_data: null as unknown as TwitterUserData[],
   workflow_draft: null as unknown as WorkflowDraftData,

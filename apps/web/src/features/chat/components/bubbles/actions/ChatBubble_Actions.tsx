@@ -10,9 +10,9 @@ import {
 } from "@icons";
 import { useParams } from "next/navigation";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { useConversation } from "@/features/chat/hooks/useConversation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
+import { syncSingleConversation } from "@/services/syncService";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 
 interface ChatBubbleActionsProps {
@@ -35,7 +35,6 @@ export default function ChatBubble_Actions({
   isRetrying = false,
 }: ChatBubbleActionsProps) {
   const { id: convoIdParam } = useParams<{ id: string }>();
-  const { updateConvoMessages } = useConversation();
   const { setReplyToMessage } = useReplyToMessage();
 
   const handleReply = () => {
@@ -89,10 +88,8 @@ export default function ChatBubble_Actions({
 
       toast.success(pinned ? "Message unpinned!" : "Message pinned!");
 
-      // Fetch messages again to reflect the pin state
-      await chatApi.fetchMessages(convoIdParam);
-
-      updateConvoMessages();
+      // Pull the server's updated pin state into IndexedDB + the store.
+      await syncSingleConversation(convoIdParam);
     } catch (error) {
       toast.error("Could not pin this message");
       console.error("Could not pin this message", error);

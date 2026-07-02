@@ -19,6 +19,7 @@ import {
   VoiceControlBarSlot,
 } from "@/features/chat/components/voice-agent/VoiceControlBarContainer";
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
+import { useStreamResume } from "@/features/chat/hooks/useStreamResume";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
@@ -102,6 +103,10 @@ const MainChat = React.memo(function MainChat() {
     appendToInputRef,
     convoIdParam,
   } = useChatLayout();
+
+  // Reload-mid-stream recovery: if this conversation has a turn still running
+  // server-side, re-attach to its event log and keep streaming live.
+  useStreamResume(convoIdParam || null);
 
   // Set active conversation ID and mark as read when opening.
   // During a new voice session (no URL param), use the store's provisional

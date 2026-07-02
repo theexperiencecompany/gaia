@@ -28,6 +28,7 @@ from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.models_models import ModelConfig
+from app.models.stream_events import ToolOutputPayload
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     format_sse_data,
@@ -643,13 +644,11 @@ async def execute_graph_streaming(
                     else:
                         tool_result_payload = str(tool_result_payload)
                 output = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+                tool_output_payload = ToolOutputPayload(
+                    tool_call_id=chunk.tool_call_id, output=output
+                )
                 yield format_sse_data(
-                    {
-                        "tool_output": {
-                            "tool_call_id": chunk.tool_call_id,
-                            "output": output,
-                        }
-                    }
+                    {"tool_output": tool_output_payload.model_dump(exclude_none=True)}
                 )
 
                 # Emit deferred mcp_app event now that tool result is available

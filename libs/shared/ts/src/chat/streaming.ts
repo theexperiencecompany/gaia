@@ -2,6 +2,7 @@ import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   type DesktopToolRequest,
 } from "../desktop-tools";
+import { ChatStreamFrameSchema } from "./schema";
 import type { TodoProgressSnapshot } from "./types";
 
 export type { TodoProgressSnapshot };
@@ -103,6 +104,24 @@ const toToolDataEntry = (value: unknown): StreamToolDataEntry | null => {
   };
 };
 
+/**
+ * Advisory validation against the typed frame vocabulary (schema.ts). Never
+ * gates rendering: valid frames pass silently, and an unmodeled or malformed
+ * frame is surfaced in dev then handled by the same duck-typed extraction the
+ * caller runs regardless — so runtime behavior for valid frames is unchanged.
+ */
+const warnIfFrameUnrecognized = (payload: JsonObject): void => {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    !ChatStreamFrameSchema.safeParse(payload).success
+  ) {
+    console.error(
+      "[chat-stream] frame failed schema validation (extend schema.ts if this is a real frame):",
+      payload,
+    );
+  }
+};
+
 export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   if (!data) return [];
   if (data === "[DONE]") return [{ type: "done" }];
@@ -120,6 +139,8 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   if (!isObject(payload)) {
     return [{ type: "unknown", payload: { value: payload } }];
   }
+
+  warnIfFrameUnrecognized(payload);
 
   if (payload.keepalive === true) {
     return [{ type: "keepalive" }];

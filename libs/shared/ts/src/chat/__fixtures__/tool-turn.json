@@ -1,0 +1,9 @@
+[
+  "{\"conversation_id\":\"conv-1\",\"bot_message_id\":\"bm-1\"}",
+  "{\"tool_data\":{\"tool_name\":\"tool_calls_data\",\"tool_category\":\"search\",\"data\":{\"tool_name\":\"web_search\",\"tool_category\":\"search\",\"message\":\"Searching the web\",\"tool_call_id\":\"tc-1\",\"inputs\":{\"query\":\"weather today\"}}}}",
+  "{\"tool_data\":{\"tool_name\":\"tool_calls_data\",\"tool_category\":\"email\",\"data\":{\"tool_name\":\"send_email\",\"tool_category\":\"email\",\"message\":\"Sending email\",\"tool_call_id\":\"tc-2\",\"inputs\":{\"to\":\"a@b.com\"}}}}",
+  "{\"tool_output\":{\"tool_call_id\":\"tc-2\",\"output\":\"Email sent\"}}",
+  "{\"tool_output\":{\"tool_call_id\":\"tc-1\",\"output\":\"Found 3 results\"}}",
+  "{\"response\":\"Done.\"}",
+  "[DONE]"
+]
