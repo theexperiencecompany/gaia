@@ -53,7 +53,6 @@ from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
-from app.core.stream_manager import stream_manager
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     DynamicToolNode,
     format_tool_error,
@@ -250,31 +249,6 @@ def create_agent(
         )
         return cast(State, {**state, "messages": [*state.get("messages", []), notice]})
 
-    async def _drain_steering_messages(config: RunnableConfig) -> list[HumanMessage]:
-        """Fold in user messages that arrived while this run was working.
-
-        The chat endpoint/orchestrator buffers mid-run messages per
-        conversation (see queue_steering_message); they join the NEXT model
-        call here and are returned in the state update so the checkpoint keeps
-        them. Non-conversation threads (executor_*/subagent threads) simply
-        never have a queue.
-        """
-        thread_id = config.get("configurable", {}).get("thread_id", "")
-        if not thread_id:
-            return []
-        drained = await stream_manager.drain_steering(thread_id)
-        if not drained:
-            return []
-        joined = "\n".join(drained)
-        return [
-            HumanMessage(
-                content=(
-                    "[The user sent additional messages while you were working. "
-                    "Take them into account before finishing:]\n" + joined
-                )
-            )
-        ]
-
     async def acall_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         """Async model invocation with middleware support."""
         state = await execute_hooks(pre_model_hooks, state, config, store)
@@ -282,9 +256,6 @@ def create_agent(
         if middleware_executor:
             state = await middleware_executor.execute_before_model(state, config, store)
 
-        steering = await _drain_steering_messages(config)
-        if steering:
-            state = cast(State, {**state, "messages": [*state.get("messages", []), *steering]})
         state = _maybe_inject_wrapup(state)
 
         model_configurations = config.get("configurable", {})
@@ -343,9 +314,8 @@ def create_agent(
 
         # Return partial state update: new message + any keys added by
         # after_model (e.g. todos). Messages use an append reducer, so only
-        # return the new response — not the full list. Drained steering
-        # messages are real user input and must persist ahead of the response.
-        result: dict[str, object] = {"messages": [*steering, response]}
+        # return the new response — not the full list.
+        result: dict[str, object] = {"messages": [response]}
         base_keys = {"messages", "selected_tool_ids"}
         for key, value in updated_state.items():
             if key not in base_keys:

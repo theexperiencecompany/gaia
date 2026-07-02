@@ -48,8 +48,6 @@ from typing import Any
 from app.constants.cache import (
     ACTIVE_STREAM_LOCK_PREFIX,
     ACTIVE_STREAM_LOCK_TTL,
-    STEER_QUEUE_PREFIX,
-    STEER_QUEUE_TTL,
     STREAM_CHANNEL_PREFIX,
     STREAM_PROGRESS_PREFIX,
     STREAM_SIGNAL_PREFIX,
@@ -129,39 +127,6 @@ class StreamManager:
         holder = bytes(raw).decode() if isinstance(raw, (bytes, memoryview)) else raw
         if holder == stream_id:
             await client.delete(key)
-
-    # -------------------------------------------------------------------------
-    # Mid-run steering queue
-    # -------------------------------------------------------------------------
-
-    @classmethod
-    async def enqueue_steering(cls, conversation_id: str, text: str) -> None:
-        """Buffer a user message that arrived while a stream is active.
-
-        The running agent loop drains the queue before its next model call and
-        folds the messages into the turn; anything left when the run ends rides
-        into the next turn's first model call.
-        """
-        client = redis_cache.client
-        if not client or not conversation_id:
-            return
-        key = f"{STEER_QUEUE_PREFIX}{conversation_id}"
-        await client.rpush(key, text)
-        await client.expire(key, STEER_QUEUE_TTL)
-
-    @classmethod
-    async def drain_steering(cls, conversation_id: str) -> list[str]:
-        """Pop every buffered steering message, oldest first."""
-        client = redis_cache.client
-        if not client or not conversation_id:
-            return []
-        key = f"{STEER_QUEUE_PREFIX}{conversation_id}"
-        drained: list[str] = []
-        while True:
-            raw = await client.lpop(key)
-            if raw is None:
-                return drained
-            drained.append(bytes(raw).decode() if isinstance(raw, (bytes, memoryview)) else raw)
 
     # -------------------------------------------------------------------------
     # Stream Lifecycle

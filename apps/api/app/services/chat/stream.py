@@ -31,7 +31,6 @@ from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIM
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
-from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
@@ -48,7 +47,6 @@ from app.services.chat.workspace import (
     forward_artifact_events,
     schedule_last_active_touch,
 )
-from app.services.conversation_service import update_messages
 from app.services.storage import flush_fs_metrics
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
@@ -146,18 +144,20 @@ async def _run_chat_stream(
     # One comms turn per conversation at a time: concurrent runs (second tab,
     # bot double-send) raced the same checkpointer thread. The HTTP endpoint
     # pre-acquires with this stream_id (re-entrant here); direct callers (bots)
-    # acquire here. A foreign holder steers the message into the ACTIVE run
-    # instead of starting a competing one.
+    # acquire here. A foreign holder ends this stream before any state exists.
     holder = await stream_manager.try_acquire_conversation_lock(conversation_id, stream_id)
     if holder:
-        await queue_steering_message(body, user, conversation_id, holder)
+        log.warning(
+            f"{LogTag.CHAT} Conversation busy - rejecting concurrent stream",
+            conversation_id=conversation_id,
+            holder_stream_id=holder,
+        )
         await _wait_for_http_subscriber(start_event, stream_id)
-        queued_payload = {
-            "steered": True,
+        busy_payload = {
+            "error": "Another response is still streaming in this conversation.",
             "active_stream_id": holder,
-            "info": "Message added to the response currently being generated.",
         }
-        await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(queued_payload)}\n\n")
+        await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(busy_payload)}\n\n")
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
         return
@@ -343,41 +343,6 @@ async def _publish_init_chunk(
 
     await _wait_for_http_subscriber(start_event, stream_id)
     await stream_manager.publish_chunk(stream_id, init_data)
-
-
-async def queue_steering_message(
-    body: MessageRequestWithHistory,
-    user: dict,
-    conversation_id: str,
-    holder_stream_id: str,
-) -> str:
-    """Steer a message that arrived mid-run into the active stream.
-
-    Persists the user message to Mongo immediately (it must survive a reload —
-    the steering queue itself is transient Redis state), then buffers the text
-    for the running agent loop, which drains it before its next model call.
-    Returns the persisted user message_id.
-    """
-    user_message = MessageModel(
-        type="user",
-        response=body.message,
-        date=datetime.now(UTC).isoformat(),
-        fileIds=body.fileIds,
-        selectedTool=body.selectedTool,
-        toolCategory=body.toolCategory,
-    )
-    user_message.message_id = str(uuid4())
-    await update_messages(
-        UpdateMessagesRequest(conversation_id=conversation_id, messages=[user_message]),
-        user=user,
-    )
-    await stream_manager.enqueue_steering(conversation_id, body.message)
-    log.info(
-        f"{LogTag.CHAT} Steered mid-run message into active stream",
-        conversation_id=conversation_id,
-        holder_stream_id=holder_stream_id,
-    )
-    return user_message.message_id
 
 
 async def _consume_agent_stream(

@@ -103,13 +103,7 @@ async def chat_stream_endpoint(
     user: Annotated[dict, Depends(get_current_user)],
     home_timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
 ) -> StreamingResponse:
-    """Stream a chat turn. Continues in the background if the client disconnects.
-
-    The response is ALWAYS SSE. When another stream is already active for this
-    conversation, the orchestrator steers the message into that run and this
-    stream just acknowledges it ({"steered": true, ...} then [DONE]) — clients
-    never get a different content type based on runtime state.
-    """
+    """Stream a chat turn. Continues in the background if the client disconnects."""
     stream_id = str(uuid4())
     conversation_id = body.conversation_id or str(uuid4())
     user_id = user.get("user_id")
@@ -127,6 +121,16 @@ async def chat_stream_endpoint(
         user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
         selected_tool=body.selectedTool,
     )
+
+    # One active stream per conversation: a concurrent run (second tab, rapid
+    # double-send) would race the same checkpointer thread. 409 carries the
+    # holder's stream_id so clients can reconnect to the live stream instead.
+    holder = await stream_manager.try_acquire_conversation_lock(conversation_id, stream_id)
+    if holder:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "conversation_busy", "active_stream_id": holder},
+        )
 
     await stream_manager.start_stream(
         stream_id=stream_id,

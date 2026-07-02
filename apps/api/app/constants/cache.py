@@ -92,10 +92,6 @@ STREAM_PROGRESS_PREFIX = "stream:progress:"
 # raced the same LangGraph checkpointer thread with lost-update corruption.
 ACTIVE_STREAM_LOCK_PREFIX = "stream:active:"
 ACTIVE_STREAM_LOCK_TTL = 600  # safety net; released explicitly on finalize
-# Steering queue: user messages that arrive while a stream is active are
-# buffered here and injected into the running model loop at its next call.
-STEER_QUEUE_PREFIX = "stream:steer:"
-STEER_QUEUE_TTL = 600
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"
