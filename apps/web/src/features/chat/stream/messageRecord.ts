@@ -4,7 +4,7 @@ import type { IMessage } from "@/lib/db/chatDb";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
-import type { TurnOptions } from "./types";
+import type { SendArgs, TurnOptions } from "./types";
 
 /**
  * Turn metadata fixed at send time. Combined with the live accumulator this is
@@ -47,6 +47,41 @@ export const buildTurnMessageRecord = (
   isConvoSystemGenerated: false,
   replyToMessageId: meta.options.replyToMessage?.id ?? null,
   replyToMessageData: meta.options.replyToMessage,
+});
+
+/**
+ * Rebuild the send payload from a persisted queued record — the inverse of
+ * `buildUserMessageRecord`, used to restore a conversation's send queue after
+ * a reload. The record id is reused as the turn id, so a send that actually
+ * left before the reload is rejected as a duplicate instead of delivered
+ * twice.
+ */
+export const buildSendArgsFromRecord = (record: IMessage): SendArgs => ({
+  inputText: record.content,
+  userMessage: {
+    type: "user",
+    response: record.content,
+    date: record.createdAt.toISOString(),
+    message_id: record.id,
+    fileIds: record.fileIds,
+    fileData: record.fileData,
+    selectedTool: record.toolName ?? undefined,
+    toolCategory: record.toolCategory ?? undefined,
+    selectedWorkflow: record.selectedWorkflow ?? undefined,
+    selectedCalendarEvent: record.selectedCalendarEvent ?? undefined,
+    replyToMessage: record.replyToMessageData ?? undefined,
+  },
+  options: {
+    fileData: record.fileData ?? [],
+    selectedTool: record.toolName ?? null,
+    toolCategory: record.toolCategory ?? null,
+    selectedWorkflow: record.selectedWorkflow ?? null,
+    selectedCalendarEvent: record.selectedCalendarEvent ?? null,
+    optimisticUserId: record.id,
+    replyToMessage: record.replyToMessageData ?? null,
+    conversationId: record.conversationId,
+    isOnboardingDemo: false,
+  },
 });
 
 /** Build the persisted record for the turn's user message. */
