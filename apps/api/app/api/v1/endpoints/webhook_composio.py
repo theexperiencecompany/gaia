@@ -36,7 +36,12 @@ async def _process_webhook_event(handler: Any, event_data: ComposioWebhookEvent)
         await asyncio.wait_for(
             handler.process_event(
                 event_type=event_data.type,
-                trigger_id=event_data.trigger_id,
+                # Handlers match against trigger_config.composio_trigger_ids, which
+                # stores the trigger NANO id (ti_...) returned by triggers.create().
+                # Composio's webhook puts that nano id in `trigger_nano_id` and the
+                # trigger's internal UUID in `trigger_id` — matching against the UUID
+                # never hits, so forward the nano id (falling back to the UUID).
+                trigger_id=event_data.trigger_nano_id or event_data.trigger_id,
                 user_id=event_data.user_id,
                 data=event_data.data,
             ),

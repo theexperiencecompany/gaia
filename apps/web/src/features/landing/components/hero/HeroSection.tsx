@@ -138,7 +138,7 @@ export default function HeroSection({
             </div>
           </div>
         </SoftBlurInBlock>
-        <div className="flex gap-4 mt-4">
+        <div className="flex gap-8 mt-4">
           <SoftBlurInBlock immediate delay={0.55}>
             <GetStartedButton
               btnColor={isDark ? "#00bbff" : "#000000"}
