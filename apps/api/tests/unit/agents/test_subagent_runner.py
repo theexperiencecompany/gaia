@@ -10,6 +10,7 @@ from langchain_core.messages import (
 )
 import pytest
 
+from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     build_initial_messages,
@@ -552,7 +553,7 @@ class TestPrepareExecutorExecution:
         with patch(
             "app.agents.core.graph_manager.GraphManager.get_graph",
             new_callable=AsyncMock,
-            return_value=None,
+            side_effect=GraphUnavailableError("executor_agent", "provider failed in test"),
         ):
             ctx, error = await prepare_executor_execution(
                 task="task",

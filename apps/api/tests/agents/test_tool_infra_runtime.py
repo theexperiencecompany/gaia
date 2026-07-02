@@ -61,7 +61,12 @@ class _FakeLLM:
         self.bind_calls.append(names)
         return self
 
-    async def ainvoke(self, _messages: list[Any]) -> AIMessage:
+    def with_retry(self, **_kwargs: Any) -> "_FakeLLM":
+        # ainvoke_llm/invoke_llm wrap the bound model in with_llm_retry before
+        # invoking; the fake retry is a no-op passthrough.
+        return self
+
+    async def ainvoke(self, _messages: list[Any], config: Any = None) -> AIMessage:
         self._invoke_count += 1
         if self._invoke_count == 1:
             return AIMessage(
@@ -76,7 +81,7 @@ class _FakeLLM:
             )
         return AIMessage(content="done", tool_calls=[])
 
-    def invoke(self, _messages: list[Any]) -> AIMessage:
+    def invoke(self, _messages: list[Any], config: Any = None) -> AIMessage:
         self._invoke_count += 1
         if self._invoke_count == 1:
             return AIMessage(

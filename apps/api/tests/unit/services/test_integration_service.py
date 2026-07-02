@@ -387,7 +387,6 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(id="todos", managed_by="internal", available=True),
-            _make_oauth_integration(id="goals", managed_by="internal", available=True),
         ],
     )
     async def test_includes_internal_integrations(
@@ -398,7 +397,6 @@ class TestGetUserAvailableToolNamespaces:
         result = await get_user_available_tool_namespaces.__wrapped__(USER_ID)
 
         assert "todos" in result
-        assert "goals" in result
 
     @patch(
         "app.services.integrations.integration_service.IntegrationResolver.get_server_url",

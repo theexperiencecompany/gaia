@@ -17,7 +17,6 @@ from shared.py.wide_events import log
 async def seed_onboarding_todo(user_id: str) -> None:
     """
     Create a comprehensive onboarding todo that showcases all todo features.
-    This is separate from the goal-linked todo to demonstrate standalone todo functionality.
     """
     log.set(operation="seed_onboarding_todo", user_id=user_id)
     try:
@@ -77,7 +76,6 @@ async def seed_onboarding_todo(user_id: str) -> None:
                 "• Create your own subtasks for breaking down work\n\n"
                 "**Pro tips:**\n"
                 "✨ Use Gaia AI to auto-generate todos from conversations\n"
-                "🔗 Link todos to goals for visual roadmap tracking\n"
                 "🔍 Search and filter todos by label, priority, or date\n\n"
                 "Complete the subtasks to learn by doing, then create your first real todo!"
             ),

@@ -161,7 +161,6 @@ class TestFeatureLimits:
         "webpage_fetch",
         "workflow_operations",
         "trigger_workflow_executions",
-        "goal_tracking",
         "todo_operations",
         "calendar_management",
         "reminder_operations",

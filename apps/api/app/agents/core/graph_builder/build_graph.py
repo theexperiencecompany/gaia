@@ -17,7 +17,6 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.llm.client import init_llm
-from app.agents.llm.retry_policies import COMMS_RETRY_POLICY, EXECUTOR_RETRY_POLICY
 from app.agents.middleware import create_comms_middleware, create_executor_middleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools import memory_tools
@@ -111,7 +110,6 @@ async def build_executor_graph(
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
-        agent_retry_policy=EXECUTOR_RETRY_POLICY,
     )
 
     checkpointer_manager = await get_checkpointer_manager()
@@ -199,7 +197,6 @@ async def build_comms_graph(
             # via add_memory persist — conversational disclosures are lost.
             memory_node,
         ],
-        agent_retry_policy=COMMS_RETRY_POLICY,
     )
 
     checkpointer_manager = await get_checkpointer_manager()

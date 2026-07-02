@@ -77,32 +77,43 @@ class GmailTriggerHandler(TriggerHandler):
                 log.debug(f"{LogTag.TRIGGER} Gmail payload validation failed: {e}")
 
             user_id = data.get("user_id")
-            if not user_id:
-                log.error(f"{LogTag.TRIGGER} No user_id in Gmail webhook data")
+            workflows: list[Workflow] = []
+            queries: list[dict[str, Any]] = []
+
+            # Strategy 1: gmail_new_message workflows are account-level (no trigger
+            # IDs), so they can only be matched by user_id. Poll webhooks may omit
+            # user_id, so only run this strategy when we actually have one.
+            if user_id:
+                queries.append(
+                    {
+                        "user_id": user_id,
+                        "activated": True,
+                        "trigger_config.type": TriggerType.INTEGRATION,
+                        "trigger_config.trigger_name": {"$in": self.SUPPORTED_TRIGGERS},
+                        "trigger_config.enabled": True,
+                    }
+                )
+
+            # Strategy 2: gmail_poll_inbox workflows are matched by their registered
+            # trigger id. The id uniquely identifies the workflow (and its owner), so
+            # we do NOT gate on user_id here — Composio's poll webhooks frequently
+            # arrive with an empty user_id, and gating on it dropped every event.
+            if trigger_id:
+                queries.append(
+                    {
+                        "activated": True,
+                        "trigger_config.type": TriggerType.INTEGRATION,
+                        "trigger_config.trigger_name": "gmail_poll_inbox",
+                        "trigger_config.enabled": True,
+                        "trigger_config.composio_trigger_ids": trigger_id,
+                    }
+                )
+
+            if not queries:
+                log.error(f"{LogTag.TRIGGER} Gmail webhook has neither user_id nor trigger_id")
                 return []
 
-            workflows: list[Workflow] = []
-
-            # Strategy 1: match gmail_new_message workflows by user_id
-            user_query = {
-                "user_id": user_id,
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.trigger_name": {"$in": self.SUPPORTED_TRIGGERS},
-                "trigger_config.enabled": True,
-            }
-
-            # Strategy 2: match gmail_poll_inbox workflows by trigger_id
-            poll_query = {
-                "user_id": user_id,
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.trigger_name": "gmail_poll_inbox",
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-
-            for query in (user_query, poll_query):
+            for query in queries:
                 async for workflow_doc in workflows_collection.find(query):
                     try:
                         workflow_doc["id"] = workflow_doc.get("_id")

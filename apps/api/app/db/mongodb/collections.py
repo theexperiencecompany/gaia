@@ -98,7 +98,6 @@ def get_sync_collection(collection_name: str):
 _COLLECTION_MAPPINGS = {
     "users_collection": "users",
     "conversations_collection": "conversations",
-    "goals_collection": "goals",
     "notes_collection": "notes",
     "calendars_collection": "calendar",
     "feedback_collection": "feedback_form",

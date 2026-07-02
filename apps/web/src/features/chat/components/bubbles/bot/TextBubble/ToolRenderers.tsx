@@ -45,8 +45,6 @@ import EmailComposeSection from "../EmailComposeSection";
 import EmailSentSection from "../EmailSentSection";
 import FileArtifactSection from "../FileArtifactSection";
 import GoogleDocsSection from "../GoogleDocsSection";
-import GoalSection from "../goals/GoalSection";
-import type { GoalAction } from "../goals/types";
 import MemoryCard from "../MemoryCard";
 import NotificationListSection from "../NotificationListSection";
 import PeopleSearchSection from "../PeopleSearchSection";
@@ -259,21 +257,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       message={data.message}
     />
   ),
-  goal_data: (data, index) => {
-    const g = data;
-    return (
-      <GoalSection
-        key={`tool-goal-${index}`}
-        goals={g.goals}
-        stats={g.stats}
-        action={g.action as GoalAction}
-        message={g.message}
-        goal_id={g.goal_id}
-        deleted_goal_id={g.deleted_goal_id}
-        error={g.error}
-      />
-    );
-  },
   notification_data: (data, index) => (
     <NotificationListSection
       key={`tool-notifications-${index}`}

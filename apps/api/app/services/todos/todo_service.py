@@ -39,9 +39,6 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
-from app.services.todos.sync_service import (
-    sync_subtask_to_goal_completion,
-)
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
@@ -603,25 +600,6 @@ class TodoService:
             await update_todo_embedding(todo_id, updated, user_id)
         except Exception as e:
             log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
-
-        # Sync subtask changes back to goals if this is a goal-related todo
-        if "subtasks" in update_dict:
-            try:
-                # Get the original subtasks to compare
-                # Note: We need the old state for comparison, but we optimized away the pre-fetch
-                # For subtask sync, we'll need to check if completion changed
-                for new_subtask_dict in update_dict["subtasks"]:
-                    new_subtask_id = new_subtask_dict.get("id")
-                    new_completed = new_subtask_dict.get("completed", False)
-
-                    if not new_subtask_id:
-                        continue  # Skip subtasks without IDs
-
-                    await sync_subtask_to_goal_completion(
-                        todo_id, new_subtask_id, new_completed, user_id
-                    )
-            except Exception as e:
-                log.warning("todo.subtask_goal_sync_failed", todo_id=todo_id, error=str(e))
 
         # Determine if this update affects list visibility. completing_tracked
         # always does (completion was applied by the tracked-todo service and

@@ -35,7 +35,6 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.services.todo_canvas_storage import read_canvas
-from app.services.todos.sync_service import sync_subtask_to_goal_completion
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
@@ -816,22 +815,13 @@ async def update_subtask(
         if not subtask_found:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
-        # Invalidate cache and handle goal sync if completion changed
+        # Invalidate cache
         await TodoService._invalidate_cache(
             user["user_id"],
             updated_todo.get("project_id"),
             todo_id,
             "update_minor",
         )
-
-        # Sync to goal if completion status changed
-        if updates.completed is not None:
-            try:
-                await sync_subtask_to_goal_completion(
-                    todo_id, subtask_id, updates.completed, user["user_id"]
-                )
-            except Exception as e:
-                log.warning(f"{LogTag.TODO} Failed to sync subtask to goal: {e!s}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:
@@ -901,8 +891,7 @@ async def toggle_subtask_completion(
         todo={"operation": "toggle_subtask", "id": todo_id},
     )
     try:
-        # First, get current completion status to toggle and for goal sync
-
+        # First, get current completion status to toggle
         todo = await todos_collection.find_one(
             {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
             {"subtasks": 1, "project_id": 1},
@@ -942,14 +931,6 @@ async def toggle_subtask_completion(
             todo_id,
             "update_minor",
         )
-
-        # Sync to goal
-        try:
-            await sync_subtask_to_goal_completion(
-                todo_id, subtask_id, new_completed, user["user_id"]
-            )
-        except Exception as e:
-            log.warning(f"{LogTag.TODO} Failed to sync subtask to goal: {e!s}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:

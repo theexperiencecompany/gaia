@@ -1,13 +1,14 @@
-import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
 from app.decorators import tiered_rate_limit
 from app.models.mail_models import (
     ApplyLabelRequest,
+    ComposedEmailOutput,
     DraftRequest,
     EmailActionRequest,
     EmailReadStatusRequest,
@@ -47,7 +48,6 @@ from app.services.mail.mail_service import (
     update_draft,
     update_label,
 )
-from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.embedding_utils import search_notes_by_similarity
 from app.utils.user_preferences_utils import format_writing_style_for_prompt
 from shared.py.wide_events import log
@@ -275,21 +275,8 @@ async def process_email(
             learned_writing_style=learned_style_block,
         )
 
-        result = await do_prompt_no_stream(
-            prompt=prompt,
-        )
-        if isinstance(result, dict) and result.get("response"):
-            try:
-                parsed_result = json.loads(result["response"])
-                subject = parsed_result.get("subject", "")
-                body = parsed_result.get("body", "")
-
-                return {"subject": subject, "body": body}
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to parse response {e}")
-        else:
-            raise HTTPException(status_code=500, detail="Invalid response format")
-
+        composed = await ainvoke_structured(ComposedEmailOutput, prompt, label="mail_compose")
+        return {"subject": composed.subject, "body": composed.body}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

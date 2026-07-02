@@ -311,7 +311,6 @@ _CORE_CATEGORY_NAMES = [
     "notifications",
     "todos",
     "reminders",
-    "goal_tracking",
     "skills",
     "workflows",
     "support",

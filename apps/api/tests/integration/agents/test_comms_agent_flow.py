@@ -20,6 +20,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 import pytest
 
 from app.agents.core.graph_builder.build_graph import build_comms_graph
+from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.constants.memory import ReconcileOutcome
 from app.memory.ingestion import RetainedMemory
 from app.models.memory_models import MemoryEntry
@@ -78,13 +79,9 @@ def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
             return_value=checkpointer_return,
         ),
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
-            return_value=[],
-        ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+            "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
             new_callable=AsyncMock,
-            return_value=AIMessage(content='{"actions": []}'),
+            return_value=FollowUpActions(actions=[]),
         ),
         patch(
             "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
@@ -127,7 +124,6 @@ async def comms_graph():
         patches[4],
         patches[5],
         patches[6],
-        patches[7],
     ):
         async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
             yield graph
@@ -163,7 +159,6 @@ class TestCommsAgentFlow:
             patches[4],
             patches[5],
             patches[6],
-            patches[7],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 # CompiledStateGraph exposes .nodes directly
@@ -208,7 +203,6 @@ class TestCommsAgentFlow:
             patches[4],
             patches[5],
             patches[6],
-            patches[7],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
@@ -245,7 +239,6 @@ class TestCommsAgentFlow:
             patches[4],
             patches[5],
             patches[6],
-            patches[7],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 async for chunk in graph.astream(
@@ -347,7 +340,6 @@ class TestCommsAgentFlow:
             patches[4],
             patches[5],
             patches[6],
-            patches[7],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
@@ -411,7 +403,6 @@ class TestCommsAgentFlow:
             patches[4],
             patches[5],
             patches[6],
-            patches[7],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 # add_memory reads user_id from config["metadata"]["user_id"], NOT
