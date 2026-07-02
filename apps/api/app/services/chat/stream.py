@@ -40,6 +40,7 @@ from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
     save_conversation_async,
+    user_message_content_from,
 )
 from app.services.chat.state import (
     aggregate_usage_metadata,
@@ -304,6 +305,7 @@ async def _publish_init_chunk(
     else:
         init_frame = ConversationInitializedFrame(
             user_message_id=state.user_message_id,
+            user_message_content=user_message_content_from(body),
             bot_message_id=state.bot_message_id,
             stream_id=stream_id,
         )
