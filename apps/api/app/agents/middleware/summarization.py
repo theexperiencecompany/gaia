@@ -78,7 +78,13 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             if isinstance(self.trigger, tuple):
                 trigger_type, trigger_value = self.trigger
                 if trigger_type == "fraction":
-                    max_tokens = getattr(self, "_max_tokens", 128000)
+                    # Resolve the window exactly like the parent trigger
+                    # (SummarizationMiddleware._should_summarize) so the archive
+                    # gate fires in lockstep with summarization. __init__ already
+                    # rejects fraction triggers when the model has no profile.
+                    max_tokens = self._get_profile_limits()
+                    if max_tokens is None:
+                        return False
                     return token_count > max_tokens * trigger_value
                 if trigger_type == "tokens":
                     return token_count > trigger_value

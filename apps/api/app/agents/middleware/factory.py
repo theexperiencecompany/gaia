@@ -17,6 +17,7 @@ from app.agents.middleware.summarization import (
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.settings import settings
+from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
@@ -155,9 +156,13 @@ def create_middleware_stack(
 
     # Compaction middleware (always available, but respects enable flag)
     if enable_compaction:
+        # DEFAULT_MAX_TOKENS is the same window the summarization model's profile
+        # carries (get_default_llm sets profile.max_input_tokens from it), so the
+        # compaction and summarization fractions are denominated in one window.
         compaction = WorkspaceCompactionMiddleware(
             compaction_threshold=compaction_threshold,
             max_output_chars=max_output_chars,
+            context_window=DEFAULT_MAX_TOKENS,
             excluded_tools=compaction_excluded_tools,
         )
         middleware.append(compaction)
