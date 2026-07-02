@@ -4,12 +4,15 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import json
 import re
+from typing import cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
+from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.config.langfuse import build_langfuse_callback
 from app.constants.cache import (
@@ -22,6 +25,7 @@ from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
 )
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import integrations_collection
@@ -521,17 +525,18 @@ async def execute_graph_streaming(
     # when the ToolMessage arrives with the actual result.
     pending_mcp_apps: dict[str, dict] = {}
 
-    async for event in graph.astream(
+    cancelled = False
+    stream = graph.astream(
         initial_state,
         stream_mode=["messages", "custom", "updates"],
         config=config,
         subgraphs=True,
-    ):
+    )
+    async for event in stream:
         # Check for cancellation at each event
         if stream_id and await stream_manager.is_cancelled(stream_id):
-            yield f"nostream: {json.dumps({'complete_message': complete_message, 'cancelled': True})}"
-            yield "data: [DONE]\n\n"
-            return
+            cancelled = True
+            break
 
         # Parse event tuple - handle both 2-tuple and 3-tuple (subgraphs=True)
         if len(event) == 3:
@@ -772,6 +777,20 @@ async def execute_graph_streaming(
                             )
                     except Exception as _e:
                         log.warning(f"Failed to emit mcp_app from subagent: {_e}")
+
+    if cancelled:
+        # Stop the run before touching the checkpoint: aclose() raises
+        # GeneratorExit at the run's yield point so LangGraph cancels in-flight
+        # work and commits nothing further — the state read by
+        # record_interruption is then the run's final state.
+        await stream.aclose()
+        try:
+            await record_interruption(graph, cast(RunnableConfig, config))
+        except Exception as e:  # noqa: BLE001 — the cancel ack must still reach the client
+            log.error(f"{LogTag.AGENT} Failed to record interruption: {e}")
+        yield f"nostream: {json.dumps({'complete_message': complete_message, 'cancelled': True})}"
+        yield "data: [DONE]\n\n"
+        return
 
     # Yield complete message for DB storage
     yield f"nostream: {json.dumps({'complete_message': complete_message})}"

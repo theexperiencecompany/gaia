@@ -343,10 +343,15 @@ async def _consume_agent_stream(
         bot_message_id=state.bot_message_id,
         source=source,
     ):
-        if await stream_manager.is_cancelled(stream_id):
+        # Cancellation is detected and terminated by the inner graph driver
+        # (execute_graph_streaming), which owns the checkpoint write that
+        # records the interruption for the model. Breaking here would abandon
+        # that generator mid-suspend and race the record away — note the flag
+        # for bookkeeping and keep consuming; the driver ends the stream with
+        # a `cancelled` nostream marker within one graph event.
+        if not state.is_cancelled and await stream_manager.is_cancelled(stream_id):
             state.is_cancelled = True
             log.info(f"{LogTag.CHAT} Stream {stream_id} cancelled by user")
-            break
 
         # Skip [DONE] marker — we send it after description generation.
         if chunk == "data: [DONE]\n\n":
@@ -355,7 +360,8 @@ async def _consume_agent_stream(
         description_task = await _publish_description_if_ready(stream_id, description_task)
 
         if chunk.startswith("nostream: "):
-            state.complete_message = _parse_complete_message(chunk)
+            state.complete_message, was_cancelled = _parse_complete_message(chunk)
+            state.is_cancelled = state.is_cancelled or was_cancelled
             continue
 
         if chunk.startswith("data: "):
@@ -376,12 +382,14 @@ async def _consume_agent_stream(
     return description_task
 
 
-def _parse_complete_message(chunk: str) -> str:
-    """Pull the ``complete_message`` field out of a ``nostream: {...}`` marker."""
+def _parse_complete_message(chunk: str) -> tuple[str, bool]:
+    """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker."""
     nostream_json = json.loads(chunk.replace("nostream: ", ""))
-    if isinstance(nostream_json, dict) and "complete_message" in nostream_json:
-        return str(nostream_json["complete_message"])
-    return ""
+    if isinstance(nostream_json, dict):
+        return str(nostream_json.get("complete_message", "")), bool(
+            nostream_json.get("cancelled", False)
+        )
+    return "", False
 
 
 def _log_usage_summary(state: _StreamState) -> None:
