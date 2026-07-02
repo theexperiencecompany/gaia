@@ -7,21 +7,69 @@ This module provides a ToolNode subclass that:
 3. Integrates with LangChain AgentMiddleware wrap_tool_call hooks
 """
 
-from collections.abc import Mapping
+import asyncio
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, cast
 
 from langchain_core.messages import AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
-from langgraph.prebuilt.tool_node import _get_all_injected_args
+from langgraph.prebuilt.tool_node import ToolCallRequest, _get_all_injected_args
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from pydantic import BaseModel
 
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.override.langgraph_bigtool.utils import State
+
+
+def format_tool_error(exc: Exception) -> str:
+    """Uniform error text for a failed tool call, with the exception type.
+
+    Passed to ToolNode as ``handle_tool_errors`` so parent-routed tools
+    (InjectedState / middleware tools) convert failures into error
+    ToolMessages instead of crashing the whole run; also used by the
+    middleware dispatch path so both paths speak the same format. The type
+    name matters: it's how the model distinguishes a transient network error
+    from a permanently invalid request.
+    """
+    return f"Error: {type(exc).__name__}: {exc}"
+
+
+def _timeout_error_text(tool_name: str) -> str:
+    return (
+        f"Error: TimeoutError: tool call timed out after "
+        f"{TOOL_EXECUTION_TIMEOUT_SECONDS}s. The operation may or may not have "
+        "completed on the provider side — verify its effect before retrying."
+    )
+
+
+async def timeout_guarded_tool_call(
+    request: ToolCallRequest,
+    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
+) -> ToolMessage | Command:
+    """Per-call execution wrapper (ToolNode ``awrap_tool_call``): bound hung tools.
+
+    A hung integration call previously hung the entire run forever. Long-running
+    orchestration tools manage their own lifecycles and are exempt.
+    """
+    tool_call = request.tool_call
+    tool_name = tool_call.get("name", "")
+    if tool_name in TOOL_TIMEOUT_EXEMPT_TOOLS:
+        return await execute(request)
+    try:
+        async with asyncio.timeout(TOOL_EXECUTION_TIMEOUT_SECONDS):
+            return await execute(request)
+    except TimeoutError:
+        return ToolMessage(
+            content=_timeout_error_text(tool_name),
+            tool_call_id=tool_call.get("id", ""),
+            name=tool_name,
+            status="error",
+        )
 
 
 class DynamicToolNode(ToolNode):
@@ -232,13 +280,25 @@ class DynamicToolNode(ToolNode):
 
             tool_input = dict(tc)
             tool_input["type"] = "tool_call"
+            tool_name = tc.get("name", "")
             try:
-                result = await resolved_tool.ainvoke(tool_input, config=config)
+                if tool_name in TOOL_TIMEOUT_EXEMPT_TOOLS:
+                    result = await resolved_tool.ainvoke(tool_input, config=config)
+                else:
+                    async with asyncio.timeout(TOOL_EXECUTION_TIMEOUT_SECONDS):
+                        result = await resolved_tool.ainvoke(tool_input, config=config)
+            except TimeoutError:
+                return ToolMessage(
+                    content=_timeout_error_text(tool_name),
+                    tool_call_id=tc.get("id", ""),
+                    name=tool_name,
+                    status="error",
+                )
             except Exception as exc:
                 return ToolMessage(
-                    content=f"Error: {exc}",
+                    content=format_tool_error(exc),
                     tool_call_id=tc.get("id", ""),
-                    name=tc.get("name", ""),
+                    name=tool_name,
                     status="error",
                 )
 

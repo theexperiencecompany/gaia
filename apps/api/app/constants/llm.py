@@ -16,6 +16,22 @@ SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
 
+# Per-tool-call execution timeout. A hung integration call previously hung the
+# entire run forever (no timeout existed at any dispatch layer). Orchestration
+# tools that legitimately run for minutes are exempt — they have their own
+# lifecycle management (recursion caps, busy locks, subagent counters).
+TOOL_EXECUTION_TIMEOUT_SECONDS = 120
+TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
+    {
+        "call_executor",
+        "cancel_executor",
+        "spawn_subagent",
+        "handoff",
+        "wait_for_subagents",
+        "deep_research",
+    }
+)
+
 # Attempts for the model-level transient-error retry before the caller falls back
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
@@ -119,3 +135,17 @@ DEV_MODEL_OPTIONS: dict[str, dict] = {
         "reasoning": False,
     },
 }
+
+# --- Tool-loop guardrails (LoopGuardMiddleware) ---------------------------------
+# Escalating thresholds for a model stuck retrying a failing tool. "Identical"
+# counts failures of the same tool with the same arguments; "same_tool" counts
+# all failures of one tool this run regardless of arguments. At the WARN levels a
+# nudge is appended in-band to the error; at the STOP levels (hard_stop runs only)
+# the tool is no longer executed and a synthetic error is returned instead.
+LOOP_GUARD_WARN_IDENTICAL = 2
+LOOP_GUARD_WARN_SAME_TOOL = 3
+LOOP_GUARD_STOP_IDENTICAL = 5
+LOOP_GUARD_STOP_SAME_TOOL = 8
+# The middleware is a per-process singleton, so failure counters are keyed by the
+# run's thread_id and bounded to the most recent N runs (LRU) to keep memory flat.
+LOOP_GUARD_MAX_TRACKED_RUNS = 512

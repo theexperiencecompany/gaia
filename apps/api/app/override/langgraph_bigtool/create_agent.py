@@ -52,7 +52,11 @@ from app.agents.llm.client import (
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
-from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
+from app.override.langgraph_bigtool.dynamic_tool_node import (
+    DynamicToolNode,
+    format_tool_error,
+    timeout_guarded_tool_call,
+)
 from app.override.langgraph_bigtool.hooks import (
     HookType,
     execute_hooks,
@@ -520,6 +524,13 @@ def create_agent(
         tool_registry,  # type: ignore[arg-type]
         middleware_executor=middleware_executor,
         middleware_tools=middleware_tools,
+        # Parent-routed tools (InjectedState / middleware tools) previously
+        # re-raised non-validation exceptions and crashed the whole run;
+        # convert every failure into an error ToolMessage, matching the
+        # middleware dispatch path. The per-call timeout wrapper bounds hung
+        # tools (orchestration tools exempt).
+        handle_tool_errors=format_tool_error,
+        awrap_tool_call=timeout_guarded_tool_call,
     )
 
     builder.set_entry_point("agent")
