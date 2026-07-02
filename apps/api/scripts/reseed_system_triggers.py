@@ -79,9 +79,9 @@ TOOLKIT_FOR_TRIGGER = {
 }
 
 
-def list_active_trigger_ids(client: Composio) -> set[str]:
-    """All trigger nano-ids currently active on Composio (paginated)."""
-    ids: set[str] = set()
+def list_active_triggers(client: Composio) -> dict[str, dict]:
+    """All triggers active on Composio: nano-id -> {slug, user_id} (paginated)."""
+    triggers: dict[str, dict] = {}
     cursor: str | None = None
     for _ in range(100):
         kwargs: dict = {"limit": 100}
@@ -92,11 +92,14 @@ def list_active_trigger_ids(client: Composio) -> set[str]:
         for t in items:
             tid = getattr(t, "id", None)
             if tid:
-                ids.add(tid)
+                triggers[tid] = {
+                    "slug": getattr(t, "trigger_name", None),
+                    "user_id": getattr(t, "user_id", None),
+                }
         cursor = getattr(res, "next_cursor", None)
         if not items or not cursor:
             break
-    return ids
+    return triggers
 
 
 class ConnectionGuard:
@@ -378,27 +381,75 @@ async def reregister_stale_calendar(
 
 
 async def delete_orphans(client: Composio, apply: bool) -> int:
-    """Delete active Composio triggers referenced by no workflow."""
+    """Delete unreferenced Composio triggers — but ONLY provably per-workflow ones.
+
+    "Unreferenced by composio_trigger_ids" does NOT mean unused:
+    - The account-level GMAIL trigger feeds gmail_new_message workflows, which
+      match by user_id and intentionally store no trigger ids. Deleting it for
+      such a user would silently kill their working workflows.
+    - Account-level auto_activate subscriptions (e.g. calendar EVENT_CREATED)
+      are created on every connect by design; deleting them is churn.
+    So deletion is restricted to: STARTING_SOON triggers (always per-workflow)
+    and GMAIL triggers of users with no activated gmail_new_message workflow.
+    Everything else unreferenced is kept and reported.
+    """
     print("\n== SECTION 3: orphan Composio triggers ==")
-    active = list_active_trigger_ids(client)
+    active = list_active_triggers(client)
     stored: set[str] = set()
     async for wf in workflows_collection.find(
         {"trigger_config.composio_trigger_ids": {"$exists": True, "$ne": None}}
     ):
         stored.update((wf.get("trigger_config") or {}).get("composio_trigger_ids") or [])
-    orphans = sorted(active - stored)
-    print(f"  active={len(active)} referenced={len(active & stored)} orphans={len(orphans)}")
+
+    # Users whose gmail_new_message workflows depend on an (id-less) account-level trigger.
+    gmail_account_level_users: set[str] = {
+        wf["user_id"]
+        async for wf in workflows_collection.find(
+            {
+                "activated": True,
+                "trigger_config.trigger_name": "gmail_new_message",
+                "trigger_config.enabled": True,
+            }
+        )
+    }
+
+    deletable: list[str] = []
+    kept_account_level = kept_gmail_in_use = kept_unknown = 0
+    for tid, meta in active.items():
+        if tid in stored:
+            continue
+        slug = meta.get("slug") or ""
+        if slug == CALENDAR_STARTING_SOON_SLUG:
+            deletable.append(tid)
+        elif slug == GMAIL_SLUG:
+            if meta.get("user_id") in gmail_account_level_users:
+                kept_gmail_in_use += 1
+            else:
+                deletable.append(tid)
+        elif slug.endswith("_EVENT_CREATED_TRIGGER"):
+            kept_account_level += 1
+        else:
+            kept_unknown += 1
+
+    unreferenced = len(active) - len(stored & set(active))
+    print(
+        f"  active={len(active)} referenced={len(stored & set(active))} unreferenced={unreferenced}"
+    )
+    print(
+        f"  deletable={len(deletable)} | kept: gmail-account-level-in-use={kept_gmail_in_use}, "
+        f"auto-activated-account-level={kept_account_level}, unknown-slug={kept_unknown}"
+    )
     if not apply:
-        print(f"  DRY  would delete {len(orphans)} orphan trigger(s)")
-        return len(orphans)
+        print(f"  DRY  would delete {len(deletable)} orphan trigger(s)")
+        return len(deletable)
     deleted = 0
-    for tid in orphans:
+    for tid in deletable:
         try:
             client.triggers.delete(trigger_id=tid)
             deleted += 1
         except Exception as e:
             print(f"    WARN could not delete {tid}: {e}")
-    print(f"  deleted {deleted}/{len(orphans)} orphan trigger(s)")
+    print(f"  deleted {deleted}/{len(deletable)} orphan trigger(s)")
     return deleted
 
 
@@ -429,7 +480,7 @@ async def main() -> None:
     mode = "APPLY" if args.apply else "DRY-RUN (no writes will be performed)"
     print(f"reseed_system_triggers — mode: {mode}, gmail label filter: {args.label!r}")
 
-    active_ids = list_active_trigger_ids(client)
+    active_ids = set(list_active_triggers(client))
     await convert_triage_to_daily(client, guard, args.apply)
     await filter_draft_replies(client, guard, args.label, args.apply)
     await reregister_stale_calendar(client, guard, active_ids, args.apply)
