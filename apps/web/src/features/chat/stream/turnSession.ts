@@ -331,6 +331,7 @@ export class TurnSession {
     conversation_id?: string;
     conversation_description?: string | null;
     user_message_id?: string;
+    user_message_content?: string;
     bot_message_id?: string;
     stream_id?: string;
   }): Promise<void> {
@@ -338,6 +339,15 @@ export class TurnSession {
     // arrive twice (replay + live copy) — bind exactly once.
     if (this.botMessageId) return;
     if (event.stream_id) this.streamId = event.stream_id;
+
+    // A resumed session's local userMessage is an empty stub — adopt the text
+    // from the replayed frame so the record can be rebuilt from the log alone.
+    if (event.user_message_content && !this.args.userMessage.response) {
+      this.args.userMessage = {
+        ...this.args.userMessage,
+        response: event.user_message_content,
+      };
+    }
 
     if (event.conversation_id) {
       await this.bindNewConversation(
@@ -447,13 +457,30 @@ export class TurnSession {
     this.botCreatedAt = new Date(userCreatedAt.getTime() + 1);
 
     // Single identity: the client's send id IS the server's user_message_id,
-    // so the optimistic record already carries the final key — for live sends
-    // and resumed sessions alike. Confirm delivery in place; nothing to swap.
+    // so the optimistic record already carries the final key — confirm it in
+    // place. If no local record exists (a reload beat the fire-and-forget
+    // write), rebuild it from the replayed identity frame: the event log is
+    // the turn's source of truth, not local persistence timing.
     try {
-      await db.updateMessage(userMessageId, {
-        status: "sent",
-        optimistic: false,
-      });
+      const hasLocalRecord = (
+        useChatStore.getState().messagesByConversation[this.conversationId] ??
+        []
+      ).some((message) => message.id === userMessageId);
+      if (hasLocalRecord) {
+        await db.updateMessage(userMessageId, {
+          status: "sent",
+          optimistic: false,
+        });
+      } else {
+        const userRecord = buildUserMessageRecord(
+          userMessageId,
+          this.conversationId,
+          this.args.userMessage,
+          userCreatedAt,
+        );
+        useChatStore.getState().addOrUpdateMessage(userRecord);
+        await db.putMessage(userRecord);
+      }
     } catch (error) {
       console.error("Failed to confirm user message delivery:", error);
     }

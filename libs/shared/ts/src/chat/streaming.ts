@@ -58,6 +58,9 @@ export type ChatStreamEvent =
       /** Equals the client's send id (turn_id) when the client provided one —
        *  the optimistic record already carries the final key. */
       user_message_id?: string;
+      /** The user message text — replay alone can reconstruct the record if
+       *  the client's local write never committed before a reload. */
+      user_message_content?: string;
       bot_message_id?: string;
       stream_id?: string;
     }
@@ -329,6 +332,10 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
       user_message_id:
         typeof payload.user_message_id === "string"
           ? payload.user_message_id
+          : undefined,
+      user_message_content:
+        typeof payload.user_message_content === "string"
+          ? payload.user_message_content
           : undefined,
       bot_message_id:
         typeof payload.bot_message_id === "string"

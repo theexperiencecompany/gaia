@@ -33,6 +33,14 @@ from app.utils.chat_utils import create_conversation
 from shared.py.wide_events import log
 
 
+def user_message_content_from(body: MessageRequestWithHistory) -> str:
+    """The turn's user message text — single derivation for init + persist."""
+    last_content = (
+        body.messages[-1].get("content") if body.messages and len(body.messages) > 0 else None
+    )
+    return last_content or body.message
+
+
 async def initialize_new_conversation(
     body: MessageRequestWithHistory,
     user: dict,
@@ -69,6 +77,7 @@ async def initialize_new_conversation(
         conversation_id=conversation_id,
         conversation_description=conversation.get("description"),
         user_message_id=user_message_id,
+        user_message_content=user_message_content_from(body),
         bot_message_id=bot_message_id,
         stream_id=stream_id,
     )
@@ -132,9 +141,7 @@ async def save_conversation_async(
     bot_timestamp = bot_timestamp or datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
-    user_content = (
-        body.messages[-1].get("content") if body.messages and len(body.messages) > 0 else None
-    ) or body.message
+    user_content = user_message_content_from(body)
 
     user_message = MessageModel(
         type="user",

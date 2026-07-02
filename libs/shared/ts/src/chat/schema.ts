@@ -113,6 +113,7 @@ const ConversationInitializedFrameSchema = z.object({
   conversation_id: z.string().optional(),
   conversation_description: z.string().nullish(),
   user_message_id: z.string(),
+  user_message_content: z.string(),
   bot_message_id: z.string(),
   stream_id: z.string(),
 });
