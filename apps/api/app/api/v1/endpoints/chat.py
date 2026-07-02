@@ -17,6 +17,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone_from_preferences,
 )
+from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
@@ -30,6 +31,7 @@ from shared.py.wide_events import ChatContext, log
 _background_tasks: set[asyncio.Task] = set()
 
 _USER_ID_REQUIRED = "user_id is required"
+_DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _CLIENT_TYPE_HEADER = "X-Client-Type"
 
@@ -121,6 +123,22 @@ async def chat_stream_endpoint(
         user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
         selected_tool=body.selectedTool,
     )
+
+    # Idempotency: the client stamps each SEND with a turn_id that survives its
+    # retries. First claim wins atomically; a duplicate POST gets a 409 instead
+    # of persisting the same user+bot message pair twice.
+    if body.turn_id and redis_cache.redis:
+        claimed = await redis_cache.redis.set(
+            f"{STREAM_TURN_DEDUP_PREFIX}{user_id}:{body.turn_id}",
+            stream_id,
+            nx=True,
+            ex=STREAM_TURN_DEDUP_TTL,
+        )
+        if not claimed:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=_DUPLICATE_TURN,
+            )
 
     await stream_manager.start_stream(
         stream_id=stream_id,

@@ -87,6 +87,10 @@ INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
 STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
+# Turn-send dedup: {user_id}:{turn_id} -> stream_id, claimed atomically (SETNX)
+# so a retried POST can't persist the same turn twice.
+STREAM_TURN_DEDUP_PREFIX = "stream:turn:"
+STREAM_TURN_DEDUP_TTL = TEN_MINUTES_TTL
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"

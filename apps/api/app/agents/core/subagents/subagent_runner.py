@@ -23,6 +23,7 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import build_agent_config
@@ -379,6 +380,7 @@ async def prepare_executor_execution(
         agent_name="executor_agent",
         subagent_id="executor_agent",  # Use agent_name as the memory namespace id
         vfs_session_id=vfs_session_id,
+        recursion_limit=EXECUTOR_RECURSION_LIMIT,
     )
     new_configurable = config.get("configurable", {})
 

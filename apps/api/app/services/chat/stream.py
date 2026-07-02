@@ -314,6 +314,11 @@ async def _publish_init_chunk(
         }
         init_data = f"data: {json.dumps(init_payload)}\n\n"
 
+    # Record the identity frame for late-subscriber replay BEFORE publishing:
+    # pub/sub has no history, and if the wait below times out under event-loop
+    # load, the published frame would otherwise be lost — leaving the client
+    # streaming a turn it can never bind ("ghost turn").
+    await stream_manager.record_init_chunk(stream_id, init_data)
     await _wait_for_http_subscriber(start_event, stream_id)
     await stream_manager.publish_chunk(stream_id, init_data)
 

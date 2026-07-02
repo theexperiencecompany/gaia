@@ -70,6 +70,10 @@ class MessageRequestWithHistory(BaseModel):
     selectedWorkflow: SelectedWorkflowData | None = None
     selectedCalendarEvent: SelectedCalendarEventData | None = None
     replyToMessage: ReplyToMessageData | None = None
+    # Client-generated id for this SEND, stable across retries of the same
+    # send. Lets the backend reject a duplicate POST (409) instead of
+    # persisting the user+bot message pair twice.
+    turn_id: str | None = None
     is_onboarding_demo: bool = False
     # Voice sessions set this so the stream holds open until a delegated
     # executor delivers its narrated answer (pushed as a `voice_tts` SSE frame

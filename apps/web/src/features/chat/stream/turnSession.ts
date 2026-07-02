@@ -7,7 +7,7 @@ import {
   TOOL_CALLS_DATA_TOOL_NAME,
   type TurnAccumulator,
 } from "@shared/chat";
-import { chatApi } from "@/features/chat/api/chatApi";
+import { chatApi, DuplicateTurnError } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -101,6 +101,10 @@ export class TurnSession {
         inputText: this.inputText,
         history: this.buildHistory(),
         conversationId: this.conversationId,
+        // The optimistic id doubles as the idempotency key: it's minted once
+        // per SEND and survives queueing/dispatch, so a retried POST of the
+        // same send is rejected server-side instead of duplicating the turn.
+        turnId: this.args.options.optimisticUserId,
         onMessage: (event) => this.handleSSEMessage(event),
         onClose: () => void this.close(),
         onError: (err) => this.fail(err),
@@ -302,6 +306,9 @@ export class TurnSession {
     bot_message_id?: string;
     stream_id?: string;
   }): Promise<void> {
+    // The backend replays the identity frame for late subscribers, so it can
+    // arrive twice (replay + live copy) — bind exactly once.
+    if (this.botMessageId) return;
     if (event.stream_id) this.streamId = event.stream_id;
 
     if (event.conversation_id) {
@@ -612,6 +619,17 @@ export class TurnSession {
       conversationId: this.conversationId,
       detail: { name: error.name, message: error.message },
     });
+
+    // A duplicate-turn rejection means the ORIGINAL send is being processed —
+    // this attempt must vanish quietly and the conversation reconcile from the
+    // server, not surface as a failure.
+    if (error instanceof DuplicateTurnError) {
+      const conversationId = this.conversationId;
+      useChatStore.getState().clearOptimisticMessage();
+      this.end();
+      if (conversationId) void syncSingleConversation(conversationId);
+      return;
+    }
 
     if (error.name !== "AbortError") {
       toast.error(

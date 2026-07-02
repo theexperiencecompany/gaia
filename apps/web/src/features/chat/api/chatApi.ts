@@ -14,12 +14,25 @@ import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
+/** Thrown when the backend rejects a send whose turn_id was already claimed —
+ *  the original request is (or was) processing; the retry must not re-run. */
+export class DuplicateTurnError extends Error {
+  constructor() {
+    super("This send was already accepted by the server");
+    this.name = "DuplicateTurnError";
+  }
+}
+
+const HTTP_CONFLICT = 409;
+
 export interface ChatStreamRequest {
   inputText: string;
   /** Prior turns as role/content pairs — the caller owns history assembly. */
   history: { role: "user" | "assistant"; content: string }[];
   /** Target conversation; null asks the backend to create one. */
   conversationId: string | null;
+  /** Client id for this SEND, stable across retries — backend dedup key. */
+  turnId: string | null;
   onMessage: (
     event: EventSourceMessage,
   ) => undefined | string | Promise<undefined | string>;
@@ -277,6 +290,7 @@ export const chatApi = {
       inputText,
       history,
       conversationId,
+      turnId,
       onMessage,
       onClose,
       onError,
@@ -314,8 +328,25 @@ export const chatApi = {
         },
         credentials: "include",
         signal: controller.signal,
+        // Default onopen only validates content-type; a 409 (duplicate turn_id
+        // claim) must surface as a typed error so the session can reconcile
+        // instead of showing a failure for a send that IS being processed.
+        async onopen(response) {
+          if (response.status === HTTP_CONFLICT) {
+            throw new DuplicateTurnError();
+          }
+          if (
+            !response.ok ||
+            !response.headers.get("content-type")?.includes("text/event-stream")
+          ) {
+            throw new Error(
+              `Unexpected chat-stream response (${response.status})`,
+            );
+          }
+        },
         body: JSON.stringify({
           conversation_id: conversationId,
+          turn_id: turnId,
           message: inputText,
           fileIds: fileData.map((file) => file.fileId),
           fileData,
