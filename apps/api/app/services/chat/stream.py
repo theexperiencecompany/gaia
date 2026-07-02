@@ -18,6 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langgraph.errors import GraphRecursionError
 
 from app.agents.core.agent import call_agent
 from app.agents.core.background.executor_capture import (
@@ -92,6 +93,7 @@ class _StreamState:
     __slots__ = (
         "bot_message_id",
         "complete_message",
+        "error",
         "follow_up_actions",
         "is_cancelled",
         "saved",
@@ -111,6 +113,9 @@ class _StreamState:
         self.follow_up_actions: list[str] = []
         self.usage_metadata: dict[str, Any] = {}
         self.is_cancelled: bool = False
+        # Terminal error for this turn, persisted onto the bot message so a
+        # reload shows what happened instead of an empty bubble.
+        self.error: str = ""
         # Whether the turn was persisted in the try block (early save). When
         # False, the finally block does a fallback save.
         self.saved: bool = False
@@ -201,6 +206,7 @@ async def _run_chat_stream(
         await stream_manager.complete_stream(stream_id)
 
     except Exception as e:  # noqa: BLE001 — surface to client + flag the stream
+        state.error = str(e)
         await _handle_stream_error(stream_id, e, start_event)
     finally:
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
@@ -364,6 +370,16 @@ async def _consume_agent_stream(
             state.is_cancelled = state.is_cancelled or was_cancelled
             continue
 
+        if chunk.startswith("data: ") and '"error"' in chunk:
+            # Errors reach this loop two ways: raised exceptions (caught by the
+            # orchestrator, which sets state.error) and error frames YIELDED by
+            # call_agent's setup guard. Record the latter so the persisted bot
+            # message carries the failure instead of an empty bubble.
+            with contextlib.suppress(json.JSONDecodeError):
+                payload = json.loads(chunk[len("data: ") :])
+                if isinstance(payload, dict) and payload.get("error"):
+                    state.error = str(payload["error"])
+
         if chunk.startswith("data: "):
             try:
                 state.follow_up_actions, _ = await process_data_chunk(
@@ -451,9 +467,18 @@ async def _handle_stream_error(
     breaks the subscriber loop, so the error chunk must go on the wire first.
     """
     log.error(f"{LogTag.CHAT} Background stream error for {stream_id}: {error}")
+    # A recursion-limit stop is an expected degradation, not an infrastructure
+    # failure - never show the raw "Recursion limit of N reached..." internals.
+    if isinstance(error, GraphRecursionError):
+        user_error = (
+            "I hit my step limit on this one before finishing. "
+            "Ask me to continue and I'll pick up where I left off."
+        )
+    else:
+        user_error = str(error)
     await _wait_for_http_subscriber(start_event, stream_id)
-    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'error': str(error)})}\n\n")
-    await stream_manager.set_error(stream_id, str(error))
+    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'error': user_error})}\n\n")
+    await stream_manager.set_error(stream_id, user_error)
 
 
 async def _persist_turn(
@@ -485,6 +510,7 @@ async def _persist_turn(
         user_message_id=state.user_message_id,
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
+        error=state.error or None,
     )
     state.saved = True
 

@@ -518,6 +518,8 @@ async def execute_graph_streaming(
     stream_id = config.get("configurable", {}).get("stream_id")
     user_id = config.get("configurable", {}).get("user_id")
 
+    # Emit the model-fallback notice at most once per stream
+    fallback_emitted = False
     # Track tool calls to avoid duplicate emissions
     emitted_tool_calls: set[str] = set()
     # Buffer MCP App UI metadata by tool_call_id for deferred emission
@@ -559,6 +561,21 @@ async def execute_graph_streaming(
                 # Process tool entries with metadata lookup
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
+                        # Surface a model downgrade (retry-then-fallback in
+                        # ainvoke_llm) to the client, once per stream.
+                        if not fallback_emitted and isinstance(
+                            getattr(msg, "response_metadata", None), dict
+                        ):
+                            metadata_rm = msg.response_metadata
+                            if metadata_rm.get("gaia_fell_back"):
+                                fallback_emitted = True
+                                yield format_sse_data(
+                                    {
+                                        "model_fallback": {
+                                            "model": metadata_rm.get("gaia_fallback_model", "")
+                                        }
+                                    }
+                                )
                         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
                             continue
                         for tc in msg.tool_calls:
