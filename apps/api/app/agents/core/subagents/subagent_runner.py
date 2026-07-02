@@ -255,6 +255,15 @@ async def execute_subagent_stream(
         ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
         config=run_config,
+        # Persist checkpoints only when this executor/subagent run exits, not
+        # after every step (langgraph's default durability="async"). The
+        # executor/subagent path is a single logical unit of work whose
+        # intermediate steps never need to survive a mid-run crash — only the
+        # final state must be durable so the next turn on the same thread
+        # resumes with full context. This collapses O(steps) checkpoint writes
+        # per run to one, cutting Postgres checkpoint churn. The comms graph
+        # driver keeps "async" (its mid-run checkpoints are needed).
+        durability="exit",
     ):
         # Check for cancellation
         if ctx.stream_id and await stream_manager.is_cancelled(ctx.stream_id):
