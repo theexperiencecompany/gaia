@@ -16,7 +16,6 @@ import type {
   EmailFetchData,
   EmailSentData,
   EmailThreadData,
-  GoalDataMessageType,
   GoogleDocsData,
   MCPAppData,
   PeopleSearchData,
@@ -478,7 +477,7 @@ const calendarListFixture: CalendarListFetchData[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Todos & Goals
+// Todos
 // ---------------------------------------------------------------------------
 
 const todoFixture: TodoToolData = {
@@ -573,39 +572,6 @@ const todoProgressFixture: TodoProgressData = {
       { id: "4", content: "Screenshot diff pass", status: "pending" },
     ],
   },
-};
-
-const goalFixture: GoalDataMessageType = {
-  action: "list",
-  message: "You have 2 active goals",
-  stats: {
-    total_goals: 2,
-    goals_with_roadmaps: 2,
-    total_tasks: 18,
-    completed_tasks: 7,
-    overall_completion_rate: 38.8,
-    active_goals: [
-      { id: "goal-1", title: "Ship mobile parity", progress: 62 },
-      { id: "goal-2", title: "Run a sub-2hr half-marathon", progress: 28 },
-    ],
-    active_goals_count: 2,
-  },
-  goals: [
-    {
-      id: "goal-1",
-      title: "Ship mobile parity",
-      description: "Close the visual gap between web and mobile chat.",
-      progress: 62,
-      created_at: "2026-03-01T00:00:00Z",
-    },
-    {
-      id: "goal-2",
-      title: "Run a sub-2hr half-marathon",
-      description: "Train progressively to hit the target pace.",
-      progress: 28,
-      created_at: "2026-02-10T00:00:00Z",
-    },
-  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -1078,12 +1044,6 @@ export const TOOL_FIXTURES: readonly ToolFixture[] = [
     label: "Todo progress (agent plan)",
     description: "Live agent task plan with pending / in-progress / complete.",
     data: todoProgressFixture,
-  },
-  {
-    toolName: "goal_data",
-    label: "Goals",
-    description: "Long-running goals with progress and stats.",
-    data: goalFixture,
   },
   {
     toolName: "google_docs_data",

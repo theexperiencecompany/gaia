@@ -28,20 +28,28 @@ NOTE: Type/linting errors in this file are expected since it's copied from exter
 """
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+import functools
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, ToolCall, ToolMessage
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
-from langgraph.types import RetryPolicy, Send
+from langgraph.types import Send
 from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
+from app.agents.llm.client import (
+    ainvoke_llm,
+    get_default_llm,
+    invoke_llm,
+    is_default_model_config,
+)
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
@@ -63,6 +71,21 @@ from shared.py.wide_events import log
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
+def _prepare_fallback(
+    fallback_llm: Runnable | None,
+    tools_to_bind: list[BaseTool],
+    model_configurations: Mapping[str, Any],
+) -> Callable[[], Runnable] | None:
+    """Factory that binds the default fallback model with the same tools as the
+    primary. Returned as a zero-arg callable so the (per-turn, tool-list-sized)
+    binding only happens if the primary actually fails. None when no fallback is
+    configured or the selected model already is the default model (no point
+    falling back to itself)."""
+    if fallback_llm is None or is_default_model_config(model_configurations):
+        return None
+    return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+
+
 def create_agent(
     llm: LanguageModelLike,
     tool_registry: Mapping[str, BaseTool],
@@ -79,7 +102,6 @@ def create_agent(
     middleware: Sequence["AgentMiddleware"] | None = None,
     pre_model_hooks: list[HookType] | None = None,
     end_graph_hooks: list[HookType] | None = None,
-    agent_retry_policy: RetryPolicy | None = None,
 ) -> StateGraph:
     """Create an agent with a registry of tools.
 
@@ -168,6 +190,13 @@ def create_agent(
         tools_to_bind.extend(selected_tools)
         return dedupe_tool_bindings(tools_to_bind)
 
+    # Default model used as the last-resort fallback when the selected model
+    # keeps failing; None when Google isn't configured (fallback then skipped).
+    try:
+        fallback_llm: Runnable | None = get_default_llm()
+    except LLMNotConfiguredError:
+        fallback_llm = None
+
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         state = sync_execute_hooks(pre_model_hooks, state, config, store)
 
@@ -179,8 +208,12 @@ def create_agent(
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
-        llm_with_tools = _llm.bind_tools(build_tools_to_bind(state))  # type: ignore[attr-defined]
-        response = llm_with_tools.invoke(state["messages"])
+        tools_to_bind = build_tools_to_bind(state)
+        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+        fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
+        response = invoke_llm(
+            llm_with_tools, state["messages"], fallback=fallback, label=agent_name
+        )
 
         if not response.tool_calls and not response.content:
             response.content = "Empty response from model."
@@ -202,6 +235,10 @@ def create_agent(
 
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+        fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
+        invoke_fn = functools.partial(
+            ainvoke_llm, llm_with_tools, fallback=fallback, label=agent_name
+        )
 
         try:
             recent_messages = state.get("messages", [])[-6:]
@@ -226,10 +263,10 @@ def create_agent(
                 config=config,
                 store=store,
                 tools=middleware_tools_for_request,
-                invoke_fn=llm_with_tools.ainvoke,
+                invoke_fn=invoke_fn,
             )
         else:
-            response = await llm_with_tools.ainvoke(state["messages"])
+            response = await invoke_fn(state["messages"])
 
         if not response.tool_calls and not response.content:
             response.content = "Empty response from model."
@@ -489,7 +526,6 @@ def create_agent(
     builder.add_node(
         "agent",
         RunnableCallable(call_model, acall_model),
-        retry_policy=agent_retry_policy,
     )
     if not disable_retrieve_tools:
         builder.add_node("select_tools", select_tools_node)  # type: ignore[possibly-undefined]

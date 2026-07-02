@@ -24,8 +24,9 @@ import re
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from shared.py.wide_events import log
 
 # Publish is user-initiated; cap the LLM call so a degraded provider can't
@@ -56,12 +57,10 @@ class _ModerationResult(BaseModel):
     )
 
 
-# ---------------------------------------------------------------------------
 # Offline wordlist fallback. Used only when the LLM is unavailable or errors.
 # Kept intentionally small — it does not need to be a content-moderation
 # pipeline, just a safety net so publish doesn't open up to obvious slurs when
 # the moderator LLM is degraded.
-# ---------------------------------------------------------------------------
 _PROFANITY: frozenset[str] = frozenset(
     {
         "fuck",
@@ -133,7 +132,7 @@ async def contains_profanity(**fields: str | None) -> bool:
     ``description=...``). All fields are sent in a single LLM call returning
     one boolean — one request covers any number of fields.
 
-    Primary path: LLM moderation via the free Gemini provider with structured
+    Primary path: LLM moderation via the default model with structured
     output. Falls back to the offline wordlist if the LLM provider is missing,
     the call errors, or it exceeds ``_MODERATION_TIMEOUT_SECONDS``.
     """
@@ -142,8 +141,9 @@ async def contains_profanity(**fields: str | None) -> bool:
         return False
 
     try:
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
+        try:
+            llm = get_default_llm()
+        except LLMNotConfiguredError:
             return _wordlist_any(non_empty.values())
 
         structured_llm = llm.with_structured_output(_ModerationResult)
@@ -151,8 +151,15 @@ async def contains_profanity(**fields: str | None) -> bool:
         # not as raw text that could be confused with prompt instructions.
         payload = json.dumps(non_empty, ensure_ascii=False)
         prompt = _MODERATION_PROMPT.format(fields=f"```json\n{payload}\n```")
+        # max_attempts=1: retry backoff would just eat the hard wait_for budget
+        # and get cancelled mid-sleep — on any failure the wordlist answers.
         result: _ModerationResult = await asyncio.wait_for(
-            structured_llm.ainvoke([HumanMessage(content=prompt)]),
+            ainvoke_llm(
+                structured_llm,
+                [HumanMessage(content=prompt)],
+                label="profanity",
+                max_attempts=1,
+            ),
             timeout=_MODERATION_TIMEOUT_SECONDS,
         )
         return bool(result.is_offensive)

@@ -5,9 +5,8 @@ import random
 from typing import Any
 
 from bson import ObjectId
-from langchain_core.messages import HumanMessage
 
-from app.agents.llm.client import init_llm
+from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
 from app.constants.log_tags import LogTag
 from app.constants.profession_bios import get_random_bio_for_profession
@@ -184,9 +183,9 @@ async def generate_holo_card_content(
             profession=profession or "",
             context_summary=context_summary[:10000],
         )
-        llm = init_llm(preferred_provider="gemini").bind(temperature=1.0)
-        structured_llm = llm.with_structured_output(HoloCardLLMOutput)
-        result: HoloCardLLMOutput = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        result: HoloCardLLMOutput = await ainvoke_structured(
+            HoloCardLLMOutput, prompt, label="holo_card", temperature=1.0
+        )
         phrase = result.personality_phrase.strip().strip('"').strip("'")
         bio = result.user_bio.strip()
         log.info(f"{LogTag.API} Generated holo card content for user {user_id}: phrase='{phrase}'")

@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.exceptions import OutputParserException
 import pytest
 
 from app.models.workflow_models import (
@@ -34,7 +35,6 @@ from app.services.workflow.execution_service import (
 )
 from app.services.workflow.generation_service import (
     WorkflowGenerationService,
-    _parse_workflow_response,
     enrich_steps,
 )
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -934,46 +934,26 @@ class TestQueueService:
 
 
 # ---------------------------------------------------------------------------
-# TEST 9: Generation Service (parse and enrich)
+# TEST 9: Generation Service (retries)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.integration
-class TestGenerationServiceParsing:
-    """Test the generation service parsing and enrichment logic."""
-
-    def test_parse_workflow_response_strips_markdown_fences(self):
-        """_parse_workflow_response handles ```json ... ``` wrapping."""
-        raw = '```json\n{"steps": [{"title": "Step 1", "category": "gaia", "description": "Do thing"}]}\n```'
-        result = _parse_workflow_response(raw)
-        assert len(result.steps) == 1
-        assert result.steps[0].title == "Step 1"
-
-    def test_parse_workflow_response_handles_plain_json(self):
-        """_parse_workflow_response handles plain JSON without fences."""
-        raw = '{"steps": [{"title": "A", "category": "b", "description": "c"}]}'
-        result = _parse_workflow_response(raw)
-        assert len(result.steps) == 1
-
-    def test_parse_workflow_response_raises_on_invalid_json(self):
-        """_parse_workflow_response raises on malformed JSON."""
-        with pytest.raises(Exception):
-            _parse_workflow_response("not json at all")
+class TestGenerationServiceRetries:
+    """Test the generation service regeneration logic."""
 
     async def test_generate_steps_raises_after_retries(self):
         """generate_steps_with_llm raises RuntimeError after max retries."""
-        mock_llm = MagicMock()
-        mock_llm.with_structured_output = MagicMock(side_effect=NotImplementedError)
-        mock_llm.ainvoke = AsyncMock(return_value=MagicMock(content="bad json"))
-
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
         mock_registry.get_core_tools = MagicMock(return_value=[])
 
         with (
+            # Schema-invalid output on every attempt exhausts the regeneration loop.
             patch(
-                "app.services.workflow.generation_service.init_llm",
-                return_value=mock_llm,
+                "app.services.workflow.generation_service.ainvoke_structured",
+                new_callable=AsyncMock,
+                side_effect=OutputParserException("bad json"),
             ),
             # Patch the local binding in generation_service (where it is imported),
             # not the source registry module. The `from ... import get_tool_registry`

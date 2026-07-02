@@ -12,7 +12,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from app.agents.core.graph_manager import GraphManager
+from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
@@ -352,9 +352,15 @@ async def prepare_executor_execution(
     # one executor call are visible to the next.
     vfs_session_id = configurable.get("vfs_session_id") or thread_id
 
-    # Load executor graph
-    executor_graph = await GraphManager.get_graph("executor_agent")
-    if not executor_graph:
+    # Load executor graph. Degrade contract: comms must still receive a
+    # tool-result string, so log the real cause loudly and return the error.
+    try:
+        executor_graph = await GraphManager.get_graph("executor_agent")
+    except GraphUnavailableError as e:
+        log.error(
+            f"{LogTag.AGENT} prepare_executor_execution: executor_agent graph unavailable",
+            error=str(e),
+        )
         return None, "Executor agent not available"
 
     # Build user dict for config

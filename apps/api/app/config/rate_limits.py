@@ -164,11 +164,6 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         ),
     ),
     # PRODUCTIVITY TOOLS (Generous - Core Value)
-    "goal_tracking": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),  # Keep restrictive for trial
-        pro=RateLimitConfig(day=75, month=2250),  # +50% (50→75, 1500→2250)
-        info=FeatureInfo(title="Goal Tracking", description="Create and track personal goals"),
-    ),
     "todo_operations": TieredRateLimits(
         free=RateLimitConfig(day=50, month=1000),  # Good trial experience
         pro=RateLimitConfig(day=1500, month=22500),  # +50% (1000→1500, 15000→22500)

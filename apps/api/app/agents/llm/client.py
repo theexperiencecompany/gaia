@@ -1,27 +1,32 @@
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Callable, Mapping
+from functools import cache
+from typing import Any, TypeVar
 
-from google.api_core.exceptions import (
-    DeadlineExceeded,
-    InternalServerError,
-    ResourceExhausted,
-    ServiceUnavailable,
-)
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
-from langchain_core.messages import BaseMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
+from pydantic import BaseModel
 from typing_extensions import TypedDict
 
+from app.agents.llm.exceptions import (
+    LLM_FALLBACK_EXCEPTIONS,
+    LLM_RETRYABLE_EXCEPTIONS,
+    LLMNotConfiguredError,
+)
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
+    DEFAULT_LLM_PROVIDER,
+    DEFAULT_LLM_TEMPERATURE,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_MODEL_NAME,
+    LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
@@ -31,68 +36,49 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
-# Exception types we retry at the LLM layer. All of these are transient /
-# infrastructure errors that are safe to retry and tend to succeed on a
-# second attempt. ``ResourceExhausted`` covers 429 from the provider's own
-# quota (distinct from the application-level rate limiter which raises
-# ``LangChainRateLimitException`` and must NOT be retried).
-_LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    ResourceExhausted,
-    ServiceUnavailable,
-    DeadlineExceeded,
-    InternalServerError,
-    ConnectionError,
-    TimeoutError,
-)
+_StructuredT = TypeVar("_StructuredT", bound=BaseModel)
+
+# A fallback may be passed as a ready runnable or as a zero-arg factory, so
+# expensive preparation (e.g. re-binding the full tool list) only happens in
+# the rare case the primary actually fails.
+LLMFallback = Runnable | Callable[[], Runnable | None] | None
 
 
-def _wrap_with_retry(llm: Runnable, *, attempts: int = 3) -> Runnable:
-    """Return ``llm`` unchanged.
+def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS) -> Runnable:
+    """The single, canonical LLM retry. Wraps a (tool-bound) model runnable so
+    transient provider/infra errors are retried with exponential backoff before
+    the caller falls back to the default model. Applied AFTER ``bind_tools`` so
+    the ``RunnableRetry`` wrapper never has to expose ``bind_tools``.
+    ``max_attempts=1`` disables retry for callers on a hard latency budget."""
+    return runnable.with_retry(
+        retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS,
+        stop_after_attempt=max_attempts,
+        wait_exponential_jitter=True,
+    )
 
-    We deliberately do NOT call ``llm.with_retry(...)`` here. It returns a
-    ``RunnableRetry`` wrapper that does not expose ``bind_tools``, which
-    breaks LangGraph's bigtool agent builder. Retry semantics for transient
-    provider errors belong on the agent NODE via ``RetryPolicy`` — see the
-    ``retry_policy`` wiring in the graph builder. The exception tuple above
-    stays here so the node-level policy can import it.
-    """
-    del attempts  # retained for signature compat
-    return llm
+
+def is_default_model_config(configurable: Mapping[str, Any]) -> bool:
+    """True when the run config already selects the default model — callers use
+    this to skip preparing a fallback to the very same model."""
+    return (
+        configurable.get("provider") == DEFAULT_LLM_PROVIDER
+        and configurable.get("model_name") == DEFAULT_MODEL_NAME
+    )
 
 
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
-    "openai": "gpt-4o-mini",
     "openrouter": DEFAULT_GROK_MODEL_NAME,
 }
 PROVIDER_PRIORITY = {
     1: "gemini",
-    2: "openai",
-    3: "openrouter",
+    2: "openrouter",
 }
 
 
 class LLMProvider(TypedDict):
     name: str
     instance: BaseChatModel
-
-
-@lazy_provider(
-    name="openai_llm",
-    required_keys=[settings.OPENAI_API_KEY],
-    strategy=MissingKeyStrategy.WARN,
-    warning_message="OpenAI API key not configured. Models provided by openai will not work.",
-)
-def init_openai_llm():
-    """Initialize OpenAI LLM with default model."""
-    return ChatOpenAI(
-        model=PROVIDER_MODELS["openai"],
-        temperature=0.1,
-        streaming=True,
-        stream_usage=True,
-    ).configurable_fields(
-        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
-    )
 
 
 @lazy_provider(
@@ -105,12 +91,12 @@ def init_gemini_llm():
     """Initialize Gemini LLM with default model."""
     llm = ChatGoogleGenerativeAI(
         model=PROVIDER_MODELS["gemini"],
-        temperature=0.1,
+        temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
     ).configurable_fields(
         model=ConfigurableField(id="model_name", name="Model", description="Which model to use"),
     )
-    return _wrap_with_retry(llm)
+    return llm
 
 
 @lazy_provider(
@@ -131,7 +117,7 @@ def init_openrouter_llm():
     """
     return ChatOpenRouter(
         model=PROVIDER_MODELS["openrouter"],
-        temperature=0.1,
+        temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
         stream_usage=True,
         # Output cap; must stay well under the model's shared input+output context
@@ -213,7 +199,6 @@ def _get_available_providers() -> dict[str, Any]:
     mapped by provider name."""
     # Mapping of provider names to their instance keys in the providers registry
     provider_instance_mapping = {
-        "openai": "openai_llm",
         "gemini": "gemini_llm",
         "openrouter": "openrouter_llm",
     }
@@ -281,48 +266,103 @@ def _create_configurable_llm(primary: LLMProvider, alternatives: list[LLMProvide
 
 def register_llm_providers():
     """Register LLM providers in the lazy loader."""
-    init_openai_llm()
     init_gemini_llm()
     init_openrouter_llm()
 
 
-def get_free_llm_chain() -> list[BaseChatModel]:
-    """Get a chain of low-cost LLMs for auxiliary tasks (suggestions, follow-ups,
-    research helpers), tried in order. Uses the direct Gemini API."""
+def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
+    """The single factory for the default model (direct Gemini, ``gemini-3.1-flash-lite``)
+    used by EVERY auxiliary LLM task — follow-ups, research, memory extraction,
+    integration inference, profile/holo cards, vision helpers, workflow generation,
+    context summarization, onboarding, one-shot helpers. The pro model is reserved
+    for the main chat agent (see ``plan_model``); auxiliary tasks never use it.
+    ``temperature`` lets creative tasks opt into more variation. Instances are
+    cached per temperature so hot paths reuse one HTTP client instead of
+    rebuilding it per call. Raises ``LLMNotConfiguredError`` if Google is not
+    configured."""
     if not settings.GOOGLE_API_KEY:
-        raise RuntimeError("No LLM provider configured for auxiliary tasks. Set GOOGLE_API_KEY.")
-
-    return [
-        ChatGoogleGenerativeAI(
-            model=DEFAULT_GEMINI_MODEL_NAME,
-            temperature=0.1,
-        )
-    ]
+        raise LLMNotConfiguredError("Default LLM not configured. Set GOOGLE_API_KEY.")
+    return _build_default_llm(temperature)
 
 
-async def invoke_with_fallback(
-    llm_chain: list[BaseChatModel],
-    messages: Sequence[BaseMessage],
+@cache
+def _build_default_llm(temperature: float) -> BaseChatModel:
+    llm = ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=temperature)
+    # LangChain resolves a model's context window from its curated profile registry,
+    # which lags new model releases (it has no profile for the current default model).
+    # Consumers that express limits as a FRACTION of the window — the summarization
+    # and compaction middleware — raise at construction without it, which fails the
+    # whole agent graph build. Supply the window here so the default model always
+    # carries it; harmless metadata for every other caller.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
+
+
+def _resolve_fallback(fallback: LLMFallback, label: str, primary_error: BaseException) -> Runnable:
+    """Materialize the fallback (calling a factory if one was passed), log the
+    downgrade, and return the retry-wrapped runnable. Re-raises ``primary_error``
+    when no fallback is available."""
+    resolved = fallback() if callable(fallback) and not isinstance(fallback, Runnable) else fallback
+    if resolved is None:
+        raise primary_error
+    log.warning(
+        f"{LogTag.AGENT} llm '{label}' failed; falling back to the default model",
+        llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
+        error=str(primary_error),
+    )
+    return with_llm_retry(resolved)
+
+
+async def ainvoke_llm(
+    primary: Runnable,
+    messages: LanguageModelInput,
+    *,
+    fallback: LLMFallback = None,
     config: RunnableConfig | None = None,
-) -> BaseMessage:
-    """Invoke LLMs in sequence until one succeeds, returning its response.
+    label: str = "model",
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+) -> Any:
+    """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
+    given) on a provider failure. Bugs and CancelledError propagate."""
+    try:
+        return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
+            messages, config=config
+        )
+    except LLM_FALLBACK_EXCEPTIONS as primary_error:
+        return await _resolve_fallback(fallback, label, primary_error).ainvoke(
+            messages, config=config
+        )
 
-    Tries each LLM in the chain, falling back to the next on failure. Raises
-    RuntimeError if all fail.
-    """
-    last_error: Exception | None = None
 
-    for i, llm in enumerate(llm_chain):
-        try:
-            return await llm.ainvoke(messages, config=config)
-        except Exception as e:
-            provider_name = type(llm).__name__
-            last_error = e
-            if i < len(llm_chain) - 1:
-                log.warning(
-                    f"{LogTag.AGENT} LLM {provider_name} failed, falling back to next provider: {e}"
-                )
-            else:
-                log.error(f"{LogTag.AGENT} All LLM providers failed. Last error: {e}")
+def invoke_llm(
+    primary: Runnable,
+    messages: LanguageModelInput,
+    *,
+    fallback: LLMFallback = None,
+    config: RunnableConfig | None = None,
+    label: str = "model",
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+) -> Any:
+    """Sync counterpart of :func:`ainvoke_llm`."""
+    try:
+        return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
+    except LLM_FALLBACK_EXCEPTIONS as primary_error:
+        return _resolve_fallback(fallback, label, primary_error).invoke(messages, config=config)
 
-    raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
+
+async def ainvoke_structured(
+    schema: type[_StructuredT],
+    prompt: LanguageModelInput,
+    *,
+    label: str,
+    temperature: float = DEFAULT_LLM_TEMPERATURE,
+    config: RunnableConfig | None = None,
+) -> _StructuredT:
+    """The single canonical one-shot structured call on the default model. ``prompt``
+    is any LangChain input — a plain string (sent as one human message) or a full
+    message list — and ``config`` carries optional run config (e.g. silent tags that
+    keep internal tokens out of the chat stream). Adds the transient-retry + fallback
+    of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
+    is not configured (see ``get_default_llm``)."""
+    structured = get_default_llm(temperature=temperature).with_structured_output(schema)
+    return await ainvoke_llm(structured, prompt, config=config, label=label)

@@ -15,7 +15,29 @@ SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
+
+# Attempts for the model-level transient-error retry before the caller falls back
+# to the default model (see with_llm_retry in app/agents/llm/client.py).
+LLM_RETRY_MAX_ATTEMPTS = 3
+
+# Near-deterministic default for every LLM call; creative tasks opt into more
+# variation via get_default_llm(temperature=...).
+DEFAULT_LLM_TEMPERATURE = 0.1
+
+# Context window of the default model below, in input tokens. The summarization /
+# compaction middleware trigger on a fraction of this, and get_default_llm() feeds
+# it to the model's profile (LangChain has no profile for newer models). Update it
+# whenever DEFAULT_GEMINI_MODEL_NAME changes.
+# Known limitation: middleware is constructed at graph-build time, so the fractional
+# triggers are denominated in THIS window even when a different chat model serves the
+# request (e.g. the paid OpenRouter model or a dev-menu override).
 DEFAULT_MAX_TOKENS = 1_000_000
+# Changing the default model is high blast radius — it is NOT just a string. Before
+# you do, confirm for the new model:
+#   - context window  -> update DEFAULT_MAX_TOKENS above (else fractional-token
+#     middleware fails to build and the whole agent graph dies; see get_default_llm)
+#   - pricing entry    -> app/config/model_pricing.py
+#   - it's multimodal if vision/file tools rely on it
 # Direct Gemini API model name.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 # Default model for free / unspecified configs — always the Gemini model above.

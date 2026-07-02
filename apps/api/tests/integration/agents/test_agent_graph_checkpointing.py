@@ -35,6 +35,7 @@ import pytest
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
@@ -76,15 +77,9 @@ def _follow_up_io_patches() -> list:
     """Return patches for follow_up_actions_node I/O boundaries."""
     return [
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+            "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
             new_callable=AsyncMock,
-            return_value=AIMessage(
-                content='{"actions": ["Action 1", "Action 2", "Action 3", "Action 4"]}'
-            ),
+            return_value=FollowUpActions(actions=["Action 1", "Action 2", "Action 3", "Action 4"]),
         ),
         patch(
             "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",

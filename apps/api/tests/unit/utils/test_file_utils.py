@@ -4,6 +4,7 @@ import base64
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessage
 import pytest
 
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
@@ -15,10 +16,21 @@ from app.utils.file_utils import DocumentProcessor, generate_file_summary
 
 
 def _mock_llm(invoke_return: Any = "Mock summary", batch_return: Any = None) -> AsyncMock:
-    """Return an AsyncMock LLM with configurable ainvoke/abatch responses."""
+    """Return an AsyncMock LLM with configurable ainvoke/abatch responses.
+
+    ``ainvoke_llm`` returns the model's ``AIMessage`` and callers read ``.text``,
+    so a plain-string ``invoke_return`` is wrapped in an ``AIMessage`` to match
+    that contract.
+    """
     llm = AsyncMock()
-    llm.ainvoke = AsyncMock(return_value=invoke_return)
+    ainvoke_return = (
+        AIMessage(content=invoke_return) if isinstance(invoke_return, str) else invoke_return
+    )
+    llm.ainvoke = AsyncMock(return_value=ainvoke_return)
     llm.abatch = AsyncMock(return_value=batch_return or [])
+    # ainvoke_llm wraps the model in with_llm_retry(model) -> model.with_retry(...);
+    # pass through so the configured ainvoke/abatch responses are used.
+    llm.with_retry = MagicMock(return_value=llm)
     return llm
 
 
@@ -39,7 +51,7 @@ def processor() -> DocumentProcessor:
     """Return a DocumentProcessor with mocked parser and llm."""
     with (
         patch("app.utils.file_utils.LlamaParse"),
-        patch("app.utils.file_utils.init_llm", return_value=_mock_llm()),
+        patch("app.utils.file_utils.get_default_llm", return_value=_mock_llm()),
     ):
         proc = DocumentProcessor()
     return proc
@@ -130,10 +142,15 @@ class TestProcessImage:
         result = await processor.process_image(b"\x89PNG\r\n")
         assert result == "A scenic mountain view"
 
-    async def test_non_string_response_converted(self, processor: DocumentProcessor) -> None:
-        processor.llm = _mock_llm(invoke_return=12345)
+    async def test_list_content_blocks_flattened(self, processor: DocumentProcessor) -> None:
+        """Gemini returns content as a list of blocks; ``.text`` flattens it to a string."""
+        processor.llm = _mock_llm(
+            invoke_return=AIMessage(
+                content=[{"type": "text", "text": "A scenic "}, {"type": "text", "text": "view"}]
+            )
+        )
         result = await processor.process_image(b"img")
-        assert result == "12345"
+        assert result == "A scenic view"
 
     async def test_base64_encoding_in_prompt(self, processor: DocumentProcessor) -> None:
         """Verify the image is base64-encoded in the LLM prompt."""
@@ -144,7 +161,7 @@ class TestProcessImage:
         await processor.process_image(raw)
 
         call_args = processor.llm.ainvoke.call_args
-        content_blocks = call_args[1]["input"][0]["content"]
+        content_blocks = call_args[0][0][0]["content"]
         image_block = [b for b in content_blocks if b["type"] == "image_url"][0]
         assert expected_b64 in image_block["image_url"]["url"]
 
@@ -170,7 +187,9 @@ class TestProcessDoc:
         mock_parse_result.aget_markdown_documents = AsyncMock(return_value=[md_doc_1, md_doc_2])
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(return_value=mock_parse_result)
-        processor.llm = _mock_llm(batch_return=["Summary 1", "Summary 2"])
+        processor.llm = _mock_llm(
+            batch_return=[AIMessage(content="Summary 1"), AIMessage(content="Summary 2")]
+        )
 
         result = await processor.process_doc(b"pdf-bytes")
 
@@ -189,7 +208,7 @@ class TestProcessDoc:
 
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(return_value=[inner_result])
-        processor.llm = _mock_llm(batch_return=["Sum"])
+        processor.llm = _mock_llm(batch_return=[AIMessage(content="Sum")])
 
         result = await processor.process_doc(b"data")
 
@@ -203,7 +222,7 @@ class TestProcessDoc:
         mock_result.aget_markdown_documents = AsyncMock(return_value=[md_doc])
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(return_value=mock_result)
-        processor.llm = _mock_llm(batch_return=["Sum"])
+        processor.llm = _mock_llm(batch_return=[AIMessage(content="Sum")])
 
         with patch("app.utils.file_utils.tempfile.NamedTemporaryFile") as mock_tmp:
             mock_file = MagicMock()
@@ -232,7 +251,7 @@ class TestProcessDoc:
         mock_result.aget_markdown_documents = AsyncMock(return_value=[md_doc])
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(return_value=mock_result)
-        processor.llm = _mock_llm(batch_return=["Sum"])
+        processor.llm = _mock_llm(batch_return=[AIMessage(content="Sum")])
 
         with patch("app.utils.file_utils.os.remove") as mock_remove:
             await processor.process_doc(b"data")
@@ -299,7 +318,7 @@ class TestProcessText:
 
         # Verify _generate_text_summary was called with truncated text
         call_args = processor.llm.ainvoke.call_args
-        user_content = call_args[1]["input"][1]["content"]
+        user_content = call_args[0][0][1]["content"]
         # The text in the prompt should be <= 4000 chars from the source
         # (the prompt wrapping adds more, but the source slice is 4000)
         assert "x" * 4000 in user_content
@@ -318,10 +337,18 @@ class TestGenerateTextSummary:
         result = await processor._generate_text_summary("Some text to summarize")
         assert result == "A concise summary"
 
-    async def test_non_string_response_converted(self, processor: DocumentProcessor) -> None:
-        processor.llm = _mock_llm(invoke_return=42)
+    async def test_list_content_blocks_flattened(self, processor: DocumentProcessor) -> None:
+        """Gemini returns content as a list of blocks; ``.text`` flattens it to a string."""
+        processor.llm = _mock_llm(
+            invoke_return=AIMessage(
+                content=[
+                    {"type": "text", "text": "A concise "},
+                    {"type": "text", "text": "summary"},
+                ]
+            )
+        )
         result = await processor._generate_text_summary("text")
-        assert result == "42"
+        assert result == "A concise summary"
 
     async def test_exception_returns_fallback(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm()

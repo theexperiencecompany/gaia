@@ -5,30 +5,32 @@ Covers:
 - _get_available_providers: registry lookups
 - _get_ordered_providers: priority ordering with/without preferred provider
 - _create_configurable_llm: primary-only vs. primary+alternatives
-- get_free_llm_chain: OpenRouter / Gemini fallback chain
-- invoke_with_fallback: success, partial failure with fallback, total failure
-- chatbot: free-llm path, paid-llm path, error handling
+- get_default_llm: the default model for auxiliary tasks
+- ainvoke_llm: the single invoke primitive — retry, fallback to default, fail-loud
+- chatbot: default-model one-shot path, error handling
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
-    _LLM_RETRYABLE_EXCEPTIONS,
+    LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
+    _build_default_llm,
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
-    get_free_llm_chain,
+    ainvoke_llm,
+    get_default_llm,
     init_llm,
-    invoke_with_fallback,
     register_llm_providers,
 )
+from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,13 +58,11 @@ def _make_llm_provider(name: str) -> dict[str, Any]:
 class TestGetAvailableProviders:
     @patch("app.agents.llm.client.providers")
     def test_all_providers_available(self, mock_providers: MagicMock) -> None:
-        openai_inst = _make_fake_provider("openai")
         gemini_inst = _make_fake_provider("gemini")
         openrouter_inst = _make_fake_provider("openrouter")
 
         def _get(key: str) -> MagicMock | None:
             return {
-                "openai_llm": openai_inst,
                 "gemini_llm": gemini_inst,
                 "openrouter_llm": openrouter_inst,
             }.get(key)
@@ -71,10 +71,9 @@ class TestGetAvailableProviders:
 
         result = _get_available_providers()
 
-        assert "openai" in result
         assert "gemini" in result
         assert "openrouter" in result
-        assert result["openai"] is openai_inst
+        assert result["gemini"] is gemini_inst
 
     @patch("app.agents.llm.client.providers")
     def test_no_providers_available(self, mock_providers: MagicMock) -> None:
@@ -109,15 +108,14 @@ class TestGetAvailableProviders:
 class TestGetOrderedProviders:
     def test_default_priority_order(self) -> None:
         available: dict[str, Any] = {
-            "openai": _make_fake_provider("openai"),
             "gemini": _make_fake_provider("gemini"),
             "openrouter": _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
-        # Should follow PROVIDER_PRIORITY: 1=gemini, 2=openai, 3=openrouter
+        # Should follow PROVIDER_PRIORITY: 1=gemini, 2=openrouter
         names = [p["name"] for p in ordered]
-        assert names == ["gemini", "openai", "openrouter"]
+        assert names == ["gemini", "openrouter"]
 
     def test_preferred_provider_is_first(self) -> None:
         available: dict[str, Any] = {
@@ -175,14 +173,14 @@ class TestGetOrderedProviders:
 
     def test_no_preferred_no_fallback(self) -> None:
         available: dict[str, Any] = {
-            "openai": _make_fake_provider("openai"),
             "gemini": _make_fake_provider("gemini"),
+            "openrouter": _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
 
         # No preferred, ordered is empty, so all providers by priority added
         names = [p["name"] for p in ordered]
-        assert names == ["gemini", "openai"]
+        assert names == ["gemini", "openrouter"]
 
     def test_empty_available(self) -> None:
         ordered = _get_ordered_providers({}, preferred_provider=None, fallback_enabled=True)
@@ -192,15 +190,15 @@ class TestGetOrderedProviders:
     def test_no_duplicate_when_preferred_is_also_in_priority(self) -> None:
         available: dict[str, Any] = {
             "gemini": _make_fake_provider("gemini"),
-            "openai": _make_fake_provider("openai"),
+            "openrouter": _make_fake_provider("openrouter"),
         }
         ordered = _get_ordered_providers(
             available, preferred_provider="gemini", fallback_enabled=True
         )
 
         names = [p["name"] for p in ordered]
-        # gemini first (preferred), openai from priority; gemini not duplicated
-        assert names == ["gemini", "openai"]
+        # gemini first (preferred), openrouter from priority; gemini not duplicated
+        assert names == ["gemini", "openrouter"]
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +290,7 @@ class TestInitLlm:
         mock_ordered.return_value = []
 
         with pytest.raises(RuntimeError, match="Preferred provider"):
-            init_llm(preferred_provider="openai", fallback_enabled=False)
+            init_llm(preferred_provider="openrouter", fallback_enabled=False)
 
     @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
@@ -305,35 +303,15 @@ class TestInitLlm:
         mock_create: MagicMock,
         mock_log: MagicMock,
     ) -> None:
-        primary = _make_llm_provider("openai")
-        mock_available.return_value = {"openai": primary["instance"]}
+        primary = _make_llm_provider("openrouter")
+        mock_available.return_value = {"openrouter": primary["instance"]}
         mock_ordered.return_value = [primary]
         mock_create.return_value = MagicMock()
 
-        init_llm(preferred_provider="openai", fallback_enabled=False)
+        init_llm(preferred_provider="openrouter", fallback_enabled=False)
 
         # With fallback disabled, alternatives list should be empty
         mock_create.assert_called_once_with(primary, [])
-
-    @patch("app.agents.llm.client.log")
-    @patch("app.agents.llm.client._create_configurable_llm")
-    @patch("app.agents.llm.client._get_ordered_providers")
-    @patch("app.agents.llm.client._get_available_providers")
-    def test_preferred_provider_openai(
-        self,
-        mock_available: MagicMock,
-        mock_ordered: MagicMock,
-        mock_create: MagicMock,
-        mock_log: MagicMock,
-    ) -> None:
-        primary = _make_llm_provider("openai")
-        mock_available.return_value = {"openai": primary["instance"]}
-        mock_ordered.return_value = [primary]
-        mock_create.return_value = MagicMock()
-
-        init_llm(preferred_provider="openai")
-
-        mock_ordered.assert_called_once_with(mock_available.return_value, "openai", True)
 
     @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
@@ -377,116 +355,115 @@ class TestInitLlm:
 
 
 # ---------------------------------------------------------------------------
-# get_free_llm_chain
+# get_default_llm
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestGetFreeLlmChain:
+class TestGetDefaultLlm:
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self):
+        # get_default_llm caches instances per temperature; isolate each test.
+        _build_default_llm.cache_clear()
+        yield
+        _build_default_llm.cache_clear()
+
     @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
-    @patch("app.agents.llm.client.ChatOpenAI")
     @patch("app.agents.llm.client.settings")
-    def test_returns_gemini_only(
-        self,
-        mock_settings: MagicMock,
-        mock_chat_openai: MagicMock,
-        mock_chat_google: MagicMock,
-    ) -> None:
+    def test_returns_gemini(self, mock_settings: MagicMock, mock_chat_google: MagicMock) -> None:
         mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
         mock_chat_google.return_value = MagicMock()
 
-        chain = get_free_llm_chain()
-
-        assert len(chain) == 1
+        assert get_default_llm() is mock_chat_google.return_value
         mock_chat_google.assert_called_once()
-        mock_chat_openai.assert_not_called()
+
+    @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
+    @patch("app.agents.llm.client.settings")
+    def test_caches_per_temperature(
+        self, mock_settings: MagicMock, mock_chat_google: MagicMock
+    ) -> None:
+        mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
+        mock_chat_google.side_effect = lambda **_: MagicMock()
+
+        assert get_default_llm() is get_default_llm()
+        assert get_default_llm() is not get_default_llm(temperature=0.7)
+        assert mock_chat_google.call_count == 2
 
     @patch("app.agents.llm.client.settings")
     def test_no_google_key_raises(self, mock_settings: MagicMock) -> None:
         mock_settings.GOOGLE_API_KEY = None
 
-        with pytest.raises(RuntimeError, match="No LLM provider configured for auxiliary tasks"):
-            get_free_llm_chain()
+        with pytest.raises(LLMNotConfiguredError, match="Default LLM not configured"):
+            get_default_llm()
 
 
 # ---------------------------------------------------------------------------
-# invoke_with_fallback
+# ainvoke_llm — the single LLM invocation primitive (retry + fallback)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestInvokeWithFallback:
-    async def test_first_llm_succeeds(self) -> None:
-        llm1 = MagicMock()
-        llm1.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
-        llm2 = MagicMock()
-        llm2.ainvoke = AsyncMock(return_value=AIMessage(content="fallback"))
+class TestAinvokeLlm:
+    @staticmethod
+    def _runnable(side_effect: Any = None, result: Any = None) -> NonCallableMagicMock:
+        # with_llm_retry calls runnable.with_retry(...) -> return self so the mock
+        # .ainvoke is what actually runs (the real retry is LangChain's concern).
+        # NonCallable because real Runnables aren't callable — ainvoke_llm treats
+        # a callable fallback as a lazy factory.
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(side_effect=side_effect, return_value=result)
+        return runnable
 
-        result = await invoke_with_fallback([llm1, llm2], [HumanMessage(content="hi")])
-
+    async def test_primary_success(self) -> None:
+        primary = self._runnable(result=AIMessage(content="ok"))
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")])
         assert result.content == "ok"
-        llm2.ainvoke.assert_not_called()
 
     @patch("app.agents.llm.client.log")
-    async def test_first_fails_second_succeeds(self, mock_log: MagicMock) -> None:
-        llm1 = MagicMock()
-        llm1.ainvoke = AsyncMock(side_effect=Exception("rate limit"))
-        llm2 = MagicMock()
-        llm2.ainvoke = AsyncMock(return_value=AIMessage(content="fallback-ok"))
+    async def test_falls_back_to_default_on_provider_error(self, mock_log: MagicMock) -> None:
+        primary = self._runnable(side_effect=ConnectionError("provider down"))
+        fallback = self._runnable(result=AIMessage(content="fallback-ok"))
 
-        result = await invoke_with_fallback([llm1, llm2], [HumanMessage(content="hi")])
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
 
         assert result.content == "fallback-ok"
+        # The fallback path is retry-wrapped too.
+        fallback.with_retry.assert_called_once()
 
     @patch("app.agents.llm.client.log")
-    async def test_all_fail_raises_runtime_error(self, mock_log: MagicMock) -> None:
-        llm1 = MagicMock()
-        llm1.ainvoke = AsyncMock(side_effect=Exception("error1"))
-        llm2 = MagicMock()
-        llm2.ainvoke = AsyncMock(side_effect=Exception("error2"))
+    async def test_fallback_factory_called_lazily(self, mock_log: MagicMock) -> None:
+        fallback = self._runnable(result=AIMessage(content="fallback-ok"))
+        factory = MagicMock(return_value=fallback)
 
-        with pytest.raises(RuntimeError, match="All LLM providers failed"):
-            await invoke_with_fallback([llm1, llm2], [HumanMessage(content="hi")])
+        ok_primary = self._runnable(result=AIMessage(content="ok"))
+        assert (
+            await ainvoke_llm(ok_primary, [HumanMessage(content="hi")], fallback=factory)
+        ).content == "ok"
+        factory.assert_not_called()
 
-    async def test_single_llm_success(self) -> None:
-        llm = MagicMock()
-        llm.ainvoke = AsyncMock(return_value=AIMessage(content="single"))
+        failing_primary = self._runnable(side_effect=ConnectionError("provider down"))
+        result = await ainvoke_llm(failing_primary, [HumanMessage(content="hi")], fallback=factory)
+        assert result.content == "fallback-ok"
+        factory.assert_called_once()
 
-        result = await invoke_with_fallback([llm], [HumanMessage(content="hi")])
+    async def test_fallback_factory_returning_none_reraises(self) -> None:
+        primary = self._runnable(side_effect=ConnectionError("provider down"))
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=lambda: None)
 
-        assert result.content == "single"
+    async def test_reraises_provider_error_when_no_fallback(self) -> None:
+        primary = self._runnable(side_effect=ConnectionError("provider down"))
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")])
 
-    @patch("app.agents.llm.client.log")
-    async def test_single_llm_failure(self, mock_log: MagicMock) -> None:
-        llm = MagicMock()
-        llm.ainvoke = AsyncMock(side_effect=ValueError("bad"))
+    async def test_programming_error_propagates_not_downgraded(self) -> None:
+        primary = self._runnable(side_effect=ValueError("a real bug"))
+        fallback = self._runnable(result=AIMessage(content="must-not-be-used"))
 
-        with pytest.raises(RuntimeError, match="All LLM providers failed"):
-            await invoke_with_fallback([llm], [HumanMessage(content="hi")])
-
-    async def test_passes_config_through(self) -> None:
-        llm = MagicMock()
-        llm.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
-        config = {"configurable": {"thread_id": "t1"}}
-
-        await invoke_with_fallback([llm], [HumanMessage(content="hi")], config=config)  # type: ignore[arg-type]
-
-        llm.ainvoke.assert_called_once()
-        _, kwargs = llm.ainvoke.call_args
-        assert kwargs["config"] == config
-
-    @patch("app.agents.llm.client.log")
-    async def test_three_llms_first_two_fail(self, mock_log: MagicMock) -> None:
-        llm1 = MagicMock()
-        llm1.ainvoke = AsyncMock(side_effect=Exception("fail1"))
-        llm2 = MagicMock()
-        llm2.ainvoke = AsyncMock(side_effect=Exception("fail2"))
-        llm3 = MagicMock()
-        llm3.ainvoke = AsyncMock(return_value=AIMessage(content="third-ok"))
-
-        result = await invoke_with_fallback([llm1, llm2, llm3], [HumanMessage(content="hi")])
-
-        assert result.content == "third-ok"
+        with pytest.raises(ValueError):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+        fallback.ainvoke.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -498,16 +475,13 @@ class TestInvokeWithFallback:
 class TestRegisterLlmProviders:
     @patch("app.agents.llm.client.init_openrouter_llm")
     @patch("app.agents.llm.client.init_gemini_llm")
-    @patch("app.agents.llm.client.init_openai_llm")
     def test_calls_all_init_functions(
         self,
-        mock_openai: MagicMock,
         mock_gemini: MagicMock,
         mock_openrouter: MagicMock,
     ) -> None:
         register_llm_providers()
 
-        mock_openai.assert_called_once()
         mock_gemini.assert_called_once()
         mock_openrouter.assert_called_once()
 
@@ -520,44 +494,45 @@ class TestRegisterLlmProviders:
 @pytest.mark.unit
 class TestConstants:
     def test_provider_models_keys(self) -> None:
-        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openai", "openrouter"}
+        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter"}
 
     def test_provider_priority_values(self) -> None:
-        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openai", "openrouter"}
+        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter"}
 
     def test_provider_priority_is_ordered(self) -> None:
         sorted_keys = sorted(PROVIDER_PRIORITY.keys())
         providers_in_order = [PROVIDER_PRIORITY[k] for k in sorted_keys]
-        assert providers_in_order == ["gemini", "openai", "openrouter"]
+        assert providers_in_order == ["gemini", "openrouter"]
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
-        from google.api_core.exceptions import (
-            DeadlineExceeded,
-            InternalServerError,
-            ResourceExhausted,
-            ServiceUnavailable,
-        )
+        from google.genai.errors import ServerError
 
-        expected = {
-            ResourceExhausted,
-            ServiceUnavailable,
-            DeadlineExceeded,
-            InternalServerError,
-            ConnectionError,
-            TimeoutError,
-        }
-        actual = set(_LLM_RETRYABLE_EXCEPTIONS)
-        assert actual == expected
+        # Gemini 5xx (google-genai SDK) + stdlib transient types must all be
+        # retryable. The tuple is provider-agnostic, so it is a superset (also
+        # covers the OpenRouter SDK transient errors) — assert containment.
+        expected = {ServerError, ConnectionError, TimeoutError}
+        assert expected.issubset(set(LLM_RETRYABLE_EXCEPTIONS))
 
     def test_retryable_exceptions_isinstance_check(self) -> None:
-        from google.api_core.exceptions import ResourceExhausted
+        from google.genai.errors import ServerError
 
-        exc = ResourceExhausted("rate limited")
-        assert isinstance(exc, _LLM_RETRYABLE_EXCEPTIONS)
+        exc = ServerError(503, {"error": {"message": "overloaded", "status": "UNAVAILABLE"}})
+        assert isinstance(exc, LLM_RETRYABLE_EXCEPTIONS)
+
+    def test_gemini_runtime_errors_covered_by_fallback_set(self) -> None:
+        # Regression guard: langchain-google-genai wraps 4xx into
+        # ChatGoogleGenerativeAIError and lets google-genai ServerError (5xx)
+        # propagate raw — the sets must be built from THOSE classes, not the
+        # legacy google-api-core hierarchy the SDK no longer raises.
+        from google.genai.errors import APIError, ClientError, ServerError
+        from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
+
+        for cls in (ChatGoogleGenerativeAIError, ServerError, ClientError, APIError):
+            assert issubclass(cls, LLM_FALLBACK_EXCEPTIONS), cls.__name__
 
     def test_non_retryable_exception_not_in_tuple(self) -> None:
-        assert not isinstance(ValueError("bad"), _LLM_RETRYABLE_EXCEPTIONS)
-        assert not isinstance(KeyError("missing"), _LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(KeyError("missing"), LLM_RETRYABLE_EXCEPTIONS)
 
 
 # ---------------------------------------------------------------------------
@@ -567,86 +542,56 @@ class TestConstants:
 
 @pytest.mark.unit
 class TestChatbot:
-    @patch("app.agents.llm.chatbot.invoke_with_fallback")
-    @patch("app.agents.llm.chatbot.get_free_llm_chain")
-    async def test_chatbot_free_llm_path(
-        self,
-        mock_get_chain: MagicMock,
-        mock_invoke: AsyncMock,
+    @patch("app.agents.llm.chatbot.ainvoke_llm")
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_default_path(
+        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
     ) -> None:
-        mock_chain = [MagicMock()]
-        mock_get_chain.return_value = mock_chain
-        mock_invoke.return_value = AIMessage(content="free response")
+        mock_model = MagicMock()
+        mock_get_default.return_value = mock_model
+        mock_ainvoke.return_value = AIMessage(content="default response")
 
         messages = [HumanMessage(content="hello")]
+        result = await chatbot(messages)
 
-        result = await chatbot(messages, use_free_llm=True)
-
-        mock_get_chain.assert_called_once()
-        mock_invoke.assert_called_once_with(mock_chain, messages)
-        assert len(result["messages"]) == 1
-        assert result["messages"][0].content == "free response"
-
-    @patch("app.agents.llm.chatbot.init_llm")
-    async def test_chatbot_paid_llm_path(self, mock_init_llm: MagicMock) -> None:
-        mock_llm = MagicMock()
-        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="paid response"))
-        mock_init_llm.return_value = mock_llm
-
-        messages = [HumanMessage(content="hello")]
-
-        result = await chatbot(messages, use_free_llm=False)
-
-        mock_init_llm.assert_called_once_with()
-        mock_llm.ainvoke.assert_called_once_with(messages)
-        assert result["messages"][0].content == "paid response"
+        mock_get_default.assert_called_once()
+        mock_ainvoke.assert_called_once_with(mock_model, messages, label="chatbot")
+        assert result["messages"][0].content == "default response"
 
     @patch("app.agents.llm.chatbot.log")
-    @patch("app.agents.llm.chatbot.get_free_llm_chain")
-    async def test_chatbot_error_returns_fallback_message(
-        self,
-        mock_get_chain: MagicMock,
-        mock_log: MagicMock,
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_no_provider_returns_fallback_message(
+        self, mock_get_default: MagicMock, mock_log: MagicMock
     ) -> None:
-        mock_get_chain.side_effect = RuntimeError("no providers")
+        mock_get_default.side_effect = LLMNotConfiguredError("no providers")
 
-        messages = [HumanMessage(content="hello")]
+        result = await chatbot([HumanMessage(content="hello")])
 
-        result = await chatbot(messages, use_free_llm=True)
-
-        assert len(result["messages"]) == 1
-        assert "trouble processing" in result["messages"][0].content
         assert isinstance(result["messages"][0], AIMessage)
-
-    @patch("app.agents.llm.chatbot.log")
-    @patch("app.agents.llm.chatbot.init_llm")
-    async def test_chatbot_paid_llm_error_returns_fallback(
-        self,
-        mock_init_llm: MagicMock,
-        mock_log: MagicMock,
-    ) -> None:
-        mock_init_llm.side_effect = RuntimeError("no providers")
-
-        messages = [HumanMessage(content="hello")]
-
-        result = await chatbot(messages, use_free_llm=False)
-
         assert "trouble processing" in result["messages"][0].content
 
     @patch("app.agents.llm.chatbot.log")
-    @patch("app.agents.llm.chatbot.invoke_with_fallback")
-    @patch("app.agents.llm.chatbot.get_free_llm_chain")
-    async def test_chatbot_invoke_fallback_error(
-        self,
-        mock_get_chain: MagicMock,
-        mock_invoke: AsyncMock,
-        mock_log: MagicMock,
+    @patch("app.agents.llm.chatbot.ainvoke_llm")
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_provider_error_returns_fallback_message(
+        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock, mock_log: MagicMock
     ) -> None:
-        mock_get_chain.return_value = [MagicMock()]
-        mock_invoke.side_effect = RuntimeError("all failed")
+        mock_get_default.return_value = MagicMock()
+        mock_ainvoke.side_effect = ConnectionError("provider down")
 
-        messages = [HumanMessage(content="hello")]
-
-        result = await chatbot(messages, use_free_llm=True)
+        result = await chatbot([HumanMessage(content="hello")])
 
         assert "trouble processing" in result["messages"][0].content
+
+    @patch("app.agents.llm.chatbot.ainvoke_llm")
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_programming_bug_propagates(
+        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
+    ) -> None:
+        # Bare RuntimeError is a programming bug, not an operational failure —
+        # it must fail loud instead of degrading to the friendly message.
+        mock_get_default.return_value = MagicMock()
+        mock_ainvoke.side_effect = RuntimeError("event loop is closed")
+
+        with pytest.raises(RuntimeError, match="event loop is closed"):
+            await chatbot([HumanMessage(content="hello")])
