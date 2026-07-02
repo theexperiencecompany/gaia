@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
-import { useShallow } from "zustand/react/shallow";
 
 import { useChatStore } from "@/stores/chatStore";
 import {
@@ -298,7 +297,7 @@ export const PENDING_KEY_PREFIX = "pending:";
 // ── Selectors ────────────────────────────────────────────────────────────────
 
 /** Key of the turn relevant to the currently-viewed conversation. */
-export const useActiveTurnKey = (): string | null => {
+const useActiveTurnKey = (): string | null => {
   const activeConversationId = useChatStore(
     (state) => state.activeConversationId,
   );
@@ -306,7 +305,7 @@ export const useActiveTurnKey = (): string | null => {
   return activeConversationId ?? pendingKey;
 };
 
-export const useActiveTurn = (): TurnUiState | null => {
+const useActiveTurn = (): TurnUiState | null => {
   const key = useActiveTurnKey();
   return useStreamStore((state) =>
     key ? (state.sessions[key] ?? null) : null,
@@ -370,20 +369,6 @@ export const useIsConversationStreaming = (
     const session = state.sessions[conversationId];
     return session != null && session.phase !== "awaiting_executor";
   });
-
-/** Conversation ids with a live (SSE-open) turn — drives sidebar indicators. */
-export const useStreamingConversationIds = (): string[] =>
-  useStreamStore(
-    useShallow((state) =>
-      Object.entries(state.sessions)
-        .filter(
-          ([key, s]) =>
-            s.phase !== "awaiting_executor" &&
-            !key.startsWith(PENDING_KEY_PREFIX),
-        )
-        .map(([key]) => key),
-    ),
-  );
 
 export const useIsAwaitingExecutor = (conversationId: string | null): boolean =>
   useStreamStore((state) =>
