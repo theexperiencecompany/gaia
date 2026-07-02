@@ -159,6 +159,8 @@ class ConversationInitializedFrame(BaseModel):
 
     conversation_id: str | None = None
     conversation_description: str | None = None
+    # Single identity: this IS the client's send id (turn_id) when the client
+    # provided one — the optimistic record already carries the final key.
     user_message_id: str
     bot_message_id: str
     stream_id: str

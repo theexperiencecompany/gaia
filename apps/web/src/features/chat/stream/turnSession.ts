@@ -446,16 +446,16 @@ export class TurnSession {
       : new Date();
     this.botCreatedAt = new Date(userCreatedAt.getTime() + 1);
 
-    if (this.args.options.optimisticUserId) {
-      try {
-        await db.replaceOptimisticMessage(
-          this.args.options.optimisticUserId,
-          userMessageId,
-        );
-        await db.updateMessageStatus(userMessageId, "sent");
-      } catch (error) {
-        console.error("Failed to replace optimistic message:", error);
-      }
+    // Single identity: the client's send id IS the server's user_message_id,
+    // so the optimistic record already carries the final key — for live sends
+    // and resumed sessions alike. Confirm delivery in place; nothing to swap.
+    try {
+      await db.updateMessage(userMessageId, {
+        status: "sent",
+        optimistic: false,
+      });
+    } catch (error) {
+      console.error("Failed to confirm user message delivery:", error);
     }
 
     const botRecord = this.buildRecord("sending");

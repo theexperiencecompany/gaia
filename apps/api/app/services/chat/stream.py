@@ -107,7 +107,7 @@ class _StreamState:
         "user_message_id",
     )
 
-    def __init__(self) -> None:
+    def __init__(self, turn_id: str | None = None) -> None:
         self.complete_message: str = ""
         self.tool_data: dict[str, Any] = {"tool_data": []}
         self.tool_outputs: dict[str, str] = {}
@@ -118,7 +118,11 @@ class _StreamState:
         # Whether the turn was persisted in the try block (early save). When
         # False, the finally block does a fallback save.
         self.saved: bool = False
-        self.user_message_id: str = str(uuid4())
+        # The client's send id IS the user message id (single identity — the
+        # client's optimistic record and the persisted message share one key,
+        # so there is nothing to reconcile after a reload or sync). Clients
+        # that don't send one (bots) get a server-minted id.
+        self.user_message_id: str = turn_id or str(uuid4())
         self.bot_message_id: str = str(uuid4())
         # When comms finished — stamped before any voice-mode executor wait so
         # the saved user/comms messages keep timestamps EARLIER than a delegated
@@ -133,7 +137,7 @@ async def _run_chat_stream(
     conversation_id: str,
     source: str | None = None,
 ) -> None:
-    state = _StreamState()
+    state = _StreamState(turn_id=body.turn_id)
     is_new_conversation = body.conversation_id is None
     user_id = user.get("user_id")
     artifact_task: asyncio.Task[None] | None = None

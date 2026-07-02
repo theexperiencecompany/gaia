@@ -55,6 +55,8 @@ export type ChatStreamEvent =
       type: "conversation_initialized";
       conversation_id?: string;
       conversation_description?: string | null;
+      /** Equals the client's send id (turn_id) when the client provided one —
+       *  the optimistic record already carries the final key. */
       user_message_id?: string;
       bot_message_id?: string;
       stream_id?: string;
