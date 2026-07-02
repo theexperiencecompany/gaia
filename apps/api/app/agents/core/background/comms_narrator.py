@@ -10,7 +10,11 @@ from langchain_core.messages import HumanMessage
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
-from app.constants.agents import EXECUTOR_ERROR_MARKER, EXECUTOR_RESULT_MARKER
+from app.constants.agents import (
+    EXECUTOR_CANCELLED_MARKER,
+    EXECUTOR_ERROR_MARKER,
+    EXECUTOR_RESULT_MARKER,
+)
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
 from app.utils.agent_utils import strip_internal_agent_markers
@@ -90,3 +94,46 @@ async def narrate_executor_result(
     except Exception as e:
         log.error(f"{LogTag.AGENT} narrate_executor_result: failed", error=str(e))
         return ""
+
+
+async def record_executor_cancellation(
+    conversation_id: str,
+    task_id: str | None,
+    task: str,
+) -> None:
+    """Append an [EXECUTOR_CANCELLED] record to the comms thread's checkpoint.
+
+    Without this, a cancelled executor leaves comms' last knowledge of the task
+    as the 'Task accepted... I'm on it' tool result — on any later turn the
+    model believes the work is still running (or quietly done). This is a
+    silent context write via ``aupdate_state``: no model call, no user-facing
+    message. Best-effort — a failure here must not break the cancel path.
+    """
+    marker = HumanMessage(
+        content=(
+            f"{EXECUTOR_CANCELLED_MARKER}\n"
+            f"The background task {task_id or '(unknown id)'} ({task[:200]!r}) was "
+            "cancelled by the user before it completed. It did NOT finish and will "
+            "not deliver results — do not claim otherwise."
+        ),
+        name="background_executor",
+    )
+    try:
+        comms_graph = await GraphManager.get_graph("comms_agent")
+        await comms_graph.aupdate_state(
+            {"configurable": {"thread_id": conversation_id}},
+            {"messages": [marker]},
+            as_node="tools",
+        )
+        log.info(
+            f"{LogTag.AGENT} Recorded executor cancellation in comms checkpoint",
+            conversation_id=conversation_id,
+            task_id=task_id,
+        )
+    except Exception as e:  # noqa: BLE001 — cancel finalize must proceed regardless
+        log.error(
+            f"{LogTag.AGENT} Failed to record executor cancellation",
+            conversation_id=conversation_id,
+            task_id=task_id,
+            error=str(e),
+        )

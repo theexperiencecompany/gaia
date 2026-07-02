@@ -13,6 +13,7 @@ from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
 )
+from app.agents.core.nodes.executor_status import executor_status_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
@@ -175,6 +176,10 @@ async def build_comms_graph(
 
     pre_model_hooks: list[HookType] = [
         cast(HookType, filter_messages_node),
+        # Before manage_system_prompts_node so the live-executor status frame
+        # is slotted into the system block (Gemini drops trailing system
+        # messages).
+        executor_status_hook,
         manage_system_prompts_node,
     ]
 
