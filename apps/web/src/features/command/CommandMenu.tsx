@@ -1,8 +1,11 @@
 "use client";
 
+import { Button } from "@heroui/button";
+import { Input } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
 import { SearchIcon } from "@icons";
 import { Command } from "cmdk";
+import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,14 +14,23 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { PaletteRow } from "./components/PaletteRow";
 import { useChatSearch } from "./data/useChatSearch";
 import { useCommandData } from "./data/useCommandData";
-import { ANIMATION_CONFIG, COMMAND_MENU_STYLES as S } from "./model/config";
+import {
+  ANIMATION_CONFIG,
+  rowEntrance,
+  COMMAND_MENU_STYLES as S,
+} from "./model/config";
 import {
   buildSections,
   isNumbered,
   type Row,
   type View,
 } from "./model/paletteModel";
-import type { CommandAction, CommandHost, CommandItem } from "./model/types";
+import type {
+  CommandAction,
+  CommandGroup,
+  CommandHost,
+  CommandItem,
+} from "./model/types";
 import { useCommandMenuStore } from "./store";
 
 const MAX_NUMBERED = 9;
@@ -47,7 +59,7 @@ function enterLabel(row?: Row): string {
     case "back":
       return "Go back";
     case "category":
-      return "Browse";
+      return row.group.items.length === 0 ? "Open" : "Browse";
     case "item":
       return row.item.primary.label;
     case "action":
@@ -78,6 +90,9 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
   const [stack, setStack] = useState<View[]>([]);
   const [query, setQuery] = useState("");
   const [highlightedId, setHighlightedId] = useState<string>();
+  // Drives the list's entrance slide: +1 when going deeper, -1 when going back.
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const reduced = useReducedMotion() ?? false;
   // Inline form (e.g. rename) — replaces the input while active.
   const [formAction, setFormAction] = useState<CommandAction | null>(null);
   const [formValue, setFormValue] = useState("");
@@ -118,6 +133,11 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     numberedRows.forEach((r, i) => map.set(r.id, i + 1));
     return map;
   }, [numberedRows]);
+  // Position of each row in the flat list — drives the staggered entrance.
+  const rowIndex = useMemo(
+    () => new Map(flatRows.map((r, i) => [r.id, i] as const)),
+    [flatRows],
+  );
 
   useEffect(() => {
     if (flatRows.length === 0) return;
@@ -141,28 +161,47 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
   }, [query, stack.length]);
 
   // Mounted only while open: fire the open event, and restore focus on close.
+  // The opener is captured by the store's open action — before this mounts and
+  // the palette input auto-focuses — so cleanup returns focus to the trigger.
   useEffect(() => {
     trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    return () => previouslyFocused?.focus?.();
+    return () => useCommandMenuStore.getState().openedFrom?.focus();
   }, []);
 
   const drillCategory = useCallback((groupId: string) => {
+    setDirection(1);
     setStack((s) => [...s, { level: "category", groupId }]);
     setQuery("");
   }, []);
   const drillItem = useCallback((item: CommandItem) => {
+    setDirection(1);
     setStack((s) => [...s, { level: "item", item }]);
     setQuery("");
   }, []);
   const back = useCallback(() => {
+    setDirection(-1);
     setStack((s) => s.slice(0, -1));
     setQuery("");
   }, []);
   const goToDepth = (depth: number) => {
+    setDirection(-1);
     setStack((s) => s.slice(0, depth));
     setQuery("");
   };
+
+  // An empty entity category (e.g. workflows/integrations not yet fetched) has
+  // nothing to drill into — open its page directly instead of an empty list.
+  const activateCategory = useCallback(
+    (group: CommandGroup) => {
+      if (group.items.length === 0 && group.path) {
+        router.push(group.path);
+        close();
+      } else {
+        drillCategory(group.id);
+      }
+    },
+    [router, close, drillCategory],
+  );
 
   const runAction = useCallback((action: CommandAction) => {
     if (action.form) {
@@ -180,7 +219,7 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
           back();
           break;
         case "category":
-          drillCategory(row.group.id);
+          activateCategory(row.group);
           break;
         case "item":
           runAction(row.item.primary);
@@ -197,7 +236,7 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
           break;
       }
     },
-    [back, drillCategory, runAction, router, close, askGaia],
+    [back, activateCategory, runAction, router, close, askGaia],
   );
 
   const submitForm = useCallback(async () => {
@@ -214,9 +253,9 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     (row: Row | undefined) => {
       if (!row) return;
       if (row.kind === "item" && row.canDrill) drillItem(row.item);
-      else if (row.kind === "category") drillCategory(row.group.id);
+      else if (row.kind === "category") activateCategory(row.group);
     },
-    [drillItem, drillCategory],
+    [drillItem, activateCategory],
   );
 
   const handleKeyDown = useCallback(
@@ -239,7 +278,7 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
         stack.length ? back() : close();
         return;
       }
-      if (event.key === "Tab") {
+      if (event.key === "Tab" && canDrill(highlighted)) {
         event.preventDefault();
         openSecondary(highlighted);
         return;
@@ -315,10 +354,10 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
                 {formAction.label}
               </span>
               <ChevronRight className="h-3.5 w-3.5 text-zinc-600" />
-              <input
+              <Input
                 ref={formInputRef}
                 value={formValue}
-                onChange={(e) => setFormValue(e.target.value)}
+                onValueChange={setFormValue}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -329,31 +368,42 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
                   }
                 }}
                 placeholder={formAction.form?.placeholder}
-                className={`${S.input} text-sm`}
+                aria-label={formAction.label}
+                variant="flat"
+                // Bare, borderless field so it sits in the palette header
+                // exactly like the search input it temporarily replaces.
+                classNames={{
+                  inputWrapper:
+                    "h-auto min-h-0 bg-transparent p-0 shadow-none data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent",
+                  input: `${S.input} text-sm`,
+                }}
               />
             </div>
           ) : (
             <div className={S.inputWrapper}>
-              <button
-                type="button"
-                onClick={() => goToDepth(0)}
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={() => goToDepth(0)}
                 aria-label="Back to top"
-                className="shrink-0 text-zinc-500 transition-colors hover:text-zinc-300"
+                className="h-auto w-auto min-w-0 shrink-0 text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
               >
                 <SearchIcon className="h-4 w-4" />
-              </button>
+              </Button>
               {crumbs.map((crumb) => (
                 <span
                   key={crumb.key}
                   className="flex shrink-0 items-center gap-2 text-sm text-zinc-400"
                 >
-                  <button
-                    type="button"
-                    onClick={() => goToDepth(crumb.depth)}
-                    className="max-w-[180px] cursor-pointer truncate transition-colors hover:text-zinc-200"
+                  <Button
+                    size="sm"
+                    variant="light"
+                    onPress={() => goToDepth(crumb.depth)}
+                    className="h-auto min-w-0 max-w-[180px] rounded-none p-0 text-sm text-zinc-400 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-200"
                   >
-                    {crumb.label}
-                  </button>
+                    <span className="truncate">{crumb.label}</span>
+                  </Button>
                   <ChevronRight className="h-3.5 w-3.5 text-zinc-600" />
                 </span>
               ))}
@@ -379,23 +429,36 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
                   <p className="text-sm">No results for "{query.trim()}"</p>
                 </div>
               )}
-              {sections.map((section, index) => (
-                <CommandSection
-                  key={section.id}
-                  heading={section.heading}
-                  showSeparator={index > 0}
-                >
-                  {section.rows.map((row) => (
-                    <PaletteRow
-                      key={row.id}
-                      row={row}
-                      number={numbered.get(row.id)}
-                      onActivate={() => activate(row)}
-                      onSecondary={() => openSecondary(row)}
-                    />
-                  ))}
-                </CommandSection>
-              ))}
+              {/* Keyed by depth so moving between levels remounts the list and
+                  replays the entrance slide; typing within a level does not. */}
+              <div key={stack.length}>
+                {sections.map((section, index) => (
+                  <CommandSection
+                    key={section.id}
+                    heading={section.heading}
+                    showSeparator={index > 0}
+                  >
+                    {section.rows.map((row) => (
+                      <m.div
+                        key={row.id}
+                        {...rowEntrance({
+                          index: rowIndex.get(row.id) ?? 0,
+                          direction,
+                          browsing: query.trim() === "",
+                          reduced,
+                        })}
+                      >
+                        <PaletteRow
+                          row={row}
+                          number={numbered.get(row.id)}
+                          onActivate={() => activate(row)}
+                          onSecondary={() => openSecondary(row)}
+                        />
+                      </m.div>
+                    ))}
+                  </CommandSection>
+                ))}
+              </div>
             </Command.List>
           )}
 

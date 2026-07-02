@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback } from "react";
-import { workflowApi } from "../api/workflowApi";
-import { useWorkflowsStore } from "../stores/workflowsStore";
+import { workflowApi } from "@/features/workflows/api/workflowApi";
+import { useWorkflowsStore } from "@/features/workflows/stores/workflowsStore";
 
 /**
  * Single source of truth for workflow mutations (API + store). Reusable across
@@ -17,9 +17,9 @@ export function useWorkflowActions() {
 
   const setActivated = useCallback(
     async (id: string, activated: boolean) => {
-      if (activated) await workflowApi.deactivateWorkflow(id);
-      else await workflowApi.activateWorkflow(id);
-      updateWorkflow(id, { activated: !activated });
+      if (activated) await workflowApi.activateWorkflow(id);
+      else await workflowApi.deactivateWorkflow(id);
+      updateWorkflow(id, { activated });
     },
     [updateWorkflow],
   );

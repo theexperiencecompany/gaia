@@ -5,6 +5,7 @@ import nextDynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import type { CommandHost } from "./model/types";
 import { useCommandMenuStore } from "./store";
@@ -60,7 +61,11 @@ export function CommandMenuProvider() {
 
   return (
     <>
-      <AnimatePresence>{isOpen && <CommandMenu host={host} />}</AnimatePresence>
+      <ErrorBoundary>
+        <AnimatePresence>
+          {isOpen && <CommandMenu host={host} />}
+        </AnimatePresence>
+      </ErrorBoundary>
       <ConfirmationDialog {...confirmationProps} />
     </>
   );

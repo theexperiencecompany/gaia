@@ -72,10 +72,22 @@ export function buildCommandGroups(
   deps: CommandDeps,
 ): CommandGroup[] {
   const { host } = ctx;
-  const external = (url?: string) => () => {
-    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  const external = (url: string) => () => {
+    window.open(url, "_blank", "noopener,noreferrer");
     host.close();
   };
+  // Link-backed commands are dropped when the URL isn't configured — a command
+  // that only closes the palette must never reach the list.
+  const linkCmd = (
+    id: string,
+    title: string,
+    icon: ReactNode,
+    url: string | undefined,
+    opts?: Parameters<typeof cmd>[4],
+  ): CommandItem | null =>
+    url ? cmd(id, title, icon, external(url), opts) : null;
+  const isPresent = (item: CommandItem | null): item is CommandItem =>
+    item !== null;
   const fire = (fn: () => void) => () => {
     fn();
     host.close();
@@ -110,37 +122,33 @@ export function buildCommandGroups(
   }
 
   const community: CommandItem[] = [
-    cmd(
+    linkCmd(
       "discord",
       "Join Discord",
       <DiscordIcon {...ICON} color="#5865F2" />,
-      external(deps.links.discord),
+      deps.links.discord,
       { keywords: "community chat", tint: "text-[#5865F2]" },
     ),
-    cmd(
+    linkCmd(
       "whatsapp",
       "WhatsApp Community",
       <WhatsappIcon {...ICON} color="#25d366" />,
-      external(deps.links.whatsapp),
+      deps.links.whatsapp,
       { keywords: "community", tint: "text-[#25d366]" },
     ),
-  ];
+  ].filter(isPresent);
 
   const resources: CommandItem[] = [
-    cmd(
+    linkCmd(
       "docs",
       "Documentation",
       <BookBookmark02Icon {...ICON} />,
-      external(deps.links.docs),
+      deps.links.docs,
       { keywords: "help docs guide" },
     ),
-    cmd(
-      "blog",
-      "Blog",
-      <QuillWrite01Icon {...ICON} />,
-      fire(() => ctx.navigate("/blog")()),
-      { keywords: "articles" },
-    ),
+    cmd("blog", "Blog", <QuillWrite01Icon {...ICON} />, ctx.navigate("/blog"), {
+      keywords: "articles",
+    }),
     cmd("roadmap", "Roadmap", <MapsIcon {...ICON} />, external(ROADMAP_URL), {
       keywords: "plans features",
     }),
@@ -151,14 +159,14 @@ export function buildCommandGroups(
       external(RELEASE_NOTES_URL),
       { keywords: "changelog updates" },
     ),
-    cmd(
+    linkCmd(
       "opensource",
       "Open source",
       <Github {...ICON} />,
-      external(deps.links.github),
+      deps.links.github,
       { keywords: "github code" },
     ),
-  ];
+  ].filter(isPresent);
 
   const account: CommandItem[] = [
     cmd(

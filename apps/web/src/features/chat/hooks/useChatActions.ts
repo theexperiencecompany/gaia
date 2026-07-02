@@ -43,12 +43,23 @@ export function useChatActions() {
     }
   }, []);
 
+  // Optimistic: flip locally for instant feedback, roll back if the server
+  // rejects so local state never diverges silently.
   const toggleRead = useCallback(async (id: string, unread: boolean) => {
     const next = !unread;
     useChatStore.getState().updateConversation(id, { isUnread: next });
     await db.updateConversationFields(id, { isUnread: next });
-    if (next) chatApi.markAsUnread(id).catch(console.error);
-    else chatApi.markAsRead(id).catch(console.error);
+    try {
+      if (next) await chatApi.markAsUnread(id);
+      else await chatApi.markAsRead(id);
+    } catch (error) {
+      useChatStore.getState().updateConversation(id, { isUnread: unread });
+      await db.updateConversationFields(id, { isUnread: unread });
+      toast.error(
+        next ? "Failed to mark chat as unread" : "Failed to mark chat as read",
+      );
+      throw error;
+    }
   }, []);
 
   const remove = useCallback(

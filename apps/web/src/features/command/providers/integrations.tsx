@@ -25,8 +25,10 @@ export const buildIntegrationItems = (
         int.status === "error",
     )
     .map((int) => {
-      const isConnected =
-        int.status === "connected" || int.status === "created";
+      // "created" = set up but never connected; "error" = connection failed.
+      // Each status maps to exactly one of Connect / Disconnect.
+      const isConnected = int.status === "connected";
+      const canConnect = int.status === "created" || int.status === "error";
       const connect: CommandAction = {
         id: "connect",
         label: int.status === "error" ? "Reconnect" : "Connect",
@@ -53,7 +55,7 @@ export const buildIntegrationItems = (
         },
       };
       const actions: CommandAction[] = [];
-      if (int.status !== "connected") actions.push(connect);
+      if (canConnect) actions.push(connect);
       if (isConnected) actions.push(disconnect);
 
       return {
@@ -71,7 +73,9 @@ export const buildIntegrationItems = (
         dot:
           int.status === "error"
             ? { color: "yellow", label: "Connection failed" }
-            : { color: "green", label: "Connected" },
+            : isConnected
+              ? { color: "green", label: "Connected" }
+              : undefined,
         primary: {
           id: "open",
           label: "Open settings",

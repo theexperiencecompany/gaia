@@ -53,7 +53,7 @@ export const buildWorkflowItems = (
         ) : (
           <ToggleOnIcon {...ACTION_ICON} />
         ),
-        run: () => actions.setActivated(wf.id, wf.activated),
+        run: () => actions.setActivated(wf.id, !wf.activated),
       },
       {
         id: "delete",

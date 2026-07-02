@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
 import { AiMagicIcon, ArrowLeft02Icon, ArrowRight02Icon } from "@icons";
@@ -8,9 +9,10 @@ import { COMMAND_MENU_STYLES as S } from "../model/config";
 import type { Row } from "../model/paletteModel";
 import type { CommandDot } from "../model/types";
 
-// Hover (mouse) and selected (keyboard) are visually distinct.
+// Hover (mouse) and selected (keyboard) are visually distinct, but both kept
+// subtle — a light white overlay rather than a raised zinc fill.
 const ROW =
-  "mx-2 flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800/40 aria-selected:bg-zinc-700/60 aria-selected:text-zinc-100!";
+  "mx-2 flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-white/5 aria-selected:bg-white/10 aria-selected:text-zinc-100!";
 
 const DOT_COLOR: Record<CommandDot["color"], string> = {
   green: "bg-green-500",
@@ -96,9 +98,7 @@ export function PaletteRow({
     row.item.icon
   );
   const title = isCategory ? row.group.heading : row.item.title;
-  const subtitle = isCategory
-    ? `${row.group.items.length} ${row.group.items.length === 1 ? "item" : "items"}`
-    : row.item.subtitle;
+  const subtitle = isCategory ? undefined : row.item.subtitle;
   const dot = isCategory ? undefined : row.item.dot;
   const accessory = isCategory ? undefined : row.item.accessory;
   const tint = isCategory ? undefined : row.item.tint;
@@ -117,17 +117,22 @@ export function PaletteRow({
       {accessory}
       {number !== undefined && <Kbd>{number}</Kbd>}
       {drillable && (
-        <button
-          type="button"
-          aria-label="Open actions"
-          onClick={(event) => {
-            event.stopPropagation();
-            onSecondary();
-          }}
-          className="shrink-0 rounded-md p-0.5 text-zinc-600 transition-colors hover:text-zinc-300"
+        <div // NOSONAR S6848: propagation guard so the drill Button below doesn't also activate the row
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
         >
-          <ArrowRight02Icon className="h-4 w-4" />
-        </button>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            aria-label="Open actions"
+            onPress={onSecondary}
+            className="h-auto w-auto min-w-0 shrink-0 rounded-md p-0.5 text-zinc-600 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
+          >
+            <ArrowRight02Icon className="h-4 w-4" />
+          </Button>
+        </div>
       )}
     </Command.Item>
   );

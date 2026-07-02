@@ -1,7 +1,7 @@
 // Visual contract for the command menu — kept identical to the original GAIA
 // Command K so the look is unchanged. Tweak here to restyle the whole palette.
 
-const EASE = [0.19, 1, 0.22, 1] as [number, number, number, number];
+export const EASE = [0.19, 1, 0.22, 1] as [number, number, number, number];
 
 export const ANIMATION_CONFIG = {
   backdrop: {
@@ -18,24 +18,55 @@ export const ANIMATION_CONFIG = {
   },
 } as const;
 
+// List entrance — a subtle directional slide + stagger that plays when you open
+// the palette or move between menu levels (browsing): rows ease in from the
+// right going deeper, from the left going back. While searching it collapses to
+// a plain instant fade so filtering never feels animated. The list clips
+// overflow-x (see COMMAND_MENU_STYLES.list) so the transient slide never shows a
+// horizontal scrollbar. Reduced motion = no movement.
+const ROW_SLIDE_PX = 12;
+const ROW_STAGGER_STEP = 0.022;
+const ROW_STAGGER_CAP = 8;
+
+interface RowEntranceArgs {
+  index: number;
+  direction: 1 | -1;
+  browsing: boolean;
+  reduced: boolean;
+}
+
+export function rowEntrance({
+  index,
+  direction,
+  browsing,
+  reduced,
+}: RowEntranceArgs) {
+  if (reduced)
+    return { initial: false as const, animate: { opacity: 1, x: 0 } };
+  return {
+    initial: { opacity: 0, x: browsing ? direction * ROW_SLIDE_PX : 0 },
+    animate: { opacity: 1, x: 0 },
+    transition: {
+      duration: 0.2,
+      ease: EASE,
+      delay: browsing ? Math.min(index, ROW_STAGGER_CAP) * ROW_STAGGER_STEP : 0,
+    },
+  };
+}
+
 export const COMMAND_MENU_STYLES = {
   backdrop: "fixed inset-0 bg-black/40 backdrop-blur-md",
   container:
     "relative w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-800/40 bg-zinc-900/50 backdrop-blur-2xl shadow-2xl",
   inputWrapper:
     "flex items-center gap-3 border-b border-zinc-800/30 px-5 py-4 mb-2",
-  searchIcon: "h-4 w-4 text-zinc-500",
   input:
     "flex-1 bg-transparent text-zinc-100 placeholder-zinc-500 outline-none",
-  list: "max-h-[400px] overflow-y-auto pb-3 outline-none!",
+  list: "max-h-[400px] overflow-x-hidden overflow-y-auto pb-3 outline-none!",
   empty: "flex h-16 items-center justify-center text-sm text-zinc-500",
-  item: "mx-2 flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-3 text-sm text-zinc-500 transition-all duration-200 hover:bg-zinc-800/40 aria-selected:bg-zinc-800/50 aria-selected:text-zinc-300!",
   separator: "mx-3 h-px bg-zinc-800/50",
-  itemShortcut:
-    "inline-flex h-5 items-center gap-0.5 rounded-md bg-zinc-800/50 px-1.5 font-mono text-[10px] font-medium text-zinc-500",
   flexOne: "flex-1",
   contentWrapper: "min-w-0 flex-1",
-  resultTitle: "truncate text-sm",
   resultSubtitle: "truncate text-xs text-zinc-500",
   footer: "border-t border-zinc-800/30 px-5 py-3",
   footerText: "text-xs text-zinc-500",

@@ -20,18 +20,27 @@ export interface CommandActionForm {
   submit: (value: string) => void | Promise<void>;
 }
 
-/** A single runnable action — a row's primary (Enter) or a secondary (Tab menu). */
-export interface CommandAction {
+interface CommandActionBase {
   id: string;
   label: string;
   icon: ReactNode;
   shortcut?: string;
   destructive?: boolean;
-  /** One-shot action. Mutually exclusive with `form`. */
-  run?: () => void | Promise<void>;
-  /** Opens an inline form in the palette instead of running. */
-  form?: CommandActionForm;
 }
+
+/**
+ * A single runnable action — a row's primary (Enter) or a secondary (Tab
+ * menu). Either a one-shot `run` or an inline `form`, never both or neither.
+ */
+export type CommandAction =
+  | (CommandActionBase & {
+      run: () => void | Promise<void>;
+      form?: never;
+    })
+  | (CommandActionBase & {
+      run?: never;
+      form: CommandActionForm;
+    });
 
 /** Status dot shown next to a title; meaning conveyed by color + tooltip. */
 export interface CommandDot {

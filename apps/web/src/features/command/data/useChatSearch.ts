@@ -16,7 +16,7 @@ const MIN_CHARS = 2;
 export function useChatSearch(
   query: string,
 ): ComprehensiveSearchResponse | undefined {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, userEmail } = useAuth();
   const [debounced, setDebounced] = useState("");
 
   useEffect(() => {
@@ -25,7 +25,8 @@ export function useChatSearch(
   }, [query]);
 
   const { data } = useQuery({
-    queryKey: ["command-k", "search", debounced],
+    // Keyed to the user so cached results never leak across sessions.
+    queryKey: ["command-k", "search", userEmail, debounced],
     queryFn: async () => {
       const result = await searchApi.search(debounced);
       trackEvent(ANALYTICS_EVENTS.SEARCH_PERFORMED, {

@@ -49,14 +49,15 @@ import { buildSettingsItems } from "../providers/settings";
 import { buildTodoItems } from "../providers/todos";
 import { buildWorkflowItems } from "../providers/workflows";
 
-const MEMORY_QUERY_KEY = ["command-k", "memories"] as const;
+// Keyed to the user so cached memories never leak across sessions.
+const memoriesQueryKey = (userEmail: string) =>
+  ["command-k", "memories", userEmail] as const;
 const RECENT_COUNT = 3;
 
 const ms = (date?: string | null) => (date ? new Date(date).getTime() : 0);
 
 export interface CommandData {
   groups: CommandGroup[];
-  isLoading: boolean;
   recent: CommandItem[];
   context: { heading: string; item: CommandItem } | null;
   buildSearchChat: (result: SearchConversationResult) => CommandItem;
@@ -73,19 +74,15 @@ export function useCommandData(host: CommandHost): CommandData {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, userEmail } = useAuth();
   const queryClient = useQueryClient();
 
   const { conversations } = useConversationList();
   const chatActions = useChatActions();
   const workflowActions = useWorkflowActions();
-  const { workflows, isLoading: workflowsLoading } = useWorkflows();
-  const {
-    integrations,
-    isLoading: integrationsLoading,
-    connectIntegration,
-    disconnectIntegration,
-  } = useIntegrations();
+  const { workflows } = useWorkflows();
+  const { integrations, connectIntegration, disconnectIntegration } =
+    useIntegrations();
   const todos = useTodoStore((s) => s.todos);
   const loadTodos = useTodoStore((s) => s.loadTodos);
   const updateTodo = useTodoStore((s) => s.updateTodo);
@@ -95,8 +92,8 @@ export function useCommandData(host: CommandHost): CommandData {
   const openPricing = usePricingModalStore((s) => s.openModal);
   const { openShortcutsModal } = useKeyboardShortcuts();
   const { logout } = useLogout();
-  const { data: memoryList, isLoading: memoriesLoading } = useQuery({
-    queryKey: MEMORY_QUERY_KEY,
+  const { data: memoryList } = useQuery({
+    queryKey: memoriesQueryKey(userEmail),
     queryFn: () => memoryApi.listMemories({ pageSize: 50 }),
     enabled: isAuthenticated,
     staleTime: 60_000,
@@ -161,9 +158,11 @@ export function useCommandData(host: CommandHost): CommandData {
     () =>
       buildMemoryItems(memoryList?.memories ?? [], ctx, {
         refetch: () =>
-          queryClient.invalidateQueries({ queryKey: MEMORY_QUERY_KEY }),
+          queryClient.invalidateQueries({
+            queryKey: memoriesQueryKey(userEmail),
+          }),
       }),
-    [memoryList, ctx, queryClient],
+    [memoryList, ctx, queryClient, userEmail],
   );
   const settingsItems = useMemo(() => buildSettingsItems(ctx), [ctx]);
 
@@ -269,8 +268,11 @@ export function useCommandData(host: CommandHost): CommandData {
     ];
 
     // Order: Quick actions → entity categories (Browse) → secondary command groups.
+    // Entity categories always show as browsable sections (even when empty / not
+    // yet fetched) so Workflows/Integrations/Todos are always reachable; only
+    // empty command groups are dropped.
     return [quickActions, ...entityGroups, ...secondaryCommands].filter(
-      (group) => group.items.length > 0,
+      (group) => group.kind === "entity" || group.items.length > 0,
     );
   }, [
     chats.items,
@@ -380,7 +382,6 @@ export function useCommandData(host: CommandHost): CommandData {
 
   return {
     groups,
-    isLoading: workflowsLoading || integrationsLoading || memoriesLoading,
     recent,
     context,
     buildSearchChat,

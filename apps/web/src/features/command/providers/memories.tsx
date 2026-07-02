@@ -8,7 +8,7 @@ import { ACTION_ICON, ICON } from "../model/constants";
 import type { BuildCtx, CommandItem } from "../model/types";
 
 interface MemoryDeps {
-  refetch: () => void;
+  refetch: () => Promise<unknown>;
 }
 
 export const buildMemoryItems = (
@@ -46,7 +46,7 @@ export const buildMemoryItems = (
             });
             if (!ok) return;
             await memoryApi.deleteMemory(mem.id);
-            deps.refetch();
+            await deps.refetch();
             toast.success("Memory forgotten");
           },
         },
