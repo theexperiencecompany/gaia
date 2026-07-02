@@ -14,10 +14,10 @@ boundary. Covers:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
-from google.api_core.exceptions import GoogleAPICallError
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
 import pytest
 
 from app.agents.llm.client import (
@@ -391,15 +391,25 @@ class TestAinvokeFallbackRouting:
         # ainvoke_llm wraps via with_llm_retry(primary) -> primary.with_retry(...).
         primary.with_retry = MagicMock(return_value=retried)
 
+    @staticmethod
+    def _runnable() -> NonCallableMagicMock:
+        # NonCallable because real Runnables aren't callable — ainvoke_llm treats
+        # a callable fallback as a lazy factory.
+        return NonCallableMagicMock()
+
     async def test_primary_failure_routes_to_default_fallback(self) -> None:
-        primary = MagicMock()
-        retried = MagicMock()
-        # GoogleAPICallError (base) is a fallback exception but not a retryable
-        # subclass, so the retry wrapper raises immediately into the fallback path.
-        retried.ainvoke = AsyncMock(side_effect=GoogleAPICallError("primary provider down"))
+        primary = self._runnable()
+        retried = self._runnable()
+        # ChatGoogleGenerativeAIError (langchain-google-genai's wrapper around
+        # Gemini 4xx) is a fallback exception but not a retryable one, so the
+        # retry wrapper raises immediately into the fallback path.
+        retried.ainvoke = AsyncMock(
+            side_effect=ChatGoogleGenerativeAIError("primary provider down")
+        )
         self._retrying(primary, retried)
 
-        fallback = MagicMock()
+        fallback = self._runnable()
+        fallback.with_retry = MagicMock(return_value=fallback)
         fallback.ainvoke = AsyncMock(return_value=AIMessage(content="from default model"))
 
         result = await ainvoke_llm(
@@ -410,10 +420,12 @@ class TestAinvokeFallbackRouting:
         fallback.ainvoke.assert_awaited_once()
 
     async def test_primary_failure_without_fallback_propagates(self) -> None:
-        primary = MagicMock()
-        retried = MagicMock()
-        retried.ainvoke = AsyncMock(side_effect=GoogleAPICallError("primary provider down"))
+        primary = self._runnable()
+        retried = self._runnable()
+        retried.ainvoke = AsyncMock(
+            side_effect=ChatGoogleGenerativeAIError("primary provider down")
+        )
         self._retrying(primary, retried)
 
-        with pytest.raises(GoogleAPICallError):
+        with pytest.raises(ChatGoogleGenerativeAIError):
             await ainvoke_llm(primary, [HumanMessage(content="hi")], label="test")
