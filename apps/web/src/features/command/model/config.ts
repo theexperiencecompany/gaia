@@ -1,7 +1,7 @@
 // Visual contract for the command menu — kept identical to the original GAIA
 // Command K so the look is unchanged. Tweak here to restyle the whole palette.
 
-export const EASE = [0.19, 1, 0.22, 1] as [number, number, number, number];
+const EASE = [0.19, 1, 0.22, 1] as [number, number, number, number];
 
 export const ANIMATION_CONFIG = {
   backdrop: {
