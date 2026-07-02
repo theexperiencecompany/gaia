@@ -20,8 +20,10 @@ Fixes two production problems in one pass:
      only fires for mail Gmail marks important. The filter lives entirely in
      Composio's trigger config — no workflow schema or API changes needed.
 
-Finally, Composio triggers that remain referenced by no workflow (orphans from
-deletes/reconnects) are removed so they stop generating dead webhooks.
+Finally, provably per-workflow Composio triggers that remain referenced by no
+workflow (orphans from deletes/reconnects) are DISABLED — not deleted — so they
+stop generating dead webhooks while staying reversible via triggers.enable();
+the disabled ids are recorded in the system_migration_audit collection.
 
 Dry-run by default; writes require BOTH --apply and --yes. Safe to re-run:
 converted workflows no longer match the selection queries, and re-created
@@ -250,9 +252,9 @@ async def convert_triage_to_daily(
         for old in old_ids:
             if not await other_workflows_reference(old, wf_id):
                 try:
-                    client.triggers.delete(trigger_id=old)
+                    client.triggers.disable(trigger_id=old)
                 except Exception as e:
-                    print(f"    WARN could not delete old trigger {old}: {e}")
+                    print(f"    WARN could not disable old trigger {old}: {e}")
         print(f"  OK   {wf_id}: scheduled daily {cron!r} tz={tz}, dropped {old_ids}")
         converted += 1
     print(f"  triage: converted={converted} skipped={skipped}")
@@ -307,9 +309,9 @@ async def filter_draft_replies(
         for old in old_ids:
             if old != new_id and not await other_workflows_reference(old, wf_id):
                 try:
-                    client.triggers.delete(trigger_id=old)
+                    client.triggers.disable(trigger_id=old)
                 except Exception as e:
-                    print(f"    WARN could not delete old trigger {old}: {e}")
+                    print(f"    WARN could not disable old trigger {old}: {e}")
         print(f"  OK   {wf_id}: {old_ids} -> [{new_id}]")
         updated += 1
     print(f"  drafts: updated={updated} unchanged={unchanged} skipped={skipped}")
@@ -380,20 +382,25 @@ async def reregister_stale_calendar(
     return fixed, skipped
 
 
-async def delete_orphans(client: Composio, apply: bool) -> int:
-    """Delete unreferenced Composio triggers — but ONLY provably per-workflow ones.
+async def disable_orphans(client: Composio, apply: bool) -> int:
+    """DISABLE unreferenced Composio triggers — but ONLY provably per-workflow ones.
+
+    Disable (not delete): same effect — Composio stops polling and firing dead
+    webhooks — but reversible with triggers.enable(trigger_id). The disabled ids
+    are recorded in the ``system_migration_audit`` collection so a rollback can
+    re-enable exactly the affected set.
 
     "Unreferenced by composio_trigger_ids" does NOT mean unused:
     - The account-level GMAIL trigger feeds gmail_new_message workflows, which
-      match by user_id and intentionally store no trigger ids. Deleting it for
+      match by user_id and intentionally store no trigger ids. Disabling it for
       such a user would silently kill their working workflows.
     - Account-level auto_activate subscriptions (e.g. calendar EVENT_CREATED)
-      are created on every connect by design; deleting them is churn.
-    So deletion is restricted to: STARTING_SOON triggers (always per-workflow)
+      are created on every connect by design.
+    So disabling is restricted to: STARTING_SOON triggers (always per-workflow)
     and GMAIL triggers of users with no activated gmail_new_message workflow.
     Everything else unreferenced is kept and reported.
     """
-    print("\n== SECTION 3: orphan Composio triggers ==")
+    print("\n== SECTION 3: orphan Composio triggers (disable, reversible) ==")
     active = list_active_triggers(client)
     stored: set[str] = set()
     async for wf in workflows_collection.find(
@@ -413,19 +420,19 @@ async def delete_orphans(client: Composio, apply: bool) -> int:
         )
     }
 
-    deletable: list[str] = []
+    to_disable: list[str] = []
     kept_account_level = kept_gmail_in_use = kept_unknown = 0
     for tid, meta in active.items():
         if tid in stored:
             continue
         slug = meta.get("slug") or ""
         if slug == CALENDAR_STARTING_SOON_SLUG:
-            deletable.append(tid)
+            to_disable.append(tid)
         elif slug == GMAIL_SLUG:
             if meta.get("user_id") in gmail_account_level_users:
                 kept_gmail_in_use += 1
             else:
-                deletable.append(tid)
+                to_disable.append(tid)
         elif slug.endswith("_EVENT_CREATED_TRIGGER"):
             kept_account_level += 1
         else:
@@ -436,21 +443,32 @@ async def delete_orphans(client: Composio, apply: bool) -> int:
         f"  active={len(active)} referenced={len(stored & set(active))} unreferenced={unreferenced}"
     )
     print(
-        f"  deletable={len(deletable)} | kept: gmail-account-level-in-use={kept_gmail_in_use}, "
+        f"  to_disable={len(to_disable)} | kept: gmail-account-level-in-use={kept_gmail_in_use}, "
         f"auto-activated-account-level={kept_account_level}, unknown-slug={kept_unknown}"
     )
     if not apply:
-        print(f"  DRY  would delete {len(deletable)} orphan trigger(s)")
-        return len(deletable)
-    deleted = 0
-    for tid in deletable:
+        print(f"  DRY  would disable {len(to_disable)} orphan trigger(s)")
+        return len(to_disable)
+
+    disabled: list[str] = []
+    for tid in to_disable:
         try:
-            client.triggers.delete(trigger_id=tid)
-            deleted += 1
+            client.triggers.disable(trigger_id=tid)
+            disabled.append(tid)
         except Exception as e:
-            print(f"    WARN could not delete {tid}: {e}")
-    print(f"  deleted {deleted}/{len(deletable)} orphan trigger(s)")
-    return deleted
+            print(f"    WARN could not disable {tid}: {e}")
+
+    # Audit record: exact rollback = triggers.enable(tid) for each id here.
+    audit_collection = workflows_collection.database["system_migration_audit"]
+    await audit_collection.insert_one(
+        {
+            "migration": "reseed_system_triggers.disable_orphans",
+            "ran_at": datetime.now(UTC),
+            "disabled_trigger_ids": disabled,
+        }
+    )
+    print(f"  disabled {len(disabled)}/{len(to_disable)} orphan trigger(s); audit record written")
+    return len(disabled)
 
 
 async def main() -> None:
@@ -487,7 +505,7 @@ async def main() -> None:
     if not args.skip_orphans:
         # Orphans are recomputed AFTER the sections above so freshly re-adopted
         # or replaced ids are classified against the post-reseed state.
-        await delete_orphans(client, args.apply)
+        await disable_orphans(client, args.apply)
     print(f"\ndone ({mode}).")
 
 
