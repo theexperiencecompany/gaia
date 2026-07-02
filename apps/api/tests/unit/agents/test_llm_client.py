@@ -11,7 +11,7 @@ Covers:
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
@@ -21,6 +21,7 @@ from app.agents.llm.client import (
     LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
+    _build_default_llm,
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
@@ -29,6 +30,7 @@ from app.agents.llm.client import (
     init_llm,
     register_llm_providers,
 )
+from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -359,6 +361,13 @@ class TestInitLlm:
 
 @pytest.mark.unit
 class TestGetDefaultLlm:
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self):
+        # get_default_llm caches instances per temperature; isolate each test.
+        _build_default_llm.cache_clear()
+        yield
+        _build_default_llm.cache_clear()
+
     @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
     @patch("app.agents.llm.client.settings")
     def test_returns_gemini(self, mock_settings: MagicMock, mock_chat_google: MagicMock) -> None:
@@ -368,11 +377,23 @@ class TestGetDefaultLlm:
         assert get_default_llm() is mock_chat_google.return_value
         mock_chat_google.assert_called_once()
 
+    @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
+    @patch("app.agents.llm.client.settings")
+    def test_caches_per_temperature(
+        self, mock_settings: MagicMock, mock_chat_google: MagicMock
+    ) -> None:
+        mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
+        mock_chat_google.side_effect = lambda **_: MagicMock()
+
+        assert get_default_llm() is get_default_llm()
+        assert get_default_llm() is not get_default_llm(temperature=0.7)
+        assert mock_chat_google.call_count == 2
+
     @patch("app.agents.llm.client.settings")
     def test_no_google_key_raises(self, mock_settings: MagicMock) -> None:
         mock_settings.GOOGLE_API_KEY = None
 
-        with pytest.raises(RuntimeError, match="Default LLM not configured"):
+        with pytest.raises(LLMNotConfiguredError, match="Default LLM not configured"):
             get_default_llm()
 
 
@@ -384,10 +405,12 @@ class TestGetDefaultLlm:
 @pytest.mark.unit
 class TestAinvokeLlm:
     @staticmethod
-    def _runnable(side_effect: Any = None, result: Any = None) -> MagicMock:
+    def _runnable(side_effect: Any = None, result: Any = None) -> NonCallableMagicMock:
         # with_llm_retry calls runnable.with_retry(...) -> return self so the mock
         # .ainvoke is what actually runs (the real retry is LangChain's concern).
-        runnable = MagicMock()
+        # NonCallable because real Runnables aren't callable — ainvoke_llm treats
+        # a callable fallback as a lazy factory.
+        runnable = NonCallableMagicMock()
         runnable.with_retry = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(side_effect=side_effect, return_value=result)
         return runnable
@@ -400,12 +423,34 @@ class TestAinvokeLlm:
     @patch("app.agents.llm.client.log")
     async def test_falls_back_to_default_on_provider_error(self, mock_log: MagicMock) -> None:
         primary = self._runnable(side_effect=ConnectionError("provider down"))
-        fallback = MagicMock()
-        fallback.ainvoke = AsyncMock(return_value=AIMessage(content="fallback-ok"))
+        fallback = self._runnable(result=AIMessage(content="fallback-ok"))
 
         result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
 
         assert result.content == "fallback-ok"
+        # The fallback path is retry-wrapped too.
+        fallback.with_retry.assert_called_once()
+
+    @patch("app.agents.llm.client.log")
+    async def test_fallback_factory_called_lazily(self, mock_log: MagicMock) -> None:
+        fallback = self._runnable(result=AIMessage(content="fallback-ok"))
+        factory = MagicMock(return_value=fallback)
+
+        ok_primary = self._runnable(result=AIMessage(content="ok"))
+        assert (
+            await ainvoke_llm(ok_primary, [HumanMessage(content="hi")], fallback=factory)
+        ).content == "ok"
+        factory.assert_not_called()
+
+        failing_primary = self._runnable(side_effect=ConnectionError("provider down"))
+        result = await ainvoke_llm(failing_primary, [HumanMessage(content="hi")], fallback=factory)
+        assert result.content == "fallback-ok"
+        factory.assert_called_once()
+
+    async def test_fallback_factory_returning_none_reraises(self) -> None:
+        primary = self._runnable(side_effect=ConnectionError("provider down"))
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=lambda: None)
 
     async def test_reraises_provider_error_when_no_fallback(self) -> None:
         primary = self._runnable(side_effect=ConnectionError("provider down"))
@@ -414,8 +459,7 @@ class TestAinvokeLlm:
 
     async def test_programming_error_propagates_not_downgraded(self) -> None:
         primary = self._runnable(side_effect=ValueError("a real bug"))
-        fallback = MagicMock()
-        fallback.ainvoke = AsyncMock(return_value=AIMessage(content="must-not-be-used"))
+        fallback = self._runnable(result=AIMessage(content="must-not-be-used"))
 
         with pytest.raises(ValueError):
             await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
@@ -461,31 +505,30 @@ class TestConstants:
         assert providers_in_order == ["gemini", "openrouter"]
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
-        from google.api_core.exceptions import (
-            DeadlineExceeded,
-            InternalServerError,
-            ResourceExhausted,
-            ServiceUnavailable,
-        )
+        from google.genai.errors import ServerError
 
-        # Gemini (google-api-core) + stdlib transient types must all be retryable.
-        # The tuple is provider-agnostic, so it is a superset (also covers the
-        # OpenRouter SDK transient errors) — assert containment, not equality.
-        expected = {
-            ResourceExhausted,
-            ServiceUnavailable,
-            DeadlineExceeded,
-            InternalServerError,
-            ConnectionError,
-            TimeoutError,
-        }
+        # Gemini 5xx (google-genai SDK) + stdlib transient types must all be
+        # retryable. The tuple is provider-agnostic, so it is a superset (also
+        # covers the OpenRouter SDK transient errors) — assert containment.
+        expected = {ServerError, ConnectionError, TimeoutError}
         assert expected.issubset(set(LLM_RETRYABLE_EXCEPTIONS))
 
     def test_retryable_exceptions_isinstance_check(self) -> None:
-        from google.api_core.exceptions import ResourceExhausted
+        from google.genai.errors import ServerError
 
-        exc = ResourceExhausted("rate limited")
+        exc = ServerError(503, {"error": {"message": "overloaded", "status": "UNAVAILABLE"}})
         assert isinstance(exc, LLM_RETRYABLE_EXCEPTIONS)
+
+    def test_gemini_runtime_errors_covered_by_fallback_set(self) -> None:
+        # Regression guard: langchain-google-genai wraps 4xx into
+        # ChatGoogleGenerativeAIError and lets google-genai ServerError (5xx)
+        # propagate raw — the sets must be built from THOSE classes, not the
+        # legacy google-api-core hierarchy the SDK no longer raises.
+        from google.genai.errors import APIError, ClientError, ServerError
+        from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
+
+        for cls in (ChatGoogleGenerativeAIError, ServerError, ClientError, APIError):
+            assert issubclass(cls, LLM_FALLBACK_EXCEPTIONS), cls.__name__
 
     def test_non_retryable_exception_not_in_tuple(self) -> None:
         assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)
@@ -520,7 +563,7 @@ class TestChatbot:
     async def test_chatbot_no_provider_returns_fallback_message(
         self, mock_get_default: MagicMock, mock_log: MagicMock
     ) -> None:
-        mock_get_default.side_effect = RuntimeError("no providers")
+        mock_get_default.side_effect = LLMNotConfiguredError("no providers")
 
         result = await chatbot([HumanMessage(content="hello")])
 
@@ -530,12 +573,25 @@ class TestChatbot:
     @patch("app.agents.llm.chatbot.log")
     @patch("app.agents.llm.chatbot.ainvoke_llm")
     @patch("app.agents.llm.chatbot.get_default_llm")
-    async def test_chatbot_invoke_error_returns_fallback_message(
+    async def test_chatbot_provider_error_returns_fallback_message(
         self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock, mock_log: MagicMock
     ) -> None:
         mock_get_default.return_value = MagicMock()
-        mock_ainvoke.side_effect = RuntimeError("provider error")
+        mock_ainvoke.side_effect = ConnectionError("provider down")
 
         result = await chatbot([HumanMessage(content="hello")])
 
         assert "trouble processing" in result["messages"][0].content
+
+    @patch("app.agents.llm.chatbot.ainvoke_llm")
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_programming_bug_propagates(
+        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
+    ) -> None:
+        # Bare RuntimeError is a programming bug, not an operational failure —
+        # it must fail loud instead of degrading to the friendly message.
+        mock_get_default.return_value = MagicMock()
+        mock_ainvoke.side_effect = RuntimeError("event loop is closed")
+
+        with pytest.raises(RuntimeError, match="event loop is closed"):
+            await chatbot([HumanMessage(content="hello")])
