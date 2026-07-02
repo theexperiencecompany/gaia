@@ -33,6 +33,7 @@ from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
 from app.services.system_workflows.provisioner import provision_system_workflows
+from app.services.workflow.trigger_service import TriggerService
 from app.services.workspace_sync import schedule_user_provision
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
 from app.utils.redis_utils import RedisPoolManager
@@ -305,6 +306,21 @@ async def handle_oauth_connection(
             user_id=user_id,
             triggers=integration_config.associated_triggers,
         )
+
+        # A (re)connect creates a fresh Composio connected account, which strands
+        # any per-workflow triggers registered against the old one. Re-register
+        # this integration's workflow triggers so existing workflows keep firing.
+        workflow_trigger_names = [
+            t.workflow_trigger_schema.slug
+            for t in integration_config.associated_triggers
+            if t.workflow_trigger_schema
+        ]
+        if workflow_trigger_names:
+            background_tasks.add_task(
+                TriggerService.resync_user_workflow_triggers,
+                user_id,
+                workflow_trigger_names,
+            )
 
     # Process Gmail emails to memory if this is a Gmail connection
     if integration_config.id == GMAIL_INTEGRATION_ID:

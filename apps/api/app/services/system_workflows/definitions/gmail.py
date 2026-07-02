@@ -21,35 +21,37 @@ from app.models.workflow_models import (
 def _email_intelligence() -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
         title="Inbox Triage",
-        description="Scans new emails, triages by importance, and creates todos for action items.",
+        description="Daily digest: triages the last day's emails and creates todos for action items.",
         prompt=(
-            "Triage the new inbox emails provided by the trigger. "
+            "Fetch the emails that arrived in the user's Gmail inbox over the last 24 hours. "
             "Classify each as spam, transactional, newsletter, informational, important, or action-required. "
             "Skip spam, transactional, and newsletters entirely. "
             "For important or action-required emails: extract action items, deadlines, and urgency "
             "(critical/high/normal). Create a todo for each action item. "
             "Search the web and user memory for relevant context on referenced topics or senders. "
-            "Compile a concise briefing for the user covering what was processed, what needs attention, "
+            "Compile ONE concise daily briefing covering what came in, what needs attention, "
             "and what todos were created."
         ),
         is_system_workflow=True,
         source_integration="gmail",
         system_workflow_key="gmail:email_intelligence",
+        # Daily digest at 08:00 in the user's timezone (stamped by the provisioner):
+        # one batched triage run instead of a full agent run per inbound email.
         trigger_config=TriggerConfig(
-            type=TriggerType.INTEGRATION,
-            trigger_name="gmail_poll_inbox",
+            type=TriggerType.SCHEDULE,
+            cron_expression="0 8 * * *",
             enabled=True,
-            trigger_data=GmailPollInboxConfig(interval=15),
         ),
         steps=[
             WorkflowStep(
                 id=str(uuid4()),
-                title="Classify the email",
+                title="Fetch the last day's emails",
                 category="gmail",
                 description=(
-                    "Read the email. Classify as: spam, transactional/oauth, newsletter, "
+                    "Fetch inbox emails received in the last 24 hours. "
+                    "Classify each as: spam, transactional/oauth, newsletter, "
                     "informational (FYI only), important, or action-required. "
-                    "If spam, transactional, or newsletter — stop, do nothing."
+                    "Drop spam, transactional, and newsletters from further processing."
                 ),
             ),
             WorkflowStep(
@@ -65,13 +67,13 @@ def _email_intelligence() -> CreateWorkflowRequest:
             ),
             WorkflowStep(
                 id=str(uuid4()),
-                title="Research and prepare context",
+                title="Create todos and compile the briefing",
                 category="todos",
                 description=(
-                    "For action-required emails: if the email involves a project, topic, "
-                    "or assignment — search web and memory for relevant background. "
-                    "Create a todo for each concrete action item. "
-                    "If from a person, search memory for past interactions with them."
+                    "Create a todo for each concrete action item (search web/memory for "
+                    "background on referenced projects or senders where useful). "
+                    "Then compile one concise briefing: what came in, what needs attention, "
+                    "and which todos were created."
                 ),
             ),
         ],
