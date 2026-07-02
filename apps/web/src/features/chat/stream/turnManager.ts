@@ -112,14 +112,18 @@ class TurnManager {
     if (queue.length === 0) this.queues.delete(key);
     if (!next) return;
 
-    // The held message is now actually being sent — flip its optimistic bubble
-    // from "queued" (grey) to "sending" so it turns blue as it leaves the queue.
+    // The held message is now actually being sent: flip its optimistic bubble
+    // from "queued" (grey) to "sending", and refresh its timestamp to dispatch
+    // time — messages sort by createdAt, so a queued send must order after
+    // everything that streamed in while it waited, not at its typing time.
+    const dispatchedAt = new Date();
     if (next.options.optimisticUserId) {
-      db.updateMessageStatus(next.options.optimisticUserId, "sending").catch(
-        (error) => {
-          console.error("Failed to flip queued message to sending:", error);
-        },
-      );
+      db.updateMessage(next.options.optimisticUserId, {
+        status: "sending",
+        createdAt: dispatchedAt,
+      }).catch((error) => {
+        console.error("Failed to flip queued message to sending:", error);
+      });
     }
 
     // Sends queued against a new conversation resolve to the id it received.
@@ -133,6 +137,7 @@ class TurnManager {
     });
     this.send({
       ...next,
+      userMessage: { ...next.userMessage, date: dispatchedAt.toISOString() },
       options: { ...next.options, conversationId },
     });
   }

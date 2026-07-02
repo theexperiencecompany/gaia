@@ -1,10 +1,14 @@
 import type React from "react";
 
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
 import { ChatSection } from "@/features/chat/components/interface/sections/ChatSection";
 
 interface ChatWithMessagesProps {
-  scrollContainerRef: (node: HTMLElement | null) => void;
-  contentRef: (node: HTMLElement | null) => void;
   chatRef: React.RefObject<HTMLDivElement | null>;
   dragHandlers: {
     onDragEnter: (e: React.DragEvent<HTMLElement>) => void;
@@ -21,24 +25,23 @@ interface ChatWithMessagesProps {
 }
 
 export const ChatWithMessages: React.FC<ChatWithMessagesProps> = ({
-  scrollContainerRef,
-  contentRef,
   chatRef,
   dragHandlers,
   bottomBar,
 }) => {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Scrollable chat content — stick-to-bottom owns scroll position */}
-      <div
-        ref={scrollContainerRef}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-        {...dragHandlers}
-      >
-        <div ref={contentRef}>
-          <ChatSection chatRef={chatRef} />
-        </div>
-      </div>
+      {/* Scrollable transcript — the message scroller owns scroll position:
+          it follows the live edge while streaming and releases when the
+          reader scrolls up. Must render inside MessageScrollerProvider. */}
+      <MessageScroller className="min-h-0 flex-1">
+        <MessageScrollerViewport {...dragHandlers}>
+          <MessageScrollerContent>
+            <ChatSection chatRef={chatRef} />
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        <MessageScrollerButton />
+      </MessageScroller>
       {/* Fixed bottom slot (composer in text mode, voice bar in voice mode) */}
       <div className="shrink-0 pb-2">{bottomBar}</div>
     </div>

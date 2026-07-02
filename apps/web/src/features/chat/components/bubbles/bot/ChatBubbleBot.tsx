@@ -114,7 +114,6 @@ export default function ChatBubbleBot(
         onMouseOver={handleMouseOver}
         onMouseOut={handleMouseOut}
         className={`relative flex flex-col ${isGroupedWithPrev ? "mt-1.5" : ""}`}
-        style={{ contentVisibility: "auto", containIntrinsicSize: "0 120px" }}
       >
         {/*
           Alignment is structural, not per-message. Every bot bubble reserves

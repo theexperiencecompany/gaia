@@ -1,13 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
+import {
+  MessageScrollerProvider,
+  useMessageScroller,
+} from "@/components/ui/message-scroller";
 import { chatApi } from "@/features/chat/api/chatApi";
 import Composer from "@/features/chat/components/composer/Composer";
 
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useChatLayout } from "@/features/chat/components/interface/hooks/useChatLayout";
-import { useScrollBehavior } from "@/features/chat/components/interface/hooks/useScrollBehavior";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
 import { usePrefetchConnectionDetails } from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
@@ -35,9 +38,8 @@ import {
   useVoiceModeActive,
 } from "@/stores/voiceModeStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
-import ScrollToBottomButton from "./ScrollToBottomButton";
 
-const ChatPage = React.memo(function MainChat() {
+const MainChat = React.memo(function MainChat() {
   const voiceModeActive = useVoiceModeActive();
   const storeDiscoveredId = useDiscoveredConversationId();
   const { enterVoiceMode, exitVoiceMode } = useVoiceModeActions();
@@ -138,12 +140,15 @@ const ChatPage = React.memo(function MainChat() {
     // to avoid re-triggering when manually toggling read/unread status
   ]);
 
-  const {
-    scrollContainerRef,
-    contentRef,
-    scrollToBottom,
-    shouldShowScrollButton,
-  } = useScrollBehavior();
+  // Imperative scroll control from the message scroller (Provider wraps this
+  // component). Used by the composer to snap to the live edge on send.
+  // Instant, not smooth: bubbles use content-visibility:auto, so a smooth
+  // scroll lands short as offscreen bubbles resolve their real heights — the
+  // instant jump plus autoScroll stickiness pins the view reliably.
+  const { scrollToEnd } = useMessageScroller();
+  const scrollToBottom = useCallback(() => {
+    scrollToEnd();
+  }, [scrollToEnd]);
 
   const { isDragging, dragHandlers } = useDragAndDrop({
     onDrop: (files: File[]) => {
@@ -254,18 +259,11 @@ const ChatPage = React.memo(function MainChat() {
         <VoiceControlBarContainer>
           <VoiceModeBackground />
           <ChatWithMessages
-            scrollContainerRef={scrollContainerRef}
-            contentRef={contentRef}
             chatRef={chatRef}
             dragHandlers={dragHandlers}
             bottomBar={<VoiceControlBarSlot onEndCall={handleEndVoiceCall} />}
           />
         </VoiceControlBarContainer>
-        <ScrollToBottomButton
-          onScrollToBottom={scrollToBottom}
-          shouldShow={shouldShowScrollButton}
-          hasMessages={hasMessages}
-        />
       </div>
     );
   }
@@ -275,37 +273,29 @@ const ChatPage = React.memo(function MainChat() {
       <FileDropModal isDragging={isDragging} />
 
       {useMessagesLayout ? (
-        <>
-          <ChatWithMessages
-            scrollContainerRef={scrollContainerRef}
-            contentRef={contentRef}
-            chatRef={chatRef}
-            dragHandlers={dragHandlers}
-            bottomBar={<Composer {...composerProps} />}
-          />
-          <ScrollToBottomButton
-            onScrollToBottom={scrollToBottom}
-            shouldShow={shouldShowScrollButton}
-            hasMessages={hasMessages}
-          />
-        </>
+        <ChatWithMessages
+          chatRef={chatRef}
+          dragHandlers={dragHandlers}
+          bottomBar={<Composer {...composerProps} />}
+        />
       ) : (
-        <>
-          <NewChatLayout
-            scrollContainerRef={scrollContainerRef}
-            contentRef={contentRef}
-            dummySectionRef={dummySectionRef}
-            dragHandlers={dragHandlers}
-            composerProps={composerProps}
-          />
-          <ScrollToBottomButton
-            onScrollToBottom={scrollToBottom}
-            shouldShow={shouldShowScrollButton}
-            hasMessages={hasMessages}
-          />
-        </>
+        <NewChatLayout
+          dummySectionRef={dummySectionRef}
+          dragHandlers={dragHandlers}
+          composerProps={composerProps}
+        />
       )}
     </div>
+  );
+});
+
+// The provider owns transcript scroll state (stick-to-bottom, scroll button,
+// imperative scrollToEnd) for everything below — including the composer slot.
+const ChatPage = React.memo(function ChatPage() {
+  return (
+    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+      <MainChat />
+    </MessageScrollerProvider>
   );
 });
 

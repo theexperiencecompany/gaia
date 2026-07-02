@@ -25,6 +25,7 @@ import {
   type TurnMessageMeta,
 } from "./messageRecord";
 import type { SendArgs } from "./types";
+import { isViewingConversation, markConversationUnread } from "./unread";
 
 // Fallback for the rare case a delegated background executor never delivers its
 // result message — clears the "awaiting executor result" UI so it can't stick.
@@ -537,11 +538,7 @@ export class TurnSession {
 
     try {
       if (!this.conversationId || !this.botMessageId) {
-        // Stream closed before any identity arrived — nothing to persist.
-        console.warn(
-          "[TurnSession] Stream closed without a bot message id — unwinding",
-        );
-        this.end();
+        this.recoverGhostTurn();
         return;
       }
 
@@ -558,19 +555,16 @@ export class TurnSession {
         }
       }
 
-      const activeConversationId = useChatStore.getState().activeConversationId;
-
       // A completed turn in a conversation the user isn't viewing surfaces as
       // unread in the sidebar (cleared by ChatPage's mark-as-read on open).
+      // View detection uses location.pathname, not the chat store's active id —
+      // the pathname changes synchronously with navigation, while the store
+      // only updates in a ChatPage effect and can lag a close that races it.
       if (
-        this.conversationId !== activeConversationId &&
+        !isViewingConversation(this.conversationId) &&
         this.acc.responseText.length > 0
       ) {
-        db.updateConversationFields(this.conversationId, {
-          isUnread: true,
-        }).catch((error) => {
-          console.error("Failed to mark conversation unread:", error);
-        });
+        markConversationUnread(this.conversationId);
       }
 
       if (hasExecutorDelegation(this.acc.toolData)) {
@@ -627,8 +621,42 @@ export class TurnSession {
       useComposerStore.getState().setInputText(this.inputText);
     }
 
+    this.markUserMessageFailed();
     useChatStore.getState().clearOptimisticMessage();
     this.end();
+  }
+
+  /**
+   * The stream closed without ever delivering its identity frame. For an
+   * existing conversation this is the backend's pub/sub init race (the turn IS
+   * persisted server-side — the frame was published before the SSE subscriber
+   * attached, and pub/sub has no replay): reconcile from the server, which
+   * inserts the real message pair and sweeps the orphaned optimistic bubble.
+   * A new conversation has nothing server-side to reconcile — surface failure.
+   */
+  private recoverGhostTurn(): void {
+    streamLogError("lifecycle", "turn:ghost-close", {
+      turnKey: this.key,
+      conversationId: this.conversationId,
+    });
+    if (this.conversationId) {
+      const conversationId = this.conversationId;
+      this.end();
+      void syncSingleConversation(conversationId);
+      return;
+    }
+    this.markUserMessageFailed();
+    this.end();
+  }
+
+  /** The turn never bound backend ids or errored — flip the optimistic user
+   *  bubble to failed so the message doesn't sit "sending" forever. */
+  private markUserMessageFailed(): void {
+    const optimisticId = this.args.options.optimisticUserId;
+    if (!optimisticId || this.botMessageId) return;
+    db.updateMessageStatus(optimisticId, "failed").catch(() => {
+      // New-conversation sends are Zustand-only — nothing persisted to flip.
+    });
   }
 
   private end(): void {

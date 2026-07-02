@@ -14,6 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { MessageScrollerItem } from "@/components/ui/message-scroller";
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
@@ -468,16 +469,24 @@ export default function ChatRenderer({
             index === lastRenderedIndex && isConversationBusy;
 
           return (
-            <ChatMessageItem
+            // The scroller virtualizes rows (content-visibility) with anchor
+            // math it owns — replaces the old per-bubble inline hack that
+            // fought scroll restoration. User messages are turn anchors.
+            <MessageScrollerItem
               key={message.message_id || index}
-              message={message}
-              options={messagePropsOptions}
-              isFollowedByBot={isFollowedByBot}
-              isPrecededByBot={isPrecededByBot}
-              suppressForBusy={suppressForBusy}
-              compact={compact}
-              bubbleKey={String(message.message_id || index)}
-            />
+              messageId={String(message.message_id || index)}
+              scrollAnchor={message.type === "user"}
+            >
+              <ChatMessageItem
+                message={message}
+                options={messagePropsOptions}
+                isFollowedByBot={isFollowedByBot}
+                isPrecededByBot={isPrecededByBot}
+                suppressForBusy={suppressForBusy}
+                compact={compact}
+                bubbleKey={String(message.message_id || index)}
+              />
+            </MessageScrollerItem>
           );
         },
       )}

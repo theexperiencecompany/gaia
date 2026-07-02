@@ -6,8 +6,6 @@ import { NewChatSection } from "@/features/chat/components/interface/sections/Ne
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 
 interface NewChatLayoutProps {
-  scrollContainerRef: (node: HTMLElement | null) => void;
-  contentRef: (node: HTMLElement | null) => void;
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   dragHandlers: {
     onDragEnter: (e: React.DragEvent<HTMLElement>) => void;
@@ -31,24 +29,16 @@ interface NewChatLayoutProps {
 }
 
 export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
-  scrollContainerRef,
-  contentRef,
   dummySectionRef,
   dragHandlers,
   composerProps,
 }) => {
   const [showUseCases, setShowUseCases] = useState(false);
 
+  // A static landing page — plain scrolling, no stick-to-bottom semantics.
   return (
-    <div
-      ref={scrollContainerRef}
-      className="h-full space-y-20 overflow-y-auto"
-      {...dragHandlers}
-    >
-      <div
-        ref={contentRef}
-        className="flex w-full flex-col items-center gap-10 px-4 pb-10"
-      >
+    <div className="h-full space-y-20 overflow-y-auto" {...dragHandlers}>
+      <div className="flex w-full flex-col items-center gap-10 px-4 pb-10">
         <NewChatSection
           composerProps={composerProps}
           showUseCases={showUseCases}
