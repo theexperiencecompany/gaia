@@ -146,16 +146,29 @@ class TestDeleteConversation:
     async def test_delete_all_success(self):
         from app.services.conversation_service import delete_all_conversations
 
-        with patch(COLLECTION) as mock_col:
+        cleanup = AsyncMock()
+        with (
+            patch(COLLECTION) as mock_col,
+            patch("app.services.conversation_service._cleanup_checkpoint_threads", new=cleanup),
+        ):
+            # delete_all captures the conversation ids (for checkpoint cleanup)
+            # before the delete_many, so distinct must be served.
+            mock_col.distinct = AsyncMock(return_value=["conv_1", "conv_2", "conv_3"])
             mock_col.delete_many = AsyncMock(return_value=MagicMock(deleted_count=3))
             result = await delete_all_conversations(FAKE_USER)
 
         assert "deleted" in result["message"].lower()
+        # Every captured conversation's checkpoint threads must be cleaned up.
+        assert cleanup.await_count == 3
 
     async def test_delete_all_none_found(self):
         from app.services.conversation_service import delete_all_conversations
 
-        with patch(COLLECTION) as mock_col:
+        with (
+            patch(COLLECTION) as mock_col,
+            patch("app.services.conversation_service._cleanup_checkpoint_threads", new=AsyncMock()),
+        ):
+            mock_col.distinct = AsyncMock(return_value=[])
             mock_col.delete_many = AsyncMock(return_value=MagicMock(deleted_count=0))
             with pytest.raises(HTTPException) as exc:
                 await delete_all_conversations(FAKE_USER)

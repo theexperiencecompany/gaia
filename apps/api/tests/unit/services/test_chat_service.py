@@ -586,6 +586,9 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
     m.set_error = AsyncMock()
     m.cleanup = AsyncMock()
     m.get_progress = AsyncMock(return_value=None)
+    # Per-conversation active-stream lock: None = acquired (no other holder).
+    m.try_acquire_conversation_lock = AsyncMock(return_value=None)
+    m.release_conversation_lock_if_owned = AsyncMock()
     return m
 
 

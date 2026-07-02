@@ -261,20 +261,32 @@ class TestDeleteConversation:
         assert exc_info.value.status_code == 404
 
     async def test_delete_all(self, mock_collection, test_user):
+        # delete_all captures the conversation ids (for checkpoint cleanup) via
+        # distinct before delete_many, so distinct must be served.
+        mock_collection.distinct = AsyncMock(return_value=["conv_1", "conv_2"])
         mock_result = MagicMock()
         mock_result.deleted_count = 5
         mock_collection.delete_many = AsyncMock(return_value=mock_result)
 
-        result = await delete_all_conversations(test_user)
+        cleanup = AsyncMock()
+        with patch("app.services.conversation_service._cleanup_checkpoint_threads", new=cleanup):
+            result = await delete_all_conversations(test_user)
+
         assert result["message"] == "All conversations deleted successfully"
+        # Every captured conversation's checkpoint threads must be cleaned up.
+        assert cleanup.await_count == 2
 
     async def test_delete_all_raises_404_when_none(self, mock_collection, test_user):
+        mock_collection.distinct = AsyncMock(return_value=[])
         mock_result = MagicMock()
         mock_result.deleted_count = 0
         mock_collection.delete_many = AsyncMock(return_value=mock_result)
 
-        with pytest.raises(HTTPException) as exc_info:
-            await delete_all_conversations(test_user)
+        with patch(
+            "app.services.conversation_service._cleanup_checkpoint_threads", new=AsyncMock()
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await delete_all_conversations(test_user)
 
         assert exc_info.value.status_code == 404
 

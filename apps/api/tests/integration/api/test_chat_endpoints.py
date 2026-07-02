@@ -55,6 +55,19 @@ class TestChatStreamEndpoint:
     """Tests for POST /api/v1/chat-stream."""
 
     @pytest.fixture(autouse=True)
+    def free_conversation_lock(self):
+        """The per-conversation active-stream lock is free in these tests.
+
+        Without this, the mocked stream_manager returns a truthy MagicMock as
+        the lock holder and every request 409s as conversation_busy.
+        """
+        with patch(
+            "app.api.v1.endpoints.chat.stream_manager.try_acquire_conversation_lock",
+            new=AsyncMock(return_value=None),
+        ):
+            yield
+
+    @pytest.fixture(autouse=True)
     def mock_rate_limiter(self):
         """Bypass the tiered rate limiter's Redis calls for all chat tests.
 
