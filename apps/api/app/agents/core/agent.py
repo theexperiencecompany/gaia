@@ -104,6 +104,7 @@ async def _core_agent_logic(
         ),
         GraphManager.get_graph("comms_agent"),
     )
+
     initial_state = build_initial_state(
         request, user_id or "", conversation_id, history, trigger_context
     )

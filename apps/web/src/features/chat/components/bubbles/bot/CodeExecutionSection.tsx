@@ -1,12 +1,21 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Skeleton } from "@heroui/skeleton";
+import dynamic from "next/dynamic";
 import type React from "react";
 import { useState } from "react";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import type { CodeData } from "@/types/features/toolDataTypes";
 
-import ChartDisplay from "./ChartDisplay";
 import CodeExecutionOutput from "./CodeExecutionOutput";
+
+// recharts (~100 KB gz) is only needed when a code-execution result actually
+// contains charts, which is rare. Lazy-load it so it stays out of the chat
+// bundle for the common (no-chart) case.
+const ChartDisplay = dynamic(() => import("./ChartDisplay"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-64 w-full rounded-2xl" />,
+});
 
 interface CodeExecutionSectionProps {
   code_data: CodeData;

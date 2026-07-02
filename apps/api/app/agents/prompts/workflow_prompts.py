@@ -385,9 +385,7 @@ WORKFLOW_PROMPT_GENERATION_TEMPLATE = """{title_section}{description_section}
 {integrations_hint}
 {available_triggers}
 {existing_section}
-{mode_instruction}
-
-{format_instructions}"""
+{mode_instruction}"""
 
 
 EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You're running the user's saved workflow, triggered automatically by an incoming email. This is an automated run, so finish it end to end and don't ask the user anything.

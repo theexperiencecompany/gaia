@@ -17,15 +17,12 @@ import time
 
 from bs4 import BeautifulSoup  # For HTML cleaning
 import ftfy
-from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import init_llm
+from app.agents.llm.client import ainvoke_structured
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
-    PROFILE_EXTRACTION_LLM_MODEL,
-    PROFILE_EXTRACTION_LLM_PROVIDER,
 )
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -123,7 +120,6 @@ PLATFORM_CONFIG = {
 }
 
 
-# Structured output model
 class UsernameExtraction(BaseModel):
     """Structured output for username extraction."""
 
@@ -135,7 +131,6 @@ class UsernameExtraction(BaseModel):
     )
 
 
-# Prompt template string
 EXTRACTION_PROMPT = """You are extracting the EMAIL RECIPIENT'S username/handle on {platform} from notification emails they RECEIVED.
 
 USER CONTEXT:
@@ -225,8 +220,6 @@ Extract: "NOT_FOUND" (this is org/repo path, not a user profile)
 
 Email: "https://github.com/microsoft/vscode/pull/123"
 Extract: "NOT_FOUND" (PR URL, not a profile)
-
-{format_instructions}
 
 Platform: {platform}
 
@@ -411,7 +404,6 @@ async def extract_username_with_llm(
 
     emails_text = "\n---\n".join(email_context)
 
-    # Build user context
     user_context = "The recipient's name is unknown."
     if user_name:
         user_context = f"The recipient's name is {user_name}. Look for usernames/handles associated with this person."
@@ -434,40 +426,16 @@ async def extract_username_with_llm(
             )
 
     try:
-        # Create parser
-        parser = PydanticOutputParser(pydantic_object=UsernameExtraction)
-
-        # Get LLM client with Gemini 2.5 Pro for profile extraction
-        llm = init_llm(
-            preferred_provider=PROFILE_EXTRACTION_LLM_PROVIDER, fallback_enabled=True
-        ).with_config(configurable={"model": PROFILE_EXTRACTION_LLM_MODEL})
-
-        # Format the prompt with parser instructions
-        formatted_prompt = EXTRACTION_PROMPT.format(
+        prompt = EXTRACTION_PROMPT.format(
             platform=platform,
             user_context=user_context,
             emails_text=emails_text,
-            format_instructions=parser.get_format_instructions(),
         )
-
-        # Generate response using LLM
-        llm_response = await llm.ainvoke(formatted_prompt)
-
-        # Parse the response content — Gemini may return a list of content blocks
-        raw_content = getattr(llm_response, "content", str(llm_response))
-        if isinstance(raw_content, list):
-            response_content = "".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in raw_content
-            )
-        else:
-            response_content = raw_content
-        result: UsernameExtraction = parser.parse(response_content)
+        result = await ainvoke_structured(UsernameExtraction, prompt, label="profile_extraction")
 
         username = result.username.strip()
         confidence = result.confidence
 
-        # Clean up response
         username = username.replace("@", "").replace("\\n", "").strip()
 
         elapsed = time.time() - start_time
@@ -476,7 +444,6 @@ async def extract_username_with_llm(
             f"(confidence: {confidence}) in {elapsed:.2f}s"
         )
 
-        # Debug: Log LLM response
         if settings.DEBUG_EMAIL_PROCESSING:
             debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
             llm_output_file = os.path.join(debug_dir, f"{platform}_llm_output.json")
@@ -487,7 +454,7 @@ async def extract_username_with_llm(
                         "username": username,
                         "confidence": confidence,
                         "elapsed_seconds": elapsed,
-                        "raw_response": response_content,
+                        "result": result.model_dump(),
                     },
                     f,
                     indent=2,

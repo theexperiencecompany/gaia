@@ -17,7 +17,6 @@ import EmailSentSection from "@/features/chat/components/bubbles/bot/EmailSentSe
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
 import FileArtifactSection from "@/features/chat/components/bubbles/bot/FileArtifactSection";
 import GoogleDocsSection from "@/features/chat/components/bubbles/bot/GoogleDocsSection";
-import GoalSection from "@/features/chat/components/bubbles/bot/goals/GoalSection";
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import NotificationListSection from "@/features/chat/components/bubbles/bot/NotificationListSection";
 import PeopleSearchSection from "@/features/chat/components/bubbles/bot/PeopleSearchSection";
@@ -112,18 +111,6 @@ function GalleryRenderer({ fixture }: { fixture: ToolFixture }): JSX.Element {
         // biome-ignore lint/suspicious/noExplicitAny: gallery-only
         <TodoProgressSection todo_progress={data as any} />
       );
-    case "goal_data": {
-      // biome-ignore lint/suspicious/noExplicitAny: gallery-only
-      const g = data as any;
-      return (
-        <GoalSection
-          goals={g.goals}
-          stats={g.stats}
-          action={g.action}
-          message={g.message}
-        />
-      );
-    }
     case "google_docs_data":
       // biome-ignore lint/suspicious/noExplicitAny: gallery-only
       return <GoogleDocsSection google_docs_data={data as any} />;

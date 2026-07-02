@@ -154,19 +154,16 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         ),
     ),
     "trigger_workflow_executions": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=20),  # Keep restrictive
-        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
+        free=RateLimitConfig(day=5, month=20),  # Keep restrictive (trial)
+        # Account-level triggers (e.g. Gmail) fire one execution per event, so Pro
+        # needs real headroom; the cap stays as a cost guard, not a daily blocker.
+        pro=RateLimitConfig(day=1500, month=45000),
         info=FeatureInfo(
             title="Trigger Workflow Executions",
             description="Automated workflow executions triggered by integrations",
         ),
     ),
     # PRODUCTIVITY TOOLS (Generous - Core Value)
-    "goal_tracking": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),  # Keep restrictive for trial
-        pro=RateLimitConfig(day=75, month=2250),  # +50% (50→75, 1500→2250)
-        info=FeatureInfo(title="Goal Tracking", description="Create and track personal goals"),
-    ),
     "todo_operations": TieredRateLimits(
         free=RateLimitConfig(day=50, month=1000),  # Good trial experience
         pro=RateLimitConfig(day=1500, month=22500),  # +50% (1000→1500, 15000→22500)

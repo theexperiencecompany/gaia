@@ -1490,39 +1490,6 @@ MESSAGE PATTERNS:
 
 
 # =============================================================================
-# INTERNAL GOALS MEMORY PROMPT
-# =============================================================================
-
-GOALS_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
-    provider_name="Goals",
-    entity_instructions="""
-## GOALS-SPECIFIC EXTRACTION:
-
-1. GOAL MAPPINGS:
-   - Goal IDs and titles
-   - Category/type patterns
-
-2. ROADMAP PATTERNS:
-   - Milestone structure
-   - Progress tracking
-""",
-    provider_specific_instructions="""
-## GOALS-SPECIFIC MEMORIES:
-
-GOAL PATTERNS:
-- Creation conventions
-- Categorization preferences
-- Timeline patterns
-
-TRACKING PATTERNS:
-- Progress update frequency
-- Milestone definitions
-- Review cadence
-""",
-)
-
-
-# =============================================================================
 # MCP INTEGRATIONS MEMORY PROMPTS
 # =============================================================================
 

@@ -7,8 +7,8 @@ from typing import Any
 
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
-from langchain_google_genai import ChatGoogleGenerativeAI
 
+from app.agents.llm.client import get_default_llm
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
@@ -17,12 +17,12 @@ from app.agents.middleware.summarization import (
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.settings import settings
+from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
     MAX_OUTPUT_CHARS,
     SUMMARIZATION_KEEP_TOKENS,
-    SUMMARIZATION_MODEL,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
 from shared.py.wide_events import log
@@ -37,8 +37,8 @@ _summarization_llm: BaseChatModel | None = None
 
 
 def get_summarization_llm() -> BaseChatModel | None:
-    """Get the cached summarization LLM (Gemini Flash 2), or None if the Google
-    API key is not configured."""
+    """Get the cached summarization LLM (the default Gemini model), or None if the
+    Google API key is not configured."""
     global _summarization_llm
 
     if _summarization_llm is not None:
@@ -50,10 +50,9 @@ def get_summarization_llm() -> BaseChatModel | None:
         )
         return None
 
-    _summarization_llm = ChatGoogleGenerativeAI(
-        model=SUMMARIZATION_MODEL,
-        temperature=0.1,  # Low temperature for consistent summaries
-    )
+    # get_default_llm() carries the model's context-window profile, which the
+    # summarization/compaction fractional triggers below require to build.
+    _summarization_llm = get_default_llm()
     return _summarization_llm
 
 
@@ -157,9 +156,13 @@ def create_middleware_stack(
 
     # Compaction middleware (always available, but respects enable flag)
     if enable_compaction:
+        # DEFAULT_MAX_TOKENS is the same window the summarization model's profile
+        # carries (get_default_llm sets profile.max_input_tokens from it), so the
+        # compaction and summarization fractions are denominated in one window.
         compaction = WorkspaceCompactionMiddleware(
             compaction_threshold=compaction_threshold,
             max_output_chars=max_output_chars,
+            context_window=DEFAULT_MAX_TOKENS,
             excluded_tools=compaction_excluded_tools,
         )
         middleware.append(compaction)

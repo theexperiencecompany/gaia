@@ -11,11 +11,6 @@ EMAIL_COMPOSER = """
         5. Do not include any additional commentary, headers, or titles outside of the email content.
         6. Use proper markdown for readability where necessary, but avoid excessive formatting.
         7. Do not hallucinate, fabricate information, or add anything off-topic or irrelevant.
-        8. The output must strictly follow the JSON format:
-        {{"subject": "Your generated subject line here", "body": "Your generated email body here"}}
-        9. Provide the JSON response so that it is extremely easy to parse and stringify.
-        10. Ensure the JSON output is valid, with all special characters (like newlines) properly escaped, and without any additional commentary.
-        11. Do not add any additional text, explanations, or commentary before or after the JSON.
 
         Email Structure:
         - Greeting: Begin with a courteous and contextually appropriate greeting.
@@ -53,41 +48,11 @@ EMAIL_COMPOSER = """
 
         {learned_writing_style}
 
+        User Notes:
+        {notes}
+
         Only mention user notes when relevant to the email context.
 
         The user want's to write an email for: {prompt}.
         Now, generate a well-structured email accordingly.
         """
-
-# Combined email analysis prompt for importance, summary, and semantic labeling
-EMAIL_COMPREHENSIVE_ANALYSIS = """
-Analyze this email comprehensively to determine its importance and generate semantic labels for categorization.
-
-Email Details:
-Subject: {subject}
-From: {sender}
-Date: {date}
-Content: {content}
-
-Analysis Requirements:
-
-1. IMPORTANCE ANALYSIS:
-   - Determine if this email is important (requires action, contains relevant information, or is from someone significant)
-   - Mark as not important if it's spam, promotional, or irrelevant
-   - Assign importance level: URGENT, HIGH, MEDIUM, or LOW
-   - Provide a brief summary if important, empty string if not important
-
-2. SEMANTIC LABELING:
-   - Generate semantic labels that capture:
-     * Content topics and themes
-     * Business context (if applicable)
-     * Action requirements
-     * People/organizations mentioned
-     * Technical domains
-     * Emotional tone
-     * Urgency indicators
-   - Assign primary category (work, personal, newsletter, support, etc.)
-   - Identify primary intent (request, information, notification, meeting, etc.)
-
-{format_instructions}
-"""

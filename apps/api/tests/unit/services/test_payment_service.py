@@ -269,6 +269,19 @@ def webhook_service():
     return svc
 
 
+@pytest.fixture(autouse=True)
+def mock_payment_service_invalidation():
+    """Prevent payment_service.invalidate_plan_cache_by_dodo_id from hitting the DB.
+
+    process_webhook now calls this after each successful handler to bust the
+    subscription-plan cache.  Patch the module-level singleton so every webhook
+    test stays fully in-memory.
+    """
+    with patch("app.services.payments.payment_webhook_service.payment_service") as mock_svc:
+        mock_svc.invalidate_plan_cache_by_dodo_id = AsyncMock()
+        yield mock_svc
+
+
 # ============================================================================
 # DodoPaymentService Tests
 # ============================================================================

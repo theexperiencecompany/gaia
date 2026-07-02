@@ -12,7 +12,7 @@ from typing import Union
 from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
-from app.agents.llm.client import init_llm
+from app.agents.llm.client import ainvoke_llm, get_default_llm, with_llm_retry
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
@@ -29,17 +29,15 @@ class DocumentProcessor:
             result_type=ResultType.MD,
             api_key=settings.LLAMA_INDEX_KEY or "",
         )
-        self.llm = init_llm()
+        self.llm = get_default_llm()
 
     async def process_file(
         self, file_content: bytes, content_type: str, filename: str
     ) -> Union[str, list[DocumentSummaryModel], DocumentSummaryModel]:
-        """
-        Process and summarize a file based on its content type.
+        """Process and summarize a file based on its content type.
 
         Args:
             file_content: Raw file bytes
-            file_url: URL of the uploaded file
             content_type: MIME type of the file
             filename: Name of the file
 
@@ -76,12 +74,11 @@ class DocumentProcessor:
             Summary of the image content
         """
         try:
-            # Convert the image to base64 for the LLM
             base64_image = base64.b64encode(image_data).decode("utf-8")
 
-            # Process with vision model
-            response = await self.llm.ainvoke(
-                input=[
+            response = await ainvoke_llm(
+                self.llm,
+                [
                     {
                         "role": "user",
                         "content": [
@@ -99,12 +96,10 @@ class DocumentProcessor:
                         ],
                     }
                 ],
+                label="file_image_summary",
             )
 
-            description = response
-            if not isinstance(description, str):
-                description = str(description)
-            return description
+            return response.text.strip()
 
         except Exception as e:
             log.error(f"{LogTag.TOOL} Failed to process image: {e!s}", exc_info=True)
@@ -115,18 +110,9 @@ class DocumentProcessor:
         data: bytes,
         suffix: str = ".pdf",
     ) -> list[DocumentSummaryModel]:
-        """
-        Process a PDF file using LlamaIndex, extract page images, and generate summaries.
-
-        Args:
-            pdf_data: Raw PDF file bytes
-            filename: Name of the PDF file
-
-        Returns:
-            List of DocumentSummaryModel with page images and summaries
-        """
+        """Parse a document (``data`` bytes, ``suffix`` extension) into pages and
+        summarize each page with the default model for retrieval."""
         try:
-            # Save PDF to temporary file for LlamaIndex processing
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
                 temp_path = temp_file.name
                 temp_file.write(data)
@@ -135,7 +121,6 @@ class DocumentProcessor:
                 file_path=temp_path,
             )
 
-            # Clean up temporary file
             os.remove(temp_path)
 
             if isinstance(result, list):
@@ -143,7 +128,9 @@ class DocumentProcessor:
 
             md_documents = await result.aget_markdown_documents(split_by_page=True)
 
-            summarized_pages = await self.llm.abatch(
+            # with_llm_retry adds the same transient-error retry every other LLM
+            # call gets; abatch summarizes all pages concurrently.
+            summarized_pages = await with_llm_retry(self.llm).abatch(
                 inputs=[
                     [
                         {
@@ -168,7 +155,7 @@ class DocumentProcessor:
                         page_number=i + 1,
                         content=md_documents[i].text,
                     ),
-                    summary=str(summarized_pages[i]),
+                    summary=summarized_pages[i].text,
                 )
                 for i in range(len(md_documents))
             ]
@@ -178,20 +165,10 @@ class DocumentProcessor:
             return []
 
     async def process_text(self, text_data: bytes) -> DocumentSummaryModel:
-        """
-        Process and summarize a text file.
-
-        Args:
-            text_data: Raw text file bytes
-
-        Returns:
-            Summary of the text content
-        """
+        """Process and summarize a text file."""
         try:
-            # Decode text
             text_content = text_data.decode("utf-8", errors="replace")
 
-            # Generate summary
             summary = await self._generate_text_summary(
                 text_content[:4000]
             )  # Limit to avoid token issues
@@ -211,8 +188,9 @@ class DocumentProcessor:
     async def _generate_text_summary(self, text: str) -> str:
         """Generate a summary for text content using the default LLM."""
         try:
-            response = await self.llm.ainvoke(
-                input=[
+            response = await ainvoke_llm(
+                self.llm,
+                [
                     {
                         "role": "system",
                         "content": "You are an expert document summarizer. Create concise summaries that capture key information.",
@@ -222,26 +200,23 @@ class DocumentProcessor:
                         "content": f"Summarize the following text in a concise way that preserves the most important information:\n\n{text}",
                     },
                 ],
+                label="file_text_summary",
             )
 
-            return str(response)
+            return response.text.strip()
 
         except Exception as e:
             log.error(f"{LogTag.TOOL} Failed to generate summary: {e!s}", exc_info=True)
             return "Summary could not be generated."
 
 
-# Function to implement file description generation interface compatible with existing code
 async def generate_file_summary(
     file_content: bytes, content_type: str, filename: str
 ) -> Union[str, list[DocumentSummaryModel], DocumentSummaryModel]:
-    """
-    Generate a description for a file based on its content type.
-    Compatible with existing code interface.
+    """Generate a description for a file based on its content type.
 
     Args:
         file_content: Raw file bytes
-        file_url: URL of the uploaded file
         content_type: MIME type of the file
         filename: Name of the file
 

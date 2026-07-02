@@ -154,10 +154,17 @@ class TestInstallFromGitHub:
 
     async def test_install_with_skill_path_returns_201(self, client: AsyncClient):
         mock_skill = _make_skill_mock()
-        with patch(
-            _INSTALL_GITHUB,
-            new_callable=AsyncMock,
-            return_value=mock_skill,
+        with (
+            patch(
+                "app.api.v1.endpoints.skills.get_skill_targets",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                _INSTALL_GITHUB,
+                new_callable=AsyncMock,
+                return_value=mock_skill,
+            ),
         ):
             response = await client.post(
                 INSTALL_GITHUB_URL,
@@ -173,6 +180,11 @@ class TestInstallFromGitHub:
         mock_discovered = _make_discovered_skill(path="skills/my-skill")
         mock_skill = _make_skill_mock()
         with (
+            patch(
+                "app.api.v1.endpoints.skills.get_skill_targets",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
             patch(
                 _GET_SKILL_FROM_REPO,
                 new_callable=AsyncMock,
@@ -192,10 +204,17 @@ class TestInstallFromGitHub:
         assert response.status_code == 201
 
     async def test_install_skill_not_found_returns_404(self, client: AsyncClient):
-        with patch(
-            _GET_SKILL_FROM_REPO,
-            new_callable=AsyncMock,
-            return_value=None,
+        with (
+            patch(
+                "app.api.v1.endpoints.skills.get_skill_targets",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                _GET_SKILL_FROM_REPO,
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
             response = await client.post(
                 INSTALL_GITHUB_URL,
@@ -205,10 +224,15 @@ class TestInstallFromGitHub:
         assert response.status_code == 404
 
     async def test_install_no_path_or_name_returns_400(self, client: AsyncClient):
-        response = await client.post(
-            INSTALL_GITHUB_URL,
-            params={"repo_url": "owner/repo"},
-        )
+        with patch(
+            "app.api.v1.endpoints.skills.get_skill_targets",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            response = await client.post(
+                INSTALL_GITHUB_URL,
+                params={"repo_url": "owner/repo"},
+            )
         assert response.status_code == 400
 
     async def test_install_missing_repo_url_returns_422(self, client: AsyncClient):
@@ -216,10 +240,17 @@ class TestInstallFromGitHub:
         assert response.status_code == 422
 
     async def test_install_value_error_returns_400(self, client: AsyncClient):
-        with patch(
-            _INSTALL_GITHUB,
-            new_callable=AsyncMock,
-            side_effect=ValueError("Invalid skill format"),
+        with (
+            patch(
+                "app.api.v1.endpoints.skills.get_skill_targets",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                _INSTALL_GITHUB,
+                new_callable=AsyncMock,
+                side_effect=ValueError("Invalid skill format"),
+            ),
         ):
             response = await client.post(
                 INSTALL_GITHUB_URL,
@@ -232,10 +263,17 @@ class TestInstallFromGitHub:
         assert response.status_code == 400
 
     async def test_install_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _INSTALL_GITHUB,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("GitHub API rate limited"),
+        with (
+            patch(
+                "app.api.v1.endpoints.skills.get_skill_targets",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                _INSTALL_GITHUB,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("GitHub API rate limited"),
+            ),
         ):
             response = await client.post(
                 INSTALL_GITHUB_URL,
@@ -259,10 +297,16 @@ class TestInstallInline:
 
     async def test_create_inline_skill_returns_201(self, client: AsyncClient):
         mock_skill = _make_skill_mock(source="inline")
-        with patch(
-            _INSTALL_INLINE,
-            new_callable=AsyncMock,
-            return_value=mock_skill,
+        with (
+            patch(
+                "app.api.v1.endpoints.skills._validate_target",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                _INSTALL_INLINE,
+                new_callable=AsyncMock,
+                return_value=mock_skill,
+            ),
         ):
             response = await client.post(
                 INSTALL_INLINE_URL,
@@ -307,10 +351,18 @@ class TestInstallInline:
         assert response.status_code == 422
 
     async def test_create_inline_skill_value_error_returns_400(self, client: AsyncClient):
-        with patch(
-            _INSTALL_INLINE,
-            new_callable=AsyncMock,
-            side_effect=ValueError("Duplicate skill name"),
+        # _validate_target calls get_skill_targets which makes DB calls; bypass it
+        # so the test exercises the ValueError→400 mapping in the endpoint handler.
+        with (
+            patch(
+                "app.api.v1.endpoints.skills._validate_target",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                _INSTALL_INLINE,
+                new_callable=AsyncMock,
+                side_effect=ValueError("Duplicate skill name"),
+            ),
         ):
             response = await client.post(
                 INSTALL_INLINE_URL,

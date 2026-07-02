@@ -8,7 +8,7 @@ persona. This module owns that single invocation.
 
 from langchain_core.messages import HumanMessage
 
-from app.agents.core.graph_manager import GraphManager
+from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.constants.agents import EXECUTOR_ERROR_MARKER, EXECUTOR_RESULT_MARKER
 from app.constants.log_tags import LogTag
@@ -50,9 +50,17 @@ async def narrate_executor_result(
         )
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
-        if not comms_graph:
-            log.warning(f"{LogTag.AGENT} narrate_executor_result: comms_agent graph unavailable")
-            return ""
+    except GraphUnavailableError as e:
+        # Degrade contract: background narration must never crash the executor
+        # flow — drop the narration but log the real cause loudly.
+        log.error(
+            f"{LogTag.AGENT} narrate_executor_result: comms_agent graph unavailable, dropping narration",
+            error=str(e),
+            conversation_id=conversation_id,
+            msg_type=msg_type,
+        )
+        return ""
+    try:
         config = build_agent_config(
             conversation_id=conversation_id,
             user=user,

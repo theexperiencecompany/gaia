@@ -1,18 +1,18 @@
 """
 Workflow subagent structured output schema and parser.
 
-Uses Pydantic models with LangChain's PydanticOutputParser for reliable parsing.
-
 The workflow subagent can respond in two modes:
 1. Clarifying questions - asks user for more information
 2. Finalized workflow - ready to create the workflow draft
+
+The expected JSON block format lives in the subagent prompt
+(app/agents/prompts/workflow_prompts.py); this module validates it.
 """
 
 import json
 import re
 from typing import Literal
 
-from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
 from app.constants.log_tags import LogTag
@@ -97,50 +97,6 @@ class ParseResult:
 # =============================================================================
 # PARSER
 # =============================================================================
-
-# Create parsers for format instructions
-clarifying_parser = PydanticOutputParser(pydantic_object=ClarifyingOutput)
-finalized_parser = PydanticOutputParser(pydantic_object=FinalizedOutput)
-
-
-def get_format_instructions() -> str:
-    """Get format instructions for the subagent prompt."""
-    return """
-You MUST include a JSON block in your response. Two formats:
-
-For clarifying questions:
-```json
-{
-    "type": "clarifying",
-    "message": "Your question to the user"
-}
-```
-
-For finalized workflow:
-```json
-{
-    "type": "finalized",
-    "title": "Workflow Title",
-    "description": "Short 1-2 sentence summary for display in UI cards",
-    "prompt": "Detailed step-by-step instructions for the workflow. Include numbered steps (1, 2, 3...), specific integrations to use, what data to gather, actions to take, and expected outputs.",
-    "trigger_type": "manual|scheduled|integration",
-    "cron_expression": "0 9 * * *",
-    "trigger_slug": "GMAIL_NEW_MESSAGE",
-    "direct_create": false
-}
-```
-
-IMPORTANT:
-- description: Keep SHORT (1-2 sentences) - just for UI display
-- prompt: Be DETAILED and COMPREHENSIVE - this is what the AI uses to execute the workflow
-  • Include numbered steps (1, 2, 3...)
-  • Mention integrations by name (Gmail, Slack, Calendar, etc.)
-  • What data to gather and from where
-  • Expected format of outputs
-- cron_expression: Required for scheduled, omit for others (use USER'S LOCAL TIME, not UTC)
-- trigger_slug: Required for integration, omit for others  
-- direct_create: Set true ONLY for simple, unambiguous manual/scheduled workflows
-"""
 
 
 def parse_subagent_response(response: str) -> ParseResult:

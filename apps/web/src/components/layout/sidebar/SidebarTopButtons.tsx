@@ -8,7 +8,6 @@ import {
   ConnectIcon,
   Home11Icon,
   MessageMultiple02Icon,
-  // Target02Icon, // Temporarily disabled
   ZapIcon,
 } from "@icons";
 import Link from "next/link";
@@ -60,16 +59,11 @@ export default function SidebarTopButtons() {
       icon: <Home11Icon />,
       label: "Home",
     },
-    // Temporarily disabled — Calendar and Goals features are not yet ready.
+    // Temporarily disabled — Calendar feature is not yet ready.
     // {
     //   route: "/calendar",
     //   icon: <Calendar03Icon />,
     //   label: "Calendar",
-    // },
-    // {
-    //   route: "/goals",
-    //   icon: <Target02Icon />,
-    //   label: "Goals",
     // },
     {
       route: "/todos",

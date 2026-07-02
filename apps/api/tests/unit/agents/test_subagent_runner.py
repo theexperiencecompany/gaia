@@ -10,6 +10,7 @@ from langchain_core.messages import (
 )
 import pytest
 
+from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     build_initial_messages,
@@ -228,10 +229,12 @@ class TestExecuteSubagentStream:
     async def test_accumulates_ai_content(self):
         chunk1 = AIMessageChunk(content="Hello ")
         chunk2 = AIMessageChunk(content="world")
+        tool_msg = ToolMessage(content="done", tool_call_id="tc-acc")
 
         async def _fake_astream(*args, **kwargs):
             yield ("messages", (chunk1, {}))
             yield ("messages", (chunk2, {}))
+            yield ("messages", (tool_msg, {}))
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -295,7 +298,8 @@ class TestExecuteSubagentStream:
         assert call_data["tool_output"]["tool_call_id"] == "tc-1"
 
     @pytest.mark.asyncio
-    async def test_tool_message_content_truncated(self):
+    async def test_tool_message_content_not_truncated(self):
+        """tool_output streams the full content without truncation."""
         long_content = "x" * 5000
         tool_msg = ToolMessage(content=long_content, tool_call_id="tc-2")
         stream_writer = MagicMock()
@@ -311,7 +315,7 @@ class TestExecuteSubagentStream:
             await execute_subagent_stream(ctx, stream_writer=stream_writer)
 
         output = stream_writer.call_args[0][0]["tool_output"]["output"]
-        assert len(output) == 3000
+        assert output == long_content
 
     @pytest.mark.asyncio
     async def test_updates_emit_tool_data(self):
@@ -448,8 +452,11 @@ class TestExecuteSubagentStream:
         ):
             result = await execute_subagent_stream(ctx)
 
-        # Only first chunk processed before cancellation on the second
-        assert result == "First "
+        # Only first chunk was accumulated before cancellation broke the loop.
+        # When no tool ran the runner wraps the content in a diagnostic message;
+        # verify "First " appears and "Second" does not (cancellation succeeded).
+        assert "First " in result
+        assert "Second" not in result
 
     @pytest.mark.asyncio
     async def test_non_tuple_events_skipped(self):
@@ -458,6 +465,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("a", "b", "c")  # 3-tuple, should be skipped
             yield ("messages", (AIMessageChunk(content="ok"), {}))
+            yield ("messages", (ToolMessage(content="done", tool_call_id="tc-skip"), {}))
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -545,7 +553,7 @@ class TestPrepareExecutorExecution:
         with patch(
             "app.agents.core.graph_manager.GraphManager.get_graph",
             new_callable=AsyncMock,
-            return_value=None,
+            side_effect=GraphUnavailableError("executor_agent", "provider failed in test"),
         ):
             ctx, error = await prepare_executor_execution(
                 task="task",

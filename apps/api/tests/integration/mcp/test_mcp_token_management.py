@@ -213,10 +213,8 @@ class TestMCPTokenManagement:
         expired_cred.access_token = token_store._encrypt("expired-token")
         expired_cred.status = MCPCredentialStatus.CONNECTED
         expired_cred.auth_type = MCPAuthType.OAUTH
-        # Set expired time (1 hour ago), naive UTC as stored in DB
-        expired_cred.token_expires_at = (datetime.now(UTC) - timedelta(hours=1)).replace(
-            tzinfo=None
-        )
+        # Set expired time (1 hour ago) as a UTC-aware datetime
+        expired_cred.token_expires_at = datetime.now(UTC) - timedelta(hours=1)
 
         mock_session = AsyncMock()
         mock_result = MagicMock()

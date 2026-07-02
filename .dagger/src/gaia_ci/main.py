@@ -124,6 +124,10 @@ class GaiaCi:
                     "**/package.json",
                     "**/pyproject.toml",
                     "libs/**",
+                    # pnpm.patchedDependencies in the root package.json points here;
+                    # --frozen-lockfile reads the patch files during install, so they
+                    # must exist in this dependency layer (before the full source mount).
+                    "patches/**",
                 ],
             )
             .with_exec(["pnpm", "install", "--frozen-lockfile"])
@@ -203,16 +207,20 @@ class GaiaCi:
         We key off that authoritative code rather than grepping a summary line
         that Dagger can truncate from long logs. A missing sentinel means the run
         never finished cleanly (e.g. an xdist worker crash) and is a failure.
+
+        On failure the full pytest output is attached to the error so the failing
+        test names and tracebacks surface in the CI log — Dagger otherwise drops a
+        raising function's captured stdout, leaving only the bare exit code.
         """
         codes = re.findall(r"GAIA_PYTEST_EXIT=(\d+)", output)
         if not codes:
             raise RuntimeError(
                 "pytest did not report an exit code — the run was interrupted "
-                "(worker crash or container error), treating as a failure."
+                f"(worker crash or container error), treating as a failure.\n\n{output}"
             )
         code = int(codes[-1])
         if code != 0:
-            raise RuntimeError(f"pytest failed with exit code {code}.")
+            raise RuntimeError(f"pytest failed with exit code {code}.\n\n{output}")
 
     @function
     async def test_python(self, source: Source) -> str:
@@ -356,6 +364,17 @@ class GaiaCi:
                 "DATABASE_URL",
                 dag.set_secret(
                     "db-url",
+                    "postgresql://gaia:gaia@postgres:5432/gaia_test",  # pragma: allowlist secret
+                ),
+            )
+            # POSTGRES_URL is the env var that settings.POSTGRES_URL reads (Pydantic
+            # field). Memory tests (tests/memory/conftest.py) read settings.POSTGRES_URL
+            # directly, so it must be set in addition to DATABASE_URL (which the
+            # integration/service/e2e conftest reads via os.environ directly).
+            .with_secret_variable(
+                "POSTGRES_URL",
+                dag.set_secret(
+                    "postgres-url",
                     "postgresql://gaia:gaia@postgres:5432/gaia_test",  # pragma: allowlist secret
                 ),
             )

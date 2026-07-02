@@ -4,16 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
+from app.models.tools_models import ToolsCategoryResponse, ToolsListResponse
 from app.services.tools.tools_service import (
     _build_tools_response,
-    _fetch_user_mcp_integrations,
     get_available_tools,
     get_integration_name,
     get_tool_categories,
     get_tools_by_category,
-    get_user_mcp_tools,
-    merge_tools_responses,
 )
 
 # ---------------------------------------------------------------------------
@@ -83,59 +80,118 @@ class TestGetAvailableTools:
             mock_coalesce.assert_called_once_with("global_tools", _build_tools_response)
             assert result == fake_response
 
-    async def test_calls_build_directly_with_user(self):
+    async def test_calls_user_catalog_with_user(self):
+        """With a user_id, get_available_tools delegates to the caching layer."""
         fake_response = ToolsListResponse(tools=[], total_count=0, categories=[])
         with patch(
-            "app.services.tools.tools_service._build_tools_response",
+            "app.services.tools.tools_service._get_user_tools_catalog",
             new_callable=AsyncMock,
             return_value=fake_response,
-        ) as mock_build:
+        ) as mock_catalog:
             result = await get_available_tools(user_id="user_123")
-            mock_build.assert_called_once_with("user_123")
+            mock_catalog.assert_called_once_with("user_123")
             assert result == fake_response
 
 
 # ---------------------------------------------------------------------------
-# _fetch_user_mcp_integrations
+# Workspace scoping via get_user_integration_records
+# (replaces the old _fetch_user_mcp_integrations tests)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestFetchUserMcpIntegrations:
-    async def test_returns_empty_for_no_user(self):
-        result = await _fetch_user_mcp_integrations(None)
-        assert result == []
+class TestWorkspaceScoping:
+    """_build_tools_response scopes all MCP tool visibility to the user's
+    workspace using get_user_integration_records. These tests verify that
+    scoping contract at the _build_tools_response boundary."""
 
-    async def test_returns_empty_for_empty_user(self):
-        result = await _fetch_user_mcp_integrations("")
-        assert result == []
+    async def test_no_user_means_no_mcp_tools(self):
+        """Anonymous call: get_user_integration_records is never called;
+        `added` stays empty so all MCP tools are filtered out."""
+        global_mcp = {"my_mcp": {"name": "X", "icon_url": None, "tools": [{"name": "t"}]}}
+        mock_registry = AsyncMock()
+        mock_registry.get_all_category_objects = MagicMock(return_value={})
+        mock_mcp_store = MagicMock()
+        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
 
-    async def test_returns_results_from_pipeline(self):
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[{"integration_id": "custom_1", "name": "My MCP"}]
-        )
-        mock_col = MagicMock()
-        mock_col.aggregate = MagicMock(return_value=mock_cursor)
-
-        with patch(
-            "app.services.tools.tools_service.user_integrations_collection",
-            mock_col,
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.services.tools.tools_service.get_mcp_tools_store",
+                return_value=mock_mcp_store,
+            ),
         ):
-            result = await _fetch_user_mcp_integrations("user_123")
-            assert len(result) == 1
-            assert result[0]["integration_id"] == "custom_1"
+            result = await _build_tools_response(None)
 
-    async def test_returns_empty_on_exception(self):
-        mock_col = MagicMock()
-        mock_col.aggregate = MagicMock(side_effect=Exception("db error"))
+        assert result.total_count == 0
 
-        with patch(
-            "app.services.tools.tools_service.user_integrations_collection",
-            mock_col,
+    async def test_user_with_added_integration_sees_tools(self):
+        global_mcp = {
+            "custom_1": {
+                "name": "My MCP",
+                "icon_url": None,
+                "tools": [{"name": "tool_a"}, {"name": "tool_b"}],
+            }
+        }
+        mock_registry = AsyncMock()
+        mock_registry.get_all_category_objects = MagicMock(return_value={})
+        mock_mcp_store = MagicMock()
+        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
+
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.services.tools.tools_service.get_mcp_tools_store",
+                return_value=mock_mcp_store,
+            ),
+            patch(
+                "app.services.tools.tools_service.get_user_integration_records",
+                new_callable=AsyncMock,
+                return_value=[{"integration_id": "custom_1", "status": "connected"}],
+            ),
         ):
-            result = await _fetch_user_mcp_integrations("user_123")
-            assert result == []
+            result = await _build_tools_response("user_123")
+
+        assert result.total_count == 2
+        names = {t.name for t in result.tools}
+        assert names == {"tool_a", "tool_b"}
+
+    async def test_user_without_integration_sees_nothing(self):
+        global_mcp = {
+            "custom_1": {"name": "My MCP", "icon_url": None, "tools": [{"name": "tool_a"}]}
+        }
+        mock_registry = AsyncMock()
+        mock_registry.get_all_category_objects = MagicMock(return_value={})
+        mock_mcp_store = MagicMock()
+        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
+
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.services.tools.tools_service.get_mcp_tools_store",
+                return_value=mock_mcp_store,
+            ),
+            patch(
+                "app.services.tools.tools_service.get_user_integration_records",
+                new_callable=AsyncMock,
+                return_value=[],  # user has no integrations
+            ),
+        ):
+            result = await _build_tools_response("user_123")
+
+        assert result.total_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -145,36 +201,58 @@ class TestFetchUserMcpIntegrations:
 
 @pytest.mark.unit
 class TestBuildToolsResponse:
-    async def test_builds_from_registry_tools(self):
-        tool = _mock_tool("my_tool")
-        cat = _mock_category(tools=[tool], integration_name=None)
+    """Tests for the unified _build_tools_response which handles both registry tools
+    and MCP tools, scoped to the user's workspace via get_user_integration_records."""
+
+    def _patch_deps(
+        self,
+        registry_cats: dict,
+        global_mcp: dict,
+        user_records: list | None = None,
+        mcp_raises: bool = False,
+    ):
+        """Context manager factory that patches the three external dependencies."""
         mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(return_value={"general": cat})
-
+        mock_registry.get_all_category_objects = MagicMock(return_value=registry_cats)
         mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
+        if mcp_raises:
+            mock_mcp_store.get_all_mcp_tools = AsyncMock(side_effect=Exception("mcp fail"))
+        else:
+            mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
 
-        with (
+        from contextlib import ExitStack
+
+        stack = ExitStack()
+        stack.enter_context(
             patch(
                 "app.services.tools.tools_service.get_tool_registry",
                 new_callable=AsyncMock,
                 return_value=mock_registry,
-            ),
+            )
+        )
+        stack.enter_context(
             patch(
                 "app.services.tools.tools_service.get_mcp_tools_store",
                 return_value=mock_mcp_store,
-            ),
-            patch(
-                "app.services.tools.tools_service._fetch_user_mcp_integrations",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-            patch(
-                "app.services.tools.tools_service.get_integration_name",
-                return_value=None,
-            ),
-        ):
-            result = await _build_tools_response()
+            )
+        )
+        if user_records is not None:
+            stack.enter_context(
+                patch(
+                    "app.services.tools.tools_service.get_user_integration_records",
+                    new_callable=AsyncMock,
+                    return_value=user_records,
+                )
+            )
+        return stack
+
+    async def test_builds_from_registry_tools(self):
+        tool = _mock_tool("my_tool")
+        cat = _mock_category(tools=[tool], integration_name=None)
+
+        with self._patch_deps({"general": cat}, {}, user_records=[]):
+            with patch("app.services.tools.tools_service.get_integration_name", return_value=None):
+                result = await _build_tools_response("user_a")
 
         assert isinstance(result, ToolsListResponse)
         assert result.total_count == 1
@@ -184,78 +262,37 @@ class TestBuildToolsResponse:
     async def test_skips_duplicate_tools_from_registry(self):
         tool = _mock_tool("dup_tool")
         cat = _mock_category(tools=[tool, tool])
-        mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(return_value={"cat1": cat})
 
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
-
-        with (
-            patch(
-                "app.services.tools.tools_service.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
-            patch(
-                "app.services.tools.tools_service._fetch_user_mcp_integrations",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-            patch(
-                "app.services.tools.tools_service.get_integration_name",
-                return_value=None,
-            ),
-        ):
-            result = await _build_tools_response()
+        with self._patch_deps({"cat1": cat}, {}, user_records=[]):
+            with patch("app.services.tools.tools_service.get_integration_name", return_value=None):
+                result = await _build_tools_response()
 
         assert result.total_count == 1
 
-    async def test_includes_custom_mcp_tools(self):
+    async def test_includes_mcp_tools_for_workspace_user(self):
+        """Tools from MCP integrations appear when the user has that integration added."""
         mock_registry = AsyncMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
 
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
-        mock_mcp_store.get_tools = AsyncMock(return_value=[{"name": "custom_tool_1"}])
-
-        custom_integrations = [
-            {
-                "integration_id": "custom_abc",
+        global_mcp = {
+            "custom_abc": {
                 "name": "My Custom MCP",
                 "icon_url": "https://example.com/icon.png",
+                "tools": [{"name": "custom_tool_1"}],
             }
-        ]
+        }
+        # User has custom_abc added and connected
+        user_records = [{"integration_id": "custom_abc", "status": "connected"}]
 
-        with (
-            patch(
-                "app.services.tools.tools_service.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
-            patch(
-                "app.services.tools.tools_service._fetch_user_mcp_integrations",
-                new_callable=AsyncMock,
-                return_value=custom_integrations,
-            ),
-        ):
+        with self._patch_deps({}, global_mcp, user_records=user_records):
             result = await _build_tools_response("user_123")
 
         assert result.total_count == 1
         assert result.tools[0].name == "custom_tool_1"
         assert result.tools[0].icon_url == "https://example.com/icon.png"
 
-    async def test_includes_global_mcp_tools(self):
-        mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(return_value={})
-
+    async def test_excludes_mcp_tools_not_in_workspace(self):
+        """MCP tools are not shown when the user hasn't added that integration."""
         global_mcp = {
             "deepwiki": {
                 "name": "DeepWiki",
@@ -263,195 +300,110 @@ class TestBuildToolsResponse:
                 "tools": [{"name": "search_wiki"}],
             }
         }
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
+        # User has no integrations added
+        with self._patch_deps({}, global_mcp, user_records=[]):
+            result = await _build_tools_response("user_123")
 
-        with (
-            patch(
-                "app.services.tools.tools_service.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
-            patch(
-                "app.services.tools.tools_service._fetch_user_mcp_integrations",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-        ):
-            result = await _build_tools_response()
+        assert result.total_count == 0
+
+    async def test_includes_global_mcp_tools_when_in_workspace(self):
+        """Platform MCP tools appear when the user has that integration added."""
+        global_mcp = {
+            "deepwiki": {
+                "name": "DeepWiki",
+                "icon_url": None,
+                "tools": [{"name": "search_wiki"}],
+            }
+        }
+        user_records = [{"integration_id": "deepwiki", "status": "connected"}]
+
+        with self._patch_deps({}, global_mcp, user_records=user_records):
+            result = await _build_tools_response("user_123")
 
         assert result.total_count == 1
         assert result.tools[0].name == "search_wiki"
         assert result.tools[0].display_name == "DeepWiki"
 
-    async def test_mcp_fetch_failure_graceful(self):
-        mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(return_value={})
-
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(side_effect=Exception("mcp fail"))
-
-        with (
-            patch(
-                "app.services.tools.tools_service.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
-            patch(
-                "app.services.tools.tools_service._fetch_user_mcp_integrations",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-        ):
+    async def test_anonymous_user_gets_no_mcp_tools(self):
+        """Anonymous callers (user_id=None) get no MCP tools — workspace is empty."""
+        global_mcp = {
+            "deepwiki": {
+                "name": "DeepWiki",
+                "icon_url": None,
+                "tools": [{"name": "search_wiki"}],
+            }
+        }
+        with self._patch_deps({}, global_mcp):
             result = await _build_tools_response()
 
         assert result.total_count == 0
 
-    async def test_custom_mcp_skips_seen_integrations(self):
-        """Custom integrations that are already seen from registry are skipped."""
-        tool = _mock_tool("reg_tool")
-        cat = _mock_category(tools=[tool], integration_name="my_int")
-        mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(return_value={"my_int": cat})
+    async def test_mcp_fetch_failure_graceful(self):
+        with self._patch_deps({}, {}, mcp_raises=True, user_records=[]):
+            result = await _build_tools_response("user_a")
 
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
+        assert result.total_count == 0
 
-        custom_integrations = [{"integration_id": "my_int", "name": "My Int", "icon_url": None}]
+    async def test_mcp_skips_empty_tools_list(self):
+        global_mcp = {"my_int": {"name": "My Int", "icon_url": None, "tools": []}}
+        user_records = [{"integration_id": "my_int", "status": "connected"}]
 
-        with (
-            patch(
-                "app.services.tools.tools_service.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
-            patch(
-                "app.services.tools.tools_service._fetch_user_mcp_integrations",
-                new_callable=AsyncMock,
-                return_value=custom_integrations,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_integration_name",
-                return_value=None,
-            ),
-        ):
-            result = await _build_tools_response("user_123")
-
-        # Only registry tool, custom skipped
-        assert result.total_count == 1
-
-    async def test_custom_mcp_skips_empty_tools(self):
-        mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(return_value={})
-
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
-        mock_mcp_store.get_tools = AsyncMock(return_value=[])
-
-        custom_integrations = [{"integration_id": "empty_int", "name": "Empty", "icon_url": None}]
-
-        with (
-            patch(
-                "app.services.tools.tools_service.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
-            patch(
-                "app.services.tools.tools_service._fetch_user_mcp_integrations",
-                new_callable=AsyncMock,
-                return_value=custom_integrations,
-            ),
-        ):
+        with self._patch_deps({}, global_mcp, user_records=user_records):
             result = await _build_tools_response("user_123")
 
         assert result.total_count == 0
 
-    async def test_custom_mcp_skips_tool_without_name(self):
-        mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(return_value={})
+    async def test_mcp_skips_tool_without_name(self):
+        global_mcp = {
+            "cust_1": {
+                "name": "Cust",
+                "icon_url": None,
+                "tools": [{"name": None}, {"name": "valid_tool"}],
+            }
+        }
+        user_records = [{"integration_id": "cust_1", "status": "connected"}]
 
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
-        mock_mcp_store.get_tools = AsyncMock(return_value=[{"name": None}, {"name": "valid_tool"}])
-
-        custom_integrations = [{"integration_id": "cust_1", "name": "Cust", "icon_url": None}]
-
-        with (
-            patch(
-                "app.services.tools.tools_service.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
-            patch(
-                "app.services.tools.tools_service._fetch_user_mcp_integrations",
-                new_callable=AsyncMock,
-                return_value=custom_integrations,
-            ),
-        ):
+        with self._patch_deps({}, global_mcp, user_records=user_records):
             result = await _build_tools_response("user_123")
 
         assert result.total_count == 1
         assert result.tools[0].name == "valid_tool"
 
-    async def test_global_mcp_skips_duplicate_tool_names(self):
+    async def test_mcp_skips_duplicate_tool_names(self):
         tool = _mock_tool("shared_tool")
         cat = _mock_category(tools=[tool])
-        mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(return_value={"cat1": cat})
-
         global_mcp = {
             "other_int": {
                 "tools": [{"name": "shared_tool"}, {"name": "unique_tool"}],
             }
         }
-        mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
+        user_records = [{"integration_id": "other_int", "status": "connected"}]
 
-        with (
-            patch(
-                "app.services.tools.tools_service.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
-            ),
-            patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
-            ),
-            patch(
-                "app.services.tools.tools_service._fetch_user_mcp_integrations",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-            patch(
-                "app.services.tools.tools_service.get_integration_name",
-                return_value=None,
-            ),
-        ):
-            result = await _build_tools_response()
+        with self._patch_deps({"cat1": cat}, global_mcp, user_records=user_records):
+            with patch("app.services.tools.tools_service.get_integration_name", return_value=None):
+                result = await _build_tools_response("user_123")
 
         names = [t.name for t in result.tools]
         assert names.count("shared_tool") == 1
         assert "unique_tool" in names
+
+    async def test_added_but_not_connected_is_locked(self):
+        """Tools for integrations in `added` but not `connected` are marked locked=True."""
+        global_mcp = {
+            "my_mcp": {
+                "name": "My MCP",
+                "icon_url": None,
+                "tools": [{"name": "a_tool"}],
+            }
+        }
+        # added but not connected
+        user_records = [{"integration_id": "my_mcp", "status": "added"}]
+
+        with self._patch_deps({}, global_mcp, user_records=user_records):
+            result = await _build_tools_response("user_123")
+
+        assert result.total_count == 1
+        assert result.tools[0].locked is True
 
 
 # ---------------------------------------------------------------------------
@@ -524,160 +476,98 @@ class TestGetToolCategories:
 
 
 # ---------------------------------------------------------------------------
-# get_user_mcp_tools
+# Locked state and workspace filtering
+# (replaces the old get_user_mcp_tools and merge_tools_responses tests)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestGetUserMcpTools:
-    async def test_returns_empty_for_no_user(self):
-        result = await get_user_mcp_tools("")
-        assert result == []
+class TestLockedAndFilteredTools:
+    """Verifies workspace-scoping and locked/unlocked state in _build_tools_response.
+    This replaces the old get_user_mcp_tools / merge_tools_responses test classes;
+    that merging is now handled inside _build_tools_response."""
 
-    async def test_returns_tools_from_integrations(self):
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "integration_id": "mcp_1",
-                    "name": "MCP One",
-                    "icon_url": "https://example.com/icon.png",
-                    "tools": [{"name": "tool_a"}, {"name": "tool_b"}],
-                }
-            ]
-        )
-        mock_col = MagicMock()
-        mock_col.aggregate = MagicMock(return_value=mock_cursor)
+    async def _build(self, user_records: list, global_mcp: dict) -> ToolsListResponse:
+        mock_registry = AsyncMock()
+        mock_registry.get_all_category_objects = MagicMock(return_value={})
+        mock_mcp_store = MagicMock()
+        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
 
-        with patch(
-            "app.services.tools.tools_service.user_integrations_collection",
-            mock_col,
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.services.tools.tools_service.get_mcp_tools_store",
+                return_value=mock_mcp_store,
+            ),
+            patch(
+                "app.services.tools.tools_service.get_user_integration_records",
+                new_callable=AsyncMock,
+                return_value=user_records,
+            ),
         ):
-            result = await get_user_mcp_tools("user_123")
+            return await _build_tools_response("user_123")
 
-        assert len(result) == 2
-        assert all(isinstance(t, ToolInfo) for t in result)
-        assert result[0].icon_url == "https://example.com/icon.png"
+    async def test_connected_integration_tools_not_locked(self):
+        global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
+        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        assert result.total_count == 1
+        assert result.tools[0].locked is False
 
-    async def test_skips_empty_integration_tools(self):
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[{"integration_id": "mcp_1", "name": "MCP", "icon_url": None, "tools": []}]
-        )
-        mock_col = MagicMock()
-        mock_col.aggregate = MagicMock(return_value=mock_cursor)
+    async def test_added_not_connected_tools_are_locked(self):
+        global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
+        result = await self._build([{"integration_id": "m1", "status": "added"}], global_mcp)
+        assert result.total_count == 1
+        assert result.tools[0].locked is True
 
-        with patch(
-            "app.services.tools.tools_service.user_integrations_collection",
-            mock_col,
-        ):
-            result = await get_user_mcp_tools("user_123")
+    async def test_unadded_integration_filtered_out(self):
+        global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
+        result = await self._build([], global_mcp)
+        assert result.total_count == 0
 
-        assert result == []
-
-    async def test_skips_duplicate_tool_names(self):
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "integration_id": "m1",
-                    "name": "M1",
-                    "icon_url": None,
-                    "tools": [{"name": "same_tool"}],
-                },
-                {
-                    "integration_id": "m2",
-                    "name": "M2",
-                    "icon_url": None,
-                    "tools": [{"name": "same_tool"}],
-                },
-            ]
-        )
-        mock_col = MagicMock()
-        mock_col.aggregate = MagicMock(return_value=mock_cursor)
-
-        with patch(
-            "app.services.tools.tools_service.user_integrations_collection",
-            mock_col,
-        ):
-            result = await get_user_mcp_tools("user_123")
-
-        assert len(result) == 1
-
-    async def test_returns_empty_on_exception(self):
-        mock_col = MagicMock()
-        mock_col.aggregate = MagicMock(side_effect=Exception("db fail"))
-
-        with patch(
-            "app.services.tools.tools_service.user_integrations_collection",
-            mock_col,
-        ):
-            result = await get_user_mcp_tools("user_123")
-
-        assert result == []
-
-    async def test_skips_tool_with_no_name(self):
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "integration_id": "m1",
-                    "name": "M1",
-                    "icon_url": None,
-                    "tools": [{"name": None}, {"name": "valid"}],
-                }
-            ]
-        )
-        mock_col = MagicMock()
-        mock_col.aggregate = MagicMock(return_value=mock_cursor)
-
-        with patch(
-            "app.services.tools.tools_service.user_integrations_collection",
-            mock_col,
-        ):
-            result = await get_user_mcp_tools("user_123")
-
-        assert len(result) == 1
-        assert result[0].name == "valid"
-
-
-# ---------------------------------------------------------------------------
-# merge_tools_responses
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestMergeToolsResponses:
-    def test_returns_global_when_no_custom(self):
-        global_tools = ToolsListResponse(
-            tools=[ToolInfo(name="t1", category="c1", display_name="C1")],
-            total_count=1,
-            categories=["c1"],
-        )
-        result = merge_tools_responses(global_tools, [])
-        assert result is global_tools
-
-    def test_custom_overrides_global(self):
-        global_tools = ToolsListResponse(
-            tools=[
-                ToolInfo(name="t1", category="c1", display_name="C1"),
-                ToolInfo(name="t2", category="c1", display_name="C1"),
-            ],
-            total_count=2,
-            categories=["c1"],
-        )
-        custom = [ToolInfo(name="t1", category="custom", display_name="Custom")]
-        result = merge_tools_responses(global_tools, custom)
-
+    async def test_icon_url_forwarded_from_mcp_store(self):
+        global_mcp = {
+            "m1": {
+                "name": "MCP One",
+                "icon_url": "https://example.com/icon.png",
+                "tools": [{"name": "tool_a"}, {"name": "tool_b"}],
+            }
+        }
+        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
         assert result.total_count == 2
-        names = {t.name for t in result.tools}
-        assert names == {"t1", "t2"}
-        # t1 should come from custom (first in list)
-        assert result.tools[0].category == "custom"
+        assert all(t.icon_url == "https://example.com/icon.png" for t in result.tools)
 
-    def test_adds_new_categories(self):
-        global_tools = ToolsListResponse(tools=[], total_count=0, categories=["c1"])
-        custom = [ToolInfo(name="t1", category="new_cat", display_name="New")]
-        result = merge_tools_responses(global_tools, custom)
-        assert "new_cat" in result.categories
-        assert "c1" in result.categories
+    async def test_duplicate_tool_names_deduplicated(self):
+        """The same tool name from two different MCPs counts only once."""
+        global_mcp = {
+            "m1": {"name": "M1", "icon_url": None, "tools": [{"name": "same_tool"}]},
+            "m2": {"name": "M2", "icon_url": None, "tools": [{"name": "same_tool"}]},
+        }
+        result = await self._build(
+            [
+                {"integration_id": "m1", "status": "connected"},
+                {"integration_id": "m2", "status": "connected"},
+            ],
+            global_mcp,
+        )
+        assert result.total_count == 1
+
+    async def test_empty_tools_list_skipped(self):
+        global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": []}}
+        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        assert result.total_count == 0
+
+    async def test_tool_with_no_name_skipped(self):
+        global_mcp = {
+            "m1": {
+                "name": "M1",
+                "icon_url": None,
+                "tools": [{"name": None}, {"name": "valid"}],
+            }
+        }
+        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        assert result.total_count == 1
+        assert result.tools[0].name == "valid"

@@ -16,12 +16,14 @@ from app.agents.core.nodes.memory_node import (
 @pytest.mark.unit
 class TestCheckWorthLearning:
     def test_too_few_messages(self):
+        """Short user messages (< MIN_USER_CONTENT_CHARS) are not worth learning."""
         msgs = [HumanMessage(content="hi"), AIMessage(content="hello")]
         result, reason = _check_worth_learning(msgs)
         assert result is False
-        assert "Too few messages" in reason
+        assert "No substantive user message" in reason
 
     def test_too_few_tool_calls(self):
+        """Short user messages are skipped regardless of turn count."""
         msgs = [
             HumanMessage(content="q1"),
             AIMessage(content="a1"),
@@ -30,10 +32,10 @@ class TestCheckWorthLearning:
         ]
         result, reason = _check_worth_learning(msgs)
         assert result is False
-        assert "tool calls" in reason
+        assert "No substantive user message" in reason
 
     def test_exactly_one_tool_call_is_too_few(self):
-        """Boundary: exactly 1 tool call must still be skipped (threshold is < 2)."""
+        """Short user message is still skipped even with a tool call present."""
         msgs = [
             HumanMessage(content="q1"),
             AIMessage(
@@ -45,11 +47,12 @@ class TestCheckWorthLearning:
         ]
         result, reason = _check_worth_learning(msgs)
         assert result is False
-        assert "tool calls" in reason
+        assert "No substantive user message" in reason
 
     def test_worth_learning(self):
+        """A substantive user message (>= MIN_USER_CONTENT_CHARS) is worth learning."""
         msgs = [
-            HumanMessage(content="q1"),
+            HumanMessage(content="Please summarize my recent emails from the team."),
             AIMessage(
                 content="",
                 tool_calls=[
@@ -157,7 +160,7 @@ class TestMemoryNode:
     def _rich_state(self):
         return {
             "messages": [
-                HumanMessage(content="q1"),
+                HumanMessage(content="Please summarize my recent emails."),
                 AIMessage(
                     content="",
                     tool_calls=[

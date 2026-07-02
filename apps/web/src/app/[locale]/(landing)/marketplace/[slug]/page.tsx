@@ -260,7 +260,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function IntegrationPage({ params }: Props) {
   const { slug } = await params;
-  const integration = await getIntegration(slug);
+  // Independent fetches — run in parallel to save a round-trip on the happy path.
+  const [integration, comparison] = await Promise.all([
+    getIntegration(slug),
+    getComparison(slug),
+  ]);
 
   if (!integration) {
     notFound();
@@ -357,7 +361,7 @@ export default async function IntegrationPage({ params }: Props) {
     },
   ]);
 
-  const comparisonSlug = (await getComparison(slug)) ? slug : undefined;
+  const comparisonSlug = comparison ? slug : undefined;
 
   return (
     <>

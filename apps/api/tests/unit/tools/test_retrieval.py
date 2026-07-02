@@ -35,7 +35,7 @@ class TestGetUserContext:
                 None, "general", include_subagents=True
             )
         assert "general" in ns
-        assert connected == set()
+        assert connected == {}
         assert internal == set()
 
     @pytest.mark.asyncio
@@ -79,12 +79,10 @@ class TestGetUserContext:
                 return_value=["general", "gmail", "subagents"],
             ),
             patch(
-                "app.agents.tools.core.retrieval.get_subagent_by_id",
-                return_value=None,
-            ),
-            patch(
-                "app.agents.tools.core.retrieval.get_integration_by_id",
-                return_value=None,
+                "app.agents.tools.core.retrieval._resolve_connected_subagents",
+                new_callable=AsyncMock,
+                # gmail is not a platform subagent → custom integration in connected map
+                return_value={"gmail": None},
             ),
         ):
             ns, connected, internal = await _get_user_context(
@@ -113,9 +111,9 @@ class TestGetUserContext:
             ns, connected, internal = await _get_user_context(
                 "user1", "myspace", include_subagents=True
             )
-        # Falls back to initial defaults
-        assert "myspace" in ns
+        # Falls back to seeded defaults — non-platform tool spaces are NOT seeded
         assert "general" in ns
+        assert "myspace" not in ns
 
     @pytest.mark.asyncio
     async def test_connected_integrations_with_subagent_config(self):
@@ -134,8 +132,9 @@ class TestGetUserContext:
                 return_value=["general", "slack", "subagents"],
             ),
             patch(
-                "app.agents.tools.core.retrieval.get_subagent_by_id",
-                return_value=slack_subagent,
+                "app.agents.tools.core.retrieval._resolve_connected_subagents",
+                new_callable=AsyncMock,
+                return_value={"slack": slack_subagent.name},
             ),
         ):
             ns, connected, internal = await _get_user_context(
@@ -477,7 +476,7 @@ class TestInjectAvailableSubagents:
         from app.agents.tools.core.retrieval import _inject_available_subagents
 
         result = _inject_available_subagents(
-            ["tool_a"], {"internal"}, {"connected"}, include_subagents=False
+            ["tool_a"], {"internal"}, {"connected": None}, include_subagents=False
         )
         assert result == ["tool_a"]
 
@@ -486,15 +485,17 @@ class TestInjectAvailableSubagents:
 
         sa_internal = MagicMock()
         sa_internal.name = "Internal App"
-        sa_connected = MagicMock()
-        sa_connected.name = "Connected App"
 
         with patch(
             "app.agents.tools.core.retrieval.get_subagent_by_id",
-            side_effect=lambda x: sa_internal if x == "int1" else sa_connected,
+            return_value=sa_internal,
         ):
             result = _inject_available_subagents(
-                ["tool_a"], {"int1"}, {"conn1"}, include_subagents=True
+                ["tool_a"],
+                {"int1"},
+                # connected_integrations is now dict[str, str | None] — name included
+                {"conn1": "Connected App"},
+                include_subagents=True,
             )
         assert "tool_a" in result
         assert "subagent:int1 (Internal App)" in result
@@ -508,7 +509,7 @@ class TestInjectAvailableSubagents:
             return_value=None,
         ):
             result = _inject_available_subagents(
-                ["subagent:int1"], {"int1"}, set(), include_subagents=True
+                ["subagent:int1"], {"int1"}, {}, include_subagents=True
             )
         # "subagent:int1" already in discovered, should not add duplicate
         assert result.count("subagent:int1") == 1
@@ -661,10 +662,13 @@ class TestRetrieveToolsDiscovery:
             patch(
                 "app.agents.tools.core.retrieval._get_user_context",
                 new_callable=AsyncMock,
-                return_value=({"general"}, set(), set()),
+                # connected_integrations is now dict[str, str | None], not set
+                return_value=({"general"}, {}, set()),
             ),
         ):
-            result = await fn(store=store, config=config, query="send email")
+            # Pass exact_tool_names=[] explicitly — the Field() default is a FieldInfo
+            # object (truthy) when called directly, not an empty list.
+            result = await fn(store=store, config=config, query="send email", exact_tool_names=[])
 
         assert result["tools_to_bind"] == []
         assert isinstance(result["response"], list)
@@ -693,10 +697,13 @@ class TestRetrieveToolsDiscovery:
             patch(
                 "app.agents.tools.core.retrieval._get_user_context",
                 new_callable=AsyncMock,
-                return_value=({"general"}, set(), set()),
+                # connected_integrations is now dict[str, str | None], not set
+                return_value=({"general"}, {}, set()),
             ) as mock_ctx,
         ):
-            await fn(store=store, config=config, query="test")
+            # Pass exact_tool_names=[] explicitly — the Field() default is a FieldInfo
+            # object (truthy) when called directly, not an empty list.
+            await fn(store=store, config=config, query="test", exact_tool_names=[])
 
         # user_id should have been resolved from metadata
         mock_ctx.assert_called_once()

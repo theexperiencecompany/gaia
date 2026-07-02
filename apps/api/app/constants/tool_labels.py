@@ -150,11 +150,10 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "search_todo_context": "Checking what I'm tracking",
     "list_tracked_todos": "Reviewing tracked work",
     "complete_tracked_todo": "Wrapping that up",
-    # ── Native: support, manual, skills, roadmaps ──────────────────────
+    # ── Native: support, manual, skills ────────────────────────────────
     "create_support_ticket": "Creating a support ticket",
     "read_manual": "Reading the manual",
     "install_skill_from_github": "Installing the skill",
-    "generate_roadmap": "Building the roadmap",
     # ── Native: coding workspace ───────────────────────────────────────
     "bash": "Running a command",
     "read": "Reading a file",

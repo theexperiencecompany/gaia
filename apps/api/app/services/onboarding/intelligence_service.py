@@ -26,9 +26,9 @@ import time
 from typing import TypeVar
 
 from bson import ObjectId
-from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+from app.agents.llm.client import ainvoke_structured
 from app.agents.memory.email_processor import fetch_emails_for_onboarding
 from app.agents.prompts.onboarding_prompts import (
     FOCUS_TODOS_PROMPT,
@@ -39,7 +39,6 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
-from app.core.lazy_loader import providers
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import (
@@ -1131,12 +1130,10 @@ async def _create_focus_todos(
     )
 
     try:
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
-        structured_llm = llm.with_structured_output(_FocusTodoList)
         t_llm = time.monotonic()
-        parsed: _FocusTodoList = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        parsed: _FocusTodoList = await ainvoke_structured(
+            _FocusTodoList, prompt, label="onboarding_focus_todos"
+        )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         async def _create_one(title: str) -> dict | None:
@@ -1216,12 +1213,10 @@ async def _create_todos_from_triage(
 
     t0 = time.monotonic()
     try:
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
-        structured_llm = llm.with_structured_output(_TodoListFromEmails)
         t_llm = time.monotonic()
-        parsed: _TodoListFromEmails = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        parsed: _TodoListFromEmails = await ainvoke_structured(
+            _TodoListFromEmails, prompt, label="onboarding_todos_from_emails"
+        )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         async def _create_one(spec: _TodoSpec) -> dict | None:
@@ -1368,18 +1363,19 @@ def _build_workflow_prompt_context(
     )
 
 
-async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
-    """Invoke the LLM up to 3 times until it returns exactly 4 workflow specs.
-    Raises if no valid result is produced after the retries."""
-    llm = await providers.aget("gemini_llm")
-    if llm is None:
-        raise RuntimeError("LLM provider not available")
-    structured_llm = llm.with_structured_output(_WorkflowList)
+# Retries for the workflow-spec generation LLM call before giving up.
+_WORKFLOW_SPEC_MAX_ATTEMPTS = 3
 
+
+async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
+    """Invoke the LLM up to ``_WORKFLOW_SPEC_MAX_ATTEMPTS`` times until it returns
+    exactly 4 workflow specs. Raises if no valid result is produced after the retries."""
     last_error: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(_WORKFLOW_SPEC_MAX_ATTEMPTS):
         try:
-            candidate: _WorkflowList = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+            candidate: _WorkflowList = await ainvoke_structured(
+                _WorkflowList, prompt, label="onboarding_workflow_suggestions"
+            )
             if len(candidate.workflows) == 4:
                 return candidate
             log.warning(
@@ -1401,7 +1397,9 @@ async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
 
     if last_error is not None:
         raise last_error
-    raise RuntimeError("LLM did not return exactly 4 workflow specs after 3 attempts")
+    raise RuntimeError(
+        f"LLM did not return exactly 4 workflow specs after {_WORKFLOW_SPEC_MAX_ATTEMPTS} attempts"
+    )
 
 
 async def _build_one_workflow(

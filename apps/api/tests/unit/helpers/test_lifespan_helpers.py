@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.helpers.lifespan_helpers import (
+    StartupService,
     _process_results,
     close_checkpointer_manager,
     close_mcp_client_pool,
@@ -296,22 +297,26 @@ class TestCloseMcpClientPool:
 # ---------------------------------------------------------------------------
 
 
+def _svc(name: str, *, required: bool = True) -> StartupService:
+    """Build a minimal StartupService for _process_results tests."""
+    return StartupService(func=lambda: None, name=name, required=required)  # type: ignore[arg-type]
+
+
 class TestProcessResults:
     def test_no_failures(self) -> None:
         # No exceptions means no raise
-        _process_results(["ok", 42], ["svc_a", "svc_b"])
+        _process_results(["ok", 42], [_svc("svc_a"), _svc("svc_b")])
 
     def test_single_failure_raises(self) -> None:
         results = [RuntimeError("boom"), "ok"]
-        with pytest.raises(RuntimeError, match="Failed to initialize services"):
-            _process_results(results, ["svc_a", "svc_b"])
+        with pytest.raises(RuntimeError, match="Failed to initialize required services"):
+            _process_results(results, [_svc("svc_a"), _svc("svc_b")])
 
     def test_failure_on_first_iteration(self) -> None:
-        """Bug in code: the `if failed_services` check is inside the loop,
-        so it raises on the very first failure."""
+        """A required service failure always raises RuntimeError."""
         results = [RuntimeError("first")]
         with pytest.raises(RuntimeError):
-            _process_results(results, ["svc_a"])
+            _process_results(results, [_svc("svc_a")])
 
     def test_all_success(self) -> None:
-        _process_results([None, "result"], ["svc_a", "svc_b"])
+        _process_results([None, "result"], [_svc("svc_a"), _svc("svc_b")])

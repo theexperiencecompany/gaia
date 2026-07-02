@@ -29,7 +29,7 @@ from app.models.integration_models import (
     UpdateCustomIntegrationRequest,
     UserIntegrationsListResponse,
 )
-from app.models.mcp_config import MCPConfig, SubAgentConfig
+from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
@@ -180,8 +180,6 @@ class TestIntegrationResolverResolve:
     @patch("app.services.integrations.integration_resolver.integrations_collection")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
     async def test_resolve_platform_with_composio_config(self, mock_get_by_id, mock_collection):
-        from app.models.mcp_config import ComposioConfig
-
         composio_cfg = ComposioConfig(auth_config_id="auth_123", toolkit="slack_toolkit")
         oauth_int = _make_oauth_integration(
             id="slack", managed_by="composio", composio_config=composio_cfg
@@ -389,7 +387,6 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(id="todos", managed_by="internal", available=True),
-            _make_oauth_integration(id="goals", managed_by="internal", available=True),
         ],
     )
     async def test_includes_internal_integrations(
@@ -400,7 +397,6 @@ class TestGetUserAvailableToolNamespaces:
         result = await get_user_available_tool_namespaces.__wrapped__(USER_ID)
 
         assert "todos" in result
-        assert "goals" in result
 
     @patch(
         "app.services.integrations.integration_service.IntegrationResolver.get_server_url",
@@ -1259,12 +1255,22 @@ class TestCreateCustomIntegration:
 
 @pytest.mark.unit
 class TestUpdateCustomIntegration:
+    @patch("app.services.integrations.custom_crud.user_integrations_collection")
     @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_update_name_success(self, mock_collection):
+    async def test_update_name_success(self, mock_collection, mock_user_int_collection):
         doc = _make_custom_doc()
         updated_doc = {**doc, "name": "New Name"}
         mock_collection.find_one = AsyncMock(side_effect=[doc, updated_doc])
         mock_collection.update_one = AsyncMock()
+
+        # update_custom_integration iterates user_integrations_collection.find to bust caches
+        async def aiter_empty(*args, **kwargs):
+            return
+            yield  # NOSONAR — makes this an async generator
+
+        mock_cursor = MagicMock()
+        mock_cursor.__aiter__ = aiter_empty
+        mock_user_int_collection.find = MagicMock(return_value=mock_cursor)
 
         request = UpdateCustomIntegrationRequest(name="New Name")
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
@@ -1343,12 +1349,24 @@ class TestUpdateCustomIntegration:
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
         assert result is not None
 
+    @patch("app.services.integrations.custom_crud.user_integrations_collection")
     @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_update_description_and_is_public(self, mock_collection):
+    async def test_update_description_and_is_public(
+        self, mock_collection, mock_user_int_collection
+    ):
         doc = _make_custom_doc()
         updated_doc = {**doc, "description": "new desc", "is_public": True}
         mock_collection.find_one = AsyncMock(side_effect=[doc, updated_doc])
         mock_collection.update_one = AsyncMock()
+
+        # update_custom_integration iterates user_integrations_collection.find to bust caches
+        async def aiter_empty(*args, **kwargs):
+            return
+            yield  # NOSONAR — makes this an async generator
+
+        mock_cursor = MagicMock()
+        mock_cursor.__aiter__ = aiter_empty
+        mock_user_int_collection.find = MagicMock(return_value=mock_cursor)
 
         request = UpdateCustomIntegrationRequest(description="new desc", is_public=True)
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
@@ -1391,12 +1409,17 @@ class TestDeleteCustomIntegration:
         "app.services.integrations.custom_crud.remove_public_integration",
         new_callable=AsyncMock,
     )
+    @patch(
+        "app.services.integrations.custom_crud.remove_user_integration",
+        new_callable=AsyncMock,
+    )
     @patch("app.services.integrations.custom_crud.user_integrations_collection")
     @patch("app.services.integrations.custom_crud.integrations_collection")
     async def test_delete_as_creator_success(
         self,
         mock_int_collection,
         mock_user_int_collection,
+        mock_remove_user,
         mock_remove_public,
         mock_get_db,
         mock_chroma_cleanup,
@@ -1409,14 +1432,15 @@ class TestDeleteCustomIntegration:
         mock_delete_result.deleted_count = 1
         mock_int_collection.delete_one = AsyncMock(return_value=mock_delete_result)
 
-        # Mock affected users cursor
+        # Code iterates user_integrations_collection.find to get affected user IDs,
+        # then calls remove_user_integration(affected_user_id, integration_id) per user
         async def aiter_affected(*args, **kwargs):
             yield {"user_id": USER_ID}
 
         mock_affected_cursor = MagicMock()
         mock_affected_cursor.__aiter__ = aiter_affected
         mock_user_int_collection.find = MagicMock(return_value=mock_affected_cursor)
-        mock_user_int_collection.delete_many = AsyncMock()
+        mock_remove_user.return_value = True
 
         # Mock PostgreSQL session
         mock_session = AsyncMock()
@@ -1429,7 +1453,7 @@ class TestDeleteCustomIntegration:
 
         assert result is True
         mock_int_collection.delete_one.assert_awaited_once()
-        mock_user_int_collection.delete_many.assert_awaited_once()
+        mock_remove_user.assert_awaited_once_with(USER_ID, CUSTOM_INTEGRATION_ID)
         mock_chroma_cleanup.assert_awaited_once()
 
     @patch(
@@ -1446,12 +1470,17 @@ class TestDeleteCustomIntegration:
         "app.services.integrations.custom_crud.remove_public_integration",
         new_callable=AsyncMock,
     )
+    @patch(
+        "app.services.integrations.custom_crud.remove_user_integration",
+        new_callable=AsyncMock,
+    )
     @patch("app.services.integrations.custom_crud.user_integrations_collection")
     @patch("app.services.integrations.custom_crud.integrations_collection")
     async def test_delete_public_integration_removes_from_store(
         self,
         mock_int_collection,
         mock_user_int_collection,
+        mock_remove_user,
         mock_remove_public,
         mock_get_db,
         mock_chroma_cleanup,
@@ -1464,6 +1493,7 @@ class TestDeleteCustomIntegration:
         mock_delete_result.deleted_count = 1
         mock_int_collection.delete_one = AsyncMock(return_value=mock_delete_result)
 
+        # No affected users in this test scenario
         async def aiter_empty(*args, **kwargs):
             return
             yield  # NOSONAR — intentionally unreachable: makes this an async generator
@@ -1471,7 +1501,7 @@ class TestDeleteCustomIntegration:
         mock_cursor = MagicMock()
         mock_cursor.__aiter__ = aiter_empty
         mock_user_int_collection.find = MagicMock(return_value=mock_cursor)
-        mock_user_int_collection.delete_many = AsyncMock()
+        mock_remove_user.return_value = True
 
         mock_session = AsyncMock()
         mock_db_ctx = AsyncMock()
@@ -1485,60 +1515,53 @@ class TestDeleteCustomIntegration:
         mock_remove_public.assert_awaited_once_with(CUSTOM_INTEGRATION_ID)
 
     @patch(
-        "app.services.integrations.custom_crud.delete_cache_by_pattern",
+        "app.services.integrations.custom_crud.remove_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.user_integrations_collection")
     @patch("app.services.integrations.custom_crud.integrations_collection")
     async def test_delete_not_found_checks_user_integrations(
-        self, mock_int_collection, mock_user_int_collection, mock_delete_pattern
+        self, mock_int_collection, mock_remove_user
     ):
-        """When integration doc not found, fall back to user_integrations cleanup."""
+        """When catalog doc not found, code delegates directly to remove_user_integration."""
         mock_int_collection.find_one = AsyncMock(return_value=None)
-        mock_user_int_collection.find_one = AsyncMock(
-            return_value={"user_id": USER_ID, "integration_id": "orphan"}
-        )
-        mock_user_int_collection.delete_one = AsyncMock()
+        mock_remove_user.return_value = True
 
         result = await delete_custom_integration(USER_ID, "orphan")
 
         assert result is True
-        mock_user_int_collection.delete_one.assert_awaited_once()
-        mock_delete_pattern.assert_awaited_once()
+        mock_remove_user.assert_awaited_once_with(USER_ID, "orphan")
 
-    @patch("app.services.integrations.custom_crud.user_integrations_collection")
+    @patch(
+        "app.services.integrations.custom_crud.remove_user_integration",
+        new_callable=AsyncMock,
+    )
     @patch("app.services.integrations.custom_crud.integrations_collection")
     async def test_delete_not_found_no_user_integration_returns_false(
-        self, mock_int_collection, mock_user_int_collection
+        self, mock_int_collection, mock_remove_user
     ):
         mock_int_collection.find_one = AsyncMock(return_value=None)
-        mock_user_int_collection.find_one = AsyncMock(return_value=None)
+        mock_remove_user.return_value = False
 
         result = await delete_custom_integration(USER_ID, "nonexistent")
 
         assert result is False
 
     @patch(
-        "app.services.integrations.custom_crud.delete_cache_by_pattern",
+        "app.services.integrations.custom_crud.remove_user_integration",
         new_callable=AsyncMock,
     )
     @patch("app.services.integrations.custom_crud.get_db_session")
-    @patch("app.services.integrations.custom_crud.user_integrations_collection")
     @patch("app.services.integrations.custom_crud.integrations_collection")
     async def test_delete_as_non_creator_removes_user_integration_only(
         self,
         mock_int_collection,
-        mock_user_int_collection,
         mock_get_db,
-        mock_delete_pattern,
+        mock_remove_user,
     ):
-        """Non-creator can only remove from their workspace, not delete the integration."""
+        """Non-creator delegates to remove_user_integration; integration catalog is untouched."""
         doc = _make_custom_doc(created_by="other-user-id")
         mock_int_collection.find_one = AsyncMock(return_value=doc)
-
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_user_int_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        mock_remove_user.return_value = True
 
         mock_session = AsyncMock()
         mock_db_ctx = AsyncMock()
@@ -1549,11 +1572,10 @@ class TestDeleteCustomIntegration:
         result = await delete_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID)
 
         assert result is True
-        # Should NOT delete from integrations_collection
+        # Catalog row must NOT be touched
         mock_int_collection.delete_one.assert_not_called()
-        # Should delete from user_integrations_collection
-        mock_user_int_collection.delete_one.assert_awaited_once()
-        mock_delete_pattern.assert_awaited_once()
+        # User's link is removed via the canonical mutator
+        mock_remove_user.assert_awaited_once_with(USER_ID, CUSTOM_INTEGRATION_ID)
 
     @patch(
         "app.services.integrations.custom_crud.delete_cache_by_pattern",
@@ -1591,16 +1613,17 @@ class TestDeleteCustomIntegration:
 
         assert result is False
 
-    @patch("app.services.integrations.custom_crud.user_integrations_collection")
+    @patch(
+        "app.services.integrations.custom_crud.remove_user_integration",
+        new_callable=AsyncMock,
+    )
     @patch("app.services.integrations.custom_crud.integrations_collection")
     async def test_delete_as_non_creator_zero_deleted_returns_false(
-        self, mock_int_collection, mock_user_int_collection
+        self, mock_int_collection, mock_remove_user
     ):
         doc = _make_custom_doc(created_by="other-user")
         mock_int_collection.find_one = AsyncMock(return_value=doc)
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 0
-        mock_user_int_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        mock_remove_user.return_value = False
 
         result = await delete_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID)
 
@@ -1935,7 +1958,7 @@ class TestBuildIntegrationsConfig:
 @pytest.mark.unit
 class TestConnectMcpIntegration:
     @patch(
-        "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
+        "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(
@@ -2017,7 +2040,7 @@ class TestConnectMcpIntegration:
         mock_update_status.assert_not_awaited()
 
     @patch(
-        "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
+        "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(
@@ -2059,7 +2082,7 @@ class TestConnectMcpIntegration:
         mock_store.store_bearer_token.assert_awaited_once()
 
     @patch(
-        "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
+        "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(
@@ -2154,7 +2177,7 @@ class TestConnectMcpIntegration:
         assert result.redirect_url == "https://auth.url"
 
     @patch(
-        "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
+        "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(
@@ -2384,7 +2407,12 @@ class TestDisconnectIntegration:
     async def test_disconnect_composio_integration(
         self, mock_resolve, mock_get_composio, mock_invalidate
     ):
-        platform_int = _make_oauth_integration(id="slack", managed_by="composio", provider="slack")
+        platform_int = _make_oauth_integration(
+            id="slack",
+            managed_by="composio",
+            provider="slack",
+            composio_config=ComposioConfig(auth_config_id="cfg-slack", toolkit="slack"),
+        )
         mock_resolve.return_value = ResolvedIntegration(
             integration_id="slack",
             name="Slack",

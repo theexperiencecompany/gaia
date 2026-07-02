@@ -36,13 +36,34 @@ if (typeof window !== "undefined") {
 
         _captureRouterTransitionStart = Sentry.captureRouterTransitionStart;
 
-        // Replay is best-effort — don't surface network errors to users.
-        Sentry.lazyLoadIntegration("replayIntegration")
-          .then((replayIntegration) => {
-            const client = Sentry.getClient();
-            if (client) client.addIntegration(replayIntegration());
-          })
-          .catch(() => {});
+        // Session Replay is a heavy integration (~100KB, ~760ms of script
+        // execution) that provides no value before the user engages with the
+        // page. Loading it during initial load dominated TBT on content pages,
+        // so defer it to the first user interaction — error replay still works
+        // for any session a real user actually participates in.
+        const loadReplay = () => {
+          Sentry.lazyLoadIntegration("replayIntegration")
+            .then((replayIntegration) => {
+              const client = Sentry.getClient();
+              if (client) client.addIntegration(replayIntegration());
+            })
+            .catch(() => {});
+        };
+        const interactionEvents = [
+          "pointerdown",
+          "keydown",
+          "touchstart",
+          "scroll",
+        ] as const;
+        const onFirstInteraction = () => {
+          for (const ev of interactionEvents) {
+            window.removeEventListener(ev, onFirstInteraction);
+          }
+          loadReplay();
+        };
+        for (const ev of interactionEvents) {
+          window.addEventListener(ev, onFirstInteraction, { passive: true });
+        }
       } catch {
         // Observability should never break the app.
       }

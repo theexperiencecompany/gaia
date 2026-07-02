@@ -61,7 +61,12 @@ class _FakeLLM:
         self.bind_calls.append(names)
         return self
 
-    async def ainvoke(self, _messages: list[Any]) -> AIMessage:
+    def with_retry(self, **_kwargs: Any) -> "_FakeLLM":
+        # ainvoke_llm/invoke_llm wrap the bound model in with_llm_retry before
+        # invoking; the fake retry is a no-op passthrough.
+        return self
+
+    async def ainvoke(self, _messages: list[Any], config: Any = None) -> AIMessage:
         self._invoke_count += 1
         if self._invoke_count == 1:
             return AIMessage(
@@ -76,7 +81,7 @@ class _FakeLLM:
             )
         return AIMessage(content="done", tool_calls=[])
 
-    def invoke(self, _messages: list[Any]) -> AIMessage:
+    def invoke(self, _messages: list[Any], config: Any = None) -> AIMessage:
         self._invoke_count += 1
         if self._invoke_count == 1:
             return AIMessage(
@@ -202,7 +207,7 @@ async def _run_provider_subagent_factory(
             new=AsyncMock(return_value=MagicMock()),
         ),
         patch(
-            "app.agents.tools.core.registry.get_tool_registry",
+            "app.agents.core.subagents.base_subagent.get_tool_registry",
             new=AsyncMock(return_value=dummy_registry),
         ),
         patch(
@@ -241,14 +246,14 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
         disable_retrieve_tools=False,
     )
     assert parent_dynamic.enable_retrieve_tools is True
-    assert "vfs_read" in parent_dynamic.initial_tool_names
+    assert "read" in parent_dynamic.initial_tool_names
     assert "auto1" in parent_dynamic.initial_tool_names
 
     child_dynamic = build_child_tool_runtime_config(
         parent_dynamic, use_direct_tools=False, disable_retrieve_tools=False
     )
     assert child_dynamic.enable_retrieve_tools is True
-    assert child_dynamic.initial_tool_names == ["vfs_read", "vfs_cmd"]
+    assert child_dynamic.initial_tool_names == ["read", "bash", "finish_task"]
 
     parent_direct = build_provider_parent_tool_runtime_config(
         provider_tool_names=["p1", "p2"],
@@ -262,11 +267,11 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
     )
     assert child_direct.enable_retrieve_tools is False
     assert "p1" in child_direct.initial_tool_names
-    assert "vfs_read" in child_direct.initial_tool_names
+    assert "read" in child_direct.initial_tool_names
 
     executor_child = build_executor_child_tool_runtime_config()
     assert executor_child.enable_retrieve_tools is True
-    assert executor_child.initial_tool_names == ["vfs_read", "vfs_cmd"]
+    assert executor_child.initial_tool_names == ["read", "bash", "finish_task"]
 
     kwargs = build_create_agent_tool_kwargs(parent_dynamic, tool_space="provider_space")
     assert "initial_tool_ids" in kwargs
@@ -493,6 +498,7 @@ async def test_retrieval_query_mode_excludes_subagent_results_inside_spawned_age
             store=store,
             config={"configurable": {"user_id": "u1"}},
             query="find tools",
+            exact_tool_names=[],
         )
 
     # No subagent tools in spawned-agent retrieve flow.
@@ -533,7 +539,9 @@ async def test_retrieval_query_mode_includes_subagents_when_enabled_and_filters_
         ),
         patch(
             "app.agents.tools.core.retrieval._get_user_context",
-            new=AsyncMock(return_value=({"general", "subagents"}, set(), set())),
+            # _get_user_context returns (user_namespaces, connected_integrations, internal_subagents).
+            # connected_integrations is dict[str, str | None]; internal_subagents is set[str].
+            new=AsyncMock(return_value=({"general", "subagents"}, {}, set())),
         ),
         patch(
             "app.agents.tools.core.retrieval.search_public_integrations",
@@ -552,6 +560,7 @@ async def test_retrieval_query_mode_includes_subagents_when_enabled_and_filters_
             store=store,
             config={"configurable": {"user_id": "u1"}},
             query="anything",
+            exact_tool_names=[],
         )
 
     # delegated direct tools are filtered in include_subagents=True mode
@@ -595,7 +604,8 @@ async def test_tool_registry_core_contains_vfs_read():
     registry = ToolRegistry()
     await registry.setup()
     names = registry.get_tool_names()
-    assert "vfs_read" in names
+    # VFS tools were replaced by E2B sandbox coding tools (read, bash, write, edit).
+    assert "read" in names
 
 
 @pytest.mark.asyncio
@@ -620,7 +630,7 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
             new=AsyncMock(return_value=MagicMock()),
         ),
         patch(
-            "app.agents.tools.core.registry.get_tool_registry",
+            "app.agents.core.subagents.base_subagent.get_tool_registry",
             new=AsyncMock(return_value=dummy_registry),
         ),
         patch(
@@ -644,7 +654,7 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
 
     assert captured_kwargs["disable_retrieve_tools"] is True
     assert "retrieve_tools_coroutine" not in captured_kwargs
-    assert "vfs_read" in captured_kwargs["initial_tool_ids"]
+    assert "read" in captured_kwargs["initial_tool_ids"]
     assert "normal_tool" in captured_kwargs["initial_tool_ids"]
 
 
@@ -659,11 +669,11 @@ async def test_base_subagent_dynamic_mode_wires_retrieve_and_auto_bind():
     assert "retrieve_tools_coroutine" in captured_kwargs
     assert "disable_retrieve_tools" not in captured_kwargs
     assert "search_memory" in captured_kwargs["initial_tool_ids"]
-    assert "vfs_read" in captured_kwargs["initial_tool_ids"]
+    assert "read" in captured_kwargs["initial_tool_ids"]
     assert "normal_tool" in captured_kwargs["initial_tool_ids"]
     assert "missing_tool" not in captured_kwargs["initial_tool_ids"]
     # spawned child for dynamic mode should keep minimal initial tools
-    assert mw._tool_runtime_config.initial_tool_names == ["vfs_read", "vfs_cmd"]
+    assert mw._tool_runtime_config.initial_tool_names == ["read", "bash", "finish_task"]
     assert mw._tool_runtime_config.enable_retrieve_tools is True
 
 
@@ -676,8 +686,8 @@ async def test_base_subagent_direct_mode_propagates_child_direct_runtime():
 
     assert captured_kwargs["disable_retrieve_tools"] is True
     assert "retrieve_tools_coroutine" not in captured_kwargs
-    assert "vfs_read" in captured_kwargs["initial_tool_ids"]
+    assert "read" in captured_kwargs["initial_tool_ids"]
     assert "normal_tool" in captured_kwargs["initial_tool_ids"]
     assert mw._tool_runtime_config.enable_retrieve_tools is False
     assert "normal_tool" in mw._tool_runtime_config.initial_tool_names
-    assert "vfs_read" in mw._tool_runtime_config.initial_tool_names
+    assert "read" in mw._tool_runtime_config.initial_tool_names

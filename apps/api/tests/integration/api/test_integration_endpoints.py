@@ -1,7 +1,12 @@
 """Integration tests for user integration management API endpoints.
 
-Tests the /api/v1/integrations/users/me/integrations endpoints with mocked
-service layer to verify routing, auth enforcement, and response codes.
+Tests the integration endpoints with mocked service layer to verify routing,
+auth enforcement, and response codes.
+
+Route layout:
+  GET  /api/v1/integrations/me                          → config.py (MyIntegrationsResponse)
+  POST /api/v1/integrations/users/me/integrations       → user.py
+  DELETE /api/v1/integrations/users/me/integrations/{id} → user.py
 """
 
 from datetime import UTC, datetime
@@ -10,47 +15,48 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.integration_models import (
-    IntegrationResponse,
     UserIntegration,
-    UserIntegrationResponse,
-    UserIntegrationsListResponse,
+)
+from app.schemas.integrations.responses import (
+    MyIntegrationItem,
+    MyIntegrationsResponse,
 )
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_BASE = "/api/v1/integrations/users/me/integrations"
+# The current GET-list route lives in config.py at /me (not on user.py).
+_ME_BASE = "/api/v1/integrations/me"
+
+# POST / DELETE routes are still on user.py at /users/me/integrations.
+_USER_BASE = "/api/v1/integrations/users/me/integrations"
+
+# Keep the old name aliased so auth-enforcement tests below stay readable.
+_BASE = _USER_BASE
 
 
-def _make_integration_response(**overrides) -> IntegrationResponse:
+def _make_my_integration_item(**overrides) -> MyIntegrationItem:
     defaults = {
-        "integration_id": "gmail",
+        "id": "gmail",
         "name": "Gmail",
         "description": "Google Mail integration",
         "category": "email",
-        "managed_by": "composio",
         "source": "platform",
-        "is_featured": True,
-        "display_priority": 10,
+        "managed_by": "composio",
+        "status": "connected",
         "requires_auth": True,
         "auth_type": "oauth",
-        "tools": [],
+        "tool_count": 5,
     }
     defaults.update(overrides)
-    return IntegrationResponse(**defaults)
+    return MyIntegrationItem(**defaults)
 
 
-def _make_user_integration_response(**overrides) -> UserIntegrationResponse:
-    defaults = {
-        "integration_id": "gmail",
-        "status": "connected",
-        "created_at": datetime.now(UTC),
-        "connected_at": datetime.now(UTC),
-        "integration": _make_integration_response(),
-    }
-    defaults.update(overrides)
-    return UserIntegrationResponse(**defaults)
+def _make_my_integrations_response(**overrides) -> MyIntegrationsResponse:
+    integrations = overrides.pop("integrations", [_make_my_integration_item()])
+    total = overrides.pop("total", len(integrations))
+    return MyIntegrationsResponse(integrations=integrations, total=total)
 
 
 # ---------------------------------------------------------------------------
@@ -63,21 +69,21 @@ class TestUserIntegrationEndpoints:
     """Test user integration REST endpoints."""
 
     # ------------------------------------------------------------------
-    # GET /integrations/users/me/integrations
+    # GET /integrations/me   (formerly /users/me/integrations)
     # ------------------------------------------------------------------
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.get_user_integrations",
+        "app.api.v1.endpoints.integrations.config.get_my_integrations",
         new_callable=AsyncMock,
     )
     async def test_list_user_integrations_returns_200(self, mock_get, test_client):
-        """GET user integrations should return 200 with correct response structure."""
-        mock_get.return_value = UserIntegrationsListResponse(
-            integrations=[_make_user_integration_response()],
+        """GET my integrations should return 200 with correct response structure."""
+        mock_get.return_value = _make_my_integrations_response(
+            integrations=[_make_my_integration_item()],
             total=1,
         )
 
-        response = await test_client.get(_BASE)
+        response = await test_client.get(_ME_BASE)
 
         assert response.status_code == 200
         data = response.json()
@@ -87,17 +93,14 @@ class TestUserIntegrationEndpoints:
         assert len(data["integrations"]) == 1
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.get_user_integrations",
+        "app.api.v1.endpoints.integrations.config.get_my_integrations",
         new_callable=AsyncMock,
     )
     async def test_list_user_integrations_empty_returns_200(self, mock_get, test_client):
-        """GET user integrations with no items should return 200 and empty list."""
-        mock_get.return_value = UserIntegrationsListResponse(
-            integrations=[],
-            total=0,
-        )
+        """GET my integrations with no items should return 200 and empty list."""
+        mock_get.return_value = _make_my_integrations_response(integrations=[], total=0)
 
-        response = await test_client.get(_BASE)
+        response = await test_client.get(_ME_BASE)
 
         assert response.status_code == 200
         data = response.json()
@@ -105,46 +108,41 @@ class TestUserIntegrationEndpoints:
         assert data["total"] == 0
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.get_user_integrations",
+        "app.api.v1.endpoints.integrations.config.get_my_integrations",
         new_callable=AsyncMock,
     )
     async def test_list_user_integrations_response_shape(self, mock_get, test_client):
-        """GET user integrations response should include nested integration fields."""
-        mock_get.return_value = UserIntegrationsListResponse(
-            integrations=[_make_user_integration_response()],
+        """GET my integrations response should include flat integration fields."""
+        mock_get.return_value = _make_my_integrations_response(
+            integrations=[_make_my_integration_item()],
             total=1,
         )
 
-        response = await test_client.get(_BASE)
+        response = await test_client.get(_ME_BASE)
         data = response.json()
         item = data["integrations"][0]
 
-        # CamelCase aliases are used in JSON output
-        assert "integrationId" in item
+        # MyIntegrationItem is a flat CamelModel (no nested 'integration' sub-object).
+        assert "id" in item
+        assert "name" in item
         assert "status" in item
-        assert "createdAt" in item
-        assert "integration" in item
-        integration = item["integration"]
-        assert "integrationId" in integration
-        assert "name" in integration
-        assert "category" in integration
+        assert "category" in item
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.get_user_integrations",
+        "app.api.v1.endpoints.integrations.config.get_my_integrations",
         new_callable=AsyncMock,
     )
     async def test_list_user_integrations_service_error_returns_500(self, mock_get, test_client):
-        """GET user integrations should return 500 when service raises."""
+        """GET my integrations should return 500 when service raises."""
         mock_get.side_effect = RuntimeError("DB connection lost")
 
-        response = await test_client.get(_BASE)
+        response = await test_client.get(_ME_BASE)
 
         assert response.status_code == 500
-        assert "Failed to fetch user integrations" in response.json()["detail"]
 
     async def test_list_user_integrations_requires_auth(self, unauthenticated_client):
-        """GET user integrations without auth should return 401."""
-        response = await unauthenticated_client.get(_BASE)
+        """GET my integrations without auth should return 401."""
+        response = await unauthenticated_client.get(_ME_BASE)
         assert response.status_code == 401
 
     # ------------------------------------------------------------------
@@ -340,8 +338,8 @@ class TestIntegrationEndpointAuthEnforcement:
     """
 
     async def test_list_integrations_unauthenticated_returns_401(self, unauthenticated_client):
-        """GET /integrations/users/me/integrations without auth must return 401."""
-        response = await unauthenticated_client.get(_BASE)
+        """GET /integrations/me without auth must return 401."""
+        response = await unauthenticated_client.get(_ME_BASE)
         assert response.status_code == 401
 
     async def test_add_integration_unauthenticated_returns_401(self, unauthenticated_client):

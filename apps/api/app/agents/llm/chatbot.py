@@ -1,35 +1,23 @@
 from langchain_core.messages import AIMessage, AnyMessage, BaseMessage
 
-from app.agents.llm.client import get_free_llm_chain, init_llm, invoke_with_fallback
+from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.exceptions import CHATBOT_FALLBACK_EXCEPTIONS
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
-async def chatbot(
-    messages: list[AnyMessage],
-    use_free_llm: bool = True,
-) -> dict[str, list[BaseMessage]]:
-    """
-    One-shot LLM call over a message list (no graph, no checkpointer).
-
-    Args:
-        messages: The conversation messages to send to the model.
-        use_free_llm: Whether to use the free LLM with fallback support.
-                      Defaults to True for cost efficiency on simple tasks like
-                      description generation.
-    """
+async def chatbot(messages: list[AnyMessage]) -> dict[str, list[BaseMessage]]:
+    """One-shot LLM call over a message list (no graph, no checkpointer), used for
+    simple helper tasks like description generation. Always runs on the default
+    model — one-shot helpers never use the pro model. Degrades to a friendly
+    message rather than raising, so a helper failure never breaks its caller."""
     try:
-        if use_free_llm:
-            llm_chain = get_free_llm_chain()
-            response = await invoke_with_fallback(llm_chain, messages)
-        else:
-            llm = init_llm()
-            response = await llm.ainvoke(messages)
-
+        response = await ainvoke_llm(get_default_llm(), messages, label="chatbot")
         return {"messages": [response]}
-    except Exception as e:
-        log.error(f"{LogTag.AGENT} Error in LLM API call: {e!s}")
-
+    except CHATBOT_FALLBACK_EXCEPTIONS as e:
+        log.error(
+            f"{LogTag.AGENT} chatbot LLM call failed", error_type=type(e).__name__, error=str(e)
+        )
         return {
             "messages": [
                 AIMessage(

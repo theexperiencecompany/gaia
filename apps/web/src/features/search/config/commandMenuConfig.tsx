@@ -9,7 +9,6 @@ import {
   NotificationIcon,
   PencilEdit01Icon,
   Settings01Icon,
-  Target02Icon,
   WhatsappIcon,
   ZapIcon,
 } from "@icons";
@@ -49,12 +48,6 @@ const PAGE_ITEMS: MenuItemConfig[] = [
     label: "Calendar",
     icon: <CalendarIcon width={18} height={18} />,
     path: "/calendar",
-  },
-  {
-    id: "goals",
-    label: "Goals",
-    icon: <Target02Icon width={18} height={18} />,
-    path: "/goals",
   },
   {
     id: "todos",
