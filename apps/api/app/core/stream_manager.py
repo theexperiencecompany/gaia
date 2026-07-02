@@ -77,6 +77,11 @@ class StreamProgress:
     is_cancelled: bool = False
     is_complete: bool = False
     error: str | None = None
+    # The identity SSE frame (conversation/message/stream ids). Kept here so a
+    # subscriber that attaches after the frame was published still receives it —
+    # pub/sub has no replay, and losing this frame makes the whole turn
+    # invisible to the client ("ghost turn").
+    init_chunk: str | None = None
 
 
 class StreamManager:
@@ -166,6 +171,25 @@ class StreamManager:
     # -------------------------------------------------------------------------
 
     @classmethod
+    async def record_init_chunk(cls, stream_id: str, chunk: str) -> None:
+        """Persist the identity frame so late subscribers can replay it.
+
+        Called by the producer BEFORE publishing the frame to pub/sub: a
+        subscriber that attaches after the publish (e.g. the producer's
+        wait-for-subscriber timeout elapsed under event-loop load) finds the
+        frame here instead of never learning the turn's ids.
+        """
+        key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
+        progress_data = await redis_cache.get(key)
+        if progress_data is None:
+            log.warning(
+                f"{LogTag.STARTUP} Stream {stream_id} progress missing — cannot record init chunk"
+            )
+            return
+        progress_data["init_chunk"] = chunk
+        await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
+
+    @classmethod
     async def publish_chunk(cls, stream_id: str, chunk: str) -> None:
         """
         Publish a streaming chunk to the Redis channel.
@@ -216,6 +240,15 @@ class StreamManager:
             # Allow the background task to start publishing
             if start_event and not start_event.is_set():
                 start_event.set()
+
+            # Replay the identity frame if the producer already published it —
+            # pub/sub keeps nothing, and a subscriber that attached late would
+            # otherwise stream a turn it can never bind ids for. The client
+            # deduplicates if the live copy also arrives.
+            progress = await cls.get_progress(stream_id)
+            if progress and progress.get("init_chunk"):
+                chunks_received += 1
+                yield progress["init_chunk"]
 
             while True:
                 # get_message returns None on timeout instead of cancelling

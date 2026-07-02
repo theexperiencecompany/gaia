@@ -225,6 +225,7 @@ def build_agent_config(  # NOSONAR python:S107
     source: str | None = None,
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
+    recursion_limit: int = AGENT_RECURSION_LIMIT,
 ) -> dict:
     """Build the LangGraph execution config (user context, model, auth, execution params).
 
@@ -234,6 +235,9 @@ def build_agent_config(  # NOSONAR python:S107
             workspace. Inherited automatically via base_configurable.
         langfuse_trace_id / langfuse_tags: Bind spans to a Langfuse trace; inherit from
             base_configurable when omitted so the executor lands on the comms trace.
+        recursion_limit: Max LangGraph steps before GraphRecursionError. Defaults to the
+            comms/subagent cap; the executor passes EXECUTOR_RECURSION_LIMIT for its
+            longer tool loops.
     """
     callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
     model_name, provider_name, max_tokens = _resolve_model_config(user_model_config)
@@ -333,7 +337,7 @@ def build_agent_config(  # NOSONAR python:S107
 
     return {
         "configurable": configurable,
-        "recursion_limit": AGENT_RECURSION_LIMIT,
+        "recursion_limit": recursion_limit,
         "metadata": metadata,
         "callbacks": callbacks,
         "agent_name": agent_name,
