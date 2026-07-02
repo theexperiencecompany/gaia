@@ -1,3 +1,32 @@
+/**
+ * ARCHITECTURE INVARIANTS — these govern everything under features/chat/stream/.
+ *
+ * A turn's state is distributed across five stores: the backend event log
+ * (Redis Stream), Mongo, the SSE connection, IndexedDB, and per-tab Zustand.
+ * A reload destroys tab memory at an arbitrary instant while the server keeps
+ * streaming — so every bug this system has ever had was two of those stores
+ * disagreeing at a boundary. These rules make that class of bug unwritable:
+ *
+ * 1. DERIVE, don't synchronize. Client state that matters must be
+ *    reconstructable from a source of truth — the event log for server facts,
+ *    IndexedDB for client facts. A fix that reconciles two stores with a flag
+ *    or heuristic is wrong; re-derive instead. (The send queue is rebuilt from
+ *    persisted "queued" records; a missing user record is rebuilt from the
+ *    replayed init frame.)
+ *
+ * 2. Check the store you write. Zustand is per-tab, IndexedDB is shared
+ *    across tabs — never gate a write to one on a read from the other.
+ *
+ * 3. One identity. The client's send id IS the server's user_message_id and
+ *    the turn's idempotency key. Never mint a second id or reconcile ids —
+ *    reuse is what makes redelivery safe (the backend rejects duplicates).
+ *
+ * 4. The event log is complete. A session attaching mid-turn must render the
+ *    turn exactly as if the page had been open the whole time, from replay
+ *    alone. A new client-visible fact about a turn must therefore be carried
+ *    in a frame (see apps/api/app/models/stream_events.py), never assumed to
+ *    survive in tab memory.
+ */
 import { v4 as uuidv4 } from "uuid";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { db } from "@/lib/db/chatDb";
