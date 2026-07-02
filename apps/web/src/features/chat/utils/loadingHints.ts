@@ -1,6 +1,7 @@
 // Loading-indicator hints carried by a `tool_data` event's payload. Shared by
-// text chat (useChatStream/streamHandlers) and voice mode (useVoiceMessages) so
-// both surface the same per-tool labelled loading line from the same data.
+// text chat (the turn session in features/chat/stream/turnSession.ts) and voice
+// mode (useVoiceMessages) so both surface the same per-tool labelled loading
+// line from the same data.
 
 export interface ToolDataLoadingHints {
   message: string;

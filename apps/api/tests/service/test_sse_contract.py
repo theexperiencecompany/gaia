@@ -1,26 +1,39 @@
 """
 Service tests: verify the exact SSE wire format yielded by subscribe_stream.
 
-Calls real StreamManager.subscribe_stream() against real Redis.
-Asserts on the exact strings that reach the HTTP response body.
+Calls real StreamManager.subscribe_stream() against real Redis Streams.
+Asserts on the exact strings that reach the HTTP response body: replayable
+frames are id-tagged (``id: <entry-id>\\ndata: {json}\\n\\n``) while control
+frames ([DONE], errors, keepalives) carry no id line.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import re
 
 import pytest
 
 from app.core.stream_manager import StreamManager
+
+# Redis Stream entry ids ("<ms>-<seq>") double as SSE event ids.
+_SSE_ID_LINE = re.compile(r"^id: \d+-\d+\n")
+
+
+def _strip_id(frame: str) -> str:
+    """Assert a replayable frame carries an SSE id line and return the rest."""
+    match = _SSE_ID_LINE.match(frame)
+    assert match is not None, f"Missing SSE id line: {frame!r}"
+    return frame[match.end() :]
 
 
 @pytest.mark.service
 class TestSSEContract:
     """Verify the SSE wire format contract of subscribe_stream."""
 
-    async def test_text_chunks_have_data_prefix_and_double_newline(self, real_redis):
-        """Every text chunk yielded must match: data: {json}\\n\\n"""
+    async def test_text_chunks_are_id_tagged_sse_frames(self, real_redis):
+        """Every text chunk yielded must match: id: <entry-id>\\ndata: {json}\\n\\n"""
         await StreamManager.start_stream("sse-1", "c1", "u1")
         received: list[str] = []
 
@@ -36,13 +49,15 @@ class TestSSEContract:
         await asyncio.gather(publisher(), subscriber())
 
         text_chunks = [c for c in received if '"response"' in c]
+        assert len(text_chunks) == 1
         for chunk in text_chunks:
-            assert chunk.startswith("data: "), f"Missing data: prefix: {chunk!r}"
-            assert chunk.endswith("\n\n"), f"Missing \\n\\n terminator: {chunk!r}"
-            json.loads(chunk[6:-2])
+            data = _strip_id(chunk)
+            assert data.startswith("data: "), f"Missing data: prefix: {chunk!r}"
+            assert data.endswith("\n\n"), f"Missing \\n\\n terminator: {chunk!r}"
+            json.loads(data[6:-2])
 
     async def test_cancel_yields_done_marker(self, real_redis):
-        """On cancellation, subscriber must yield exactly 'data: [DONE]\\n\\n'."""
+        """On cancellation, subscriber must yield exactly 'data: [DONE]\\n\\n' (no id line)."""
         await StreamManager.start_stream("sse-2", "c2", "u2")
         received: list[str] = []
 
@@ -59,7 +74,7 @@ class TestSSEContract:
         assert "data: [DONE]\n\n" in received
 
     async def test_error_yields_json_with_error_key(self, real_redis):
-        """On error, subscriber must yield: data: {"error": "..."}\\n\\n"""
+        """On error, subscriber must yield: data: {"error": "..."}\\n\\n (no id line)."""
         await StreamManager.start_stream("sse-3", "c3", "u3")
         received: list[str] = []
 
@@ -75,11 +90,13 @@ class TestSSEContract:
 
         error_chunks = [c for c in received if "error" in c]
         assert len(error_chunks) >= 1
+        assert error_chunks[0].startswith("data: ")
+        assert error_chunks[0].endswith("\n\n")
         payload = json.loads(error_chunks[0][6:-2])
         assert payload["error"] == "LLM timed out"
 
     async def test_keepalive_format(self, real_redis):
-        """Idle streams must yield keepalive as: data: {"keepalive":true}\\n\\n"""
+        """Idle streams must yield keepalive as exactly: data: {"keepalive":true}\\n\\n"""
         await StreamManager.start_stream("sse-4", "c4", "u4")
         received: list[str] = []
 
@@ -95,11 +112,10 @@ class TestSSEContract:
 
         keepalives = [c for c in received if "keepalive" in c]
         assert len(keepalives) >= 1
-        payload = json.loads(keepalives[0][6:-2])
-        assert payload["keepalive"] is True
+        assert keepalives[0] == 'data: {"keepalive":true}\n\n'
 
     async def test_full_stream_sequence(self, real_redis):
-        """A complete stream: init chunk -> text -> tool_data -> [DONE]."""
+        """A complete stream: init chunk -> text -> tool_data, each replayed id-tagged."""
         await StreamManager.start_stream("sse-5", "c5", "u5")
         received: list[str] = []
 
@@ -120,10 +136,6 @@ class TestSSEContract:
 
         await asyncio.gather(publisher(), subscriber())
 
-        # Filter keepalives: non-blocking get_message may yield a keepalive
-        # before the publisher's 0.1s sleep completes.
-        non_keepalive = [c for c in received if "keepalive" not in c]
-        assert len(non_keepalive) == 3
-        assert "user_message_id" in non_keepalive[0]
-        assert "response" in non_keepalive[1]
-        assert "tool_data" in non_keepalive[2]
+        # Every received frame must be replayable (id-tagged) and the stored
+        # payloads must round-trip byte-identically, in order.
+        assert [_strip_id(c) for c in received] == [init, text, tool]

@@ -1,7 +1,9 @@
-"""Tests for StreamManager — Redis Pub/Sub stream lifecycle.
+"""Tests for StreamManager — Redis Streams event-log lifecycle.
 
-Covers: start, complete, cleanup, publish, subscribe (all signal types
-and edge cases), cancel, is_cancelled, progress tracking, and error recording.
+Covers: start (progress + active-stream reverse index), complete, cleanup,
+publish (XADD to the replayable event log), subscribe (replay with SSE id
+lines, cursor resume, control signals, keepalives), cancel, is_cancelled,
+get_active_stream_id, progress tracking, and error recording.
 """
 
 from collections.abc import Generator
@@ -13,7 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.cache import (
-    STREAM_CHANNEL_PREFIX,
+    STREAM_ACTIVE_PREFIX,
+    STREAM_EVENTS_MAXLEN,
+    STREAM_EVENTS_PREFIX,
     STREAM_PROGRESS_PREFIX,
     STREAM_SIGNAL_PREFIX,
     STREAM_TTL,
@@ -28,6 +32,11 @@ from app.core.stream_manager import StreamManager, StreamProgress
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+EVENTS_KEY = f"{STREAM_EVENTS_PREFIX}s1"
+ACTIVE_KEY = f"{STREAM_ACTIVE_PREFIX}user-1:conv-1"
+
+XReadBatch = list[tuple[str, list[tuple[str, dict[str, str]]]]]
 
 
 def _progress_dict(
@@ -52,24 +61,19 @@ def _progress_dict(
     }
 
 
-class _FakePubSub:
-    """Lightweight stand-in for redis.asyncio pubsub objects."""
+def _entries_batch(*entries: tuple[str, str]) -> XReadBatch:
+    """Build an XREAD result batch: [(events_key, [(entry_id, {"data": ...})])]."""
+    return [(EVENTS_KEY, [(entry_id, {"data": data}) for entry_id, data in entries])]
 
-    def __init__(self, messages: list[dict[str, Any] | None] | None = None):
-        self._messages = list(messages or [])
-        self._idx = 0
-        self.subscribe = AsyncMock()
-        self.unsubscribe = AsyncMock()
-        self.aclose = AsyncMock()
 
-    async def get_message(
-        self, ignore_subscribe_messages: bool = True, timeout: float = 1.0
-    ) -> dict[str, Any] | None:
-        if self._idx >= len(self._messages):
-            return None
-        msg = self._messages[self._idx]
-        self._idx += 1
-        return msg
+def _stream_client(xread_batches: list[XReadBatch] | None = None) -> MagicMock:
+    """Mock redis.asyncio client exposing the Streams commands StreamManager uses."""
+    client = MagicMock()
+    client.xadd = AsyncMock()
+    client.expire = AsyncMock()
+    if xread_batches is not None:
+        client.xread = AsyncMock(side_effect=xread_batches)
+    return client
 
 
 # ---------------------------------------------------------------------------
@@ -120,18 +124,25 @@ class TestStartStream:
     async def test_stores_progress_in_redis(self) -> None:
         await StreamManager.start_stream("s1", "conv-1", "user-1")
 
-        self.mock_set.assert_awaited_once()
-        call_args = self.mock_set.call_args
-        key = call_args[0][0]
-        data = call_args[0][1]
-        ttl = call_args[1]["ttl"] if "ttl" in call_args[1] else call_args[0][2]
+        progress_call = self.mock_set.call_args_list[0]
+        key = progress_call[0][0]
+        data = progress_call[0][1]
 
         assert key == f"{STREAM_PROGRESS_PREFIX}s1"
         assert data["conversation_id"] == "conv-1"
         assert data["user_id"] == "user-1"
         assert data["is_complete"] is False
         assert data["is_cancelled"] is False
-        assert ttl == STREAM_TTL
+        assert progress_call[1]["ttl"] == STREAM_TTL
+
+    async def test_stores_active_stream_reverse_index(self) -> None:
+        await StreamManager.start_stream("s1", "conv-1", "user-1")
+
+        assert self.mock_set.await_count == 2
+        active_call = self.mock_set.call_args_list[1]
+        assert active_call[0][0] == ACTIVE_KEY
+        assert active_call[0][1] == "s1"
+        assert active_call[1]["ttl"] == STREAM_TTL
 
 
 # ---------------------------------------------------------------------------
@@ -142,17 +153,17 @@ class TestStartStream:
 class TestCompleteStream:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
-        self.stored: dict[str, Any] = {}
         self.mock_get = AsyncMock(return_value=_progress_dict())
         self.mock_set = AsyncMock()
-        self.mock_redis_client = MagicMock()
-        self.mock_redis_client.publish = AsyncMock()
+        self.mock_delete = AsyncMock()
+        self.mock_redis_client = _stream_client()
 
         patcher = patch(
             "app.core.stream_manager.redis_cache",
             new=MagicMock(
                 get=self.mock_get,
                 set=self.mock_set,
+                delete=self.mock_delete,
                 redis=self.mock_redis_client,
             ),
         )
@@ -160,7 +171,7 @@ class TestCompleteStream:
         yield
         patcher.stop()
 
-    async def test_marks_progress_complete_and_publishes_done(self) -> None:
+    async def test_marks_progress_complete_and_appends_done(self) -> None:
         await StreamManager.complete_stream("s1")
 
         # Progress updated with is_complete=True
@@ -168,20 +179,27 @@ class TestCompleteStream:
         data = set_call[0][1]
         assert data["is_complete"] is True
 
-        # DONE signal published
-        self.mock_redis_client.publish.assert_awaited_once_with(
-            f"{STREAM_CHANNEL_PREFIX}s1",
-            STREAM_DONE_SIGNAL,
-        )
+        # Active-stream reverse index cleared
+        self.mock_delete.assert_awaited_once_with(ACTIVE_KEY)
 
-    async def test_publishes_done_even_when_progress_missing(self) -> None:
+        # DONE signal appended to the event log with retention + TTL
+        self.mock_redis_client.xadd.assert_awaited_once_with(
+            EVENTS_KEY,
+            {"data": STREAM_DONE_SIGNAL},
+            maxlen=STREAM_EVENTS_MAXLEN,
+            approximate=True,
+        )
+        self.mock_redis_client.expire.assert_awaited_once_with(EVENTS_KEY, STREAM_TTL)
+
+    async def test_appends_done_even_when_progress_missing(self) -> None:
         self.mock_get.return_value = None
         await StreamManager.complete_stream("s1")
 
-        # set should NOT be called when progress_data is None
+        # set/delete should NOT be called when progress_data is None
         self.mock_set.assert_not_awaited()
-        # but done signal should still be published
-        self.mock_redis_client.publish.assert_awaited_once()
+        self.mock_delete.assert_not_awaited()
+        # but the DONE signal should still be appended
+        self.mock_redis_client.xadd.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -192,21 +210,77 @@ class TestCompleteStream:
 class TestCleanup:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
+        self.mock_get = AsyncMock(return_value=_progress_dict())
         self.mock_delete = AsyncMock()
         patcher = patch(
             "app.core.stream_manager.redis_cache",
-            new=MagicMock(delete=self.mock_delete),
+            new=MagicMock(get=self.mock_get, delete=self.mock_delete),
         )
         patcher.start()
         yield
         patcher.stop()
 
-    async def test_deletes_progress_and_signal_keys(self) -> None:
+    async def test_deletes_progress_signal_and_active_keys(self) -> None:
         await StreamManager.cleanup("s1")
 
         calls = [c[0][0] for c in self.mock_delete.call_args_list]
+        assert ACTIVE_KEY in calls
         assert f"{STREAM_PROGRESS_PREFIX}s1" in calls
         assert f"{STREAM_SIGNAL_PREFIX}s1" in calls
+
+    async def test_keeps_replayable_event_log(self) -> None:
+        """The event log must survive cleanup so late re-attach can still replay."""
+        await StreamManager.cleanup("s1")
+
+        calls = [c[0][0] for c in self.mock_delete.call_args_list]
+        assert EVENTS_KEY not in calls
+
+    async def test_skips_active_index_when_progress_missing(self) -> None:
+        self.mock_get.return_value = None
+        await StreamManager.cleanup("s1")
+
+        calls = [c[0][0] for c in self.mock_delete.call_args_list]
+        assert ACTIVE_KEY not in calls
+        assert f"{STREAM_PROGRESS_PREFIX}s1" in calls
+        assert f"{STREAM_SIGNAL_PREFIX}s1" in calls
+
+
+# ---------------------------------------------------------------------------
+# get_active_stream_id
+# ---------------------------------------------------------------------------
+
+
+class TestGetActiveStreamId:
+    async def test_returns_stream_id(self) -> None:
+        mock_get = AsyncMock(return_value="s1")
+        with patch(
+            "app.core.stream_manager.redis_cache",
+            new=MagicMock(get=mock_get),
+        ):
+            result = await StreamManager.get_active_stream_id("user-1", "conv-1")
+
+        assert result == "s1"
+        mock_get.assert_awaited_once_with(ACTIVE_KEY)
+
+    async def test_returns_none_when_missing(self) -> None:
+        mock_get = AsyncMock(return_value=None)
+        with patch(
+            "app.core.stream_manager.redis_cache",
+            new=MagicMock(get=mock_get),
+        ):
+            result = await StreamManager.get_active_stream_id("user-1", "conv-1")
+
+        assert result is None
+
+    async def test_returns_none_for_non_string_value(self) -> None:
+        mock_get = AsyncMock(return_value={"unexpected": "shape"})
+        with patch(
+            "app.core.stream_manager.redis_cache",
+            new=MagicMock(get=mock_get),
+        ):
+            result = await StreamManager.get_active_stream_id("user-1", "conv-1")
+
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -217,8 +291,7 @@ class TestCleanup:
 class TestPublishChunk:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
-        self.mock_redis_client = MagicMock()
-        self.mock_redis_client.publish = AsyncMock()
+        self.mock_redis_client = _stream_client()
         patcher = patch(
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=self.mock_redis_client),
@@ -227,13 +300,20 @@ class TestPublishChunk:
         yield
         patcher.stop()
 
-    async def test_publishes_chunk_to_channel(self) -> None:
+    async def test_appends_chunk_to_event_log(self) -> None:
         await StreamManager.publish_chunk("s1", "data: hello\n\n")
 
-        self.mock_redis_client.publish.assert_awaited_once_with(
-            f"{STREAM_CHANNEL_PREFIX}s1",
-            "data: hello\n\n",
+        self.mock_redis_client.xadd.assert_awaited_once_with(
+            EVENTS_KEY,
+            {"data": "data: hello\n\n"},
+            maxlen=STREAM_EVENTS_MAXLEN,
+            approximate=True,
         )
+
+    async def test_refreshes_event_log_ttl(self) -> None:
+        await StreamManager.publish_chunk("s1", "data: hello\n\n")
+
+        self.mock_redis_client.expire.assert_awaited_once_with(EVENTS_KEY, STREAM_TTL)
 
     async def test_noop_when_redis_unavailable(self) -> None:
         with patch(
@@ -250,224 +330,143 @@ class TestPublishChunk:
 
 
 class TestSubscribeStream:
-    def _make_msg(self, data: str) -> dict[str, Any]:
-        return {"type": "message", "data": data}
+    def _patch_redis(self, client: MagicMock, get: AsyncMock | None = None) -> Any:
+        return patch(
+            "app.core.stream_manager.redis_cache",
+            new=MagicMock(redis=client, get=get or AsyncMock(return_value=None)),
+        )
 
-    async def test_yields_chunks_until_done(self) -> None:
-        pubsub = _FakePubSub(
+    async def _collect(self, stream_id: str = "s1", **kwargs: Any) -> list[str]:
+        chunks: list[str] = []
+        async for chunk in StreamManager.subscribe_stream(stream_id, **kwargs):
+            chunks.append(chunk)
+        return chunks
+
+    async def test_yields_id_tagged_frames_until_done(self) -> None:
+        client = _stream_client(
             [
-                self._make_msg("data: chunk1\n\n"),
-                self._make_msg("data: chunk2\n\n"),
-                self._make_msg(STREAM_DONE_SIGNAL),
+                _entries_batch(
+                    ("1-0", "data: chunk1\n\n"),
+                    ("2-0", "data: chunk2\n\n"),
+                    ("3-0", STREAM_DONE_SIGNAL),
+                ),
             ]
         )
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
 
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=mock_redis_client),
-        ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1"):
-                chunks.append(chunk)
+        with self._patch_redis(client):
+            chunks = await self._collect()
 
-        assert chunks == ["data: chunk1\n\n", "data: chunk2\n\n"]
-        pubsub.unsubscribe.assert_awaited_once()
-        pubsub.aclose.assert_awaited_once()
+        assert chunks == [
+            "id: 1-0\ndata: chunk1\n\n",
+            "id: 2-0\ndata: chunk2\n\n",
+        ]
+
+    async def test_reads_from_beginning_by_default(self) -> None:
+        client = _stream_client([_entries_batch(("1-0", STREAM_DONE_SIGNAL))])
+
+        with self._patch_redis(client):
+            await self._collect()
+
+        client.xread.assert_awaited_once_with({EVENTS_KEY: "0-0"}, block=15000, count=256)
+
+    async def test_resumes_from_last_event_id(self) -> None:
+        client = _stream_client([_entries_batch(("6-0", STREAM_DONE_SIGNAL))])
+
+        with self._patch_redis(client):
+            await self._collect(last_event_id="5-0")
+
+        first_call = client.xread.await_args_list[0]
+        assert first_call[0][0] == {EVENTS_KEY: "5-0"}
+
+    async def test_advances_cursor_between_reads(self) -> None:
+        client = _stream_client(
+            [
+                _entries_batch(("1-0", "data: a\n\n"), ("2-0", "data: b\n\n")),
+                _entries_batch(("3-0", STREAM_DONE_SIGNAL)),
+            ]
+        )
+
+        with self._patch_redis(client):
+            chunks = await self._collect()
+
+        assert chunks == ["id: 1-0\ndata: a\n\n", "id: 2-0\ndata: b\n\n"]
+        second_call = client.xread.await_args_list[1]
+        assert second_call[0][0] == {EVENTS_KEY: "2-0"}
 
     async def test_cancelled_signal_yields_done_marker(self) -> None:
-        pubsub = _FakePubSub(
+        client = _stream_client(
             [
-                self._make_msg("data: chunk1\n\n"),
-                self._make_msg(STREAM_CANCELLED_SIGNAL),
+                _entries_batch(
+                    ("1-0", "data: chunk1\n\n"),
+                    ("2-0", STREAM_CANCELLED_SIGNAL),
+                ),
             ]
         )
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
 
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=mock_redis_client),
-        ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1"):
-                chunks.append(chunk)
+        with self._patch_redis(client):
+            chunks = await self._collect()
 
-        assert chunks == ["data: chunk1\n\n", "data: [DONE]\n\n"]
+        assert chunks == ["id: 1-0\ndata: chunk1\n\n", "data: [DONE]\n\n"]
 
     async def test_error_signal_yields_error_json(self) -> None:
-        progress = _progress_dict(error="Something failed")
-        mock_get = AsyncMock(return_value=progress)
+        client = _stream_client([_entries_batch(("1-0", STREAM_ERROR_SIGNAL))])
+        mock_get = AsyncMock(return_value=_progress_dict(error="Something failed"))
 
-        pubsub = _FakePubSub([self._make_msg(STREAM_ERROR_SIGNAL)])
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
+        with self._patch_redis(client, get=mock_get):
+            chunks = await self._collect()
 
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=mock_redis_client, get=mock_get),
-        ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1"):
-                chunks.append(chunk)
-
-        assert len(chunks) == 1
-        payload = json.loads(chunks[0].removeprefix("data: ").strip())
-        assert payload["error"] == "Something failed"
+        assert chunks == ['data: {"error": "Something failed"}\n\n']
 
     async def test_error_signal_with_no_progress_uses_default(self) -> None:
+        client = _stream_client([_entries_batch(("1-0", STREAM_ERROR_SIGNAL))])
         mock_get = AsyncMock(return_value=None)
 
-        pubsub = _FakePubSub([self._make_msg(STREAM_ERROR_SIGNAL)])
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
-
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=mock_redis_client, get=mock_get),
-        ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1"):
-                chunks.append(chunk)
+        with self._patch_redis(client, get=mock_get):
+            chunks = await self._collect()
 
         payload = json.loads(chunks[0].removeprefix("data: ").strip())
         assert payload["error"] == "An unexpected error occurred"
 
-    async def test_keepalive_on_timeout(self) -> None:
-        """When pubsub returns None (timeout), a keepalive data event is yielded."""
-        pubsub = _FakePubSub(
+    async def test_keepalive_on_idle_read(self) -> None:
+        """An empty XREAD (idle interval) yields a keepalive frame with no id line."""
+        client = _stream_client(
             [
-                None,  # timeout → keepalive
-                self._make_msg(STREAM_DONE_SIGNAL),
+                [],  # blocked read timed out -> keepalive
+                _entries_batch(("1-0", STREAM_DONE_SIGNAL)),
             ]
         )
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
 
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=mock_redis_client),
-        ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1", keepalive_interval=0.01):
-                chunks.append(chunk)
+        with self._patch_redis(client):
+            chunks = await self._collect(keepalive_interval=0.01)
 
         assert chunks == ['data: {"keepalive":true}\n\n']
-
-    async def test_skips_non_message_types(self) -> None:
-        pubsub = _FakePubSub(
-            [
-                {"type": "subscribe", "data": None},
-                self._make_msg("data: real\n\n"),
-                self._make_msg(STREAM_DONE_SIGNAL),
-            ]
-        )
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
-
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=mock_redis_client),
-        ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1"):
-                chunks.append(chunk)
-
-        assert chunks == ["data: real\n\n"]
-
-    async def test_decodes_bytes_data(self) -> None:
-        pubsub = _FakePubSub(
-            [
-                {"type": "message", "data": b"data: bytes_chunk\n\n"},
-                self._make_msg(STREAM_DONE_SIGNAL),
-            ]
-        )
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
-
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=mock_redis_client),
-        ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1"):
-                chunks.append(chunk)
-
-        assert chunks == ["data: bytes_chunk\n\n"]
 
     async def test_returns_immediately_when_redis_unavailable(self) -> None:
         with patch(
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=None),
         ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1"):
-                chunks.append(chunk)
+            chunks = await self._collect()
 
         assert chunks == []
 
-    async def test_exception_during_subscription_yields_error(self) -> None:
-        pubsub = _FakePubSub()
-        # Make get_message raise after the first call
+    async def test_exception_during_read_yields_error(self) -> None:
+        client = MagicMock()
+        client.xread = AsyncMock(side_effect=RuntimeError("connection lost"))
 
-        call_count = 0
-
-        async def exploding_get(**kwargs: Any) -> Any:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise RuntimeError("connection lost")
-            return None
-
-        pubsub.get_message = exploding_get  # type: ignore[assignment]
-
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
-
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=mock_redis_client),
-        ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1"):
-                chunks.append(chunk)
+        with self._patch_redis(client):
+            chunks = await self._collect()
 
         assert len(chunks) == 1
         payload = json.loads(chunks[0].removeprefix("data: ").strip())
         assert payload["error"] == "Stream subscription failed"
 
-    async def test_cleanup_errors_suppressed_in_finally(self) -> None:
-        """Errors during pubsub cleanup (unsubscribe/aclose) should be swallowed."""
-        pubsub = _FakePubSub([self._make_msg(STREAM_DONE_SIGNAL)])
-        pubsub.unsubscribe = AsyncMock(side_effect=RuntimeError("cleanup fail"))
-        pubsub.aclose = AsyncMock(side_effect=RuntimeError("close fail"))
-
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
-
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(redis=mock_redis_client),
-        ):
-            chunks: list[str] = []
-            async for chunk in StreamManager.subscribe_stream("s1"):
-                chunks.append(chunk)
-
-        # Should complete without raising
-        assert chunks == []
-
     async def test_warning_logged_when_no_chunks_received(self) -> None:
         """When stream ends with zero data chunks, a warning should be logged."""
-        pubsub = _FakePubSub([self._make_msg(STREAM_DONE_SIGNAL)])
-        mock_redis_client = MagicMock()
-        mock_redis_client.pubsub.return_value = pubsub
+        client = _stream_client([_entries_batch(("1-0", STREAM_DONE_SIGNAL))])
 
         with (
-            patch(
-                "app.core.stream_manager.redis_cache",
-                new=MagicMock(redis=mock_redis_client),
-            ),
+            self._patch_redis(client),
             patch("app.core.stream_manager.log") as mock_log,
         ):
             async for _ in StreamManager.subscribe_stream("s1"):
@@ -487,14 +486,15 @@ class TestCancelStream:
     def _patch_redis(self) -> Generator[None, None, None]:
         self.mock_set = AsyncMock()
         self.mock_get = AsyncMock(return_value=_progress_dict())
-        self.mock_redis_client = MagicMock()
-        self.mock_redis_client.publish = AsyncMock()
+        self.mock_delete = AsyncMock()
+        self.mock_redis_client = _stream_client()
 
         patcher = patch(
             "app.core.stream_manager.redis_cache",
             new=MagicMock(
                 set=self.mock_set,
                 get=self.mock_get,
+                delete=self.mock_delete,
                 redis=self.mock_redis_client,
             ),
         )
@@ -518,12 +518,19 @@ class TestCancelStream:
         progress_call = self.mock_set.call_args_list[1]
         assert progress_call[0][1]["is_cancelled"] is True
 
-    async def test_publishes_cancelled_signal(self) -> None:
+    async def test_clears_active_index(self) -> None:
         await StreamManager.cancel_stream("s1")
 
-        self.mock_redis_client.publish.assert_awaited_once_with(
-            f"{STREAM_CHANNEL_PREFIX}s1",
-            STREAM_CANCELLED_SIGNAL,
+        self.mock_delete.assert_awaited_once_with(ACTIVE_KEY)
+
+    async def test_appends_cancelled_signal(self) -> None:
+        await StreamManager.cancel_stream("s1")
+
+        self.mock_redis_client.xadd.assert_awaited_once_with(
+            EVENTS_KEY,
+            {"data": STREAM_CANCELLED_SIGNAL},
+            maxlen=STREAM_EVENTS_MAXLEN,
+            approximate=True,
         )
 
     async def test_cancel_when_progress_missing(self) -> None:
@@ -531,12 +538,13 @@ class TestCancelStream:
         result = await StreamManager.cancel_stream("s1")
         assert result is True
 
-        # Signal should still be set, but progress update skipped
-        # First set is for signal key, no second set for progress
+        # Signal should still be set, but progress update and index clear skipped
         signal_call = self.mock_set.call_args_list[0]
         assert signal_call[0][0] == f"{STREAM_SIGNAL_PREFIX}s1"
-        # Only 1 set call (signal), not 2
         assert self.mock_set.await_count == 1
+        self.mock_delete.assert_not_awaited()
+        # Cancelled signal still appended so subscribers terminate
+        self.mock_redis_client.xadd.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -675,8 +683,7 @@ class TestSetError:
         self.progress = _progress_dict()
         self.mock_get = AsyncMock(return_value=self.progress)
         self.mock_set = AsyncMock()
-        self.mock_redis_client = MagicMock()
-        self.mock_redis_client.publish = AsyncMock()
+        self.mock_redis_client = _stream_client()
 
         patcher = patch(
             "app.core.stream_manager.redis_cache",
@@ -690,21 +697,23 @@ class TestSetError:
         yield
         patcher.stop()
 
-    async def test_records_error_and_publishes_signal(self) -> None:
+    async def test_records_error_and_appends_error_signal(self) -> None:
         await StreamManager.set_error("s1", "kaboom")
 
         saved = self.mock_set.call_args[0][1]
         assert saved["error"] == "kaboom"
 
-        self.mock_redis_client.publish.assert_awaited_once_with(
-            f"{STREAM_CHANNEL_PREFIX}s1",
-            STREAM_ERROR_SIGNAL,
+        self.mock_redis_client.xadd.assert_awaited_once_with(
+            EVENTS_KEY,
+            {"data": STREAM_ERROR_SIGNAL},
+            maxlen=STREAM_EVENTS_MAXLEN,
+            approximate=True,
         )
 
-    async def test_publishes_error_even_when_progress_missing(self) -> None:
+    async def test_appends_error_even_when_progress_missing(self) -> None:
         self.mock_get.return_value = None
         await StreamManager.set_error("s1", "kaboom")
 
         self.mock_set.assert_not_awaited()
-        # Error signal should still be published
-        self.mock_redis_client.publish.assert_awaited_once()
+        # Error signal should still be appended
+        self.mock_redis_client.xadd.assert_awaited_once()

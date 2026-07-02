@@ -1,0 +1,7 @@
+[
+  "{\"conversation_id\":\"conv-1\",\"bot_message_id\":\"bm-1\"}",
+  "{\"response\":\"Sure, generating that now.\"}",
+  "{\"status\":\"generating_image\"}",
+  "{\"image_data\":{\"url\":\"https://cdn.example.com/generated.png\",\"prompt\":\"a cat astronaut\"}}",
+  "[DONE]"
+]

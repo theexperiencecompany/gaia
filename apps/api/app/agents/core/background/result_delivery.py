@@ -408,12 +408,11 @@ async def _generate_and_push_follow_ups(
             return
 
         bot_message.follow_up_actions = follow_up_actions
-        await update_messages(
-            UpdateMessagesRequest(
-                conversation_id=run.conversation_id,
-                messages=[bot_message],
-            ),
-            user=run.user,
+        await _persist_follow_up_actions(
+            user_id=user_id,
+            conversation_id=run.conversation_id,
+            message_id=bot_message.message_id,
+            follow_up_actions=follow_up_actions,
         )
         await _broadcast_bot_message(
             user_id=user_id,
@@ -431,6 +430,32 @@ async def _generate_and_push_follow_ups(
         # Non-critical enhancement — the answer is already delivered. Log loudly
         # but never let a follow-up failure crash the background task.
         log.error(f"{LogTag.AGENT} deliver_result: deferred follow-up actions failed", error=str(e))
+
+
+async def _persist_follow_up_actions(
+    *,
+    user_id: str,
+    conversation_id: str,
+    message_id: str | None,
+    follow_up_actions: list[str],
+) -> None:
+    """Attach deferred follow-up suggestions to the already-saved bot message.
+
+    The answer was persisted and broadcast without suggestions to unblock the UI;
+    this sets them on that SAME message, matched by id. It MUST be an in-place
+    field update — re-saving the whole message through ``update_messages`` (which
+    ``$push``-es) would append a duplicate copy of the answer to the conversation.
+    """
+    if not message_id:
+        return
+    await conversations_collection.update_one(
+        {
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "messages.message_id": message_id,
+        },
+        {"$set": {"messages.$.follow_up_actions": follow_up_actions}},
+    )
 
 
 async def _dispatch_workflow_notification(

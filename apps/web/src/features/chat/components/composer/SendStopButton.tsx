@@ -9,7 +9,7 @@ import {
   type ComposerSendMode,
   useComposerSendMode,
 } from "@/features/chat/hooks/useComposerSendMode";
-import { useLoading } from "@/features/chat/hooks/useLoading";
+import { useStopStream } from "@/features/chat/hooks/useStopStream";
 
 // One source of truth for the button's look: the HeroUI background (`color`) and
 // the icon color (icons inherit `currentColor`, transitioned) are decided
@@ -83,12 +83,12 @@ export default function SendStopButton({
   isUploading = false,
   className = "h-9 min-h-9 w-9 max-w-9 min-w-9",
 }: Readonly<SendStopButtonProps>) {
-  const { stopStream } = useLoading();
+  const stopStream = useStopStream();
   const { showQueue, showStop, mode } = useComposerSendMode(hasContent);
 
   const handlePress = () => {
     if (showStop) {
-      stopStream();
+      void stopStream();
     } else {
       onSend();
     }

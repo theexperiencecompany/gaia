@@ -195,17 +195,6 @@ export interface WorkflowExecutionRequest {
 }
 
 // API response types
-export interface WorkflowStatusResponse {
-  workflow_id: string;
-  activated: boolean;
-  current_step_index: number;
-  total_steps: number;
-  progress_percentage: number;
-  last_updated: string;
-  error_message?: string;
-  logs: string[];
-}
-
 export interface WorkflowListResponse {
   workflows: Workflow[];
   total_count: number;

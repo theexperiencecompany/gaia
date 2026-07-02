@@ -1,198 +1,11 @@
-// SSE event types for structured streaming
-export enum SSEEventType {
-  Content = "content",
-  ToolStart = "tool_start",
-  ToolProgress = "tool_progress",
-  ToolEnd = "tool_end",
-  Error = "error",
-  Done = "done",
-  Image = "image",
-  Memory = "memory",
-  Metadata = "metadata",
-  Thinking = "thinking",
-}
+import {
+  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
+  type DesktopToolRequest,
+} from "../desktop-tools";
+import { ChatStreamFrameSchema } from "./schema";
+import type { TodoProgressSnapshot } from "./types";
 
-export interface ContentEvent {
-  type: "content";
-  content: string;
-}
-
-export interface ToolStartEvent {
-  type: "tool_start";
-  toolName: string;
-  toolCallId: string;
-  input?: unknown;
-}
-
-export interface ToolProgressEvent {
-  type: "tool_progress";
-  toolCallId: string;
-  message: string;
-  subStep?: string;
-}
-
-export interface ToolEndEvent {
-  type: "tool_end";
-  toolCallId: string;
-  output: unknown;
-  status: "success" | "error";
-}
-
-export interface SSEErrorEvent {
-  type: "error";
-  error: string;
-  code?: string;
-}
-
-export interface DoneEvent {
-  type: "done";
-  messageId?: string;
-}
-
-export interface ImageEvent {
-  type: "image";
-  url: string;
-  prompt?: string;
-  width?: number;
-  height?: number;
-}
-
-export interface MemoryEvent {
-  type: "memory";
-  data: unknown;
-}
-
-export interface MetadataEvent {
-  type: "metadata";
-  data: Record<string, unknown>;
-}
-
-export interface ThinkingEvent {
-  type: "thinking";
-  content: string;
-}
-
-export type SSEEvent =
-  | ContentEvent
-  | ToolStartEvent
-  | ToolProgressEvent
-  | ToolEndEvent
-  | SSEErrorEvent
-  | DoneEvent
-  | ImageEvent
-  | MemoryEvent
-  | MetadataEvent
-  | ThinkingEvent;
-
-export type StreamingEventHandler = (event: SSEEvent) => void;
-
-/**
- * Parse a raw SSE data line (the value after "data: ") into an SSEEvent.
- * Returns null if the line cannot be parsed or does not match a known event shape.
- */
-export function parseSSELine(line: string): SSEEvent | null {
-  if (!line || line === "[DONE]") {
-    return { type: "done" };
-  }
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(line);
-  } catch {
-    return null;
-  }
-
-  if (typeof payload !== "object" || payload === null) {
-    return null;
-  }
-
-  const p = payload as Record<string, unknown>;
-
-  if (p.type === "content" && typeof p.content === "string") {
-    return { type: "content", content: p.content };
-  }
-
-  if (
-    p.type === "tool_start" &&
-    typeof p.toolName === "string" &&
-    typeof p.toolCallId === "string"
-  ) {
-    return {
-      type: "tool_start",
-      toolName: p.toolName,
-      toolCallId: p.toolCallId,
-      input: p.input,
-    };
-  }
-
-  if (
-    p.type === "tool_progress" &&
-    typeof p.toolCallId === "string" &&
-    typeof p.message === "string"
-  ) {
-    return {
-      type: "tool_progress",
-      toolCallId: p.toolCallId,
-      message: p.message,
-      subStep: typeof p.subStep === "string" ? p.subStep : undefined,
-    };
-  }
-
-  if (p.type === "tool_end" && typeof p.toolCallId === "string") {
-    const status =
-      p.status === "success" || p.status === "error" ? p.status : "success";
-    return {
-      type: "tool_end",
-      toolCallId: p.toolCallId,
-      output: p.output,
-      status,
-    };
-  }
-
-  if (p.type === "error" && typeof p.error === "string") {
-    return {
-      type: "error",
-      error: p.error,
-      code: typeof p.code === "string" ? p.code : undefined,
-    };
-  }
-
-  if (p.type === "done") {
-    return {
-      type: "done",
-      messageId: typeof p.messageId === "string" ? p.messageId : undefined,
-    };
-  }
-
-  if (p.type === "image" && typeof p.url === "string") {
-    return {
-      type: "image",
-      url: p.url,
-      prompt: typeof p.prompt === "string" ? p.prompt : undefined,
-      width: typeof p.width === "number" ? p.width : undefined,
-      height: typeof p.height === "number" ? p.height : undefined,
-    };
-  }
-
-  if (p.type === "memory") {
-    return { type: "memory", data: p.data };
-  }
-
-  if (
-    p.type === "metadata" &&
-    typeof p.data === "object" &&
-    p.data !== null &&
-    !Array.isArray(p.data)
-  ) {
-    return { type: "metadata", data: p.data as Record<string, unknown> };
-  }
-
-  if (p.type === "thinking" && typeof p.content === "string") {
-    return { type: "thinking", content: p.content };
-  }
-
-  return null;
-}
+export type { TodoProgressSnapshot };
 
 export interface StreamToolDataEntry {
   tool_name: string;
@@ -213,13 +26,6 @@ export interface StreamToolOutput {
   output: string;
   subagent_id?: string;
 }
-
-import {
-  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
-  type DesktopToolRequest,
-} from "../desktop-tools";
-import type { TodoProgressSnapshot } from "./types";
-export type { TodoProgressSnapshot };
 
 type JsonObject = Record<string, unknown>;
 
@@ -249,7 +55,12 @@ export type ChatStreamEvent =
       type: "conversation_initialized";
       conversation_id?: string;
       conversation_description?: string | null;
+      /** Equals the client's send id (turn_id) when the client provided one —
+       *  the optimistic record already carries the final key. */
       user_message_id?: string;
+      /** The user message text — replay alone can reconstruct the record if
+       *  the client's local write never committed before a reload. */
+      user_message_content?: string;
       bot_message_id?: string;
       stream_id?: string;
     }
@@ -269,6 +80,9 @@ export type ChatStreamEvent =
   | { type: "subagent_end"; payload: SubagentEndPayload }
   | { type: "desktop_tool_request"; request: DesktopToolRequest }
   | { type: "token_usage" }
+  // A frame that was not valid JSON. Never rendered — consumers must log it
+  // loudly and surface a stream error instead of showing garbage text.
+  | { type: "parse_error"; raw: string }
   | { type: "unknown"; payload: JsonObject };
 
 const isObject = (value: unknown): value is JsonObject =>
@@ -295,6 +109,24 @@ const toToolDataEntry = (value: unknown): StreamToolDataEntry | null => {
   };
 };
 
+/**
+ * Advisory validation against the typed frame vocabulary (schema.ts). Never
+ * gates rendering: valid frames pass silently, and an unmodeled or malformed
+ * frame is surfaced in dev then handled by the same duck-typed extraction the
+ * caller runs regardless — so runtime behavior for valid frames is unchanged.
+ */
+const warnIfFrameUnrecognized = (payload: JsonObject): void => {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    !ChatStreamFrameSchema.safeParse(payload).success
+  ) {
+    console.error(
+      "[chat-stream] frame failed schema validation (extend schema.ts if this is a real frame):",
+      payload,
+    );
+  }
+};
+
 export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   if (!data) return [];
   if (data === "[DONE]") return [{ type: "done" }];
@@ -304,12 +136,16 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   try {
     payload = JSON.parse(data);
   } catch {
-    return [{ type: "response", chunk: data }];
+    // Every legitimate frame is JSON (or the [DONE] sentinel handled above).
+    // Anything else is a malformed frame — fail loud downstream, never render.
+    return [{ type: "parse_error", raw: data }];
   }
 
   if (!isObject(payload)) {
     return [{ type: "unknown", payload: { value: payload } }];
   }
+
+  warnIfFrameUnrecognized(payload);
 
   if (payload.keepalive === true) {
     return [{ type: "keepalive" }];
@@ -496,6 +332,10 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
       user_message_id:
         typeof payload.user_message_id === "string"
           ? payload.user_message_id
+          : undefined,
+      user_message_content:
+        typeof payload.user_message_content === "string"
+          ? payload.user_message_content
           : undefined,
       bot_message_id:
         typeof payload.bot_message_id === "string"

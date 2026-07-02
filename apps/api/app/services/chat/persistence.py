@@ -25,11 +25,25 @@ from app.constants.log_tags import LogTag
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
+from app.models.stream_events import ConversationInitializedFrame
 from app.services.conversation_service import update_messages
 from app.services.payments.payment_service import payment_service
 from app.services.storage import JuiceFSUnavailable, ensure_session_dirs
 from app.utils.chat_utils import create_conversation
 from shared.py.wide_events import log
+
+
+def user_message_content_from(body: MessageRequestWithHistory) -> str:
+    """The turn's user message text — single derivation for init + persist.
+
+    Clients omit empty-text turns (file-only sends) from ``messages``, so the
+    last history entry is the current turn only when its role is ``user`` —
+    otherwise it is the previous assistant reply and must not be used.
+    """
+    last = body.messages[-1] if body.messages else None
+    if last and last.get("role") == "user":
+        return last.get("content") or body.message
+    return body.message
 
 
 async def initialize_new_conversation(
@@ -64,15 +78,16 @@ async def initialize_new_conversation(
         except JuiceFSUnavailable:
             pass
 
-    init_data = {
-        "conversation_id": conversation_id,
-        "conversation_description": conversation.get("description"),
-        "user_message_id": user_message_id,
-        "bot_message_id": bot_message_id,
-        "stream_id": stream_id,
-    }
+    init_frame = ConversationInitializedFrame(
+        conversation_id=conversation_id,
+        conversation_description=conversation.get("description"),
+        user_message_id=user_message_id,
+        user_message_content=user_message_content_from(body),
+        bot_message_id=bot_message_id,
+        stream_id=stream_id,
+    )
 
-    return f"data: {json.dumps(init_data)}\n\n"
+    return f"data: {json.dumps(init_frame.model_dump())}\n\n"
 
 
 def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
@@ -131,9 +146,7 @@ async def save_conversation_async(
     bot_timestamp = bot_timestamp or datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
-    user_content = (
-        body.messages[-1].get("content") if body.messages and len(body.messages) > 0 else None
-    ) or body.message
+    user_content = user_message_content_from(body)
 
     user_message = MessageModel(
         type="user",

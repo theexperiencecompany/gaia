@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLoadingStore } from "@/stores/loadingStore";
+import {
+  useActiveLoading,
+  useIsInitialResponseStreaming,
+} from "@/stores/streamStore";
 import { WAKE_ACK_AUDIO_SRC } from "../constants";
 
 /**
@@ -34,10 +37,8 @@ export interface PopupVoiceSession {
  */
 export function usePopupVoice(): PopupVoiceSession {
   const [active, setActive] = useState(false);
-  const isLoading = useLoadingStore((state) => state.isLoading);
-  const isMainResponseStreaming = useLoadingStore(
-    (state) => state.isMainResponseStreaming,
-  );
+  const { isLoading } = useActiveLoading();
+  const isMainResponseStreaming = useIsInitialResponseStreaming();
   const ackAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {

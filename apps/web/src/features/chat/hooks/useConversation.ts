@@ -96,21 +96,5 @@ export const useConversation = () => {
     return messages;
   }, [activeConversationId, messagesByConversation, optimisticMessage]);
 
-  const updateConvoMessages = (): void => {
-    console.warn(
-      "updateConvoMessages is deprecated. Use IndexedDB directly via chatStore.",
-    );
-  };
-
-  const clearMessages = (): void => {
-    console.warn(
-      "clearMessages is deprecated. Use IndexedDB directly via chatStore.",
-    );
-  };
-
-  return {
-    convoMessages,
-    updateConvoMessages,
-    clearMessages,
-  };
+  return { convoMessages };
 };

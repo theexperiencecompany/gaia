@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type React from "react";
 import { type ReactNode, useEffect, useState } from "react";
 
-import { useLoading } from "@/features/chat/hooks/useLoading";
+import { useActiveLoading } from "@/stores/streamStore";
 
 import CopyButton from "./CopyButton";
 import DownloadButton from "./DownloadButton";
@@ -45,7 +45,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   hideToolbar,
   ...props
 }) => {
-  const { isLoading } = useLoading();
+  const { isLoading } = useActiveLoading();
   const [activeTab, setActiveTab] = useState("code");
   const [copied, setCopied] = useState(false);
 

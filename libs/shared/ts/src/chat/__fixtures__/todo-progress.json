@@ -1,0 +1,7 @@
+[
+  "{\"conversation_id\":\"conv-1\",\"bot_message_id\":\"bm-1\"}",
+  "{\"todo_progress\":{\"source\":\"executor\",\"todos\":[{\"id\":\"t1\",\"content\":\"Research topic\",\"status\":\"in_progress\"},{\"id\":\"t2\",\"content\":\"Write summary\",\"status\":\"pending\"}]}}",
+  "{\"todo_progress\":{\"source\":\"executor\",\"todos\":[{\"id\":\"t1\",\"content\":\"Research topic\",\"status\":\"completed\"},{\"id\":\"t2\",\"content\":\"Write summary\",\"status\":\"in_progress\"}]}}",
+  "{\"todo_progress\":{\"source\":\"subagent:sa-1\",\"todos\":[{\"id\":\"s1\",\"content\":\"Fetch emails\",\"status\":\"completed\"}]}}",
+  "[DONE]"
+]

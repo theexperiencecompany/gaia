@@ -1,9 +1,15 @@
 import { useCallback, useEffect } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import {
+  isViewingConversation,
+  markConversationUnread,
+} from "@/features/chat/stream/unread";
 import type { IMessage } from "@/lib/db/chatDb";
 import { db } from "@/lib/db/chatDb";
+import { streamLog } from "@/lib/streamLogger";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
+import { useStreamStore } from "@/stores/streamStore";
 
 /**
  * WebSocket payload for background executor notifications.
@@ -91,19 +97,25 @@ export function useBgMessageWebSocket() {
     }
 
     // Also update store directly for immediate render if viewing this conversation
-    const activeConvoId = useChatStore.getState().activeConversationId;
-    if (conversation_id === activeConvoId) {
+    if (isViewingConversation(conversation_id)) {
       useChatStore.getState().addOrUpdateMessage(iMessage);
+    } else {
+      // A background result landing in a conversation the user isn't viewing
+      // surfaces as unread in the sidebar (cleared by ChatPage's mark-as-read).
+      markConversationUnread(conversation_id);
     }
 
-    // Clear the executor-pending bridge AFTER the result message is in the store,
-    // so loading hands off to the rendered result in the same frame — no flash of
-    // "loading gone + follow-ups on the old message" before the result appears.
-    if (
-      useChatStore.getState().executorPendingConversationId === conversation_id
-    ) {
-      useChatStore.getState().setExecutorPendingConversationId(null);
+    // End the awaiting-executor session AFTER the result message is in the
+    // store, so loading hands off to the rendered result in the same frame — no
+    // flash of "loading gone" before the result appears.
+    const stream = useStreamStore.getState();
+    if (stream.sessions[conversation_id]?.phase === "awaiting_executor") {
+      stream.endSession(conversation_id);
     }
+    streamLog("ws", "conversation.new_message", {
+      conversationId: conversation_id,
+      detail: { task_id: message.task_id },
+    });
   }, []);
 
   useEffect(() => {

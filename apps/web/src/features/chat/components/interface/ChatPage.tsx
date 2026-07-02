@@ -1,13 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
+import {
+  MessageScrollerProvider,
+  useMessageScroller,
+} from "@/components/ui/message-scroller";
 import { chatApi } from "@/features/chat/api/chatApi";
 import Composer from "@/features/chat/components/composer/Composer";
 
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useChatLayout } from "@/features/chat/components/interface/hooks/useChatLayout";
-import { useScrollBehavior } from "@/features/chat/components/interface/hooks/useScrollBehavior";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
 import { usePrefetchConnectionDetails } from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
@@ -16,6 +19,7 @@ import {
   VoiceControlBarSlot,
 } from "@/features/chat/components/voice-agent/VoiceControlBarContainer";
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
+import { useStreamResume } from "@/features/chat/hooks/useStreamResume";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
@@ -35,9 +39,8 @@ import {
   useVoiceModeActive,
 } from "@/stores/voiceModeStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
-import ScrollToBottomButton from "./ScrollToBottomButton";
 
-const ChatPage = React.memo(function MainChat() {
+const MainChat = React.memo(function MainChat() {
   const voiceModeActive = useVoiceModeActive();
   const storeDiscoveredId = useDiscoveredConversationId();
   const { enterVoiceMode, exitVoiceMode } = useVoiceModeActions();
@@ -51,8 +54,11 @@ const ChatPage = React.memo(function MainChat() {
   const router = useRouter();
 
   // --- Workflow auto-send ---
-  // This runs at the ChatPage level (not inside Composer) so that the
-  // useChatStream refs survive the NewChatLayout → ChatWithMessages remount.
+  // Hosted at ChatPage (not Composer) because ChatPage is memoized and never
+  // remounts, whereas Composer remounts across the NewChatLayout →
+  // ChatWithMessages layout switch that fires when the optimistic message
+  // flips hasMessages to true. Keeping the once-only guard (autoSendFiredRef)
+  // here stops that remount from resetting it and firing the workflow twice.
   const sendMessage = useSendMessage();
   const selectedWorkflow = useWorkflowSelectionStore((s) => s.selectedWorkflow);
   const autoSend = useWorkflowSelectionStore((s) => s.autoSend);
@@ -98,6 +104,12 @@ const ChatPage = React.memo(function MainChat() {
     convoIdParam,
   } = useChatLayout();
 
+  // Reload-mid-stream recovery: if this conversation has a turn still running
+  // server-side, re-attach to its event log and keep streaming live. Also owns
+  // the on-open freshness sync, sequenced AFTER resume — syncing first would
+  // race the live-turn discovery and sweep the optimistic user message.
+  useStreamResume(convoIdParam || null);
+
   // Set active conversation ID and mark as read when opening.
   // During a new voice session (no URL param), use the store's provisional
   // UUID so the chat store points at the correct in-flight conversation —
@@ -119,8 +131,8 @@ const ChatPage = React.memo(function MainChat() {
         db.updateConversationFields(convoIdParam, { isUnread: false });
         chatApi.markAsRead(convoIdParam).catch(console.error);
       }
-
-      syncSingleConversation(convoIdParam);
+      // Freshness sync happens in useStreamResume, sequenced after the
+      // live-turn discovery so it can't sweep an in-flight optimistic message.
     }
 
     return () => {
@@ -135,12 +147,15 @@ const ChatPage = React.memo(function MainChat() {
     // to avoid re-triggering when manually toggling read/unread status
   ]);
 
-  const {
-    scrollContainerRef,
-    contentRef,
-    scrollToBottom,
-    shouldShowScrollButton,
-  } = useScrollBehavior();
+  // Imperative scroll control from the message scroller (Provider wraps this
+  // component). Used by the composer to snap to the live edge on send.
+  // Instant, not smooth: bubbles use content-visibility:auto, so a smooth
+  // scroll lands short as offscreen bubbles resolve their real heights — the
+  // instant jump plus autoScroll stickiness pins the view reliably.
+  const { scrollToEnd } = useMessageScroller();
+  const scrollToBottom = useCallback(() => {
+    scrollToEnd();
+  }, [scrollToEnd]);
 
   const { isDragging, dragHandlers } = useDragAndDrop({
     onDrop: (files: File[]) => {
@@ -251,18 +266,11 @@ const ChatPage = React.memo(function MainChat() {
         <VoiceControlBarContainer>
           <VoiceModeBackground />
           <ChatWithMessages
-            scrollContainerRef={scrollContainerRef}
-            contentRef={contentRef}
             chatRef={chatRef}
             dragHandlers={dragHandlers}
             bottomBar={<VoiceControlBarSlot onEndCall={handleEndVoiceCall} />}
           />
         </VoiceControlBarContainer>
-        <ScrollToBottomButton
-          onScrollToBottom={scrollToBottom}
-          shouldShow={shouldShowScrollButton}
-          hasMessages={hasMessages}
-        />
       </div>
     );
   }
@@ -272,37 +280,29 @@ const ChatPage = React.memo(function MainChat() {
       <FileDropModal isDragging={isDragging} />
 
       {useMessagesLayout ? (
-        <>
-          <ChatWithMessages
-            scrollContainerRef={scrollContainerRef}
-            contentRef={contentRef}
-            chatRef={chatRef}
-            dragHandlers={dragHandlers}
-            bottomBar={<Composer {...composerProps} />}
-          />
-          <ScrollToBottomButton
-            onScrollToBottom={scrollToBottom}
-            shouldShow={shouldShowScrollButton}
-            hasMessages={hasMessages}
-          />
-        </>
+        <ChatWithMessages
+          chatRef={chatRef}
+          dragHandlers={dragHandlers}
+          bottomBar={<Composer {...composerProps} />}
+        />
       ) : (
-        <>
-          <NewChatLayout
-            scrollContainerRef={scrollContainerRef}
-            contentRef={contentRef}
-            dummySectionRef={dummySectionRef}
-            dragHandlers={dragHandlers}
-            composerProps={composerProps}
-          />
-          <ScrollToBottomButton
-            onScrollToBottom={scrollToBottom}
-            shouldShow={shouldShowScrollButton}
-            hasMessages={hasMessages}
-          />
-        </>
+        <NewChatLayout
+          dummySectionRef={dummySectionRef}
+          dragHandlers={dragHandlers}
+          composerProps={composerProps}
+        />
       )}
     </div>
+  );
+});
+
+// The provider owns transcript scroll state (stick-to-bottom, scroll button,
+// imperative scrollToEnd) for everything below — including the composer slot.
+const ChatPage = React.memo(function ChatPage() {
+  return (
+    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+      <MainChat />
+    </MessageScrollerProvider>
   );
 });
 

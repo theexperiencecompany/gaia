@@ -38,7 +38,6 @@ Usage:
     await stream_manager.cancel_stream(stream_id)
 """
 
-import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -46,7 +45,9 @@ import json
 from typing import Any
 
 from app.constants.cache import (
-    STREAM_CHANNEL_PREFIX,
+    STREAM_ACTIVE_PREFIX,
+    STREAM_EVENTS_MAXLEN,
+    STREAM_EVENTS_PREFIX,
     STREAM_PROGRESS_PREFIX,
     STREAM_SIGNAL_PREFIX,
     STREAM_TTL,
@@ -127,6 +128,14 @@ class StreamManager:
             ttl=STREAM_TTL,
         )
 
+        # Reverse index so a reloaded client can rediscover the in-flight turn
+        # for a conversation and re-attach with full replay.
+        await redis_cache.set(
+            f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}",
+            stream_id,
+            ttl=STREAM_TTL,
+        )
+
         log.debug(f"{LogTag.STARTUP} Stream {stream_id} started for conversation {conversation_id}")
 
     @classmethod
@@ -143,6 +152,7 @@ class StreamManager:
         if progress_data:
             progress_data["is_complete"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
+            await cls._clear_active_index(progress_data)
 
         # Notify subscribers that stream is done
         await cls._publish(stream_id, STREAM_DONE_SIGNAL)
@@ -154,21 +164,40 @@ class StreamManager:
         """
         Clean up Redis keys after stream ends.
 
-        Call this in the finally block of background task.
+        Call this in the finally block of background task. The replayable event
+        log is intentionally KEPT until its TTL — a client that reloads right at
+        completion can still re-attach and replay the finished turn.
         """
+        progress_data = await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+        if progress_data:
+            await cls._clear_active_index(progress_data)
         await redis_cache.delete(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
         await redis_cache.delete(f"{STREAM_SIGNAL_PREFIX}{stream_id}")
 
         log.debug(f"{LogTag.STARTUP} Stream {stream_id} cleaned up")
 
+    @classmethod
+    async def _clear_active_index(cls, progress_data: dict[str, Any]) -> None:
+        """Drop the conversation -> stream reverse index for a finished stream."""
+        user_id = progress_data.get("user_id")
+        conversation_id = progress_data.get("conversation_id")
+        if user_id and conversation_id:
+            await redis_cache.delete(f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}")
+
+    @classmethod
+    async def get_active_stream_id(cls, user_id: str, conversation_id: str) -> str | None:
+        """Stream id of the conversation's in-flight turn, or None."""
+        stream_id = await redis_cache.get(f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}")
+        return stream_id if isinstance(stream_id, str) else None
+
     # -------------------------------------------------------------------------
-    # Pub/Sub Communication
+    # Event-log Communication
     # -------------------------------------------------------------------------
 
     @classmethod
     async def publish_chunk(cls, stream_id: str, chunk: str) -> None:
         """
-        Publish a streaming chunk to the Redis channel.
+        Publish a streaming chunk to the stream's event log.
 
         Args:
             stream_id: Stream identifier
@@ -181,95 +210,79 @@ class StreamManager:
         cls,
         stream_id: str,
         keepalive_interval: float = 15,
-        start_event: asyncio.Event | None = None,
+        last_event_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
-        Subscribe to stream channel and yield chunks.
+        Read the stream's event log and yield SSE frames, then follow live.
 
-        Use this in the HTTP endpoint to forward chunks to the client.
-        Automatically handles DONE and CANCELLED signals, and yields
-        SSE keepalive comments when no data arrives within the interval.
+        Replays everything after ``last_event_id`` (or from the beginning) —
+        attach timing can never lose frames. Each frame carries an SSE ``id:``
+        line (the Redis Stream entry id) so clients reconnect with
+        ``Last-Event-ID``. Handles DONE/CANCELLED/ERROR control entries and
+        yields keepalive frames during idle periods.
 
         Args:
             stream_id: Stream identifier
-            keepalive_interval: Seconds between keepalive comments when idle
-            start_event: asyncio.Event to set once subscribed to Redis
+            keepalive_interval: Seconds between keepalive frames when idle
+            last_event_id: Resume cursor (exclusive); None replays from start
 
         Yields:
-            SSE-formatted chunks from the background streaming task,
-            interspersed with ``": keepalive\\n\\n"`` comments during idle periods.
+            ``id:``-tagged SSE frames from the background streaming task,
+            interspersed with keepalive data frames during idle periods.
         """
         if not redis_cache.redis:
             log.error(f"{LogTag.STARTUP} Redis not available for stream subscription")
-            if start_event and not start_event.is_set():
-                start_event.set()
             return
 
-        pubsub = redis_cache.redis.pubsub()
-        channel = f"{STREAM_CHANNEL_PREFIX}{stream_id}"
+        events_key = f"{STREAM_EVENTS_PREFIX}{stream_id}"
+        cursor = last_event_id or "0-0"
         chunks_received = 0
+        block_ms = int(keepalive_interval * 1000)
 
         try:
-            await pubsub.subscribe(channel)
-            log.debug(f"{LogTag.STARTUP} Subscribed to stream channel: {channel}")
-
-            # Allow the background task to start publishing
-            if start_event and not start_event.is_set():
-                start_event.set()
-
             while True:
-                # get_message returns None on timeout instead of cancelling
-                message = await pubsub.get_message(
-                    ignore_subscribe_messages=True,
-                    timeout=keepalive_interval,
+                results = await redis_cache.redis.xread(
+                    {events_key: cursor}, block=block_ms, count=256
                 )
 
-                if message is None:
-                    # No message within interval — send keepalive as a data event.
-                    # SSE comment format (": keepalive") triggers onmessage with
-                    # empty data in @microsoft/fetch-event-source due to a spec
-                    # non-compliance in that library, causing JSON.parse("") errors.
+                if not results:
+                    # No entry within the interval — send keepalive as a data
+                    # event. SSE comment format (": keepalive") triggers
+                    # onmessage with empty data in @microsoft/fetch-event-source
+                    # due to a spec non-compliance, causing JSON.parse("") errors.
                     yield 'data: {"keepalive":true}\n\n'
                     continue
 
-                if message["type"] != "message":
-                    continue
+                for _key, entries in results:
+                    for entry_id, fields in entries:
+                        cursor = entry_id
+                        data = fields.get("data", "")
 
-                data = message["data"]
-                if isinstance(data, bytes):
-                    data = data.decode("utf-8")
+                        if data == STREAM_DONE_SIGNAL:
+                            log.debug(
+                                f"{LogTag.STARTUP} Stream {stream_id} completed successfully "
+                                f"({chunks_received} chunks)"
+                            )
+                            return
 
-                # Handle control signals
-                if data == STREAM_DONE_SIGNAL:
-                    log.debug(
-                        f"{LogTag.STARTUP} Stream {stream_id} completed successfully ({chunks_received} chunks)"
-                    )
-                    break
+                        if data == STREAM_CANCELLED_SIGNAL:
+                            log.info(f"{LogTag.STARTUP} Stream {stream_id} was cancelled by user")
+                            yield "data: [DONE]\n\n"
+                            return
 
-                if data == STREAM_CANCELLED_SIGNAL:
-                    log.info(f"{LogTag.STARTUP} Stream {stream_id} was cancelled by user")
-                    yield "data: [DONE]\n\n"
-                    break
+                        if data == STREAM_ERROR_SIGNAL:
+                            log.error(f"{LogTag.STARTUP} Stream {stream_id} encountered an error")
+                            progress = await cls.get_progress(stream_id)
+                            error_msg = (
+                                progress.get("error", "An unexpected error occurred")
+                                if progress
+                                else "An unexpected error occurred"
+                            )
+                            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                            return
 
-                if data == STREAM_ERROR_SIGNAL:
-                    log.error(f"{LogTag.STARTUP} Stream {stream_id} encountered an error")
-                    progress = await cls.get_progress(stream_id)
-                    error_msg = (
-                        progress.get("error", "An unexpected error occurred")
-                        if progress
-                        else "An unexpected error occurred"
-                    )
-                    yield f"data: {json.dumps({'error': error_msg})}\n\n"
-                    break
-
-                # Forward chunk to client
-                chunks_received += 1
-                yield data
-
-            if chunks_received == 0:
-                log.warning(
-                    f"{LogTag.STARTUP} Stream {stream_id} ended without receiving any chunks"
-                )
+                        chunks_received += 1
+                        yield f"id: {entry_id}\n{data}"
 
         except Exception as e:
             log.error(
@@ -277,20 +290,30 @@ class StreamManager:
             )
             yield f"data: {json.dumps({'error': 'Stream subscription failed'})}\n\n"
         finally:
-            try:
-                await pubsub.unsubscribe(channel)
-                await pubsub.aclose()
-            except Exception:  # nosec B110 - Intentional: cleanup should not raise
-                pass
+            if chunks_received == 0:
+                log.warning(
+                    f"{LogTag.STARTUP} Stream {stream_id} ended without receiving any chunks"
+                )
 
     @classmethod
     async def _publish(cls, stream_id: str, message: str) -> None:
-        """Internal: Publish message to stream channel."""
+        """Append a message to the stream's replayable event log.
+
+        Redis Streams (not pub/sub): entries persist until TTL/MAXLEN, and each
+        gets a monotonic id that doubles as the SSE ``id:`` field — so
+        subscribers can attach at any time (or reconnect with ``Last-Event-ID``)
+        and replay everything they missed. This is what makes late-attach,
+        reload-resume, and the init frame race structurally impossible to lose.
+        """
         if redis_cache.redis:
-            await redis_cache.redis.publish(
-                f"{STREAM_CHANNEL_PREFIX}{stream_id}",
-                message,
+            key = f"{STREAM_EVENTS_PREFIX}{stream_id}"
+            await redis_cache.redis.xadd(
+                key,
+                {"data": message},
+                maxlen=STREAM_EVENTS_MAXLEN,
+                approximate=True,
             )
+            await redis_cache.redis.expire(key, STREAM_TTL)
 
     # -------------------------------------------------------------------------
     # Cancellation
@@ -319,6 +342,7 @@ class StreamManager:
         if progress_data:
             progress_data["is_cancelled"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
+            await cls._clear_active_index(progress_data)
 
         # Notify subscribers
         await cls._publish(stream_id, STREAM_CANCELLED_SIGNAL)

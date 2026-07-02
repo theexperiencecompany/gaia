@@ -125,9 +125,10 @@ const Composer: React.FC<MainSearchbarProps> = ({
   }, [inputRef, setInputFocusCallback]);
 
   // NOTE: Workflow auto-send logic lives in ChatPage, NOT here.
-  // ChatPage never remounts, so its useChatStream refs survive the
-  // NewChatLayout → ChatWithMessages layout switch that happens when
-  // the optimistic message makes hasMessages toggle to true.
+  // Composer remounts across the NewChatLayout → ChatWithMessages layout
+  // switch that happens when the optimistic message makes hasMessages toggle
+  // to true, which would reset the once-only guard and fire the workflow
+  // twice. ChatPage is memoized and never remounts, so it hosts that guard.
 
   // Expose file upload functions to parent component via ref
   useImperativeHandle(
@@ -223,8 +224,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
     event,
   ) => {
     // Enter always submits. If a stream is still open (initial response OR a
-    // background executor still running), the send is held in the queue rather
-    // than starting a new turn (see useChatStream's pending-stream queue).
+    // background executor still running), the send is held in the turn
+    // manager's per-conversation queue rather than starting a new turn.
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleFormSubmit();

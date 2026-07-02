@@ -28,6 +28,7 @@ from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.models_models import ModelConfig
+from app.models.stream_events import ToolOutputPayload
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     format_sse_data,
@@ -225,6 +226,7 @@ def build_agent_config(  # NOSONAR python:S107
     source: str | None = None,
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
+    recursion_limit: int = AGENT_RECURSION_LIMIT,
 ) -> dict:
     """Build the LangGraph execution config (user context, model, auth, execution params).
 
@@ -234,6 +236,9 @@ def build_agent_config(  # NOSONAR python:S107
             workspace. Inherited automatically via base_configurable.
         langfuse_trace_id / langfuse_tags: Bind spans to a Langfuse trace; inherit from
             base_configurable when omitted so the executor lands on the comms trace.
+        recursion_limit: Max LangGraph steps before GraphRecursionError. Defaults to the
+            comms/subagent cap; the executor passes EXECUTOR_RECURSION_LIMIT for its
+            longer tool loops.
     """
     callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
     model_name, provider_name, max_tokens = _resolve_model_config(user_model_config)
@@ -333,7 +338,7 @@ def build_agent_config(  # NOSONAR python:S107
 
     return {
         "configurable": configurable,
-        "recursion_limit": AGENT_RECURSION_LIMIT,
+        "recursion_limit": recursion_limit,
         "metadata": metadata,
         "callbacks": callbacks,
         "agent_name": agent_name,
@@ -639,13 +644,11 @@ async def execute_graph_streaming(
                     else:
                         tool_result_payload = str(tool_result_payload)
                 output = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+                tool_output_payload = ToolOutputPayload(
+                    tool_call_id=chunk.tool_call_id, output=output
+                )
                 yield format_sse_data(
-                    {
-                        "tool_output": {
-                            "tool_call_id": chunk.tool_call_id,
-                            "output": output,
-                        }
-                    }
+                    {"tool_output": tool_output_payload.model_dump(exclude_none=True)}
                 )
 
                 # Emit deferred mcp_app event now that tool result is available

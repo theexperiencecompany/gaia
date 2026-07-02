@@ -24,10 +24,10 @@ from app.constants.agents import RETURNED_TO_FRONTEND_MARKER
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
 from app.models.chat_models import tool_fields
+from app.services.chat.chunks import normalize_custom_event
 from app.utils.stream_utils import (
     absorb_collector_event,
     apply_outputs_to_tool_data,
-    normalize_custom_event,
     reconstruct_subagent_groups,
 )
 from shared.py.wide_events import log
