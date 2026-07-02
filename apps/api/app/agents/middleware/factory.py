@@ -11,6 +11,7 @@ from langchain_core.tools import BaseTool
 from app.agents.llm.client import get_default_llm
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
@@ -32,6 +33,15 @@ from shared.py.wide_events import log
 # so the compaction middleware should leave them alone.
 CODING_TOOL_NAMES = {"bash", "read", "write", "edit"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
+
+# Loop-guard hard-stop is OFF by default: it must never silently abandon a tool
+# call in an interactive run where the user is watching and can intervene. It is
+# only safe to enable for unattended (silent / workflow) runs. Because the
+# executor graph — and therefore its middleware — is a single per-process
+# instance shared by BOTH interactive and workflow runs, we cannot select
+# hard-stop per run at graph-build time; flipping this constant would enable it
+# for every run on the graph. See create_middleware_stack for the wiring note.
+LOOP_GUARD_HARD_STOP = False
 
 _summarization_llm: BaseChatModel | None = None
 
@@ -76,6 +86,8 @@ def create_middleware_stack(
     enable_archive: bool = True,
     compaction_excluded_tools: set[str] | None = None,
     summarization_excluded_tools: set[str] | None = None,
+    enable_loop_guard: bool = True,
+    loop_guard_hard_stop: bool = LOOP_GUARD_HARD_STOP,
 ) -> list[Any]:
     """
     Create the standard middleware stack for agents.
@@ -167,6 +179,16 @@ def create_middleware_stack(
         )
         middleware.append(compaction)
         log.debug(f"{LogTag.AGENT} Compaction middleware enabled: threshold={compaction_threshold}")
+
+    # Loop-guard middleware — added LAST so it sits innermost and observes the
+    # raw tool result before compaction/summarization transform it, counting the
+    # tool's actual failures. warn-only unless hard_stop is enabled.
+    if enable_loop_guard:
+        middleware.append(LoopGuardMiddleware(hard_stop=loop_guard_hard_stop))
+        log.debug(
+            f"{LogTag.AGENT} Loop guard middleware enabled for {agent_name}: "
+            f"hard_stop={loop_guard_hard_stop}"
+        )
 
     return middleware
 

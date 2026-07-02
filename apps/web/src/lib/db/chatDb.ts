@@ -55,6 +55,8 @@ export interface IMessage {
   // Message metadata
   pinned?: boolean;
   isConvoSystemGenerated?: boolean;
+  // Present when a bot turn died with no response text (persisted server-side).
+  error?: string | null;
   metadata?: Record<string, unknown>;
   optimistic?: boolean; // Temporary message waiting for backend ID
 

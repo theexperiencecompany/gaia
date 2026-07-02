@@ -122,6 +122,16 @@ async def chat_stream_endpoint(
         selected_tool=body.selectedTool,
     )
 
+    # One active stream per conversation: a concurrent run (second tab, rapid
+    # double-send) would race the same checkpointer thread. 409 carries the
+    # holder's stream_id so clients can reconnect to the live stream instead.
+    holder = await stream_manager.try_acquire_conversation_lock(conversation_id, stream_id)
+    if holder:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "conversation_busy", "active_stream_id": holder},
+        )
+
     await stream_manager.start_stream(
         stream_id=stream_id,
         conversation_id=conversation_id,

@@ -47,6 +47,7 @@ export default function ChatBubbleBot(
     isConvoSystemGenerated,
     systemPurpose,
     follow_up_actions,
+    error,
     isLastMessage,
     disableActions = false,
     hideAvatar = false,
@@ -96,10 +97,20 @@ export default function ChatBubbleBot(
     return Math.max(0, parts.length - 1) * MESSAGE_BREAK_STAGGER_SECONDS;
   }, [text, itShouldShowTextBubble]);
 
+  // A failed turn with no response text still shows the quiet error bubble.
+  const hasError = shouldShowTextBubble(
+    text,
+    isConvoSystemGenerated,
+    systemPurpose,
+  )
+    ? false
+    : !!error;
+
   // Check if there's actual content to display
   const hasContent =
     image_data ||
     !!text ||
+    hasError ||
     (isConvoSystemGenerated &&
       systemPurpose === SystemPurpose.EMAIL_PROCESSING) ||
     props.tool_data?.length;
@@ -108,7 +119,9 @@ export default function ChatBubbleBot(
   // Let ChatRenderer's loading indicator handle it
   if (loading && !hasContent) return null;
 
-  const showBubbleChrome = itShouldShowTextBubble;
+  // The error bubble gets the same chrome as a text bubble (avatar + actions,
+  // so Retry is reachable).
+  const showBubbleChrome = itShouldShowTextBubble || hasError;
 
   return (
     (loading || hasContent) && (

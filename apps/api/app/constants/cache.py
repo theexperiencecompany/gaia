@@ -87,6 +87,11 @@ INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
 STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
+# Per-conversation active-stream lock: one comms turn runs per conversation at
+# a time. Two concurrent runs (e.g. the same conversation open in two tabs)
+# raced the same LangGraph checkpointer thread with lost-update corruption.
+ACTIVE_STREAM_LOCK_PREFIX = "stream:active:"
+ACTIVE_STREAM_LOCK_TTL = 600  # safety net; released explicitly on finalize
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"

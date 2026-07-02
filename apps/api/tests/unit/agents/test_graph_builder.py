@@ -345,8 +345,9 @@ class TestBuildCommsGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["pre_model_hooks"]
-            # comms agent: filter_messages_node, manage_system_prompts_node
-            assert len(pre_model_hooks) == 2
+            # comms agent: filter_messages_node, executor_status_hook,
+            # manage_system_prompts_node
+            assert len(pre_model_hooks) == 3
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]

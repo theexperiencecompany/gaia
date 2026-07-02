@@ -29,17 +29,17 @@ NOTE: Type/linting errors in this file are expected since it's copied from exter
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import functools
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import AIMessage, ToolCall, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolCall, ToolMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
-from langgraph.types import Send
+from langgraph.types import RetryPolicy, Send
 from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
@@ -52,7 +52,12 @@ from app.agents.llm.client import (
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
-from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
+from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
+from app.override.langgraph_bigtool.dynamic_tool_node import (
+    DynamicToolNode,
+    format_tool_error,
+    timeout_guarded_tool_call,
+)
 from app.override.langgraph_bigtool.hooks import (
     HookType,
     execute_hooks,
@@ -211,6 +216,7 @@ def create_agent(
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
+        state = _maybe_inject_wrapup(state)
         response = invoke_llm(
             llm_with_tools, state["messages"], fallback=fallback, label=agent_name
         )
@@ -223,12 +229,34 @@ def create_agent(
 
         return {"messages": [response]}  # type: ignore[return-value]
 
+    def _maybe_inject_wrapup(state: State) -> State:
+        """Warn the model to finish when the recursion budget is nearly spent.
+
+        Injected per model call (never persisted): a trailing HumanMessage,
+        because Gemini drops trailing SystemMessages. Without this, the run
+        dies mid-exploration with a hard GraphRecursionError the model never
+        saw coming.
+        """
+        remaining = state.get("remaining_steps")
+        if not isinstance(remaining, int) or remaining > RECURSION_WRAPUP_THRESHOLD_STEPS:
+            return state
+        notice = HumanMessage(
+            content=(
+                "[System notice: you are almost out of steps for this run "
+                f"(~{remaining} left). Stop exploring now — summarize what you "
+                "found and what remains to be done, and finish your reply.]"
+            )
+        )
+        return cast(State, {**state, "messages": [*state.get("messages", []), notice]})
+
     async def acall_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         """Async model invocation with middleware support."""
         state = await execute_hooks(pre_model_hooks, state, config, store)
 
         if middleware_executor:
             state = await middleware_executor.execute_before_model(state, config, store)
+
+        state = _maybe_inject_wrapup(state)
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
@@ -520,6 +548,13 @@ def create_agent(
         tool_registry,  # type: ignore[arg-type]
         middleware_executor=middleware_executor,
         middleware_tools=middleware_tools,
+        # Parent-routed tools (InjectedState / middleware tools) previously
+        # re-raised non-validation exceptions and crashed the whole run;
+        # convert every failure into an error ToolMessage, matching the
+        # middleware dispatch path. The per-call timeout wrapper bounds hung
+        # tools (orchestration tools exempt).
+        handle_tool_errors=format_tool_error,
+        awrap_tool_call=timeout_guarded_tool_call,
     )
 
     builder.set_entry_point("agent")
@@ -528,7 +563,15 @@ def create_agent(
         RunnableCallable(call_model, acall_model),
     )
     if not disable_retrieve_tools:
-        builder.add_node("select_tools", select_tools_node)  # type: ignore[possibly-undefined]
+        # Tool retrieval is a pure read (Chroma/Postgres searches), so the
+        # default retry predicate is safe here. The tools node deliberately has
+        # NO retry policy: exceptions escaping it come from parent-routed tool
+        # execution, and re-running a side-effectful tool can double-execute it.
+        builder.add_node(
+            "select_tools",
+            select_tools_node,  # type: ignore[possibly-undefined]
+            retry_policy=RetryPolicy(),
+        )
     builder.add_node("tools", tool_node)
     builder.add_node(
         FINISH_TASK_NAME,

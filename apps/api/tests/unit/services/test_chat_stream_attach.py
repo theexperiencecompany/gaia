@@ -109,6 +109,7 @@ class TestFinalizeStreamBackstop:
         ):
             col.update_one = AsyncMock()
             sm.cleanup = AsyncMock()
+            sm.release_conversation_lock_if_owned = AsyncMock()
             await _finalize_stream("s1", MagicMock(), {"user_id": "u1"}, "conv-1", state, None)
         return persist, col
 

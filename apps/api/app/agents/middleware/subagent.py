@@ -30,6 +30,7 @@ from langgraph.types import Command
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm, is_default_model_config
 from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.agents.middleware.compaction import compact_tool_output, estimate_context_usage
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
@@ -37,8 +38,10 @@ from app.agents.prompts.spawn_subagent_prompts import (
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
-from app.constants.llm import SUBAGENT_RECURSION_LIMIT
+from app.constants.llm import DEFAULT_MAX_TOKENS, SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
+from app.constants.summarization import COMPACTION_THRESHOLD, MAX_OUTPUT_CHARS
+from app.core.stream_manager import stream_manager
 from app.utils.agent_utils import (
     StreamWriterCallable,
     emit_subagent_tool_calls,
@@ -284,6 +287,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         model_configurations = config.get("configurable", {})
         user_id = model_configurations.get("user_id")
+        conversation_id = model_configurations.get("vfs_session_id") or model_configurations.get(
+            "thread_id"
+        )
+        stream_id = model_configurations.get("stream_id")
         llm: Any = self._llm.with_config(configurable=model_configurations)
 
         tools_by_name, dynamic, retrieve_tool = self._build_child_toolset(
@@ -320,8 +327,19 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
         messages.append(HumanMessage(content=user_content))
 
+        # Names of the tools the subagent has called, most-recent last. Surfaced
+        # in the max-turns fallback so the parent learns what it was attempting.
+        called_tool_names: list[str] = []
+
         # Tool-calling loop
         for _turn in range(self._max_turns):
+            # Honor a user Stop mid-loop, same as the main graph driver polls
+            # StreamManager between steps. A hard task cancel re-raises below;
+            # this catches the soft cancel path the Stop button actually uses.
+            if stream_id and await stream_manager.is_cancelled(stream_id):
+                log.info(f"{LogTag.AGENT} Subagent stream {stream_id} cancelled by user")
+                return f"Subagent cancelled by the user while working on: {task[:200].rstrip()}"
+
             response = cast(
                 AIMessage,
                 await ainvoke_llm(
@@ -369,6 +387,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         log.error(f"{LogTag.AGENT} Subagent retrieve_tools error: {e}")
                         content = f"retrieve_tools error: {e}"
 
+                    called_tool_names.append(name)
                     messages.append(ToolMessage(content=content, tool_call_id=tc_id, name=name))
                     # Rebind LLM with updated tool set
                     llm_with_tools = llm.bind_tools(list(tools_by_name.values()))
@@ -378,12 +397,19 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             if not regular_calls:
                 continue
 
+            called_tool_names.extend(tc["name"] for tc in regular_calls)
+
             # Emit tool_data for each call so the frontend can show them in the
             # spawned subagent's row before results arrive.
             if stream_writer and subagent_id:
                 await emit_subagent_tool_calls(
                     stream_writer, subagent_id, regular_calls, user_id=user_id
                 )
+
+            # Context fraction before this turn's tool results are appended —
+            # matches the compaction middleware, which measures state prior to
+            # inserting the new tool output.
+            context_usage = estimate_context_usage(messages, DEFAULT_MAX_TOKENS)
 
             async def _invoke_tool(tc: ToolCall) -> ToolMessage:
                 name = tc["name"]
@@ -399,21 +425,43 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         status="error",
                     )
                 try:
+                    # Invoking with a tool_call returns a ToolMessage; the raw
+                    # output is its .content (str(ToolMessage) would leak the
+                    # message repr into the model's context).
                     result = await tools_by_name[name].ainvoke(
                         {**tc, "type": "tool_call"}, config=config
                     )
-                    result_str = str(result)
+                    raw_content = result.content if isinstance(result, ToolMessage) else result
+                    # Spill oversized outputs to the workspace before they enter
+                    # the subagent's context — same canonical path the main loop's
+                    # compaction middleware uses. None means keep the raw output.
+                    compacted = await compact_tool_output(
+                        content=raw_content,
+                        tool_name=name,
+                        tool_call_id=tc_id or "",
+                        tool_args=tc.get("args", {}),
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        context_usage=context_usage,
+                        max_output_chars=MAX_OUTPUT_CHARS,
+                        compaction_threshold=COMPACTION_THRESHOLD,
+                    )
+                    tool_message = (
+                        compacted
+                        if compacted is not None
+                        else ToolMessage(content=str(raw_content), tool_call_id=tc_id, name=name)
+                    )
                     if stream_writer and subagent_id:
                         stream_writer(
                             {
                                 "tool_output": {
                                     "tool_call_id": tc_id or "",
-                                    "output": result_str,
+                                    "output": str(tool_message.content),
                                     "subagent_id": subagent_id,
                                 }
                             }
                         )
-                    return ToolMessage(content=result_str, tool_call_id=tc_id, name=name)
+                    return tool_message
                 except asyncio.CancelledError:
                     raise
                 except Exception:
@@ -447,11 +495,22 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             config=config,
             label="subagent_final",
         )
+
+        # If the model still produces no answer, tell the parent what the
+        # subagent was attempting instead of a bare "Max turns reached." — the
+        # task and the tools it recently reached for are what the parent needs
+        # to decide the next step.
+        recent = called_tool_names[-5:]
+        tools_note = f" Recent tools: {', '.join(recent)}." if recent else ""
+        max_turns_note = (
+            f"Subagent reached its {self._max_turns}-turn limit without finishing. "
+            f"Task: {task[:200].rstrip()}.{tools_note}"
+        )
         if isinstance(final, AIMessage) and final.content:
             # .text flattens only text blocks — a reasoning-only final message
             # yields "", so guard like the in-loop path does.
-            return final.text or "Max turns reached."
-        return str(final) if final else "Max turns reached."
+            return final.text or max_turns_note
+        return str(final) if final else max_turns_note
 
     def _build_child_toolset(
         self,

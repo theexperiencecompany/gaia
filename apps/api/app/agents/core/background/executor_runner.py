@@ -21,6 +21,7 @@ from typing import Any
 
 from langsmith import traceable
 
+from app.agents.core.background.comms_narrator import record_executor_cancellation
 from app.agents.core.background.executor_capture import (
     build_returned_to_frontend_note,
     teardown_executor_capture,
@@ -79,7 +80,7 @@ async def run_executor_background(
             stream_id=run.stream_id,
         )
     finally:
-        await _finalize_executor_run(run, result_text, result_type)
+        await _finalize_executor_run(run, task, result_text, result_type)
 
 
 async def _execute_executor(
@@ -115,6 +116,7 @@ async def _execute_executor(
 
 async def _finalize_executor_run(
     run: ExecutorRun,
+    task: str,
     result_text: str,
     result_type: str,
 ) -> None:
@@ -134,7 +136,9 @@ async def _finalize_executor_run(
     # queue handoff below, or queued tasks strand and the busy lock leaks until
     # its TTL. The lock lifecycle is the load-bearing step — always run it.
     try:
-        await _deliver_terminal_outcome(run, result_text, result_type, was_cancelled, returned_note)
+        await _deliver_terminal_outcome(
+            run, task, result_text, result_type, was_cancelled, returned_note
+        )
         await _close_queued_stream(run, was_cancelled)
     except Exception as e:  # noqa: BLE001 — never let delivery failure strand the queue
         log.error(
@@ -151,6 +155,7 @@ async def _finalize_executor_run(
 
 async def _deliver_terminal_outcome(
     run: ExecutorRun,
+    task: str,
     result_text: str,
     result_type: str,
     was_cancelled: bool,
@@ -164,6 +169,10 @@ async def _deliver_terminal_outcome(
     completed run with text narrates and delivers.
     """
     if was_cancelled:
+        # Regardless of who owns the tool_data, comms' context must record the
+        # cancellation — otherwise its last knowledge stays 'Task accepted...
+        # I'm on it' and later turns claim the task is still running or done.
+        await record_executor_cancellation(run.conversation_id, run.task_id, task)
         if run.executor_owns_tool_data:
             await persist_cancelled_run(run)
         else:

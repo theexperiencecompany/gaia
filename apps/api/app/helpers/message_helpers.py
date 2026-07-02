@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from bson import ObjectId
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -52,6 +52,14 @@ from shared.py.wide_events import log
 # manage_system_prompts_node can keep only the latest one.
 DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 
+# Sentinel marker on the volatile memory-recall SystemMessage. This slot holds
+# the per-turn content (memory recall, GAIA knowledge, skills, tracked todos,
+# run-binding banners) that churns turn-to-turn. It carries its own marker so
+# manage_system_prompts_node can slot it at the TAIL of the system block —
+# after the byte-stable [static, dynamic] prefix — keeping that prefix
+# cacheable across turns.
+MEMORY_RECALL_MARKER = "memory_recall"
+
 
 def create_system_message(
     user_id: str | None = None,
@@ -69,7 +77,7 @@ def create_system_message(
     messaging platforms). The executor prompt is single-variant.
 
     All user, time, and memory context is delivered in the dynamic-context
-    message produced by ``build_dynamic_context_message`` and does NOT live
+    messages produced by ``build_dynamic_context_messages`` and does NOT live
     in this static prefix.
     """
     del user_id, user_name  # intentionally unused — static prefix only
@@ -275,6 +283,33 @@ def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
     return msg
 
 
+def _mark_memory_recall(msg: SystemMessage) -> SystemMessage:
+    """Mark a SystemMessage as the volatile memory-recall slot.
+
+    Only carries ``memory_recall`` — deliberately NOT the dynamic-context or
+    ``memory_message`` markers — so ``manage_system_prompts_node`` slots it
+    separately at the tail of the system block instead of collapsing it into
+    the stable dynamic slot.
+    """
+    msg.additional_kwargs[MEMORY_RECALL_MARKER] = True
+    return msg
+
+
+class DynamicContextMessages(NamedTuple):
+    """The two system messages that carry per-user, per-turn context.
+
+    ``stable`` holds identity content (name, timezone, preferences, connected
+    integrations) that changes only when preferences/integrations change — it
+    stays at index 1 so the ``[static, stable]`` prefix is cacheable across
+    turns. ``memory_recall`` holds the volatile per-turn content (memory
+    recall, GAIA knowledge, skills, tracked todos, run banners); it is ``None``
+    when there is no volatile content to inject.
+    """
+
+    stable: SystemMessage
+    memory_recall: SystemMessage | None
+
+
 # Default header for the comms agent: pure capability awareness.
 CONNECTED_INTEGRATIONS_HEADER = (
     "Connected integrations (hand off to the matching subagent to use them):"
@@ -327,7 +362,7 @@ async def build_connected_integrations_manifest(
     return "\n".join(lines)
 
 
-async def build_dynamic_context_message(
+async def build_dynamic_context_messages(
     user_id: str | None,
     query: str | None,
     user_name: str | None = None,
@@ -340,25 +375,31 @@ async def build_dynamic_context_message(
     skills_text: str | None = None,
     active_todo_id: str | None = None,
     execution_mode: Literal["interactive", "background"] = "interactive",
-) -> SystemMessage:
-    """Build the single dynamic-context system message.
+) -> DynamicContextMessages:
+    """Build the dynamic-context system messages, split by volatility.
 
-    This message is placed AFTER the static main prompt. It carries the
-    per-user, per-turn content: user name, timezone, preferences, memories,
-    GAIA knowledge, installable skills, the tracked-todos summary, and — on
-    bound / headless runs — the run-binding banners. OpenUI / platform
-    restrictions and the clock are NOT here any more:
+    Returns TWO messages so the provider's implicit prompt cache survives
+    across turns:
+
+    - ``stable``: the byte-stable identity block (user name, timezone,
+      preferences, connected-integrations manifest). It changes only when the
+      user edits preferences or connects/disconnects an integration — NOT per
+      turn — so ``manage_system_prompts_node`` keeps it at index 1 and the
+      ``[static, stable]`` prefix stays cacheable across every turn.
+    - ``memory_recall``: the volatile per-turn block (core memory, per-query
+      memory recall, GAIA knowledge, installable skills, tracked-todos summary,
+      and — on bound / headless runs — the run-binding banners). This content
+      is retrieved against the latest user message and churns turn-to-turn, so
+      it is slotted at the TAIL of the system block (after the stable prefix)
+      and never shifts the cacheable bytes ahead of it. ``None`` when there is
+      no volatile content to inject.
+
+    OpenUI / platform restrictions and the clock are NOT here:
 
     - Output-format addendums (OpenUI or text-only) are part of the static
       per-channel prompt so they cache across every user on that channel.
     - Current time lives in a HumanMessage so minute ticks never invalidate
       the ``system_instruction`` prefix.
-
-    Within this message, content is ordered so the byte-identical-across-
-    turns sections come first (user name → timezone → preferences), then
-    the per-turn fetches (memories, GAIA knowledge, skills). The provider
-    caches bytes 0..N where byte N is the first to differ between turns —
-    so stable content up front maximises the cache hit length.
 
     Args:
         user_id: For memory/knowledge retrieval. If None, skips ChromaDB calls.
@@ -375,14 +416,15 @@ async def build_dynamic_context_message(
             ChromaDB lookup.
         skills_text: Pre-fetched skills section. Same rationale as memories.
         active_todo_id: When this run is bound to a tracked todo, appends the
-            active-todo banner (canvas write-target directive) LAST, so the
-            cached stable prefix is untouched and the directive gets recency.
+            active-todo banner (canvas write-target directive) LAST in the
+            memory-recall block, so the directive gets recency.
         execution_mode: When "background" (headless scheduled run), appends the
             background-execution banner so the agent stays terse and action-only.
 
     Returns:
-        A SystemMessage marked with ``dynamic_context=True`` in
-        ``additional_kwargs``.
+        A ``DynamicContextMessages`` — ``stable`` marked ``dynamic_context``
+        (and ``memory_message`` for back-compat) and ``memory_recall`` marked
+        ``memory_recall`` (or ``None``).
     """
     del include_openui  # accepted for back-compat; OpenUI is in static prompt now
     try:
@@ -399,7 +441,7 @@ async def build_dynamic_context_message(
                 user_preferences or {}, writing_style=writing_style
             ):
                 user_stable_parts.append(f"User Preferences:\n{formatted}")
-        # Connected-integrations manifest sits with the stable prefix: it only
+        # Connected-integrations manifest sits with the stable block: it only
         # changes when the user connects/disconnects an integration, not per turn.
         if user_id:
             if manifest := await build_connected_integrations_manifest(user_id):
@@ -439,10 +481,10 @@ async def build_dynamic_context_message(
         if skills_text:
             variable_parts.append(skills_text)
 
-        # Tracked-todos summary + run-binding banners — appended LAST so the
-        # cached stable prefix above is never disturbed, and so these directives
-        # land with recency right before the user's turn. The active-todo banner
-        # and background banner only appear on bound / headless runs.
+        # Tracked-todos summary + run-binding banners — appended LAST in the
+        # volatile block so the directives land with recency right before the
+        # user's turn. The active-todo banner and background banner only appear
+        # on bound / headless runs.
         active_todo_banner = ""
         if user_id:
             tracked_todos_section, active_todo_banner = await asyncio.gather(
@@ -456,11 +498,8 @@ async def build_dynamic_context_message(
         if active_todo_banner:
             variable_parts.append(active_todo_banner)
 
-        content_sections = [
-            "\n".join(user_stable_parts),
-            "\n\n".join(variable_parts),
-        ]
-        content = "\n\n".join(s for s in content_sections if s)
+        stable_content = "\n".join(user_stable_parts)
+        recall_content = "\n\n".join(variable_parts)
 
         log.set(
             dynamic_context={
@@ -472,22 +511,28 @@ async def build_dynamic_context_message(
                 "used_pinned_memories": memories_text is not None,
                 "has_active_todo": bool(active_todo_id),
                 "execution_mode": execution_mode,
-                "char_count": len(content),
-                "user_stable_chars": sum(len(p) for p in user_stable_parts),
-                "variable_chars": sum(len(p) for p in variable_parts),
+                "stable_chars": len(stable_content),
+                "memory_recall_chars": len(recall_content),
+                "has_memory_recall": bool(recall_content),
             }
         )
 
-        return _mark_dynamic_context(SystemMessage(content=content))
+        stable_msg = _mark_dynamic_context(SystemMessage(content=stable_content))
+        recall_msg = (
+            _mark_memory_recall(SystemMessage(content=recall_content)) if recall_content else None
+        )
+        return DynamicContextMessages(stable=stable_msg, memory_recall=recall_msg)
 
     except Exception as e:
-        log.error(f"Error creating dynamic context message: {e}")
-        # Return a byte-stable empty message so a persistent failure here
-        # doesn't change the prompt prefix every minute and silently
-        # invalidate the implicit prompt cache. The clock lives in a
-        # HumanMessage built by build_current_time_message, so omitting
-        # time here is safe.
-        return _mark_dynamic_context(SystemMessage(content=""))
+        log.error(f"Error creating dynamic context messages: {e}")
+        # Return a byte-stable empty stable message so a persistent failure here
+        # doesn't change the prompt prefix every minute and silently invalidate
+        # the implicit prompt cache. The clock lives in a HumanMessage built by
+        # build_current_time_message, so omitting time here is safe.
+        return DynamicContextMessages(
+            stable=_mark_dynamic_context(SystemMessage(content="")),
+            memory_recall=None,
+        )
 
 
 def format_tool_selection_message(

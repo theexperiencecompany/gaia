@@ -298,6 +298,16 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
     return llm
 
 
+def _stamp_fallback(result: Any) -> Any:
+    """Mark a fallback-produced AIMessage so downstream layers can surface the
+    downgrade (SSE event, accounting). No-op for non-message results."""
+    metadata = getattr(result, "response_metadata", None)
+    if isinstance(metadata, dict):
+        metadata["gaia_fell_back"] = True
+        metadata["gaia_fallback_model"] = DEFAULT_GEMINI_MODEL_NAME
+    return result
+
+
 def _resolve_fallback(fallback: LLMFallback, label: str, primary_error: BaseException) -> Runnable:
     """Materialize the fallback (calling a factory if one was passed), log the
     downgrade, and return the retry-wrapped runnable. Re-raises ``primary_error``
@@ -329,8 +339,8 @@ async def ainvoke_llm(
             messages, config=config
         )
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
-        return await _resolve_fallback(fallback, label, primary_error).ainvoke(
-            messages, config=config
+        return _stamp_fallback(
+            await _resolve_fallback(fallback, label, primary_error).ainvoke(messages, config=config)
         )
 
 
@@ -347,7 +357,9 @@ def invoke_llm(
     try:
         return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
-        return _resolve_fallback(fallback, label, primary_error).invoke(messages, config=config)
+        return _stamp_fallback(
+            _resolve_fallback(fallback, label, primary_error).invoke(messages, config=config)
+        )
 
 
 async def ainvoke_structured(

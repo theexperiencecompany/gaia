@@ -313,8 +313,11 @@ class ChromaStore(BaseStore):
 
             return filtered_ids
         except Exception as e:
-            log.error(f"{LogTag.CHROMA} Error filtering items: {e}")
-            return []
+            # Re-raise so callers can tell an unreachable ChromaDB apart from an
+            # empty namespace (same contract as the write path). Per-document
+            # data issues are already handled item-by-item above.
+            log.error(f"{LogTag.CHROMA} Error filtering items: {type(e).__name__}: {e}")
+            raise
 
     def _matches_namespace_prefix(
         self, namespace: tuple[str, ...], prefix: tuple[str, ...]
@@ -455,8 +458,10 @@ class ChromaStore(BaseStore):
                     # Apply pagination
                     results[i] = items[op.offset : op.offset + op.limit]
                 except Exception as e:
-                    log.error(f"{LogTag.CHROMA} Error in vector search: {e}")
-                    results[i] = []
+                    # Re-raise so an unreachable ChromaDB doesn't masquerade as
+                    # zero search hits (same contract as the write path).
+                    log.error(f"{LogTag.CHROMA} Error in vector search: {type(e).__name__}: {e}")
+                    raise
             else:
                 # No query, just return filtered items with pagination
                 # Parallelize item retrieval
