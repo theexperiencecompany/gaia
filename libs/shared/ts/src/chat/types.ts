@@ -756,6 +756,34 @@ export interface ToolCallEntry {
   output?: string;
   icon_url?: string;
   integration_name?: string;
+  // When set, this entry is the model's thinking for the step (not a tool call).
+  // It rides the same ordered tool_calls stream so it interleaves between steps.
+  reasoning?: string;
+}
+
+// tool_name marker for a thinking/reasoning step (a ToolCallEntry with `reasoning`).
+export const REASONING_TOOL_NAME = "reasoning";
+
+// tool_name marker for a subagent group entry in tool_data.
+export const SUBAGENT_GROUP_TOOL_NAME = "subagent_group";
+
+export interface SubagentGroupData {
+  subagent_id: string;
+  subagent_name: string;
+  /** "handoff" = integration subagent (Gmail, GitHub etc); "spawned" = lightweight task agent */
+  agent_type: "handoff" | "spawned";
+  /** Accumulated tool calls from this subagent, in order of emission */
+  tool_calls: ToolCallEntry[];
+  duration_ms: number | null;
+  token_count: number | null;
+  started_at: string;
+  completed_at: string | null;
+  /** Integration icon URL forwarded from the backend */
+  icon_url: string | null;
+  /** Integration category ID used for icon lookup (e.g. "gmail", "googlecalendar") */
+  tool_category: string | null;
+  /** Spawned subagents launched from within this subagent (nested in the UI) */
+  nested_subagents: SubagentGroupData[];
 }
 
 // ---------------------------------------------------------------------------

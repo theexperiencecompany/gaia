@@ -15,7 +15,6 @@ import type {
   WorkflowExecutionResponse,
   WorkflowListResponse,
   WorkflowResponse,
-  WorkflowStatusResponse,
 } from "@/types/features/workflowTypes";
 import type { WorkflowExecutionsResponse } from "../types/workflowExecutionTypes";
 
@@ -142,18 +141,6 @@ export const workflowApi = {
       {
         successMessage: "Workflow execution started",
         errorMessage: "Failed to execute workflow",
-      },
-    );
-  },
-
-  // Get workflow status
-  getWorkflowStatus: async (
-    workflowId: string,
-  ): Promise<WorkflowStatusResponse> => {
-    return apiService.get<WorkflowStatusResponse>(
-      `/workflows/${workflowId}/status`,
-      {
-        silent: true,
       },
     );
   },

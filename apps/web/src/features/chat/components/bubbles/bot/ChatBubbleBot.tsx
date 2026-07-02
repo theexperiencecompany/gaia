@@ -11,7 +11,6 @@ import { SystemPurpose } from "@/features/chat/api/chatApi";
 import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatBubble_Actions";
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
-import { useLoading } from "@/features/chat/hooks/useLoading";
 import {
   MESSAGE_BREAK_DURATION_SECONDS,
   MESSAGE_BREAK_EASE_OUT_QUART,
@@ -47,7 +46,6 @@ export default function ChatBubbleBot(
     isConvoSystemGenerated,
     systemPurpose,
     follow_up_actions,
-    isLastMessage,
     disableActions = false,
     hideAvatar = false,
     isGroupedWithNext = false,
@@ -56,7 +54,6 @@ export default function ChatBubbleBot(
     onRetry,
     isRetrying,
   } = props;
-  const { isLoading } = useLoading();
 
   const actionsRef = useRef<HTMLDivElement>(null);
 
@@ -130,7 +127,7 @@ export default function ChatBubbleBot(
         <div className="relative">
           {!hideAvatar && !isGroupedWithNext && showBubbleChrome && (
             <m.div
-              className={`${isLoading && isLastMessage ? "animate-spin" : ""} absolute bottom-0 left-0 z-5 transition duration-900`}
+              className="absolute bottom-0 left-0 z-5 transition duration-900"
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{

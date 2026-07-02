@@ -6,12 +6,38 @@ import {
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { apiService } from "@/lib/api/service";
 import { desktopClientHeaders } from "@/lib/electron/api";
+import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { getBrowserTimezone } from "@/lib/timezone";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
+
+export interface ChatStreamRequest {
+  inputText: string;
+  /** Prior turns as role/content pairs — the caller owns history assembly. */
+  history: { role: "user" | "assistant"; content: string }[];
+  /** Target conversation; null asks the backend to create one. */
+  conversationId: string | null;
+  onMessage: (
+    event: EventSourceMessage,
+  ) => undefined | string | Promise<undefined | string>;
+  onClose: () => void;
+  onError: (err: Error) => void;
+  controller: AbortController;
+  fileData: FileData[];
+  selectedTool: string | null;
+  toolCategory: string | null;
+  selectedWorkflow: WorkflowData | null;
+  selectedCalendarEvent: SelectedCalendarEventData | null;
+  replyToMessage: {
+    id: string;
+    content: string;
+    role: "user" | "assistant";
+  } | null;
+  isOnboardingDemo: boolean;
+}
 
 export interface FileUploadResponse {
   fileId: string;
@@ -246,42 +272,23 @@ export const chatApi = {
   },
 
   // Fetch chat stream
-  fetchChatStream: async (
-    inputText: string,
-    convoMessages: MessageType[],
-    conversationId: string | null | undefined,
-    onMessage: (
-      event: EventSourceMessage,
-    ) => undefined | string | Promise<undefined | string>,
-    onClose: () => void,
-    onError: (err: Error) => void,
-    fileData: FileData[] = [],
-    selectedTool: string | null = null,
-    toolCategory: string | null = null,
-    externalController?: AbortController,
-    selectedWorkflow: WorkflowData | null = null,
-    selectedCalendarEvent: SelectedCalendarEventData | null = null,
-    replyToMessage: {
-      id: string;
-      content: string;
-      role: "user" | "assistant";
-    } | null = null,
-    isOnboardingDemo: boolean = false,
-  ) => {
-    const controller = externalController || new AbortController();
-    // Extract fileIds from fileData for backward compatibility
-    const fileIds = fileData.map((file) => file.fileId);
-
-    // If conversationId is not provided, try to extract it from the URL
-    if (conversationId === undefined && typeof window !== "undefined") {
-      const match = window.location.pathname.match(/\/c\/([^/]+)(?:\/|$)/);
-      if (match) conversationId = match[1];
-    }
-
-    // "new" is a UI sentinel for "create a new conversation" — backend expects null
-    if (conversationId === "new") {
-      conversationId = null;
-    }
+  fetchChatStream: async (request: ChatStreamRequest) => {
+    const {
+      inputText,
+      history,
+      conversationId,
+      onMessage,
+      onClose,
+      onError,
+      controller,
+      fileData,
+      selectedTool,
+      toolCategory,
+      selectedWorkflow,
+      selectedCalendarEvent,
+      replyToMessage,
+      isOnboardingDemo,
+    } = request;
 
     // Guard against double onClose — [DONE] in onmessage fires onClose, then
     // the SSE library fires onclose when the connection ends.  Without this
@@ -308,9 +315,9 @@ export const chatApi = {
         credentials: "include",
         signal: controller.signal,
         body: JSON.stringify({
-          conversation_id: conversationId || null,
+          conversation_id: conversationId,
           message: inputText,
-          fileIds,
+          fileIds: fileData.map((file) => file.fileId),
           fileData,
           selectedTool,
           toolCategory,
@@ -321,13 +328,7 @@ export const chatApi = {
           use_default_models: useDefaultModels,
           comms_model: useDefaultModels ? null : commsModel,
           executor_model: useDefaultModels ? null : executorModel,
-          messages: convoMessages
-            .slice(-30)
-            .filter(({ response }) => response.trim().length > 0)
-            .map(({ type, response }, _index, _array) => ({
-              role: type === "bot" ? "assistant" : type,
-              content: response,
-            })),
+          messages: history.slice(-30),
         }),
 
         onmessage(event) {
@@ -339,9 +340,9 @@ export const chatApi = {
             return;
           }
 
-          // onMessage (handleStreamEvent) is async — handle errors from the Promise.
-          // No queue/gate needed: handleNewConversation updates the Zustand store
-          // synchronously before any awaits, so subsequent events can render immediately.
+          // onMessage is async — surface errors from the Promise. No queue/gate
+          // needed: conversation binding updates the Zustand store synchronously
+          // before any awaits, so subsequent events can render immediately.
           if (errorResult instanceof Promise) {
             errorResult.then((err) => {
               if (err) {
@@ -357,6 +358,7 @@ export const chatApi = {
           }
         },
         onclose() {
+          streamLog("sse", "connection-closed", { conversationId });
           // Only call onClose if [DONE] didn't already trigger it.
           // Connection drops without [DONE] (e.g. network failure) still need cleanup.
           if (!doneReceived) {
@@ -364,6 +366,10 @@ export const chatApi = {
           }
         },
         onerror: (err) => {
+          streamLogError("sse", "connection-error", {
+            conversationId,
+            detail: { message: err.message },
+          });
           console.error("[chatApi] Stream error:", {
             error: err,
             message: err.message,
@@ -405,11 +411,15 @@ export const chatApi = {
           onMessage(event);
         },
         onclose() {
+          streamLog("sse", "connection-closed");
           if (!doneReceived) {
             onClose();
           }
         },
         onerror(err) {
+          streamLogError("sse", "connection-error", {
+            detail: { message: err.message },
+          });
           onError(err);
           throw err; // stops retry attempts
         },
