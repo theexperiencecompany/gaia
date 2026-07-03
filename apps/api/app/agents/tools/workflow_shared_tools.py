@@ -221,8 +221,10 @@ async def search_integrations(
         user_id = get_user_id(config)
         owned_ids = {i.id.lower() for i in (await fetch_my_integrations(user_id)).integrations}
 
+        # Over-fetch by the owned count, then cap after filtering: owned integrations
+        # ranking above the limit must not crowd out valid unowned matches.
         community = await list_community_integrations(
-            search=query, limit=MAX_INTEGRATION_SEARCH_RESULTS
+            search=query, limit=MAX_INTEGRATION_SEARCH_RESULTS + len(owned_ids)
         )
         results = [
             {
@@ -235,7 +237,7 @@ async def search_integrations(
             }
             for c in community.integrations
             if c.integration_id.lower() not in owned_ids
-        ]
+        ][:MAX_INTEGRATION_SEARCH_RESULTS]
         return success_response({"integrations": results, "query": query})
 
     except Exception as e:
@@ -287,8 +289,8 @@ async def search_integration_tools(
             haystack = f"{integration_tool.name} {integration_tool.description or ''}".lower()
             return any(p in haystack for p in patterns)
 
-        if has_integration:
-            integration = _resolve_integration(mine, integration_id)  # type: ignore[arg-type]
+        if integration_id and integration_id.strip():
+            integration = _resolve_integration(mine, integration_id)
             if integration is None:
                 return error_response(
                     "not_found",

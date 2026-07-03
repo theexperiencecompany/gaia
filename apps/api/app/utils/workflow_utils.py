@@ -355,8 +355,11 @@ async def apply_workflow_edit(
     new_prompt = draft.prompt or draft.description
     if new_prompt and new_prompt != workflow.effective_prompt:
         update_fields["prompt"] = new_prompt
-    if draft.integration_ids != (workflow.integration_ids or []):
-        update_fields["integration_ids"] = draft.integration_ids
+    # Drop hallucinated ids here too, so edits can't persist a fake integration the
+    # create path (filter_existing_integration_ids in service.create_workflow) rejects.
+    filtered_integration_ids = await filter_existing_integration_ids(draft.integration_ids)
+    if filtered_integration_ids != (workflow.integration_ids or []):
+        update_fields["integration_ids"] = filtered_integration_ids
 
     needs_editor = False
     if trigger_changed:
