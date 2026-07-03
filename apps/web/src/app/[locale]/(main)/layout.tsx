@@ -45,6 +45,14 @@ const WhatsNewModal = nextDynamic(
   { ssr: false },
 );
 
+const FirstStepsWidget = nextDynamic(
+  () =>
+    import("@/features/first-steps/components/FirstStepsWidget").then((m) => ({
+      default: m.FirstStepsWidget,
+    })),
+  { ssr: false },
+);
+
 const HeaderSidebarTrigger = () => {
   return (
     <div className="">
@@ -178,6 +186,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             isOpen={isHoloCardModalOpen}
             onClose={closeHoloCardModal}
           />
+
+          {/* First-Steps Activation Checklist */}
+          <FirstStepsWidget />
         </SidebarProvider>
       </TooltipProvider>
     </ProvidersLayout>

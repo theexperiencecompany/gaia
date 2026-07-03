@@ -131,6 +131,8 @@ class PlatformLinkService:
             and user["platform_links"][platform].get("id") == platform_user_id
         )
 
+        if platform == Platform.TELEGRAM.value or platform == "telegram":
+            await first_steps_service.mark_step(user_id, first_steps_service.STEP_LINK_TELEGRAM)
         return {
             "status": "linked",
             "platform": platform,

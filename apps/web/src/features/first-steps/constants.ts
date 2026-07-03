@@ -26,10 +26,6 @@ export const FIRST_STEPS: FirstStepDefinition[] = [
   },
 ];
 
-// Steps whose completion is derived purely from visiting their route — handled
-// by useTrackRouteVisit on the target page, not by clicking the widget's link.
-export const ROUTE_VISIT_STEP_KEYS = ["explore_workflows", "visit_dashboard"];
-
 // Special step value PATCHed to mark the entire widget dismissed, independent
 // of individual step completion.
 export const DISMISSED_ALL_STEP = "dismissed_all";

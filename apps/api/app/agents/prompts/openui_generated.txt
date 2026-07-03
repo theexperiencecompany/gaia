@@ -135,6 +135,7 @@ Progress(value: number, max?: number, color?: "default" | "primary" | "success" 
 Avatar(name: string, initials?: string, image?: string, color?: "primary" | "success" | "warning" | "danger" | "default", showName?: boolean) - User avatar with name label.
 Timeline(items: {time: string, title: string, description?: string, status?: "success" | "error" | "warning" | "neutral", actor?: string, links?: {label: string, url: string, type?: "primary" | "secondary"}[], actions?: {label: string, value: string}[]}[], title?: string) - Chronological event feed with timestamps, status dots, optional actor, links, and actions.
 TextDocument(title: string, body: string, fields?: {label: string, value: string}[]) - Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters - never when sending a final email directly.
+Briefing(kicker: string, date: string, headline: string, lede: string, stats: {value: string, label: string, delta?: string}[], sections: {numeral: string, title: string, items: {text: string, todo_id?: string, kind: string}[]}[], mood: string, caption: string, hue: number) - Editorial daily/weekly briefing artifact: masthead (kicker + date), hue-rotated hero band, serif display headline, lede, a stat row, Roman-numeraled sections of items (optionally linking to a todo), and a caption footer. Use only for GAIA's own daily/weekly briefing payloads - never hand-assemble one from other components.
 
 ## Action - Button Behavior
 

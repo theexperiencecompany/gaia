@@ -3,6 +3,7 @@ import {
   openuiComponentGroups,
   openuiLibrary,
 } from "@openuidev/react-ui/genui-lib";
+import { briefingDef } from "./components/briefing";
 import {
   audioPlayerDef,
   imageGalleryDef,
@@ -46,6 +47,7 @@ const gaiaComponents = [
   copyableContentDef,
   kbdRowDef,
   imageGalleryDef,
+  briefingDef,
 ];
 
 const gaiaComponentNames = new Set(gaiaComponents.map((c) => c.name));
@@ -70,11 +72,13 @@ const gaiaComponentGroups = [
       "Avatar",
       "CopyableContent",
       "KbdRow",
+      "Briefing",
     ],
     notes: [
       "MapBlock — geographic map with markers, routes, and arcs.",
       "Timeline — chronological event feed with actor, links, and actions.",
       "TextDocument — editable rich-text card for drafts, reports, and letters.",
+      "Briefing — GAIA's own daily/weekly briefing artifact; never hand-assemble one from other components.",
     ],
   },
 ];

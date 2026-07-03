@@ -40,6 +40,7 @@ from app.db.mongodb.collections import todos_collection
 from app.memory.engine import memory_engine
 from app.models.payment_models import PlanType
 from app.models.todo_models import ExecutionStatus
+from app.services import first_steps_service
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.todo_canvas_storage import append_log, build_vfs_label
 from app.utils.analytics import track
@@ -266,6 +267,7 @@ async def approve(todo_id: str, user_id: str, user_plan: PlanType, channel: str 
     await schedule_execution(todo_id, now)
     await system_log(todo_id, user_id, "approved", f"User approved execution via {channel}")
     track(user_id, "todo_approved", {"todo_id": todo_id, "channel": channel})
+    await first_steps_service.mark_step(user_id, first_steps_service.STEP_FIRST_APPROVE)
     schedule_gaia_tasks_sync(user_id)
 
 

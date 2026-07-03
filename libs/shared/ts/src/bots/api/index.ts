@@ -14,6 +14,7 @@ import type {
   BotWorkflowListResponse,
   ChatRequest,
   SettingsResponse,
+  TodoActionResult,
 } from "../types";
 import { getHttpStatus } from "../utils/logger";
 import { streamChat } from "./chat-stream";
@@ -30,6 +31,26 @@ export class GaiaApiError extends Error {
     super(message);
     this.name = "GaiaApiError";
     this.status = status;
+  }
+}
+
+/**
+ * Thrown when `approveTodo` hits the execution quota (`402` with
+ * `error: "gaia_execution_quota"`). Carries the backend's upgrade pitch so
+ * callers (e.g. the Telegram callback handler) can surface it directly
+ * instead of a generic failure message.
+ */
+export class GaiaQuotaError extends GaiaApiError {
+  readonly pitch: string;
+  readonly planRequired?: string;
+  readonly resetTime?: string;
+
+  constructor(pitch: string, planRequired?: string, resetTime?: string) {
+    super(pitch, 402);
+    this.name = "GaiaQuotaError";
+    this.pitch = pitch;
+    this.planRequired = planRequired;
+    this.resetTime = resetTime;
   }
 }
 
@@ -411,15 +432,26 @@ export class GaiaClient {
    * and enqueuing its execution. Used by the Telegram inline-keyboard Approve
    * button on briefing messages. Auth is the same bot rail as every other todo
    * call — the platform-link identity resolves to the GAIA user server-side.
+   *
+   * @throws {GaiaQuotaError} when the user is out of execution quota — the
+   * backend's 402 response carries the upgrade pitch to show the user.
    */
-  async approveTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
+  async approveTodo(
+    todoId: string,
+    ctx: BotUserContext,
+  ): Promise<TodoActionResult> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post(
-        `/api/v1/todos/${encodeURIComponent(todoId)}/approve`,
-        {},
-        { headers: this.userHeaders(ctx) },
-      );
-      return mapTodoResponse(data);
+      try {
+        const { data } = await this.client.post(
+          `/api/v1/todos/${encodeURIComponent(todoId)}/approve`,
+          {},
+          { headers: this.userHeaders(ctx) },
+        );
+        return mapTodoActionResponse(data);
+      } catch (error) {
+        if (getHttpStatus(error) === 402) throw toGaiaQuotaError(error);
+        throw error;
+      }
     }, ctx);
   }
 
@@ -427,14 +459,17 @@ export class GaiaClient {
    * Dismisses a GAIA-proposed todo. Used by the Telegram inline-keyboard Dismiss
    * button on briefing messages.
    */
-  async dismissTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
+  async dismissTodo(
+    todoId: string,
+    ctx: BotUserContext,
+  ): Promise<TodoActionResult> {
     return this.requestWithAuth(async () => {
       const { data } = await this.client.post(
         `/api/v1/todos/${encodeURIComponent(todoId)}/dismiss`,
         {},
         { headers: this.userHeaders(ctx) },
       );
-      return mapTodoResponse(data);
+      return mapTodoActionResponse(data);
     }, ctx);
   }
 
