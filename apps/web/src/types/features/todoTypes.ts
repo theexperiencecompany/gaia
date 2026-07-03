@@ -1,11 +1,13 @@
 export type {
   BulkMoveRequest,
+  ExecutionStatus,
   PaginationMeta,
   Project,
   ProjectCreate,
   ProjectUpdate,
   SubTask,
   Todo,
+  TodoAssignee,
   TodoCreate,
   TodoFilters,
   TodoUpdate,

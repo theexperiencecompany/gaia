@@ -5,8 +5,15 @@ import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { PricingModal } from "./PricingModal";
 
 export function GlobalPricingModal() {
-  const { open, closeModal } = usePricingModalStore();
+  const { open, pitch, closeModal } = usePricingModalStore();
   const { plans } = usePricing();
 
-  return <PricingModal isOpen={open} onClose={closeModal} plans={plans} />;
+  return (
+    <PricingModal
+      isOpen={open}
+      onClose={closeModal}
+      plans={plans}
+      pitch={pitch}
+    />
+  );
 }

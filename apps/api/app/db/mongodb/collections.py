@@ -111,6 +111,8 @@ _COLLECTION_MAPPINGS = {
     "projects_collection": "projects",
     "reminders_collection": "reminders",
     "workflows_collection": "workflows",
+    "briefings_collection": "briefings",
+    "awards_collection": "awards",
     "support_collection": "support_requests",
     "payments_collection": "payments",
     "subscriptions_collection": "subscriptions",

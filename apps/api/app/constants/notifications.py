@@ -16,6 +16,7 @@ CHANNEL_TYPE_TELEGRAM = "telegram"
 CHANNEL_TYPE_DISCORD = "discord"
 CHANNEL_TYPE_WHATSAPP = "whatsapp"
 CHANNEL_TYPE_SLACK = "slack"
+CHANNEL_TYPE_EMAIL = "email"
 
 # External channel types that are auto-injected based on platform links
 EXTERNAL_NOTIFICATION_CHANNELS = (
@@ -26,22 +27,31 @@ EXTERNAL_NOTIFICATION_CHANNELS = (
 )
 
 # All channel types that are auto-injected when no channels are explicitly specified.
-# inapp is always available; telegram/discord/whatsapp/slack respect user preferences.
+# inapp is always available; telegram/discord/whatsapp/slack respect user preferences;
+# email is auto-injected for every user with a known email address (also pref-gated).
 ALL_AUTO_INJECTED_CHANNELS = (
     CHANNEL_TYPE_INAPP,
     CHANNEL_TYPE_TELEGRAM,
     CHANNEL_TYPE_DISCORD,
     CHANNEL_TYPE_WHATSAPP,
     CHANNEL_TYPE_SLACK,
+    CHANNEL_TYPE_EMAIL,
 )
 
-# Default enabled state for external channels
+# Default enabled state for external channels. Email defaults on so daily
+# briefings/weekly digests reach a user's inbox until they opt out.
 DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_TELEGRAM: True,
     CHANNEL_TYPE_DISCORD: True,
     CHANNEL_TYPE_WHATSAPP: True,
     CHANNEL_TYPE_SLACK: True,
+    CHANNEL_TYPE_EMAIL: True,
 }
+
+# Notification metadata "kind" values that select an email template. Anything
+# else (including unset) falls back to the plain-notification template.
+NOTIFICATION_KIND_BRIEFING_DAILY = "briefing_daily"
+NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"
 
 # Workflow-completion notification copy. GAIA texts like a friend (first person,
 # casual), not a status bar. Each entry is (title, body); {title} is the workflow

@@ -78,6 +78,8 @@ async def create_all_indexes():
             create_device_token_indexes(),
             create_installed_skills_indexes(),
             create_workflow_execution_indexes(),
+            create_briefing_indexes(),
+            create_award_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
         ]
@@ -108,6 +110,8 @@ async def create_all_indexes():
             "device_tokens",
             "skills",
             "workflow_executions",
+            "briefings",
+            "awards",
             "bot_sessions",
             "e2b_sandboxes",
         ]
@@ -531,6 +535,35 @@ async def create_workflow_execution_indexes():
         )
     except Exception as e:
         log.error(f"{LogTag.MONGO} Error creating workflow execution indexes: {e!s}")
+        raise
+
+
+async def create_briefing_indexes():
+    """Create indexes for briefings collection (one payload per user/date/kind)."""
+    try:
+        await asyncio.gather(
+            briefings_collection.create_index(
+                [("user_id", 1), ("date", 1), ("kind", 1)],
+                unique=True,
+                name="user_date_kind_unique",
+            ),
+            briefings_collection.create_index([("user_id", 1), ("created_at", -1)]),
+        )
+    except Exception as e:
+        log.error(f"{LogTag.MONGO} Error creating briefing indexes: {e!s}")
+        raise
+
+
+async def create_award_indexes():
+    """Create indexes for awards collection (each badge earnable once per user)."""
+    try:
+        await awards_collection.create_index(
+            [("user_id", 1), ("key", 1)],
+            unique=True,
+            name="user_key_unique",
+        )
+    except Exception as e:
+        log.error(f"{LogTag.MONGO} Error creating award indexes: {e!s}")
         raise
 
 

@@ -12,6 +12,20 @@ export interface SubTask {
   created_at: string;
 }
 
+/** Who owns getting a todo done. */
+export type TodoAssignee = "user" | "gaia";
+
+/** Lifecycle state of a GAIA-assigned todo's execution. */
+export type ExecutionStatus =
+  | "proposed"
+  | "queued"
+  | "running"
+  | "needs_you"
+  | "done"
+  | "failed"
+  | "expired"
+  | "dismissed";
+
 export interface Todo {
   id: string;
   user_id: string;
@@ -34,6 +48,16 @@ export interface Todo {
   starred?: boolean;
   created_at: string;
   updated_at: string;
+  /** Who this todo is assigned to — a plain user todo or one GAIA proposed/is executing. */
+  assignee?: TodoAssignee;
+  /** Execution lifecycle state, only meaningful when `assignee === "gaia"`. */
+  execution_status?: ExecutionStatus | null;
+  /** Human-readable reason GAIA proposed/is executing this todo. */
+  serves?: string | null;
+  /** Populated when `execution_status === "failed"` — surfaced loudly in the UI. */
+  error_message?: string | null;
+  /** Present on some user-owned todos GAIA is offering to take over. */
+  gaia_offer?: string | null;
 }
 
 export interface TodoUpdate {
