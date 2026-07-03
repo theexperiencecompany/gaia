@@ -6,7 +6,7 @@ hue rotation. Shared by the service, the system-workflow definitions, and the
 workflow-execution branch so nothing hardcodes these values.
 """
 
-from typing import Final
+from typing import Final, Literal
 
 # System-workflow keys. The workflow ARQ path special-cases these to route into
 # the briefing service instead of the generic chat execution.
