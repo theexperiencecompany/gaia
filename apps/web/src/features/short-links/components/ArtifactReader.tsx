@@ -5,7 +5,7 @@ import { Spinner } from "@heroui/spinner";
 import { AlertCircleIcon, Cancel01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useQuery } from "@tanstack/react-query";
 
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import RichContentRenderer from "@/features/chat/components/interface/RichContentRenderer";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { useApproveTodo } from "@/features/todo/hooks/useApproveTodo";
 import { useDismissTodo } from "@/features/todo/hooks/useDismissTodo";
@@ -106,7 +106,7 @@ export default function ArtifactReader({ todoId }: ArtifactReaderProps) {
               </p>
             </div>
           ) : content ? (
-            <MarkdownRenderer content={content} className="text-base" />
+            <RichContentRenderer content={content} className="text-base" />
           ) : canvasLoading || todoLoading ? (
             <div className="flex justify-center py-24">
               <Spinner color="default" />
