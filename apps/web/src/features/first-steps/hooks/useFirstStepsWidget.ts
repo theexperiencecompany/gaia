@@ -23,6 +23,20 @@ function readHiddenSteps(): string[] {
   }
 }
 
+// The "all set up" celebration is a one-time event. The backend keeps reporting
+// every step complete forever, so without a persisted flag the in-memory guard
+// (which resets on each mount) re-fires the toast on every page load.
+const CELEBRATED_STORAGE_KEY = "gaia:first-steps:celebrated";
+
+function readCelebrated(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(CELEBRATED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 interface UseFirstStepsWidgetResult {
   isReady: boolean;
   shouldRender: boolean;
@@ -46,6 +60,9 @@ export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
 
   useEffect(() => {
     setHiddenSteps(readHiddenSteps());
+    // Seed the guard from the persisted flag so a finished user isn't
+    // re-congratulated on every reload.
+    hasCelebrated.current = readCelebrated();
   }, []);
 
   const completedAt = data?.steps ?? {};
@@ -61,6 +78,7 @@ export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
   useEffect(() => {
     if (allComplete && !hasCelebrated.current) {
       hasCelebrated.current = true;
+      window.localStorage.setItem(CELEBRATED_STORAGE_KEY, "true");
       toast.success("You're all set up! Nicely done.");
     }
   }, [allComplete]);
