@@ -25,19 +25,15 @@ import {
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
-  type BotUserContext,
   buildAuthLinkMessage,
   createBotLogger,
   extractSubcommandArgs,
   friendlyMediaError,
-  GaiaQuotaError,
-  getHttpStatus,
   handleStreamingChat,
   hashLogIdentifier,
   htmlToPlainText,
   type IncomingMedia,
   type MediaKind,
-  type OutboundAction,
   type OutboundAttachment,
   type PlatformName,
   type RichMessage,
@@ -49,13 +45,7 @@ import {
   sanitizeErrorForLog,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
-import {
-  Bot,
-  type Context,
-  GrammyError,
-  InlineKeyboard,
-  InputFile,
-} from "grammy";
+import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
 /** Telegram's sendPhoto byte cap; larger images are sent as documents. */
 const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
@@ -65,36 +55,6 @@ const TELEGRAM_CAPTION_MAX_CHARS = 1024;
 
 /** Telegram clears the "typing…" chat action after ~5s; refresh on that cadence. */
 const TELEGRAM_TYPING_REFRESH_INTERVAL_MS = 5000;
-
-/**
- * Callback-data prefixes for briefing approval buttons. The backend emits
- * `todo_approve:<todo_id>` / `todo_dismiss:<todo_id>` in the outbound envelope's
- * `actions`; the adapter parses the prefix to route the tap to the approve or
- * dismiss endpoint. `TODO_ACTION_DONE_CALLBACK` is the no-op the post-action
- * status button carries so a second tap is acknowledged instead of erroring.
- */
-const TODO_APPROVE_CALLBACK_PREFIX = "todo_approve:";
-const TODO_DISMISS_CALLBACK_PREFIX = "todo_dismiss:";
-const TODO_ACTION_DONE_CALLBACK = "todo_action_done";
-
-/** Telegram caps `answerCallbackQuery` alert text at 200 characters. */
-const TELEGRAM_CALLBACK_ANSWER_MAX_CHARS = 200;
-
-/**
- * Builds a Telegram inline keyboard from outbound envelope actions, one button
- * per row. Returns undefined when there are no actions so messages without
- * buttons send exactly as before.
- */
-function buildInlineKeyboard(
-  actions?: OutboundAction[],
-): InlineKeyboard | undefined {
-  if (!actions || actions.length === 0) return undefined;
-  const keyboard = new InlineKeyboard();
-  for (const action of actions) {
-    keyboard.text(action.label, action.callback_data).row();
-  }
-  return keyboard;
-}
 
 /**
  * True when Telegram rejected a message because of its HTML markup — a 400 whose
@@ -344,12 +304,6 @@ export class TelegramAdapter extends BaseBotAdapter {
       await this.handleTelegramStreaming(ctx, userId, content);
     });
 
-    // Briefing approval buttons: an inline-keyboard tap arrives as a
-    // callback_query. Route todo_approve/todo_dismiss taps to the backend.
-    this.bot.on("callback_query:data", (ctx) =>
-      this.handleTodoActionCallback(ctx),
-    );
-
     // Inbound media (photos, documents, voice notes, audio, …). Routed through
     // the same shared pipeline WhatsApp uses, so behaviour stays identical.
     this.bot.on(
@@ -457,126 +411,14 @@ export class TelegramAdapter extends BaseBotAdapter {
   protected async deliverOutbound(
     destinationId: string,
     text: string,
-    actions?: OutboundAction[],
   ): Promise<void> {
     // grammY accepts a string chat_id; passing the id through avoids the NaN
     // that Number() would produce for any non-numeric destination.
-    const keyboard = buildInlineKeyboard(actions);
     await this.sendHtml(
       (t, opts) =>
-        this.bot.api.sendMessage(destinationId, t, {
-          ...(opts ?? {}),
-          ...(keyboard ? { reply_markup: keyboard } : {}),
-        }),
+        this.bot.api.sendMessage(destinationId, t, { ...(opts ?? {}) }),
       text,
     );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Briefing approval callbacks
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Routes a tapped briefing action button to the approve/dismiss endpoint,
-   * edits the message to show the outcome, and answers the callback query.
-   * `todo_action_done` (the post-action status button) is acknowledged as a
-   * no-op so a second tap doesn't error.
-   */
-  private async handleTodoActionCallback(ctx: Context): Promise<void> {
-    const data = ctx.callbackQuery?.data;
-    const userId = ctx.from?.id.toString();
-    if (!data || !userId || data === TODO_ACTION_DONE_CALLBACK) {
-      await ctx.answerCallbackQuery();
-      return;
-    }
-
-    const isApprove = data.startsWith(TODO_APPROVE_CALLBACK_PREFIX);
-    const isDismiss = data.startsWith(TODO_DISMISS_CALLBACK_PREFIX);
-    if (!isApprove && !isDismiss) {
-      await ctx.answerCallbackQuery();
-      return;
-    }
-
-    const todoId = data.slice(
-      (isApprove ? TODO_APPROVE_CALLBACK_PREFIX : TODO_DISMISS_CALLBACK_PREFIX)
-        .length,
-    );
-    const userCtx: BotUserContext = {
-      platform: "telegram",
-      platformUserId: userId,
-    };
-
-    try {
-      if (isApprove) {
-        await this.gaia.approveTodo(todoId, userCtx);
-      } else {
-        await this.gaia.dismissTodo(todoId, userCtx);
-      }
-      await this.finishTodoActionCallback(
-        ctx,
-        isApprove ? "✓ Approved" : "✗ Dismissed",
-      );
-    } catch (error) {
-      if (error instanceof GaiaQuotaError) {
-        await ctx.answerCallbackQuery({
-          text: error.pitch.slice(0, TELEGRAM_CALLBACK_ANSWER_MAX_CHARS),
-          show_alert: true,
-        });
-        return;
-      }
-      const status = getHttpStatus(error);
-      if (status === 401 || status === 403) {
-        await ctx.answerCallbackQuery({
-          text: "Please link your GAIA account first — send /auth.",
-          show_alert: true,
-        });
-        return;
-      }
-      this.adapterLogger.error(
-        "todo_action_callback_failed",
-        {
-          user_hash: hashLogIdentifier(userId),
-          action: isApprove ? "approve" : "dismiss",
-        },
-        error,
-      );
-      await ctx.answerCallbackQuery({
-        text: "Something went wrong. Please try again from the dashboard.",
-        show_alert: true,
-      });
-    }
-  }
-
-  /**
-   * Appends the outcome to the tapped message (replacing its keyboard with a
-   * disabled status button) and acknowledges the callback query. Reuses the
-   * message's original entities so the appended plain-text line doesn't
-   * require re-parsing (and can't break) the existing HTML formatting.
-   */
-  private async finishTodoActionCallback(
-    ctx: Context,
-    suffix: string,
-  ): Promise<void> {
-    const message = ctx.callbackQuery?.message;
-    if (message && "text" in message && message.text) {
-      try {
-        await ctx.api.editMessageText(
-          message.chat.id,
-          message.message_id,
-          `${message.text}\n\n${suffix}`,
-          {
-            entities: message.entities,
-            reply_markup: new InlineKeyboard().text(
-              suffix,
-              TODO_ACTION_DONE_CALLBACK,
-            ),
-          },
-        );
-      } catch (e) {
-        this.adapterLogger.error("todo_action_edit_failed", undefined, e);
-      }
-    }
-    await ctx.answerCallbackQuery({ text: suffix });
   }
 
   /**

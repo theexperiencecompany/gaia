@@ -132,12 +132,6 @@ export interface BotTodoListResponse {
   total: number;
 }
 
-/** Result of a GAIA todo lifecycle transition (`approve`/`dismiss`). */
-export interface TodoActionResult {
-  todoId: string;
-  executionStatus: string;
-}
-
 export interface BotCreateTodoRequest {
   title: string;
   description?: string;

@@ -207,11 +207,10 @@ async def _pending_proposals(user_id: str) -> list[dict]:
 
 
 # Chat platforms show the staged work itself, never a description of it: nobody
-# approves an email they have not seen. Excerpts are cut from the canvas by
-# code, so they cannot be embellished.
-_STAGED_EXCERPT_CHARS = 900
-
-
+# approves an email they have not seen. The FULL canvas goes out — never
+# truncated (the bot consumer chunks long messages), because you cannot review
+# what you cannot read. Content is copied verbatim from the canvas by code, so
+# it cannot be embellished.
 def _staged_content_parts(proposals: list[dict]) -> list[str]:
     parts: list[str] = []
     for doc in proposals:
@@ -219,11 +218,7 @@ def _staged_content_parts(proposals: list[dict]) -> list[str]:
         if not canvas:
             continue
         title = doc.get("title", "proposal")
-        excerpt = canvas[:_STAGED_EXCERPT_CHARS].strip()
-        suffix = (
-            "\n…(truncated — reply to see the rest)" if len(canvas) > _STAGED_EXCERPT_CHARS else ""
-        )
-        parts.append(f'What "{title}" will send, for your review:\n\n{excerpt}{suffix}')
+        parts.append(f'What "{title}" will send, for your review:\n\n{canvas}')
     return parts
 
 

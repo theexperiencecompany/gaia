@@ -36,7 +36,7 @@
 import { Analytics, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
-import type { OutboundAction, OutboundAttachment } from "../consumer/envelope";
+import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import type {
   BotCommand,
@@ -235,7 +235,7 @@ export abstract class BaseBotAdapter {
     this._outboundConsumer = new OutboundConsumer(
       this.platform,
       url,
-      (id, text, actions) => this.deliverOutbound(id, text, actions),
+      (id, text) => this.deliverOutbound(id, text),
       (id, attachment) => this.deliverOutboundFile(id, attachment),
     );
     void this._outboundConsumer.start();
@@ -290,15 +290,10 @@ export abstract class BaseBotAdapter {
    * platform. Called by the outbound RabbitMQ consumer for backend-originated
    * messages. The text has already been run through `renderForPlatform` — do
    * not convert it again; just hand it to the platform SDK.
-   *
-   * `actions`, when present, are interactive buttons to attach to the message
-   * (e.g. a Telegram inline keyboard). Platforms without button support ignore
-   * them.
    */
   protected abstract deliverOutbound(
     destinationId: string,
     text: string,
-    actions?: OutboundAction[],
   ): Promise<void>;
 
   /**
