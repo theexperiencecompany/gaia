@@ -11,9 +11,9 @@ interface UseTodoCanvasOptions {
 
 /**
  * Fetches a todo's `canvas.md` (GAIA's working memory / work log for that
- * task). Shared by `CanvasViewer` (click-to-open modal) and `WorkLogSection`
- * (always-rendered inline section) so both read the same content and retry
- * behavior instead of forking the fetch logic.
+ * task). Shared by `WorkLogSection` (always-rendered inline section) and
+ * `TodoProposalActions` (on-demand preview) so every consumer reads the
+ * same content and retry behavior instead of forking the fetch logic.
  */
 export function useTodoCanvas(
   todoId: string,

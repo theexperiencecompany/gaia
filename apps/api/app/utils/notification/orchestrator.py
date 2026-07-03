@@ -31,6 +31,7 @@ from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.channels import (
     ChannelAdapter,
     DiscordChannelAdapter,
+    EmailChannelAdapter,
     InAppChannelAdapter,
     SlackChannelAdapter,
     TelegramChannelAdapter,

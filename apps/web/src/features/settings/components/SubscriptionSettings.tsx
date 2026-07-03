@@ -118,7 +118,7 @@ export function SubscriptionSettings() {
               color="primary"
               className="w-full font-semibold text-black"
               size="sm"
-              onPress={handleUpgrade}
+              onPress={() => handleUpgrade()}
             >
               View plans
             </Button>
@@ -279,7 +279,7 @@ export function SubscriptionSettings() {
           <Button
             color="primary"
             variant="flat"
-            onPress={handleUpgrade}
+            onPress={() => handleUpgrade()}
             size="sm"
             className="w-full"
           >

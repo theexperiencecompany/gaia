@@ -62,7 +62,7 @@ export default function UsageSettings() {
                 color="primary"
                 className="font-medium"
                 size="sm"
-                onPress={openPricingModal}
+                onPress={() => openPricingModal()}
               >
                 Upgrade Now
               </Button>

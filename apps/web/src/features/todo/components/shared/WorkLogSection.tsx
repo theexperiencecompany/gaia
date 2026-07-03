@@ -12,8 +12,8 @@ interface WorkLogSectionProps {
 
 /**
  * Always-visible "work log" for a GAIA-assigned todo — GAIA's canvas.md
- * rendered inline in the detail view, rather than behind a click-to-open
- * modal (see `CanvasViewer`, which uses the same `useTodoCanvas` fetch).
+ * rendered inline in the detail view via `useTodoCanvas`, instead of behind
+ * a click-to-open modal.
  */
 const WorkLogSection: React.FC<WorkLogSectionProps> = ({ todoId }) => {
   const { content, isLoading, hasError } = useTodoCanvas(todoId, {
