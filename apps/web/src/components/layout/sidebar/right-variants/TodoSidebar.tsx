@@ -153,15 +153,6 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                 </div>
               )}
               {isGaiaTodo && (
-                <div className="mt-2">
-                  <GaiaTodoBadge
-                    kind={todo.kind}
-                    assignee={todo.assignee}
-                    vfsPath={todo.vfs_path}
-                  />
-                </div>
-              )}
-              {isGaiaTodo && (
                 <GaiaTodoMeta
                   serves={todo.serves}
                   errorMessage={
@@ -215,8 +206,15 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           {/* Work log — GAIA's canvas.md, always visible for gaia-assigned todos */}
           {isGaiaTodo && <WorkLogSection todoId={todo.id} />}
 
-          {/* Editable Fields */}
-          <div className="py-2">
+          {/* Editable fields, with the GAIA identity badge grouped alongside. */}
+          <div className="flex flex-wrap items-center gap-2 py-2">
+            {isGaiaTodo && (
+              <GaiaTodoBadge
+                kind={todo.kind}
+                assignee={todo.assignee}
+                vfsPath={todo.vfs_path}
+              />
+            )}
             <TodoFieldsRow
               priority={todo.priority}
               projectId={todo.project_id}
