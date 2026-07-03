@@ -246,7 +246,7 @@ async def approve(todo_id: str, user_id: str, user_plan: PlanType, channel: str 
             "upgrade_prompt_shown",
             {"todo_id": todo_id, "feature": GAIA_TODO_EXECUTIONS_FEATURE, "channel": channel},
         )
-        detail = e.detail if isinstance(e.detail, dict) else {}
+        detail: dict = e.detail if isinstance(e.detail, dict) else {}
         raise ExecutionQuotaError(
             todo_id=todo_id,
             reset_time=detail.get("reset_time"),

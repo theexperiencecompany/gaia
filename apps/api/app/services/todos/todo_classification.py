@@ -44,11 +44,16 @@ async def classify_new_todo(
         return
     try:
         structured = llm.with_structured_output(TodoClassificationOutput)
-        result: TodoClassificationOutput = await asyncio.wait_for(
+        raw = await asyncio.wait_for(
             structured.ainvoke(
                 _CLASSIFY_PROMPT.format(title=title, description=description or "—")
             ),
             timeout=_CLASSIFY_TIMEOUT_SECONDS,
+        )
+        result = (
+            raw
+            if isinstance(raw, TodoClassificationOutput)
+            else TodoClassificationOutput.model_validate(raw)
         )
     except Exception as e:
         # Classification is a best-effort enhancement over an already-created

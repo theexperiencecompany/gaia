@@ -3,30 +3,16 @@
 Retention/conversion events are emitted at state transitions on the server —
 never from the client — so approve rate, activation, and quota conversion are
 derived from one trustworthy source. No-ops silently when PostHog is not
-configured (dev without keys), but never swallows unexpected errors from our
-own call sites.
+configured (dev without keys).
 """
 
-from posthog import Posthog
-
-from app.config.posthog import init_posthog
+from app.core.lazy_loader import providers
 from shared.py.wide_events import log
-
-_client: Posthog | None = None
-_initialized = False
-
-
-def _get_client() -> Posthog | None:
-    global _client, _initialized
-    if not _initialized:
-        _client = init_posthog()
-        _initialized = True
-    return _client
 
 
 def track(user_id: str, event: str, properties: dict | None = None) -> None:
     """Emit one analytics event for a user. Silent no-op when unconfigured."""
-    client = _get_client()
+    client = providers.get("posthog") if providers.is_available("posthog") else None
     if client is None:
         return
     try:
