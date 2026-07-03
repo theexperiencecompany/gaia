@@ -30,7 +30,7 @@ from app.constants.notifications import (
 )
 from app.db.mongodb.collections import users_collection
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -96,9 +96,11 @@ async def _generate_payload(
     # worker uses for call_agent_silent).
     from app.agents.core.agent import call_agent_silent
 
+    # construct_langchain_messages reads the human turn from `messages`
+    # (`message` alone is not consulted when no workflow/tool is selected).
     request = MessageRequestWithHistory(
         message=prompt,
-        messages=[],
+        messages=[MessageDict(role="user", content=prompt)],
         fileIds=[],
         fileData=[],
         selectedTool=None,
