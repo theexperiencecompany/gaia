@@ -18,6 +18,10 @@ from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoResponse
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
+from app.services.todos.gaia_todo_lifecycle import (
+    BudgetExceededError,
+    TraceabilityError,
+)
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import search_canvas_context
@@ -407,6 +411,21 @@ def _format_create_output(
 async def create_tracked_todo(
     config: RunnableConfig,
     title: Annotated[str, "Short title for the tracked todo"],
+    serves: Annotated[
+        str,
+        "REQUIRED traceability: the goal, memory item, or explicit user request "
+        "this todo advances (e.g. 'raising a pre-seed round'). Shown to the user "
+        "as 'because: ...'. Creation is rejected when empty.",
+    ],
+    requires_approval: Annotated[
+        bool,
+        "Approval rule (outward-visibility): True when executing this todo takes "
+        "an action the outside world can see - sending email/DMs, posting, "
+        "inviting others to events, spending money. The todo then enters "
+        "'proposed' and waits for the user's Approve tap. False when the work is "
+        "visible only to the user and GAIA - research, drafts, triage, prep - "
+        "which enters 'queued' and executes without permission.",
+    ],
     description: Annotated[
         str | None,
         "Optional description of what this todo is tracking",
@@ -508,14 +527,19 @@ async def create_tracked_todo(
     except ValueError:
         return f"Error: invalid priority '{priority}'. Use one of: high, medium, low, none"
 
-    result = await tracked_todo_service.create_tracked_todo(
-        user_id=user_id,
-        title=title,
-        description=description,
-        initial_canvas=initial_canvas,
-        labels=labels,
-        priority=parsed_priority,
-    )
+    try:
+        result = await tracked_todo_service.create_tracked_todo(
+            user_id=user_id,
+            title=title,
+            serves=serves,
+            requires_approval=requires_approval,
+            description=description,
+            initial_canvas=initial_canvas,
+            labels=labels,
+            priority=parsed_priority,
+        )
+    except (TraceabilityError, BudgetExceededError) as e:
+        return f"Error: {e}"
 
     persist_error = await _persist_scheduling_fields(
         result.id, parsed_scheduled_at, recurrence, expires_at

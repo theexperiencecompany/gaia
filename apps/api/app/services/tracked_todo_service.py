@@ -21,6 +21,7 @@ from app.constants.todos import (
     ASSIGNEE_GAIA,
     CANVAS_TEMPLATE,
     GAIA_TRACKED_LABEL,
+    gaia_assigned_filter,
 )
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import ExecutionStatus, Priority, TodoModel, TodoResponse
@@ -282,19 +283,30 @@ class TrackedTodoService:
         cursor = todos_collection.find(
             {
                 "user_id": user_id,
-                "labels": GAIA_TRACKED_LABEL,
                 "completed": False,
+                # Dismissed/expired proposals are terminal — never re-surface
+                # them to the agent (they teach via the strike summary instead).
+                "execution_status": {
+                    "$nin": [
+                        ExecutionStatus.DISMISSED.value,
+                        ExecutionStatus.EXPIRED.value,
+                    ]
+                },
+                **gaia_assigned_filter(),
             }
         ).sort("updated_at", -1)
         docs = await cursor.to_list(length=15)
+        strikes = await lifecycle.get_rejection_strikes_summary(user_id)
         if not docs:
-            return ""
+            return f"\n{strikes}" if strikes else ""
 
         _pin_active_todo(docs, active_todo_id)
 
         now = datetime.now(UTC)
         lines = ["ACTIVE TRACKED TODOS:"]
         lines.extend(_format_tracked_todo_line(doc, now, active_todo_id) for doc in docs)
+        if strikes:
+            lines.append(strikes)
         return "\n".join(lines)
 
     @staticmethod
