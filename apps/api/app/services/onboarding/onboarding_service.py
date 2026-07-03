@@ -28,6 +28,7 @@ from app.services.onboarding.intelligence_job import (
     enqueue_intelligence_job,
 )
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
+from app.services.system_workflows.provisioner import provision_briefing_workflows
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -156,6 +157,11 @@ async def complete_onboarding(
         # run sees it. Deferred so a memory failure can't fail onboarding.
         if goal:
             background_tasks.add_task(_seed_goal_memory, user_id, goal)
+
+        # Provision the daily-briefing + weekly-digest system workflows so the
+        # first briefing fires the next morning. Deferred so a provisioning
+        # failure can't fail onboarding; idempotent by system_workflow_key.
+        background_tasks.add_task(provision_briefing_workflows, user_id)
 
         log.info(f"{LogTag.ONBOARDING} Onboarding completed successfully for user {user_id}")
         return _serialize_user(updated_user)

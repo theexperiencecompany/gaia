@@ -18,8 +18,8 @@ DAILY_BRIEFING_CRON: Final[str] = "0 8 * * *"  # every day 08:00
 WEEKLY_DIGEST_CRON: Final[str] = "0 17 * * 0"  # Sunday 17:00
 
 # Briefing kinds — key the payload variant and the unique-per-day constraint.
-BRIEFING_KIND_DAILY: Final[str] = "daily"
-BRIEFING_KIND_WEEKLY: Final[str] = "weekly"
+BRIEFING_KIND_DAILY: Final[Literal["daily"]] = "daily"
+BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
 
 # The you-item budget the prompt is held to (max user-facing asks per brief).
 MAX_YOU_ITEMS: Final[int] = 3
