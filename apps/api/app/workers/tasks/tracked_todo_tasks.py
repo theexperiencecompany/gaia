@@ -290,6 +290,29 @@ async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
     return "\n\nPast experience (from similar completed todos):\n" + "\n\n".join(ref_parts)
 
 
+# How to save results. The deliverable is the whole point — it is what the user
+# sees and what Approve releases — so it must be the finished output, clean and
+# complete, kept apart from GAIA's scratch. This directive is what stops the
+# canvas from becoming a mixed blob of research + logs + half-drafts.
+_FACET_AUTHORING_DIRECTIVE = (
+    "This is a background prep run. Do the REAL work — research the web, draft, "
+    "compile — and never invent facts (no fabricated names, numbers, or quotes; "
+    "if you can't verify it, leave it out). When you have results, save them with "
+    "update_tracked_todo_canvas, choosing the facet deliberately:\n"
+    "- deliverable: the finished, user-facing output itself — the actual vetted "
+    "list, the actual drafts, the actual posts or document — complete and ready "
+    "to use or send. NO placeholders like [Name] or [industry], no 'Activity "
+    "Log'/'Timeline' sections, no research scratch. Keep ONE clean version "
+    "(use mode='replace' or the 'deliverable' facet directly; don't stack "
+    "versions). This is exactly what the user reads and approves.\n"
+    "- notes: your working memory — the plan, key IDs, research findings, and "
+    "decisions behind the deliverable.\n"
+    "- log: one short line of what you did this run.\n"
+    "If a real value doesn't exist yet, do the work to get it — never ship a "
+    "placeholder in the deliverable."
+)
+
+
 def _build_execution_prompt(
     *,
     title: str,
@@ -308,6 +331,7 @@ def _build_execution_prompt(
         prompt_parts.append(f"Current deliverable:\n{deliverable}")
     if reference_context:
         prompt_parts.append(reference_context)
+    prompt_parts.append(_FACET_AUTHORING_DIRECTIVE)
     return "\n\n".join(prompt_parts)
 
 

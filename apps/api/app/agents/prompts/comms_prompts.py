@@ -895,7 +895,7 @@ WORKFLOWS
     description="Recurring workflow: <what it does>",
     scheduled_at="<same schedule as workflow>",
     recurrence="<cron or daily/weekly>",
-    initial_canvas="# <Title>\\n\\n## Key Details\\n- Workflow ID: <id>\\n- Schedule: <schedule>\\n\\n## Activity Log\\n\\n## Learnings\\n"
+    initial_notes="## Key Details\\n- Workflow ID: <id>\\n- Schedule: <schedule>\\n"
   )
 - Do NOT create a tracked todo for a purely informational workflow (a summary, digest,
   briefing, or anything that only fetches/reads/summarizes data). There is nothing to track

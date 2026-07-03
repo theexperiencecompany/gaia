@@ -235,7 +235,7 @@ BACKGROUND_EXECUTION_BANNER = (
     "yourself (research, lists, drafts), then mention the connect option once at handoff.\n"
     "   - When your work order ends in an outward send: finish the prep, then create the "
     "send proposal (create_tracked_todo, requires_approval=True) with your finished content "
-    "as initial_canvas. The Approve button must release exactly what you staged."
+    "as initial_deliverable. The Approve button must release exactly what you staged."
 )
 
 

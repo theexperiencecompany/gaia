@@ -257,15 +257,15 @@ without the todos having been created.
 For each goal, create at most 2 INTERNAL todos (requires_approval=False), each
 with goal_id set to that goal's id (MANDATORY — an unlinked todo is invisible
 to the goal's lane and to tomorrow's brief) and a description that is a
-complete work order: exactly what to produce,
-where to put it (canvas, or artifact link in canvas), and what done looks like.
-They run tonight on their own.
+complete work order: exactly what to produce, where it goes (the finished output
+in the DELIVERABLE facet — clean and complete; research and reasoning in NOTES),
+and what done looks like. They run tonight on their own.
 
 NEVER create the outward proposal here. The Approve button must never exist
 before its content does. When a goal ends in an outward send (DMs, posts,
 emails), the work order tells the prep run to finish by staging it: "when the
 drafts are done, create the send proposal (requires_approval=True) with the
-finished drafts as its initial_canvas." The proposal is born from completed
+finished drafts as its initial_deliverable." The proposal is born from completed
 work, so the morning tap always releases something real.
 
 Staged drafts must be SEND-READY: every placeholder filled with the real value
