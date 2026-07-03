@@ -28,7 +28,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.constants.todos import gaia_assigned_filter
+from app.constants.todos import MAX_PENDING_PROPOSALS, gaia_assigned_filter
 from app.db.mongodb.collections import todos_collection, users_collection
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
 from app.models.message_models import MessageDict, MessageRequestWithHistory
