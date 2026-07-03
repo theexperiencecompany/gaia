@@ -61,9 +61,14 @@ describe("isSafeInternalPath", () => {
     expect(isSafeInternalPath("/a/b/c")).toBe(true);
   });
 
+  it("accepts an absolute path with a query string", () => {
+    expect(isSafeInternalPath("/settings?tab=1")).toBe(true);
+  });
+
   it.each([
     "//evil.com",
     "/\\evil.com",
+    "/\t/evil.com", // whitespace-smuggled protocol-relative
     "https://evil.com",
     "todos",
     "",

@@ -55,9 +55,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const formData = await request.formData();
 
-  // Normalize the join so a base URL with or without a trailing slash both
-  // resolve to a single `/blogs`.
-  const backendUrl = `${API_BASE_URL.replace(/\/$/, "")}/blogs`;
+  // Build the target via the URL parser (keeps scheme/host/port/query intact),
+  // appending `/blogs` regardless of whether the base has a trailing slash.
+  const backendUrl = new URL(API_BASE_URL);
+  backendUrl.pathname = `${backendUrl.pathname.replace(/\/+$/, "")}/blogs`;
 
   const backendResponse = await fetch(backendUrl, {
     method: "POST",

@@ -36,12 +36,24 @@ export function sanitizeRedirectUrl(url: string): string | null {
 }
 
 /**
- * Returns true only for safe internal relative paths — a single leading slash
- * that is not protocol-relative (`//`) or backslash-escaped (`/\`).
+ * Returns true only for safe internal relative paths — an absolute path that
+ * stays on the current origin.
+ *
+ * Resolves the path against a placeholder origin via the URL parser and checks
+ * the origin is unchanged. A genuine same-origin path keeps that origin;
+ * protocol-relative (`//host`), backslash (`/\host`), whitespace-smuggled
+ * (`/\t/host`), and absolute URLs resolve elsewhere. Delegating to the parser
+ * catches normalization tricks that manual prefix checks miss.
  *
  * Use this when navigation must stay same-origin (e.g. router.push from an
  * untrusted payload).
  */
 export function isSafeInternalPath(url: string): boolean {
-  return url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\");
+  if (!url.startsWith("/")) return false;
+  const placeholderOrigin = "https://internal.invalid";
+  try {
+    return new URL(url, placeholderOrigin).origin === placeholderOrigin;
+  } catch {
+    return false;
+  }
 }
