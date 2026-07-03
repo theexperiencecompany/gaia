@@ -14,6 +14,7 @@ from enum import Enum
 from bson import ObjectId
 
 from app.db.mongodb.collections import users_collection
+from app.services import first_steps_service
 
 
 class Platform(str, Enum):

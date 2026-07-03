@@ -18,8 +18,8 @@ GAIA_TRACKED_LABEL: Final[str] = "gaia-tracked"
 # Todo assignee values. ``assignee`` replaces GAIA_TRACKED_LABEL as the
 # discriminator for who owns a todo. Kept as constants (not a magic string)
 # for every read/write filter and lifecycle transition.
-ASSIGNEE_USER: Final[str] = "user"
-ASSIGNEE_GAIA: Final[str] = "gaia"
+ASSIGNEE_USER: Final = "user"
+ASSIGNEE_GAIA: Final = "gaia"
 
 # Server-enforced budgets on GAIA-assigned todos. Scarcity forces the agent to
 # rank rather than spawn junk (see tracked_todo_service creation gate).

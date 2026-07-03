@@ -17,8 +17,10 @@ from pymongo.errors import OperationFailure
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     ai_models_collection,
+    awards_collection,
     blog_collection,
     bot_sessions_collection,
+    briefings_collection,
     calendars_collection,
     conversations_collection,
     device_tokens_collection,

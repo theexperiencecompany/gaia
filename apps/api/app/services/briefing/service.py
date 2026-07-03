@@ -24,6 +24,10 @@ from app.constants.briefing import (
     MINUTES_SAVED_PER_GAIA_TODO,
     hue_for_day,
 )
+from app.constants.notifications import (
+    NOTIFICATION_KIND_BRIEFING_DAILY,
+    NOTIFICATION_KIND_BRIEFING_WEEKLY,
+)
 from app.db.mongodb.collections import users_collection
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
 from app.models.message_models import MessageRequestWithHistory
@@ -163,8 +167,16 @@ def _delivery_body(payload: BriefingPayload) -> str:
     return "\n\n".join(parts)
 
 
-async def _deliver(user_id: str, briefing: BriefingModel, payload: BriefingPayload) -> list[str]:
-    """Fan out the briefing via the notification orchestrator (in-app + platforms)."""
+async def _deliver(
+    user_id: str, briefing: BriefingModel, payload: BriefingPayload, notification_kind: str
+) -> list[str]:
+    """Fan out the briefing via the notification orchestrator (in-app + platforms).
+
+    ``metadata.kind`` selects the email template and ``content.rich_content``
+    carries the full payload the email adapter renders — both are the delivery
+    contract the channels layer keys off (without them email falls back to the
+    plain template).
+    """
     record = await notification_service.create_notification(
         NotificationRequest(
             user_id=user_id,
@@ -174,6 +186,7 @@ async def _deliver(user_id: str, briefing: BriefingModel, payload: BriefingPaylo
             content=NotificationContent(
                 title=payload.headline,
                 body=_delivery_body(payload),
+                rich_content=payload.model_dump(),
                 actions=[
                     NotificationAction(
                         type=ActionType.REDIRECT,
@@ -189,7 +202,11 @@ async def _deliver(user_id: str, briefing: BriefingModel, payload: BriefingPaylo
                     )
                 ],
             ),
-            metadata={"briefing_id": briefing.id, "kind": briefing.kind, "date": briefing.date},
+            metadata={
+                "kind": notification_kind,
+                "briefing_id": briefing.id,
+                "date": briefing.date,
+            },
         )
     )
     channels = [c.channel_type for c in getattr(record, "channels", [])] if record else []
@@ -277,7 +294,7 @@ async def run_daily_briefing(user_id: str) -> None:
     briefing = await repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_DAILY, payload
     )
-    channels = await _deliver(user_id, briefing, payload)
+    channels = await _deliver(user_id, briefing, payload, NOTIFICATION_KIND_BRIEFING_DAILY)
     await repository.set_delivered_channels(user_id, clock.date_str, BRIEFING_KIND_DAILY, channels)
     await _clear_bootstrap(user_id, user)
 
@@ -318,7 +335,7 @@ async def run_weekly_digest(user_id: str) -> None:
     briefing = await repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload
     )
-    channels = await _deliver(user_id, briefing, payload)
+    channels = await _deliver(user_id, briefing, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY)
     await repository.set_delivered_channels(user_id, clock.date_str, BRIEFING_KIND_WEEKLY, channels)
 
     track(

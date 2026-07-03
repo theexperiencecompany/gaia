@@ -159,10 +159,11 @@ async def get_heatmap(
     ]
 
     streak = 0
-    for entry in reversed(day_list):
-        if entry["user_count"] + entry["gaia_count"] > 0:
+    for offset in range(days):
+        bucket = counts.get((today - timedelta(days=offset)).isoformat())
+        if bucket and bucket["user_count"] + bucket["gaia_count"] > 0:
             streak += 1
-        elif entry["date"] == today.isoformat():
+        elif offset == 0:
             # An empty today doesn't break the streak yet — the day isn't over.
             continue
         else:
