@@ -73,6 +73,16 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Real-time voice conversations with GAIA",
         ),
     ),
+    # GAIA TODO EXECUTIONS (free→pro conversion surface: the hook is free, the
+    # labor is metered — monthly-only on free so each approve is felt)
+    "gaia_todo_executions": TieredRateLimits(
+        free=RateLimitConfig(day=0, month=5),
+        pro=RateLimitConfig(day=100, month=1500),
+        info=FeatureInfo(
+            title="GAIA Todo Executions",
+            description="Approve GAIA to execute todos on your behalf",
+        ),
+    ),
     # FILE OPERATIONS (Expensive - Storage & Processing)
     "file_upload": TieredRateLimits(
         free=RateLimitConfig(day=2, month=5),  # Keep restrictive
