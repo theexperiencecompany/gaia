@@ -7,6 +7,8 @@ interface GaiaTodoBadgeProps {
   kind?: "task" | "goal";
   assignee?: string;
   vfsPath?: string | null;
+  /** "sm" for the compact list row, "md" to match the sidebar field chips. */
+  size?: "sm" | "md";
 }
 
 /**
@@ -14,12 +16,17 @@ interface GaiaTodoBadgeProps {
  * GAIA-assigned task. Shared so the list row and the detail sidebar render the
  * exact same badge and never drift.
  */
-export function GaiaTodoBadge({ kind, assignee, vfsPath }: GaiaTodoBadgeProps) {
+export function GaiaTodoBadge({
+  kind,
+  assignee,
+  vfsPath,
+  size = "sm",
+}: GaiaTodoBadgeProps) {
   if (kind === "goal") {
     return (
       <Chip
         className="flex items-center px-1 text-warning"
-        size="sm"
+        size={size}
         radius="sm"
         color="warning"
         variant="flat"
@@ -34,7 +41,7 @@ export function GaiaTodoBadge({ kind, assignee, vfsPath }: GaiaTodoBadgeProps) {
     return (
       <Chip
         className="flex items-center px-1 text-primary"
-        size="sm"
+        size={size}
         radius="sm"
         color="primary"
         variant="flat"

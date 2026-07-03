@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Cancel01Icon, CheckmarkCircle02Icon } from "@icons";
+import { AnimatePresence, m } from "motion/react";
 import type React from "react";
 import { useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
@@ -84,11 +85,21 @@ export const TodoProposalActions: React.FC<TodoProposalActionsProps> = ({
         </Button>
       </div>
 
-      {expanded && (
-        <div className="mt-2 rounded-2xl bg-zinc-900 p-3 text-xs text-zinc-400">
-          {isLoading && !previewText ? "Loading preview..." : previewText}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <m.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="mt-2 max-h-48 overflow-y-auto rounded-2xl bg-zinc-900 p-3 text-xs text-zinc-400">
+              {isLoading && !previewText ? "Loading preview..." : previewText}
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

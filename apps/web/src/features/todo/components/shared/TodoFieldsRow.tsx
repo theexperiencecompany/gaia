@@ -23,6 +23,9 @@ interface TodoFieldsRowProps {
   onLabelsChange: (labels: string[]) => void;
   className?: string;
   userTimezone?: string; // User's preferred timezone
+  /** Optional leading chip(s) (e.g. the GAIA identity badge) rendered inline
+   * with the field chips so everything sits in one wrapping row. */
+  prefix?: React.ReactNode;
 }
 
 export default function TodoFieldsRow({
@@ -38,9 +41,11 @@ export default function TodoFieldsRow({
   onLabelsChange,
   className,
   userTimezone,
+  prefix,
 }: TodoFieldsRowProps) {
   return (
-    <div className={`flex flex-wrap gap-2 ${className || ""}`}>
+    <div className={`flex flex-wrap items-center gap-2 ${className || ""}`}>
+      {prefix}
       <ProjectFieldChip
         value={projectId}
         projects={projects}

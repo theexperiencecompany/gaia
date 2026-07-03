@@ -30,7 +30,6 @@ import { ExecutionStatusGlyph } from "./shared/ExecutionStatusGlyph";
 import { GaiaOfferBanner } from "./shared/GaiaOfferBanner";
 import { GaiaTodoBadge } from "./shared/GaiaTodoBadge";
 import { GaiaTodoMeta } from "./shared/GaiaTodoMeta";
-import { TodoProposalActions } from "./shared/TodoProposalActions";
 import { TodoTitle } from "./TodoTitle";
 
 interface TodoItemProps {
@@ -147,7 +146,6 @@ export default memo(function TodoItem({
         "pointer-events-auto w-full cursor-pointer rounded-xl p-2 pl-3 mb-0 transition-all group",
         isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50",
         todo.completed && "opacity-30",
-        isProposed && "border-l-2 border-violet-500/50 bg-violet-500/5",
         className,
       )}
       style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
@@ -187,6 +185,17 @@ export default memo(function TodoItem({
               {isGaiaTodo && (
                 <ExecutionStatusGlyph status={todo.execution_status} />
               )}
+              {isProposed && (
+                <Chip
+                  className="ml-auto shrink-0"
+                  size="sm"
+                  radius="sm"
+                  color="warning"
+                  variant="flat"
+                >
+                  Needs approval
+                </Chip>
+              )}
             </div>
             {todo.description && (
               <p className="mt-1 text-xs text-zinc-500 line-clamp-1">
@@ -201,12 +210,6 @@ export default memo(function TodoItem({
                 errorMessage={
                   todo.execution_status === "failed" ? todo.error_message : null
                 }
-              />
-            )}
-            {isProposed && (
-              <TodoProposalActions
-                todoId={todo.id}
-                fallbackPreview={todo.description}
               />
             )}
             {!isGaiaTodo && todo.gaia_offer && (

@@ -2,7 +2,7 @@
 
 import { Link } from "@heroui/link";
 import { Skeleton } from "@heroui/skeleton";
-import { CheckmarkCircle02Icon, CircleIcon } from "@icons";
+import { CheckmarkCircle02Icon, CircleIcon, Clock01Icon } from "@icons";
 import { ExecutionStatusGlyph } from "@/features/todo/components/shared/ExecutionStatusGlyph";
 import { cn } from "@/lib/utils";
 import type {
@@ -114,11 +114,18 @@ export function TodayTimeline({ data, isLoading }: TodayTimelineProps) {
 
   return (
     <div className="rounded-2xl bg-zinc-800 p-4">
-      <p className="mb-3 text-sm font-semibold text-zinc-100">Today</p>
+      <div className="mb-3 flex items-center gap-2">
+        <Clock01Icon className="size-4 text-zinc-500" />
+        <p className="text-sm font-semibold text-zinc-100">Today</p>
+        {items.length > 0 && (
+          <span className="text-xs text-zinc-500">{items.length}</span>
+        )}
+      </div>
       {items.length === 0 ? (
-        <p className="rounded-2xl bg-zinc-900 p-4 text-sm text-zinc-500">
-          Nothing on the board yet today.
-        </p>
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-zinc-900 py-8 text-center">
+          <CircleIcon className="size-5 text-zinc-600" />
+          <p className="text-sm text-zinc-400">Nothing on the board yet</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {items.map((item, index) => (

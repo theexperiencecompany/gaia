@@ -2,6 +2,8 @@
 
 import { Link } from "@heroui/link";
 import { Skeleton } from "@heroui/skeleton";
+import { AlertCircleIcon, CheckmarkCircle02Icon, Flag02Icon } from "@icons";
+import { ExecutionStatusGlyph } from "@/features/todo/components/shared/ExecutionStatusGlyph";
 import { TodoProposalActions } from "@/features/todo/components/shared/TodoProposalActions";
 import type {
   DashboardTodayItem,

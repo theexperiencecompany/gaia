@@ -53,7 +53,7 @@ export function ContributionHeatmap({
   if (isLoading) {
     return (
       <div className="rounded-2xl bg-zinc-800 p-4">
-        <Skeleton className="h-32 rounded-2xl" />
+        <Skeleton className="h-14 rounded-2xl" />
       </div>
     );
   }
@@ -62,18 +62,17 @@ export function ContributionHeatmap({
   const weeks = toWeekColumns(days);
 
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4">
-      <div className="mb-3 flex items-center justify-between">
+    <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-zinc-800 p-4">
+      <div className="flex shrink-0 items-center gap-2">
         <p className="text-sm font-semibold text-zinc-100">Activity</p>
         {typeof data?.streak === "number" && data.streak > 0 && (
-          <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-            <FireIcon className="size-3.5 text-amber-400" />
-            <span className="font-medium text-zinc-200">{data.streak}</span>
-            <span>day streak</span>
-          </div>
+          <span className="flex items-center gap-1 rounded-full bg-amber-400/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+            <FireIcon className="size-3" />
+            {data.streak}d streak
+          </span>
         )}
       </div>
-      <div className="overflow-x-auto rounded-2xl bg-zinc-900 p-3">
+      <div className="min-w-0 flex-1 overflow-x-auto rounded-2xl bg-zinc-900 p-2">
         <div className="flex w-fit gap-[3px]">
           {weeks.map((week) => (
             <div
