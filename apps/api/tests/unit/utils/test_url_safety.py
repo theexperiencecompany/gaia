@@ -22,6 +22,8 @@ BLOCKED_LITERAL_HOSTS = [
     "https://169.254.169.254/",  # link-local / cloud metadata
     "https://0.0.0.0/",  # unspecified
     "https://[fe80::1]/",  # link-local v6
+    "https://100.64.0.1/",  # CGNAT / shared address space (RFC 6598)
+    "https://198.18.0.1/",  # benchmarking (RFC 2544)
 ]
 
 BAD_SCHEME_URLS = [

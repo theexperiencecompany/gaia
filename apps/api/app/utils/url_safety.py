@@ -37,14 +37,12 @@ def _parse_http_host_port(url: str) -> tuple[str, int]:
 
 
 def _assert_ip_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
-    if (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    ):
+    # ``is_global`` is the stdlib's single source of truth for "publicly
+    # routable". It rejects private, loopback, link-local (incl. the cloud
+    # metadata address 169.254.169.254), reserved, multicast and unspecified
+    # ranges — plus ones an explicit list is easy to forget: CGNAT
+    # (100.64.0.0/10) and benchmarking (198.18.0.0/15).
+    if not ip.is_global:
         raise ValueError(f"refusing to connect to non-public address {ip}")
 
 

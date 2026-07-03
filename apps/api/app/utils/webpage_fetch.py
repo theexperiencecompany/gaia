@@ -24,6 +24,7 @@ from app.constants.cache import WEBPAGE_FETCH_CACHE_TTL
 from app.constants.search import (
     CRAWL4AI_PAGE_TIMEOUT_MS,
     CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
+    MAX_HTTPX_REDIRECTS,
 )
 from app.decorators.caching import Cacheable
 from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
@@ -40,7 +41,6 @@ _BROWSER_HEADERS = {
     "Accept-Language": "en-US,en;q=0.5",
 }
 _HTTPX_TIMEOUT = 15.0
-_MAX_HTTPX_REDIRECTS = 5
 _FIRECRAWL_BLOCK_MARKERS = ("401", "403", "500", "blocked", "bot", "timeout")
 _NON_CONTENT_TAGS = ["script", "style", "nav", "footer", "aside", "iframe", "noscript", "head"]
 
@@ -153,7 +153,7 @@ class HttpxFetcher(WebpageFetcher):
         re-run through ``_ensure_url_allowed`` before it is requested.
         """
         await _ensure_url_allowed(url)
-        for _ in range(_MAX_HTTPX_REDIRECTS + 1):
+        for _ in range(MAX_HTTPX_REDIRECTS + 1):
             response = await client.get(url)
             if not response.is_redirect:
                 return response
