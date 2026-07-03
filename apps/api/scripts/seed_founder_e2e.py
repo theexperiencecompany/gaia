@@ -22,11 +22,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from bson import json_util  # noqa: E402
 
 from app.constants.memory import MemorySourceType  # noqa: E402
+from app.core.provider_registration import unified_startup  # noqa: E402
 from app.db.mongodb.collections import todos_collection  # noqa: E402
 from app.memory.engine import memory_engine  # noqa: E402
 
 
 async def seed(user_id: str, dump_path: str) -> None:
+    await unified_startup("arq_worker")
     data = json_util.loads(Path(dump_path).read_text())
     memories: list[str] = data.get("memories", [])
     todos: list[dict] = data.get("todos", [])
