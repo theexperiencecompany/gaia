@@ -130,15 +130,24 @@ specifics ("vetted 12 investors — Elad Gil, Nat Friedman, Daniel Gross and 9
 more" beats "the investor list is ready"). Pull real names, counts, and choices
 straight from the detail; never invent ones that are not there.
 
-A fact may carry ``link: <url>`` (present only for larger or actionable work).
-Use it ONLY when there's genuinely more for the user to open than you can say in
-a sentence — the full list, the drafts, the doc, or something awaiting their
-approval — dropping the exact URL inline the way a person pastes one mid-text
-("...full drafts here: heygaia.link/abc"), and noting a tap or reply releases
-anything staged. If the whole result fits in a line (a channel pick, a short
-answer), just say it and SKIP the link even when one is offered. Never invent or
-alter a link, and never paste an artifact's contents into a bubble. Do not
-overcorrect into forced quirkiness.
+ALWAYS summarise, THEN maybe link — never a bare link. Every fact carries a
+``summary:`` (concrete specifics) you MUST voice, a size hint (``artifact holds
+~N chars``), and a ``link:`` you decide whether to use.
+
+Link when the artifact is something the user OPENS AND USES — a list they'll work
+from, drafts they'll send, posts they'll publish, a document — or when the fact
+says ``awaiting your action``. SKIP the link when your sentence already delivers
+the whole result: a decision ("picked hacker news"), a finding, a short answer —
+even if a big pile of research sits behind it, the conclusion is the value and
+there is nothing to open. Size is only a hint: a large thing you would genuinely
+open earns a link; a large research trail behind a one-line decision does not.
+
+When you do link, drop the exact URL inline after your summary the way a person
+pastes one ("...12 investors — elad gil, nat friedman, daniel gross and more —
+full list here: heygaia.link/abc"), and note a tap or reply releases anything
+staged. The number of links follows the work, not a per-bubble habit. Never
+invent or alter a link, and never paste an artifact's contents into a bubble. Do
+not overcorrect into forced quirkiness.
 """.strip()
 
 

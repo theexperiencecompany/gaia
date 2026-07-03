@@ -7,6 +7,7 @@ stores nothing). Persistence precedes delivery so the dashboard never misses a
 brief that reached a channel.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
 import re
@@ -184,9 +185,25 @@ def _delivery_body(payload: BriefingPayload) -> str:
 
 
 _ARTIFACT_PREVIEW_CHARS = 240
-# Below this canvas size the result is small enough to state inline; at or above,
-# the brief links out so the reader opens the full artifact instead of scrolling.
-_LINK_MIN_CANVAS_CHARS = 500
+# Bookkeeping sections excluded when sizing the DELIVERABLE: a one-line decision
+# behind a long research trail must not read as "massive", so these log/scratch
+# sections don't count toward link-worthiness.
+_BOILERPLATE_SECTIONS = ("activity log", "timeline", "learnings", "context", "system log")
+
+
+@dataclass
+class _ArtifactFact:
+    """What the voice pass balances per item: a concrete summary it always voices,
+    an always-available link, the deliverable size as a HINT (not a verdict — a
+    long research trail behind a one-line decision is not a thing to open), and
+    whether it needs action. The pass summarises everything and links only what's
+    genuinely a deliverable-to-open or awaiting action.
+    """
+
+    snippet: str
+    link: str
+    chars: int
+    action: bool
 
 
 def _canvas_snippet(canvas: str) -> str:
@@ -200,17 +217,34 @@ def _canvas_snippet(canvas: str) -> str:
     return " ".join(lines)[:_ARTIFACT_PREVIEW_CHARS].rstrip()
 
 
+def _deliverable_size(canvas: str) -> int:
+    """Chars of actual deliverable content — the canvas minus its bookkeeping
+    sections — so "massive" tracks the thing the user would open, not the
+    research/logs behind a small stated result."""
+    kept: list[str] = []
+    skipping = False
+    for line in canvas.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            heading = stripped[3:].strip().lower()
+            skipping = any(heading.startswith(b) for b in _BOILERPLATE_SECTIONS)
+        elif not skipping and stripped and not stripped.startswith("<!--"):
+            kept.append(stripped)
+    return len(" ".join(kept))
+
+
 async def _gather_artifacts(
     user_id: str, lanes: list[context.GoalLane]
-) -> dict[str, dict[str, str | None]]:
-    """Per lane item: a concrete content preview and a heygaia.link ONLY when the
-    artifact is large or actionable. Small results are stated inline (no link);
-    big lists/drafts and anything awaiting the user link out to the reader page.
+) -> dict[str, _ArtifactFact]:
+    """Per lane item: a concrete summary, an always-minted heygaia.link, and the
+    two signals the voice pass balances on — is the deliverable big, does it need
+    action. The pass always summarises; it appends the link only for big or
+    actionable items, never a bare link and never one for a small stated result.
     Minting is idempotent per target, so re-running the brief reuses the slug.
     """
-    out: dict[str, dict[str, str | None]] = {}
+    out: dict[str, _ArtifactFact] = {}
     for lane in lanes:
-        actionable_ids = {str(d["_id"]) for d in [*lane.staged, *lane.needs_you]}
+        action_ids = {str(d["_id"]) for d in [*lane.staged, *lane.needs_you]}
         for doc in [
             *lane.completed,
             *lane.staged,
@@ -222,10 +256,12 @@ async def _gather_artifacts(
             if todo_id in out:
                 continue
             canvas = doc.get("canvas_content") or await read_canvas(todo_id, user_id) or ""
-            link: str | None = None
-            if len(canvas) >= _LINK_MIN_CANVAS_CHARS or todo_id in actionable_ids:
-                link = await get_or_create_short_link(user_id, "todo_canvas", todo_id)
-            out[todo_id] = {"snippet": _canvas_snippet(canvas), "link": link}
+            out[todo_id] = _ArtifactFact(
+                snippet=_canvas_snippet(canvas),
+                link=await get_or_create_short_link(user_id, "todo_canvas", todo_id),
+                chars=_deliverable_size(canvas),
+                action=todo_id in action_ids,
+            )
     return out
 
 
@@ -331,23 +367,24 @@ _ROMAN = ["I", "II", "III", "IV", "V", "VI"]
 def _build_facts(
     lanes: list[context.GoalLane],
     curation_note: str,
-    artifacts: dict[str, dict[str, str | None]],
+    artifacts: dict[str, _ArtifactFact],
 ) -> tuple[list[dict], list[dict], str]:
     """Assemble sections + stats deterministically from lane state.
 
-    Returns (sections, stats, facts_block) — the model voices the facts_block
-    but the rendered sections come from here, so the brief cannot lie. Each fact
-    carries a concrete ``detail`` snippet (so the bubble can name specifics) and a
-    ``link`` only where the artifact is large/actionable; the dashboard item also
-    gets the link.
+    Returns (sections, stats, facts_block) — the model voices the facts_block but
+    the rendered sections come from here, so the brief cannot lie. Each fact hands
+    the model a concrete ``summary`` to voice, whether the deliverable is big and
+    whether it needs action, and the link — the model summarises every item and
+    only appends the link for big/actionable ones. The dashboard item carries the
+    link only when it earns one (same rule), never for a small stated result.
     """
     sections: list[dict] = []
     for i, lane in enumerate(lanes):
         items = _lane_items(lane)
         for it in items:
-            art = artifacts.get(it.get("todo_id", "")) or {}
-            if art.get("link"):
-                it["link"] = art["link"]
+            art = artifacts.get(it.get("todo_id", ""))
+            if art:
+                it["link"] = art.link
         if items:
             sections.append(
                 {
@@ -368,12 +405,15 @@ def _build_facts(
     for sec in sections:
         fact_lines.append(f"[{sec['title']}]")
         for it in sec["items"]:
-            art = artifacts.get(it.get("todo_id", "")) or {}
+            art = artifacts.get(it.get("todo_id", ""))
             line = f"- {it['text']}"
-            if art.get("snippet"):
-                line += f" | detail: {art['snippet']}"
-            if art.get("link"):
-                line += f" | link: {art['link']}"
+            if art:
+                if art.snippet:
+                    line += f" | summary: {art.snippet}"
+                line += f" | artifact holds ~{art.chars} chars"
+                if art.action:
+                    line += " | awaiting your action"
+                line += f" | link: {art.link}"
             fact_lines.append(line)
     if not sections:
         fact_lines.append("No goal lanes have any work or results to report.")
