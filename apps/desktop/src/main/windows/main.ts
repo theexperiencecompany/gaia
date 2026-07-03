@@ -18,6 +18,7 @@ import { app, BrowserWindow, type Event, shell } from "electron";
 import { getApiOrigin } from "../api-origin";
 import { getServerUrl } from "../server";
 import { loadAppRoute } from "./load-url";
+import { classifyNavigation } from "./navigation-policy";
 import { closeSplashWindow } from "./splash";
 
 /**
@@ -40,19 +41,12 @@ function guardNavigation(event: Event, url: string): void {
     new URL(getApiOrigin()).origin,
   ]);
 
-  let targetUrl: URL;
-  try {
-    targetUrl = new URL(url);
-  } catch {
-    event.preventDefault();
-    return;
-  }
-
-  if (allowedOrigins.has(targetUrl.origin)) return;
+  const decision = classifyNavigation(url, allowedOrigins);
+  if (decision === "allow") return;
 
   event.preventDefault();
 
-  if (targetUrl.protocol === "https:" || targetUrl.protocol === "http:") {
+  if (decision === "open-external") {
     shell.openExternal(url).catch((err) => {
       console.error("[Main] Failed to open external URL:", err);
     });
