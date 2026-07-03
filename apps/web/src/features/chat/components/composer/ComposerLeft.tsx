@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
-import { useIsMainResponseStreaming } from "@/stores/loadingStore";
+import { useIsInitialResponseStreaming } from "@/stores/streamStore";
 import type { SearchMode } from "@/types/shared/searchTypes";
 
 interface SearchbarLeftDropdownProps {
@@ -41,7 +41,7 @@ export default function ComposerLeft({
 }: SearchbarLeftDropdownProps) {
   // Locked only during the initial response (send → main_response_complete),
   // matching the send button — unlocks once the agent acknowledges the task.
-  const isMainResponseStreaming = useIsMainResponseStreaming();
+  const isMainResponseStreaming = useIsInitialResponseStreaming();
   const currentMode = React.useMemo(
     () => Array.from(selectedMode)[0],
     [selectedMode],

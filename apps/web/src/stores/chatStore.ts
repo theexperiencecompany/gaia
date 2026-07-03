@@ -31,12 +31,6 @@ interface ChatState {
   conversations: IConversation[];
   messagesByConversation: Record<string, IMessage[]>;
   activeConversationId: string | null;
-  streamingConversationId: string | null; // ID of conversation currently streaming
-  // Conversation whose SSE stream has closed but is still awaiting a background
-  // executor's final result message (delivered separately via WebSocket). The
-  // turn is not visually "done" until that arrives, so the loading indicator
-  // stays on and follow-up actions stay suppressed during this window.
-  executorPendingConversationId: string | null;
   hydrationCompleted: boolean; // True when IndexedDB hydration is done
   // Single optimistic message for new conversations (not yet persisted to IndexedDB)
   // Only ONE optimistic message can exist at a time - enforced by using single object instead of array
@@ -52,11 +46,12 @@ interface ChatState {
     messages: IMessage[],
   ) => void;
   addOrUpdateMessage: (message: IMessage) => void;
+  /** Replace an existing message without re-sorting — the per-tick streaming
+   *  write path. Falls back to insert (sorted) if the message isn't present. */
+  updateMessageInPlace: (message: IMessage) => void;
   removeConversation: (conversationId: string) => void;
   removeMessage: (messageId: string, conversationId: string) => void;
   setActiveConversationId: (id: string | null) => void;
-  setStreamingConversationId: (id: string | null) => void;
-  setExecutorPendingConversationId: (id: string | null) => void;
   setHydrationCompleted: (completed: boolean) => void;
   // Optimistic message management for new conversations (single message only)
   setOptimisticMessage: (message: OptimisticMessage | null) => void;
@@ -67,8 +62,6 @@ export const useChatStore = create<ChatState>((set) => ({
   conversations: [],
   messagesByConversation: {},
   activeConversationId: null,
-  streamingConversationId: null, // Track which conversation is streaming
-  executorPendingConversationId: null, // Awaiting a background executor's result
   hydrationCompleted: false, // Becomes true when IndexedDB hydration is done
   // Single optimistic message for new conversations (prevents IndexedDB pollution)
   // Only one message at a time - enforced by type
@@ -138,6 +131,39 @@ export const useChatStore = create<ChatState>((set) => ({
       };
     }),
 
+  updateMessageInPlace: (message) =>
+    set((state) => {
+      const { conversationId } = message;
+      const existingMessages =
+        state.messagesByConversation[conversationId] ?? [];
+      const index = existingMessages.findIndex(
+        (existing) => existing.id === message.id,
+      );
+
+      // Not present yet — fall back to the sorted insert path.
+      if (index === -1) {
+        const inserted = [...existingMessages, message].toSorted(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+        );
+        return {
+          messagesByConversation: {
+            ...state.messagesByConversation,
+            [conversationId]: inserted,
+          },
+        };
+      }
+
+      // Same id, same createdAt — position is stable, skip the re-sort.
+      const updated = existingMessages.slice();
+      updated[index] = message;
+      return {
+        messagesByConversation: {
+          ...state.messagesByConversation,
+          [conversationId]: updated,
+        },
+      };
+    }),
+
   removeConversation: (conversationId) =>
     set((state) => {
       const conversations = state.conversations.filter(
@@ -152,17 +178,10 @@ export const useChatStore = create<ChatState>((set) => ({
           ? null
           : state.activeConversationId;
 
-      // Clear streaming indicator if the removed conversation was being streamed
-      const streamingConversationId =
-        state.streamingConversationId === conversationId
-          ? null
-          : state.streamingConversationId;
-
       return {
         conversations,
         messagesByConversation: remainingMessages,
         activeConversationId,
-        streamingConversationId,
       };
     }),
 
@@ -183,11 +202,6 @@ export const useChatStore = create<ChatState>((set) => ({
     }),
 
   setActiveConversationId: (id) => set({ activeConversationId: id }),
-
-  setStreamingConversationId: (id) => set({ streamingConversationId: id }),
-
-  setExecutorPendingConversationId: (id) =>
-    set({ executorPendingConversationId: id }),
 
   setHydrationCompleted: (completed) => set({ hydrationCompleted: completed }),
 

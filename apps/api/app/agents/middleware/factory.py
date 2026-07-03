@@ -18,7 +18,11 @@ from app.agents.middleware.summarization import (
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.settings import settings
-from app.constants.llm import DEFAULT_MAX_TOKENS
+from app.constants.llm import (
+    AGENT_RECURSION_LIMIT,
+    DEFAULT_MAX_TOKENS,
+    EXECUTOR_RECURSION_LIMIT,
+)
 from app.constants.log_tags import LogTag
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
@@ -69,6 +73,7 @@ def get_summarization_llm() -> BaseChatModel | None:
 def create_middleware_stack(
     *,
     agent_name: str = "agent",
+    recursion_limit: int = AGENT_RECURSION_LIMIT,
     enable_accounting: bool = True,
     enable_summarization: bool = True,
     enable_compaction: bool = True,
@@ -128,7 +133,9 @@ def create_middleware_stack(
     # ``caching_debug`` flips on a second diagnostic instance that runs LAST,
     # so we can compare state.messages before vs. after other middleware.
     if enable_accounting:
-        middleware.append(LLMAccountingMiddleware(agent_name=agent_name))
+        middleware.append(
+            LLMAccountingMiddleware(agent_name=agent_name, recursion_limit=recursion_limit)
+        )
         log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled for {agent_name}")
         log.set(
             middleware_stack={
@@ -223,6 +230,7 @@ def create_executor_middleware(
     """
     return create_middleware_stack(
         agent_name="executor_agent",
+        recursion_limit=EXECUTOR_RECURSION_LIMIT,
         enable_subagent=True,
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,

@@ -19,6 +19,7 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 import asyncio
 from typing import Any
 
+from langgraph.errors import GraphRecursionError
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import record_executor_cancellation
@@ -41,7 +42,7 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.constants.executor import MESSAGE_ID_KEY, VOICE_TTS_KEY
+from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE, MESSAGE_ID_KEY, VOICE_TTS_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.utils.agent_utils import format_sse_data
@@ -109,6 +110,16 @@ async def _execute_executor(
         writer = make_redis_stream_writer(stream_id)
         result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
         return result_text, "final"
+    except GraphRecursionError as e:
+        # The executor exhausted its recursion budget. Log the real cause loudly,
+        # but hand comms a friendly message instead of the raw traceback string so
+        # the user sees actionable guidance rather than an internal error.
+        log.error(
+            f"{LogTag.AGENT} Executor hit recursion limit",
+            stream_id=stream_id,
+            error=str(e),
+        )
+        return EXECUTOR_STEP_LIMIT_MESSAGE, "error"
     except Exception as e:
         log.error(f"{LogTag.AGENT} Executor run failed", stream_id=stream_id, error=str(e))
         return str(e), "error"
