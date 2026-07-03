@@ -319,6 +319,25 @@ _FACET_AUTHORING_DIRECTIVE = (
 )
 
 
+# The user APPROVED this proposal — this run must PERFORM the outward action from
+# the (already-final) deliverable, not re-draft it. Without this an approved run
+# hits the prep directive above and just rewrites the draft, so nothing is sent.
+_RELEASE_DIRECTIVE = (
+    "The user has APPROVED this — your job now is to PERFORM the action, not to "
+    "draft, plan, or propose it. Actually send the emails, post the content, or "
+    "create the records described above, using the EXACT approved content in the "
+    "deliverable and the appropriate connected integration (Gmail, LinkedIn, X, "
+    "etc.). Do NOT reword, re-draft, re-plan, or ask again — the content is final "
+    "and approved. Send to EXACTLY the recipients/destinations named in the "
+    "deliverable and no others.\n"
+    "After executing, report precisely what you did: the action taken, the exact "
+    "recipients/destinations, and any confirmation IDs. If the required "
+    "integration is not connected or the send genuinely fails, STOP and say so "
+    "plainly — never claim it was sent when it was not, and never quietly turn it "
+    "back into a draft."
+)
+
+
 def _build_execution_prompt(
     *,
     title: str,
@@ -326,8 +345,26 @@ def _build_execution_prompt(
     deliverable: str | None,
     notes: str | None,
     reference_context: str,
+    intent: str | None = None,
 ) -> str:
-    """Assemble the scheduled-run prompt from the todo's facets and context."""
+    """Assemble the scheduled-run prompt from the todo's facets and context.
+
+    ``intent='release'`` means the user approved this proposal, so the run must
+    PERFORM the outward action from the deliverable instead of doing prep/drafting.
+    """
+    if intent == "release":
+        parts = [f"APPROVED ACTION — execute this now: {title}"]
+        if description:
+            parts.append(f"What was approved: {description}")
+        if deliverable:
+            parts.append(
+                f"The approved content to send/perform (final — do not change it):\n{deliverable}"
+            )
+        if reference_context:
+            parts.append(reference_context)
+        parts.append(_RELEASE_DIRECTIVE)
+        return "\n\n".join(parts)
+
     prompt_parts = [f"Execute the following scheduled task: {title}"]
     if description:
         prompt_parts.append(f"Details: {description}")
@@ -339,6 +376,65 @@ def _build_execution_prompt(
         prompt_parts.append(reference_context)
     prompt_parts.append(_FACET_AUTHORING_DIRECTIVE)
     return "\n\n".join(prompt_parts)
+
+
+# An approved (release) run must actually PERFORM the outward action. We verify
+# this from the run's REAL tool results, not the agent's prose — the agent can
+# fabricate what it *says* ("sent, msg-12345") but not what a tool *returns*.
+# Deterministic + free (no model call, which matters when the primary model is
+# unavailable): a release counts as performed only if a tool whose name denotes
+# an outward action (send/post/create — NOT a draft or a read) was actually
+# invoked. Limitation: a called-but-errored action still counts; refine to parse
+# tool outputs when a real end-to-end trace is available to validate against.
+_RELEASE_ACTION_VERBS = (
+    "SEND",
+    "POST",
+    "PUBLISH",
+    "SUBMIT",
+    "REPLY",
+    "CREATE",
+    "ADD",
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+)
+_RELEASE_NAME_KEYS = ("tool_name", "name", "tool", "toolName")
+
+
+def _collect_tool_names(blob: object) -> list[str]:
+    """Recursively pull every tool-name string out of a tool_data structure,
+    flattening nested subagent groups (the send may run inside a sub-agent)."""
+    names: list[str] = []
+    if isinstance(blob, dict):
+        for key in _RELEASE_NAME_KEYS:
+            v = blob.get(key)
+            if isinstance(v, str) and v and v not in ("subagent_group", "tool_calls_data"):
+                names.append(v)
+        for v in blob.values():
+            names.extend(_collect_tool_names(v))
+    elif isinstance(blob, list):
+        for item in blob:
+            names.extend(_collect_tool_names(item))
+    return names
+
+
+def _release_performed(tool_data: object) -> bool:
+    """True if the run actually invoked an outward-action tool (not a draft/read).
+
+    Integration/composio tools that reach external services are UPPER_SNAKE
+    (``GMAIL_SEND_EMAIL``); GAIA's own internal tools are lower_snake
+    (``update_tracked_todo_canvas``) — only the former perform outward actions, so
+    an internal tool that merely *contains* an action verb (update/create) never
+    counts.
+    """
+    for raw in _collect_tool_names(tool_data):
+        if not raw.isupper():
+            continue
+        if "DRAFT" in raw:
+            continue
+        if any(verb in raw for verb in _RELEASE_ACTION_VERBS):
+            return True
+    return False
 
 
 async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str:
@@ -379,6 +475,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         deliverable=deliverable,
         notes=notes,
         reference_context=reference_context,
+        intent=doc.get("execution_intent"),
     )
 
     # Generate a fresh conversation_id for each execution to prevent
@@ -419,7 +516,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
 
     complete_message: str = ""
     try:
-        complete_message, _tool_data = await call_agent_silent(
+        complete_message, tool_data = await call_agent_silent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
@@ -447,6 +544,27 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         user_id=user_id,
         entry=f"✓ {end_iso} — scheduled run finished (summary={summary!r})",
     )
+
+    # Honesty gate for approved (release) runs: the agent may claim it sent when
+    # it only drafted or did nothing. Verify from the REAL tool results — if no
+    # outward-action tool actually ran, DON'T let this be marked done/sent; flip
+    # it to needs_you with the truth so the user is never told a lie.
+    if doc.get("execution_intent") == "release" and not _release_performed(
+        tool_data.get("tool_data") if isinstance(tool_data, dict) else tool_data
+    ):
+        log.warning("tracked_todo.release_not_performed", todo_id=todo_id)
+        await todos_collection.update_one(
+            {"_id": ObjectId(todo_id)},
+            {
+                "$set": {
+                    "error_message": (
+                        "GAIA prepared this but couldn't confirm the send actually "
+                        "went through — it needs your attention."
+                    )
+                }
+            },
+        )
+        await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.NEEDS_YOU)
 
     log.info("tracked_todo.agent_completed", todo_id=todo_id)
     return complete_message[:200] if complete_message else ""

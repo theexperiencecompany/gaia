@@ -351,6 +351,9 @@ async def approve(todo_id: str, user_id: str, user_plan: PlanType, channel: str 
                 "execution_status": ExecutionStatus.QUEUED.value,
                 "scheduled_at": now,
                 "pitch_expires_at": None,
+                # Approval means "do it now" — the execution must PERFORM the
+                # outward action from the deliverable, not re-draft it.
+                "execution_intent": "release",
             }
         },
     )
