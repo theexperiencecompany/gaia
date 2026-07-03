@@ -14,11 +14,12 @@ Run: uv run python scripts/seed_founder_e2e.py <target_user_id> <dump.json>
 """
 
 import asyncio
-import json
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from bson import json_util  # noqa: E402
 
 from app.constants.memory import MemorySourceType  # noqa: E402
 from app.db.mongodb.collections import todos_collection  # noqa: E402
@@ -26,7 +27,7 @@ from app.memory.engine import memory_engine  # noqa: E402
 
 
 async def seed(user_id: str, dump_path: str) -> None:
-    data = json.loads(Path(dump_path).read_text())
+    data = json_util.loads(Path(dump_path).read_text())
     memories: list[str] = data.get("memories", [])
     todos: list[dict] = data.get("todos", [])
 
