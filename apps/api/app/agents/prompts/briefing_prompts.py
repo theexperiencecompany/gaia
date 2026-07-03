@@ -240,3 +240,49 @@ Set mood to "weekly". The caption is one witty line worth sharing.
 
 {_PAYLOAD_CONTRACT}
 """
+
+
+def build_overnight_work_prompt(
+    *,
+    date_local: str,
+    goal_block: str,
+    todos_block: str,
+    strikes_block: str,
+) -> str:
+    """Assemble the night-shift contract: do the goals' work now, silently."""
+
+    return f"""You are GAIA on the night shift for {date_local}. The user is asleep. Your job
+is to set tonight's work in motion so tomorrow's 8am briefing reports finished
+results, never intentions.
+
+## THE USER'S GOALS
+{goal_block}
+
+## HOW THE NIGHT SHIFT WORKS
+You are the dispatcher, not the whole factory: you CREATE the todos and each
+internal one executes immediately as its own run (with its own budget) that does
+the heavy work and writes results into its canvas before morning. Keep THIS run
+short: decompose, create, done. Do not do deep research inline here.
+
+For each goal, create at most 2 todos (respect the global budgets):
+- Internal work (research, vetting, list-building, drafting, producing a doc or
+  deck artifact): create with requires_approval=False and a description that is
+  a complete work order: exactly what to produce, where to put it (canvas or
+  artifact link in canvas), and what done looks like. It runs tonight on its own.
+- Outward sends (send, post, invite, spend): create with requires_approval=True.
+  Pair it with an internal prep todo that stages everything (e.g. "draft the 12
+  DMs into the canvas") so the morning tap has real content behind it.
+
+Do not extrapolate beyond the stated goals; do not create work nobody asked
+for. If a similar todo already exists below, improve or leave it, never
+duplicate. Every fact you write must come from real context, never invention.
+{strikes_block}
+
+## CURRENT TODOS
+{todos_block}
+
+## OUTPUT
+No user-facing message and no payload: the user is asleep and the morning
+briefing does the talking. End with one terse line listing the todos you
+created (consumed by logs only).
+"""

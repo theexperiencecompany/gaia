@@ -15,6 +15,7 @@ from bson import ObjectId
 
 from app.agents.prompts.briefing_prompts import (
     build_daily_briefing_prompt,
+    build_overnight_work_prompt,
     build_weekly_digest_prompt,
 )
 from app.constants.briefing import (
@@ -91,9 +92,8 @@ def _parse_payload(raw: str) -> BriefingPayload:
     )
 
 
-async def _generate_payload(
-    user: dict, clock: UserClock, prompt: str, kind: BriefingKind
-) -> BriefingPayload:
+async def _run_silent(user: dict, clock: UserClock, prompt: str, conversation_key: str) -> str:
+    """One silent agent turn on a fresh per-day thread; returns the final text."""
     # Inline import breaks the agent<->workflow import cycle (same pattern the
     # worker uses for call_agent_silent).
     from app.agents.core.agent import call_agent_silent
@@ -115,7 +115,7 @@ async def _generate_payload(
         "timezone": clock.tz.key,
     }
     # Fresh per-day thread so context never bloats and prior chat can't leak in.
-    conversation_id = f"briefing-{kind}-{user['user_id']}-{clock.date_str}"
+    conversation_id = f"briefing-{conversation_key}-{user['user_id']}-{clock.date_str}"
     message, _ = await call_agent_silent(
         request=request,
         conversation_id=conversation_id,
@@ -123,7 +123,13 @@ async def _generate_payload(
         trigger_context={"execution_mode": "background"},
         source="briefing",
     )
-    return _parse_payload(message)
+    return message
+
+
+async def _generate_payload(
+    user: dict, clock: UserClock, prompt: str, kind: BriefingKind
+) -> BriefingPayload:
+    return _parse_payload(await _run_silent(user, clock, prompt, conversation_key=kind))
 
 
 def _format_curation(expired_titles: list[str]) -> str:
