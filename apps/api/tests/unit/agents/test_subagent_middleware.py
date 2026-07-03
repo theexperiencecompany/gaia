@@ -76,7 +76,7 @@ class TestSubagentMiddlewareInit:
         mw = _make_middleware()
         assert mw._tool_runtime_config.enable_retrieve_tools is True
         assert mw._tool_runtime_config.include_subagents_in_retrieve is False
-        assert "vfs_read" in mw._tool_runtime_config.initial_tool_names
+        assert "read" in mw._tool_runtime_config.initial_tool_names
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +88,7 @@ class TestSetters:
     def test_set_llm(self):
         mw = _make_middleware()
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mw.set_llm(mock_llm)
         assert mw._llm is mock_llm
 
@@ -309,6 +310,7 @@ class TestExecuteSubagent:
     async def test_simple_text_response(self):
         """LLM returns text without tool calls."""
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         response = AIMessage(content="Done!")
         response.tool_calls = []
         mock_llm.with_config.return_value = mock_llm
@@ -322,6 +324,7 @@ class TestExecuteSubagent:
     @pytest.mark.asyncio
     async def test_empty_content_returns_task_completed(self):
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         response = AIMessage(content="")
         response.tool_calls = []
         mock_llm.with_config.return_value = mock_llm
@@ -336,6 +339,7 @@ class TestExecuteSubagent:
     async def test_tool_call_flow(self):
         """LLM calls a tool, then returns final answer."""
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.with_config.return_value = mock_llm
 
         tool_call_response = AIMessage(content="")
@@ -368,6 +372,7 @@ class TestExecuteSubagent:
     async def test_unknown_tool_returns_error_message(self):
         """LLM calls a tool that doesn't exist."""
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.with_config.return_value = mock_llm
 
         tool_call_response = AIMessage(content="")
@@ -395,6 +400,7 @@ class TestExecuteSubagent:
     async def test_retrieve_tools_call_rebinds(self):
         """When LLM calls retrieve_tools, new tools get bound."""
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.with_config.return_value = mock_llm
 
         retrieve_call = AIMessage(content="")
@@ -439,6 +445,7 @@ class TestExecuteSubagent:
     async def test_tool_invocation_error_returns_error_message(self):
         """Tool invocation that raises an exception."""
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.with_config.return_value = mock_llm
 
         tool_call_response = AIMessage(content="")
@@ -470,6 +477,7 @@ class TestExecuteSubagent:
     async def test_max_turns_reached(self):
         """Subagent exhausts max turns and gets final response."""
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.with_config.return_value = mock_llm
 
         # Every response has a tool call, never stops
@@ -515,6 +523,7 @@ class TestExecuteSubagent:
     async def test_context_included_in_messages(self):
         """Context string is prepended to the user message."""
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.with_config.return_value = mock_llm
 
         response = AIMessage(content="ok")
@@ -534,6 +543,7 @@ class TestExecuteSubagent:
     async def test_retrieve_tools_error_handled(self):
         """retrieve_tools call that raises is caught gracefully."""
         mock_llm = MagicMock()
+        mock_llm.with_retry = MagicMock(return_value=mock_llm)
         mock_llm.with_config.return_value = mock_llm
 
         retrieve_call = AIMessage(content="")

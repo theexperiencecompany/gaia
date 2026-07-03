@@ -15,6 +15,7 @@ renamed these tests will fail immediately — which is the desired behaviour.
 
 import asyncio
 import contextlib
+import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -28,7 +29,38 @@ import pytest
 # the tests fail – which is exactly what we want.
 # ---------------------------------------------------------------------------
 from app.agents.core.graph_builder.build_graph import build_comms_graph
+from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+from app.config.settings import settings
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
+
+
+@pytest.fixture
+def full_production_middleware():
+    """Build the SAME middleware stack as production, not the degraded test default.
+
+    One middleware (summarization) needs a real model, so it is gated on
+    GOOGLE_API_KEY. With the key unset (the test default) it is silently dropped, so
+    build_comms_graph constructs a *different graph than production* — and that gap is
+    how a middleware-construction regression shipped green. Set a throwaway key (never
+    used for a network call — this only affects graph CONSTRUCTION) so the test builds
+    the real composition and any middleware that fails to construct fails here.
+
+    Opt-in (not autouse): the key also enables the model fallback, which would change
+    behaviour for tests that deliberately run without it (e.g. the timeout test).
+    """
+    import app.agents.middleware.factory as factory_mod
+
+    prev = os.environ.get("GOOGLE_API_KEY")
+    os.environ["GOOGLE_API_KEY"] = "test-key"  # pragma: allowlist secret
+    factory_mod._summarization_llm = None
+    with patch.object(settings, "GOOGLE_API_KEY", "test-key"):  # pragma: allowlist secret
+        yield
+    factory_mod._summarization_llm = None
+    if prev is None:
+        os.environ.pop("GOOGLE_API_KEY", None)
+    else:
+        os.environ["GOOGLE_API_KEY"] = prev
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -59,46 +91,37 @@ def _make_chroma_store_mock() -> MagicMock:
 # ---------------------------------------------------------------------------
 # Boundary-only patches for follow_up_actions_node
 #
-# We mock ONLY the two external I/O boundaries:
-#   1. get_free_llm_chain  – prevents real LLM client initialisation
-#   2. get_stream_writer   – prevents LangGraph stream context requirement
-#   3. invoke_with_fallback – the actual LLM network call
-#   4. get_user_integration_capabilities – external HTTP/DB call
+# We mock ONLY the external I/O boundaries:
+#   1. ainvoke_structured – the structured LLM call (returns the parsed schema)
+#   2. get_user_integration_capabilities – external HTTP/DB call
+#   3. get_stream_writer – prevents LangGraph stream context requirement
 #
 # The node's internal logic RUNS FOR REAL:
-#   - messages[-2:] slicing
-#   - SUGGEST_FOLLOW_UP_ACTIONS.format(...) prompt construction
-#   - PydanticOutputParser.parse() parsing
-#   - _pretty_print_messages() formatting
-#
-# invoke_with_fallback is mocked to return valid JSON so that the parser
-# actually exercises its code path.
+#   - the delegated-to-executor / insufficient-history guards
+#   - messages[-4:] slicing and _pretty_print_messages() formatting
+#   - dynamic-context prompt construction and the silent stream config
 # ---------------------------------------------------------------------------
 
-_VALID_FOLLOW_UP_JSON = (
-    '{"actions": ["Schedule a follow-up meeting", "Send summary email", '
-    '"Update the task list", "Check calendar availability"]}'
+_VALID_FOLLOW_UP = FollowUpActions(
+    actions=[
+        "Schedule a follow-up meeting",
+        "Send summary email",
+        "Update the task list",
+        "Check calendar availability",
+    ]
 )
 
 
 def _follow_up_node_io_patches(
     *,
     writer_fn: Any = None,
-    llm_response: str = _VALID_FOLLOW_UP_JSON,
+    follow_up: FollowUpActions = _VALID_FOLLOW_UP,
     capabilities: dict | None = None,
 ) -> list:
-    """
-    Return a list of context-manager patches that mock ONLY the I/O
-    boundaries of follow_up_actions_node.
-
-    Parameters
-    ----------
-    writer_fn:
-        Callable to use as the stream writer.  Defaults to a no-op lambda.
-    llm_response:
-        String content the mocked LLM call should return.
-    capabilities:
-        Dict returned by get_user_integration_capabilities.
+    """Return context-manager patches that mock ONLY the I/O boundaries of
+    follow_up_actions_node: the structured LLM call (which returns the parsed
+    ``FollowUpActions``), the integrations lookup, and the stream writer. The
+    node's internal slicing/prompt/guard logic runs for real.
     """
     if writer_fn is None:
         writer_fn = lambda _: None  # noqa: E731
@@ -107,24 +130,19 @@ def _follow_up_node_io_patches(
         capabilities = {"tool_names": []}
 
     return [
-        # I/O boundary 1: LLM chain initialisation (no real client)
+        # I/O boundary 1: the structured LLM call (returns the validated schema)
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
-            return_value=MagicMock(),
-        ),
-        # I/O boundary 2: actual LLM network call
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+            "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
             new_callable=AsyncMock,
-            return_value=AIMessage(content=llm_response),
+            return_value=follow_up,
         ),
-        # I/O boundary 3: external integrations DB/HTTP call
+        # I/O boundary 2: external integrations DB/HTTP call
         patch(
             "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
             new_callable=AsyncMock,
             return_value=capabilities,
         ),
-        # I/O boundary 4: LangGraph stream context
+        # I/O boundary 3: LangGraph stream context
         patch(
             "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
             return_value=writer_fn,
@@ -236,14 +254,17 @@ class TestRealCommsAgent:
     # 1. Compilation
     # ------------------------------------------------------------------
 
-    async def test_graph_can_be_compiled(self):
+    async def test_graph_can_be_compiled(self, full_production_middleware):
         """
-        build_comms_graph() must compile without raising.
+        build_comms_graph() must compile without raising, with the FULL production
+        middleware stack (see the full_production_middleware fixture — without it the
+        key-gated summarization middleware is silently dropped and the test builds a
+        different graph than production).
 
-        This directly validates that the production wiring (tool_registry dict,
-        create_agent call, pre_model_hooks list, end_graph_hooks list) is intact.
-        If any import or construction step inside build_comms_graph breaks, this
-        test is the first to catch it.
+        This validates that the production wiring (tool_registry dict, create_agent
+        call, every middleware, pre_model_hooks, end_graph_hooks) constructs. If any
+        import or construction step inside build_comms_graph or its middleware breaks,
+        this test is the first to catch it.
         """
         store_mock = _make_chroma_store_mock()
         fake_llm = create_fake_llm(["ok"])
@@ -578,8 +599,7 @@ class TestRealCommsAgent:
 
         io_patches = _follow_up_node_io_patches(
             writer_fn=capturing_writer,
-            # Return valid JSON so that PydanticOutputParser.parse() runs for real
-            llm_response=('{"actions": ["Do A", "Do B", "Do C", "Do D"]}'),
+            follow_up=FollowUpActions(actions=["Do A", "Do B", "Do C", "Do D"]),
             capabilities={"tool_names": ["call_executor"]},
         )
 
@@ -608,15 +628,12 @@ class TestRealCommsAgent:
         )
 
     async def test_follow_up_node_internal_logic_runs_for_real(self):
-        """
-        Verify that follow_up_actions_node's internal message slicing and
-        PydanticOutputParser path execute for real (not mocked away).
+        """Verify follow_up_actions_node's internal message slicing and guards
+        execute for real (not mocked away).
 
-        We provide enough messages (>= 2) to bypass the early-exit guard so that
-        the slice `messages[-2:]` and `parser.parse()` are exercised.
-
-        The writer should receive `follow_up_actions` whose content came from the
-        parser actually parsing _VALID_FOLLOW_UP_JSON.
+        We provide enough messages (>= 2) to bypass the early-exit guard so the
+        slice and prompt construction run; the writer should receive the
+        ``follow_up_actions`` returned by the mocked structured call.
         """
         store_mock = _make_chroma_store_mock()
         # Give the main agent enough responses for two human messages
@@ -630,7 +647,7 @@ class TestRealCommsAgent:
 
         io_patches = _follow_up_node_io_patches(
             writer_fn=capturing_writer,
-            llm_response=_VALID_FOLLOW_UP_JSON,
+            follow_up=_VALID_FOLLOW_UP,
         )
 
         with _apply_all_patches(store_mock, io_patches):

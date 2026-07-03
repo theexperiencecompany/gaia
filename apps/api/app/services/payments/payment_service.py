@@ -250,7 +250,9 @@ class DodoPaymentService:
         if isinstance(cached, dict) and cached.get("plan_type"):
             return PlanType(cached["plan_type"])
 
-        plan = (await self.get_user_subscription_status(user_id)).plan_type or PlanType.FREE
+        plan_raw = (await self.get_user_subscription_status(user_id)).plan_type or PlanType.FREE
+        # Pydantic v2 coerces str, Enum fields to plain strings; normalize before calling .value
+        plan = plan_raw if isinstance(plan_raw, PlanType) else PlanType(plan_raw)
         await redis_cache.set(cache_key, {"plan_type": plan.value}, ttl=SUBSCRIPTION_PLAN_CACHE_TTL)
         return plan
 

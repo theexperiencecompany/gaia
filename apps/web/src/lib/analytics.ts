@@ -76,10 +76,6 @@ export const ANALYTICS_EVENTS = {
   TODOS_TOGGLED: "todos:toggled",
   TODOS_VIEW_CHANGED: "todos:view_changed",
 
-  // Goal events
-  GOALS_CREATED: "goals:created",
-  GOALS_DELETED: "goals:deleted",
-
   // Calendar events
   CALENDAR_EVENT_CREATED: "calendar:event_created",
   CALENDAR_EVENT_DELETED: "calendar:event_deleted",

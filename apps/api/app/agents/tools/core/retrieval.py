@@ -444,7 +444,7 @@ async def _process_search_results(
 
     for idx, result in enumerate(results):
         if isinstance(result, BaseException):
-            log.warning(f"{LogTag.TOOL} Task {idx}: Search error - {result}")
+            # Already logged (with type) at the gather site in retrieve_tools.
             continue
 
         if not result:
@@ -767,6 +767,20 @@ def get_retrieve_tools_function(
         )
 
         results = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+        # Surface search failures instead of treating them as empty namespaces.
+        # A partial outage degrades to the namespaces that answered; a total
+        # outage must raise so the select_tools retry policy (and ultimately
+        # the caller) sees a failure, not a silent "no tools found".
+        failures = [r for r in results if isinstance(r, BaseException)]
+        for failure in failures:
+            log.error(
+                f"{LogTag.TOOL} retrieve_tools search task failed",
+                error=str(failure),
+                error_type=type(failure).__name__,
+            )
+        if failures and len(failures) == len(results):
+            raise failures[0]
 
         # MCP tool names don't live in the global registry anymore (resilience
         # rewrite removed the per-user mcp_{iid}_{user_id} categories). Union

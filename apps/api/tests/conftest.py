@@ -17,6 +17,10 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 import pytest
 
+# payment_models is settings-free (pure pydantic/enum), so importing it here does
+# not trip the "no app modules before env setup" invariant below.
+from app.models.payment_models import PlanType
+
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.
 # ---------------------------------------------------------------------------
@@ -55,7 +59,9 @@ os.environ.setdefault(
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
 
 _mock_subscription = MagicMock()
-_mock_subscription.plan_type = "free"
+# Mirror the real get_user_subscription_status return type: plan_type is a
+# PlanType enum, not a raw str. get_cached_plan_type relies on `.value`.
+_mock_subscription.plan_type = PlanType.FREE
 
 # Always mock: Infisical secrets and rate limiting. These are external SaaS
 # services that must never be called in any test environment.

@@ -5,15 +5,11 @@ Covers:
 - ProjectService: CRUD, cache, default inbox protection
 - Compatibility wrappers (module-level functions)
 - todo_bulk_service: bulk_complete, bulk_move, bulk_delete
-- sync_service: sync_goal_node_completion, sync_subtask_to_goal_completion,
-                create_goal_project_and_todo, _get_or_create_goals_project,
-                cache invalidation helpers
 """
 
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
 
 from bson import ObjectId
 from fastapi import HTTPException
@@ -36,15 +32,6 @@ from app.models.todo_models import (
     TodoStats,
     TodoUpdateRequest,
     UpdateProjectRequest,
-)
-from app.services.todos.sync_service import (
-    _get_or_create_goals_project,
-    _invalidate_goal_caches,
-    _invalidate_project_caches,
-    _invalidate_todo_caches,
-    create_goal_project_and_todo,
-    sync_goal_node_completion,
-    sync_subtask_to_goal_completion,
 )
 from app.services.todos.todo_bulk_service import (
     bulk_complete_todos,
@@ -258,15 +245,6 @@ def mock_workflow_queue():
     ) as mock_cls:
         mock_cls.queue_todo_workflow_generation = AsyncMock()
         yield mock_cls
-
-
-@pytest.fixture
-def mock_sync_subtask():
-    with patch(
-        "app.services.todos.todo_service.sync_subtask_to_goal_completion",
-        new_callable=AsyncMock,
-    ) as m:
-        yield m
 
 
 # ===========================================================================
@@ -1001,7 +979,6 @@ class TestUpdateTodo:
         mock_projects_collection,
         mock_cache,
         mock_vector_utils,
-        mock_sync_subtask,
     ):
         updated_doc = _make_todo_doc(todo_id=FAKE_TODO_ID, title="Updated Title")
         mock_todos_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
@@ -1018,7 +995,6 @@ class TestUpdateTodo:
         mock_projects_collection,
         mock_cache,
         mock_vector_utils,
-        mock_sync_subtask,
     ):
         mock_todos_collection.find_one_and_update = AsyncMock(return_value=None)
 
@@ -1032,7 +1008,6 @@ class TestUpdateTodo:
         mock_projects_collection,
         mock_cache,
         mock_vector_utils,
-        mock_sync_subtask,
     ):
         updated_doc = _make_todo_doc(todo_id=FAKE_TODO_ID, completed=True)
         mock_todos_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
@@ -1051,7 +1026,6 @@ class TestUpdateTodo:
         mock_projects_collection,
         mock_cache,
         mock_vector_utils,
-        mock_sync_subtask,
     ):
         updated_doc = _make_todo_doc(todo_id=FAKE_TODO_ID, completed=False)
         mock_todos_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
@@ -1069,7 +1043,6 @@ class TestUpdateTodo:
         mock_projects_collection,
         mock_cache,
         mock_vector_utils,
-        mock_sync_subtask,
     ):
         mock_projects_collection.find_one = AsyncMock(return_value=None)
 
@@ -1077,32 +1050,12 @@ class TestUpdateTodo:
         with pytest.raises(ValueError, match="not found"):
             await TodoService.update_todo(FAKE_TODO_ID, updates, FAKE_USER_ID)
 
-    async def test_subtask_update_triggers_sync(
-        self,
-        mock_todos_collection,
-        mock_projects_collection,
-        mock_cache,
-        mock_vector_utils,
-        mock_sync_subtask,
-    ):
-        subtask_id = str(uuid.uuid4())
-        subtasks = [{"id": subtask_id, "title": "Step", "completed": True}]
-
-        updated_doc = _make_todo_doc(todo_id=FAKE_TODO_ID, subtasks=subtasks)
-        mock_todos_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
-
-        updates = TodoUpdateRequest(subtasks=[SubTask(id=subtask_id, title="Step", completed=True)])
-        await TodoService.update_todo(FAKE_TODO_ID, updates, FAKE_USER_ID)
-
-        mock_sync_subtask.assert_awaited()
-
     async def test_minor_update_uses_minor_cache_invalidation(
         self,
         mock_todos_collection,
         mock_projects_collection,
         mock_cache,
         mock_vector_utils,
-        mock_sync_subtask,
     ):
         """Title-only update should use update_minor cache strategy."""
         updated_doc = _make_todo_doc(todo_id=FAKE_TODO_ID)
@@ -1121,7 +1074,6 @@ class TestUpdateTodo:
         mock_projects_collection,
         mock_cache,
         mock_vector_utils,
-        mock_sync_subtask,
     ):
         """Priority change affects list ordering — should clear all list caches."""
         updated_doc = _make_todo_doc(todo_id=FAKE_TODO_ID)
@@ -1138,7 +1090,6 @@ class TestUpdateTodo:
         mock_todos_collection,
         mock_projects_collection,
         mock_cache,
-        mock_sync_subtask,
     ):
         updated_doc = _make_todo_doc(todo_id=FAKE_TODO_ID)
         mock_todos_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
@@ -1158,7 +1109,6 @@ class TestUpdateTodo:
         mock_projects_collection,
         mock_cache,
         mock_vector_utils,
-        mock_sync_subtask,
     ):
         updated_doc = _make_todo_doc(todo_id=FAKE_TODO_ID)
         mock_todos_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
@@ -2124,394 +2074,3 @@ class TestBulkServiceDeleteTodos:
         with pytest.raises(HTTPException) as exc_info:
             await bulk_service_delete_todos([str(ObjectId())], FAKE_USER_ID)
         assert exc_info.value.status_code == 500
-
-
-# ===========================================================================
-# sync_service
-# ===========================================================================
-
-
-@pytest.fixture
-def mock_sync_goals_collection():
-    with patch("app.services.todos.sync_service.goals_collection") as mock_col:
-        mock_col.find_one = AsyncMock(return_value=None)
-        mock_col.update_one = AsyncMock()
-        yield mock_col
-
-
-@pytest.fixture
-def mock_sync_todos_collection():
-    with patch("app.services.todos.sync_service.todos_collection") as mock_col:
-        mock_col.find_one = AsyncMock(return_value=None)
-        mock_col.update_one = AsyncMock()
-        yield mock_col
-
-
-@pytest.fixture
-def mock_sync_projects_collection():
-    with patch("app.services.todos.sync_service.projects_collection") as mock_col:
-        mock_col.find_one = AsyncMock(return_value=None)
-        mock_col.insert_one = AsyncMock()
-        yield mock_col
-
-
-@pytest.fixture
-def mock_sync_cache():
-    with (
-        patch(
-            "app.services.todos.sync_service.delete_cache",
-            new_callable=AsyncMock,
-        ) as m_del,
-        patch(
-            "app.services.todos.sync_service.delete_cache_by_pattern",
-            new_callable=AsyncMock,
-        ) as m_del_pattern,
-    ):
-        yield m_del, m_del_pattern
-
-
-@pytest.mark.unit
-class TestSyncGoalNodeCompletion:
-    async def test_success(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        goal_id = str(ObjectId())
-        node_id = "node_1"
-        subtask_id = "sub_1"
-        todo_id = str(ObjectId())
-
-        goal_doc = {
-            "_id": ObjectId(goal_id),
-            "user_id": FAKE_USER_ID,
-            "todo_id": todo_id,
-            "roadmap": {
-                "nodes": [
-                    {
-                        "id": node_id,
-                        "data": {
-                            "label": "Step 1",
-                            "subtask_id": subtask_id,
-                            "isComplete": False,
-                        },
-                    }
-                ]
-            },
-        }
-        mock_sync_goals_collection.find_one = AsyncMock(return_value=goal_doc)
-
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_sync_todos_collection.update_one = AsyncMock(return_value=mock_result)
-
-        # After update, fetch todo for project_id
-        mock_sync_todos_collection.find_one = AsyncMock(
-            return_value={"project_id": FAKE_PROJECT_ID}
-        )
-
-        result = await sync_goal_node_completion(goal_id, node_id, True, FAKE_USER_ID)
-        assert result is True
-
-    async def test_goal_not_found_returns_false(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        mock_sync_goals_collection.find_one = AsyncMock(return_value=None)
-
-        result = await sync_goal_node_completion(str(ObjectId()), "node_1", True, FAKE_USER_ID)
-        assert result is False
-
-    async def test_node_not_found_returns_false(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        goal_doc = {
-            "_id": ObjectId(),
-            "user_id": FAKE_USER_ID,
-            "todo_id": str(ObjectId()),
-            "roadmap": {"nodes": [{"id": "other_node", "data": {}}]},
-        }
-        mock_sync_goals_collection.find_one = AsyncMock(return_value=goal_doc)
-
-        result = await sync_goal_node_completion(
-            str(goal_doc["_id"]), "missing_node", True, FAKE_USER_ID
-        )
-        assert result is False
-
-    async def test_missing_subtask_id_returns_false(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        goal_doc = {
-            "_id": ObjectId(),
-            "user_id": FAKE_USER_ID,
-            "todo_id": str(ObjectId()),
-            "roadmap": {
-                "nodes": [
-                    {
-                        "id": "node_1",
-                        "data": {"label": "No subtask_id"},
-                    }
-                ]
-            },
-        }
-        mock_sync_goals_collection.find_one = AsyncMock(return_value=goal_doc)
-
-        result = await sync_goal_node_completion(str(goal_doc["_id"]), "node_1", True, FAKE_USER_ID)
-        assert result is False
-
-    async def test_no_todo_modified_returns_false(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        goal_doc = {
-            "_id": ObjectId(),
-            "user_id": FAKE_USER_ID,
-            "todo_id": str(ObjectId()),
-            "roadmap": {
-                "nodes": [
-                    {
-                        "id": "node_1",
-                        "data": {"subtask_id": "sub_1"},
-                    }
-                ]
-            },
-        }
-        mock_sync_goals_collection.find_one = AsyncMock(return_value=goal_doc)
-
-        mock_result = MagicMock()
-        mock_result.modified_count = 0
-        mock_sync_todos_collection.update_one = AsyncMock(return_value=mock_result)
-
-        result = await sync_goal_node_completion(str(goal_doc["_id"]), "node_1", True, FAKE_USER_ID)
-        assert result is False
-
-    async def test_exception_returns_false(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        mock_sync_goals_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
-
-        result = await sync_goal_node_completion(str(ObjectId()), "node_1", True, FAKE_USER_ID)
-        assert result is False
-
-
-@pytest.mark.unit
-class TestSyncSubtaskToGoalCompletion:
-    async def test_success(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        goal_oid = ObjectId()
-        goal_doc = {
-            "_id": goal_oid,
-            "todo_project_id": FAKE_PROJECT_ID,
-        }
-        mock_sync_goals_collection.find_one = AsyncMock(return_value=goal_doc)
-
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_sync_goals_collection.update_one = AsyncMock(return_value=mock_result)
-
-        result = await sync_subtask_to_goal_completion(FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID)
-        assert result is True
-
-    async def test_goal_not_found_returns_false(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        mock_sync_goals_collection.find_one = AsyncMock(return_value=None)
-
-        result = await sync_subtask_to_goal_completion(FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID)
-        assert result is False
-
-    async def test_no_node_modified_returns_false(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        goal_doc = {"_id": ObjectId(), "todo_project_id": None}
-        mock_sync_goals_collection.find_one = AsyncMock(return_value=goal_doc)
-
-        mock_result = MagicMock()
-        mock_result.modified_count = 0
-        mock_sync_goals_collection.update_one = AsyncMock(return_value=mock_result)
-
-        result = await sync_subtask_to_goal_completion(FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID)
-        assert result is False
-
-    async def test_exception_returns_false(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_cache,
-    ):
-        mock_sync_goals_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
-
-        result = await sync_subtask_to_goal_completion(FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID)
-        assert result is False
-
-
-@pytest.mark.unit
-class TestCreateGoalProjectAndTodo:
-    async def test_success(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_projects_collection,
-        mock_sync_cache,
-    ):
-        goal_id = str(ObjectId())
-        project_oid = ObjectId()
-
-        # Goals project exists
-        mock_sync_projects_collection.find_one = AsyncMock(return_value={"_id": project_oid})
-
-        roadmap_data = {
-            "nodes": [
-                {
-                    "id": "n1",
-                    "data": {"title": "Step 1", "isComplete": False},
-                },
-                {
-                    "id": "n2",
-                    "data": {"type": "start"},
-                },  # Should be skipped
-            ],
-            "edges": [],
-        }
-
-        with patch("app.services.todos.todo_service.TodoService") as mock_todo_svc:
-            mock_response = MagicMock(spec=TodoResponse)
-            mock_response.id = str(ObjectId())
-            mock_todo_svc.create_todo = AsyncMock(return_value=mock_response)
-
-            result = await create_goal_project_and_todo(
-                goal_id=goal_id,
-                goal_title="My Goal",
-                roadmap_data=roadmap_data,
-                user_id=FAKE_USER_ID,
-                labels=["goal"],
-                priority=Priority.HIGH,
-            )
-
-        assert result == str(project_oid)
-        mock_sync_goals_collection.update_one.assert_awaited_once()
-
-    async def test_exception_propagates(
-        self,
-        mock_sync_goals_collection,
-        mock_sync_todos_collection,
-        mock_sync_projects_collection,
-        mock_sync_cache,
-    ):
-        mock_sync_projects_collection.find_one = AsyncMock(side_effect=Exception("DB down"))
-
-        with pytest.raises(Exception, match="DB down"):
-            await create_goal_project_and_todo(
-                goal_id=str(ObjectId()),
-                goal_title="Broken",
-                roadmap_data={"nodes": [], "edges": []},
-                user_id=FAKE_USER_ID,
-            )
-
-
-@pytest.mark.unit
-class TestGetOrCreateGoalsProject:
-    async def test_returns_existing(self, mock_sync_projects_collection, mock_sync_cache):
-        project_oid = ObjectId()
-        mock_sync_projects_collection.find_one = AsyncMock(return_value={"_id": project_oid})
-
-        result = await _get_or_create_goals_project(FAKE_USER_ID)
-        assert result == str(project_oid)
-
-    async def test_creates_new_project(self, mock_sync_projects_collection, mock_sync_cache):
-        mock_sync_projects_collection.find_one = AsyncMock(return_value=None)
-
-        mock_result = MagicMock()
-        mock_result.inserted_id = ObjectId()
-        mock_sync_projects_collection.insert_one = AsyncMock(return_value=mock_result)
-
-        result = await _get_or_create_goals_project(FAKE_USER_ID)
-        assert result == str(mock_result.inserted_id)
-        mock_sync_projects_collection.insert_one.assert_awaited_once()
-        call_doc = mock_sync_projects_collection.insert_one.call_args[0][0]
-        assert call_doc["name"] == "Goals"
-        assert call_doc["color"] == "#8B5CF6"
-
-
-# ===========================================================================
-# sync_service cache invalidation helpers
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestSyncCacheInvalidation:
-    async def test_invalidate_todo_caches(self, mock_sync_cache):
-        m_del, m_del_pattern = mock_sync_cache
-        await _invalidate_todo_caches(FAKE_USER_ID, FAKE_PROJECT_ID, FAKE_TODO_ID)
-        m_del.assert_any_await(f"stats:{FAKE_USER_ID}")
-        m_del.assert_any_await(f"todo:{FAKE_USER_ID}:{FAKE_TODO_ID}")
-        m_del.assert_any_await(f"projects:{FAKE_USER_ID}")
-
-    async def test_invalidate_todo_caches_without_project(self, mock_sync_cache):
-        m_del, m_del_pattern = mock_sync_cache
-        await _invalidate_todo_caches(FAKE_USER_ID)
-        m_del.assert_any_await(f"stats:{FAKE_USER_ID}")
-
-    async def test_invalidate_todo_caches_exception_swallowed(self, mock_sync_cache):
-        m_del, _ = mock_sync_cache
-        m_del.side_effect = Exception("Redis down")
-        # Should not raise
-        await _invalidate_todo_caches(FAKE_USER_ID)
-
-    async def test_invalidate_goal_caches(self, mock_sync_cache):
-        m_del, _ = mock_sync_cache
-        goal_id = str(ObjectId())
-        await _invalidate_goal_caches(FAKE_USER_ID, goal_id)
-        m_del.assert_any_await(f"goals_cache:{FAKE_USER_ID}")
-        m_del.assert_any_await(f"goal_stats_cache:{FAKE_USER_ID}")
-        m_del.assert_any_await(f"goal_cache:{goal_id}")
-
-    async def test_invalidate_goal_caches_without_goal_id(self, mock_sync_cache):
-        m_del, _ = mock_sync_cache
-        await _invalidate_goal_caches(FAKE_USER_ID)
-        m_del.assert_any_await(f"goals_cache:{FAKE_USER_ID}")
-
-    async def test_invalidate_goal_caches_exception_swallowed(self, mock_sync_cache):
-        m_del, _ = mock_sync_cache
-        m_del.side_effect = Exception("Redis down")
-        await _invalidate_goal_caches(FAKE_USER_ID)
-
-    async def test_invalidate_project_caches(self, mock_sync_cache):
-        m_del, m_del_pattern = mock_sync_cache
-        await _invalidate_project_caches(FAKE_USER_ID, FAKE_PROJECT_ID)
-        m_del.assert_any_await(f"projects:{FAKE_USER_ID}")
-        m_del_pattern.assert_any_await(f"*:project:{FAKE_PROJECT_ID}*")
-
-    async def test_invalidate_project_caches_without_project_id(self, mock_sync_cache):
-        m_del, m_del_pattern = mock_sync_cache
-        await _invalidate_project_caches(FAKE_USER_ID)
-        m_del.assert_any_await(f"projects:{FAKE_USER_ID}")
-
-    async def test_invalidate_project_caches_exception_swallowed(self, mock_sync_cache):
-        m_del, _ = mock_sync_cache
-        m_del.side_effect = Exception("Redis down")
-        await _invalidate_project_caches(FAKE_USER_ID)

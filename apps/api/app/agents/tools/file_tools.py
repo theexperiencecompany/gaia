@@ -80,9 +80,10 @@ async def _get_similar_documents(
 ) -> list[tuple[Document, float]]:
     """Semantic search over files uploaded in this conversation, scored by similarity.
 
-    Scope is resolved from MongoDB (files carrying this ``conversation_id``) and
-    applied as a ``file_id`` filter on the vector search — so the tool can never
-    surface a file from another conversation, regardless of ChromaDB metadata.
+    Scope is resolved from MongoDB (files carrying this ``conversation_id``, plus
+    legacy unscoped files) and applied as a ``file_id`` filter on the vector
+    search — so the tool can never surface a file from another conversation,
+    regardless of ChromaDB metadata.
     """
     chroma_documents_collection = await ChromaClient.get_langchain_client(
         collection_name=CHROMA_DOCUMENTS_COLLECTION
@@ -92,8 +93,19 @@ async def _get_similar_documents(
         log.error(f"{LogTag.TOOL} ChromaDB client is not available.")
         return []
 
+    # Files uploaded before conversation scoping existed carry no
+    # conversation_id (the old web client never sent one, and only new
+    # conversations get backfilled). Keep those legacy docs searchable —
+    # don't "simplify" this back to an exact conversation_id match.
     conversation_files = await files_collection.find(
-        {"user_id": user_id, "conversation_id": conversation_id},
+        {
+            "user_id": user_id,
+            "$or": [
+                {"conversation_id": conversation_id},
+                {"conversation_id": {"$exists": False}},
+                {"conversation_id": None},
+            ],
+        },
         projection={"_id": 0, "file_id": 1},
     ).to_list(length=None)
     conversation_file_ids = [doc["file_id"] for doc in conversation_files if doc.get("file_id")]

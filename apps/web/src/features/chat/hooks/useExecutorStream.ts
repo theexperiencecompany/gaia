@@ -1,14 +1,19 @@
 import {
-  mergeToolOutputIntoToolData,
+  applyStreamEvent,
+  createTurnAccumulator,
   parseChatStreamEvent,
+  type TurnAccumulator,
 } from "@shared/chat";
 import { useCallback, useEffect, useRef } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import { db, type IMessage } from "@/lib/db/chatDb";
+import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
+import type { TodoProgressData } from "@/types/features/todoProgressTypes";
+import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 
 // Coalesce IndexedDB writes during a live executor stream. The placeholder is
 // re-persisted at most this often (plus a guaranteed final write on close), so a
@@ -22,14 +27,31 @@ interface ExecutorStreamStartedEvent {
   task_id: string;
 }
 
+/** Project the shared accumulator onto the placeholder message record. */
+const applyAccumulatorToMessage = (
+  base: IMessage,
+  acc: TurnAccumulator,
+): IMessage => ({
+  ...base,
+  content: acc.responseText,
+  tool_data: acc.toolData.length > 0 ? (acc.toolData as ToolDataEntry[]) : null,
+  follow_up_actions: acc.followUpActions,
+  image_data: (acc.imageData as ImageData | null) ?? null,
+  memory_data: (acc.extras.memory_data as MemoryData | undefined) ?? null,
+  todo_progress: (acc.todoProgress as TodoProgressData | null) ?? null,
+  updatedAt: new Date(),
+});
+
 /**
  * Subscribe to `executor.stream_started` WebSocket events.
  *
  * When a queued executor task starts, the backend emits this event with a
  * fresh stream_id. This hook creates a temporary placeholder message in the
- * Zustand store and opens a new SSE connection to `GET /stream/{stream_id}`
- * to stream live tool events into the placeholder. The placeholder is removed
- * when `useBgMessageWebSocket` receives the final `conversation.new_message`.
+ * Zustand store and opens a new SSE connection to `GET /stream/{stream_id}`,
+ * folding live events into the placeholder through the SAME shared accumulator
+ * the live chat turn uses — reasoning, subagents, todo progress, and text all
+ * render identically on both paths. The placeholder is removed when
+ * `useBgMessageWebSocket` receives the final `conversation.new_message`.
  *
  * Only active for the currently-viewed conversation — if the user is elsewhere,
  * the final message arrives via the normal WS notification path.
@@ -60,6 +82,10 @@ export function useExecutorStream() {
       return;
     }
     activeStreamsRef.current.add(stream_id);
+    streamLog("lifecycle", "executor-stream:start", {
+      conversationId: conversation_id,
+      detail: { stream_id, task_id },
+    });
 
     // Create a placeholder message in the store for live tool progress.
     // id === task_id so useBgMessageWebSocket can find and remove it when the
@@ -86,6 +112,8 @@ export function useExecutorStream() {
     const controller = new AbortController();
     controllersRef.current.add(controller);
 
+    let acc = createTurnAccumulator();
+
     // Coalesced IndexedDB persistence: the store update renders live, the
     // throttled DB write is only a refresh-survival snapshot.
     let writeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -103,28 +131,18 @@ export function useExecutorStream() {
         writeTimer = setTimeout(flushWrite, DB_WRITE_THROTTLE_MS);
       }
     };
-    const applyUpdate = (updated: IMessage) => {
-      useChatStore.getState().addOrUpdateMessage(updated);
-      scheduleWrite(updated);
-    };
-    // Apply a tool_data transform onto the live placeholder. Returns silently if
-    // the placeholder is momentarily absent so the rest of the SSE batch still
-    // processes (a `return` here would drop every remaining event in the frame).
-    const updateToolData = (
-      transform: (existing: ToolDataEntry[]) => ToolDataEntry[],
-    ) => {
+
+    const flushToStore = () => {
       const state = useChatStore.getState();
       const msgs = state.messagesByConversation[conversation_id] ?? [];
       const current = msgs.find((m) => m.id === task_id);
+      // Placeholder momentarily absent — skip this frame, keep the stream alive.
       if (!current) return;
-      const existing: ToolDataEntry[] =
-        (current.tool_data as ToolDataEntry[]) ?? [];
-      applyUpdate({
-        ...current,
-        tool_data: transform(existing),
-        updatedAt: new Date(),
-      });
+      const updated = applyAccumulatorToMessage(current, acc);
+      state.updateMessageInPlace(updated);
+      scheduleWrite(updated);
     };
+
     // Mark the placeholder sent so the loading indicator clears. Runs on every
     // terminal outcome — normal close AND error/abort — otherwise an SSE error
     // leaves the placeholder status:'sending' and the card spins forever.
@@ -139,13 +157,16 @@ export function useExecutorStream() {
       const current = msgs.find((m) => m.id === task_id);
       if (current) {
         const finalized: IMessage = {
-          ...current,
+          ...applyAccumulatorToMessage(current, acc),
           status: "sent",
-          updatedAt: new Date(),
         };
-        useChatStore.getState().addOrUpdateMessage(finalized);
+        state.updateMessageInPlace(finalized);
         void db.putMessage(finalized);
       }
+      streamLog("lifecycle", "executor-stream:end", {
+        conversationId: conversation_id,
+        detail: { stream_id, task_id },
+      });
     };
 
     try {
@@ -154,24 +175,25 @@ export function useExecutorStream() {
         (sseEvent) => {
           if (!sseEvent.data) return;
           for (const parsed of parseChatStreamEvent(sseEvent.data)) {
+            streamLog("sse", `executor-event:${parsed.type}`, {
+              conversationId: conversation_id,
+            });
             if (parsed.type === "desktop_tool_request") {
               // Queued executor runs ride this stream too — relay desktop
               // actions exactly like the live chat stream does.
               void relayDesktopToolRequest(parsed.request);
               continue;
             }
-
-            if (parsed.type === "tool_data") {
-              updateToolData((existing) => [
-                ...existing,
-                parsed.entry as ToolDataEntry,
-              ]);
-            } else if (parsed.type === "tool_output") {
-              updateToolData((existing) =>
-                mergeToolOutputIntoToolData(existing, parsed.output),
-              );
+            if (parsed.type === "parse_error") {
+              streamLogError("sse", "executor-malformed-frame", {
+                conversationId: conversation_id,
+                detail: parsed.raw,
+              });
+              continue;
             }
+            acc = applyStreamEvent(acc, parsed);
           }
+          flushToStore();
         },
         () => {
           // Stream closed cleanly — finalize so the loading indicator clears.

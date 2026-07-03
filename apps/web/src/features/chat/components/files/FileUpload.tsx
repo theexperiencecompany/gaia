@@ -17,9 +17,8 @@ import {
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { useLoading } from "@/features/chat/hooks/useLoading";
-import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { toast } from "@/lib/toast";
+import { useStreamStore } from "@/stores/streamStore";
 
 import type { UploadedFilePreview } from "./FilePreview";
 
@@ -60,8 +59,7 @@ export default function FileUpload({
   isPastedFile = false,
   conversationId,
 }: FileUploadProps) {
-  const { setIsLoading } = useLoading();
-  const { setLoadingText, resetLoadingText } = useLoadingText();
+  const setAuxLoading = useStreamStore((state) => state.setAuxLoading);
 
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -172,8 +170,7 @@ export default function FileUpload({
       toast.error("No valid files to upload");
       return;
     }
-    setLoadingText("Uploading files...");
-    setIsLoading(true);
+    setAuxLoading(true, "Uploading files...");
     setIsUploading(true);
 
     try {
@@ -257,8 +254,7 @@ export default function FileUpload({
       }
     } finally {
       setIsUploading(false);
-      setIsLoading(false);
-      resetLoadingText();
+      setAuxLoading(false);
     }
   };
 

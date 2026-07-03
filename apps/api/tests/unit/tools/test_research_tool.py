@@ -110,7 +110,7 @@ class TestDeepResearch:
     @patch(f"{MODULE}.build_research_cache_key", return_value="cache:key")
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
-    @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
+    @patch(f"{MODULE}.search_for_research", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     async def test_no_sources_found(
         self,
@@ -131,7 +131,7 @@ class TestDeepResearch:
             {"query": "obscure topic", "scope": "", "depth": 1, "focus_areas": None},
             config=_make_config(),
         )
-        assert "No sources found" in result["error"]
+        assert "no sources were found" in result["error"]
         assert result["data"] is None
 
     @pytest.mark.asyncio
@@ -140,7 +140,7 @@ class TestDeepResearch:
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
-    @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
+    @patch(f"{MODULE}.search_for_research", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     @patch(f"{MODULE}.batch_fetch_with_crawl4ai", new_callable=AsyncMock)
     async def test_successful_research_crawl4ai(
@@ -193,7 +193,7 @@ class TestDeepResearch:
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
-    @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
+    @patch(f"{MODULE}.search_for_research", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     @patch(
         f"{MODULE}.batch_fetch_with_crawl4ai",
@@ -233,7 +233,7 @@ class TestDeepResearch:
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
-    @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
+    @patch(f"{MODULE}.search_for_research", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     @patch(
         f"{MODULE}.batch_fetch_with_crawl4ai",
@@ -277,7 +277,7 @@ class TestDeepResearch:
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
-    @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
+    @patch(f"{MODULE}.search_for_research", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     @patch(
         f"{MODULE}.batch_fetch_with_crawl4ai",
@@ -348,7 +348,7 @@ class TestDeepResearch:
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
-    @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
+    @patch(f"{MODULE}.search_for_research", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     @patch(f"{MODULE}.batch_fetch_with_crawl4ai", new_callable=AsyncMock)
     async def test_depth_3_max_sources(
@@ -384,7 +384,7 @@ class TestDeepResearch:
     @patch(f"{MODULE}.get_cache", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.set_cache", new_callable=AsyncMock)
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
-    @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
+    @patch(f"{MODULE}.search_for_research", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     @patch(f"{MODULE}.batch_fetch_with_crawl4ai", new_callable=AsyncMock)
     async def test_search_exceptions_counted_correctly(

@@ -41,7 +41,6 @@ from app.services.conversation_service import (
     delete_conversation,
     update_messages,
 )
-from app.services.todos.sync_service import sync_goal_node_completion
 from app.services.todos.todo_service import TodoService
 
 # ---------------------------------------------------------------------------
@@ -394,71 +393,6 @@ class TestTodoCreationWithSubtasks:
 
         for st in captured["subtasks"]:
             assert st["id"], "Service must assign IDs to subtasks that lack them"
-
-
-# ---------------------------------------------------------------------------
-# Todo sync integrity (sync_service)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestTodoSyncIntegrity:
-    """Verify goal-node <-> subtask sync does not create orphans or duplicates."""
-
-    async def test_sync_goal_node_updates_subtask(self) -> None:
-        """Completing a goal node must mark the corresponding subtask complete."""
-
-        subtask_id = str(uuid4())
-        todo_oid = _oid()
-        goal_oid = _oid()
-
-        goal_doc = {
-            "_id": goal_oid,
-            "user_id": USER_ID,
-            "todo_id": str(todo_oid),
-            "roadmap": {
-                "nodes": [
-                    {
-                        "id": "node-1",
-                        "data": {"subtask_id": subtask_id, "title": "Step 1"},
-                    }
-                ]
-            },
-        }
-
-        todo_doc = {"_id": todo_oid, "project_id": "proj-1"}
-
-        mock_goals = AsyncMock()
-        mock_goals.find_one = AsyncMock(return_value=deepcopy(goal_doc))
-
-        mock_todos = AsyncMock()
-        mock_todos.update_one = AsyncMock(return_value=_make_update_result(modified=1))
-        mock_todos.find_one = AsyncMock(return_value=deepcopy(todo_doc))
-
-        with (
-            patch("app.services.todos.sync_service.goals_collection", mock_goals),
-            patch("app.services.todos.sync_service.todos_collection", mock_todos),
-            patch("app.services.todos.sync_service.delete_cache", AsyncMock()),
-            patch("app.services.todos.sync_service.delete_cache_by_pattern", AsyncMock()),
-        ):
-            success = await sync_goal_node_completion(str(goal_oid), "node-1", True, USER_ID)
-
-        assert success is True
-        # Verify the update targeted the correct subtask
-        update_call = mock_todos.update_one.call_args
-        assert update_call[0][0]["subtasks.id"] == subtask_id
-        assert update_call[0][1]["$set"]["subtasks.$.completed"] is True
-
-    async def test_sync_returns_false_for_missing_goal(self) -> None:
-        """Syncing a nonexistent goal must return False without side effects."""
-
-        mock_goals = AsyncMock()
-        mock_goals.find_one = AsyncMock(return_value=None)
-
-        with patch("app.services.todos.sync_service.goals_collection", mock_goals):
-            success = await sync_goal_node_completion(str(_oid()), "node-x", True, USER_ID)
-
-        assert success is False
 
 
 # ---------------------------------------------------------------------------

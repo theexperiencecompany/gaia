@@ -7,30 +7,35 @@ from typing import Any
 
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
-from langchain_google_genai import ChatGoogleGenerativeAI
 
+from app.agents.llm.client import get_default_llm
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.settings import settings
+from app.constants.llm import (
+    AGENT_RECURSION_LIMIT,
+    DEFAULT_MAX_TOKENS,
+    EXECUTOR_RECURSION_LIMIT,
+)
 from app.constants.log_tags import LogTag
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
     MAX_OUTPUT_CHARS,
     SUMMARIZATION_KEEP_TOKENS,
-    SUMMARIZATION_MODEL,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
 from shared.py.wide_events import log
 
 # Coding tools operate on the persistent E2B workspace; their outputs are
-# already capped by the bash output limiter and the read tool's pagination,
-# so the compaction middleware should leave them alone.
-CODING_TOOL_NAMES = {"bash", "read", "write", "edit"}
+# already capped by the bash output limiter, the read tool's pagination, and the
+# query_json/grep output cap, so the compaction middleware should leave them alone.
+CODING_TOOL_NAMES = {"bash", "read", "write", "edit", "query_json", "grep"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 
 # Tools that already perform their own context-safe offload (return a small
@@ -39,12 +44,21 @@ SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 # tool's own file format with the generic wrapper.
 SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES"}
 
+# Loop-guard hard-stop is OFF by default: it must never silently abandon a tool
+# call in an interactive run where the user is watching and can intervene. It is
+# only safe to enable for unattended (silent / workflow) runs. Because the
+# executor graph — and therefore its middleware — is a single per-process
+# instance shared by BOTH interactive and workflow runs, we cannot select
+# hard-stop per run at graph-build time; flipping this constant would enable it
+# for every run on the graph. See create_middleware_stack for the wiring note.
+LOOP_GUARD_HARD_STOP = False
+
 _summarization_llm: BaseChatModel | None = None
 
 
 def get_summarization_llm() -> BaseChatModel | None:
-    """Get the cached summarization LLM (Gemini Flash 2), or None if the Google
-    API key is not configured."""
+    """Get the cached summarization LLM (the default Gemini model), or None if the
+    Google API key is not configured."""
     global _summarization_llm
 
     if _summarization_llm is not None:
@@ -56,16 +70,16 @@ def get_summarization_llm() -> BaseChatModel | None:
         )
         return None
 
-    _summarization_llm = ChatGoogleGenerativeAI(
-        model=SUMMARIZATION_MODEL,
-        temperature=0.1,  # Low temperature for consistent summaries
-    )
+    # get_default_llm() carries the model's context-window profile, which the
+    # summarization/compaction fractional triggers below require to build.
+    _summarization_llm = get_default_llm()
     return _summarization_llm
 
 
 def create_middleware_stack(
     *,
     agent_name: str = "agent",
+    recursion_limit: int = AGENT_RECURSION_LIMIT,
     enable_accounting: bool = True,
     enable_summarization: bool = True,
     enable_compaction: bool = True,
@@ -83,6 +97,8 @@ def create_middleware_stack(
     enable_archive: bool = True,
     compaction_excluded_tools: set[str] | None = None,
     summarization_excluded_tools: set[str] | None = None,
+    enable_loop_guard: bool = True,
+    loop_guard_hard_stop: bool = LOOP_GUARD_HARD_STOP,
 ) -> list[Any]:
     """
     Create the standard middleware stack for agents.
@@ -123,7 +139,9 @@ def create_middleware_stack(
     # ``caching_debug`` flips on a second diagnostic instance that runs LAST,
     # so we can compare state.messages before vs. after other middleware.
     if enable_accounting:
-        middleware.append(LLMAccountingMiddleware(agent_name=agent_name))
+        middleware.append(
+            LLMAccountingMiddleware(agent_name=agent_name, recursion_limit=recursion_limit)
+        )
         log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled for {agent_name}")
         log.set(
             middleware_stack={
@@ -161,15 +179,30 @@ def create_middleware_stack(
                 f"{LogTag.AGENT} Summarization middleware enabled: trigger={summarization_trigger}, keep={summarization_keep}"
             )
 
-    # Compaction middleware (always available, but respects enable flag)
+    # Compaction middleware (always available, but respects enable flag). It also
+    # binds query_json/grep when a tool output is offloaded.
     if enable_compaction:
+        # DEFAULT_MAX_TOKENS is the same window the summarization model's profile
+        # carries (get_default_llm sets profile.max_input_tokens from it), so the
+        # compaction and summarization fractions are denominated in one window.
         compaction = WorkspaceCompactionMiddleware(
             compaction_threshold=compaction_threshold,
             max_output_chars=max_output_chars,
+            context_window=DEFAULT_MAX_TOKENS,
             excluded_tools=compaction_excluded_tools,
         )
         middleware.append(compaction)
         log.debug(f"{LogTag.AGENT} Compaction middleware enabled: threshold={compaction_threshold}")
+
+    # Loop-guard middleware — added LAST so it sits innermost and observes the
+    # raw tool result before compaction/summarization transform it, counting the
+    # tool's actual failures. warn-only unless hard_stop is enabled.
+    if enable_loop_guard:
+        middleware.append(LoopGuardMiddleware(hard_stop=loop_guard_hard_stop))
+        log.debug(
+            f"{LogTag.AGENT} Loop guard middleware enabled for {agent_name}: "
+            f"hard_stop={loop_guard_hard_stop}"
+        )
 
     return middleware
 
@@ -204,6 +237,7 @@ def create_executor_middleware(
     """
     return create_middleware_stack(
         agent_name="executor_agent",
+        recursion_limit=EXECUTOR_RECURSION_LIMIT,
         enable_subagent=True,
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,

@@ -101,6 +101,39 @@ class TestStripUnsubscribeFooters:
         result = strip_unsubscribe_footers(body)
         assert "Market Street" in result
 
+    def test_keeps_mid_body_unsubscribe_request(self) -> None:
+        # A human asking to be unsubscribed is content, not a footer.
+        body = (
+            "Hi team,\n\n"
+            "could you unsubscribe me from the digest? Also, invoice attached.\n\n"
+            "Thanks"
+        )
+        assert strip_unsubscribe_footers(body) == body
+
+    def test_keeps_body_that_is_entirely_keyword_paragraph(self) -> None:
+        body = "Please update preferences for the Q3 report by Friday."
+        assert strip_unsubscribe_footers(body) == body
+
+    def test_strips_footer_with_link(self) -> None:
+        body = (
+            "Newsletter content here.\n\n"
+            "You are receiving this email because you signed up on our site. "
+            "To stop receiving these emails, unsubscribe here: "
+            "https://example.com/unsub?token=abc"
+        )
+        result = strip_unsubscribe_footers(body)
+        assert result == "Newsletter content here."
+
+    def test_strips_footer_followed_by_address_block(self) -> None:
+        body = (
+            "Newsletter body.\n\n"
+            "Click here to unsubscribe from future emails.\n\n"
+            "Mercury Technologies, Inc.\n"
+            "2261 Market Street, Suite 86807, San Francisco, CA 94114"
+        )
+        result = strip_unsubscribe_footers(body)
+        assert result == "Newsletter body."
+
 
 class TestStripTrackingParams:
     def test_strips_utm_params(self) -> None:
@@ -134,6 +167,19 @@ class TestStripTrackingParams:
     def test_preserves_clean_url(self) -> None:
         text = "https://example.com/page"
         assert strip_tracking_params(text) == text
+
+    def test_preserves_markdown_link_closing_paren(self) -> None:
+        text = "[View order](https://shop.com/order?utm_source=email)"
+        assert strip_tracking_params(text) == "[View order](https://shop.com/order)"
+
+    def test_preserves_balanced_parens_inside_url(self) -> None:
+        text = "https://en.wikipedia.org/wiki/Rust_(programming_language)?utm_source=x"
+        result = strip_tracking_params(text)
+        assert result == "https://en.wikipedia.org/wiki/Rust_(programming_language)"
+
+    def test_preserves_surrounding_brackets_and_punctuation(self) -> None:
+        text = "(see https://example.com/page?utm_source=fb)."
+        assert strip_tracking_params(text) == "(see https://example.com/page)."
 
 
 class TestCollapseWhitespace:
@@ -290,6 +336,14 @@ class TestNormalizeEndToEnd:
         assert "Order confirmed" in result
         assert "DISCLAIMER" not in result
         assert "Founder" not in result
+
+    def test_keeps_mid_body_unsubscribe_request(self) -> None:
+        body = (
+            "Hi team,\n\n"
+            "could you unsubscribe me from the digest? Also, invoice attached.\n\n"
+            "Thanks"
+        )
+        assert normalize_email_body(body) == body
 
     def test_strips_utm_tracking_in_links(self) -> None:
         body = (

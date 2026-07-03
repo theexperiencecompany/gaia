@@ -1,5 +1,5 @@
 import type { RichMessage } from "@gaia/shared";
-import { richMessageToMarkdown } from "@gaia/shared";
+import { renderForPlatform, richMessageToMarkdown } from "@gaia/shared";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -29,8 +29,9 @@ describe("richMessageToMarkdown", () => {
     expect(result).toContain("**Test Title**");
   });
 
-  it("formats title with *title* for Slack", () => {
-    const result = richMessageToMarkdown(makeMsg(), "slack");
+  it("renders title as Slack *title* through the platform pipeline", () => {
+    // richMessageToMarkdown emits CommonMark; renderForPlatform converts it.
+    const result = renderForPlatform(richMessageToMarkdown(makeMsg()), "slack");
     expect(result).toContain("*Test Title*");
     expect(result).not.toContain("**Test Title**");
   });
@@ -59,11 +60,11 @@ describe("richMessageToMarkdown", () => {
   });
 
   // -- Links ---------------------------------------------------------------
-  it("formats links as <url|label> for Slack", () => {
+  it("renders links as Slack <url|label> through the platform pipeline", () => {
     const msg = makeMsg({
       links: [{ label: "Dashboard", url: "https://app.gaia.com" }],
     });
-    const result = richMessageToMarkdown(msg, "slack");
+    const result = renderForPlatform(richMessageToMarkdown(msg), "slack");
     expect(result).toContain("<https://app.gaia.com|Dashboard>");
   });
 
@@ -83,11 +84,11 @@ describe("richMessageToMarkdown", () => {
     expect(result).toContain("[Dashboard](https://app.gaia.com)");
   });
 
-  it("formats links as label (url) for WhatsApp (no masked-link syntax)", () => {
+  it("renders links as WhatsApp label (url) through the platform pipeline", () => {
     const msg = makeMsg({
       links: [{ label: "Dashboard", url: "https://app.gaia.com" }],
     });
-    const result = richMessageToMarkdown(msg, "whatsapp");
+    const result = renderForPlatform(richMessageToMarkdown(msg), "whatsapp");
     expect(result).toContain("Dashboard (https://app.gaia.com)");
     expect(result).not.toContain("[Dashboard](https://app.gaia.com)");
   });
@@ -144,14 +145,14 @@ describe("richMessageToMarkdown", () => {
     expect(result).toContain("**Field2**\nval2");
   });
 
-  it("joins multiple links with pipe separator", () => {
+  it("joins multiple links with a pipe separator (Slack pipeline)", () => {
     const msg = makeMsg({
       links: [
         { label: "A", url: "https://a.com" },
         { label: "B", url: "https://b.com" },
       ],
     });
-    const result = richMessageToMarkdown(msg, "slack");
+    const result = renderForPlatform(richMessageToMarkdown(msg), "slack");
     expect(result).toContain("<https://a.com|A> | <https://b.com|B>");
   });
 });

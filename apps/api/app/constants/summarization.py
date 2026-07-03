@@ -1,6 +1,3 @@
-# Default model for summarization — small/fast/cheap provider model.
-SUMMARIZATION_MODEL = "gemini-2.0-flash"
-
 # Summarization kicks in earlier (0.60) so large multi-step runs never
 # balloon to tens-of-thousands of tokens. Keeps steady-state context narrower.
 SUMMARIZATION_TRIGGER_FRACTION = 0.60
@@ -14,7 +11,8 @@ COMPACTION_THRESHOLD = 0.40
 # (~4 chars/token, the same estimate this middleware uses for context usage.)
 MAX_OUTPUT_CHARS = 120000
 
-# Floor below which a tool output is never compacted (~30k tokens). Modern
-# models handle this much context comfortably, so small/medium outputs stay
-# inline rather than getting pushed to a file the agent has to re-read.
-MIN_COMPACTION_SIZE = 120000
+# Floor for the context-pressure trigger: when context usage is over the
+# compaction threshold, outputs above this size are compacted even though
+# they are under MAX_OUTPUT_CHARS. Below it, offloading costs more than it
+# saves, so tiny outputs always stay inline.
+MIN_COMPACTION_SIZE = 500

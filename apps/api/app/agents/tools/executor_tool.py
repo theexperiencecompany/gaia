@@ -19,6 +19,7 @@ from app.agents.core.background.executor_queue import (
     decode_raw_item,
     enqueue_task,
     parse_lock_value,
+    release_lock_if_owned,
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import run_executor_background
@@ -146,9 +147,11 @@ async def call_executor(
         return _rate_limit_message(e)
     except Exception as e:  # noqa: BLE001
         log.error(f"{LogTag.TOOL} Error dispatching executor", error=str(e))
-        await redis_cache.delete(
-            f"{EXECUTOR_BUSY_PREFIX}{conversation_id}",
-        )
+        # Release only if THIS dispatch's acquire is what holds the lock. An
+        # unconditional delete here freed a FOREIGN lock when the failure
+        # happened in the queue branch (lock held by a live run), allowing a
+        # second concurrent executor in the same conversation.
+        await release_lock_if_owned(conversation_id, configurable.get("stream_id"), task_id)
         return f"Error starting task: {e!s}"
 
 

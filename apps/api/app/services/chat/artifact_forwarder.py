@@ -58,9 +58,17 @@ async def forward_artifact_events(
     stream_id: str,
     bot_message_id: str | None,
     source: str | None = None,
+    subscribed: asyncio.Event | None = None,
 ) -> None:
-    """Bridge this conversation's artifact events to its chat SSE stream."""
-    await ArtifactForwarder(user_id, conversation_id, stream_id, bot_message_id, source).run()
+    """Bridge this conversation's artifact events to its chat SSE stream.
+
+    ``subscribed`` is set once the pub/sub subscription is live (or will never
+    be), so callers can order their own publishes after it — pubsub has no
+    replay, so anything published earlier is lost.
+    """
+    await ArtifactForwarder(
+        user_id, conversation_id, stream_id, bot_message_id, source, subscribed
+    ).run()
 
 
 @dataclass
@@ -98,12 +106,14 @@ class ArtifactForwarder:
         stream_id: str,
         bot_message_id: str | None,
         source: str | None = None,
+        subscribed: asyncio.Event | None = None,
     ) -> None:
         self.user_id = user_id
         self.conversation_id = conversation_id
         self.stream_id = stream_id
         self.bot_message_id = bot_message_id
         self.bot_platform = _bot_source(source)
+        self.subscribed = subscribed
         self.registry_mtimes: dict[str, str | None] = {}
         self.published_files: set[str] = set()
         self.stats = _TurnStats()
@@ -113,12 +123,14 @@ class ArtifactForwarder:
     async def run(self) -> None:
         """Load the registry, then forward every event of this turn until close."""
         if redis_cache.redis is None:
+            self._signal_subscribed()  # will never subscribe — unblock waiters
             return
-        await self._load_registry()
         channel = artifact_channel(self.user_id)
         pubsub = redis_cache.redis.pubsub()
         try:
+            await self._load_registry()
             await pubsub.subscribe(channel)
+            self._signal_subscribed()
             log.info(
                 f"{ARTIFACT_LOG_PREFIX} subscribed "
                 f"(conv={self.conversation_id}, registry={len(self.registry_mtimes)})"
@@ -129,8 +141,13 @@ class ArtifactForwarder:
         except Exception as e:  # noqa: BLE001 — log and exit; orchestrator cleans up
             log.warning(f"{ARTIFACT_LOG_PREFIX} forwarder error (conv={self.conversation_id}): {e}")
         finally:
+            self._signal_subscribed()  # no-op when set; unblocks waiters if subscribe failed
             self._log_summary()
             await _close_pubsub(pubsub, channel)
+
+    def _signal_subscribed(self) -> None:
+        if self.subscribed is not None:
+            self.subscribed.set()
 
     async def _load_registry(self) -> None:
         """Seed the per-turn ``path → mtime`` map so re-emits dedup against it."""

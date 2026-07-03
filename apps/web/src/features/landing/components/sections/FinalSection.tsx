@@ -144,14 +144,35 @@ export default function FinalSection({
     lastTimeRef.current = timeOfDay;
   }
 
+  // Preload the alternate time-of-day wallpapers only once this bottom-of-page
+  // section is near the viewport, so they don't compete with the hero's LCP
+  // image (and the rest of the critical path) during initial page load.
+  const containerRef = useRef<HTMLDivElement>(null);
   const [shouldPreloadOthers, setShouldPreloadOthers] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setShouldPreloadOthers(true), 1200);
-    return () => clearTimeout(t);
+    const node = containerRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      setShouldPreloadOthers(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setShouldPreloadOthers(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "400px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
   }, []);
 
   return (
-    <div className="relative m-0! flex min-h-svh w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 py-6 sm:px-6 sm:py-8">
+    <div
+      ref={containerRef}
+      className="relative m-0! flex min-h-svh w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 py-6 sm:px-6 sm:py-8"
+    >
       {shouldPreloadOthers && (
         <div
           aria-hidden="true"

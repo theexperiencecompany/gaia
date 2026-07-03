@@ -1,8 +1,8 @@
-"""Session lifecycle — dir creation, user provisioning, deletion, idle scan.
+"""Session lifecycle — user provisioning, deletion, idle scan.
 
-``ensure_session_dirs`` creates a conversation's session dirs (at conversation
-creation). ``provision_user_workspace`` / ``materialize_user_integrations`` do
-the user-level materialization, driven by registration, integration changes,
+Session dirs themselves are created on demand by the write/bash tool paths.
+``provision_user_workspace`` / ``materialize_user_integrations`` do the
+user-level materialization, driven by registration, integration changes,
 and startup — not by the chat turn. The rest is admin (idle prune, hard delete,
 stale scan) reached from workers and the ``/sessions`` admin endpoints.
 """
@@ -15,11 +15,6 @@ import os
 from pathlib import Path
 import shutil
 
-from app.agents.workspace.paths import (
-    ARTIFACTS_DIRNAME,
-    SCRATCH_DIRNAME,
-    USER_UPLOADED_DIRNAME,
-)
 from app.agents.workspace.skill_loader import library_hash
 from app.services.storage.juicefs import _is_mounted, _mount_root, session_root
 from app.services.storage.metrics import FsOps, fs_timer
@@ -38,12 +33,6 @@ from app.services.storage.sessions.skills import (
     read_text_or_none,
     write_skills_marker,
 )
-
-
-def _ensure_session_subdirs(base: Path) -> None:
-    """Create the scratch/, user-uploaded/, artifacts/ trio under a session root."""
-    for sub in (SCRATCH_DIRNAME, USER_UPLOADED_DIRNAME, ARTIFACTS_DIRNAME):
-        (base / sub).mkdir(parents=True, exist_ok=True)
 
 
 def _materialize_if_stale(
@@ -78,22 +67,6 @@ def _materialize_if_stale(
     connected_marker_path.parent.mkdir(parents=True, exist_ok=True)
     connected_marker_path.write_text(connected_signature, encoding="utf-8")
     instructions_marker_path.write_text(instructions_sig, encoding="utf-8")
-
-
-async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
-    """Create scratch/, user-uploaded/, artifacts/ + .meta.json. Idempotent."""
-
-    def _mk() -> Path:
-        base = session_base(user_id, conv_id)
-        _ensure_session_subdirs(base)
-        meta = base / SESSION_META_FILENAME
-        if not meta.exists():
-            now = now_iso()
-            write_session_meta(meta, {"created_at": now, "last_active": now, "msg_count": 0})
-        return base
-
-    async with fs_timer(FsOps.ENSURE_SESSION_DIRS):
-        return await asyncio.to_thread(_mk)
 
 
 async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -> None:
@@ -195,6 +168,24 @@ async def list_session_ids(user_id: str) -> list[str]:
 
     async with fs_timer(FsOps.LIST_SESSION_IDS):
         return await asyncio.to_thread(_scan)
+
+
+async def sessions_root_inode(user_id: str) -> int | None:
+    """Inode of the user's ``sessions/`` dir, or None if unmounted/missing.
+
+    The watcher treats a mutating op on this inode (a session dir created or
+    removed) as "rescan to discover new/gone conversations".
+    """
+
+    def _go() -> int | None:
+        if not _is_mounted():
+            return None
+        try:
+            return (_mount_root() / "users" / user_id / "sessions").stat().st_ino
+        except OSError:
+            return None
+
+    return await asyncio.to_thread(_go)
 
 
 def _stale_in_user_dir(user_dir: Path, cutoff: datetime) -> list[tuple[str, str]]:

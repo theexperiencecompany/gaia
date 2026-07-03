@@ -311,7 +311,6 @@ _CORE_CATEGORY_NAMES = [
     "notifications",
     "todos",
     "reminders",
-    "goal_tracking",
     "skills",
     "workflows",
     "support",
@@ -399,7 +398,7 @@ class TestToolRegistryAsync:
 
         with (
             patch(
-                "app.services.composio.composio_service.get_composio_service",
+                "app.agents.tools.core.registry.get_composio_service",
                 return_value=mock_composio_service,
             ),
             patch.object(
@@ -418,7 +417,9 @@ class TestToolRegistryAsync:
         assert "GMAIL_SEND" in tool_names
         assert "GMAIL_READ" in tool_names
         assert len(category.tools) == 2
-        mock_composio_service.get_tools.assert_awaited_once_with(tool_kit="GMAIL")
+        mock_composio_service.get_tools.assert_awaited_once_with(
+            tool_kit="GMAIL", exclude_tools=None
+        )
 
     async def test_register_provider_tools_skips_existing_category(self):
         """register_provider_tools() must not re-register an already-loaded toolkit."""

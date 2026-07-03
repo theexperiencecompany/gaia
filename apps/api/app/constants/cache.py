@@ -94,6 +94,17 @@ FILES_CACHE_PATTERN = "files:{user_id}:*"
 STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
+# Replayable per-stream event log (Redis Stream). Entry ids double as SSE ids,
+# so any subscriber can attach late or reconnect with Last-Event-ID and replay.
+STREAM_EVENTS_PREFIX = "stream:events:"
+STREAM_EVENTS_MAXLEN = 4096
+# Reverse index {user_id}:{conversation_id} -> stream_id for the in-flight chat
+# turn, so a reloaded client can rediscover and re-attach to a live stream.
+STREAM_ACTIVE_PREFIX = "stream:active:"
+# Turn-send dedup: {user_id}:{turn_id} -> stream_id, claimed atomically (SETNX)
+# so a retried POST can't persist the same turn twice.
+STREAM_TURN_DEDUP_PREFIX = "stream:turn:"
+STREAM_TURN_DEDUP_TTL = TEN_MINUTES_TTL
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"

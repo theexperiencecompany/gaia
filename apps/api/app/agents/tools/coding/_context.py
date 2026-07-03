@@ -86,6 +86,21 @@ def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole
     return canonical, role, conv
 
 
+def canonical_rel(path: str, *, session_id: str | None) -> tuple[str, str]:
+    """Resolve a tool-supplied path to ``(abs_path, workspace_rel)``.
+
+    Rejects a path that resolves to the workspace root itself (``rel == ""``),
+    which is not a file. Raises ``ValueError`` on that or on any path that escapes
+    ``/workspace``. Shared by the file-mining tools so their path handling can't
+    drift.
+    """
+    abs_path, _, _ = canonical_path(path, session_id=session_id)
+    rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
+    if not rel:
+        raise ValueError("path must be a file inside the workspace, not the workspace root")
+    return abs_path, rel
+
+
 def sh_quote(s: str) -> str:
     """Single-quote a string for safe inclusion in a shell command."""
     return "'" + s.replace("'", "'\"'\"'") + "'"
@@ -148,6 +163,7 @@ def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
 __all__ = [
     "atomic_write",
     "canonical_path",
+    "canonical_rel",
     "detect_content_type",
     "get_session_id",
     "get_user_id",

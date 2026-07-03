@@ -5,6 +5,6 @@ export const instrumentSerif = Instrument_Serif({
   weight: "400", // Instrument Serif only has one weight (400)
   variable: "--font-instrument-serif",
   display: "swap",
-  preload: true,
+  preload: false,
   style: "normal", // or "italic" for the italic variant
 });

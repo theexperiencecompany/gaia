@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useChatStream } from "@/features/chat/hooks/useChatStream";
+import { turnManager } from "@/features/chat/stream/turnManager";
 import type { IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
+import { useStreamStore } from "@/stores/streamStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
 export interface UseOnboardingChatReturn {
@@ -21,10 +22,12 @@ export function useOnboardingChat(
   pendingTodoMessage?: string | null,
 ): UseOnboardingChatReturn {
   const [chatInputValue, setChatInputValue] = useState("");
-  const [isChatSending, setIsChatSending] = useState(false);
   const [isTodoExecutionDone, setIsTodoExecutionDone] = useState(false);
 
-  const fetchChatStream = useChatStream();
+  // Sending == this conversation has an active turn session.
+  const isChatSending = useStreamStore((state) =>
+    conversationId ? state.sessions[conversationId] != null : false,
+  );
   const activeConversationIdRef = useRef<string | null>(null);
   const sentTodoMessagesRef = useRef<Set<string>>(new Set());
   const todoExecutionInProgressRef = useRef(false);
@@ -78,7 +81,6 @@ export function useOnboardingChat(
           : `onboarding-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
       setChatInputValue("");
-      setIsChatSending(true);
 
       const userMessage: MessageType = {
         type: "user",
@@ -87,18 +89,23 @@ export function useOnboardingChat(
         message_id: userMessageId,
       };
 
-      try {
-        await fetchChatStream(trimmed, [userMessage], {
+      turnManager.send({
+        inputText: trimmed,
+        userMessage,
+        options: {
+          fileData: [],
+          selectedTool: null,
+          toolCategory: null,
+          selectedWorkflow: null,
+          selectedCalendarEvent: null,
           optimisticUserId: userMessageId,
+          replyToMessage: null,
           conversationId,
           isOnboardingDemo: true,
-        });
-      } catch {
-      } finally {
-        setIsChatSending(false);
-      }
+        },
+      });
     },
-    [conversationId, isChatSending, fetchChatStream],
+    [conversationId, isChatSending],
   );
 
   useEffect(() => {

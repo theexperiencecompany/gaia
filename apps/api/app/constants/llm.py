@@ -10,12 +10,60 @@ MESSAGES_SNAPSHOT_FREQUENCY = 50
 # Runaway loops are the main driver of long, expensive traces; capping tail
 # risk keeps p95 cost predictable. Legitimate tasks that need more steps
 # should split work across handoffs rather than chew through recursion budget.
-AGENT_RECURSION_LIMIT = 40  # Main agent graphs (comms, executor, provider subagents)
+AGENT_RECURSION_LIMIT = 40  # Comms + provider subagents (routing / focused work)
+# The executor legitimately runs long multi-step tool loops (retrieve_tools ->
+# handoff -> tool calls, frequently across several subagents), so 40 is too tight
+# and truncates real work with GraphRecursionError. Both the graph's runtime
+# recursion_limit and the accounting middleware's high-water-mark denominator read
+# this, so enforcement and analytics stay in sync.
+EXECUTOR_RECURSION_LIMIT = 100
 SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
+# When this few supersteps remain before the recursion limit, acall_model
+# injects a wrap-up notice so the model finishes with a summary instead of
+# dying mid-exploration on GraphRecursionError.
+RECURSION_WRAPUP_THRESHOLD_STEPS = 6
+
+# Per-tool-call execution timeout. A hung integration call previously hung the
+# entire run forever (no timeout existed at any dispatch layer). Orchestration
+# tools that legitimately run for minutes are exempt — they have their own
+# lifecycle management (recursion caps, busy locks, subagent counters).
+TOOL_EXECUTION_TIMEOUT_SECONDS = 120
+TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
+    {
+        "call_executor",
+        "cancel_executor",
+        "spawn_subagent",
+        "handoff",
+        "wait_for_subagents",
+        "deep_research",
+    }
+)
+
+# Attempts for the model-level transient-error retry before the caller falls back
+# to the default model (see with_llm_retry in app/agents/llm/client.py).
+LLM_RETRY_MAX_ATTEMPTS = 3
+
+# Near-deterministic default for every LLM call; creative tasks opt into more
+# variation via get_default_llm(temperature=...).
+DEFAULT_LLM_TEMPERATURE = 0.1
+
+# Context window of the default model below, in input tokens. The summarization /
+# compaction middleware trigger on a fraction of this, and get_default_llm() feeds
+# it to the model's profile (LangChain has no profile for newer models). Update it
+# whenever DEFAULT_GEMINI_MODEL_NAME changes.
+# Known limitation: middleware is constructed at graph-build time, so the fractional
+# triggers are denominated in THIS window even when a different chat model serves the
+# request (e.g. the paid OpenRouter model or a dev-menu override).
 DEFAULT_MAX_TOKENS = 1_000_000
+# Changing the default model is high blast radius — it is NOT just a string. Before
+# you do, confirm for the new model:
+#   - context window  -> update DEFAULT_MAX_TOKENS above (else fractional-token
+#     middleware fails to build and the whole agent graph dies; see get_default_llm)
+#   - pricing entry    -> app/config/model_pricing.py
+#   - it's multimodal if vision/file tools rely on it
 # Direct Gemini API model name.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 # Default model for free / unspecified configs — always the Gemini model above.
@@ -97,3 +145,17 @@ DEV_MODEL_OPTIONS: dict[str, dict] = {
         "reasoning": False,
     },
 }
+
+# --- Tool-loop guardrails (LoopGuardMiddleware) ---------------------------------
+# Escalating thresholds for a model stuck retrying a failing tool. "Identical"
+# counts failures of the same tool with the same arguments; "same_tool" counts
+# all failures of one tool this run regardless of arguments. At the WARN levels a
+# nudge is appended in-band to the error; at the STOP levels (hard_stop runs only)
+# the tool is no longer executed and a synthetic error is returned instead.
+LOOP_GUARD_WARN_IDENTICAL = 2
+LOOP_GUARD_WARN_SAME_TOOL = 3
+LOOP_GUARD_STOP_IDENTICAL = 5
+LOOP_GUARD_STOP_SAME_TOOL = 8
+# The middleware is a per-process singleton, so failure counters are keyed by the
+# run's thread_id and bounded to the most recent N runs (LRU) to keep memory flat.
+LOOP_GUARD_MAX_TRACKED_RUNS = 512

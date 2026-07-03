@@ -1,6 +1,5 @@
 """Unit tests for app.agents.core.agent — call_agent and call_agent_silent."""
 
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -86,8 +85,8 @@ def _common_patches():
             "app.agents.core.agent.build_agent_config",
             return_value=FAKE_CONFIG,
         ),
-        "store_mem": patch(
-            "app.agents.core.agent.store_user_message_memory",
+        "apply_plan": patch(
+            "app.agents.core.agent.apply_plan_model",
             new_callable=AsyncMock,
         ),
         "log": patch("app.agents.core.agent.log"),
@@ -111,7 +110,7 @@ class TestCoreAgentLogic:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
         ):
             graph, state, config = await _core_agent_logic(
@@ -134,7 +133,7 @@ class TestCoreAgentLogic:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
         ):
             await _core_agent_logic(
@@ -149,71 +148,6 @@ class TestCoreAgentLogic:
         assert kwargs["user_name"] == "Alice"
 
     @pytest.mark.asyncio
-    async def test_fires_background_memory_task(self):
-        """When user_id and message are present, a background task is created."""
-        patches = _common_patches()
-        with (
-            patches["construct"],
-            patches["get_graph"],
-            patches["build_state"],
-            patches["build_config"],
-            patches["store_mem"] as mock_store,
-            patches["log"],
-        ):
-            await _core_agent_logic(
-                request=_make_request(message="remember this"),
-                conversation_id="conv-1",
-                user=_make_user(user_id="uid-1"),
-            )
-
-            # Give the event loop a tick so the background task fires
-            await asyncio.sleep(0)
-
-        mock_store.assert_awaited_once_with("uid-1", "remember this", "conv-1")
-
-    @pytest.mark.asyncio
-    async def test_skips_memory_when_no_user_id(self):
-        patches = _common_patches()
-        with (
-            patches["construct"],
-            patches["get_graph"],
-            patches["build_state"],
-            patches["build_config"],
-            patches["store_mem"] as mock_store,
-            patches["log"],
-        ):
-            await _core_agent_logic(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(user_id=None),
-            )
-
-            await asyncio.sleep(0)
-
-        mock_store.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_skips_memory_when_no_message(self):
-        patches = _common_patches()
-        with (
-            patches["construct"],
-            patches["get_graph"],
-            patches["build_state"],
-            patches["build_config"],
-            patches["store_mem"] as mock_store,
-            patches["log"],
-        ):
-            await _core_agent_logic(
-                request=_make_request(message=""),
-                conversation_id="conv-1",
-                user=_make_user(),
-            )
-
-            await asyncio.sleep(0)
-
-        mock_store.assert_not_awaited()
-
-    @pytest.mark.asyncio
     async def test_passes_trigger_context(self):
         patches = _common_patches()
         trigger = {"type": "gmail", "email_data": {}}
@@ -222,7 +156,7 @@ class TestCoreAgentLogic:
             patches["get_graph"],
             patches["build_state"] as mock_build_state,
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
         ):
             await _core_agent_logic(
@@ -243,7 +177,7 @@ class TestCoreAgentLogic:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"] as mock_log,
         ):
             await _core_agent_logic(
@@ -281,7 +215,7 @@ class TestCallAgent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
@@ -326,7 +260,7 @@ class TestCallAgent:
                     }
                 },
             ),
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
@@ -365,7 +299,7 @@ class TestCallAgent:
                     }
                 },
             ),
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
@@ -394,7 +328,7 @@ class TestCallAgent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
         ):
             gen = await call_agent(
@@ -427,7 +361,7 @@ class TestCallAgent:
             patch("app.agents.core.agent.build_initial_state", return_value=FAKE_STATE),
             patch("app.agents.core.agent.build_agent_config", return_value=FAKE_CONFIG),
             patch(
-                "app.agents.core.agent.store_user_message_memory",
+                "app.agents.core.agent.apply_plan_model",
                 new_callable=AsyncMock,
             ),
             patch("app.agents.core.agent.log"),
@@ -461,7 +395,7 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -486,7 +420,7 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -519,7 +453,7 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -555,7 +489,7 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -587,7 +521,7 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -620,7 +554,7 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -654,7 +588,7 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
         ):
             msg, data = await call_agent_silent(
@@ -675,7 +609,7 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["store_mem"],
+            patches["apply_plan"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",

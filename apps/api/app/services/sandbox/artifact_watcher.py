@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
+import time
 from typing import Any, Literal
 
 from app.agents.workspace.paths import (
@@ -51,6 +53,8 @@ from app.services.storage import (
     fs_timer,
     list_artifacts,
     list_session_ids,
+    session_dir_inodes,
+    sessions_root_inode,
     stat_artifact,
 )
 from shared.py.wide_events import log
@@ -81,6 +85,15 @@ _ACCESSLOG_MUTATING_OPS = (
     "setattr",
 )
 _ACCESSLOG_DEBOUNCE_SECONDS = 0.7
+# Force a full rescan at least this often during ongoing activity, so an op whose
+# inode we couldn't map to a conversation can never strand an artifact update.
+_ACCESSLOG_FULL_BACKSTOP_SECONDS = 30.0
+# Pull the op name + its parenthesized inode args out of an accesslog line:
+#   "<ts> [uid:..,gid:..,pid:..] write (12345,4096,0): OK <0.000123>"
+# -> op="write", args="12345,4096,0". Stops at the first ")", so a result tuple
+# like create's "(inode,attr)" after the colon is ignored.
+_ACCESSLOG_OP_RE = re.compile(r"\]\s+(\w+)\s+\(([^)]*)\)")
+_ACCESSLOG_INT_RE = re.compile(r"\d+")
 
 DetectionMode = Literal["watch_dir", "accesslog"]
 
@@ -105,6 +118,17 @@ class ArtifactWatcher:
         # per-conv snapshot {rel_path: (size, mtime)} for diffing
         self._snapshots: dict[str, dict[str, tuple[int, float]]] = {}
         self._rescan_task: asyncio.Task[None] | None = None
+        # accesslog scoping: map a mutating-op inode -> conv so a rescan hits
+        # only the changed session. Populated from each rescan (artifact files +
+        # their session/artifacts dir inodes, all from stats the scan already did).
+        self._inode_conv: dict[int, str] = {}
+        self._sessions_root_ino: int | None = None
+        self._dirty_convs: set[str] = set()
+        # First rescan is full (seeds the inode map); thereafter scoped, with a
+        # periodic full rescan as a backstop so an unmapped op can never strand
+        # an artifact update.
+        self._need_full_rescan = True
+        self._last_full_rescan = 0.0
         # accesslog mode only: watches the background tail handle for exit so
         # is_alive() reflects a dead stream (watch_dir gets this via on_exit).
         self._accesslog_monitor: asyncio.Task[None] | None = None
@@ -251,11 +275,29 @@ class ArtifactWatcher:
             self._handle = None
 
     def _on_accesslog_line(self, line: str) -> None:
-        if not line:
+        """Route a mutating accesslog op to a scoped or full rescan.
+
+        Each op carries inode args (not paths). We resolve them against the
+        inode->conv map: a hit scopes the next rescan to that conversation; a
+        touch of the sessions root means a conv was added/removed (full rescan);
+        an op whose inodes we don't know is something we don't track (scratch,
+        .gaia, skills) and is ignored — the periodic full-rescan backstop in
+        `_debounced_rescan` still catches anything the map missed.
+        """
+        m = _ACCESSLOG_OP_RE.search(line)
+        if m is None:
             return
-        lowered = line.lower()
-        if not any(op in lowered for op in _ACCESSLOG_MUTATING_OPS):
+        op, args = m.group(1), m.group(2)
+        if op not in _ACCESSLOG_MUTATING_OPS:
             return
+        inodes = {int(n) for n in _ACCESSLOG_INT_RE.findall(args)}
+        if not self._inode_conv:
+            # Map not seeded yet — first rescan must be full.
+            self._need_full_rescan = True
+        elif self._sessions_root_ino is not None and self._sessions_root_ino in inodes:
+            self._need_full_rescan = True  # session dir created/removed
+        else:
+            self._dirty_convs |= {self._inode_conv[i] for i in inodes if i in self._inode_conv}
         self._schedule_rescan()
 
     def _schedule_rescan(self) -> None:
@@ -266,7 +308,20 @@ class ArtifactWatcher:
     async def _debounced_rescan(self) -> None:
         try:
             await asyncio.sleep(_ACCESSLOG_DEBOUNCE_SECONDS)
-            await self._rescan_all()
+            now = time.monotonic()
+            due_full = self._need_full_rescan or (
+                now - self._last_full_rescan >= _ACCESSLOG_FULL_BACKSTOP_SECONDS
+            )
+            if due_full:
+                self._need_full_rescan = False
+                self._dirty_convs.clear()
+                self._last_full_rescan = now
+                await self._rescan_all()
+            elif self._dirty_convs:
+                convs = sorted(self._dirty_convs)
+                self._dirty_convs.clear()
+                async with fs_timer(FsOps.WATCHER_RESCAN):
+                    await self._rescan_each(convs)
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -276,13 +331,19 @@ class ArtifactWatcher:
         async with fs_timer(FsOps.WATCHER_RESCAN):
             try:
                 conv_ids = await list_session_ids(self.user_id)
+                self._sessions_root_ino = await sessions_root_inode(self.user_id)
             except JuiceFSUnavailable:
                 return
             await self._rescan_each(conv_ids)
+            # Drop inode-map entries for conversations that no longer exist so
+            # the map can't grow without bound across a long-lived sandbox.
+            live = set(conv_ids)
+            self._inode_conv = {ino: c for ino, c in self._inode_conv.items() if c in live}
 
     async def _rescan_each(self, conv_ids: list[str]) -> None:
         for conv in conv_ids:
             try:
+                conv_ino, artifacts_ino = await session_dir_inodes(self.user_id, conv)
                 infos = await list_artifacts(self.user_id, conv)
             except JuiceFSUnavailable:
                 return
@@ -294,10 +355,18 @@ class ArtifactWatcher:
                     error=str(exc),
                 )
                 continue
+            # Rebuild this conv's inode entries from scratch so deleted files
+            # don't linger in the map.
+            self._inode_conv = {ino: c for ino, c in self._inode_conv.items() if c != conv}
+            for dir_ino in (conv_ino, artifacts_ino):
+                if dir_ino is not None:
+                    self._inode_conv[dir_ino] = conv
             prev = self._snapshots.get(conv, {})
             current: dict[str, tuple[int, float]] = {}
             for info in infos:
                 current[info.path] = (info.size_bytes, info.mtime)
+                if info.inode:
+                    self._inode_conv[info.inode] = conv
                 if prev.get(info.path) != (info.size_bytes, info.mtime):
                     await publish_artifact_event(self.user_id, upsert_event(conv, info))
             for gone in prev.keys() - current.keys():

@@ -351,17 +351,23 @@ def minimal_message_template(
 
 
 # Template for message details (when a single message needs more detail)
-def detailed_message_template(email_data: dict[str, Any]) -> dict[str, Any]:
+def detailed_message_template(
+    email_data: dict[str, Any], *, include_body: bool = True
+) -> dict[str, Any]:
     """Convert a Gmail message to a detailed representation: essential fields
-    plus body content in both text and HTML."""
+    plus body content in both text and HTML.
+
+    ``include_body=False`` skips the MIME body extraction entirely (the view
+    carries headers, labels, and snippet only) — use it when the body would be
+    dropped anyway.
+    """
     # Use GmailMessageParser directly for efficiency
     parser = GmailMessageParser(email_data)
     parser.parse()
 
-    content = parser.content
     labels = parser.labels
 
-    return {
+    view: dict[str, Any] = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
         "from": parser.sender,
@@ -371,11 +377,14 @@ def detailed_message_template(email_data: dict[str, Any]) -> dict[str, Any]:
         "time": parser.date,
         "isRead": "UNREAD" not in labels,
         "hasAttachment": "HAS_ATTACHMENT" in labels,
-        "body": content["text"],  # Plain text for backward compatibility
         "labels": labels,
-        "content": {"text": content["text"], "html": content["html"]},
         "cc": parser.cc,
     }
+    if include_body:
+        content = parser.content
+        view["body"] = content["text"]  # Plain text for backward compatibility
+        view["content"] = {"text": content["text"], "html": content["html"]}
+    return view
 
 
 # Template for thread information
@@ -416,6 +425,30 @@ def draft_template(draft_data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def message_view_needs_body(fields: Any, body_processing: str) -> bool:
+    """Whether a projected message view will carry a body.
+
+    ``body`` is the only projectable field that requires the full MIME
+    payload — everything else in ``build_message_view`` comes from headers,
+    labels, and top-level metadata (so ``format=metadata`` suffices).
+    """
+    if body_processing == "none":
+        return False
+    # `None` or an empty list both mean "all documented fields", body included.
+    return not fields or "body" in fields
+
+
+def project_message_view(view: dict[str, Any], fields: Any) -> dict[str, Any]:
+    """Project a full message view to the requested fields.
+
+    ``None`` or an empty ``fields`` list means "all fields" (view returned
+    as-is).
+    """
+    if not fields:
+        return view
+    return {key: view[key] for key in fields if key in view}
+
+
 # Process tool responses
 def build_message_view(
     raw: dict[str, Any],
@@ -426,7 +459,8 @@ def build_message_view(
 
     Single source of truth for per-message field selection. Used by
     ``GMAIL_FETCH_MESSAGES`` (caller-supplied fields + body processing
-    mode).
+    mode). Body extraction/normalization is skipped entirely when the
+    projected view won't carry a body (``message_view_needs_body``).
 
     Args:
         raw: Raw Gmail API message object (the same shape consumed by
@@ -441,28 +475,19 @@ def build_message_view(
             the untouched body. ``"none"`` drops the body entirely,
             regardless of whether ``"body"`` is listed in ``fields``.
     """
-    # Reuse the existing detailed template as the base — it already produces
-    # the full set of fields. We project to `fields` afterwards so the
-    # caller's selection is honored uniformly.
-    view = detailed_message_template(raw)
+    view = detailed_message_template(
+        raw, include_body=message_view_needs_body(fields, body_processing)
+    )
 
     # `content` is the detailed template's internal dual text/html blob; it is
     # not part of the field contract and would otherwise leak the full body
-    # (even when body_processing="none") through the "all fields" path. Drop it.
+    # through the "all fields" path. Drop it.
     view.pop("content", None)
 
-    # Body processing. "none" drops the body entirely; "normalize" cleans it;
-    # "raw" leaves it untouched.
-    if body_processing == "none":
-        view.pop("body", None)
-    elif body_processing == "normalize" and view.get("body"):
+    if body_processing == "normalize" and view.get("body"):
         view["body"] = normalize_email_body(view["body"])
 
-    # `None` or an empty list both mean "all documented fields".
-    if not fields:
-        return view
-
-    return {key: view[key] for key in fields if key in view}
+    return project_message_view(view, fields)
 
 
 def process_list_drafts_response(response: dict[str, Any]) -> dict[str, Any]:

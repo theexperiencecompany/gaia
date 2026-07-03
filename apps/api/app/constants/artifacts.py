@@ -18,6 +18,12 @@ ARTIFACT_URL_PATH_TEMPLATE = "/api/v1/sessions/{conversation_id}/artifacts"
 ARTIFACT_PERSIST_MAX_ATTEMPTS = 5
 ARTIFACT_PERSIST_RETRY_BASE_DELAY = 0.1
 
+# Max seconds a chat turn waits for the forwarder's pub/sub subscription before
+# seeding uploads anyway. Pubsub has no replay, so an event published before the
+# subscription exists is silently dropped; past the timeout, getting the files
+# on disk for the agent wins over event delivery.
+ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT = 5.0
+
 # JuiceFS default block size: reading in block-sized chunks pulls each block into
 # the local cache with no wasted partial fetches.
 ARTIFACT_WARM_CHUNK_BYTES = 4 * 1024 * 1024

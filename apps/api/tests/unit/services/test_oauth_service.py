@@ -53,12 +53,6 @@ def mock_composio_service():
 
 
 @pytest.fixture
-def mock_delete_cache():
-    with patch("app.services.oauth.oauth_service.delete_cache", new_callable=AsyncMock) as mock_dc:
-        yield mock_dc
-
-
-@pytest.fixture
 def mock_update_user_integration_status():
     with patch(
         "app.services.oauth.oauth_service.update_user_integration_status",
@@ -835,10 +829,9 @@ class TestCheckMultipleIntegrationsStatus:
 class TestHandleOAuthConnection:
     async def test_invalidates_cache_and_updates_integration_status(
         self,
-        mock_delete_cache,
         mock_update_user_integration_status,
     ):
-        """Core behavior: invalidate cache and update integration status."""
+        """Core behavior: update integration status (cache invalidation is handled by decorator)."""
         config = _make_integration_config(
             integration_id="notion",
             name="Notion",
@@ -852,14 +845,12 @@ class TestHandleOAuthConnection:
             background_tasks=background_tasks,
         )
 
-        mock_delete_cache.assert_awaited_once_with("OAUTH_STATUS:user123")
         mock_update_user_integration_status.assert_awaited_once_with(
             "user123", "notion", "connected"
         )
 
     async def test_sets_up_triggers_when_present(
         self,
-        mock_delete_cache,
         mock_update_user_integration_status,
     ):
         """If integration has associated_triggers, schedule trigger setup."""
@@ -889,7 +880,6 @@ class TestHandleOAuthConnection:
 
     async def test_does_not_setup_triggers_when_empty(
         self,
-        mock_delete_cache,
         mock_update_user_integration_status,
     ):
         """If no associated_triggers, do not call get_composio_service for triggers."""
@@ -916,35 +906,34 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_queues_email_processing(
         self,
         mock_users_collection,
-        mock_delete_cache,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
     ):
         """Gmail integration should queue email processing via ARQ."""
+        user_id = "507f1f77bcf86cd799439011"
         mock_users_collection.find_one = AsyncMock(
             return_value={
-                "_id": ObjectId("507f1f77bcf86cd799439011"),
-                "onboarding": {"completed": False},
+                "_id": ObjectId(user_id),
+                "onboarding": {"completed": True},
             }
         )
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
 
         await handle_oauth_connection(
-            user_id="user123",
+            user_id=user_id,
             integration_config=config,
             connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
         mock_redis_pool_manager.enqueue_job.assert_awaited_once_with(
-            "process_gmail_emails_to_memory", "user123"
+            "process_gmail_emails_to_memory", user_id
         )
 
     async def test_gmail_connection_updates_bio_status_when_no_gmail(
         self,
         mock_users_collection,
-        mock_delete_cache,
         mock_update_user_integration_status,
         mock_websocket_manager,
         mock_redis_pool_manager,
@@ -979,7 +968,6 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_sends_websocket_update(
         self,
         mock_users_collection,
-        mock_delete_cache,
         mock_update_user_integration_status,
         mock_websocket_manager,
         mock_redis_pool_manager,
@@ -1014,7 +1002,6 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_skips_bio_update_when_already_completed(
         self,
         mock_users_collection,
-        mock_delete_cache,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
     ):
@@ -1044,7 +1031,6 @@ class TestHandleOAuthConnection:
     async def test_gmail_connection_skips_bio_when_onboarding_not_completed(
         self,
         mock_users_collection,
-        mock_delete_cache,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
     ):
@@ -1074,14 +1060,13 @@ class TestHandleOAuthConnection:
     async def test_gmail_arq_queue_failure_does_not_raise(
         self,
         mock_users_collection,
-        mock_delete_cache,
         mock_update_user_integration_status,
     ):
         """ARQ enqueue failure should be logged, not raised."""
         mock_users_collection.find_one = AsyncMock(
             return_value={
                 "_id": ObjectId("507f1f77bcf86cd799439011"),
-                "onboarding": {"completed": False},
+                "onboarding": {"completed": True},
             }
         )
         config = _make_integration_config(integration_id="gmail")
@@ -1102,7 +1087,6 @@ class TestHandleOAuthConnection:
 
     async def test_non_gmail_connection_skips_email_processing(
         self,
-        mock_delete_cache,
         mock_update_user_integration_status,
     ):
         """Non-Gmail integrations should not queue email processing."""
@@ -1121,7 +1105,6 @@ class TestHandleOAuthConnection:
 
     async def test_metadata_config_queues_metadata_fetch(
         self,
-        mock_delete_cache,
         mock_update_user_integration_status,
         mock_fetch_and_store_provider_metadata,
     ):
@@ -1150,7 +1133,6 @@ class TestHandleOAuthConnection:
 
     async def test_no_metadata_config_skips_metadata_fetch(
         self,
-        mock_delete_cache,
         mock_update_user_integration_status,
     ):
         """If no metadata_config, should not schedule metadata fetch."""
@@ -1176,7 +1158,6 @@ class TestHandleOAuthConnection:
     async def test_gmail_provisions_system_workflows(
         self,
         mock_users_collection,
-        mock_delete_cache,
         mock_update_user_integration_status,
         mock_provision_system_workflows,
         mock_redis_pool_manager,
@@ -1207,7 +1188,6 @@ class TestHandleOAuthConnection:
 
     async def test_googlecalendar_provisions_system_workflows(
         self,
-        mock_delete_cache,
         mock_update_user_integration_status,
         mock_provision_system_workflows,
     ):
@@ -1234,7 +1214,6 @@ class TestHandleOAuthConnection:
 
     async def test_non_gmail_non_calendar_skips_system_workflow_provisioning(
         self,
-        mock_delete_cache,
         mock_update_user_integration_status,
     ):
         """Non-Gmail/Calendar integrations should not provision system workflows."""
@@ -1256,30 +1235,8 @@ class TestHandleOAuthConnection:
             for call in background_tasks.add_task.call_args_list:
                 assert call[0][0] is not mock_psw
 
-    async def test_cache_invalidation_failure_does_not_raise(
-        self,
-        mock_update_user_integration_status,
-    ):
-        """Cache invalidation failure should be logged, not raised."""
-        config = _make_integration_config(integration_id="notion")
-        background_tasks = MagicMock()
-
-        with patch(
-            "app.services.oauth.oauth_service.delete_cache",
-            new_callable=AsyncMock,
-            side_effect=Exception("Redis down"),
-        ):
-            # Should not raise
-            await handle_oauth_connection(
-                user_id="user123",
-                integration_config=config,
-                connected_account_id="acc_123",
-                background_tasks=background_tasks,
-            )
-
     async def test_integration_status_update_failure_does_not_raise(
         self,
-        mock_delete_cache,
     ):
         """Integration status update failure should be logged, not raised."""
         config = _make_integration_config(integration_id="notion")
@@ -1301,7 +1258,6 @@ class TestHandleOAuthConnection:
     async def test_websocket_failure_does_not_block_flow(
         self,
         mock_users_collection,
-        mock_delete_cache,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
     ):

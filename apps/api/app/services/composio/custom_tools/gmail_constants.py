@@ -11,6 +11,17 @@ GMAIL_TOOLKIT = "GMAIL"
 # Per-page cap Gmail actually accepts for ``users.me.messages``.
 GMAIL_MAX_PAGE_SIZE = 500
 
+# ``users.me.messages.get`` format values: "full" includes the MIME payload
+# (needed only when the body will be returned); "metadata" returns headers +
+# labels + snippet only.
+GMAIL_FORMAT_FULL = "full"
+GMAIL_FORMAT_METADATA = "metadata"
+
+# Bounded fan-out for the per-message GET calls within one list page. The
+# handler runs sync (off-loop), so a small thread pool turns up to
+# MAX_ABSOLUTE_MESSAGES sequential round-trips into a handful of batches.
+FETCH_CONCURRENCY = 8
+
 # Absolute ceiling on total messages aggregated by a single tool call.
 # Two pages at the Gmail per-page cap is the hard upper bound, anything
 # higher can't be reached without more pages and would change semantics.

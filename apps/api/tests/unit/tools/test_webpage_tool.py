@@ -33,7 +33,7 @@ class TestFetchWebpages:
     """Tests for the fetch_webpages tool."""
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.fetch_with_firecrawl", new_callable=AsyncMock)
+    @patch(f"{MODULE}.fetch_webpage", new_callable=AsyncMock)
     async def test_happy_path_single_url(
         self,
         mock_firecrawl: AsyncMock,
@@ -56,7 +56,7 @@ class TestFetchWebpages:
         assert result["fetched_urls"] == ["https://example.com"]
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.fetch_with_firecrawl", new_callable=AsyncMock)
+    @patch(f"{MODULE}.fetch_webpage", new_callable=AsyncMock)
     async def test_multiple_urls(
         self,
         mock_firecrawl: AsyncMock,
@@ -97,7 +97,7 @@ class TestFetchWebpages:
         assert "No URLs" in result["error"]
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.fetch_with_firecrawl", new_callable=AsyncMock)
+    @patch(f"{MODULE}.fetch_webpage", new_callable=AsyncMock)
     async def test_prepends_https_to_bare_urls(
         self,
         mock_firecrawl: AsyncMock,
@@ -118,7 +118,7 @@ class TestFetchWebpages:
         assert result["fetched_urls"] == ["https://example.com"]
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.fetch_with_firecrawl", new_callable=AsyncMock)
+    @patch(f"{MODULE}.fetch_webpage", new_callable=AsyncMock)
     async def test_fetch_exception_does_not_break_others(
         self,
         mock_firecrawl: AsyncMock,
@@ -143,7 +143,7 @@ class TestFetchWebpages:
         assert len(result["fetched_urls"]) == 2
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.fetch_with_firecrawl", new_callable=AsyncMock)
+    @patch(f"{MODULE}.fetch_webpage", new_callable=AsyncMock)
     async def test_streams_progress_updates(
         self,
         mock_firecrawl: AsyncMock,

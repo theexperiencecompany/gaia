@@ -66,7 +66,6 @@ export default function KeyboardShortcutsProvider({
     { prefix: "/todos", selector: "create-todo" },
     { prefix: "/calendar", navigate: "/calendar?create=true" },
     { prefix: "/workflows", selector: "create-workflow" },
-    { prefix: "/goals", selector: "create-goal" },
     { prefix: "/integrations", selector: "create-integration" },
   ] as const;
 
@@ -108,7 +107,6 @@ export default function KeyboardShortcutsProvider({
   useHotkeys("g>d", () => routerRef.current.push("/dashboard"), hotkeyOptions);
   useHotkeys("g>c", () => routerRef.current.push("/calendar"), hotkeyOptions);
   useHotkeys("g>t", () => routerRef.current.push("/todos"), hotkeyOptions);
-  useHotkeys("g>o", () => routerRef.current.push("/goals"), hotkeyOptions);
   useHotkeys("g>w", () => routerRef.current.push("/workflows"), hotkeyOptions);
   useHotkeys(
     "g>h",

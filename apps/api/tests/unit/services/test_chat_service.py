@@ -32,10 +32,10 @@ from app.services.chat.persistence import (
 from app.services.chat.stream import run_chat_stream_background
 
 
-# Each chat sub-module does `from app.core.stream_manager import stream_manager`,
-# so the patch target is each sub-module's binding. This helper rebinds all
-# four at once so a single mock intercepts calls from stream.py, chunks.py,
-# state.py, and workspace.py.
+# Each module does `from app.core.stream_manager import stream_manager`,
+# so the patch target is each module's binding. This helper rebinds all
+# five at once so a single mock intercepts calls from stream.py, chunks.py,
+# state.py, artifact_forwarder.py, and stream_publishers.py.
 @contextlib.contextmanager
 def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
     with contextlib.ExitStack() as stack:
@@ -43,7 +43,8 @@ def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
             "app.services.chat.stream.stream_manager",
             "app.services.chat.chunks.stream_manager",
             "app.services.chat.state.stream_manager",
-            "app.services.chat.workspace.stream_manager",
+            "app.services.chat.artifact_forwarder.stream_manager",
+            "app.utils.stream_publishers.stream_manager",
         ):
             stack.enter_context(patch(path, sm))
         yield sm

@@ -37,7 +37,7 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
     # Add core namespaces that are always available
     namespaces.update({"general", "subagents"})
 
-    # Internal integrations (like todos, goals, reminders) are core platform features
+    # Internal integrations (like todos, reminders) are core platform features
     # They're NOT integrations that need connecting via UI
     internal_integrations = [
         integration.id
