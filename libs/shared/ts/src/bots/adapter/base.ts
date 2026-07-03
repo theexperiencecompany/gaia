@@ -290,10 +290,15 @@ export abstract class BaseBotAdapter {
    * platform. Called by the outbound RabbitMQ consumer for backend-originated
    * messages. The text has already been run through `renderForPlatform` — do
    * not convert it again; just hand it to the platform SDK.
+   *
+   * `actions`, when present, are interactive buttons to attach to the message
+   * (e.g. a Telegram inline keyboard). Platforms without button support ignore
+   * them.
    */
   protected abstract deliverOutbound(
     destinationId: string,
     text: string,
+    actions?: OutboundAction[],
   ): Promise<void>;
 
   /**

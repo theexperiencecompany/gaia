@@ -407,6 +407,38 @@ export class GaiaClient {
   }
 
   /**
+   * Approves a GAIA-assigned todo, transitioning it out of the `proposed` state
+   * and enqueuing its execution. Used by the Telegram inline-keyboard Approve
+   * button on briefing messages. Auth is the same bot rail as every other todo
+   * call — the platform-link identity resolves to the GAIA user server-side.
+   */
+  async approveTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
+    return this.requestWithAuth(async () => {
+      const { data } = await this.client.post(
+        `/api/v1/todos/${encodeURIComponent(todoId)}/approve`,
+        {},
+        { headers: this.userHeaders(ctx) },
+      );
+      return mapTodoResponse(data);
+    }, ctx);
+  }
+
+  /**
+   * Dismisses a GAIA-proposed todo. Used by the Telegram inline-keyboard Dismiss
+   * button on briefing messages.
+   */
+  async dismissTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
+    return this.requestWithAuth(async () => {
+      const { data } = await this.client.post(
+        `/api/v1/todos/${encodeURIComponent(todoId)}/dismiss`,
+        {},
+        { headers: this.userHeaders(ctx) },
+      );
+      return mapTodoResponse(data);
+    }, ctx);
+  }
+
+  /**
    * Deletes a todo.
    */
   async deleteTodo(todoId: string, ctx: BotUserContext): Promise<void> {

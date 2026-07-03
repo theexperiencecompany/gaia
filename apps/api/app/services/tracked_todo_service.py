@@ -17,9 +17,11 @@ import re
 
 from bson import ObjectId
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+)
 from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import Priority, TodoModel, TodoResponse
+from app.models.todo_models import ExecutionStatus, Priority, TodoModel, TodoResponse
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.todo_canvas_storage import (
     append_log,
@@ -35,6 +37,82 @@ from app.utils.canvas_vector_utils import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
+
+# Execution statuses counted against MAX_GAIA_TODOS_IN_FLIGHT.
+_IN_FLIGHT_STATUSES: tuple[str, ...] = (
+    ExecutionStatus.QUEUED.value,
+    ExecutionStatus.RUNNING.value,
+    ExecutionStatus.NEEDS_YOU.value,
+)
+# Terminal statuses hidden from the "active tracked todos" agent context blocks.
+_TERMINAL_CONTEXT_STATUSES: tuple[str, ...] = (
+    ExecutionStatus.DISMISSED.value,
+    ExecutionStatus.EXPIRED.value,
+)
+# Labels that are system bookkeeping, never a proposal "kind".
+_RESERVED_KIND_LABELS: frozenset[str] = frozenset({GAIA_TRACKED_LABEL, "failed"})
+# Parses ``kind: <value>`` out of a stored proposal_rejected memory line.
+_REJECTION_KIND_RE = re.compile(r"kind:\s*([^|]+?)\s*(?:\||$)")
+
+
+class TrackedTodoError(Exception):
+    """Base for tracked-todo lifecycle rejections (budget, traceability, transition)."""
+
+
+class BudgetExceededError(TrackedTodoError):
+    """Creation rejected because a GAIA-todo budget cap is already full."""
+
+
+class TraceabilityError(TrackedTodoError):
+    """Creation rejected because ``serves`` was empty (untraceable todo)."""
+
+
+class InvalidTransitionError(TrackedTodoError):
+    """A lifecycle transition was requested from a state that does not allow it."""
+
+
+class GaiaExecutionQuotaError(TrackedTodoError):
+    """Approve blocked because the user is at their metered execution quota.
+
+    Carries the data the API layer needs to render the upgrade-CTA payload
+    (the pitch of the staged work, the quota reset time, the required plan).
+    """
+
+    def __init__(
+        self,
+        *,
+        todo_id: str,
+        reset_time: str | None,
+        pitch: str,
+        plan_required: str = "pro",
+    ) -> None:
+        self.todo_id = todo_id
+        self.reset_time = reset_time
+        self.pitch = pitch
+        self.plan_required = plan_required
+        super().__init__(f"GAIA execution quota reached for todo {todo_id}")
+
+
+def _derive_proposal_kind(doc: dict) -> str:
+    """Best-effort stable category for a proposal, used to group rejection signals.
+
+    Uses the first non-reserved label; falls back to a slug of the title so the
+    3-strike rule still groups repeated proposals of the same shape.
+    """
+    for label in doc.get("labels", []):
+        if label not in _RESERVED_KIND_LABELS:
+            return label
+    title = (doc.get("title") or "untitled").strip().lower()
+    return re.sub(r"[^a-z0-9]+", "-", title).strip("-")[:60] or "untitled"
+
+
+def _build_upgrade_pitch(doc: dict) -> str:
+    """One-line pitch naming the specific staged work behind an at-quota Approve."""
+    what = doc.get("serves") or doc.get("title") or "this work"
+    return (
+        f"GAIA has '{doc.get('title', 'this todo')}' staged and ready ({what}) — upgrade to run it."
+    )
+
 
 CANVAS_TEMPLATE = """# {title}
 
