@@ -145,9 +145,18 @@ class TrackedTodoService:
         ``requires_approval`` (outward-facing) → ``proposed``; internal-only →
         ``queued``.
         """
-        serves, entry_status = await lifecycle.gate_creation(
-            user_id, serves, requires_approval
-        )
+        serves, entry_status = await lifecycle.gate_creation(user_id, serves, requires_approval)
+        # The staging invariant behind every Approve button: a proposal releases
+        # exactly the content in its canvas, so it cannot be created without it.
+        # Prep work happens first (internal todo), and the run that finishes the
+        # prep creates the proposal carrying the deliverable.
+        if entry_status == ExecutionStatus.PROPOSED and not (initial_canvas or "").strip():
+            raise lifecycle.TraceabilityError(
+                "A proposal must carry its staged work: pass `initial_canvas` with "
+                "the exact content approving will release (drafts, list, post). "
+                "If the content does not exist yet, create the internal prep todo "
+                "first and stage this proposal when the prep run finishes."
+            )
 
         # Keep the legacy label during the dual-read migration window.
         all_labels = list(labels or [])

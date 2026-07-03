@@ -232,7 +232,10 @@ BACKGROUND_EXECUTION_BANNER = (
     "so ONCE (with at most one link). Compose the single message only after all work/attempts "
     "are finished. Repeated near-identical messages destroy the user's trust.\n"
     "   - A missing integration never blocks the work: produce the deliverable as content "
-    "yourself (research, lists, drafts), then mention the connect option once at handoff."
+    "yourself (research, lists, drafts), then mention the connect option once at handoff.\n"
+    "   - When your work order ends in an outward send: finish the prep, then create the "
+    "send proposal (create_tracked_todo, requires_approval=True) with your finished content "
+    "as initial_canvas. The Approve button must release exactly what you staged."
 )
 
 

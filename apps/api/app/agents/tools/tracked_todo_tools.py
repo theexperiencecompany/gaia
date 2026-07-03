@@ -424,7 +424,10 @@ async def create_tracked_todo(
         "inviting others to events, spending money. The todo then enters "
         "'proposed' and waits for the user's Approve tap. False when the work is "
         "visible only to the user and GAIA - research, drafts, triage, prep - "
-        "which enters 'queued' and executes without permission.",
+        "which enters 'queued' and executes without permission. "
+        "STAGING INVARIANT: a proposal (True) is rejected unless `initial_canvas` "
+        "carries the exact content approving will release. Do the prep first "
+        "(internal todo), then create the proposal with the finished content.",
     ],
     description: Annotated[
         str | None,
