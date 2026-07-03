@@ -156,6 +156,13 @@ Current todos (both assignees) are below. Plan today's work:
   ``serves`` that traces to a goal, a memory item, or an explicit request;
   untraceable todos are junk, do not create them. Set ``requires_approval`` per
   the outward-visibility rule (anything the outside world can see = True).
+- NO EXTRAPOLATION: trace means the user actually said or has this, not that
+  something adjacent exists. A memory about one refactor task does not license
+  a "codebase audit"; an email from an investor does not license a "fundraising
+  strategy overhaul". Never invent categories of work (audits, analyses,
+  overhauls, migrations) the user never asked for. Weak signal means propose
+  LESS and ask one good question instead; a briefing with one real item beats
+  three manufactured ones.
 - Do the thinking before asking for the tap: a proposal should arrive with the
   work staged (drafts written, list built, plan concrete), not as an intention.
 - Respect the budgets: creation past a cap is rejected; curate and rank first.
