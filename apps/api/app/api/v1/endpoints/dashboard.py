@@ -20,6 +20,11 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.db.mongodb.collections import todos_collection, workflow_executions_collection
 from app.services.calendar_service import fetch_calendar_events
+from app.services.todos.activity import (
+    completed_day_counts,
+    streak_from_counts,
+    window_start_utc,
+)
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
