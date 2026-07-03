@@ -431,6 +431,19 @@ async def create_tracked_todo(
         "carries the exact content approving will release. Do the prep first "
         "(internal todo), then create the proposal with the finished content.",
     ],
+    kind: Annotated[
+        str,
+        "'task' (default) or 'goal'. A goal is a long-lived lane (raising a "
+        "round, growing users): its canvas is the living strategy the nightly "
+        "pass advances. Create a goal ONLY after the user has confirmed it in "
+        "conversation — never silently. Goals skip the in-flight budget but are "
+        "capped at 3 active.",
+    ] = "task",
+    goal_id: Annotated[
+        str | None,
+        "ID of the goal-todo this task advances. Set it on every task that "
+        "belongs to a goal lane so traceability is a real link.",
+    ] = None,
     description: Annotated[
         str | None,
         "Optional description of what this todo is tracking",
@@ -538,6 +551,8 @@ async def create_tracked_todo(
             title=title,
             serves=serves,
             requires_approval=requires_approval,
+            kind=kind,
+            goal_id=goal_id,
             description=description,
             initial_canvas=initial_canvas,
             labels=labels,

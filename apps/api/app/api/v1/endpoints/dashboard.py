@@ -105,6 +105,7 @@ async def get_today(
 
     todo_query = {
         "user_id": user_id,
+        "kind": {"$ne": "goal"},
         "$or": [
             {"completed_at": {"$gte": start, "$lt": end}},
             {"completed": False, "scheduled_at": {"$gte": start, "$lt": end}},

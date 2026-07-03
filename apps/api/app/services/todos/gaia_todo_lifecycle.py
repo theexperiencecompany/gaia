@@ -28,6 +28,7 @@ from app.constants.todos import (
     CANVAS_TEMPLATE,
     GAIA_TODO_EXECUTIONS_FEATURE,
     GAIA_TRACKED_LABEL,
+    MAX_ACTIVE_GOALS,
     MAX_GAIA_TODOS_IN_FLIGHT,
     MAX_PENDING_PROPOSALS,
     PITCH_TTL_DAYS,
@@ -232,7 +233,12 @@ async def gate_creation(
             list(IN_FLIGHT_STATUSES),
             "GAIA todos in flight",
         )
-    query = {"user_id": user_id, "execution_status": {"$in": statuses}, **gaia_assigned_filter()}
+    query = {
+        "user_id": user_id,
+        "execution_status": {"$in": statuses},
+        "kind": {"$ne": "goal"},
+        **gaia_assigned_filter(),
+    }
     existing = await todos_collection.find(query, {"title": 1}).to_list(length=cap + 1)
     if len(existing) >= cap:
         titles = "; ".join(doc.get("title", "untitled") for doc in existing[:cap])

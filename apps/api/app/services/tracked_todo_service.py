@@ -130,6 +130,8 @@ class TrackedTodoService:
         title: str,
         serves: str,
         requires_approval: bool,
+        kind: str = "task",
+        goal_id: str | None = None,
         description: str | None = None,
         project_id: str | None = None,
         due_date: datetime | None = None,
@@ -146,7 +148,7 @@ class TrackedTodoService:
         ``queued``.
         """
         serves, entry_status = await lifecycle.gate_creation(
-            user_id, serves, requires_approval, title=title
+            user_id, serves, requires_approval, title=title, kind=kind
         )
         # The staging invariant behind every Approve button: a proposal releases
         # exactly the content in its canvas, so it cannot be created without it.
@@ -176,6 +178,8 @@ class TrackedTodoService:
             assignee=ASSIGNEE_GAIA,
             execution_status=entry_status,
             serves=serves,
+            kind="goal" if kind == "goal" else "task",
+            goal_id=goal_id,
         )
         result = await TodoService.create_todo(todo, user_id)
         todo_id = result.id

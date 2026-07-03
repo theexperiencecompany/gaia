@@ -15,7 +15,7 @@ from uuid import uuid4
 from bson import ObjectId
 
 from app.agents.prompts.briefing_prompts import (
-    build_daily_briefing_prompt,
+    build_briefing_voice_prompt,
     build_overnight_work_prompt,
     build_weekly_digest_prompt,
 )
@@ -295,6 +295,100 @@ async def _deliver(
     return channels or ["inapp"]
 
 
+def _lane_items(lane: context.GoalLane) -> list[dict]:
+    """Code-built items for one goal lane. Truth by construction."""
+    items: list[dict] = []
+    for d in lane.completed:
+        items.append(
+            {"text": f"Done overnight: {d.get('title')}", "todo_id": str(d["_id"]), "kind": "lookback"}
+        )
+    for d in lane.staged:
+        items.append(
+            {
+                "text": f"Staged and ready: {d.get('title')} — one tap or reply releases it.",
+                "todo_id": str(d["_id"]),
+                "kind": "proposal",
+            }
+        )
+    for d in lane.running:
+        items.append(
+            {"text": f"In progress: {d.get('title')}", "todo_id": str(d["_id"]), "kind": "gaia"}
+        )
+    for d in lane.failed:
+        cause = d.get("error_message") or "unknown cause"
+        items.append(
+            {"text": f"Failed: {d.get('title')} — {cause}", "todo_id": str(d["_id"]), "kind": "note"}
+        )
+    for d in lane.needs_you:
+        items.append(
+            {"text": f"Needs you: {d.get('title')}", "todo_id": str(d["_id"]), "kind": "you"}
+        )
+    for wf in lane.workflows:
+        status = wf.get("last_status") or "has not run yet"
+        items.append({"text": f"Workflow '{wf['title']}': last run {status}.", "kind": "note"})
+    return items
+
+
+_ROMAN = ["I", "II", "III", "IV", "V", "VI"]
+
+
+def _build_facts(
+    lanes: list[context.GoalLane], curation_note: str
+) -> tuple[list[dict], list[dict], str]:
+    """Assemble sections + stats deterministically from lane state.
+
+    Returns (sections, stats, facts_block) — the model voices the facts_block
+    but the rendered sections come from here, so the brief cannot lie.
+    """
+    sections: list[dict] = []
+    for i, lane in enumerate(lanes):
+        items = _lane_items(lane)
+        if items:
+            sections.append(
+                {
+                    "numeral": _ROMAN[min(i, len(_ROMAN) - 1)],
+                    "title": lane.title.upper(),
+                    "items": items,
+                }
+            )
+    staged_total = sum(len(lane.staged) for lane in lanes)
+    done_total = sum(len(lane.completed) for lane in lanes)
+    stats: list[dict] = []
+    if done_total:
+        stats.append({"value": str(done_total), "label": "done overnight"})
+    if staged_total:
+        stats.append({"value": str(staged_total), "label": "awaiting your word"})
+
+    fact_lines: list[str] = [curation_note]
+    for sec in sections:
+        fact_lines.append(f"[{sec['title']}]")
+        fact_lines.extend(f"- {it['text']}" for it in sec["items"])
+    if not sections:
+        fact_lines.append("No goal lanes have any work or results to report.")
+    return sections, stats, "\n".join(fact_lines)
+
+
+_VOICE_KEYS = ("headline", "lede", "caption", "mood", "message")
+
+
+def _parse_voice(raw: str) -> dict:
+    """Extract the voice-only JSON (headline/lede/caption/mood/message)."""
+    candidates = _JSON_FENCE.findall(raw) or [raw]
+    for block in candidates:
+        block = block.strip()
+        if not block:
+            continue
+        try:
+            data = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict) and all(k in data for k in _VOICE_KEYS):
+            return data
+    raise BriefingGenerationError(
+        f"No valid voice JSON in agent output (first 300 chars): {raw[:300]!r}"
+    )
+
+
 def _bootstrap_should_skip(user: dict, clock: UserClock, has_goal: bool) -> bool:
     """Existing-user rollout gate: hold the first briefing until a goal is known.
 
@@ -338,17 +432,18 @@ async def run_overnight_work(user_id: str) -> None:
     user["user_id"] = user_id
     clock = context.resolve_clock(user.get("timezone"))
 
-    goal_block, has_goal = await context.format_goal_block(user_id, user)
-    if not has_goal:
+    lanes = await context.gather_goal_lanes(user_id, context.day_start_utc(clock, days_ago=1))
+    if not lanes:
+        # No confirmed goal lanes: the night shift has nothing legitimate to
+        # advance (goal creation always goes through the user, never overnight).
         log.info("briefing.overnight_no_goal_skip", user_id=user_id)
         return
     strikes = await get_rejection_strikes_summary(user_id)
-    todos_block = await context.format_todos_block(user_id)
 
     prompt = build_overnight_work_prompt(
         date_local=clock.date_str,
-        goal_block=goal_block,
-        todos_block=todos_block,
+        goal_block=context.format_goal_lanes_block(lanes),
+        todos_block=await context.format_todos_block(user_id),
         strikes_block=strikes,
     )
     # Reuse the silent-run plumbing; the run's value is its side effects (todos,
@@ -378,7 +473,6 @@ async def run_daily_briefing(user_id: str) -> None:
     yesterday = await context.get_yesterday_payload(user_id, before_date=clock.date_str)
     since = context.day_start_utc(clock, days_ago=1)
     lookback_block = await context.format_lookback_block(user_id, yesterday, since)
-    todos_block = await context.format_todos_block(user_id)
     strikes_block = await get_rejection_strikes_summary(user_id)
     winback = await context.compute_winback_state(user_id)
     streak = await activity.compute_streak(user_id, clock.tz)
@@ -391,22 +485,34 @@ async def run_daily_briefing(user_id: str) -> None:
 
     badge_labels = await check_and_award_badges(user_id, clock, streak)
 
-    prompt = build_daily_briefing_prompt(
+    # Facts are assembled by code from lane state; the model only voices them.
+    lanes = await context.gather_goal_lanes(user_id, since)
+    sections, stats, facts_block = _build_facts(lanes, _format_curation(expired))
+
+    prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
-        goal_block=goal_block,
-        curation_block=_format_curation(expired),
+        facts_block=facts_block,
         lookback_block=lookback_block,
-        todos_block=todos_block,
         strikes_block=strikes_block or "No blocked proposal kinds.",
         awards_block=_format_awards(badge_labels),
         winback=winback.is_winback,
         is_first_briefing=is_first,
     )
-
-    payload = await _generate_payload(user, clock, prompt, BRIEFING_KIND_DAILY)
-    payload.hue = hue_for_day(clock.day_of_year)
-    if winback.is_winback:
-        payload.mood = "winback"
+    voice = _parse_voice(
+        await _run_silent(user, clock, prompt, conversation_key=BRIEFING_KIND_DAILY)
+    )
+    payload = BriefingPayload(
+        kicker="THE MORNING BRIEF",
+        date=clock.date_str,
+        headline=voice["headline"],
+        lede=voice["lede"],
+        stats=stats,
+        sections=sections,
+        mood="winback" if winback.is_winback else voice["mood"],
+        caption=voice["caption"],
+        hue=hue_for_day(clock.day_of_year),
+        message=voice["message"],
+    )
 
     briefing = await repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_DAILY, payload

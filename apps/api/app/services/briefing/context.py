@@ -15,6 +15,7 @@ from app.db.mongodb.collections import (
     briefings_collection,
     todos_collection,
     workflow_executions_collection,
+    workflows_collection,
 )
 from app.memory.engine import memory_engine
 from app.models.briefing_models import BriefingMood
@@ -118,6 +119,103 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
             False,
         )
     return ("\n".join(lines), bool(focus) or len(lines) > 0)
+
+
+@dataclass
+class GoalLane:
+    """One goal's world: the lane the nightly pass advances and the brief reports."""
+
+    goal_id: str
+    title: str
+    canvas_excerpt: str
+    completed: list[dict] = field(default_factory=list)
+    staged: list[dict] = field(default_factory=list)
+    running: list[dict] = field(default_factory=list)
+    failed: list[dict] = field(default_factory=list)
+    needs_you: list[dict] = field(default_factory=list)
+    workflows: list[dict] = field(default_factory=list)
+
+
+_LANE_CANVAS_EXCERPT_CHARS = 700
+
+
+async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
+    """Every active goal with its children, linked workflows, and latest runs.
+
+    This is the deterministic world the briefing reports and the night shift
+    advances: state lives here, never in per-run memory recall.
+    """
+    lanes: list[GoalLane] = []
+    async for goal in todos_collection.find(
+        {"user_id": user_id, "kind": "goal", "completed": False},
+        {"title": 1, "canvas_content": 1},
+    ).sort("created_at", 1):
+        goal_id = str(goal["_id"])
+        lane = GoalLane(
+            goal_id=goal_id,
+            title=goal.get("title", "untitled goal"),
+            canvas_excerpt=(goal.get("canvas_content") or "")[:_LANE_CANVAS_EXCERPT_CHARS],
+        )
+        async for child in todos_collection.find(
+            {"user_id": user_id, "goal_id": goal_id},
+            {
+                "title": 1,
+                "execution_status": 1,
+                "canvas_content": 1,
+                "completed_at": 1,
+                "error_message": 1,
+            },
+        ):
+            status = child.get("execution_status")
+            if child.get("completed_at") and child["completed_at"] >= since:
+                lane.completed.append(child)
+            elif status == "proposed":
+                lane.staged.append(child)
+            elif status in ("queued", "running"):
+                lane.running.append(child)
+            elif status == "failed":
+                lane.failed.append(child)
+            elif status == "needs_you":
+                lane.needs_you.append(child)
+        async for wf in workflows_collection.find(
+            {"user_id": user_id, "source_todo_id": goal_id, "activated": True},
+            {"title": 1, "id": 1},
+        ):
+            wf_id = wf.get("id") or str(wf.get("_id"))
+            last = await workflow_executions_collection.find_one(
+                {"workflow_id": wf_id}, sort=[("started_at", -1)]
+            )
+            lane.workflows.append(
+                {
+                    "title": wf.get("title", "workflow"),
+                    "last_status": (last or {}).get("status"),
+                    "last_run": (last or {}).get("started_at"),
+                }
+            )
+        lanes.append(lane)
+    return lanes
+
+
+def format_goal_lanes_block(lanes: list[GoalLane]) -> str:
+    """Render lanes for the night-shift prompt: state in, judgment out."""
+    if not lanes:
+        return "No active goals."
+    parts: list[str] = []
+    for lane in lanes:
+        lines = [f'GOAL "{lane.title}" (goal_id: {lane.goal_id})']
+        if lane.canvas_excerpt.strip():
+            lines.append(f"strategy canvas:\n{lane.canvas_excerpt.strip()}")
+        for label, docs in (
+            ("open work", lane.running),
+            ("staged proposals", lane.staged),
+            ("failed", lane.failed),
+        ):
+            if docs:
+                lines.append(label + ": " + "; ".join(d.get("title", "?") for d in docs))
+        for wf in lane.workflows:
+            lines.append(f"workflow '{wf['title']}': last run {wf['last_status'] or 'never'}")
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts)
 
 
 async def gather_completed_since(user_id: str, since: datetime) -> CompletedWork:

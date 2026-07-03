@@ -24,7 +24,11 @@ ASSIGNEE_GAIA: Final = "gaia"
 # Server-enforced budgets on GAIA-assigned todos. Scarcity forces the agent to
 # rank rather than spawn junk (see tracked_todo_service creation gate).
 MAX_GAIA_TODOS_IN_FLIGHT: Final[int] = 5  # execution_status in {queued, running, needs_you}
-MAX_PENDING_PROPOSALS: Final[int] = 3  # execution_status == proposed
+MAX_PENDING_PROPOSALS: Final[int] = 3
+
+# Goal lanes are exempt from the in-flight cap (they live for months) but are
+# themselves capped: each active goal costs nightly planning attention.
+MAX_ACTIVE_GOALS: Final[int] = 3  # execution_status == proposed
 
 # A proposed GAIA todo the user never acts on expires after this window and is
 # swept by the curation pass (writes a proposal_rejected memory signal).

@@ -214,6 +214,77 @@ opening anything else.
 """
 
 
+_VOICE_CONTRACT = """
+## OUTPUT (read twice)
+
+Your ENTIRE final message MUST be a single JSON object inside one ```json code
+fence. No prose before or after it.
+
+```json
+{
+  "headline": "<one sharp plain-voice line, no markup, no emoji>",
+  "lede": "<1-2 sentences setting up the day>",
+  "caption": "<one witty closing line>",
+  "mood": "<clear | packed | idle | winback>",
+  "message": "<the chat-app version: 2-4 short sentences, GAIA texting a friend>"
+}
+```
+
+You are writing VOICE ONLY. The facts (what completed, what is staged, what
+failed, what needs the user) are assembled by the system and shown below; they
+are already final and will render exactly as given. You cannot add, remove, or
+reword facts, only give the day its voice. Every specific in your prose must
+appear in the facts below; if it is not there, you do not say it.
+
+The "message" lands in the user's Telegram/WhatsApp: contractions, varied
+rhythm, plain words, no headline-speak, no bullets. Show the reasoning link
+(connect work to the goal it serves), one lane at a time, and never chain two
+different goals into one causal sentence. When something is staged, say a tap
+or a reply releases it. Do not overcorrect into forced quirkiness.
+""".strip()
+
+
+def build_briefing_voice_prompt(
+    *,
+    date_local: str,
+    facts_block: str,
+    lookback_block: str,
+    strikes_block: str,
+    awards_block: str,
+    winback: bool,
+    is_first_briefing: bool,
+) -> str:
+    """Voice pass over code-built facts: the model narrates, never testifies."""
+    winback_note = (
+        '\nThis user has ignored several briefings. One short message, new angle, '
+        'no guilt-trip; set mood to "winback".\n'
+        if winback
+        else ""
+    )
+    first_note = (
+        "\nThis is the user's first briefing: make it land, reference their goal "
+        "by name, keep it warm and specific.\n"
+        if is_first_briefing
+        else ""
+    )
+    return f"""You are GAIA voicing this user's daily briefing for {date_local}.
+
+## TODAY'S FACTS (final: voice them, never alter them)
+{facts_block}
+
+## YESTERDAY (context for tone, not new facts)
+{lookback_block}
+
+## DO-NOT-PROPOSE CONTEXT
+{strikes_block}
+{awards_block}{winback_note}{first_note}
+If the facts are empty because no goal is known, be honest in one short brief
+and ask what they're working on with 2-3 one-word-answerable options.
+
+{_VOICE_CONTRACT}
+"""
+
+
 def build_weekly_digest_prompt(
     *,
     date_local: str,
