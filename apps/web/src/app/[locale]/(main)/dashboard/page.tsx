@@ -19,18 +19,23 @@ function GreetingHeader() {
   const simpleGreeting = getSimpleTimeGreeting();
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-zinc-800 p-4">
+    <div className="flex items-center gap-3 rounded-2xl bg-zinc-800 p-5">
       {user?.profilePicture && (
         <Avatar
           src={user.profilePicture}
           name={user.name || "User"}
-          size="sm"
+          size="md"
           className="shrink-0"
         />
       )}
-      <h1 className="text-xl font-medium text-zinc-200">
-        {simpleGreeting}, {user?.name?.split(" ")[0]}
-      </h1>
+      <div>
+        <h1 className="text-xl font-medium text-zinc-100">
+          {simpleGreeting}, {user?.name?.split(" ")[0]}
+        </h1>
+        <p className="text-sm text-zinc-500">
+          Here's where things stand today.
+        </p>
+      </div>
     </div>
   );
 }
@@ -47,7 +52,7 @@ export default function HomePage() {
   const { todos, loading: todosLoading } = useTodoData();
 
   return (
-    <div className="flex h-fit min-h-screen flex-col gap-4 overflow-y-scroll p-6 pt-0 outline-none">
+    <div className="mx-auto flex h-fit min-h-screen w-full max-w-4xl flex-col gap-6 overflow-y-scroll p-6 pt-0 outline-none">
       {!briefingLoading && briefing ? (
         <BriefingCard
           payload={briefing.payload}
@@ -59,9 +64,8 @@ export default function HomePage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 flex flex-col gap-4">
+        <div className="lg:col-span-2">
           <TodayTimeline data={todayData} isLoading={todayLoading} />
-          <ContributionHeatmap data={heatmapData} isLoading={heatmapLoading} />
         </div>
         <ActionRail
           todos={todos}
@@ -69,6 +73,8 @@ export default function HomePage() {
           todayData={todayData}
         />
       </div>
+
+      <ContributionHeatmap data={heatmapData} isLoading={heatmapLoading} />
     </div>
   );
 }

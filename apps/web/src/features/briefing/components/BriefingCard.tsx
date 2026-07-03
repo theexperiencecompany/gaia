@@ -62,7 +62,7 @@ export function BriefingCard({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-2xl bg-zinc-800",
+        "rounded-2xl bg-zinc-800",
         !isCollapsed && "p-4",
         className,
       )}

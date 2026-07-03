@@ -58,7 +58,7 @@ function TimelineRow({ item }: { item: DashboardTodayItem }) {
   const content = (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-2xl bg-zinc-900 p-3 border-l-2",
+        "flex items-start gap-3 rounded-2xl border-l-2 bg-zinc-900 p-3",
         item.assignee === "gaia" ? "border-primary/60" : "border-transparent",
       )}
     >
@@ -108,9 +108,12 @@ export function TodayTimeline({ data, isLoading }: TodayTimelineProps) {
     );
   }
 
-  const items = [...(data?.items ?? [])].sort((a, b) =>
-    (a.time ?? "9999").localeCompare(b.time ?? "9999"),
-  );
+  // Generic execution-log entries ("Workflow run" / "Workflow executed")
+  // carry no identifying information and just noise up the feed — only
+  // named todos and calendar events belong on the timeline.
+  const items = (data?.items ?? [])
+    .filter((item) => item.type !== "execution")
+    .sort((a, b) => (a.time ?? "9999").localeCompare(b.time ?? "9999"));
 
   return (
     <div className="rounded-2xl bg-zinc-800 p-4">

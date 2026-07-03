@@ -1,5 +1,6 @@
 "use client";
 
+import { Divider } from "@heroui/divider";
 import { Link } from "@heroui/link";
 import { Skeleton } from "@heroui/skeleton";
 import { AlertCircleIcon, CheckmarkCircle02Icon, Flag02Icon } from "@icons";
@@ -59,9 +60,12 @@ export function ActionRail({
   const userDoneCount = doneToday.filter((i) => i.assignee === "user").length;
 
   return (
-    <div className="flex flex-col gap-4">
-      <section className="rounded-2xl bg-zinc-800 p-4">
-        <p className="mb-3 text-sm font-semibold text-zinc-100">Next up</p>
+    <div className="flex flex-col gap-4 rounded-2xl bg-zinc-800 p-4">
+      <section>
+        <div className="mb-3 flex items-center gap-2">
+          <Flag02Icon className="size-4 text-zinc-500" />
+          <p className="text-sm font-semibold text-zinc-100">Next up</p>
+        </div>
         {todosLoading ? (
           <Skeleton className="h-16 rounded-2xl" />
         ) : nextUp ? (
@@ -85,10 +89,16 @@ export function ActionRail({
         )}
       </section>
 
-      <section className="rounded-2xl bg-zinc-800 p-4">
-        <p className="mb-3 text-sm font-semibold text-zinc-100">
-          Waiting on you
-        </p>
+      <Divider className="bg-zinc-700/50" />
+
+      <section>
+        <div className="mb-3 flex items-center gap-2">
+          <AlertCircleIcon className="size-4 text-zinc-500" />
+          <p className="text-sm font-semibold text-zinc-100">Waiting on you</p>
+          {waitingOnYou.length > 0 && (
+            <span className="text-xs text-zinc-500">{waitingOnYou.length}</span>
+          )}
+        </div>
         {todosLoading ? (
           <Skeleton className="h-16 rounded-2xl" />
         ) : waitingOnYou.length === 0 ? (
@@ -99,9 +109,15 @@ export function ActionRail({
           <div className="space-y-2">
             {waitingOnYou.map((todo) => (
               <div key={todo.id} className="rounded-2xl bg-zinc-900 p-3">
-                <p className="truncate text-sm font-medium text-zinc-200">
-                  {todo.title}
-                </p>
+                <div className="flex items-start gap-1.5">
+                  <ExecutionStatusGlyph
+                    status={todo.execution_status}
+                    className="mt-0.5"
+                  />
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">
+                    {todo.title}
+                  </p>
+                </div>
                 {todo.serves && (
                   <p className="mt-0.5 line-clamp-1 text-xs text-zinc-500">
                     {todo.serves}
@@ -117,13 +133,31 @@ export function ActionRail({
         )}
       </section>
 
-      <section className="rounded-2xl bg-zinc-800 p-4">
-        <p className="mb-3 text-sm font-semibold text-zinc-100">Done today</p>
-        <p className="rounded-2xl bg-zinc-900 p-3 text-sm text-zinc-300">
-          GAIA {gaiaDoneCount}
-          <span className="mx-1 text-zinc-600">·</span>
-          You {userDoneCount}
-        </p>
+      <Divider className="bg-zinc-700/50" />
+
+      <section>
+        <div className="mb-3 flex items-center gap-2">
+          <CheckmarkCircle02Icon className="size-4 text-zinc-500" />
+          <p className="text-sm font-semibold text-zinc-100">Done today</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-zinc-900 py-3 text-center">
+            <p className="text-lg font-semibold text-zinc-100">
+              {gaiaDoneCount}
+            </p>
+            <p className="mt-0.5 text-[11px] uppercase tracking-wide text-zinc-500">
+              GAIA
+            </p>
+          </div>
+          <div className="rounded-2xl bg-zinc-900 py-3 text-center">
+            <p className="text-lg font-semibold text-zinc-100">
+              {userDoneCount}
+            </p>
+            <p className="mt-0.5 text-[11px] uppercase tracking-wide text-zinc-500">
+              You
+            </p>
+          </div>
+        </div>
       </section>
     </div>
   );
