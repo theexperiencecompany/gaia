@@ -20,16 +20,24 @@ web-fetch guard delegates here rather than re-implementing the IP checks.
 import asyncio
 import ipaddress
 import socket
-from urllib.parse import urlparse
+
+import httpx
 
 _ALLOWED_SCHEMES = ("http", "https")
 
 
 def _parse_http_host_port(url: str) -> tuple[str, int]:
-    parsed = urlparse(url)
+    # Parse with httpx.URL — the same parser the outbound httpx connection uses —
+    # so the host we validate can't diverge from the host that's actually dialed
+    # (parser-differential SSRF bypass). It also rejects malformed URLs that
+    # urllib.parse silently accepts.
+    try:
+        parsed = httpx.URL(url)
+    except httpx.InvalidURL as e:
+        raise ValueError(f"malformed URL: {e}") from e
     if parsed.scheme not in _ALLOWED_SCHEMES:
         raise ValueError(f"unsupported URL scheme: {parsed.scheme!r}")
-    host = parsed.hostname
+    host = parsed.host
     if not host:
         raise ValueError("URL has no host")
     port = parsed.port or (443 if parsed.scheme == "https" else 80)

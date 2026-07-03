@@ -56,6 +56,20 @@ def test_shape_rejects_missing_host() -> None:
         assert_safe_url_shape("https://")
 
 
+def test_shape_rejects_malformed_url() -> None:
+    # httpx.URL rejects a malformed authority (bad port) that urllib.parse would
+    # silently accept.
+    with pytest.raises(ValueError):
+        assert_safe_url_shape("https://example.com:80x/")
+
+
+def test_shape_validates_the_real_host_not_the_userinfo() -> None:
+    # `user@host` — the guard must classify the true host (after @), so a public
+    # -looking userinfo can't smuggle a request to an internal address.
+    with pytest.raises(ValueError):
+        assert_safe_url_shape("https://example.com@169.254.169.254/")
+
+
 def test_shape_allows_public_literal_ip() -> None:
     # A public literal IP is fine — no DNS needed.
     assert_safe_url_shape("https://93.184.216.34/")
