@@ -508,6 +508,18 @@ class TestExecuteSubagentStream:
 
 @pytest.mark.unit
 class TestPrepareExecutorExecution:
+    @pytest.fixture(autouse=True)
+    def _mock_uploaded_files(self):
+        # prepare_executor_execution surfaces conversation uploads via
+        # FileService.list_conversation_files (a Motor query). Unit tests must
+        # not touch the DB, so stub it out for the whole class.
+        with patch(
+            "app.agents.core.subagents.subagent_runner.FileService.list_conversation_files",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_happy_path(self):
         mock_graph = MagicMock(name="executor_graph")
