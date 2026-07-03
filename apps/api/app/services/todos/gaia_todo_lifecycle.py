@@ -251,6 +251,34 @@ async def gate_creation(
     return serves, entry_status
 
 
+async def enforce_budget_post_insert(user_id: str, todo_id: str, entry_status: ExecutionStatus) -> None:
+    """Recount after insert and roll back the overshoot.
+
+    The creation gate's check-then-insert is not atomic and the executor issues
+    tool calls in parallel, so N creations can each pass the same count. The
+    recount after insert makes the cap hold: the todo that tipped the bucket
+    over deletes itself and surfaces the same budget error.
+    """
+    if entry_status is ExecutionStatus.PROPOSED:
+        cap, statuses, bucket = MAX_PENDING_PROPOSALS, [ExecutionStatus.PROPOSED.value], "pending proposals"
+    else:
+        cap, statuses, bucket = MAX_GAIA_TODOS_IN_FLIGHT, list(IN_FLIGHT_STATUSES), "GAIA todos in flight"
+    count = await todos_collection.count_documents(
+        {
+            "user_id": user_id,
+            "execution_status": {"$in": statuses},
+            "kind": {"$ne": "goal"},
+            **gaia_assigned_filter(),
+        }
+    )
+    if count > cap:
+        await todos_collection.delete_one({"_id": ObjectId(todo_id), "user_id": user_id})
+        raise BudgetExceededError(
+            f"Budget full: {count - 1}/{cap} {bucket} already in place (parallel "
+            "creations raced). Finish or dismiss existing items before adding more."
+        )
+
+
 async def _record_rejection_signal(
     user_id: str, doc: dict, source: str, reason: str | None = None
 ) -> None:

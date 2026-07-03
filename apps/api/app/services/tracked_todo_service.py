@@ -183,6 +183,10 @@ class TrackedTodoService:
         )
         result = await TodoService.create_todo(todo, user_id)
         todo_id = result.id
+        if entry_status is not None:
+            # Budgets are hard laws even under parallel tool calls (see
+            # lifecycle.enforce_budget_post_insert).
+            await lifecycle.enforce_budget_post_insert(user_id, todo_id, entry_status)
 
         # Persist canvas + log + display label on the todo doc itself.
         vfs_path = build_vfs_label(user_id, todo_id)
