@@ -17,6 +17,7 @@ from uuid import uuid4
 from bson import ObjectId
 
 from app.agents.core.agent import call_agent_silent
+from app.constants.todos import FACET_DELIVERABLE, FACET_NOTES
 from app.db.mongodb.collections import todos_collection
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -28,7 +29,7 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import ExecutionStatus
 from app.services.model_service import get_default_model
 from app.services.notification_service import notification_service
-from app.services.todo_canvas_storage import read_canvas
+from app.services.todo_canvas_storage import read_facet
 from app.services.todos import gaia_todo_lifecycle as lifecycle
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
@@ -276,7 +277,7 @@ async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
             ref_doc = await todos_collection.find_one({"_id": ObjectId(ref_id)})
             if not ref_doc:
                 continue
-            learnings = _extract_learnings(await read_canvas(ref_id, user_id))
+            learnings = _extract_learnings(await read_facet(ref_id, user_id, FACET_NOTES))
             if learnings:
                 ref_parts.append(
                     f'From past todo "{ref_doc.get("title", "Unknown")}":\n{learnings.strip()}'
@@ -290,14 +291,21 @@ async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
 
 
 def _build_execution_prompt(
-    *, title: str, description: str, canvas_content: str | None, reference_context: str
+    *,
+    title: str,
+    description: str,
+    deliverable: str | None,
+    notes: str | None,
+    reference_context: str,
 ) -> str:
-    """Assemble the scheduled-run prompt from the todo's fields and context."""
+    """Assemble the scheduled-run prompt from the todo's facets and context."""
     prompt_parts = [f"Execute the following scheduled task: {title}"]
     if description:
         prompt_parts.append(f"Details: {description}")
-    if canvas_content:
-        prompt_parts.append(f"Canvas context:\n{canvas_content}")
+    if notes:
+        prompt_parts.append(f"Working notes:\n{notes}")
+    if deliverable:
+        prompt_parts.append(f"Current deliverable:\n{deliverable}")
     if reference_context:
         prompt_parts.append(reference_context)
     return "\n\n".join(prompt_parts)
@@ -317,18 +325,20 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     except Exception as exc:
         log.warning("tracked_todo.model_config_failed", todo_id=todo_id, error=str(exc))
 
-    # Read canvas content from the todo's Mongo-backed canvas field
-    canvas_content: str | None = None
+    # Read the notes + deliverable facets from the todo's Mongo-backed fields.
+    notes: str | None = None
+    deliverable: str | None = None
     try:
-        canvas_content = await read_canvas(todo_id, user_id)
+        notes = await read_facet(todo_id, user_id, FACET_NOTES)
+        deliverable = await read_facet(todo_id, user_id, FACET_DELIVERABLE)
     except Exception as exc:
         log.warning(
-            "tracked_todo.canvas_read_failed",
+            "tracked_todo.facet_read_failed",
             todo_id=todo_id,
             error=str(exc),
         )
 
-    # Read referenced canvases for institutional memory
+    # Read referenced notes for institutional memory
     reference_context = await _collect_reference_context(doc.get("references", []), user_id)
 
     # Build prompt
@@ -336,7 +346,8 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     prompt = _build_execution_prompt(
         title=title,
         description=doc.get("description", ""),
-        canvas_content=canvas_content,
+        deliverable=deliverable,
+        notes=notes,
         reference_context=reference_context,
     )
 
@@ -370,7 +381,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     # BEFORE the agent runs, so the run leaves evidence even if the LLM forgets.
     short_conv = conversation_id[:8]
     start_iso = datetime.now(UTC).isoformat()
-    await tracked_todo_service.append_canvas_timeline(
+    await tracked_todo_service.append_activity_marker(
         todo_id=todo_id,
         user_id=user_id,
         entry=f"▶ {start_iso} — scheduled run started (conversation_id={short_conv})",
@@ -391,7 +402,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     except Exception as exc:
         # End marker: failure
         fail_iso = datetime.now(UTC).isoformat()
-        await tracked_todo_service.append_canvas_timeline(
+        await tracked_todo_service.append_activity_marker(
             todo_id=todo_id,
             user_id=user_id,
             entry=f"✗ {fail_iso} — scheduled run failed ({type(exc).__name__})",
@@ -401,7 +412,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     # End marker: success
     end_iso = datetime.now(UTC).isoformat()
     summary = (complete_message or "").strip().replace("\n", " ")[:120]
-    await tracked_todo_service.append_canvas_timeline(
+    await tracked_todo_service.append_activity_marker(
         todo_id=todo_id,
         user_id=user_id,
         entry=f"✓ {end_iso} — scheduled run finished (summary={summary!r})",

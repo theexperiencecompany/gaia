@@ -3,11 +3,11 @@ Tracked todo service — Mongo-backed lifecycle for GAIA's working memory todos.
 
 A tracked todo is a regular todo with:
 - vfs_path (display label) set to /users/{user_id}/todos/{todo_id}/
-- 'gaia-tracked' label
-- canvas_content field (agent-written brain) indexed in ChromaDB
-- log_content field (system-written audit trail)
+- assignee == "gaia" (the discriminator for GAIA-owned todos)
+- facet content on the doc: deliverable / notes (agent-written, indexed in
+  ChromaDB) and log (system-written audit trail)
 
-Canvas and log content live on the todo document itself — see
+Facet content lives on the todo document itself — see
 ``app/services/todo_canvas_storage.py`` for the storage primitives. No
 JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 """
@@ -19,18 +19,22 @@ from bson import ObjectId
 
 from app.constants.todos import (
     ASSIGNEE_GAIA,
-    CANVAS_TEMPLATE,
+    DELIVERABLE_TEMPLATE,
+    FACET_DELIVERABLE,
+    FACET_LOG,
+    FACET_NOTES,
     GAIA_TRACKED_LABEL,
+    NOTES_TEMPLATE,
+    facet_from_doc,
     gaia_assigned_filter,
 )
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import ExecutionStatus, Priority, TodoModel, TodoResponse
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.todo_canvas_storage import (
-    append_log,
+    append_facet,
     build_vfs_label,
-    read_canvas,
-    write_canvas,
+    read_facet,
 )
 from app.services.todos import gaia_todo_lifecycle as lifecycle
 from app.services.todos.todo_service import TodoService
@@ -71,20 +75,20 @@ _KEY_DETAILS_MAX_LINES = 5
 
 
 async def _extract_canvas_key_details(doc: dict, user_id: str) -> str:
-    """Pull the Key Details section text from a tracked todo's canvas (empty on miss)."""
+    """Pull the Key Details section text from a tracked todo's notes (empty on miss)."""
     todo_id = str(doc["_id"])
     try:
-        canvas = await read_canvas(todo_id, user_id)
+        notes = await read_facet(todo_id, user_id, FACET_NOTES)
     except Exception as e:
         log.warning(
-            "tracked_todo.canvas_read_failed",
+            "tracked_todo.notes_read_failed",
             todo_id=todo_id,
             error=str(e),
         )
         return ""
-    if not canvas:
+    if not notes:
         return ""
-    match = _KEY_DETAILS_RE.search(canvas)
+    match = _KEY_DETAILS_RE.search(notes)
     return match.group(1).strip() if match else ""
 
 
@@ -117,17 +121,26 @@ def _format_tracked_todo_line(doc: dict, now: datetime, active_todo_id: str | No
     )
 
 
-# A staged proposal ships the exact content in its canvas, so it must not carry
-# unfilled template tokens — [Name], [industry], [specific problem]. Matches a
-# bracketed run that starts with a letter and is NOT a markdown link ([t](url),
-# excluded by the negative lookahead) nor a task checkbox ([ ]/[x], excluded by
-# requiring ≥2 inner chars).
+# A staged proposal ships the exact content in its deliverable, so it must not
+# carry unfilled template tokens — [Name], [industry], [specific problem].
+# Matches a bracketed run that starts with a letter and is NOT a markdown link
+# ([t](url), excluded by the negative lookahead) nor a task checkbox ([ ]/[x],
+# excluded by requiring ≥2 inner chars).
 _PLACEHOLDER_RE = re.compile(r"\[[A-Za-z][^\]\n]{1,60}\](?!\()")
 
 
 def _has_unfilled_placeholders(text: str) -> bool:
     """True if the text still holds send-blocking template placeholders."""
     return _PLACEHOLDER_RE.search(text) is not None
+
+
+def _embedding_text(notes: str | None, deliverable: str | None) -> str:
+    """Concatenate the searchable facets (notes + deliverable) for one embedding.
+
+    The log facet is audit noise and is deliberately excluded from the index.
+    """
+    parts = [p for p in (notes, deliverable) if p and p.strip()]
+    return "\n\n".join(parts)
 
 
 class TrackedTodoService:
@@ -150,10 +163,11 @@ class TrackedTodoService:
         due_date: datetime | None = None,
         priority: Priority = Priority.NONE,
         labels: list[str] | None = None,
-        initial_canvas: str | None = None,
+        initial_deliverable: str | None = None,
+        initial_notes: str | None = None,
         auto_execute: bool = True,
     ) -> TodoResponse:
-        """Create a GAIA-assigned todo with VFS canvas and ChromaDB indexing.
+        """Create a GAIA-assigned todo with facet content and ChromaDB indexing.
 
         Creation is gated (the junk-todo fix): ``serves`` must trace the todo to
         a goal/memory/user request, and server-side budgets cap proposals and
@@ -165,28 +179,28 @@ class TrackedTodoService:
             user_id, serves, requires_approval, title=title, kind=kind
         )
         # The staging invariant behind every Approve button: a proposal releases
-        # exactly the content in its canvas, so it cannot be created without it.
-        # Prep work happens first (internal todo), and the run that finishes the
-        # prep creates the proposal carrying the deliverable.
-        if entry_status is ExecutionStatus.PROPOSED and not (initial_canvas or "").strip():
+        # exactly the content in its DELIVERABLE facet, so it cannot be created
+        # without it. Prep work happens first (internal todo), and the run that
+        # finishes the prep creates the proposal carrying the deliverable.
+        if entry_status is ExecutionStatus.PROPOSED and not (initial_deliverable or "").strip():
             raise lifecycle.TraceabilityError(
-                "A proposal must carry its staged work: pass `initial_canvas` with "
-                "the exact content approving will release (drafts, list, post). "
+                "A proposal must carry its staged work: pass `initial_deliverable` "
+                "with the exact content approving will release (drafts, list, post). "
                 "If the content does not exist yet, create the internal prep todo "
                 "first and stage this proposal when the prep run finishes."
             )
-        # A proposal releases its canvas verbatim, so template placeholders would
-        # be sent literally ("Hi [Name], …"). Reject unfilled tokens at the gate so
-        # the run must fill them with real values (or do the prep to get them).
+        # A proposal releases its deliverable verbatim, so template placeholders
+        # would be sent literally ("Hi [Name], …"). Reject unfilled tokens at the
+        # gate so the run must fill them with real values (or do the prep first).
         if entry_status is ExecutionStatus.PROPOSED and _has_unfilled_placeholders(
-            initial_canvas or ""
+            initial_deliverable or ""
         ):
             raise lifecycle.TraceabilityError(
-                "A proposal cannot ship template placeholders: the staged canvas "
-                "still has unfilled tokens like [Name] or [industry], so approving "
-                "would release literal brackets. Fill every placeholder with the "
-                "real value before staging — if you don't have it yet, do the prep "
-                "to get it first."
+                "A proposal cannot ship template placeholders: the staged "
+                "deliverable still has unfilled tokens like [Name] or [industry], so "
+                "approving would release literal brackets. Fill every placeholder "
+                "with the real value before staging — if you don't have it yet, do "
+                "the prep to get it first."
             )
 
         # `assignee == "gaia"` is the discriminator now, so we no longer stamp
@@ -214,9 +228,13 @@ class TrackedTodoService:
             # lifecycle.enforce_budget_post_insert).
             await lifecycle.enforce_budget_post_insert(user_id, todo_id, entry_status)
 
-        # Persist canvas + log + display label on the todo doc itself.
+        # Persist facets + display label on the todo doc itself. A proposal
+        # carries its finished deliverable; an internal todo starts from the
+        # light template. Notes always seed from the working-memory template
+        # unless the caller supplied a head start.
         vfs_path = build_vfs_label(user_id, todo_id)
-        canvas_content = initial_canvas or CANVAS_TEMPLATE.format(title=title)
+        deliverable_content = initial_deliverable or DELIVERABLE_TEMPLATE.format(title=title)
+        notes_content = initial_notes or NOTES_TEMPLATE.format(title=title)
         now = datetime.now(UTC)
         log_content = (
             f"# System Log: {title}\n\n"
@@ -230,16 +248,17 @@ class TrackedTodoService:
             {
                 "$set": {
                     "vfs_path": vfs_path,
-                    "canvas_content": canvas_content,
+                    "deliverable_content": deliverable_content,
+                    "notes_content": notes_content,
                     "log_content": log_content,
                 }
             },
         )
 
-        # Index canvas in ChromaDB
+        # Index notes + deliverable in ChromaDB (log is audit noise, skipped).
         await store_canvas_embedding(
             todo_id=todo_id,
-            canvas_content=canvas_content,
+            content=_embedding_text(notes_content, deliverable_content),
             user_id=user_id,
             title=title,
             labels=all_labels,
@@ -284,9 +303,10 @@ class TrackedTodoService:
         now = datetime.now(UTC)
 
         # Append completion to log
-        await append_log(
+        await append_facet(
             todo_id,
             user_id,
+            FACET_LOG,
             f"\n## {now.isoformat()} [COMPLETED]\n- Summary: {summary}\n",
         )
 
@@ -367,47 +387,24 @@ class TrackedTodoService:
         return "\n".join(lines)
 
     @staticmethod
-    async def append_canvas_timeline(todo_id: str, user_id: str, entry: str) -> bool:
-        """Append a line to the canvas Timeline section.
+    async def append_activity_marker(todo_id: str, user_id: str, entry: str) -> bool:
+        """Append a chronological activity marker to the LOG facet.
 
         Called by code (not agent) to guarantee a paper trail for scheduled runs
-        regardless of what the LLM writes. If the canvas has a "## Timeline"
-        section, the line is inserted at the top of its body; otherwise a new
-        section is appended at the end of the canvas.
+        regardless of what the LLM writes. The log facet IS the activity
+        timeline, so markers are appended to it directly (oldest first) — there
+        is one home for chronological activity, not a duplicate Timeline section.
         """
-        try:
-            current = await read_canvas(todo_id, user_id) or ""
-        except Exception as e:
-            log.warning(
-                "tracked_todo.canvas_read_for_timeline_failed",
-                todo_id=todo_id,
-                error=str(e),
-            )
-            return False
-        if not current:
-            return False
-
         line = entry if entry.startswith("- ") else f"- {entry}"
-        heading = "## Timeline"
-        heading_pos = current.find(f"\n{heading}")
-
-        if heading_pos == -1:
-            # No Timeline section — append a new one at the end.
-            new_canvas = current.rstrip() + f"\n\n{heading}\n{line}\n"
-        else:
-            insert_pos = heading_pos + len(f"\n{heading}")
-            new_canvas = current[:insert_pos] + f"\n{line}" + current[insert_pos:]
-
         try:
-            await write_canvas(todo_id, user_id, new_canvas)
+            return await append_facet(todo_id, user_id, FACET_LOG, line)
         except Exception as e:
             log.warning(
-                "tracked_todo.canvas_timeline_write_failed",
+                "tracked_todo.activity_marker_write_failed",
                 todo_id=todo_id,
                 error=str(e),
             )
             return False
-        return True
 
     @staticmethod
     async def system_log(todo_id: str, user_id: str, event_type: str, details: str) -> None:
@@ -445,18 +442,26 @@ class TrackedTodoService:
 
     @staticmethod
     async def reindex_canvas(todo_id: str, user_id: str) -> bool:
-        """Re-index a todo's canvas in ChromaDB after the agent writes to it."""
+        """Re-index a todo's notes + deliverable in ChromaDB after the agent writes.
+
+        The searchable content is the notes and deliverable facets concatenated
+        into the one-doc-per-todo embedding; the log facet is skipped.
+        """
         doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
         if not doc:
             return False
 
-        canvas_content = doc.get("canvas_content")
-        if not canvas_content:
+        allow_canvas_fallback = doc.get("execution_status") == ExecutionStatus.PROPOSED.value
+        content = _embedding_text(
+            facet_from_doc(doc, FACET_NOTES, allow_canvas_fallback=allow_canvas_fallback),
+            facet_from_doc(doc, FACET_DELIVERABLE, allow_canvas_fallback=allow_canvas_fallback),
+        )
+        if not content:
             return False
 
         return await update_canvas_embedding(
             todo_id=todo_id,
-            canvas_content=canvas_content,
+            content=content,
             user_id=user_id,
             title=doc.get("title", ""),
             labels=doc.get("labels"),

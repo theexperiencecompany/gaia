@@ -31,6 +31,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
+from app.constants.todos import FACET_DELIVERABLE, facet_from_doc
 from app.db.mongodb.collections import users_collection
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
 from app.models.message_models import MessageDict, MessageRequestWithHistory
@@ -45,12 +46,12 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.todo_models import ExecutionStatus
 from app.services.briefing import context, repository
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
 from app.services.notification_service import notification_service
 from app.services.short_link_service import get_or_create_short_link
-from app.services.todo_canvas_storage import read_canvas
 from app.services.todos import activity
 from app.services.todos.gaia_todo_lifecycle import (
     expire_stale_proposals,
@@ -255,11 +256,17 @@ async def _gather_artifacts(
             todo_id = str(doc["_id"])
             if todo_id in out:
                 continue
-            canvas = doc.get("canvas_content") or await read_canvas(todo_id, user_id) or ""
+            # The briefing summarises and links the DELIVERABLE facet — the
+            # send-ready output — not GAIA's private working notes. Fields are
+            # projected in context.gather_goal_lanes, so no extra read here.
+            allow_canvas_fallback = doc.get("execution_status") == ExecutionStatus.PROPOSED.value
+            deliverable = facet_from_doc(
+                doc, FACET_DELIVERABLE, allow_canvas_fallback=allow_canvas_fallback
+            )
             out[todo_id] = _ArtifactFact(
-                snippet=_canvas_snippet(canvas),
+                snippet=_canvas_snippet(deliverable),
                 link=await get_or_create_short_link(user_id, "todo_canvas", todo_id),
-                chars=_deliverable_size(canvas),
+                chars=_deliverable_size(deliverable),
                 action=todo_id in action_ids,
             )
     return out

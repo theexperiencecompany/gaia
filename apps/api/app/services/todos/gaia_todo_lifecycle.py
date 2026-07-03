@@ -25,12 +25,14 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.constants.memory import MemorySourceType
 from app.constants.todos import (
     ASSIGNEE_GAIA,
-    CANVAS_TEMPLATE,
+    DELIVERABLE_TEMPLATE,
+    FACET_LOG,
     GAIA_TODO_EXECUTIONS_FEATURE,
     GAIA_TRACKED_LABEL,
     MAX_ACTIVE_GOALS,
     MAX_GAIA_TODOS_IN_FLIGHT,
     MAX_PENDING_PROPOSALS,
+    NOTES_TEMPLATE,
     PITCH_TTL_DAYS,
     PROPOSAL_REJECTED_MEMORY_CATEGORY,
     PROPOSAL_TTL_HOURS,
@@ -43,7 +45,7 @@ from app.models.payment_models import PlanType
 from app.models.todo_models import ExecutionStatus
 from app.services import first_steps_service
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
-from app.services.todo_canvas_storage import append_log, build_vfs_label
+from app.services.todo_canvas_storage import append_facet, build_vfs_label
 from app.utils.analytics import track
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
@@ -146,7 +148,9 @@ async def _require_status(
 async def system_log(todo_id: str, user_id: str, event_type: str, details: str) -> None:
     """Append an audit entry to the todo's log.md (code-written, not agent)."""
     now = datetime.now(UTC)
-    await append_log(todo_id, user_id, f"\n## {now.isoformat()} [{event_type}]\n- {details}\n")
+    await append_facet(
+        todo_id, user_id, FACET_LOG, f"\n## {now.isoformat()} [{event_type}]\n- {details}\n"
+    )
 
 
 async def schedule_execution(todo_id: str, scheduled_at: datetime) -> bool:
@@ -394,9 +398,12 @@ async def handoff(todo_id: str, user_id: str) -> None:
         "serves": f"user handoff: {title}",
         "scheduled_at": now,
     }
-    if not doc.get("canvas_content"):
+    # Seed facets only if the todo has no working memory yet — a prep-classified
+    # user todo may already carry notes_content (see todo_classification).
+    if not doc.get("notes_content") and not doc.get("canvas_content"):
         updates["vfs_path"] = build_vfs_label(user_id, todo_id)
-        updates["canvas_content"] = CANVAS_TEMPLATE.format(title=title)
+        updates["deliverable_content"] = DELIVERABLE_TEMPLATE.format(title=title)
+        updates["notes_content"] = NOTES_TEMPLATE.format(title=title)
         updates["log_content"] = (
             f"# System Log: {title}\n\n## {now.isoformat()} [HANDOFF]\n- Source: user\n"
         )

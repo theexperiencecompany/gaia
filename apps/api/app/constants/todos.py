@@ -71,21 +71,76 @@ def user_assigned_filter() -> dict[str, Any]:
     return {"assignee": {"$ne": ASSIGNEE_GAIA}, "labels": {"$nin": [GAIA_TRACKED_LABEL]}}
 
 
-# Canvas skeleton for a GAIA-assigned todo's working memory (canvas.md). Lives
-# here so the lifecycle module and canvas service share one source of truth.
-CANVAS_TEMPLATE: Final[str] = """# {title}
+# --- Facets --------------------------------------------------------------
+#
+# A tracked todo is a small workspace split into distinct facets, each stored
+# as its own field on the todo document:
+#   - deliverable — the polished, user-facing output Approve releases
+#   - notes       — GAIA's private working memory (plan, key details, state)
+#   - log         — the activity/timeline audit trail
+# The legacy ``canvas_content`` field predates this split; it maps to the
+# ``notes`` facet during the migration window (see ``facet_from_doc``).
+
+FACET_DELIVERABLE: Final = "deliverable"
+FACET_NOTES: Final = "notes"
+FACET_LOG: Final = "log"
+
+# Facet → Mongo field on the todo doc. The single source of truth for every
+# read/write of facet content (storage primitives, endpoints, VFS projection).
+FACET_FIELDS: Final[dict[str, str]] = {
+    FACET_DELIVERABLE: "deliverable_content",
+    FACET_NOTES: "notes_content",
+    FACET_LOG: "log_content",
+}
+
+# Legacy field carrying the pre-facet combined blob. notes and deliverable both
+# fall back to it until the backfill (scripts/migrate_todo_facets.py) runs.
+_LEGACY_CANVAS_FIELD: Final = "canvas_content"
+
+
+def facet_from_doc(doc: dict[str, Any], facet: str, *, allow_canvas_fallback: bool) -> str:
+    """Resolve a facet's content from a raw todo doc, applying the migration bridge.
+
+    Single source of truth for the dual-read fallback, shared by the storage
+    primitives (``read_facet``) and the VFS projection (``_project``) so they
+    can never diverge.
+
+    MIGRATION BRIDGE (temporary): pre-facet todos stored everything in
+    ``canvas_content``. ``notes`` always falls back to it (the old canvas WAS
+    the working memory); ``deliverable`` falls back only for proposals — whose
+    staged content lived in the old canvas — gated by ``allow_canvas_fallback``.
+    Remove this fallback (and ``canvas_content``) once the backfill has run
+    everywhere.
+    """
+    value = doc.get(FACET_FIELDS[facet])
+    if value:
+        return value
+    if facet == FACET_NOTES:
+        return doc.get(_LEGACY_CANVAS_FIELD) or ""
+    if facet == FACET_DELIVERABLE and allow_canvas_fallback:
+        return doc.get(_LEGACY_CANVAS_FIELD) or ""
+    return ""
+
+
+# Skeleton for the deliverable facet — the send-ready output. Kept light: a
+# proposal must supply its own finished content (the staging invariant), and an
+# internal todo starts with just a heading to fill in.
+DELIVERABLE_TEMPLATE: Final[str] = """# {title}
+
+## Output
+<!-- the polished, send-ready result — the exact content Approve releases -->
+"""
+
+# Skeleton for the notes facet — GAIA's working memory. Activity Log and
+# Timeline deliberately live in the ``log`` facet, not here, so there is one
+# home for chronological activity instead of two.
+NOTES_TEMPLATE: Final[str] = """# {title}
 
 ## Key Details
 <!-- email addresses, thread IDs, calendar IDs, issue IDs — everything needed to take action -->
 
 ## Current State
 <!-- what's true RIGHT NOW — updated after every action -->
-
-## Activity Log
-<!-- which agent did what, which tools it used, what the outcome was — add entries HERE, not in Learnings -->
-
-## Timeline
-<!-- chronological list of actions taken and results -->
 
 ## Context
 <!-- accumulated context from signals, related information, decisions made -->

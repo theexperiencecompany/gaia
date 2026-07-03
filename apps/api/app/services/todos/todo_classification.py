@@ -65,7 +65,7 @@ async def classify_new_todo(
     if result.disposition == "offer" and result.offer:
         updates["gaia_offer"] = result.offer.strip()
     elif result.disposition == "prep" and result.prep_note:
-        updates["canvas_content"] = f"## Prep from GAIA\n\n{result.prep_note.strip()}\n"
+        updates["notes_content"] = f"## Prep from GAIA\n\n{result.prep_note.strip()}\n"
     if not updates:
         return
     await todos_collection.update_one(

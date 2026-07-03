@@ -14,11 +14,11 @@ from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import FACET_FIELDS, FACET_NOTES, GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoResponse
 from app.services.payments.payment_service import payment_service
-from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
+from app.services.todo_canvas_storage import append_facet, read_facet, write_facet
 from app.services.todos import gaia_todo_lifecycle as lifecycle
 from app.services.todos.gaia_todo_lifecycle import (
     BudgetExceededError,
@@ -414,8 +414,9 @@ def _format_create_output(
     out = (
         f"Tracked todo created: {result.id}\n"
         f"Title: {result.title}\n"
-        "Canvas + activity log are stored on this todo — edit them ONLY via "
-        f"update_tracked_todo_canvas(todo_id='{result.id}', ...), never with filesystem tools."
+        "Its facets (deliverable / notes / log) are stored on this todo — edit them "
+        f"ONLY via update_tracked_todo_canvas(todo_id='{result.id}', facet=..., ...), "
+        "never with filesystem tools."
     )
     if parsed_scheduled_at:
         out += _format_first_fire_note(parsed_scheduled_at, user_tz_name)
@@ -442,7 +443,7 @@ async def create_tracked_todo(
         "'proposed' and waits for the user's Approve tap. False when the work is "
         "visible only to the user and GAIA - research, drafts, triage, prep - "
         "which enters 'queued' and executes without permission. "
-        "STAGING INVARIANT: a proposal (True) is rejected unless `initial_canvas` "
+        "STAGING INVARIANT: a proposal (True) is rejected unless `initial_deliverable` "
         "carries the exact content approving will release. Do the prep first "
         "(internal todo), then create the proposal with the finished content.",
     ],
@@ -463,9 +464,17 @@ async def create_tracked_todo(
         str | None,
         "Optional description of what this todo is tracking",
     ] = None,
-    initial_canvas: Annotated[
+    initial_deliverable: Annotated[
         str | None,
-        "Optional initial canvas content (markdown). If omitted, a template is used.",
+        "The deliverable facet: the polished, send-ready output (markdown). For a "
+        "proposal (requires_approval=True) this is REQUIRED and is the exact "
+        "content Approve releases. For internal work it is optional (a light "
+        "template is used if omitted).",
+    ] = None,
+    initial_notes: Annotated[
+        str | None,
+        "Optional initial notes facet content (GAIA's private working memory — "
+        "plan, key details, current state). If omitted, a template is used.",
     ] = None,
     labels: Annotated[
         list[str] | None,
@@ -569,7 +578,8 @@ async def create_tracked_todo(
             kind=kind,
             goal_id=goal_id,
             description=description,
-            initial_canvas=initial_canvas,
+            initial_deliverable=initial_deliverable,
+            initial_notes=initial_notes,
             labels=labels,
             priority=parsed_priority,
             # A todo with its own schedule/recurrence fires at that time, not now
@@ -657,18 +667,28 @@ async def update_tracked_todo_canvas(
         "Exact heading text without ## (e.g. 'Current State', 'Key Details', 'Learnings'). "
         "If the section does not exist, it is appended as a new section.",
     ] = None,
+    facet: Annotated[
+        str,
+        "Which facet to write: "
+        "'notes' (default) — GAIA's private working memory (plan, key details, current state). "
+        "'deliverable' — the polished, send-ready output the user sees (what Approve releases). "
+        "'log' — the activity/timeline audit trail. "
+        "Write drafts, decisions, and scratch to 'notes'; write only finished, "
+        "user-facing output to 'deliverable'.",
+    ] = FACET_NOTES,
 ) -> str:
-    """Update GAIA's working notes on an EXISTING tracked todo's canvas.
+    """Update a facet of an EXISTING tracked todo's workspace.
 
     PRECONDITION: only call this when you already have a tracked todo for THIS initiative —
     one you created this turn (you hold its todo_id) or the run's "🎯 ACTIVE TODO". If no
     tracked todo exists for the task (a one-off fetch / deploy / build / lookup / edit), do
-    NOT call this. The canvas lives on the todo, not the filesystem — never use read/write/edit.
+    NOT call this. Facets live on the todo, not the filesystem — never use read/write/edit.
 
+    Facets: notes (working memory), deliverable (send-ready output), log (activity).
     Modes (once you have a todo_id):
-    append  → activity log entries, timeline events, new context. No read needed.
+    append  → activity log entries, new context. No read needed.
     section → update a single named section (e.g. Current State). No read needed.
-    replace → full rewrite. Only when restructuring the entire canvas.
+    replace → full rewrite. Only when restructuring the entire facet.
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
@@ -676,6 +696,9 @@ async def update_tracked_todo_canvas(
 
     if mode not in ("replace", "append", "section"):
         return f"Error: invalid mode '{mode}'. Use 'replace', 'append', or 'section'."
+
+    if facet not in FACET_FIELDS:
+        return f"Error: invalid facet '{facet}'. Use one of: {', '.join(sorted(FACET_FIELDS))}."
 
     if mode == "section" and not section:
         return "Error: 'section' mode requires a section name."
@@ -688,13 +711,13 @@ async def update_tracked_todo_canvas(
         return f"Error: tracked todo {todo_id} not found"
 
     if mode == "replace":
-        await write_canvas(todo_id, user_id, content)
+        await write_facet(todo_id, user_id, facet, content)
     elif mode == "append":
-        await append_canvas(todo_id, user_id, content)
+        await append_facet(todo_id, user_id, facet, content)
     else:  # section
-        current = await read_canvas(todo_id, user_id) or ""
-        new_canvas = _patch_canvas_section(current, section or "", content)
-        await write_canvas(todo_id, user_id, new_canvas)
+        current = await read_facet(todo_id, user_id, facet) or ""
+        patched = _patch_canvas_section(current, section or "", content)
+        await write_facet(todo_id, user_id, facet, patched)
 
     _fire_and_forget(tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id))
     section_suffix = f", section={section}" if section else ""
@@ -702,9 +725,9 @@ async def update_tracked_todo_canvas(
         todo_id=todo_id,
         user_id=user_id,
         event_type="CANVAS_UPDATED",
-        details=f"Agent updated canvas (mode={mode}{section_suffix})",
+        details=f"Agent updated {facet} (mode={mode}{section_suffix})",
     )
-    return f"Canvas updated (mode={mode}{section_suffix})."
+    return f"Updated {facet} (mode={mode}{section_suffix})."
 
 
 @tool

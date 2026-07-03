@@ -50,6 +50,25 @@ class SubTask(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+# One discrete rich output attached to a tracked todo's ``artifacts`` facet.
+ArtifactKind = Literal["markdown", "openui"]
+
+
+class Artifact(BaseModel):
+    """A named, discrete rich output on a tracked todo (rendered in the reader)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str = Field(..., description="Human-readable artifact name (also the VFS filename stem)")
+    content: str = Field(
+        ..., description="Artifact body (markdown, optionally with :::openui fences)"
+    )
+    kind: ArtifactKind = Field(
+        default="markdown",
+        description="How the frontend renders the content: plain markdown or OpenUI-aware.",
+    )
+
+
 # Base model with all shared todo fields
 class TodoBase(BaseModel):
     """Base model with shared fields for todos"""
@@ -76,7 +95,37 @@ class TodoBase(BaseModel):
     workflow_id: str | None = Field(default=None, description="ID of the associated workflow")
     vfs_path: str | None = Field(
         default=None,
-        description="VFS directory for tracked todos (canvas.md + log.md)",
+        description="VFS directory label for tracked todos (deliverable.md + notes.md + log.md)",
+    )
+    # Facet content lives on the todo doc but is served via dedicated facet
+    # endpoints, never inlined into list/get responses — hence exclude=True keeps
+    # these (potentially large) fields out of the default todo payload while
+    # still declaring the document shape. Written through the storage primitives
+    # in ``todo_canvas_storage``, not through create/update requests.
+    deliverable_content: str | None = Field(
+        default=None,
+        exclude=True,
+        description="Deliverable facet: the polished, send-ready output Approve releases.",
+    )
+    notes_content: str | None = Field(
+        default=None,
+        exclude=True,
+        description="Notes facet: GAIA's private working memory (plan, key details, state).",
+    )
+    log_content: str | None = Field(
+        default=None,
+        exclude=True,
+        description="Log facet: the activity/timeline audit trail (code-written).",
+    )
+    canvas_content: str | None = Field(
+        default=None,
+        exclude=True,
+        description="Legacy combined blob; maps to the notes facet during migration.",
+    )
+    artifacts: list[Artifact] = Field(
+        default_factory=list,
+        exclude=True,
+        description="Artifacts facet: optional discrete rich outputs.",
     )
     scheduled_at: datetime | None = Field(
         default=None,

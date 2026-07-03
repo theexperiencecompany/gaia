@@ -15,8 +15,14 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.agents.workspace.system_docs import GAIA_TASKS_GUIDE_MD
-from app.constants.todos import gaia_assigned_filter
+from app.constants.todos import (
+    FACET_DELIVERABLE,
+    FACET_NOTES,
+    facet_from_doc,
+    gaia_assigned_filter,
+)
 from app.db.mongodb.collections import todos_collection
+from app.models.todo_models import ExecutionStatus
 from app.services._vfs_scheduler import make_scheduler, run_hashed_sync
 from app.services.storage.gaia_tasks_vfs import (
     GaiaTaskProjection,
@@ -75,10 +81,15 @@ async def _fetch_active_projections(user_id: str) -> list[GaiaTaskProjection]:
 
 def _project(doc: dict) -> GaiaTaskProjection:
     """Mongo doc → ``GaiaTaskProjection`` (preserve every field the agent uses)."""
+    allow_canvas_fallback = doc.get("execution_status") == ExecutionStatus.PROPOSED.value
     return {
         "id": str(doc["_id"]),
-        "canvas": doc.get("canvas_content") or "",
+        "deliverable": facet_from_doc(
+            doc, FACET_DELIVERABLE, allow_canvas_fallback=allow_canvas_fallback
+        ),
+        "notes": facet_from_doc(doc, FACET_NOTES, allow_canvas_fallback=allow_canvas_fallback),
         "log": doc.get("log_content") or "",
+        "artifacts": doc.get("artifacts") or [],
         "meta": {
             "title": doc.get("title"),
             "completed": bool(doc.get("completed", False)),

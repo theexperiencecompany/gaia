@@ -10,7 +10,12 @@ from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, WINBACK_THRESHOLD
-from app.constants.todos import gaia_assigned_filter, user_assigned_filter
+from app.constants.todos import (
+    FACET_NOTES,
+    facet_from_doc,
+    gaia_assigned_filter,
+    user_assigned_filter,
+)
 from app.db.mongodb.collections import (
     briefings_collection,
     todos_collection,
@@ -148,19 +153,23 @@ async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
     lanes: list[GoalLane] = []
     async for goal in todos_collection.find(
         {"user_id": user_id, "kind": "goal", "completed": False},
-        {"title": 1, "canvas_content": 1},
+        {"title": 1, "notes_content": 1, "canvas_content": 1},
     ).sort("created_at", 1):
         goal_id = str(goal["_id"])
+        # A goal's living strategy is its notes facet (its working memory).
+        goal_notes = facet_from_doc(goal, FACET_NOTES, allow_canvas_fallback=False)
         lane = GoalLane(
             goal_id=goal_id,
             title=goal.get("title", "untitled goal"),
-            canvas_excerpt=(goal.get("canvas_content") or "")[:_LANE_CANVAS_EXCERPT_CHARS],
+            canvas_excerpt=goal_notes[:_LANE_CANVAS_EXCERPT_CHARS],
         )
         async for child in todos_collection.find(
             {"user_id": user_id, "goal_id": goal_id},
             {
                 "title": 1,
                 "execution_status": 1,
+                "deliverable_content": 1,
+                "notes_content": 1,
                 "canvas_content": 1,
                 "completed_at": 1,
                 "error_message": 1,

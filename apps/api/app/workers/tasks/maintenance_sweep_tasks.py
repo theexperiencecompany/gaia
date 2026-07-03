@@ -289,12 +289,12 @@ async def _health_check_expired(doc: dict, pool: Any) -> str:
     user_id: str = doc.get("user_id", "")
     title: str = doc.get("title", UNTITLED_TODO_TITLE)
 
-    canvas = await _read_canvas(doc)
+    notes = await _read_notes(doc)
 
     prompt = (
         f"A tracked todo has expired.\n"
         f"Title: {title}\n"
-        f"Canvas:\n{canvas}\n\n"
+        f"Notes:\n{notes}\n\n"
         "Did this expire cleanly (i.e. no further action is needed)? "
         "Respond with exactly one of:\n"
         "ARCHIVE: <brief reason>\n"
@@ -344,12 +344,12 @@ async def _health_check_dormant(doc: dict, pool: Any) -> str:
 
     idle_days = (now - updated_at).days if updated_at else DORMANT_DAYS
 
-    canvas = await _read_canvas(doc)
+    notes = await _read_notes(doc)
 
     prompt = (
         f"A tracked todo has been dormant for {idle_days} days.\n"
         f"Title: {title}\n"
-        f"Canvas:\n{canvas}\n\n"
+        f"Notes:\n{notes}\n\n"
         "Is there a clear, concrete next action that can be taken right now? "
         "Respond with exactly one of:\n"
         "EXECUTE: <specific action to perform immediately>\n"
@@ -512,9 +512,14 @@ async def _send_user_dormant_digest(user_id: str, user_todos: list[dict], now: d
         )
 
 
-async def _read_canvas(doc: dict) -> str:
-    """Read canvas content for the given todo. Returns empty string on failure."""
-    from app.services.todo_canvas_storage import read_canvas
+async def _read_notes(doc: dict) -> str:
+    """Read the notes facet (GAIA's working memory) for the given todo.
+
+    Returns empty string on failure. The health-check agent reasons over GAIA's
+    working memory, so it reads the notes facet, not the send-ready deliverable.
+    """
+    from app.constants.todos import FACET_NOTES
+    from app.services.todo_canvas_storage import read_facet
 
     user_id: str = doc.get("user_id", "")
     todo_id = str(doc.get("_id") or "")
@@ -522,11 +527,11 @@ async def _read_canvas(doc: dict) -> str:
         return ""
 
     try:
-        content = await read_canvas(todo_id, user_id)
+        content = await read_facet(todo_id, user_id, FACET_NOTES)
         return content or ""
     except Exception as exc:
         log.warning(
-            "maintenance_sweep.canvas_read_failed",
+            "maintenance_sweep.notes_read_failed",
             todo_id=todo_id,
             error=str(exc),
         )

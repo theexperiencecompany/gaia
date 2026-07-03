@@ -13,6 +13,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.constants.log_tags import LogTag
+from app.constants.todos import FACET_FIELDS, FACET_NOTES
 from app.db.mongodb.collections import projects_collection, todos_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.utils import serialize_document
@@ -35,7 +36,7 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.services.payments.payment_service import payment_service
-from app.services.todo_canvas_storage import read_canvas
+from app.services.todo_canvas_storage import read_artifacts, read_facet
 from app.services.todos import gaia_todo_lifecycle as lifecycle
 from app.services.todos.gaia_todo_lifecycle import (
     ExecutionQuotaError,
@@ -339,12 +340,45 @@ async def get_todo(todo_id: str, user: dict = Depends(get_current_user)):
 async def get_todo_canvas(
     todo_id: str, user: Annotated[dict, Depends(get_current_user)]
 ) -> JSONResponse:
-    """Return the canvas markdown for a tracked todo."""
+    """Return a tracked todo's notes facet.
+
+    Migration alias for the pre-facet frontend: ``canvas`` mapped to what is now
+    the notes facet. Kept until the frontend is facet-aware, then removed.
+    """
     log.set(user={"id": user["user_id"]}, todo={"operation": "get_canvas", "id": todo_id})
-    content = await read_canvas(todo_id, user["user_id"])
+    content = await read_facet(todo_id, user["user_id"], FACET_NOTES)
     if content is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
     return JSONResponse(content={"content": content})
+
+
+@router.get("/todos/{todo_id}/facets/{facet}")
+async def get_todo_facet(
+    todo_id: str, facet: str, user: Annotated[dict, Depends(get_current_user)]
+) -> JSONResponse:
+    """Return a single facet (deliverable | notes | log) of a tracked todo."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "get_facet", "id": todo_id})
+    if facet not in FACET_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown facet '{facet}'. Expected one of: {', '.join(sorted(FACET_FIELDS))}.",
+        )
+    content = await read_facet(todo_id, user["user_id"], facet)
+    if content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
+    return JSONResponse(content={"facet": facet, "content": content})
+
+
+@router.get("/todos/{todo_id}/artifacts")
+async def get_todo_artifacts(
+    todo_id: str, user: Annotated[dict, Depends(get_current_user)]
+) -> JSONResponse:
+    """Return the artifacts (discrete rich outputs) attached to a tracked todo."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "get_artifacts", "id": todo_id})
+    artifacts = await read_artifacts(todo_id, user["user_id"])
+    if artifacts is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
+    return JSONResponse(content={"artifacts": artifacts})
 
 
 @router.put("/todos/{todo_id}", response_model=TodoResponse)
