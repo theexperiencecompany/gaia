@@ -1,10 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@heroui/button";
+import { Tab, Tabs } from "@heroui/tabs";
+import { CheckmarkCircle02Icon } from "@icons";
+import { useCallback, useEffect, useState } from "react";
 import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { NotificationConnectBanner } from "@/features/notification/components/NotificationConnectBanner";
 import { NotificationsList } from "@/features/notification/components/NotificationsList";
+import { UnreadCountChip } from "@/features/notification/components/UnreadCountChip";
 import { useAllNotifications } from "@/features/notification/hooks/useAllNotifications";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useHeader } from "@/hooks/layout/useHeader";
@@ -52,23 +56,6 @@ export default function NotificationsPage() {
     }
   };
 
-  const handleBulkMarkAsRead = useCallback(
-    async (notificationIds: string[]) => {
-      try {
-        if (notificationIds.length === 0) {
-          toast.error("No events to mark as read");
-          return;
-        }
-        await NotificationsAPI.bulkMarkAsRead(notificationIds);
-        // Refresh both lists in parallel
-        await Promise.all([refetchUnread(), refetchAll()]);
-      } catch (error) {
-        console.error("Error marking notification as read:", error);
-      }
-    },
-    [refetchUnread, refetchAll],
-  );
-
   // Simple refresh function
   const refreshNotifications = useCallback(async () => {
     await Promise.all([refetchAll(), refetchUnread()]);
@@ -91,56 +78,82 @@ export default function NotificationsPage() {
   };
 
   const handleMarkAllAsRead = useCallback(async () => {
-    await handleBulkMarkAsRead(unreadNotifications.map((n) => n.id));
-  }, [unreadNotifications, handleBulkMarkAsRead]);
+    const notificationIds = unreadNotifications.map((n) => n.id);
+    try {
+      if (notificationIds.length === 0) {
+        toast.error("No notifications to mark as read");
+        return;
+      }
+      await NotificationsAPI.bulkMarkAsRead(notificationIds);
+      // Refresh both lists in parallel
+      await Promise.all([refetchUnread(), refetchAll()]);
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+    }
+  }, [unreadNotifications, refetchUnread, refetchAll]);
 
-  // Keep a ref so the header's onMarkAllAsRead always calls the latest version
-  // without adding handleMarkAllAsRead to the setHeader effect's dep array
-  // (which would cause an infinite loop via setHeader → re-render → new callback → setHeader…)
-  const handleMarkAllAsReadRef = useRef(handleMarkAllAsRead);
-  handleMarkAllAsReadRef.current = handleMarkAllAsRead;
-
-  // Set the header with tab state
   useEffect(() => {
-    setHeader(
-      <NotificationsHeader
-        selectedTab={selectedTab}
-        onTabChange={setSelectedTab}
-        unreadCount={unreadNotifications.length}
-        onMarkAllAsRead={() => handleMarkAllAsReadRef.current()}
-      />,
-    );
-
+    setHeader(<NotificationsHeader />);
     return () => {
       setHeader(null);
     };
-  }, [selectedTab, unreadNotifications.length, setHeader]);
+  }, [setHeader]);
+
+  const isUnreadTab = selectedTab === "unread";
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-primary-bg">
-      <div className="max-h-[calc(100vh-120px)] overflow-y-auto px-6 pt-6">
-        <NotificationConnectBanner variant="full" />
-        {selectedTab === "unread" ? (
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-5 px-6 py-6">
+          <NotificationConnectBanner variant="full" />
+
+          <div className="flex items-center justify-between">
+            <Tabs
+              aria-label="Notifications"
+              selectedKey={selectedTab}
+              onSelectionChange={(key) => setSelectedTab(key as string)}
+            >
+              <Tab
+                key="unread"
+                title={
+                  <div className="flex items-center gap-1.5">
+                    <span>Unread</span>
+                    <UnreadCountChip count={unreadNotifications.length} />
+                  </div>
+                }
+              />
+              <Tab key="all" title="All" />
+            </Tabs>
+
+            {unreadNotifications.length > 0 && (
+              <Button
+                size="sm"
+                variant="light"
+                className="text-zinc-400"
+                startContent={<CheckmarkCircle02Icon className="size-4" />}
+                onPress={handleMarkAllAsRead}
+              >
+                Mark all as read
+              </Button>
+            )}
+          </div>
+
           <NotificationsList
-            notifications={unreadNotifications}
-            loading={unreadLoading}
-            emptyMessage="No unread notifications"
-            emptyDescription="All caught up! You're up to date with everything."
+            notifications={isUnreadTab ? unreadNotifications : allNotifications}
+            loading={isUnreadTab ? unreadLoading : allLoading}
+            emptyMessage={
+              isUnreadTab ? "No unread notifications" : "No notifications yet"
+            }
+            emptyDescription={
+              isUnreadTab
+                ? "All caught up! You're up to date with everything."
+                : "Notifications will appear here when you receive them."
+            }
             onRefresh={refreshNotifications}
             onMarkAsRead={handleMarkAsRead}
             onModalOpen={handleModalOpen}
           />
-        ) : (
-          <NotificationsList
-            notifications={allNotifications}
-            loading={allLoading}
-            emptyMessage="No notifications yet"
-            emptyDescription="Notifications will appear here when you receive them."
-            onRefresh={refreshNotifications}
-            onMarkAsRead={handleMarkAsRead}
-            onModalOpen={handleModalOpen}
-          />
-        )}
+        </div>
       </div>
 
       {modalConfig?.component === "EmailPreviewModal" && modalConfig.props && (
