@@ -154,7 +154,7 @@ class TrackedTodoService:
         # exactly the content in its canvas, so it cannot be created without it.
         # Prep work happens first (internal todo), and the run that finishes the
         # prep creates the proposal carrying the deliverable.
-        if entry_status == ExecutionStatus.PROPOSED and not (initial_canvas or "").strip():
+        if entry_status is ExecutionStatus.PROPOSED and not (initial_canvas or "").strip():
             raise lifecycle.TraceabilityError(
                 "A proposal must carry its staged work: pass `initial_canvas` with "
                 "the exact content approving will release (drafts, list, post). "

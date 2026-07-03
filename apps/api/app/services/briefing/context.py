@@ -178,7 +178,13 @@ async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
             elif status == "needs_you":
                 lane.needs_you.append(child)
         async for wf in workflows_collection.find(
-            {"user_id": user_id, "source_todo_id": goal_id, "activated": True},
+            {
+                "user_id": user_id,
+                "source_todo_id": goal_id,
+                "activated": True,
+                # Per-todo execution plumbing is not a rhythm workflow.
+                "is_todo_workflow": {"$ne": True},
+            },
             {"title": 1, "id": 1},
         ):
             wf_id = wf.get("id") or str(wf.get("_id"))

@@ -171,7 +171,7 @@ async def gate_creation(
     requires_approval: bool,
     title: str = "",
     kind: str = "task",
-) -> tuple[str, ExecutionStatus]:
+) -> tuple[str, ExecutionStatus | None]:
     """Validate a GAIA-todo creation and resolve its entry state.
 
     Returns the cleaned ``serves`` and the entry status per the approval rule
@@ -196,7 +196,9 @@ async def gate_creation(
                 "lane costs nightly attention: ask the user which goal to retire "
                 "before adding this one."
             )
-        return serves, ExecutionStatus.QUEUED
+        # A goal is a lane, not executable work: it never enters the execution
+        # pipeline (its children do).
+        return serves, None
     if requires_approval and title.strip():
         # One Approve button per piece of work: an identically-titled pending
         # proposal means this is a duplicate (rerun, retry, or model repeat),
