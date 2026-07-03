@@ -26,6 +26,15 @@ export const TYPING_REFRESH_MS = 3 * 1000;
 export const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
 
 /**
+ * Wall-clock deadline (ms) for reading a `POST /webhook` request body. Bounds
+ * the total time a client can hold the reader open: a client that trickles
+ * bytes slowly, or stalls entirely, while staying under {@link
+ * MAX_WEBHOOK_BODY_BYTES} would otherwise tie up the connection indefinitely
+ * (slowloris-style). Kapso payloads arrive in milliseconds, so 10s is generous.
+ */
+export const WEBHOOK_BODY_READ_TIMEOUT_MS = 10_000;
+
+/**
  * Approved utility template used to deliver proactive notifications when a
  * free-form send fails (e.g. the 24-hour window is closed). Single body
  * variable named `body`.

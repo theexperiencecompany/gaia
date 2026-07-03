@@ -6,21 +6,25 @@ render inline. A future edit that lets an active type render inline on the API
 origin (which holds the session cookie) must fail here.
 """
 
+from collections.abc import Callable
+from pathlib import Path
+
+from fastapi.responses import FileResponse
 import pytest
 
 from app.api.v1.endpoints.sessions import _serve
 
 
-def _cd(response) -> str:
+def _cd(response: FileResponse) -> str:
     return response.headers.get("content-disposition", "")
 
 
 @pytest.fixture
-def artifact_file(tmp_path):
-    def _make(name: str) -> str:
+def artifact_file(tmp_path: Path) -> Callable[[str], Path]:
+    def _make(name: str) -> Path:
         p = tmp_path / name
         p.write_bytes(b"<svg>x</svg>")
-        return str(p)
+        return p
 
     return _make
 
@@ -41,7 +45,9 @@ INLINE_CASES = [
 
 
 @pytest.mark.parametrize(("name", "content_type"), ACTIVE_CASES)
-def test_active_types_are_sandboxed_and_downloaded(artifact_file, name, content_type):
+def test_active_types_are_sandboxed_and_downloaded(
+    artifact_file: Callable[[str], Path], name: str, content_type: str
+) -> None:
     response = _serve(artifact_file(name), is_artifact=True, filename=name)
 
     assert response.media_type == content_type
@@ -51,7 +57,9 @@ def test_active_types_are_sandboxed_and_downloaded(artifact_file, name, content_
 
 
 @pytest.mark.parametrize(("name", "content_type"), INLINE_CASES)
-def test_safe_media_renders_inline(artifact_file, name, content_type):
+def test_safe_media_renders_inline(
+    artifact_file: Callable[[str], Path], name: str, content_type: str
+) -> None:
     response = _serve(artifact_file(name), is_artifact=True, filename=name)
 
     assert response.media_type == content_type
@@ -61,7 +69,7 @@ def test_safe_media_renders_inline(artifact_file, name, content_type):
     assert response.headers.get("x-content-type-options") == "nosniff"
 
 
-def test_unknown_type_is_forced_to_download(artifact_file):
+def test_unknown_type_is_forced_to_download(artifact_file: Callable[[str], Path]) -> None:
     # Anything not on the safe-inline allowlist (here: octet-stream) is
     # downloaded, never rendered.
     response = _serve(artifact_file("mystery.bin"), is_artifact=True, filename="mystery.bin")
@@ -70,7 +78,7 @@ def test_unknown_type_is_forced_to_download(artifact_file):
     assert _cd(response).split(";")[0].strip() == "attachment"
 
 
-def test_plain_text_is_downloaded_not_inlined(artifact_file):
+def test_plain_text_is_downloaded_not_inlined(artifact_file: Callable[[str], Path]) -> None:
     # text/plain is not on the safe-inline allowlist, so it must download.
     response = _serve(artifact_file("notes.txt"), is_artifact=True, filename="notes.txt")
 
@@ -78,7 +86,9 @@ def test_plain_text_is_downloaded_not_inlined(artifact_file):
     assert _cd(response).split(";")[0].strip() == "attachment"
 
 
-def test_malicious_filename_cannot_break_the_attachment_header(artifact_file):
+def test_malicious_filename_cannot_break_the_attachment_header(
+    artifact_file: Callable[[str], Path],
+) -> None:
     # An agent-chosen name with a quote must not close the quoted-string and
     # neuter the attachment disposition — FileResponse RFC-encodes it.
     evil = 'a".svg'

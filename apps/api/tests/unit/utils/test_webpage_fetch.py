@@ -1,5 +1,6 @@
 """Webpage fetch failover behaviour and the httpx engine's HTML->markdown parse."""
 
+from collections.abc import Callable
 from unittest.mock import patch
 
 import httpx
@@ -10,7 +11,7 @@ from app.utils.exceptions import FetchError
 from app.utils.webpage_fetch import HttpxFetcher, WebpageFetcher, _fetch_first_success
 
 
-def _resolver(host_to_ip: dict[str, str]):
+def _resolver(host_to_ip: dict[str, str]) -> Callable[[str, int], list[str]]:
     """Build a fake DNS resolver that maps host -> single IP for the SSRF guard."""
 
     def _fake(host: str, port: int) -> list[str]:

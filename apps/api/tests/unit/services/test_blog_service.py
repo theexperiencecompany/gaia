@@ -8,6 +8,7 @@ import pytest
 
 from app.models.blog_models import BlogPost
 from app.services.blog_service import BlogService
+from tests.unit.services.regex_helpers import collect_regex_values
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -300,20 +301,6 @@ class TestSearchBlogs:
 # ---------------------------------------------------------------------------
 
 
-def _collect_regex_values(node) -> list[str]:
-    found: list[str] = []
-    if isinstance(node, dict):
-        for key, value in node.items():
-            if key == "$regex":
-                found.append(value)
-            else:
-                found.extend(_collect_regex_values(value))
-    elif isinstance(node, list):
-        for item in node:
-            found.extend(_collect_regex_values(item))
-    return found
-
-
 @pytest.mark.unit
 class TestSearchBlogsRegexEscaping:
     async def test_search_query_is_regex_escaped(self, mock_blog_collection, mock_redis_cache):
@@ -330,7 +317,7 @@ class TestSearchBlogsRegexEscaping:
         await BlogService.search_blogs(raw_query)
 
         pipeline = mock_blog_collection.aggregate.call_args[0][0]
-        regex_values = _collect_regex_values(pipeline)
+        regex_values = collect_regex_values(pipeline)
 
         assert regex_values, "expected the title/category $regex stages to be exercised"
         for value in regex_values:

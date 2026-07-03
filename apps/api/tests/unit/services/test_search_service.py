@@ -7,6 +7,7 @@ from fastapi import HTTPException
 import pytest
 
 from app.services.search_service import search_messages
+from tests.unit.services.regex_helpers import collect_regex_values
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -427,21 +428,6 @@ class TestSearchMessagesEdgeCases:
 # ---------------------------------------------------------------------------
 
 
-def _collect_regex_values(node) -> list[str]:
-    """Recursively pull every ``$regex`` value out of an aggregation pipeline."""
-    found: list[str] = []
-    if isinstance(node, dict):
-        for key, value in node.items():
-            if key == "$regex":
-                found.append(value)
-            else:
-                found.extend(_collect_regex_values(value))
-    elif isinstance(node, list):
-        for item in node:
-            found.extend(_collect_regex_values(item))
-    return found
-
-
 @pytest.mark.unit
 class TestSearchMessagesRegexEscaping:
     async def test_user_query_is_regex_escaped_in_every_regex_stage(
@@ -476,7 +462,7 @@ class TestSearchMessagesRegexEscaping:
 
         conv_pipeline = mock_conversations_collection.aggregate.call_args[0][0]
         notes_pipeline = mock_notes_collection.aggregate.call_args[0][0]
-        regex_values = _collect_regex_values(conv_pipeline) + _collect_regex_values(notes_pipeline)
+        regex_values = collect_regex_values(conv_pipeline) + collect_regex_values(notes_pipeline)
 
         assert regex_values, "expected at least one $regex stage to be exercised"
         for value in regex_values:

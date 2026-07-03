@@ -11,10 +11,12 @@
  * 6.  Decodes UTF-8 byte-for-byte even when a multi-byte char is split across
  *     chunks (required so the raw body re-encodes identically for the HMAC check)
  * 7.  Returns "" when there is no body
+ * 8.  Returns BODY_READ_TIMEOUT when a stalled stream blows the read deadline
  */
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
   readBodyBounded,
 } from "../../whatsapp/src/request-body";
@@ -100,5 +102,16 @@ describe("readBodyBounded", () => {
       100,
     );
     expect(result).toBe("");
+  });
+
+  it("returns BODY_READ_TIMEOUT when the stream stalls past the deadline", async () => {
+    // A source-less stream never enqueues or closes: read() would block
+    // forever. The deadline must cancel the reader and unblock the loop.
+    const stream = new ReadableStream<Uint8Array>();
+    const request = { body: stream } as unknown as Request;
+
+    const result = await readBodyBounded(request, 1000, 50);
+
+    expect(result).toBe(BODY_READ_TIMEOUT);
   });
 });

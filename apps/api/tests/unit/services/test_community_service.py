@@ -6,22 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.integrations.community_service import _search_community_integrations
+from tests.unit.services.regex_helpers import collect_regex_values
 
 _MOD = "app.services.integrations.community_service"
-
-
-def _collect_regex_values(node) -> list[str]:
-    found: list[str] = []
-    if isinstance(node, dict):
-        for key, value in node.items():
-            if key == "$regex":
-                found.append(value)
-            else:
-                found.extend(_collect_regex_values(value))
-    elif isinstance(node, list):
-        for item in node:
-            found.extend(_collect_regex_values(item))
-    return found
 
 
 @pytest.mark.unit
@@ -48,7 +35,7 @@ async def test_mongo_fallback_escapes_regex_metacharacters() -> None:
         await _search_community_integrations(raw_query, category="all", limit=10, offset=0)
 
     mongo_query = collection.count_documents.call_args[0][0]
-    regex_values = _collect_regex_values(mongo_query)
+    regex_values = collect_regex_values(mongo_query)
 
     assert regex_values, "expected the $regex fallback to be exercised"
     for value in regex_values:

@@ -6,6 +6,7 @@ directly — a private/metadata/non-http URL must be a 422 before any handler or
 outbound connection runs.
 """
 
+from httpx import AsyncClient
 import pytest
 
 _URL = "/api/v1/integrations/custom"
@@ -19,7 +20,9 @@ BLOCKED_URLS = [
 
 
 @pytest.mark.parametrize("url", BLOCKED_URLS)
-async def test_create_custom_integration_rejects_ssrf_url(test_client, url):
+async def test_create_custom_integration_rejects_ssrf_url(
+    test_client: AsyncClient, url: str
+) -> None:
     response = await test_client.post(_URL, json={"name": "evil", "server_url": url})
 
     assert response.status_code == 422
@@ -28,7 +31,7 @@ async def test_create_custom_integration_rejects_ssrf_url(test_client, url):
     assert any("server_url" in str(err.get("loc", "")) for err in body["detail"])
 
 
-async def test_create_custom_integration_requires_auth(unauthenticated_client):
+async def test_create_custom_integration_requires_auth(unauthenticated_client: AsyncClient) -> None:
     response = await unauthenticated_client.post(
         _URL, json={"name": "x", "server_url": "https://mcp.example.com/sse"}
     )

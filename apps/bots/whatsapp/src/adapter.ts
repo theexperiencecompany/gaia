@@ -47,7 +47,11 @@ import {
   TEMPLATE_BODY_MAX_LENGTH,
   TYPING_REFRESH_MS,
 } from "./constants";
-import { BODY_TOO_LARGE, readBodyBounded } from "./request-body";
+import {
+  BODY_READ_TIMEOUT,
+  BODY_TOO_LARGE,
+  readBodyBounded,
+} from "./request-body";
 import {
   extractMedia,
   extractTextBody,
@@ -185,6 +189,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           max_bytes: MAX_WEBHOOK_BODY_BYTES,
         });
         return c.text("Payload Too Large", 413);
+      }
+      if (rawBody === BODY_READ_TIMEOUT) {
+        this.adapterLogger.warn("webhook_body_read_timeout");
+        return c.text("Request Timeout", 408);
       }
       const signature = c.req.header("x-webhook-signature") ?? null;
 
