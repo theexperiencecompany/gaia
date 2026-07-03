@@ -92,6 +92,10 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
+    # Short-link display domain (heygaia.link/<slug>). Defaults to the app's own
+    # /l path; set to the dedicated domain in prod (a rewrite to /l keeps the
+    # same resolution). No trailing slash.
+    SHORTLINK_BASE_URL: str = "https://heygaia.io/l"
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True

@@ -130,14 +130,31 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.RUNNING)
         await _run_execution(doc, user_id, user_data=user_data)
 
-        # The agent may have completed the todo mid-run (complete_tracked_todo
-        # sets DONE); otherwise the run finished an increment of work and the
-        # todo re-arms as queued for its next fire/follow-up.
+        # Resolve the post-run state. The agent may have completed the todo
+        # mid-run (DONE), or turned it into a proposal awaiting approval, or hit
+        # a blocker (needs_you) — leave those. Otherwise: a recurring todo
+        # re-arms to queued for its next fire; a one-shot work order (no
+        # recurrence) is DONE now that its run finished — it produced its
+        # deliverable and must not linger "in progress" forever.
         post = await todos_collection.find_one(
             {"_id": ObjectId(todo_id)}, {"completed": 1, "execution_status": 1}
         )
-        if post and not post.get("completed"):
-            await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.QUEUED)
+        post_status = (post or {}).get("execution_status")
+        if (
+            post
+            and not post.get("completed")
+            and post_status
+            not in (
+                ExecutionStatus.PROPOSED.value,
+                ExecutionStatus.NEEDS_YOU.value,
+            )
+        ):
+            if doc.get("recurrence"):
+                await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.QUEUED)
+            else:
+                await tracked_todo_service.complete_tracked_todo(
+                    todo_id, user_id, summary="Completed overnight by GAIA."
+                )
 
         # Reset retry counter on success
         await todos_collection.update_one(

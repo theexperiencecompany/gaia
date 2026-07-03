@@ -97,6 +97,7 @@ def get_sync_collection(collection_name: str):
 # Collection name mappings
 _COLLECTION_MAPPINGS = {
     "users_collection": "users",
+    "short_links_collection": "short_links",
     "conversations_collection": "conversations",
     "notes_collection": "notes",
     "calendars_collection": "calendar",
