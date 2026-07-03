@@ -49,6 +49,7 @@ from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
 from app.services.notification_service import notification_service
 from app.services.short_link_service import get_or_create_short_link
+from app.services.todo_canvas_storage import read_canvas
 from app.services.todos import activity
 from app.services.todos.gaia_todo_lifecycle import (
     expire_stale_proposals,
@@ -182,28 +183,50 @@ def _delivery_body(payload: BriefingPayload) -> str:
     return "\n\n".join(parts)
 
 
-async def _mint_artifact_links(user_id: str, lanes: list[context.GoalLane]) -> dict[str, str]:
-    """Mint a viewer-scoped heygaia.link for every lane item that has a canvas.
+_ARTIFACT_PREVIEW_CHARS = 240
+# Below this canvas size the result is small enough to state inline; at or above,
+# the brief links out so the reader opens the full artifact instead of scrolling.
+_LINK_MIN_CANVAS_CHARS = 500
 
-    The brief links to each artifact instead of dumping its contents into chat:
-    the reader taps through to a clean, full-width canvas page and approves a
-    staged proposal right there. Minting is idempotent per target, so re-running
-    the brief reuses the same slug.
+
+def _canvas_snippet(canvas: str) -> str:
+    """A short, header-free preview of a canvas for the voice pass to draw
+    concrete specifics from (names, counts) — never shown to the user verbatim."""
+    lines = [
+        ln.strip()
+        for ln in canvas.splitlines()
+        if ln.strip() and not ln.lstrip().startswith(("#", "<!--", "|", "---"))
+    ]
+    return " ".join(lines)[:_ARTIFACT_PREVIEW_CHARS].rstrip()
+
+
+async def _gather_artifacts(
+    user_id: str, lanes: list[context.GoalLane]
+) -> dict[str, dict[str, str | None]]:
+    """Per lane item: a concrete content preview and a heygaia.link ONLY when the
+    artifact is large or actionable. Small results are stated inline (no link);
+    big lists/drafts and anything awaiting the user link out to the reader page.
+    Minting is idempotent per target, so re-running the brief reuses the slug.
     """
-    links: dict[str, str] = {}
+    out: dict[str, dict[str, str | None]] = {}
     for lane in lanes:
-        docs = [
+        actionable_ids = {str(d["_id"]) for d in [*lane.staged, *lane.needs_you]}
+        for doc in [
             *lane.completed,
             *lane.staged,
             *lane.running,
             *lane.needs_you,
             *lane.failed,
-        ]
-        for doc in docs:
+        ]:
             todo_id = str(doc["_id"])
-            if todo_id not in links:
-                links[todo_id] = await get_or_create_short_link(user_id, "todo_canvas", todo_id)
-    return links
+            if todo_id in out:
+                continue
+            canvas = doc.get("canvas_content") or await read_canvas(todo_id, user_id) or ""
+            link: str | None = None
+            if len(canvas) >= _LINK_MIN_CANVAS_CHARS or todo_id in actionable_ids:
+                link = await get_or_create_short_link(user_id, "todo_canvas", todo_id)
+            out[todo_id] = {"snippet": _canvas_snippet(canvas), "link": link}
+    return out
 
 
 async def _deliver(
@@ -216,11 +239,13 @@ async def _deliver(
     contract the channels layer keys off (without them email falls back to the
     plain template).
     """
-    # One texting-voice message — no canvas dumps. The message already weaves in
-    # each artifact's heygaia.link, so the reader taps through to the full canvas
-    # (and approves a staged proposal on that page) instead of scrolling a wall of
-    # text in chat.
-    platform_parts = [payload.message] if payload.message else []
+    # One bubble per goal — no canvas dumps. Each bubble names its goal, states
+    # the result inline, and links out (heygaia.link) only when the artifact is
+    # large or awaiting the user, so small results never cost a tap. The weekly
+    # digest has no per-goal bubbles, so it falls back to its single message.
+    platform_parts = [b for b in payload.bubbles if b.strip()] or (
+        [payload.message] if payload.message else []
+    )
     record = await notification_service.create_notification(
         NotificationRequest(
             user_id=user_id,
@@ -304,22 +329,25 @@ _ROMAN = ["I", "II", "III", "IV", "V", "VI"]
 
 
 def _build_facts(
-    lanes: list[context.GoalLane], curation_note: str, links: dict[str, str]
+    lanes: list[context.GoalLane],
+    curation_note: str,
+    artifacts: dict[str, dict[str, str | None]],
 ) -> tuple[list[dict], list[dict], str]:
     """Assemble sections + stats deterministically from lane state.
 
     Returns (sections, stats, facts_block) — the model voices the facts_block
-    but the rendered sections come from here, so the brief cannot lie. Each item
-    carries its artifact's heygaia.link (``links[todo_id]``) so the dashboard
-    card links out and the facts_block hands the model the exact URL to weave in.
+    but the rendered sections come from here, so the brief cannot lie. Each fact
+    carries a concrete ``detail`` snippet (so the bubble can name specifics) and a
+    ``link`` only where the artifact is large/actionable; the dashboard item also
+    gets the link.
     """
     sections: list[dict] = []
     for i, lane in enumerate(lanes):
         items = _lane_items(lane)
         for it in items:
-            link = links.get(it.get("todo_id", ""))
-            if link:
-                it["link"] = link
+            art = artifacts.get(it.get("todo_id", "")) or {}
+            if art.get("link"):
+                it["link"] = art["link"]
         if items:
             sections.append(
                 {
@@ -340,18 +368,23 @@ def _build_facts(
     for sec in sections:
         fact_lines.append(f"[{sec['title']}]")
         for it in sec["items"]:
-            link = it.get("link")
-            fact_lines.append(f"- {it['text']}" + (f" → {link}" if link else ""))
+            art = artifacts.get(it.get("todo_id", "")) or {}
+            line = f"- {it['text']}"
+            if art.get("snippet"):
+                line += f" | detail: {art['snippet']}"
+            if art.get("link"):
+                line += f" | link: {art['link']}"
+            fact_lines.append(line)
     if not sections:
         fact_lines.append("No goal lanes have any work or results to report.")
     return sections, stats, "\n".join(fact_lines)
 
 
-_VOICE_KEYS = ("headline", "lede", "caption", "mood", "message")
+_VOICE_KEYS = ("headline", "lede", "caption", "mood", "bubbles")
 
 
 def _parse_voice(raw: str) -> dict:
-    """Extract the voice-only JSON (headline/lede/caption/mood/message)."""
+    """Extract the voice-only JSON (headline/lede/caption/mood/bubbles)."""
     candidates = _JSON_FENCE.findall(raw) or [raw]
     for block in candidates:
         block = block.strip()
@@ -361,7 +394,11 @@ def _parse_voice(raw: str) -> dict:
             data = json.loads(block)
         except json.JSONDecodeError:
             continue
-        if isinstance(data, dict) and all(k in data for k in _VOICE_KEYS):
+        if (
+            isinstance(data, dict)
+            and all(k in data for k in _VOICE_KEYS)
+            and isinstance(data["bubbles"], list)
+        ):
             return data
     raise BriefingGenerationError(
         f"No valid voice JSON in agent output (first 300 chars): {raw[:300]!r}"
@@ -466,8 +503,8 @@ async def run_daily_briefing(user_id: str) -> None:
 
     # Facts are assembled by code from lane state; the model only voices them.
     lanes = await context.gather_goal_lanes(user_id, since)
-    links = await _mint_artifact_links(user_id, lanes)
-    sections, stats, facts_block = _build_facts(lanes, _format_curation(expired), links)
+    artifacts = await _gather_artifacts(user_id, lanes)
+    sections, stats, facts_block = _build_facts(lanes, _format_curation(expired), artifacts)
 
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
@@ -492,7 +529,9 @@ async def run_daily_briefing(user_id: str) -> None:
             "mood": "winback" if winback.is_winback else voice["mood"],
             "caption": voice["caption"],
             "hue": hue_for_day(clock.day_of_year),
-            "message": voice["message"],
+            "bubbles": voice["bubbles"],
+            # Single-string rendering for the in-app body / email fallback.
+            "message": "\n\n".join(voice["bubbles"]),
         }
     )
 

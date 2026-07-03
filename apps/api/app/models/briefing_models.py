@@ -70,7 +70,16 @@ class BriefingPayload(BaseModel):
         description=(
             "Casual texting-voice rendering of the brief for chat platforms "
             "(Telegram/WhatsApp/etc). The editorial fields above are for the "
-            "dashboard card and email; this is what GAIA 'texts' the user."
+            "dashboard card and email; this is what GAIA 'texts' the user. "
+            "Derived from `bubbles` (joined) for single-string consumers."
+        ),
+    )
+    bubbles: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One chat bubble per goal — each led by the goal, concrete details "
+            "inline, a heygaia.link only when the artifact is large/actionable. "
+            "Delivered as separate messages so each goal reads on its own."
         ),
     )
 
