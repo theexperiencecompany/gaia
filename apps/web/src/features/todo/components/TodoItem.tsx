@@ -65,6 +65,10 @@ const priorityRingColors = {
   [Priority.NONE]: "border-zinc-500",
 } as const;
 
+// Bookkeeping labels the backend may still carry on older todos — never shown
+// as chips (the "Created by GAIA" badge already conveys gaia ownership).
+const INTERNAL_LABELS = new Set(["gaia-tracked", "failed"]);
+
 const formatScheduledLabel = (
   scheduledAt: string | null | undefined,
   timezone: string | undefined,
@@ -298,20 +302,24 @@ export default memo(function TodoItem({
               )}
 
               <div className="flex items-center gap-1">
-                {todo.labels.map((label) => (
-                  <Chip
-                    key={label}
-                    size="sm"
-                    variant="flat"
-                    className="flex items-center text-zinc-400 px-1"
-                    radius="sm"
-                    startContent={
-                      <Tag01Icon width={17} height={17} className="mx-1" />
-                    }
-                  >
-                    {label.charAt(0).toUpperCase() + label.slice(1)}
-                  </Chip>
-                ))}
+                {todo.labels
+                  // Internal bookkeeping labels are never shown as chips —
+                  // "gaia-tracked" is redundant with the "Created by GAIA" badge.
+                  .filter((label) => !INTERNAL_LABELS.has(label))
+                  .map((label) => (
+                    <Chip
+                      key={label}
+                      size="sm"
+                      variant="flat"
+                      className="flex items-center text-zinc-400 px-1"
+                      radius="sm"
+                      startContent={
+                        <Tag01Icon width={17} height={17} className="mx-1" />
+                      }
+                    >
+                      {label.charAt(0).toUpperCase() + label.slice(1)}
+                    </Chip>
+                  ))}
               </div>
 
               {!!todo.priority && todo.priority !== "none" && (

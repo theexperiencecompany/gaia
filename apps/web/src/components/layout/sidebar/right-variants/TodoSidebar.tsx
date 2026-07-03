@@ -9,6 +9,7 @@ import type React from "react";
 import { useState } from "react";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { ExecutionStatusChip } from "@/features/todo/components/shared/ExecutionStatusChip";
 import { ExecutionStatusGlyph } from "@/features/todo/components/shared/ExecutionStatusGlyph";
 import { GaiaOfferBanner } from "@/features/todo/components/shared/GaiaOfferBanner";
 import { GaiaTodoBadge } from "@/features/todo/components/shared/GaiaTodoBadge";
@@ -211,12 +212,17 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             <TodoFieldsRow
               prefix={
                 isGaiaTodo ? (
-                  <GaiaTodoBadge
-                    kind={todo.kind}
-                    assignee={todo.assignee}
-                    vfsPath={todo.vfs_path}
-                    size="md"
-                  />
+                  <>
+                    <GaiaTodoBadge
+                      kind={todo.kind}
+                      assignee={todo.assignee}
+                      vfsPath={todo.vfs_path}
+                      size="md"
+                    />
+                    {todo.kind !== "goal" && (
+                      <ExecutionStatusChip status={todo.execution_status} />
+                    )}
+                  </>
                 ) : undefined
               }
               priority={todo.priority}

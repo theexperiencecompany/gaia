@@ -2,7 +2,8 @@
 
 import { Button } from "@heroui/button";
 import { Cancel01Icon, CheckmarkCircle02Icon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import type React from "react";
 import { useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
