@@ -15,6 +15,10 @@ export function Toaster({ position = "top-right" }: ToasterProps) {
       position={position}
       options={{
         fill: "#262626",
+        // Sileo auto-expands the description panel by default (autopilot).
+        // We want the collapsed pill until the user hovers — hover-expansion
+        // is built into sileo and unaffected by this flag.
+        autopilot: false,
         styles: {
           title: "text-white! truncate max-w-2xl",
           description: "text-white/75!",

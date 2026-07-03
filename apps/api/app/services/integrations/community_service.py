@@ -46,12 +46,22 @@ async def _search_community_integrations(
     offset: int,
 ) -> CommunityListResponse:
     """Search community integrations with semantic search + MongoDB fallback."""
-    # Try ChromaDB semantic search first
-    search_results = await search_public_integrations(
-        query=query,
-        limit=limit,
-        category=category if category != "all" else None,
-    )
+    # Try ChromaDB semantic search first. A search-infra outage falls back to
+    # the MongoDB regex path below instead of failing the marketplace page —
+    # search_public_integrations raises on infra errors rather than returning
+    # an empty list, so the fallback must be explicit here.
+    try:
+        search_results = await search_public_integrations(
+            query=query,
+            limit=limit,
+            category=category if category != "all" else None,
+        )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.INTEGRATION} Semantic search unavailable, using MongoDB fallback: "
+            f"{type(e).__name__}: {e}"
+        )
+        search_results = []
 
     integration_ids = [r.get("integration_id") for r in search_results if r.get("integration_id")]
 

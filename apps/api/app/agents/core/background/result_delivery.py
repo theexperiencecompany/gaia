@@ -408,13 +408,16 @@ async def _generate_and_push_follow_ups(
             return
 
         bot_message.follow_up_actions = follow_up_actions
-        await update_messages(
-            UpdateMessagesRequest(
-                conversation_id=run.conversation_id,
-                messages=[bot_message],
-            ),
-            user=run.user,
+        persisted = await _persist_follow_up_actions(
+            user_id=user_id,
+            conversation_id=run.conversation_id,
+            message_id=bot_message.message_id,
+            follow_up_actions=follow_up_actions,
         )
+        if not persisted:
+            # Broadcasting unpersisted suggestions would show them in the UI
+            # only to vanish on reload — drop them instead.
+            return
         await _broadcast_bot_message(
             user_id=user_id,
             conversation_id=run.conversation_id,
@@ -431,6 +434,47 @@ async def _generate_and_push_follow_ups(
         # Non-critical enhancement — the answer is already delivered. Log loudly
         # but never let a follow-up failure crash the background task.
         log.error(f"{LogTag.AGENT} deliver_result: deferred follow-up actions failed", error=str(e))
+
+
+async def _persist_follow_up_actions(
+    *,
+    user_id: str,
+    conversation_id: str,
+    message_id: str | None,
+    follow_up_actions: list[str],
+) -> bool:
+    """Attach deferred follow-up suggestions to the already-saved bot message.
+
+    The answer was persisted and broadcast without suggestions to unblock the UI;
+    this sets them on that SAME message, matched by id. It MUST be an in-place
+    field update — re-saving the whole message through ``update_messages`` (which
+    ``$push``-es) would append a duplicate copy of the answer to the conversation.
+
+    Returns ``True`` when the suggestions were written to the stored message, so
+    the caller only broadcasts follow-ups that will survive a reload.
+    """
+    if not message_id:
+        log.warning(
+            f"{LogTag.AGENT} _persist_follow_up_actions: missing message_id, dropping follow-ups",
+            conversation_id=conversation_id,
+        )
+        return False
+    result = await conversations_collection.update_one(
+        {
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "messages.message_id": message_id,
+        },
+        {"$set": {"messages.$.follow_up_actions": follow_up_actions}},
+    )
+    if result.matched_count == 0:
+        log.error(
+            f"{LogTag.AGENT} _persist_follow_up_actions: no message matched, dropping follow-ups",
+            conversation_id=conversation_id,
+            message_id=message_id,
+        )
+        return False
+    return True
 
 
 async def _dispatch_workflow_notification(

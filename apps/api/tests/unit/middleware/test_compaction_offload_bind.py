@@ -25,13 +25,6 @@ from app.agents.workspace.offload import mark_offload, read_offload, tools_for_o
 pytestmark = pytest.mark.unit
 
 
-def _persist_request() -> SimpleNamespace:
-    return SimpleNamespace(
-        tool_call={"name": "search", "id": "1", "args": {}},
-        runtime=SimpleNamespace(config={"configurable": {"user_id": "u1", "thread_id": "c1"}}),
-    )
-
-
 INFO = {
     "path": "/w/x.jsonl",
     "bytes": 10,
@@ -109,7 +102,8 @@ async def test_awrap_excluded_self_offloading_tool_still_binds() -> None:
     # still surface query_json/grep — the bind keys on the marker, not on compaction firing.
     mw = WorkspaceCompactionMiddleware(excluded_tools={"GMAIL_FETCH_MESSAGES"})
     req = SimpleNamespace(
-        tool_call={"name": "GMAIL_FETCH_MESSAGES", "id": "1"},
+        tool_call={"name": "GMAIL_FETCH_MESSAGES", "id": "1", "args": {}},
+        runtime=SimpleNamespace(config={"configurable": {"user_id": "u1", "thread_id": "c1"}}),
         state={"messages": [], "selected_tool_ids": []},
     )
 
@@ -136,7 +130,9 @@ async def test_awrap_plain_small_output_passes_through() -> None:
     mw = WorkspaceCompactionMiddleware()
     msg = ToolMessage(content="small", tool_call_id="1", name="x")
     req = SimpleNamespace(
-        tool_call={"name": "x", "id": "1"}, state={"messages": [], "selected_tool_ids": []}
+        tool_call={"name": "x", "id": "1", "args": {}},
+        runtime=SimpleNamespace(config={"configurable": {"user_id": "u1", "thread_id": "c1"}}),
+        state={"messages": [], "selected_tool_ids": []},
     )
 
     async def handler(_req):
@@ -162,10 +158,15 @@ async def test_persist_writes_raw_jsonl_and_query_json_can_mine_it(
         return p, f"/workspace/sessions/{conversation_id}/{relative_path}"
 
     monkeypatch.setattr(compaction_mod, "write_session_file", fake_write)
-    out = await WorkspaceCompactionMiddleware()._persist(
-        ToolMessage(content=content, tool_call_id="1", name="search"),
-        _persist_request(),
-        "large_output",
+    out = await compaction_mod._spill_to_workspace(
+        content_str=content,
+        tool_name="search",
+        tool_call_id="1",
+        user_id="u1",
+        conversation_id="c1",
+        reason="large_output",
+        status="success",
+        existing_additional_kwargs={},
     )
 
     assert captured["content"] == content  # RAW jsonl written, not a metadata wrapper
@@ -199,10 +200,15 @@ async def test_persist_text_output_marks_grep_only(
         return tmp_path / "x", f"/workspace/x/{relative_path}"
 
     monkeypatch.setattr(compaction_mod, "write_session_file", fake_write)
-    out = await WorkspaceCompactionMiddleware()._persist(
-        ToolMessage(content=content, tool_call_id="1", name="run"),
-        _persist_request(),
-        "large_output",
+    out = await compaction_mod._spill_to_workspace(
+        content_str=content,
+        tool_name="run",
+        tool_call_id="1",
+        user_id="u1",
+        conversation_id="c1",
+        reason="large_output",
+        status="success",
+        existing_additional_kwargs={},
     )
 
     assert captured["content"] == content and captured["rel"].endswith(".txt")

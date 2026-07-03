@@ -3,7 +3,11 @@
 import { useEffect } from "react";
 import type { IMessage } from "@/lib/db/chatDb";
 import { type OptimisticMessage, useChatStore } from "@/stores/chatStore";
-import { type ToolInfo, useLoadingStore } from "@/stores/loadingStore";
+import {
+  type ToolInfo,
+  type TurnUiState,
+  useStreamStore,
+} from "@/stores/streamStore";
 
 /**
  * Cross-window chat state sync for the desktop assistant popup.
@@ -12,7 +16,7 @@ import { type ToolInfo, useLoadingStore } from "@/stores/loadingStore";
  * conversation card — each with its own native liquid glass and its own
  * JS context. The composer window owns all chat logic (sending,
  * streaming, stores); this channel mirrors the active conversation and
- * loading state into the feed window, which is render-only.
+ * turn state into the feed window, which is render-only.
  */
 
 const CHANNEL_NAME = "gaia-desktop-popup-chat";
@@ -23,10 +27,10 @@ interface PopupChatState {
   activeConversationId: string | null;
   messages: IMessage[];
   optimisticMessage: OptimisticMessage | null;
-  isLoading: boolean;
-  isMainResponseStreaming: boolean;
-  loadingText: string;
-  toolInfo: ToolInfo | null;
+  /** The active conversation's turn session, if one is open. */
+  turn: TurnUiState | null;
+  /** Auxiliary (voice/upload) loading, mirrored as-is. */
+  auxLoading: { text: string; toolInfo?: ToolInfo } | null;
 }
 
 /** Consumer → publisher request for the current snapshot. */
@@ -41,22 +45,23 @@ const PUBLISH_THROTTLE_MS = 50;
 
 function snapshot(): PopupChatState {
   const chat = useChatStore.getState();
-  const loading = useLoadingStore.getState();
+  const stream = useStreamStore.getState();
   const id = chat.activeConversationId;
+  const key = id ?? stream.pendingNewConversationKey;
   return {
     type: "state",
     activeConversationId: id,
     messages: id ? (chat.messagesByConversation[id] ?? []) : [],
     optimisticMessage: chat.optimisticMessage,
-    isLoading: loading.isLoading,
-    isMainResponseStreaming: loading.isMainResponseStreaming,
-    loadingText: loading.loadingText,
-    toolInfo: loading.toolInfo ?? null,
+    turn: key ? (stream.sessions[key] ?? null) : null,
+    auxLoading: stream.auxLoading?.active
+      ? { text: stream.auxLoading.text, toolInfo: stream.auxLoading.toolInfo }
+      : null,
   };
 }
 
 /**
- * Mount in the composer window: mirrors every chat/loading store change
+ * Mount in the composer window: mirrors every chat/turn store change
  * (throttled) onto the channel, and answers `hello` requests from a
  * freshly loaded feed window with the current snapshot.
  */
@@ -74,7 +79,7 @@ export function usePopupChatPublisher(): void {
     };
 
     const unsubChat = useChatStore.subscribe(schedule);
-    const unsubLoading = useLoadingStore.subscribe(schedule);
+    const unsubStream = useStreamStore.subscribe(schedule);
     channel.onmessage = (event: MessageEvent<PopupChatMessage>) => {
       if (event.data?.type === "hello") publish();
     };
@@ -83,7 +88,7 @@ export function usePopupChatPublisher(): void {
     return () => {
       if (timer) clearTimeout(timer);
       unsubChat();
-      unsubLoading();
+      unsubStream();
       channel.close();
     };
   }, []);
@@ -103,36 +108,30 @@ export function usePopupChatConsumer(): void {
       if (data?.type !== "state") return;
 
       const chat = useChatStore.getState();
-      const loading = useLoadingStore.getState();
+      const stream = useStreamStore.getState();
       chat.setActiveConversationId(data.activeConversationId);
       if (data.activeConversationId) {
         chat.setMessagesForConversation(
           data.activeConversationId,
           data.messages,
         );
+        // mirrorSession only bumps the text animation key on change, so the
+        // ~20×/sec throttled snapshots don't remount the loading indicator.
+        stream.mirrorSession(data.activeConversationId, data.turn);
       }
       chat.setOptimisticMessage(data.optimisticMessage);
-      // Only on change: setIsLoading(true) re-randomizes loadingText and
-      // bumps the animation key, so calling it on every throttled snapshot
-      // (~20×/sec while streaming) would remount and flicker the indicator.
-      if (data.isLoading !== loading.isLoading) {
-        loading.setIsLoading(data.isLoading);
-      }
-      if (data.isMainResponseStreaming !== loading.isMainResponseStreaming) {
-        loading.setMainResponseStreaming(data.isMainResponseStreaming);
-      }
-      // Mirror the loading text + tool icon context so the feed shows the
-      // same tool-specific indicator as the web app. Only on change —
-      // setLoadingText bumps the animation key on every call.
+      // Only on change — setAuxLoading bumps the animation key on every call.
+      const auxActive = stream.auxLoading?.active ?? false;
+      const nextAuxActive = data.auxLoading != null;
       if (
-        data.loadingText !== loading.loadingText ||
-        JSON.stringify(data.toolInfo) !==
-          JSON.stringify(loading.toolInfo ?? null)
+        auxActive !== nextAuxActive ||
+        stream.auxLoading?.text !== data.auxLoading?.text
       ) {
-        loading.setLoadingText({
-          text: data.loadingText,
-          toolInfo: data.toolInfo ?? undefined,
-        });
+        stream.setAuxLoading(
+          nextAuxActive,
+          data.auxLoading?.text,
+          data.auxLoading?.toolInfo,
+        );
       }
     };
 

@@ -34,6 +34,9 @@ export const BASE_MESSAGE_SCHEMA = {
     | undefined,
   isConvoSystemGenerated: undefined as boolean | undefined,
   follow_up_actions: undefined as string[] | undefined,
+  // Set by the backend when a turn died with no response text — drives the
+  // quiet failed-response bubble on reload instead of an empty bubble.
+  error: undefined as string | null | undefined,
   // Core non-tool fields
   image_data: undefined as ImageData | null | undefined,
   memory_data: undefined as MemoryData | null | undefined,

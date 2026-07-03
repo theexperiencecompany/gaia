@@ -149,7 +149,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         for msg in messages:
             if isinstance(msg, HumanMessage):
                 additional_kwargs = getattr(msg, "additional_kwargs", {})
-                if additional_kwargs.get("is_summary"):
+                if additional_kwargs.get("lc_source") == "summarization":
                     if hasattr(msg, "content") and isinstance(msg.content, str):
                         msg.content += (
                             f"\n\n[Full history archived at: {archive_path}. "

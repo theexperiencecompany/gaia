@@ -7,7 +7,7 @@ import { usePopupEscapeDismiss } from "@/features/desktop-popup/hooks/usePopupEs
 import { useTransparentPopupChrome } from "@/features/desktop-popup/hooks/useTransparentPopupChrome";
 import { usePopupChatConsumer } from "@/features/desktop-popup/sync";
 import { useElectron } from "@/hooks/useElectron";
-import { useLoadingStore } from "@/stores/loadingStore";
+import { useActiveLoading } from "@/stores/streamStore";
 
 /**
  * Conversation island of the assistant popup — its own liquid-glass
@@ -27,7 +27,7 @@ export default function DesktopPopupFeedPage() {
   // empty conversation reports 0 — padding alone must not summon an
   // empty glass card.
   const { convoMessages } = useConversation();
-  const isLoading = useLoadingStore((state) => state.isLoading);
+  const { isLoading } = useActiveLoading();
   const hasContent = (convoMessages?.length ?? 0) > 0 || isLoading;
   useEffect(() => {
     const content = document.querySelector<HTMLElement>(

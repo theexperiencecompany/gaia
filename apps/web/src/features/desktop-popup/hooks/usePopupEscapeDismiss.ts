@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect } from "react";
 import { useElectron } from "@/hooks/useElectron";
-import { useLoadingStore } from "@/stores/loadingStore";
+import { useChatStore } from "@/stores/chatStore";
+import { useStreamStore } from "@/stores/streamStore";
 
 /**
  * The idle-guarded popup dismiss: closes the popup, but never mid-turn —
@@ -16,8 +17,12 @@ import { useLoadingStore } from "@/stores/loadingStore";
 export function usePopupDismissGuard(): () => void {
   const { dismissPopup } = useElectron();
   return useCallback(() => {
-    const { isLoading, isMainResponseStreaming } = useLoadingStore.getState();
-    if (isLoading || isMainResponseStreaming) return;
+    const stream = useStreamStore.getState();
+    const key =
+      useChatStore.getState().activeConversationId ??
+      stream.pendingNewConversationKey;
+    const turnOpen = key != null && stream.sessions[key] != null;
+    if (turnOpen || stream.auxLoading?.active) return;
     dismissPopup();
   }, [dismissPopup]);
 }

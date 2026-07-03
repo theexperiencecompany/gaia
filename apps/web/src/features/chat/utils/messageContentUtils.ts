@@ -34,10 +34,14 @@ export const shouldShowTextBubble = (
  * Comprehensive check to determine if a bot message has any meaningful content
  */
 export const isBotMessageEmpty = (props: ChatBubbleBotProps): boolean => {
-  const { text, loading, isConvoSystemGenerated, systemPurpose } = props;
+  const { text, loading, isConvoSystemGenerated, systemPurpose, error } = props;
 
   // Loading messages are considered not empty
   if (loading) return false;
+
+  // A failed turn with no response text still renders (the quiet error bubble),
+  // so it must not be treated as empty and filtered out of the thread.
+  if (error) return false;
 
   // Convert ChatBubbleBotProps to MessageType for hasMessageContent check
   const message: MessageType = {

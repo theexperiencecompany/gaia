@@ -11,6 +11,7 @@ from langchain_core.messages import AnyMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.channels.delta import DeltaChannel
 from langgraph.graph.message import _messages_delta_reducer
+from langgraph.managed import RemainingSteps
 from langgraph_bigtool.graph import State as _BigtoolState
 
 from app.constants.llm import MESSAGES_SNAPSHOT_FREQUENCY
@@ -42,6 +43,10 @@ class State(_BigtoolState):
     todos: Annotated[list, _replace_todos]
     intent: str | None
     integration_usernames: dict[str, str]
+    # LangGraph-managed countdown of supersteps left before the recursion
+    # limit. acall_model reads it to warn the model to wrap up before the
+    # hard GraphRecursionError.
+    remaining_steps: RemainingSteps
 
 
 class RetrieveToolsResult(TypedDict):

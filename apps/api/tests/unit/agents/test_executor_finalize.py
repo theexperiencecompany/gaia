@@ -25,6 +25,9 @@ from app.agents.core.background.session import (
     get_session,
 )
 
+# The task text the finalize step now receives; forwarded to comms on a cancel.
+TASK = "run the standup summary"
+
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
@@ -74,6 +77,9 @@ class _Boundaries:
         self.note = stack.enter_context(
             patch.object(er, "build_returned_to_frontend_note", return_value="")
         )
+        self.record_cancel = stack.enter_context(
+            patch.object(er, "record_executor_cancellation", new_callable=AsyncMock)
+        )
 
 
 @pytest.fixture
@@ -89,8 +95,10 @@ class TestCancelledRouting:
         run = _run(RunKind.QUEUED)
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(run, "partial text", "final")
+        await er._finalize_executor_run(run, TASK, "partial text", "final")
 
+        # Comms' context must record the cancellation regardless of card ownership.
+        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
         boundaries.persist_cancelled.assert_awaited_once_with(run)
         boundaries.deliver.assert_not_awaited()
         # Queued stream is closed silently: no [DONE], no complete_stream.
@@ -111,8 +119,10 @@ class TestCancelledRouting:
         run = _run(RunKind.LIVE)
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, "partial text", "final")
+        await er._finalize_executor_run(run, TASK, "partial text", "final")
 
+        # Cards defer to comms, but the cancellation is still recorded for context.
+        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
         boundaries.persist_cancelled.assert_not_awaited()
         boundaries.deliver.assert_not_awaited()
         # Live sessions are torn down by the chat stream, not by finalize.
@@ -123,8 +133,9 @@ class TestCancelledRouting:
         run = _run(RunKind.LIVE, workflow_id="wf-1")
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, "", "final")
+        await er._finalize_executor_run(run, TASK, "", "final")
 
+        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
         boundaries.persist_cancelled.assert_awaited_once_with(run)
         boundaries.deliver.assert_not_awaited()
 
@@ -134,7 +145,7 @@ class TestCancelledRouting:
         boundaries.stream_manager.is_cancelled.return_value = True
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(_run(RunKind.QUEUED), "txt", "final")
+        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "txt", "final")
 
         boundaries.note.assert_not_called()
 
@@ -146,11 +157,13 @@ class TestCompletedRouting:
         create_session("s1", RunKind.QUEUED)
         boundaries.note.return_value = "[RETURNED_TO_FRONTEND] cards"
 
-        await er._finalize_executor_run(run, "result", "final")
+        await er._finalize_executor_run(run, TASK, "result", "final")
 
         boundaries.deliver.assert_awaited_once_with(
             run, "result", "final", "[RETURNED_TO_FRONTEND] cards"
         )
+        # A completed run narrates and delivers — it never records a cancellation.
+        boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()
         boundaries.stream_manager.publish_chunk.assert_awaited_once_with("s1", "data: [DONE]\n\n")
         boundaries.stream_manager.complete_stream.assert_awaited_once_with("s1")
@@ -160,9 +173,10 @@ class TestCompletedRouting:
         run = _run(RunKind.LIVE)
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, "result", "final")
+        await er._finalize_executor_run(run, TASK, "result", "final")
 
         boundaries.deliver.assert_awaited_once()
+        boundaries.record_cancel.assert_not_awaited()
         # The live SSE is owned by the chat stream — finalize must not close it.
         boundaries.stream_manager.publish_chunk.assert_not_awaited()
         assert get_session("s1") is not None
@@ -170,9 +184,10 @@ class TestCompletedRouting:
     async def test_empty_result_text_skips_delivery(self, boundaries) -> None:
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(_run(RunKind.LIVE), "", "final")
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "", "final")
 
         boundaries.deliver.assert_not_awaited()
+        boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()
 
 
@@ -185,7 +200,7 @@ class TestDoneSignalAndOrdering:
         boundaries.stream_manager.is_cancelled.return_value = cancelled
         session = create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(_run(RunKind.LIVE), "txt", "final")
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "txt", "final")
 
         assert session.done_event.is_set()
 
@@ -199,7 +214,7 @@ class TestDoneSignalAndOrdering:
             "",
         )[1]
 
-        await er._finalize_executor_run(_run(RunKind.LIVE), "txt", "final")
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "txt", "final")
 
         assert done_state_at_note_time == [False]
 
@@ -226,7 +241,7 @@ class TestQueueLockBugs:
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), "partial", "final")
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "partial", "final")
             await asyncio.sleep(0)
 
         boundaries.pop.assert_awaited_once_with("conv-1")
@@ -241,7 +256,7 @@ class TestQueueLockBugs:
         # The busy lock now belongs to someone else entirely.
         boundaries.lock_state.return_value = LockState.FOREIGN
 
-        await er._finalize_executor_run(_run(RunKind.QUEUED), "partial", "final")
+        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "partial", "final")
 
         boundaries.release.assert_not_awaited()
         boundaries.pop.assert_not_awaited()  # not ours to hand off
@@ -261,7 +276,7 @@ class TestQueueLockBugs:
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), "result", "final")
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
             await asyncio.sleep(0)
 
         boundaries.pop.assert_not_awaited()  # not owner — never overwrite the lock
@@ -274,7 +289,7 @@ class TestQueueLockHandoff:
     async def test_no_next_task_releases_the_busy_lock_then_rechecks(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(_run(RunKind.QUEUED), "result", "final")
+        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
 
         boundaries.pop.assert_awaited_once_with("conv-1")
         boundaries.release.assert_awaited_once()
@@ -291,7 +306,7 @@ class TestQueueLockHandoff:
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), "result", "final")
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
             await asyncio.sleep(0)  # let the spawned task start
 
         spawn.assert_awaited_once_with(
