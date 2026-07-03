@@ -136,7 +136,7 @@ def build_briefing_voice_prompt(
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies."""
     winback_note = (
-        '\nThis user has ignored several briefings. One short message, new angle, '
+        "\nThis user has ignored several briefings. One short message, new angle, "
         'no guilt-trip; set mood to "winback".\n'
         if winback
         else ""
@@ -240,6 +240,12 @@ emails), the work order tells the prep run to finish by staging it: "when the
 drafts are done, create the send proposal (requires_approval=True) with the
 finished drafts as its initial_canvas." The proposal is born from completed
 work, so the morning tap always releases something real.
+
+Staged drafts must be SEND-READY: every placeholder filled with the real value
+(the actual investor name, the actual link, the actual number). Never stage
+`[Name]`, `[industry]`, `[specific problem]` or any bracketed token — approving
+sends those literally, and the staging gate will reject them. If you don't have
+a real value, research it first or leave that draft out.
 
 Do not extrapolate beyond the stated goals; do not create work nobody asked
 for. If a similar todo already exists below, improve or leave it, never

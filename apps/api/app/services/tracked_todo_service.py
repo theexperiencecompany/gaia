@@ -117,6 +117,19 @@ def _format_tracked_todo_line(doc: dict, now: datetime, active_todo_id: str | No
     )
 
 
+# A staged proposal ships the exact content in its canvas, so it must not carry
+# unfilled template tokens — [Name], [industry], [specific problem]. Matches a
+# bracketed run that starts with a letter and is NOT a markdown link ([t](url),
+# excluded by the negative lookahead) nor a task checkbox ([ ]/[x], excluded by
+# requiring ≥2 inner chars).
+_PLACEHOLDER_RE = re.compile(r"\[[A-Za-z][^\]\n]{1,60}\](?!\()")
+
+
+def _has_unfilled_placeholders(text: str) -> bool:
+    """True if the text still holds send-blocking template placeholders."""
+    return _PLACEHOLDER_RE.search(text) is not None
+
+
 class TrackedTodoService:
     """Manages VFS lifecycle for tracked (GAIA working memory) todos.
 
@@ -161,6 +174,19 @@ class TrackedTodoService:
                 "the exact content approving will release (drafts, list, post). "
                 "If the content does not exist yet, create the internal prep todo "
                 "first and stage this proposal when the prep run finishes."
+            )
+        # A proposal releases its canvas verbatim, so template placeholders would
+        # be sent literally ("Hi [Name], …"). Reject unfilled tokens at the gate so
+        # the run must fill them with real values (or do the prep to get them).
+        if entry_status is ExecutionStatus.PROPOSED and _has_unfilled_placeholders(
+            initial_canvas or ""
+        ):
+            raise lifecycle.TraceabilityError(
+                "A proposal cannot ship template placeholders: the staged canvas "
+                "still has unfilled tokens like [Name] or [industry], so approving "
+                "would release literal brackets. Fill every placeholder with the "
+                "real value before staging — if you don't have it yet, do the prep "
+                "to get it first."
             )
 
         # `assignee == "gaia"` is the discriminator now, so we no longer stamp
