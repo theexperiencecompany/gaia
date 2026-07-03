@@ -37,6 +37,7 @@ from app.db.mongodb.collections import (
     processed_webhooks_collection,
     projects_collection,
     reminders_collection,
+    short_links_collection,
     skills_collection,
     subscriptions_collection,
     todos_collection,
@@ -84,6 +85,7 @@ async def create_all_indexes():
             create_award_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
+            create_short_link_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -116,6 +118,7 @@ async def create_all_indexes():
             "awards",
             "bot_sessions",
             "e2b_sandboxes",
+            "short_links",
         ]
 
         index_results = {}
@@ -996,4 +999,21 @@ async def create_e2b_sandbox_indexes() -> None:
         )
     except Exception as e:
         log.error(f"{LogTag.MONGO} Error creating e2b sandbox indexes: {e!s}")
+        raise
+
+
+async def create_short_link_indexes() -> None:
+    """Create indexes for the short_links collection.
+
+    The (user_id, slug) unique index enforces the per-user slug namespace and
+    is the constraint the mint retry loop races against on collision.
+    """
+    try:
+        await short_links_collection.create_index(
+            [("user_id", 1), ("slug", 1)],
+            unique=True,
+            name="user_slug_unique",
+        )
+    except Exception as e:
+        log.error(f"{LogTag.MONGO} Error creating short link indexes: {e!s}")
         raise

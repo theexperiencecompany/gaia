@@ -24,6 +24,8 @@ const NON_DISMISSABLE_ROUTE_PREFIXES = [
   "/notifications",
   "/calendar",
   "/dashboard",
+  "/l",
+  "/a",
 ];
 
 const isNonDismissableRoute = (pathname: string): boolean => {
@@ -63,7 +65,7 @@ export default function LoginModal() {
           <RaisedButton
             color="#00bbff"
             className="text-md w-full text-primary-foreground!"
-            onClick={handleAuthLogin}
+            onClick={() => handleAuthLogin()}
           >
             <Login02Icon width={22} height={22} />
             Sign in

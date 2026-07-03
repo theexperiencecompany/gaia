@@ -30,8 +30,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.constants.todos import MAX_PENDING_PROPOSALS, gaia_assigned_filter
-from app.db.mongodb.collections import todos_collection, users_collection
+from app.db.mongodb.collections import users_collection
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -45,11 +44,11 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.models.todo_models import ExecutionStatus
 from app.services.briefing import context, repository
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
 from app.services.notification_service import notification_service
+from app.services.short_link_service import get_or_create_short_link
 from app.services.todos import activity
 from app.services.todos.gaia_todo_lifecycle import (
     expire_stale_proposals,
@@ -183,43 +182,28 @@ def _delivery_body(payload: BriefingPayload) -> str:
     return "\n\n".join(parts)
 
 
-async def _pending_proposals(user_id: str) -> list[dict]:
-    """The user's pending proposals (newest first, deduped by title, top 3)."""
-    query = {
-        "user_id": user_id,
-        "execution_status": ExecutionStatus.PROPOSED.value,
-        **gaia_assigned_filter(),
-    }
-    cursor = todos_collection.find(query, {"title": 1, "canvas_content": 1}).sort("created_at", -1)
-    seen: set[str] = set()
-    proposals: list[dict] = []
-    async for doc in cursor:
-        # Belt over the creation-time dedup guard: never two buttons for the
-        # same piece of work.
-        title = (doc.get("title") or "proposal").strip().lower()
-        if title in seen:
-            continue
-        seen.add(title)
-        proposals.append(doc)
-        if len(proposals) >= MAX_PENDING_PROPOSALS:
-            break
-    return proposals
+async def _mint_artifact_links(user_id: str, lanes: list[context.GoalLane]) -> dict[str, str]:
+    """Mint a viewer-scoped heygaia.link for every lane item that has a canvas.
 
-
-# Chat platforms show the staged work itself, never a description of it: nobody
-# approves an email they have not seen. The FULL canvas goes out — never
-# truncated (the bot consumer chunks long messages), because you cannot review
-# what you cannot read. Content is copied verbatim from the canvas by code, so
-# it cannot be embellished.
-def _staged_content_parts(proposals: list[dict]) -> list[str]:
-    parts: list[str] = []
-    for doc in proposals:
-        canvas = (doc.get("canvas_content") or "").strip()
-        if not canvas:
-            continue
-        title = doc.get("title", "proposal")
-        parts.append(f'What "{title}" will send, for your review:\n\n{canvas}')
-    return parts
+    The brief links to each artifact instead of dumping its contents into chat:
+    the reader taps through to a clean, full-width canvas page and approves a
+    staged proposal right there. Minting is idempotent per target, so re-running
+    the brief reuses the same slug.
+    """
+    links: dict[str, str] = {}
+    for lane in lanes:
+        docs = [
+            *lane.completed,
+            *lane.staged,
+            *lane.running,
+            *lane.needs_you,
+            *lane.failed,
+        ]
+        for doc in docs:
+            todo_id = str(doc["_id"])
+            if todo_id not in links:
+                links[todo_id] = await get_or_create_short_link(user_id, "todo_canvas", todo_id)
+    return links
 
 
 async def _deliver(
@@ -232,10 +216,11 @@ async def _deliver(
     contract the channels layer keys off (without them email falls back to the
     plain template).
     """
-    proposals = await _pending_proposals(user_id)
-    # One logical delivery, multiple bubbles: the texting-voice message first,
-    # then the staged content each proposal releases once approved in chat.
-    platform_parts = [p for p in [payload.message, *_staged_content_parts(proposals)] if p]
+    # One texting-voice message — no canvas dumps. The message already weaves in
+    # each artifact's heygaia.link, so the reader taps through to the full canvas
+    # (and approves a staged proposal on that page) instead of scrolling a wall of
+    # text in chat.
+    platform_parts = [payload.message] if payload.message else []
     record = await notification_service.create_notification(
         NotificationRequest(
             user_id=user_id,
@@ -319,16 +304,22 @@ _ROMAN = ["I", "II", "III", "IV", "V", "VI"]
 
 
 def _build_facts(
-    lanes: list[context.GoalLane], curation_note: str
+    lanes: list[context.GoalLane], curation_note: str, links: dict[str, str]
 ) -> tuple[list[dict], list[dict], str]:
     """Assemble sections + stats deterministically from lane state.
 
     Returns (sections, stats, facts_block) — the model voices the facts_block
-    but the rendered sections come from here, so the brief cannot lie.
+    but the rendered sections come from here, so the brief cannot lie. Each item
+    carries its artifact's heygaia.link (``links[todo_id]``) so the dashboard
+    card links out and the facts_block hands the model the exact URL to weave in.
     """
     sections: list[dict] = []
     for i, lane in enumerate(lanes):
         items = _lane_items(lane)
+        for it in items:
+            link = links.get(it.get("todo_id", ""))
+            if link:
+                it["link"] = link
         if items:
             sections.append(
                 {
@@ -348,7 +339,9 @@ def _build_facts(
     fact_lines: list[str] = [curation_note]
     for sec in sections:
         fact_lines.append(f"[{sec['title']}]")
-        fact_lines.extend(f"- {it['text']}" for it in sec["items"])
+        for it in sec["items"]:
+            link = it.get("link")
+            fact_lines.append(f"- {it['text']}" + (f" → {link}" if link else ""))
     if not sections:
         fact_lines.append("No goal lanes have any work or results to report.")
     return sections, stats, "\n".join(fact_lines)
@@ -473,7 +466,8 @@ async def run_daily_briefing(user_id: str) -> None:
 
     # Facts are assembled by code from lane state; the model only voices them.
     lanes = await context.gather_goal_lanes(user_id, since)
-    sections, stats, facts_block = _build_facts(lanes, _format_curation(expired))
+    links = await _mint_artifact_links(user_id, lanes)
+    sections, stats, facts_block = _build_facts(lanes, _format_curation(expired), links)
 
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,

@@ -121,6 +121,14 @@ rhythm, plain words, no headline-speak, no bullets. Show the reasoning link
 (connect work to the goal it serves), one lane at a time, and never chain two
 different goals into one causal sentence. When something is staged, say a tap
 or a reply releases it. Do not overcorrect into forced quirkiness.
+
+Some facts end with an arrow and a heygaia.link URL — that's the page where the
+user reads that piece of work (and approves it, if it's staged). When your
+message mentions that item, drop its link inline the way a person pastes one
+mid-text ("...put the investor list together — here: heygaia.link/abc"), copying
+the URL EXACTLY. Weave links into the sentences; never list them as bullets.
+Never invent or alter a link, and never paste the work's contents into the
+message — the link is how they open it.
 """.strip()
 
 

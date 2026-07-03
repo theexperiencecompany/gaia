@@ -1,7 +1,17 @@
-import type { NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
 import { routing } from "./i18n/routing";
+
+// heygaia.link is a display-only alias domain served by THIS same app (added as
+// a Vercel domain alias at deploy time — infra, not code). Session cookies are
+// scoped to heygaia.io and are NOT sent cross-domain to heygaia.link, so a short
+// link can only be resolved (viewer-scoped, auth-required) on heygaia.io. Every
+// heygaia.link/<slug> is therefore 307'd to heygaia.io/l/<slug>, where the
+// viewer's session lives; that host-based bounce is the only special rule.
+const SHORTLINK_HOST = process.env.NEXT_PUBLIC_SHORTLINK_HOST ?? "heygaia.link";
+const SHORTLINK_RESOLVE_ORIGIN =
+  process.env.NEXT_PUBLIC_APP_ORIGIN ?? "https://heygaia.io";
 
 // Renamed from `proxy.ts` → `middleware.ts` so we can deploy on Cloudflare via
 // `@opennextjs/cloudflare`. Next 16's new `proxy.ts` convention is hard-coded
@@ -41,6 +51,16 @@ const intlMiddlewareDefaultOnly = createMiddleware({
 });
 
 export default function middleware(request: NextRequest) {
+  // Short-link alias host: bounce heygaia.link/<slug> → heygaia.io/l/<slug>
+  // before any locale handling, so resolution runs where the session cookie is.
+  if (request.headers.get("host") === SHORTLINK_HOST) {
+    const target = new URL(
+      `/l${request.nextUrl.pathname}${request.nextUrl.search}`,
+      SHORTLINK_RESOLVE_ORIGIN,
+    );
+    return NextResponse.redirect(target, 307);
+  }
+
   if (isTranslatedRoute(request.nextUrl.pathname)) {
     return intlMiddleware(request);
   }

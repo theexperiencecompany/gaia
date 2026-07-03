@@ -92,15 +92,14 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
-    # Short-link display domain (heygaia.link/<slug>). Defaults to the app's own
-    # /l path; set to the dedicated domain in prod (a rewrite to /l keeps the
-    # same resolution). No trailing slash.
-    SHORTLINK_BASE_URL: str = "https://heygaia.io/l"
+    # Short-link display domain (heygaia.link/<slug>). The dedicated domain
+    # rewrites to the app's /l route, which resolves the slug. No trailing slash.
+    SHORTLINK_BASE_URL: str = "https://heygaia.link"
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
 
-    @field_validator("HOST", "FRONTEND_URL", mode="after")
+    @field_validator("HOST", "FRONTEND_URL", "SHORTLINK_BASE_URL", mode="after")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v

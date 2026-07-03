@@ -39,6 +39,10 @@ class BriefingItem(BaseModel):
     text: str
     todo_id: str | None = None
     kind: BriefingItemKind = "note"
+    # heygaia.link handle for the item's artifact (canvas), viewer-scoped. The
+    # chat message links to this instead of dumping the content; the dashboard
+    # card renders it as a tappable item.
+    link: str | None = None
 
 
 class BriefingSection(BaseModel):
