@@ -1,13 +1,14 @@
 "use client";
 
 import { Switch } from "@heroui/switch";
+import { MailIcon } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
   NOTIFICATION_PLATFORMS,
-  type NotificationPlatform,
+  type NotificationChannelPreference,
 } from "@/features/notification/constants";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -23,8 +24,14 @@ export default function NotificationSettings() {
     Record<string, PlatformLink | null>
   >({});
   const [channelPrefs, setChannelPrefs] = useState<
-    Record<NotificationPlatform, boolean>
-  >({ telegram: true, discord: true, whatsapp: true, slack: true });
+    Record<NotificationChannelPreference, boolean>
+  >({
+    telegram: true,
+    discord: true,
+    whatsapp: true,
+    slack: true,
+    email: true,
+  });
   const [loading, setLoading] = useState(true);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 
@@ -51,19 +58,19 @@ export default function NotificationSettings() {
   }, []);
 
   const handleToggle = async (
-    platform: NotificationPlatform,
+    channel: NotificationChannelPreference,
     enabled: boolean,
   ) => {
-    setTogglingPlatform(platform);
+    setTogglingPlatform(channel);
     try {
-      await NotificationsAPI.updateChannelPreference(platform, enabled);
-      setChannelPrefs((prev) => ({ ...prev, [platform]: enabled }));
+      await NotificationsAPI.updateChannelPreference(channel, enabled);
+      setChannelPrefs((prev) => ({ ...prev, [channel]: enabled }));
       trackEvent(ANALYTICS_EVENTS.SETTINGS_NOTIFICATIONS_TOGGLED, {
-        platform,
+        platform: channel,
         enabled,
       });
     } catch {
-      toast.error(`Failed to update ${platform} notification preference`);
+      toast.error(`Failed to update ${channel} notification preference`);
     } finally {
       setTogglingPlatform(null);
     }
@@ -106,6 +113,23 @@ export default function NotificationSettings() {
             </SettingsRow>
           );
         })}
+        <SettingsRow
+          label="Email"
+          description="Daily briefings and weekly digests, sent to your account email"
+          icon={
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-800">
+              <MailIcon className="h-5 w-5 text-zinc-300" />
+            </div>
+          }
+        >
+          <Switch
+            size="sm"
+            isSelected={channelPrefs.email}
+            isDisabled={loading || togglingPlatform === "email"}
+            onValueChange={(enabled) => handleToggle("email", enabled)}
+            aria-label="Enable email notifications"
+          />
+        </SettingsRow>
       </SettingsSection>
     </SettingsPage>
   );

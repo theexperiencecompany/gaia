@@ -1,9 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Cancel01Icon, CheckmarkCircle02Icon, ChevronDown01Icon } from "@icons";
+import { Cancel01Icon, CheckmarkCircle02Icon } from "@icons";
 import type React from "react";
 import { useState } from "react";
+import { ChevronDown } from "@/components/shared/icons";
 import { useApproveTodo } from "@/features/todo/hooks/useApproveTodo";
 import { useDismissTodo } from "@/features/todo/hooks/useDismissTodo";
 import { useTodoCanvas } from "@/features/todo/hooks/useTodoCanvas";
@@ -31,10 +32,12 @@ export const TodoProposalActions: React.FC<TodoProposalActionsProps> = ({
   const dismissTodo = useDismissTodo();
   const { content, isLoading, fetchContent } = useTodoCanvas(todoId);
 
-  const handleToggleExpand = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!expanded) fetchContent();
-    setExpanded((prev) => !prev);
+  const handleToggleExpand = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      if (next) fetchContent();
+      return next;
+    });
   };
 
   const previewText = content || fallbackPreview;
@@ -64,24 +67,21 @@ export const TodoProposalActions: React.FC<TodoProposalActionsProps> = ({
         >
           Dismiss
         </Button>
-        {previewText && (
-          <Button
-            size="sm"
-            variant="light"
-            radius="lg"
-            isIconOnly
-            aria-label={expanded ? "Collapse preview" : "Expand preview"}
-            onPress={() => setExpanded((prev) => !prev)}
-            onClick={handleToggleExpand}
-          >
-            <ChevronDown01Icon
-              className={cn(
-                "size-4 transition-transform",
-                expanded && "rotate-180",
-              )}
-            />
-          </Button>
-        )}
+        <Button
+          size="sm"
+          variant="light"
+          radius="lg"
+          isIconOnly
+          aria-label={expanded ? "Collapse preview" : "Expand preview"}
+          onPress={handleToggleExpand}
+        >
+          <ChevronDown
+            className={cn(
+              "size-4 transition-transform",
+              expanded && "rotate-180",
+            )}
+          />
+        </Button>
       </div>
 
       {expanded && (

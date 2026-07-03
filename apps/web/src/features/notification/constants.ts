@@ -7,6 +7,12 @@ export const NOTIFICATION_PLATFORMS = [
 
 export type NotificationPlatform = (typeof NOTIFICATION_PLATFORMS)[number];
 
+// Email is a channel preference like the bot platforms, but isn't gated by a
+// platform link (GAIA already has the user's email from signup) — kept as a
+// separate union rather than joining NOTIFICATION_PLATFORMS so the "requires a
+// connected account" iteration stays platform-only.
+export type NotificationChannelPreference = NotificationPlatform | "email";
+
 export const NOTIFICATION_PLATFORM_LABELS: Record<
   NotificationPlatform,
   string

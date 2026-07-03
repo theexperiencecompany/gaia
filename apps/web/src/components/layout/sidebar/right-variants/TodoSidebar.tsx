@@ -9,9 +9,13 @@ import type React from "react";
 import { useState } from "react";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
-import CanvasViewer from "@/features/todo/components/CanvasViewer";
+import { ExecutionStatusGlyph } from "@/features/todo/components/shared/ExecutionStatusGlyph";
+import { GaiaOfferBanner } from "@/features/todo/components/shared/GaiaOfferBanner";
+import { GaiaTodoMeta } from "@/features/todo/components/shared/GaiaTodoMeta";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
+import { TodoProposalActions } from "@/features/todo/components/shared/TodoProposalActions";
+import WorkLogSection from "@/features/todo/components/shared/WorkLogSection";
 import WorkflowSection from "@/features/todo/components/WorkflowSection";
 import type {
   Priority,
@@ -87,6 +91,12 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
   if (!todo) return null;
 
+  // `vfs_path` is kept as a fallback signal during the assignee migration
+  // window — older gaia-tracked todos may not have `assignee` backfilled yet.
+  const isGaiaTodo = todo.assignee === "gaia" || !!todo.vfs_path;
+  const isProposed =
+    todo.assignee === "gaia" && todo.execution_status === "proposed";
+
   return (
     <div className="flex h-full flex-col">
       <SidebarContent className="flex-1 overflow-y-auto pl-6 pr-3 outline-0">
@@ -128,13 +138,37 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                   variant="underlined"
                 />
               ) : (
-                <h1
-                  onClick={() => setIsEditingTitle(true)}
-                  style={{ wordBreak: "break-all" }}
-                  className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
-                >
-                  {todo.title}
-                </h1>
+                <div className="flex items-center gap-2">
+                  <h1
+                    onClick={() => setIsEditingTitle(true)}
+                    style={{ wordBreak: "break-all" }}
+                    className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
+                  >
+                    {todo.title}
+                  </h1>
+                  {isGaiaTodo && (
+                    <ExecutionStatusGlyph status={todo.execution_status} />
+                  )}
+                </div>
+              )}
+              {isGaiaTodo && (
+                <GaiaTodoMeta
+                  serves={todo.serves}
+                  errorMessage={
+                    todo.execution_status === "failed"
+                      ? todo.error_message
+                      : null
+                  }
+                />
+              )}
+              {isProposed && (
+                <TodoProposalActions
+                  todoId={todo.id}
+                  fallbackPreview={todo.description}
+                />
+              )}
+              {!isGaiaTodo && todo.gaia_offer && (
+                <GaiaOfferBanner todoId={todo.id} offer={todo.gaia_offer} />
               )}
             </div>
           </div>
@@ -168,10 +202,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             </p>
           )}
 
-          {/* Canvas working memory — only for gaia-tracked todos */}
-          {todo.vfs_path && (
-            <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
-          )}
+          {/* Work log — GAIA's canvas.md, always visible for gaia-assigned todos */}
+          {isGaiaTodo && <WorkLogSection todoId={todo.id} />}
 
           {/* Editable Fields */}
           <div className="py-2">

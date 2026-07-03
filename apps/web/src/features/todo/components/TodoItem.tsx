@@ -27,6 +27,10 @@ import {
   type TodoUpdate,
 } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
+import { ExecutionStatusGlyph } from "./shared/ExecutionStatusGlyph";
+import { GaiaOfferBanner } from "./shared/GaiaOfferBanner";
+import { GaiaTodoMeta } from "./shared/GaiaTodoMeta";
+import { TodoProposalActions } from "./shared/TodoProposalActions";
 import { TodoTitle } from "./TodoTitle";
 
 interface TodoItemProps {
@@ -115,6 +119,9 @@ export default memo(function TodoItem({
 
   const todoProject = projects?.find((p) => p.id === todo.project_id);
 
+  const isGaiaTodo = todo.assignee === "gaia";
+  const isProposed = isGaiaTodo && todo.execution_status === "proposed";
+
   const isOverdue = useMemo(
     () =>
       !!todo.due_date &&
@@ -140,6 +147,7 @@ export default memo(function TodoItem({
         "pointer-events-auto w-full cursor-pointer rounded-xl p-2 pl-3 mb-0 transition-all group",
         isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50",
         todo.completed && "opacity-30",
+        isProposed && "border-l-2 border-violet-500/50 bg-violet-500/5",
         className,
       )}
       style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
@@ -162,23 +170,45 @@ export default memo(function TodoItem({
 
         <div className="min-w-0 flex-1">
           <div>
-            <h4
-              style={{
-                display: "-webkit-box",
-                WebkitBoxOrient: "vertical",
-                WebkitLineClamp: 2,
-                overflow: "hidden",
-              }}
-              className={`text-base font-normal ${
-                todo.completed ? "text-zinc-500 line-through" : ""
-              }`}
-            >
-              <TodoTitle title={todo.title} />
-            </h4>
+            <div className="flex items-center gap-1.5">
+              <h4
+                style={{
+                  display: "-webkit-box",
+                  WebkitBoxOrient: "vertical",
+                  WebkitLineClamp: 2,
+                  overflow: "hidden",
+                }}
+                className={`text-base font-normal ${
+                  todo.completed ? "text-zinc-500 line-through" : ""
+                }`}
+              >
+                <TodoTitle title={todo.title} />
+              </h4>
+              {isGaiaTodo && (
+                <ExecutionStatusGlyph status={todo.execution_status} />
+              )}
+            </div>
             {todo.description && (
               <p className="mt-1 text-xs text-zinc-500 line-clamp-1">
                 {todo.description}
               </p>
+            )}
+            {isGaiaTodo && (
+              <GaiaTodoMeta
+                serves={todo.serves}
+                errorMessage={
+                  todo.execution_status === "failed" ? todo.error_message : null
+                }
+              />
+            )}
+            {isProposed && (
+              <TodoProposalActions
+                todoId={todo.id}
+                fallbackPreview={todo.description}
+              />
+            )}
+            {!isGaiaTodo && todo.gaia_offer && (
+              <GaiaOfferBanner todoId={todo.id} offer={todo.gaia_offer} />
             )}
           </div>
 
