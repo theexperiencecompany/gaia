@@ -29,6 +29,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // CSRF: only accept same-origin submissions. A cross-site form POST carries
+  // the victim's cookie but a foreign (or absent) Origin, so reject it before
+  // attaching the server write credential. Compare the Origin header's host to
+  // the request Host — both are browser-provided and stay consistent behind a
+  // proxy/CDN (unlike a server-derived origin).
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("host");
+  let originHost: string | null = null;
+  try {
+    originHost = origin ? new URL(origin).host : null;
+  } catch {
+    originHost = null;
+  }
+  if (!originHost || !host || originHost !== host) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   // Require an authenticated session — unauthenticated callers carry no session
   // cookie, so reject before touching the backend or the write credential.
   const cookie = request.headers.get("cookie");
@@ -38,7 +55,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const formData = await request.formData();
 
-  const backendResponse = await fetch(`${API_BASE_URL}blogs`, {
+  // Normalize the join so a base URL with or without a trailing slash both
+  // resolve to a single `/blogs`.
+  const backendUrl = `${API_BASE_URL.replace(/\/$/, "")}/blogs`;
+
+  const backendResponse = await fetch(backendUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${BLOG_BEARER_TOKEN}`,
