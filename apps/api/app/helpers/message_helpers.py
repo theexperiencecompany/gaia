@@ -226,7 +226,13 @@ BACKGROUND_EXECUTION_BANNER = (
     '   - Do NOT produce conversational acknowledgements ("Sure, I\'ll…", "Let me know if…").\n'
     "   - Just execute. If you need a decision you cannot make, write the question into "
     "the active todo's canvas (Context section) and stop.\n"
-    "   - Your output is consumed by the system, not a human. Be terse and action-only."
+    "   - Your output is consumed by the system, not a human. Be terse and action-only.\n"
+    "   - ONE user-facing message per run, maximum. Never send status updates, retries, or "
+    "reworded variants of the same news — a blocked run flips the todo to needs_you and says "
+    "so ONCE (with at most one link). Compose the single message only after all work/attempts "
+    "are finished. Repeated near-identical messages destroy the user's trust.\n"
+    "   - A missing integration never blocks the work: produce the deliverable as content "
+    "yourself (research, lists, drafts), then mention the connect option once at handoff."
 )
 
 
