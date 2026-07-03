@@ -680,6 +680,28 @@ function mapTodoResponse(data: Record<string, unknown>): BotTodo {
   };
 }
 
+/** Maps the `{success, todo_id, execution_status}` shape the approve/dismiss endpoints return. */
+function mapTodoActionResponse(
+  data: Record<string, unknown>,
+): TodoActionResult {
+  return {
+    todoId: (data.todo_id as string) || "",
+    executionStatus: (data.execution_status as string) || "",
+  };
+}
+
+/** Parses the 402 quota response (`{error, todo_id, pitch, plan_required, reset_time}`) into a {@link GaiaQuotaError}. */
+function toGaiaQuotaError(error: unknown): GaiaQuotaError {
+  const data = (error as { response?: { data?: Record<string, unknown> } })
+    .response?.data;
+  return new GaiaQuotaError(
+    (data?.pitch as string) ||
+      "You've reached your plan's execution limit for now.",
+    data?.plan_required as string | undefined,
+    data?.reset_time as string | undefined,
+  );
+}
+
 /**
  * Maps a conversation response from the regular API format to the bot-expected format.
  */

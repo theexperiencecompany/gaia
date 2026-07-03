@@ -7,10 +7,11 @@ aren't asked to redo history.
 """
 
 from datetime import UTC, datetime
-
-from bson import ObjectId
 from typing import Any
 
+from bson import ObjectId
+
+from app.constants.integrations import INTEGRATION_STATUS_CONNECTED
 from app.db.mongodb.collections import user_integrations_collection, users_collection
 from app.utils.analytics import track
 
@@ -60,7 +61,7 @@ async def get_steps(user_id: str) -> dict[str, Any]:
     if STEP_CONNECT_INTEGRATION not in steps:
         # Any connected non-Gmail integration satisfies the step retroactively.
         connected = await user_integrations_collection.find_one(
-            {"user_id": user_id, "status": "connected", "integration_id": {"$ne": "gmail"}}
+            {"user_id": user_id, "status": INTEGRATION_STATUS_CONNECTED, "integration_id": {"$ne": "gmail"}}
         )
         if connected:
             await mark_step(user_id, STEP_CONNECT_INTEGRATION)
