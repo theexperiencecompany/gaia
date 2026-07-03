@@ -87,3 +87,15 @@ The canvas of any GAIA-assigned todo SHALL be rendered in the todo's detail view
 #### Scenario: Work log in detail view
 - **WHEN** a user opens a GAIA todo that has canvas content
 - **THEN** the work log renders in the detail view without navigating to a separate sidebar
+
+### Requirement: The todos surface is redesigned to the editorial bar
+
+The todos sidebar and todo detail view SHALL be redesigned as part of this change — not patched — to GAIA's design system (`DESIGN.md`) at the Notion/Apple/ElevenLabs/Vercel cleanliness bar: assignee and execution state legible at a glance (glyphs, not label chips), proposals visually distinct with inline Approve/Dismiss and one-glance previews, the work log presented as a first-class document (editorial typography per `briefing-artifacts`), and GAIA offers rendered as quiet affordances rather than banners. Implementation SHALL be preceded by the same multi-candidate design-exploration pass as the briefing card, with user selection before build.
+
+#### Scenario: State legible without reading
+- **WHEN** a user scans a mixed list of user todos, running GAIA todos, and proposals
+- **THEN** who owns what and what needs a tap is distinguishable from glyph/treatment alone
+
+#### Scenario: No label chips as state
+- **WHEN** a GAIA todo renders anywhere
+- **THEN** its GAIA-ness comes from the design treatment, never from a visible `gaia-tracked`-style label chip

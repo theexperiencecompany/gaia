@@ -21,6 +21,10 @@ The retention thesis: a todo list where half the todos do themselves and the use
 - **Retention loop.** Honest streak (green = ≥1 todo actually completed that day by either party; heartbeat work never counts; idle day = gray, streak breaks). Rare milestone badges. Weekly zoom-out email with a shareable Wrapped card. Full instrumentation from day one: approve rate (north star), briefing open/reply rate, time-to-first-approve, D1/D7/D30 morning-loop retention. No global leaderboard.
 - **Onboarding goal seed.** One added question — "what are you working on right now?" — asked on every path (including Gmail), persisted to memory, and required to produce real proposed todos in the user's first morning briefing.
 - **First-steps nudge.** A persistent bottom-right widget across app pages walking new users through activation: explore workflows, connect a first non-Gmail integration, link Telegram for notifications, meet Mission Control, approve their first GAIA todo. Dismissible, progress-tracked, disappears when complete.
+- **Free tier built for conversion.** The hook (briefing, dashboard, proposals, streak) is free and unlimited; GAIA's *execution* is metered through the existing tiered rate-limit system. At quota, the Approve tap becomes the upgrade surface — pitching the specific staged work GAIA has ready, not a generic paywall.
+- **Email briefings on by default.** Daily briefings and weekly digests deliver to email for every user until disabled in notification settings or via one-click unsubscribe.
+- **Existing users are announced to and interviewed.** One-time all-channel announcement introducing briefings; goals derived from memory where possible (stated with a correct-me line), and a short bootstrap interview where not — no user cold-starts into a generic briefing.
+- **Design as a first-class deliverable.** Briefing surfaces, email templates, the todos sidebar, and Mission Control are designed to the Dia-artifacts bar (Notion/Apple/ElevenLabs/Vercel cleanliness) within GAIA's design system — Aeonik + Playfair Display as briefing display type — via a multi-candidate design-exploration phase with user selection before build. No feature flags anywhere; the founder-persona end-to-end verification gates rollout instead.
 
 ## Capabilities
 
@@ -32,6 +36,7 @@ The retention thesis: a todo list where half the todos do themselves and the use
 - `retention-loop`: Honest streak rules, milestone badge system, weekly digest + shareable Wrapped card, PostHog instrumentation events and the approve-rate north star.
 - `onboarding-goal-seed`: The added onboarding question, memory persistence, revival of dormant `onboarding.focus`, first-briefing cold-start guarantee.
 - `first-steps-nudge`: The cross-page activation checklist widget with per-user progress state.
+- `tier-limits-conversion`: Free-tier metering of GAIA todo executions via the existing tiered rate-limit system; the at-quota Approve tap as the upgrade surface with the staged work as the pitch.
 
 ### Modified Capabilities
 - `tracked-todos-vfs`: Activeness discriminator changes from `labels` containing `gaia-tracked` to `assignee == "gaia"`; projected file contents otherwise unchanged.
@@ -42,5 +47,6 @@ The retention thesis: a todo list where half the todos do themselves and the use
 - **Frontend**: todo feature UI (assignee, states, Approve/Dismiss, work log), new Mission Control `/dashboard` page + heatmap, OpenUI briefing components, first-steps widget in the main layout, onboarding step, settings for email channel.
 - **Bots**: Telegram adapter renders inline keyboards for approve actions and posts callbacks to the API.
 - **Data migration**: backfill `assignee: "gaia"` where `labels` contains `gaia-tracked`; one release of dual-read fallback, then the label is removed.
-- **Risk**: briefing quality is the retention bet — mitigated by budgets, the quality gate, and instrumentation that surfaces approve-rate decay weeks before churn. Approval enforcement is prompt + tool-arg level in v1 (documented), not a hard tool sandbox.
+- **Monetization**: new `gaia_todo_executions` entry in `apps/api/app/config/rate_limits.py` (free/pro), upgrade flow reuse; email requires an ESP account + sending domain (SPF/DKIM) as an ops precondition.
+- **Risk**: briefing quality is the retention bet — mitigated by budgets, the quality gate, the founder-persona end-to-end verification gate before all-users rollout, and instrumentation that surfaces approve-rate decay weeks before churn. Approval enforcement is prompt + tool-arg level in v1 (documented), not a hard tool sandbox. No feature flags — sequencing and E2E verification replace them.
 - **Non-goals (v1)**: global leaderboard, HTML approval-table artifacts, trust-ramp auto-send escalation, persona expansion beyond founder-flavored prompts, mobile push, effort-gamification (points/guilt streaks).

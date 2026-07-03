@@ -2,11 +2,11 @@
 
 ### Requirement: Mission Control replaces the dashboard widget grid
 
-The `/dashboard` page SHALL be rebuilt as Mission Control: the latest briefing rendered via the OpenUI briefing component as the header (collapsible to its headline), a day timeline, an action rail, and the contribution heatmap. The prior five-widget `GridSection` layout is removed from this page. The rebuild SHALL sit behind a feature flag for one release before becoming default; the post-login redirect (`/c`) is explicitly NOT changed by this spec.
+The `/dashboard` page SHALL be rebuilt as Mission Control: the latest briefing rendered via the OpenUI briefing component as the header (collapsible to its headline), a day timeline, an action rail, and the contribution heatmap. The prior five-widget `GridSection` layout is removed from this page and its dead code deleted. The replacement ships directly — **no feature flags** — gated instead by the founder-persona end-to-end verification in tasks. The page SHALL follow GAIA's design system (`DESIGN.md`) throughout, with the briefing header using the editorial typography defined in `briefing-artifacts`. The post-login redirect (`/c`) is explicitly NOT changed by this spec.
 
-#### Scenario: Flag off preserves current dashboard
-- **WHEN** the feature flag is off
-- **THEN** `/dashboard` renders the existing widget grid unchanged
+#### Scenario: Direct replacement
+- **WHEN** the change is deployed
+- **THEN** `/dashboard` renders Mission Control for all users and no code path can render the old widget grid
 
 ### Requirement: The day timeline interleaves existing records
 

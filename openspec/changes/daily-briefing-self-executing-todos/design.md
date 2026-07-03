@@ -16,7 +16,7 @@ The building blocks already exist and are production-grade. This change builds *
 | Timeline data | `WorkflowExecution` records, todo `completed_at`, calendar queries — all already persisted |
 | Stale-work sweeps, backoff, quiet hours | Maintenance sweep patterns (`apps/api/app/workers/tasks/maintenance_sweep_tasks.py`) |
 
-Genuinely new surface, kept deliberately small: two todo fields + three endpoints, one briefing prompt + payload schema + one Mongo collection, one email adapter + a handful of templates, one dashboard page, one widget, one onboarding question, analytics events.
+Genuinely new surface, kept deliberately small: two todo fields + three endpoints, one briefing prompt + payload schema + one Mongo collection, one email adapter + a handful of templates, one dashboard page, one widget, one onboarding question, one rate-limit feature entry, analytics events.
 
 ## 1. Unified todo model
 
@@ -98,7 +98,7 @@ Stored in a new `briefings` Mongo collection `{ id, user_id, date, payload, deli
 
 **Three renderers, one payload**:
 - **Dashboard**: an OpenUI briefing component family (`apps/web/src/config/openui/`) with the editorial styling baked in — masthead (kicker + date), bands-gradient hero (`/images/wallpapers/bands_gradient_1.webp`) with CSS `hue-rotate(payload.hue)`, serif display headline, lede, stat row, Roman-numeraled sections, caption footer. Past briefs are archived and browsable.
-- **Email**: a new channel adapter in the notification orchestrator (same `ExternalPlatformAdapter` shape) sending via an HTTP ESP (Resend-class, config via env; ships dark until keys are set). Hand-designed templates: daily brief, weekly digest, plain notification. Templates own all design; the payload fills slots.
+- **Email**: a new channel adapter in the notification orchestrator (same `ExternalPlatformAdapter` shape) sending via an HTTP ESP (Resend-class, config via env; no-op with a log until keys exist — an ops precondition, not a flag). **Default-on for briefings and weekly digests** for every user with an email address, until disabled in notification settings or via the one-click unsubscribe every briefing email carries. Hand-designed templates: daily brief, weekly digest, plain notification. Templates own all design; the payload fills slots.
 - **Telegram**: payload flattened to prose through the existing outbound envelope, with approve actions as inline keyboard buttons. The envelope schema (`apps/api/app/schemas/outbound.py` + TS twin) gains an optional `actions: [{label, callback}]`; the Telegram adapter renders an inline keyboard and posts callbacks to the approve/dismiss endpoints. Approving from bed must work.
 
 Token cost is bounded by design: the model writes ~40 lines of structured text; all styling is human-authored once.
@@ -135,9 +135,24 @@ A small persistent widget, bottom-right of all main app pages (mounted in the `(
 
 Progress state lives on the user doc (`first_steps: {step_key: completed_at}`), updated by existing signals (integration connect, platform link, route visit, first approve) — no polling. Widget is collapsible, dismissible per-step and entirely, and unmounts permanently once all steps complete. Each step deep-links to its surface. Steps completed before the widget ever rendered are pre-checked (e.g. Telegram already linked).
 
-## 10. Rollout
+## 10. Free tier & conversion
 
-1. Todo model + migration ship first (dual-read window).
-2. Briefing run ships to internal/dogfood users via the system-workflow provisioning flag before the all-users backfill.
-3. Email adapter ships dark (no ESP keys in prod until templates are approved).
-4. Mission Control replaces `/dashboard` behind a feature flag for one release, then becomes default; post-login redirect moves from `/c` to `/dashboard` only after approve-rate data justifies it (explicitly deferred decision).
+The hook is free; the labor is metered. Briefing, weekly digest, Mission Control, heatmap/streak, proposals, and the todo list are unlimited on free. GAIA todo **executions** meter through the existing tiered rate-limit system (`apps/api/app/config/rate_limits.py`) via a new `gaia_todo_executions` feature (free: small daily/monthly quota — exact numbers a launch decision, tuned by approve-rate data; pro: generous). GAIA proposes at full quality regardless of tier, with previews visible — so the at-quota Approve tap becomes the conversion surface: it opens the upgrade flow pitching the *specific staged work* ("12 investor DMs drafted and ready — upgrade to send"), reusing the existing rate-limit upgrade-CTA pattern. The pitched proposal is exempt from TTL expiry for up to 7 days. Conversion events (`upgrade_prompt_shown`, `upgrade_from_approve`) join the analytics set.
+
+## 11. Design mandate
+
+Every surface in this change follows GAIA's design system (`DESIGN.md`) at the Dia-artifacts quality bar — Notion/Apple/ElevenLabs/Vercel-class cleanliness. Briefing display typography: **Aeonik** (already in the codebase at `apps/web/src/app/fonts/aeonik.ts`) + **Playfair Display** (added via `next/font`) as the serif display companion, alongside existing families (Inter, PP Editorial New, Anonymous Pro) in their established roles. The todos sidebar + detail view are redesigned, not patched (see `unified-todo-model`). Build is preceded by a **design-exploration phase**: multiple full candidates each for the briefing card, the email templates, the todos sidebar, and Mission Control layout polish — user selects before implementation. The Dia reference (editorial masthead, stat tuples, numbered sections, witty captions, curated art direction) is the north star; the bands-gradient wallpaper with per-day hue rotation is the hero identity.
+
+## 12. Existing-user rollout
+
+No cold starts. When briefings are provisioned for the existing base: (1) every user receives a one-time announcement on all connected channels (in-app + linked platforms + email) introducing daily briefings; (2) before a user's first briefing, the run derives goals from memory, integrations, and todo history — if sufficient, the first briefing proceeds and states its inference with a correct-me line; (3) if insufficient, the announcement asks a 2–3 question bootstrap interview (what are you working on, what should GAIA take over, preferred hour) — replies write to memory and briefings begin the morning after, with a 3-day triage-derived fallback that repeats the questions as its closing line.
+
+## 13. Rollout
+
+**No feature flags anywhere in this change.** Sequencing and verification replace flags:
+
+1. Todo model + migration ship first (dual-read window is a data-migration mechanism, not a flag).
+2. Founder-persona end-to-end verification (tasks Phase G) gates the all-users provisioning backfill: real account, real memories, goals "raise a pre-seed / ship / post on socials" — the generated briefing, proposals, approve round-trip, and channel delivery are inspected end to end and iterated until they meet the bar.
+3. Existing-user announcement + backfill run once verification passes (§12).
+4. Email requires ESP keys + sending domain (SPF/DKIM) in prod — an ops precondition satisfied before the backfill so default-on email works from day one.
+5. Post-login redirect stays `/c`; moving it to `/dashboard` is a deferred decision on approve-rate data.

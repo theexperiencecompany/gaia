@@ -16,17 +16,29 @@ A briefing component family SHALL be added to the OpenUI system with editorial s
 - **WHEN** two consecutive daily payloads carry different `hue` values
 - **THEN** both render the identical layout with only the gradient hue (and mood-keyed treatment) differing
 
-### Requirement: Email is a new notification channel with hand-designed templates
+### Requirement: Email briefings are on by default until the user disables them
 
-An email channel adapter SHALL be added to the notification orchestrator, sending via an HTTP ESP configured by environment variables and shipping dark (no-op with a log) until keys are set. Three hand-designed templates SHALL exist — daily brief, weekly digest, plain notification — filled from the payload; template selection keys off `kind`. Email SHALL respect the existing per-channel notification preferences and appear in the notification settings UI.
+An email channel adapter SHALL be added to the notification orchestrator, sending via an HTTP ESP configured by environment variables (no-op with a structured log until keys are set — an ops precondition, not a feature flag). The email channel SHALL be **enabled by default** for daily briefings and weekly digests for every user with a known email address, until the user disables it in notification settings or via the one-click unsubscribe link that every briefing email SHALL carry (unsubscribe maps to the same channel preference). Three hand-designed templates SHALL exist — daily brief, weekly digest, plain notification — filled from the payload; template selection keys off `kind`.
 
-#### Scenario: Dark until configured
-- **WHEN** no ESP credentials are configured
-- **THEN** email delivery is skipped with a structured log and other channels deliver normally
+#### Scenario: Default-on for briefings
+- **WHEN** a user has never touched notification settings
+- **THEN** the morning briefing is delivered to their email as well as in-app and linked platforms
 
-#### Scenario: User disables email
-- **WHEN** the user turns the email channel off in notification settings
-- **THEN** briefings deliver to remaining channels only
+#### Scenario: Unsubscribe honors immediately
+- **WHEN** the user clicks unsubscribe in a briefing email
+- **THEN** the email channel preference flips off and no further briefing emails are sent, with other channels unaffected
+
+### Requirement: Briefing and todo surfaces meet the editorial design bar
+
+Briefing surfaces (dashboard card, email templates, archive) SHALL follow GAIA's design system (`DESIGN.md`) at the quality bar of the Dia-artifacts reference: Notion/Apple/ElevenLabs/Vercel-class cleanliness. Display typography for briefings SHALL use **Aeonik** (already at `apps/web/src/app/fonts/aeonik.ts`) with **Playfair Display** as the serif display companion (added via `next/font`), alongside the codebase's existing families (Inter, PP Editorial New, Anonymous Pro) per their established roles. Implementation SHALL be preceded by a design-exploration pass producing multiple full candidates for (a) the briefing card and (b) the todos sidebar, with one selected by the user before build (see tasks).
+
+#### Scenario: Typography is from the system
+- **WHEN** any briefing surface renders
+- **THEN** all type resolves to Aeonik, Playfair Display, or existing codebase families — no ad-hoc fonts
+
+#### Scenario: Email matches the dashboard identity
+- **WHEN** the same payload renders as email and dashboard card
+- **THEN** both share the masthead structure, bands-gradient identity, and typographic hierarchy within each medium's constraints
 
 ### Requirement: Telegram briefings carry working inline approvals
 
