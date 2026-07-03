@@ -93,6 +93,9 @@ async def get_yesterday_payload(
 async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
     """Return (formatted goal block, has_goal). ``has_goal`` gates cold-start."""
     focus = ((user.get("onboarding") or {}).get("focus") or "").strip()
+    # Users type junk into onboarding ("nothing", "n/a"); junk is not a goal.
+    if focus.lower() in {"nothing", "none", "n/a", "na", "-", "idk", "no"}:
+        focus = ""
     lines: list[str] = []
     if focus:
         lines.append(f"Stated goal: {focus}")
