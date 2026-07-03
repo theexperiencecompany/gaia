@@ -104,6 +104,7 @@ async def _spill_to_workspace(
     user_id: str,
     conversation_id: str,
     reason: str,
+    status: str,
     existing_additional_kwargs: dict[str, Any],
 ) -> ToolMessage:
     """Write the full output to the workspace and return a compacted ToolMessage."""
@@ -142,6 +143,10 @@ async def _spill_to_workspace(
         content=body,
         tool_call_id=tool_call_id,
         name=tool_name,
+        # Preserve the source status so an error result stays an error after
+        # compaction — otherwise downstream `status == "error"` checks (loop
+        # guard, error handling) would treat the spilled output as a success.
+        status=status,
         additional_kwargs={
             **existing_additional_kwargs,
             "workspace_path": sandbox_path,
@@ -163,6 +168,7 @@ async def compact_tool_output(
     context_usage: float,
     max_output_chars: int,
     compaction_threshold: float,
+    status: str = "success",
     always_persist: bool = False,
     excluded: bool = False,
     existing_additional_kwargs: dict[str, Any] | None = None,
@@ -201,6 +207,7 @@ async def compact_tool_output(
             user_id=user_id,
             conversation_id=conversation_id,
             reason=reason,
+            status=status,
             existing_additional_kwargs=existing_additional_kwargs or {},
         )
     except JuiceFSUnavailable as e:
@@ -270,6 +277,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             context_usage=self._get_context_usage(request),
             max_output_chars=self.max_output_chars,
             compaction_threshold=self.compaction_threshold,
+            status=result.status,
             always_persist=tool_name in self.always_persist_tools,
             excluded=tool_name in self.excluded_tools,
             existing_additional_kwargs=getattr(result, "additional_kwargs", {}),

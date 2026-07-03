@@ -7,6 +7,7 @@ from bson import ObjectId
 from fastapi import HTTPException, status
 from psycopg_pool import AsyncConnectionPool
 
+from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
@@ -41,7 +42,6 @@ async def _delete_checkpoint_threads(conversation_id: str) -> None:
     the saver. Best-effort: the nightly `prune_checkpoint_versions` orphan sweep
     is the backstop if this fails, so a failure here never fails the API call.
     """
-    from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 
     manager = await get_checkpointer_manager()
     checkpointer = manager.get_checkpointer()

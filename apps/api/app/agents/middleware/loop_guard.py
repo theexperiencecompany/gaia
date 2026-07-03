@@ -54,11 +54,15 @@ _UNKNOWN_RUN = "unknown"
 class _RunCounters:
     """Failure tallies for a single run (one ``thread_id``)."""
 
-    __slots__ = ("identical", "per_tool")
+    __slots__ = ("identical", "last_failure_key", "per_tool")
 
     def __init__(self) -> None:
         # (tool_name, args_hash) -> consecutive identical-argument failures
         self.identical: dict[tuple[str, str], int] = {}
+        # The most recent failing (tool_name, args_hash), or None after a success.
+        # Used to keep `identical` truly consecutive: any intervening success or a
+        # different failing call breaks the streak.
+        self.last_failure_key: tuple[str, str] | None = None
         # tool_name -> total failures for this tool this run
         self.per_tool: dict[str, int] = {}
 
@@ -91,9 +95,17 @@ class LoopGuardMiddleware(AgentMiddleware):
         tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
         args = tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args
         args_key = self._args_key(args)
+        failure_key = (tool_name, args_key)
 
         counters = self._counters_for(request)
-        identical_before = counters.identical.get((tool_name, args_key), 0)
+        # Only carry the identical tally when the immediately-preceding failure was
+        # this same call — a success or a different failing call in between resets
+        # the "consecutive" streak.
+        identical_before = (
+            counters.identical.get(failure_key, 0)
+            if counters.last_failure_key == failure_key
+            else 0
+        )
         same_tool_before = counters.per_tool.get(tool_name, 0)
 
         if self.hard_stop:
@@ -108,14 +120,17 @@ class LoopGuardMiddleware(AgentMiddleware):
                 return stopped
 
         result = await handler(request)
-        # Only failures feed the loop counters; a success resets nothing but is
-        # simply not counted, so an alternating fail/succeed pattern never trips.
+        # Only failures feed the loop counters; a success breaks the consecutive
+        # streak (clears last_failure_key) so an alternating fail/succeed pattern
+        # never trips the identical guard.
         if not isinstance(result, ToolMessage) or getattr(result, "status", None) != "error":
+            counters.last_failure_key = None
             return result
 
         identical = identical_before + 1
         same_tool = same_tool_before + 1
-        counters.identical[(tool_name, args_key)] = identical
+        counters.identical[failure_key] = identical
+        counters.last_failure_key = failure_key
         counters.per_tool[tool_name] = same_tool
 
         note = self._warning_note(tool_name, identical, same_tool)

@@ -36,6 +36,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.constants.general import (
     CHECKPOINT_EMPTY_BLOB_TYPE,
     CHECKPOINT_MESSAGES_CHANNEL,
@@ -114,7 +115,9 @@ def _prune_ids_for_chain(
     return chain[snapshot_idx + 1 :]
 
 
-async def _prune_thread_versions(cur: Any, thread_id: str, ns: str, prune_ids: list[str]) -> dict:
+async def _prune_thread_versions(
+    cur: Any, thread_id: str, ns: str, prune_ids: list[str]
+) -> dict[str, int]:
     """Delete superseded ancestor checkpoints + their writes + orphaned blobs."""
     await cur.execute(
         "DELETE FROM checkpoint_writes WHERE thread_id = %s AND checkpoint_ns = %s "
@@ -152,7 +155,7 @@ async def _prune_thread_versions(cur: Any, thread_id: str, ns: str, prune_ids: l
     }
 
 
-async def sweep_orphan_threads(pool: Any, checkpointer: Any) -> dict:
+async def sweep_orphan_threads(pool: Any, checkpointer: Any) -> dict[str, int]:
     """Delete every checkpoint thread whose conversation is gone from Mongo."""
     live_ids = await conversations_collection.distinct("conversation_id")
     live_all = {str(c) for c in live_ids if c}
@@ -185,7 +188,7 @@ async def sweep_orphan_threads(pool: Any, checkpointer: Any) -> dict:
     }
 
 
-async def prune_thread_versions(pool: Any) -> dict:
+async def prune_thread_versions(pool: Any) -> dict[str, int]:
     """Prune superseded checkpoint versions across the busiest threads."""
     async with pool.connection() as conn, conn.cursor() as cur:
         await cur.execute(
@@ -253,13 +256,16 @@ async def prune_thread_versions(pool: Any) -> dict:
             totals["writes_deleted"] += result["writes"]
             totals["blobs_deleted"] += result["blobs"]
             totals["bytes_estimate"] += result["bytes"]
+            # Commit each thread's prune independently: one big transaction across
+            # the whole batch would roll back every earlier thread on a single
+            # failure and hold row locks for the full run.
+            await conn.commit()
 
         return totals
 
 
 async def prune_checkpoint_versions(_ctx: dict[str, Any]) -> str:
     """Nightly: sweep orphaned threads, then prune superseded checkpoint versions."""
-    from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 
     async with wide_task("prune_checkpoint_versions"):
         manager = await get_checkpointer_manager()

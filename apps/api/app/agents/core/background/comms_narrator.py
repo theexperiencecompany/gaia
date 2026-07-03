@@ -130,7 +130,7 @@ async def record_executor_cancellation(
             conversation_id=conversation_id,
             task_id=task_id,
         )
-    except Exception as e:  # noqa: BLE001 — cancel finalize must proceed regardless
+    except Exception as e:  # cancel finalize must proceed regardless
         log.error(
             f"{LogTag.AGENT} Failed to record executor cancellation",
             conversation_id=conversation_id,

@@ -218,7 +218,11 @@ def create_agent(
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state)
         response = invoke_llm(
-            llm_with_tools, state["messages"], fallback=fallback, label=agent_name
+            llm_with_tools,
+            state["messages"],
+            fallback=fallback,
+            config=config,
+            label=agent_name,
         )
 
         if not response.tool_calls and not response.content:
@@ -265,7 +269,7 @@ def create_agent(
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
         invoke_fn = functools.partial(
-            ainvoke_llm, llm_with_tools, fallback=fallback, label=agent_name
+            ainvoke_llm, llm_with_tools, fallback=fallback, config=config, label=agent_name
         )
 
         try:

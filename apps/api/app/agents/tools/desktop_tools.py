@@ -114,7 +114,7 @@ async def _describe_screenshot(image_b64: str, query: str) -> str | None:
             ],
             label="desktop_vision",
         )
-    except Exception as exc:  # noqa: BLE001 - any provider failure degrades gracefully
+    except Exception as exc:  # any provider failure degrades gracefully
         log.warning(f"{LogTag.TOOL} Screenshot vision call failed: {exc}")
         return None
     # ``.text`` flattens the message's content blocks to a string; ``.content``

@@ -400,7 +400,7 @@ async def _consume_agent_stream(
 
 def _parse_complete_message(chunk: str) -> tuple[str, bool]:
     """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker."""
-    nostream_json = json.loads(chunk.replace("nostream: ", ""))
+    nostream_json = json.loads(chunk.removeprefix("nostream: "))
     if isinstance(nostream_json, dict):
         return str(nostream_json.get("complete_message", "")), bool(
             nostream_json.get("cancelled", False)

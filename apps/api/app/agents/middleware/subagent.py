@@ -160,17 +160,25 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     )
                 finally:
                     # Always terminate the UI's subagent row — a failed spawn must
-                    # not leave it spinning forever.
+                    # not leave it spinning forever. Best-effort like the start
+                    # emission above: a writer failure here must not mask the real
+                    # execution result/exception this finally is unwinding.
                     if writer is not None:
                         duration_ms = int((time.monotonic() - start_time) * 1000)
-                        writer(
-                            {
-                                "subagent_end": format_subagent_end_event(
-                                    subagent_id=sa_id,
-                                    duration_ms=duration_ms,
-                                )
-                            }
-                        )
+                        try:
+                            writer(
+                                {
+                                    "subagent_end": format_subagent_end_event(
+                                        subagent_id=sa_id,
+                                        duration_ms=duration_ms,
+                                    )
+                                }
+                            )
+                        except Exception as emit_error:
+                            log.error(
+                                f"{LogTag.AGENT} Failed to emit subagent_end",
+                                error=str(emit_error),
+                            )
 
                 return Command(
                     update={
@@ -432,6 +440,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         {**tc, "type": "tool_call"}, config=config
                     )
                     raw_content = result.content if isinstance(result, ToolMessage) else result
+                    tool_status = result.status if isinstance(result, ToolMessage) else "success"
                     # Spill oversized outputs to the workspace before they enter
                     # the subagent's context — same canonical path the main loop's
                     # compaction middleware uses. None means keep the raw output.
@@ -445,11 +454,17 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         context_usage=context_usage,
                         max_output_chars=MAX_OUTPUT_CHARS,
                         compaction_threshold=COMPACTION_THRESHOLD,
+                        status=tool_status,
                     )
                     tool_message = (
                         compacted
                         if compacted is not None
-                        else ToolMessage(content=str(raw_content), tool_call_id=tc_id, name=name)
+                        else ToolMessage(
+                            content=str(raw_content),
+                            tool_call_id=tc_id,
+                            name=name,
+                            status=tool_status,
+                        )
                     )
                     if stream_writer and subagent_id:
                         stream_writer(
@@ -506,9 +521,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             f"Subagent reached its {self._max_turns}-turn limit without finishing. "
             f"Task: {task[:200].rstrip()}.{tools_note}"
         )
-        if isinstance(final, AIMessage) and final.content:
-            # .text flattens only text blocks — a reasoning-only final message
-            # yields "", so guard like the in-loop path does.
+        if isinstance(final, AIMessage):
+            # .text flattens only text blocks — a reasoning-only (or empty) final
+            # message yields "", so fall back to the note instead of leaking an
+            # AIMessage repr via str(final).
             return final.text or max_turns_note
         return str(final) if final else max_turns_note
 

@@ -326,10 +326,11 @@ export default function TextBubble({
         })()}
 
       {/* Failed turn with no response text — render a quiet error bubble so
-          reloads don't show an empty bubble. */}
-      {!!error && !parsedContent.cleanText.trim() && (
-        <FailedResponse error={error} />
-      )}
+          reloads don't show an empty bubble. Mirror ChatBubbleBot's hasError
+          gating: a turn that should show as a text bubble is never an error. */}
+      {!!error &&
+        !shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
+        !parsedContent.cleanText.trim() && <FailedResponse error={error} />}
     </>
   );
 }
