@@ -178,8 +178,11 @@ async def _deliver(
     ``metadata.kind`` selects the email template and ``content.rich_content``
     carries the full payload the email adapter renders — both are the delivery
     contract the channels layer keys off (without them email falls back to the
-    plain template).
+    plain template). ``metadata.todo_actions`` renders as native Approve/Dismiss
+    buttons on platforms that support them (Telegram inline keyboards) so the
+    morning tap works from bed.
     """
+    todo_actions = await _pending_proposal_actions(user_id)
     record = await notification_service.create_notification(
         NotificationRequest(
             user_id=user_id,
