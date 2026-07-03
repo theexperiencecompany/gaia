@@ -557,6 +557,9 @@ async def create_tracked_todo(
             initial_canvas=initial_canvas,
             labels=labels,
             priority=parsed_priority,
+            # A todo with its own schedule/recurrence fires at that time, not now
+            # (the scheduling below arms it); everything else starts immediately.
+            auto_execute=not (parsed_scheduled_at or recurrence),
         )
     except (TraceabilityError, BudgetExceededError) as e:
         return f"Error: {e}"

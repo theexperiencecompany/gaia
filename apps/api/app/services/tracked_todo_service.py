@@ -233,6 +233,15 @@ class TrackedTodoService:
         schedule_gaia_tasks_sync(user_id)
         if entry_status == ExecutionStatus.PROPOSED:
             track(user_id, "todo_proposed", {"todo_id": todo_id, "serves": serves})
+        elif entry_status is ExecutionStatus.QUEUED and auto_execute:
+            # The approval rule's other half: internal work executes without
+            # permission — immediately, not only when a schedule happens to be
+            # attached. Callers arming their own schedule pass auto_execute=False.
+            await todos_collection.update_one(
+                {"_id": ObjectId(todo_id), "user_id": user_id},
+                {"$set": {"scheduled_at": now}},
+            )
+            await lifecycle.schedule_execution(todo_id, now)
         return result
 
     @staticmethod

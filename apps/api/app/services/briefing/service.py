@@ -206,19 +206,6 @@ async def _pending_proposals(user_id: str) -> list[dict]:
     return proposals
 
 
-def _proposal_actions(proposals: list[dict]) -> list[dict[str, str]]:
-    """Approve/Dismiss button pairs; ``callback_data`` matches the bot contract
-    (``todo_approve:<id>`` / ``todo_dismiss:<id>``)."""
-    actions: list[dict[str, str]] = []
-    for doc in proposals:
-        title = doc.get("title", "proposal")
-        short = title if len(title) <= 24 else f"{title[:23]}…"
-        todo_id = str(doc["_id"])
-        actions.append({"label": f"Approve: {short}", "callback_data": f"todo_approve:{todo_id}"})
-        actions.append({"label": f"Dismiss: {short}", "callback_data": f"todo_dismiss:{todo_id}"})
-    return actions
-
-
 # Chat platforms show the staged work itself, never a description of it: nobody
 # approves an email they have not seen. Excerpts are cut from the canvas by
 # code, so they cannot be embellished.
@@ -248,14 +235,11 @@ async def _deliver(
     ``metadata.kind`` selects the email template and ``content.rich_content``
     carries the full payload the email adapter renders — both are the delivery
     contract the channels layer keys off (without them email falls back to the
-    plain template). ``metadata.todo_actions`` renders as native Approve/Dismiss
-    buttons on platforms that support them (Telegram inline keyboards) so the
-    morning tap works from bed.
+    plain template).
     """
     proposals = await _pending_proposals(user_id)
-    todo_actions = _proposal_actions(proposals)
     # One logical delivery, multiple bubbles: the texting-voice message first,
-    # then the staged content each Approve button releases.
+    # then the staged content each proposal releases once approved in chat.
     platform_parts = [p for p in [payload.message, *_staged_content_parts(proposals)] if p]
     record = await notification_service.create_notification(
         NotificationRequest(
@@ -284,7 +268,6 @@ async def _deliver(
             ),
             metadata={
                 "kind": notification_kind,
-                "todo_actions": todo_actions,
                 "platform_parts": platform_parts,
                 "briefing_id": briefing.id,
                 "date": briefing.date,
@@ -300,7 +283,11 @@ def _lane_items(lane: context.GoalLane) -> list[dict]:
     items: list[dict] = []
     for d in lane.completed:
         items.append(
-            {"text": f"Done overnight: {d.get('title')}", "todo_id": str(d["_id"]), "kind": "lookback"}
+            {
+                "text": f"Done overnight: {d.get('title')}",
+                "todo_id": str(d["_id"]),
+                "kind": "lookback",
+            }
         )
     for d in lane.staged:
         items.append(
@@ -317,7 +304,11 @@ def _lane_items(lane: context.GoalLane) -> list[dict]:
     for d in lane.failed:
         cause = d.get("error_message") or "unknown cause"
         items.append(
-            {"text": f"Failed: {d.get('title')} — {cause}", "todo_id": str(d["_id"]), "kind": "note"}
+            {
+                "text": f"Failed: {d.get('title')} — {cause}",
+                "todo_id": str(d["_id"]),
+                "kind": "note",
+            }
         )
     for d in lane.needs_you:
         items.append(

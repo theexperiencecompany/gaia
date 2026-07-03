@@ -14,24 +14,13 @@ from enum import StrEnum
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.db.rabbitmq import RabbitMQPublisher, get_rabbitmq_publisher
 from app.models.chat_models import ConversationSource
-from app.schemas.outbound import (
-    OutboundAction,
-    OutboundAttachment,
-    OutboundMessageEnvelope,
-)
+from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
 from app.services.platform_link_service import PlatformLinkService
 from shared.py.wide_events import log
 
 
 def _serialize(envelope: OutboundMessageEnvelope) -> bytes:
-    """Serialize an envelope to JSON bytes, omitting ``actions`` when unset.
-
-    Excluding the field (rather than emitting ``"actions": null``) keeps every
-    envelope published without actions byte-identical to the pre-actions wire
-    format, so existing bot consumers see no change.
-    """
-    exclude = None if envelope.actions else {"actions"}
-    return envelope.model_dump_json(exclude=exclude).encode()
+    return envelope.model_dump_json().encode()
 
 
 class OutboundResult(StrEnum):
@@ -87,7 +76,6 @@ async def publish_outbound_message(
     platform: ConversationSource,
     user_id: str,
     text_parts: list[str],
-    actions: list[OutboundAction] | None = None,
 ) -> OutboundResult:
     """Resolve ``user_id`` to its ``platform`` id and enqueue the ordered text
     parts as a SINGLE envelope.
@@ -96,10 +84,6 @@ async def publish_outbound_message(
     result bubbles, and footer) are published together so the consumer delivers
     them in order. Publishing one envelope per part instead lets a concurrent
     consumer (prefetch > 1) reorder the bubbles — the bug this avoids.
-
-    ``actions`` attaches interactive buttons (e.g. a Telegram inline keyboard for
-    briefing approvals) to the message; the consumer renders them on the final
-    bubble. When omitted the envelope is byte-identical to the pre-actions format.
 
     Returns ``PUBLISHED`` when the envelope was enqueued. ``SKIPPED`` when the
     platform is unsupported, the account is unlinked, or there is nothing to
@@ -123,14 +107,12 @@ async def publish_outbound_message(
             platform=platform.value,
             destination_id=destination_id,
             text=parts[0],
-            actions=actions,
         )
     else:
         envelope = OutboundMessageEnvelope(
             platform=platform.value,
             destination_id=destination_id,
             text_parts=parts,
-            actions=actions,
         )
 
     try:

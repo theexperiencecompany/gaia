@@ -20,7 +20,6 @@ from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
 )
-from app.schemas.outbound import OutboundAction
 from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 from app.utils.notification.channels.base import ChannelAdapter
 
@@ -85,10 +84,7 @@ class ExternalPlatformAdapter(ChannelAdapter):
                     text = _join_nonempty(text, " · ".join(links), sep="\n\n")
             parts = [text]
 
-        # Inline platform actions (e.g. Approve/Dismiss on briefing proposals):
-        # metadata.todo_actions = [{label, callback_data}] renders as native
-        # buttons on platforms that support them (Telegram inline keyboards).
-        return {"parts": parts, "actions": metadata.get("todo_actions") or []}
+        return {"parts": parts}
 
     async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
         """Publish the rendered parts to the user's linked platform chat.
@@ -98,9 +94,7 @@ class ExternalPlatformAdapter(ChannelAdapter):
         the user has no linked platform or there is nothing to send.
         """
         parts = content.get("parts", [])
-        raw_actions = content.get("actions") or []
-        actions = [OutboundAction(**a) for a in raw_actions] or None
-        result = await publish_outbound_message(self.platform, user_id, parts, actions=actions)
+        result = await publish_outbound_message(self.platform, user_id, parts)
         if result is OutboundResult.PUBLISHED:
             return self._success()
         if result is OutboundResult.FAILED:
