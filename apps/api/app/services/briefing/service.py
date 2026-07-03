@@ -186,10 +186,10 @@ async def _pending_proposal_actions(user_id: str) -> list[dict[str, str]]:
     actions: list[dict[str, str]] = []
     async for doc in todos_collection.find(query, {"title": 1}).limit(MAX_PENDING_PROPOSALS):
         title = doc.get("title", "proposal")
-        short = title if len(title) <= 28 else f"{title[:27]}…"
+        short = title if len(title) <= 24 else f"{title[:23]}…"
         todo_id = str(doc["_id"])
-        actions.append({"label": f"✓ {short}", "callback_data": f"todo_approve:{todo_id}"})
-        actions.append({"label": f"✗ {short}", "callback_data": f"todo_dismiss:{todo_id}"})
+        actions.append({"label": f"Approve: {short}", "callback_data": f"todo_approve:{todo_id}"})
+        actions.append({"label": f"Dismiss: {short}", "callback_data": f"todo_dismiss:{todo_id}"})
     return actions
 
 
