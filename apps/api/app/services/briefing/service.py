@@ -28,7 +28,8 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.db.mongodb.collections import users_collection
+from app.constants.todos import gaia_assigned_filter
+from app.db.mongodb.collections import todos_collection, users_collection
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -42,6 +43,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.todo_models import ExecutionStatus
 from app.services.briefing import context, repository
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
@@ -170,6 +172,27 @@ def _delivery_body(payload: BriefingPayload) -> str:
     return "\n\n".join(parts)
 
 
+async def _pending_proposal_actions(user_id: str) -> list[dict[str, str]]:
+    """Approve/Dismiss button pairs for the user's pending proposals (top 3).
+
+    callback_data matches the Telegram callback contract
+    (``todo_approve:<id>`` / ``todo_dismiss:<id>``) handled by the bot adapter.
+    """
+    query = {
+        "user_id": user_id,
+        "execution_status": ExecutionStatus.PROPOSED.value,
+        **gaia_assigned_filter(),
+    }
+    actions: list[dict[str, str]] = []
+    async for doc in todos_collection.find(query, {"title": 1}).limit(MAX_PENDING_PROPOSALS):
+        title = doc.get("title", "proposal")
+        short = title if len(title) <= 28 else f"{title[:27]}…"
+        todo_id = str(doc["_id"])
+        actions.append({"label": f"✓ {short}", "callback_data": f"todo_approve:{todo_id}"})
+        actions.append({"label": f"✗ {short}", "callback_data": f"todo_dismiss:{todo_id}"})
+    return actions
+
+
 async def _deliver(
     user_id: str, briefing: BriefingModel, payload: BriefingPayload, notification_kind: str
 ) -> list[str]:
@@ -210,6 +233,7 @@ async def _deliver(
             ),
             metadata={
                 "kind": notification_kind,
+                "todo_actions": todo_actions,
                 "briefing_id": briefing.id,
                 "date": briefing.date,
             },
