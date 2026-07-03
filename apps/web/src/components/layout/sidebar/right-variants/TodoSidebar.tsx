@@ -155,7 +155,10 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               )}
               {isGaiaTodo && (
                 <GaiaTodoMeta
-                  serves={todo.serves}
+                  // A goal's `serves` restates its own title ("raising a pre-seed
+                  // round" on "Raise a pre-seed round"), so it reads as circular —
+                  // only tasks carry a meaningful "because".
+                  serves={todo.kind === "goal" ? null : todo.serves}
                   errorMessage={
                     todo.execution_status === "failed"
                       ? todo.error_message
@@ -204,8 +207,11 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             </p>
           )}
 
-          {/* Work log — GAIA's canvas.md, always visible for gaia-assigned todos */}
-          {isGaiaTodo && <WorkLogSection todoId={todo.id} />}
+          {/* GAIA's canvas.md — a task's work log, or a goal's strategy doc.
+              Opens in a modal from a compact trigger button. */}
+          {isGaiaTodo && (
+            <WorkLogSection todoId={todo.id} isGoal={todo.kind === "goal"} />
+          )}
 
           {/* Editable fields, with the GAIA identity badge grouped inline. */}
           <div className="py-2">

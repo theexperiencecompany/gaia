@@ -15,18 +15,27 @@ import { useTodoCanvas } from "@/features/todo/hooks/useTodoCanvas";
 
 interface WorkLogSectionProps {
   todoId: string;
+  /** A goal's canvas is its strategy doc, not a task work log — relabel it. */
+  isGoal?: boolean;
 }
 
 /**
- * The "work log" (GAIA's canvas.md) for a GAIA-assigned todo. Rendered as a
- * compact button in the detail view; clicking opens the full log in a
- * scrollable modal via `useTodoCanvas`.
+ * GAIA's canvas.md for a GAIA-assigned todo, rendered as a compact button in
+ * the detail view. For a task it's the "work log" (working memory); for a goal
+ * it's the "strategy" (the plan). Clicking opens the full doc in a scrollable
+ * modal via `useTodoCanvas`.
  */
-const WorkLogSection: React.FC<WorkLogSectionProps> = ({ todoId }) => {
+const WorkLogSection: React.FC<WorkLogSectionProps> = ({ todoId, isGoal }) => {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const { content, isLoading, hasError } = useTodoCanvas(todoId, {
     auto: isOpen,
   });
+
+  const title = isGoal ? "Strategy" : "Work log";
+  const subtitle = isGoal
+    ? "GAIA's plan for this goal"
+    : "GAIA's working memory for this task";
+  const emptyLabel = isGoal ? "No strategy yet." : "No activity yet.";
 
   return (
     <>
@@ -39,9 +48,9 @@ const WorkLogSection: React.FC<WorkLogSectionProps> = ({ todoId }) => {
           <CanvasIcon className="size-4 text-violet-400" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-zinc-300">Work log</p>
+          <p className="text-xs font-medium text-zinc-300">{title}</p>
           <p className="truncate text-xs text-zinc-500">
-            GAIA's working memory for this task — tap to open
+            {subtitle} — tap to open
           </p>
         </div>
       </button>
@@ -59,12 +68,9 @@ const WorkLogSection: React.FC<WorkLogSectionProps> = ({ todoId }) => {
               <CanvasIcon className="size-4 text-violet-400" />
             </div>
             <div>
-              <p className="text-sm font-medium text-zinc-100">Work log</p>
-              <p className="text-xs font-normal text-zinc-500">
-                GAIA's working memory for this task
-              </p>
+              <p className="text-sm font-medium text-zinc-100">{title}</p>
+              <p className="text-xs font-normal text-zinc-500">{subtitle}</p>
             </div>
-            {isLoading && <Spinner size="sm" color="default" />}
           </ModalHeader>
           <ModalBody>
             {hasError ? (
@@ -75,14 +81,14 @@ const WorkLogSection: React.FC<WorkLogSectionProps> = ({ todoId }) => {
                   className="text-red-400"
                 />
                 <p className="text-xs text-zinc-400">
-                  Couldn't load the work log.
+                  Couldn't load the {isGoal ? "strategy" : "work log"}.
                 </p>
               </div>
             ) : content ? (
               <MarkdownRenderer content={content} className="text-sm" />
             ) : !isLoading ? (
               <p className="py-10 text-center text-xs text-zinc-500">
-                No activity yet.
+                {emptyLabel}
               </p>
             ) : (
               <div className="flex justify-center py-10">

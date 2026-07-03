@@ -26,6 +26,7 @@ import {
   type TodoUpdate,
 } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
+import { INTERNAL_LABELS } from "../constants";
 import { ExecutionStatusGlyph } from "./shared/ExecutionStatusGlyph";
 import { GaiaOfferBanner } from "./shared/GaiaOfferBanner";
 import { GaiaTodoBadge } from "./shared/GaiaTodoBadge";
@@ -64,10 +65,6 @@ const priorityRingColors = {
   [Priority.LOW]: "border-blue-500",
   [Priority.NONE]: "border-zinc-500",
 } as const;
-
-// Bookkeeping labels the backend may still carry on older todos — never shown
-// as chips (the "Created by GAIA" badge already conveys gaia ownership).
-const INTERNAL_LABELS = new Set(["gaia-tracked", "failed"]);
 
 const formatScheduledLabel = (
   scheduledAt: string | null | undefined,

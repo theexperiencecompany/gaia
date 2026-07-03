@@ -18,6 +18,7 @@ import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import { priorityTextColors } from "@/features/todo/components/TodoItem";
 import TodoModal from "@/features/todo/components/TodoModal";
+import { INTERNAL_LABELS } from "@/features/todo/constants";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -226,16 +227,21 @@ export default function TodoSidebar() {
     [counts.inbox, counts.today, counts.upcoming, counts.completed],
   );
 
-  // Label items - show top 5 most used labels or empty state
+  // Label items - show top 5 most used labels or empty state.
+  // Internal bookkeeping labels (gaia-tracked, failed) are filtered out — they
+  // are backend plumbing, not something the user browses by.
   const labelMenuItems: MenuItem[] = useMemo(
     () =>
       labels.length > 0
-        ? labels.slice(0, 5).map((label) => ({
-            label: label.name,
-            icon: LabelTagIcon,
-            href: `/todos/label/${encodeURIComponent(label.name)}`,
-            count: label.count,
-          }))
+        ? labels
+            .filter((label) => !INTERNAL_LABELS.has(label.name))
+            .slice(0, 5)
+            .map((label) => ({
+              label: label.name,
+              icon: LabelTagIcon,
+              href: `/todos/label/${encodeURIComponent(label.name)}`,
+              count: label.count,
+            }))
         : [],
     [labels],
   );
