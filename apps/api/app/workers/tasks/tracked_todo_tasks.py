@@ -18,7 +18,7 @@ from bson import ObjectId
 
 from app.agents.core.agent import call_agent_silent
 from app.db.mongodb.collections import todos_collection
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -327,9 +327,12 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     # history accumulation in PostgreSQL. Each execution is independent.
     conversation_id = str(uuid4())
 
+    # The human turn must be in `messages` — construct_langchain_messages does
+    # not consult `message` alone when no workflow/tool is selected, so an empty
+    # list fails the run with "No human message or selected tool".
     request = MessageRequestWithHistory(
         message=prompt,
-        messages=[],
+        messages=[MessageDict(role="user", content=prompt)],
         fileIds=[],
         fileData=[],
         selectedTool=None,

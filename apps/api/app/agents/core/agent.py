@@ -32,7 +32,7 @@ from app.helpers.agent_helpers import (
     execute_graph_silent,
     execute_graph_streaming,
 )
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.models_models import ModelConfig
 from shared.py.wide_events import log
 
@@ -245,6 +245,19 @@ async def call_agent_silent(
     tool_data into the returned tool_data — so background/workflow runs render
     tool calls identically to live chat.
     """
+    # Root guard for a recurring background-caller footgun: the human turn is
+    # read from `messages`, not `message`, when no workflow/tool is selected. A
+    # background caller that sets only `message` with `messages=[]` would fail
+    # the run with "No human message or selected tool". Synthesize it here so no
+    # caller has to remember, and none can regress.
+    if (
+        not request.messages
+        and request.message
+        and not request.selectedWorkflow
+        and not request.selectedTool
+    ):
+        request.messages = [MessageDict(role="user", content=request.message)]
+
     stream_id = str(uuid4())
     try:
         graph, initial_state, config = await _core_agent_logic(

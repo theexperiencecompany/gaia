@@ -11,7 +11,7 @@ from bson import ObjectId
 
 from app.agents.core.agent import call_agent_silent
 from app.db.mongodb.collections import todos_collection
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -563,9 +563,11 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
 
     conversation_id = str(uuid4())
 
+    # The human turn must live in `messages`; `message` alone is not consulted
+    # when no workflow/tool is selected (else the run fails "No human message").
     request = MessageRequestWithHistory(
         message=prompt,
-        messages=[],
+        messages=[MessageDict(role="user", content=prompt)],
         fileIds=[],
         fileData=[],
         selectedTool=None,
