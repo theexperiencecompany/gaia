@@ -10,10 +10,15 @@ from fastapi import (
     Query,
     Request,
 )
+from fastapi.responses import HTMLResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
-from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
+from app.constants.notifications import (
+    CHANNEL_TYPE_EMAIL,
+    EXPO_TOKEN_PATTERN,
+    MAX_DEVICES_PER_USER,
+)
 from app.db.mongodb.collections import users_collection
 from app.models.device_token_models import (
     DeviceTokenRequest,
@@ -32,9 +37,37 @@ from app.models.notification.request_models import (
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
+from app.utils.notification.unsubscribe import verify_unsubscribe_token
 from shared.py.wide_events import NotificationContext, log
 
 router = APIRouter()
+
+_UNSUBSCRIBE_INVALID_HTML = (
+    "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
+    "text-align: center;'><p>This unsubscribe link is invalid or has expired.</p>"
+    "</body></html>"
+)
+_UNSUBSCRIBE_SUCCESS_HTML = (
+    "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
+    "text-align: center;'><p>You're unsubscribed from GAIA emails.</p></body></html>"
+)
+
+
+@router.get("/notifications/unsubscribe", response_class=HTMLResponse)
+async def unsubscribe_from_emails(token: str = Query(...)) -> HTMLResponse:
+    """One-click email unsubscribe — no login required. Flips the ``email``
+    channel preference off; other channels are unaffected."""
+    user_id = verify_unsubscribe_token(token)
+    if not user_id:
+        return HTMLResponse(content=_UNSUBSCRIBE_INVALID_HTML, status_code=400)
+
+    log.set(user={"id": user_id}, operation="unsubscribe_email")
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {f"notification_channel_prefs.{CHANNEL_TYPE_EMAIL}": False}},
+    )
+    log.set(outcome="success")
+    return HTMLResponse(content=_UNSUBSCRIBE_SUCCESS_HTML)
 
 
 @router.get("/notifications", response_model=PaginatedNotificationsResponse)
@@ -100,6 +133,7 @@ async def get_channel_preferences(
             discord=prefs["discord"],
             whatsapp=prefs["whatsapp"],
             slack=prefs["slack"],
+            email=prefs["email"],
         )
     except Exception as e:
         log.error(f"{LogTag.NOTIFICATION} Failed to get channel preferences: {e}")
@@ -131,6 +165,8 @@ async def update_channel_preferences(
             updates["notification_channel_prefs.whatsapp"] = preferences.whatsapp
         if preferences.slack is not None:
             updates["notification_channel_prefs.slack"] = preferences.slack
+        if preferences.email is not None:
+            updates["notification_channel_prefs.email"] = preferences.email
 
         if updates:
             await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
@@ -142,6 +178,7 @@ async def update_channel_preferences(
             discord=prefs["discord"],
             whatsapp=prefs["whatsapp"],
             slack=prefs["slack"],
+            email=prefs["email"],
         )
     except Exception as e:
         log.error(f"{LogTag.NOTIFICATION} Failed to update channel preferences: {e}")

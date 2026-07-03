@@ -16,6 +16,10 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     tiered_rate_limit,
 )
+from app.constants.briefing import (
+    DAILY_BRIEFING_WORKFLOW_KEY,
+    WEEKLY_DIGEST_WORKFLOW_KEY,
+)
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
 from app.db.mongodb.collections import todos_collection
@@ -277,13 +281,33 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
             )
             execution_id = execution.execution_id
 
-            # Run the workflow as a silent chat turn. The executor does all the
-            # steps and its result is delivered as the completion notification
-            # from the background delivery path (gated by workflow_id), so there
-            # is no separate notification call here.
-            conversation_id = await execute_workflow_as_chat(
-                workflow, {"user_id": workflow.user_id}, context or {}
-            )
+            # Briefing workflows run a dedicated deterministic-curation +
+            # structured-payload pipeline instead of the generic chat turn. They
+            # own their own delivery (notification orchestrator), so there is no
+            # conversation to thread through. Imported inline to avoid the agent
+            # import cycle (same reason as call_agent_silent below).
+            if workflow.system_workflow_key in {
+                DAILY_BRIEFING_WORKFLOW_KEY,
+                WEEKLY_DIGEST_WORKFLOW_KEY,
+            }:
+                from app.services.briefing.service import (
+                    run_daily_briefing,
+                    run_weekly_digest,
+                )
+
+                if workflow.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY:
+                    await run_daily_briefing(workflow.user_id)
+                else:
+                    await run_weekly_digest(workflow.user_id)
+                conversation_id = None
+            else:
+                # Run the workflow as a silent chat turn. The executor does all the
+                # steps and its result is delivered as the completion notification
+                # from the background delivery path (gated by workflow_id), so there
+                # is no separate notification call here.
+                conversation_id = await execute_workflow_as_chat(
+                    workflow, {"user_id": workflow.user_id}, context or {}
+                )
 
             # Track successful execution
             await WorkflowService.increment_execution_count(

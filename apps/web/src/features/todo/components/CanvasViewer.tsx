@@ -5,7 +5,7 @@ import { CanvasIcon } from "@icons";
 import type React from "react";
 import { useState } from "react";
 import MarkdownViewerModal from "@/components/common/MarkdownViewerModal";
-import { apiService } from "@/lib/api/service";
+import { useTodoCanvas } from "@/features/todo/hooks/useTodoCanvas";
 
 interface CanvasViewerProps {
   todoId: string;
@@ -14,28 +14,11 @@ interface CanvasViewerProps {
 
 const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [content, setContent] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasError, setHasError] = useState(false);
+  const { content, isLoading, hasError, fetchContent } = useTodoCanvas(todoId);
 
-  const handleOpen = async () => {
+  const handleOpen = () => {
     setIsOpen(true);
-    // Re-fetch if we have neither content nor a prior successful load, so a
-    // failed read can be retried simply by reopening the viewer.
-    if (content !== null) return;
-    setIsLoading(true);
-    setHasError(false);
-    try {
-      const res = await apiService.get<{ content: string }>(
-        `/api/v1/todos/${todoId}/canvas`,
-        { silent: true },
-      );
-      setContent(res.content);
-    } catch {
-      setHasError(true);
-    } finally {
-      setIsLoading(false);
-    }
+    fetchContent();
   };
 
   return (

@@ -63,6 +63,7 @@ class NotificationOrchestrator:
         self.register_channel_adapter(DiscordChannelAdapter())
         self.register_channel_adapter(WhatsAppChannelAdapter())
         self.register_channel_adapter(SlackChannelAdapter())
+        self.register_channel_adapter(EmailChannelAdapter())
 
         # Action handlers
         self.register_action_handler(ApiCallActionHandler())
