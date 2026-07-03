@@ -206,33 +206,6 @@ async def format_lookback_block(
     return "\n\n".join(parts)
 
 
-async def compute_streak(user_id: str, clock: UserClock, lookback_days: int = 60) -> int:
-    """Current streak: consecutive days (ending today) with >=1 completed todo.
-
-    Same honest source as the heatmap — a day is green iff a real todo completed
-    that day (either assignee); an empty today does not break the streak yet.
-    """
-    window_start = day_start_utc(clock, days_ago=lookback_days)
-    green: set[str] = set()
-    cursor = todos_collection.find(
-        {"user_id": user_id, "completed_at": {"$gte": window_start}}, {"completed_at": 1}
-    )
-    async for doc in cursor:
-        green.add(doc["completed_at"].astimezone(clock.tz).date().isoformat())
-
-    streak = 0
-    today = clock.now_local.date()
-    for offset in range(lookback_days):
-        day = (today - timedelta(days=offset)).isoformat()
-        if day in green:
-            streak += 1
-        elif offset == 0:
-            continue  # today isn't over yet
-        else:
-            break
-    return streak
-
-
 async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
     """Count consecutive most-recent daily briefings the user never acknowledged.
 

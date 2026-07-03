@@ -46,6 +46,7 @@ from app.services.briefing import context, repository
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
 from app.services.notification_service import notification_service
+from app.services.todos import activity
 from app.services.todos.gaia_todo_lifecycle import (
     expire_stale_proposals,
     get_rejection_strikes_summary,
@@ -264,7 +265,7 @@ async def run_daily_briefing(user_id: str) -> None:
     todos_block = await context.format_todos_block(user_id)
     strikes_block = await get_rejection_strikes_summary(user_id)
     winback = await context.compute_winback_state(user_id)
-    streak = await context.compute_streak(user_id, clock)
+    streak = await activity.compute_streak(user_id, clock.tz)
     is_first = not await repository.has_daily_briefing(user_id)
 
     # Gone-quiet backoff: a winback already went out and the user is still silent.
@@ -318,7 +319,7 @@ async def run_weekly_digest(user_id: str) -> None:
     since = context.day_start_utc(clock, days_ago=7)
     completed = await context.gather_completed_since(user_id, since)
     hours_saved = round(len(completed.gaia) * MINUTES_SAVED_PER_GAIA_TODO / 60)
-    streak = await context.compute_streak(user_id, clock)
+    streak = await activity.compute_streak(user_id, clock.tz)
     badge_labels = await check_and_award_badges(user_id, clock, streak)
 
     prompt = build_weekly_digest_prompt(
