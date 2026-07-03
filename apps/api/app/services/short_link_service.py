@@ -34,8 +34,23 @@ def _random_slug() -> str:
     return "".join(secrets.choice(SLUG_ALPHABET) for _ in range(SLUG_LENGTH))
 
 
+# In production the heygaia.link domain is aliased to the app and its middleware
+# rewrites /<slug> → the /l resolver. That alias does not exist in local dev, so a
+# minted heygaia.link URL is a dead link on localhost — point dev links straight
+# at the local web app's own /l route so they are clickable. An explicit
+# SHORTLINK_BASE_URL override (env) wins in either environment.
+_PROD_SHORTLINK_DEFAULT = "https://heygaia.link"
+_DEV_SHORTLINK_BASE = "http://localhost:3000/l"
+
+
+def _shortlink_base() -> str:
+    if settings.ENV == "development" and settings.SHORTLINK_BASE_URL == _PROD_SHORTLINK_DEFAULT:
+        return _DEV_SHORTLINK_BASE
+    return settings.SHORTLINK_BASE_URL
+
+
 def _build_url(slug: str) -> str:
-    return f"{settings.SHORTLINK_BASE_URL}/{slug}"
+    return f"{_shortlink_base()}/{slug}"
 
 
 async def get_or_create_short_link(
