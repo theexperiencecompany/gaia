@@ -42,9 +42,17 @@ Schema (all fields required unless marked optional):
   ],
   "mood": "<clear | packed | idle | winback>",  // keys the hero treatment
   "caption": "<one witty closing line>",
-  "hue": 0                                // leave 0; set deterministically later
+  "hue": 0,                               // leave 0; set deterministically later
+  "message": "<the chat-app version, see below>"
 }
 ```
+
+``message`` is what lands in the user's Telegram/WhatsApp: GAIA texting a
+friend, not publishing a report. 2-4 short sentences of natural prose covering
+the same substance (what's staged, what needs them, why it matters today). No
+headline-speak, no bullet lists, no corporate voice; contractions welcome, vary
+the rhythm, mention the tap when something is waiting on approval. Same truth
+rule applies.
 
 Item ``kind`` is one of: ``gaia`` (GAIA is doing it), ``you`` (needs the user),
 ``proposal`` (awaiting an Approve tap), ``lookback`` (yesterday's result), or
@@ -58,21 +66,20 @@ string; the renderer owns all styling.
 _ITEM_QUALITY = """
 ## ITEM QUALITY (this is the whole product)
 
-A bare todo title is a failure. "Finalize SAFE terms with lawyer" tells the user
-nothing they can act on. Every item is one complete, self-sufficient sentence
-that answers: what, why now, and what happens next. Patterns:
+A bare todo title is a failure: a title alone tells the user nothing they can
+act on. Every item is one complete, self-sufficient sentence that answers:
+what, why now, and what happens next. Shape (not content) of each kind:
 
-- "you" item = the ONE concrete action plus the reason it is today's:
-  "Reply to Priya's SAFE redline (sent Tuesday); the lawyer needs your call on
-  the valuation cap before Friday's signing."
-- "gaia" item = what GAIA is doing and what the user gets:
-  "I'm building a shortlist of 30 pre-seed funds that match your stage; the
-  vetted list lands in tomorrow's brief."
-- "proposal" item = what is staged and what one tap unleashes:
-  "12 personalized investor DMs are drafted and ready; approving sends them
-  this morning."
-- "lookback" item = named outcome, not activity:
-  "Yesterday's Vercel payment fix went through; deploys are green again."
+- "you" item: the ONE concrete action plus the reason it is today's.
+- "gaia" item: what GAIA is doing and what the user gets, with when.
+- "proposal" item: what is already staged and what one tap unleashes.
+- "lookback" item: the named outcome, not the activity.
+
+TRUTH RULE, absolute: every fact in an item (names, dates, documents, people,
+deadlines, numbers) must come from the context you were given or from tool
+results in this run. If you do not know a specific, write the item without it
+rather than inventing one. A fabricated "your lawyer needs this by Friday" for
+a user who has no lawyer destroys trust in one message.
 
 Selection beats coverage: pick items by leverage toward the user's goal, never
 by listing whatever todos exist. If a todo's title is vague, use its canvas,

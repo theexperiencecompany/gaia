@@ -61,6 +61,14 @@ class BriefingPayload(BaseModel):
     mood: BriefingMood
     caption: str
     hue: int = Field(default=0, ge=0, le=HUE_MAX)
+    message: str | None = Field(
+        default=None,
+        description=(
+            "Casual texting-voice rendering of the brief for chat platforms "
+            "(Telegram/WhatsApp/etc). The editorial fields above are for the "
+            "dashboard card and email; this is what GAIA 'texts' the user."
+        ),
+    )
 
 
 class BriefingModel(BaseModel):

@@ -63,9 +63,15 @@ class ExternalPlatformAdapter(ChannelAdapter):
         """
         content = notification.content
         app_url = settings.FRONTEND_URL.rstrip("/")
-        title = content.title or ""
-        body = content.body or ""
-        text = _join_nonempty(f"**{title}**" if title else "", body)
+        # Chat platforms get GAIA's texting voice when the sender rendered one
+        # (metadata.platform_text); title/body stay the in-app/email rendering.
+        platform_text = (notification.metadata or {}).get("platform_text")
+        if platform_text:
+            text = str(platform_text)
+        else:
+            title = content.title or ""
+            body = content.body or ""
+            text = _join_nonempty(f"**{title}**" if title else "", body)
 
         if content.actions:
             links = [
