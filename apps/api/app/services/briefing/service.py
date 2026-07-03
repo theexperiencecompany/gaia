@@ -183,25 +183,61 @@ def _delivery_body(payload: BriefingPayload) -> str:
     return "\n\n".join(parts)
 
 
-async def _pending_proposal_actions(user_id: str) -> list[dict[str, str]]:
-    """Approve/Dismiss button pairs for the user's pending proposals (top 3).
-
-    callback_data matches the Telegram callback contract
-    (``todo_approve:<id>`` / ``todo_dismiss:<id>``) handled by the bot adapter.
-    """
+async def _pending_proposals(user_id: str) -> list[dict]:
+    """The user's pending proposals (newest first, deduped by title, top 3)."""
     query = {
         "user_id": user_id,
         "execution_status": ExecutionStatus.PROPOSED.value,
         **gaia_assigned_filter(),
     }
+    cursor = todos_collection.find(query, {"title": 1, "canvas_content": 1}).sort("created_at", -1)
+    seen: set[str] = set()
+    proposals: list[dict] = []
+    async for doc in cursor:
+        # Belt over the creation-time dedup guard: never two buttons for the
+        # same piece of work.
+        title = (doc.get("title") or "proposal").strip().lower()
+        if title in seen:
+            continue
+        seen.add(title)
+        proposals.append(doc)
+        if len(proposals) >= MAX_PENDING_PROPOSALS:
+            break
+    return proposals
+
+
+def _proposal_actions(proposals: list[dict]) -> list[dict[str, str]]:
+    """Approve/Dismiss button pairs; ``callback_data`` matches the bot contract
+    (``todo_approve:<id>`` / ``todo_dismiss:<id>``)."""
     actions: list[dict[str, str]] = []
-    async for doc in todos_collection.find(query, {"title": 1}).limit(MAX_PENDING_PROPOSALS):
+    for doc in proposals:
         title = doc.get("title", "proposal")
         short = title if len(title) <= 24 else f"{title[:23]}…"
         todo_id = str(doc["_id"])
         actions.append({"label": f"Approve: {short}", "callback_data": f"todo_approve:{todo_id}"})
         actions.append({"label": f"Dismiss: {short}", "callback_data": f"todo_dismiss:{todo_id}"})
     return actions
+
+
+# Chat platforms show the staged work itself, never a description of it: nobody
+# approves an email they have not seen. Excerpts are cut from the canvas by
+# code, so they cannot be embellished.
+_STAGED_EXCERPT_CHARS = 900
+
+
+def _staged_content_parts(proposals: list[dict]) -> list[str]:
+    parts: list[str] = []
+    for doc in proposals:
+        canvas = (doc.get("canvas_content") or "").strip()
+        if not canvas:
+            continue
+        title = doc.get("title", "proposal")
+        excerpt = canvas[:_STAGED_EXCERPT_CHARS].strip()
+        suffix = (
+            "\n…(truncated — reply to see the rest)" if len(canvas) > _STAGED_EXCERPT_CHARS else ""
+        )
+        parts.append(f'What "{title}" will send, for your review:\n\n{excerpt}{suffix}')
+    return parts
 
 
 async def _deliver(
@@ -216,7 +252,11 @@ async def _deliver(
     buttons on platforms that support them (Telegram inline keyboards) so the
     morning tap works from bed.
     """
-    todo_actions = await _pending_proposal_actions(user_id)
+    proposals = await _pending_proposals(user_id)
+    todo_actions = _proposal_actions(proposals)
+    # One logical delivery, multiple bubbles: the texting-voice message first,
+    # then the staged content each Approve button releases.
+    platform_parts = [p for p in [payload.message, *_staged_content_parts(proposals)] if p]
     record = await notification_service.create_notification(
         NotificationRequest(
             user_id=user_id,
@@ -245,7 +285,7 @@ async def _deliver(
             metadata={
                 "kind": notification_kind,
                 "todo_actions": todo_actions,
-                "platform_text": payload.message,
+                "platform_parts": platform_parts,
                 "briefing_id": briefing.id,
                 "date": briefing.date,
             },

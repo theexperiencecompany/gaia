@@ -145,7 +145,9 @@ class TrackedTodoService:
         ``requires_approval`` (outward-facing) → ``proposed``; internal-only →
         ``queued``.
         """
-        serves, entry_status = await lifecycle.gate_creation(user_id, serves, requires_approval)
+        serves, entry_status = await lifecycle.gate_creation(
+            user_id, serves, requires_approval, title=title
+        )
         # The staging invariant behind every Approve button: a proposal releases
         # exactly the content in its canvas, so it cannot be created without it.
         # Prep work happens first (internal todo), and the run that finishes the

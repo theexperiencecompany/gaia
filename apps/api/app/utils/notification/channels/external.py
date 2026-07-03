@@ -63,30 +63,32 @@ class ExternalPlatformAdapter(ChannelAdapter):
         """
         content = notification.content
         app_url = settings.FRONTEND_URL.rstrip("/")
-        # Chat platforms get GAIA's texting voice when the sender rendered one
-        # (metadata.platform_text); title/body stay the in-app/email rendering.
-        platform_text = (notification.metadata or {}).get("platform_text")
-        if platform_text:
-            text = str(platform_text)
+        metadata = notification.metadata or {}
+        # Chat platforms get GAIA's texting voice when the sender rendered it:
+        # metadata.platform_parts is an ordered list of message bubbles (e.g. the
+        # brief, then the staged content each Approve releases). title/body stay
+        # the in-app/email rendering.
+        platform_parts = [str(p) for p in (metadata.get("platform_parts") or []) if p]
+        if platform_parts:
+            parts = platform_parts
         else:
             title = content.title or ""
             body = content.body or ""
             text = _join_nonempty(f"**{title}**" if title else "", body)
-
-        if content.actions:
-            links = [
-                f"[{action.label}]({app_url}{action.config.redirect.url})"
-                for action in content.actions
-                if action.type == ActionType.REDIRECT and action.config.redirect
-            ]
-            if links:
-                text = _join_nonempty(text, " · ".join(links), sep="\n\n")
+            if content.actions:
+                links = [
+                    f"[{action.label}]({app_url}{action.config.redirect.url})"
+                    for action in content.actions
+                    if action.type == ActionType.REDIRECT and action.config.redirect
+                ]
+                if links:
+                    text = _join_nonempty(text, " · ".join(links), sep="\n\n")
+            parts = [text]
 
         # Inline platform actions (e.g. Approve/Dismiss on briefing proposals):
         # metadata.todo_actions = [{label, callback_data}] renders as native
         # buttons on platforms that support them (Telegram inline keyboards).
-        todo_actions = (notification.metadata or {}).get("todo_actions") or []
-        return {"parts": [text], "actions": todo_actions}
+        return {"parts": parts, "actions": metadata.get("todo_actions") or []}
 
     async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
         """Publish the rendered parts to the user's linked platform chat.
