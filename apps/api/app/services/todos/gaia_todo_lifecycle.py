@@ -165,7 +165,7 @@ async def reschedule_execution(todo_id: str, new_scheduled_at: datetime) -> bool
 
 
 async def gate_creation(
-    user_id: str, serves: str, requires_approval: bool
+    user_id: str, serves: str, requires_approval: bool, title: str = ""
 ) -> tuple[str, ExecutionStatus]:
     """Validate a GAIA-todo creation and resolve its entry state.
 
@@ -174,6 +174,24 @@ async def gate_creation(
     ``TraceabilityError`` / ``BudgetExceededError`` — the junk-todo gate.
     """
     serves = serves.strip()
+    if requires_approval and title.strip():
+        # One Approve button per piece of work: an identically-titled pending
+        # proposal means this is a duplicate (rerun, retry, or model repeat),
+        # never a second legitimate ask.
+        dupe = await todos_collection.find_one(
+            {
+                "user_id": user_id,
+                "execution_status": ExecutionStatus.PROPOSED.value,
+                "title": title.strip(),
+                **gaia_assigned_filter(),
+            },
+            {"_id": 1},
+        )
+        if dupe:
+            raise BudgetExceededError(
+                f"A pending proposal titled {title.strip()!r} already exists "
+                f"(id {dupe['_id']}). Update or approve that one instead of duplicating it."
+            )
     if not serves:
         raise TraceabilityError(
             "GAIA todos must be traceable: pass `serves` naming the goal, "
