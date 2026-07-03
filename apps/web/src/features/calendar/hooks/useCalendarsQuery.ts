@@ -9,7 +9,7 @@ import { calendarApi } from "../api/calendarApi";
  *
  * This is the centralized hook for fetching calendars. Use this in:
  * - useSharedCalendar (for calendar page and components)
- * - GridSection (with enabled flag based on integration status)
+ * - Any view gated by calendar integration status (pass `enabled` accordingly)
  *
  * DO NOT call this hook multiple times in the same component tree.
  * Instead, pass calendars as props from parent components that already fetch them.

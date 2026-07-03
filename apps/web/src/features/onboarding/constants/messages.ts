@@ -11,6 +11,8 @@ export const PROCESSING_MSG_FOCUS = "Got it. Setting things up around that.";
 export const FOCUS_QUESTION =
   "Got it. What's the one thing you most need to get done this week?";
 
+export const WORKING_ON_SKIP_REPLY = "Skipped for now";
+
 export const STEP_SCANNING_INBOX = "Scanning your inbox";
 export const STEP_TRIAGING = "Triaging by importance";
 export const STEP_CREATING_TODOS = "Creating action items";

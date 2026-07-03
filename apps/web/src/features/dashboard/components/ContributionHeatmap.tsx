@@ -75,9 +75,9 @@ export function ContributionHeatmap({
       </div>
       <div className="overflow-x-auto rounded-2xl bg-zinc-900 p-3">
         <div className="flex w-fit gap-[3px]">
-          {weeks.map((week, weekIndex) => (
+          {weeks.map((week) => (
             <div
-              key={`heatmap-week-${weekIndex}`}
+              key={`heatmap-week-${week[0]?.date ?? "empty"}`}
               className="flex flex-col gap-[3px]"
             >
               {week.map((day) => (

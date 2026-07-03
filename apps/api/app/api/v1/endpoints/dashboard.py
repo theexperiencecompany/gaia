@@ -18,7 +18,6 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone_from_preferences,
 )
-from app.constants.todos import ASSIGNEE_GAIA, GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import todos_collection, workflow_executions_collection
 from app.services.calendar_service import fetch_calendar_events
 from shared.py.wide_events import log
@@ -134,39 +133,14 @@ async def get_heatmap(
     user_id = user["user_id"]
     tz = ZoneInfo(user_timezone or "UTC")
     today = datetime.now(tz).date()
-    window_start = datetime.combine(
-        today - timedelta(days=days - 1), time.min, tzinfo=tz
-    ).astimezone(UTC)
 
-    counts: dict[str, dict[str, int]] = {}
-    cursor = todos_collection.find(
-        {"user_id": user_id, "completed_at": {"$gte": window_start}},
-        {"completed_at": 1, "assignee": 1, "labels": 1},
-    )
-    async for doc in cursor:
-        day = doc["completed_at"].astimezone(tz).date().isoformat()
-        bucket = counts.setdefault(day, {"user_count": 0, "gaia_count": 0})
-        is_gaia = doc.get("assignee") == ASSIGNEE_GAIA or GAIA_TRACKED_LABEL in doc.get(
-            "labels", []
-        )
-        bucket["gaia_count" if is_gaia else "user_count"] += 1
-
+    counts = await completed_day_counts(user_id, tz, window_start_utc(tz, days))
     day_list = [
         {"date": d, **counts.get(d, {"user_count": 0, "gaia_count": 0})}
         for d in (
             (today - timedelta(days=offset)).isoformat() for offset in range(days - 1, -1, -1)
         )
     ]
-
-    streak = 0
-    for offset in range(days):
-        bucket = counts.get((today - timedelta(days=offset)).isoformat())
-        if bucket and bucket["user_count"] + bucket["gaia_count"] > 0:
-            streak += 1
-        elif offset == 0:
-            # An empty today doesn't break the streak yet — the day isn't over.
-            continue
-        else:
-            break
+    streak = streak_from_counts(counts, today, days)
 
     return {"days": day_list, "streak": streak}
