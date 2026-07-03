@@ -41,6 +41,7 @@ from app.services.todos.gaia_todo_lifecycle import (
     ExecutionQuotaError,
     InvalidTransitionError,
 )
+from app.services.todos.todo_classification import schedule_classification
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
@@ -305,7 +306,11 @@ async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)):
         },
     )
     try:
-        return await TodoService.create_todo(todo, user["user_id"])
+        created = await TodoService.create_todo(todo, user["user_id"])
+        # Capture stays instant: GAIA quietly classifies the new todo in the
+        # background (offer / prep / silent) without blocking the response.
+        schedule_classification(created.id, user["user_id"], created.title, created.description)
+        return created
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception:

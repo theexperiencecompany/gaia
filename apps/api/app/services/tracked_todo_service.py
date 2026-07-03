@@ -246,11 +246,14 @@ class TrackedTodoService:
                 "$set": {
                     "completed": True,
                     "completed_at": now,
+                    "execution_status": ExecutionStatus.DONE.value,
                     "vfs_path": archive_path,
                     "updated_at": now,
                 }
             },
         )
+
+        track(user_id, "gaia_todo_completed", {"todo_id": todo_id})
 
         # Invalidate Redis cache so the frontend reflects completion immediately
         await TodoService._invalidate_cache(

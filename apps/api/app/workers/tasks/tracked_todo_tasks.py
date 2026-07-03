@@ -25,9 +25,11 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
+from app.models.todo_models import ExecutionStatus
 from app.services.model_service import get_default_model
 from app.services.notification_service import notification_service
 from app.services.todo_canvas_storage import read_canvas
+from app.services.todos import gaia_todo_lifecycle as lifecycle
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.cron_utils import CronError, get_next_run_time
@@ -125,7 +127,17 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
     user_data, user_tz = await _load_user_with_tz(user_id)
 
     try:
+        await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.RUNNING)
         await _run_execution(doc, user_id, user_data=user_data)
+
+        # The agent may have completed the todo mid-run (complete_tracked_todo
+        # sets DONE); otherwise the run finished an increment of work and the
+        # todo re-arms as queued for its next fire/follow-up.
+        post = await todos_collection.find_one(
+            {"_id": ObjectId(todo_id)}, {"completed": 1, "execution_status": 1}
+        )
+        if post and not post.get("completed"):
+            await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.QUEUED)
 
         # Reset retry counter on success
         await todos_collection.update_one(
@@ -387,6 +399,12 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
             "$addToSet": {"labels": "failed"},
             "$set": {"updated_at": datetime.now(UTC)},
         },
+    )
+    await lifecycle.mark_execution_status(
+        todo_id,
+        user_id,
+        ExecutionStatus.FAILED,
+        error_message=f"Execution failed after {MAX_RETRY_ATTEMPTS} attempts",
     )
     log.info("tracked_todo.marked_failed", todo_id=todo_id)
 
