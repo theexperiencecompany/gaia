@@ -375,8 +375,23 @@ def _format_tracked_todo_full(doc: dict, now: datetime) -> str:
     return "\n".join(parts)
 
 
+def _strip_redundant_heading(content: str, section: str) -> str:
+    """Drop a leading `## {section}` line the caller repeated inside the body.
+
+    The patch re-emits the heading itself, so a copy at the top of `content`
+    would double it (`## Key Details` / `## Key Details`) — the exact structural
+    bug seen in the wild when the model includes the heading in its section body.
+    """
+    body = content.lstrip("\n")
+    first_line, _, rest = body.partition("\n")
+    if first_line.strip().lower() == f"## {section}".strip().lower():
+        return rest.lstrip("\n")
+    return content
+
+
 def _patch_canvas_section(current: str, section: str, content: str) -> str:
     """Replace (or append) a `## {section}` block within a canvas markdown string."""
+    content = _strip_redundant_heading(content, section)
     heading = f"## {section}"
     heading_pos = current.find(f"\n{heading}")
     if heading_pos == -1:
