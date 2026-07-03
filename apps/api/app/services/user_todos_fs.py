@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.agents.workspace.system_docs import USER_TODOS_GUIDE_MD
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import user_assigned_filter
 from app.db.mongodb.collections import todos_collection
 from app.services._vfs_scheduler import make_scheduler, run_hashed_sync
 from app.services.storage.metrics import FsOps
@@ -62,7 +62,7 @@ async def _fetch_active_projections(user_id: str) -> list[UserTodoProjection]:
     cursor = todos_collection.find(
         {
             "user_id": user_id,
-            "labels": {"$nin": [GAIA_TRACKED_LABEL]},
+            **user_assigned_filter(),
             "$or": [
                 {"completed": {"$ne": True}},
                 {"completed_at": {"$gte": cutoff}},
