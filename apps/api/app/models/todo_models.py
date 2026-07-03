@@ -10,6 +10,9 @@ from app.constants.todos import ASSIGNEE_USER
 # discriminator for GAIA-owned todos.
 Assignee = Literal["user", "gaia"]
 
+# A todo is either a unit of work or a long-lived goal lane (see TodoBase.kind).
+TodoKind = Literal["task", "goal"]
+
 
 class Priority(str, Enum):
     HIGH = "high"  # red
@@ -98,6 +101,19 @@ class TodoBase(BaseModel):
     assignee: Assignee = Field(
         default=ASSIGNEE_USER,
         description="Who owns this todo: 'user' (default) or 'gaia'. Replaces the gaia-tracked label.",
+    )
+    kind: TodoKind = Field(
+        default="task",
+        description=(
+            "'task' (default) or 'goal'. A goal is a long-lived lane whose canvas "
+            "is its living strategy; the nightly pass advances it and child tasks "
+            "link back via goal_id. Goals are exempt from in-flight budgets and "
+            "the day timeline."
+        ),
+    )
+    goal_id: str | None = Field(
+        default=None,
+        description="ID of the goal-todo this task advances (real traceability link).",
     )
     execution_status: ExecutionStatus | None = Field(
         default=None,

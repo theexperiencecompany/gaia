@@ -165,15 +165,37 @@ async def reschedule_execution(todo_id: str, new_scheduled_at: datetime) -> bool
 
 
 async def gate_creation(
-    user_id: str, serves: str, requires_approval: bool, title: str = ""
+    user_id: str,
+    serves: str,
+    requires_approval: bool,
+    title: str = "",
+    kind: str = "task",
 ) -> tuple[str, ExecutionStatus]:
     """Validate a GAIA-todo creation and resolve its entry state.
 
     Returns the cleaned ``serves`` and the entry status per the approval rule
     (outward-facing → ``proposed``, internal-only → ``queued``). Raises
     ``TraceabilityError`` / ``BudgetExceededError`` — the junk-todo gate.
+    Goal lanes (``kind == "goal"``) are long-lived by design: they skip the
+    in-flight budget but are capped themselves so nightly attention stays
+    focused.
     """
     serves = serves.strip()
+    if kind == "goal":
+        if not serves:
+            raise TraceabilityError(
+                "A goal needs `serves`: the user's own words for what they're pursuing."
+            )
+        active_goals = await todos_collection.count_documents(
+            {"user_id": user_id, "kind": "goal", "completed": False, **gaia_assigned_filter()}
+        )
+        if active_goals >= MAX_ACTIVE_GOALS:
+            raise BudgetExceededError(
+                f"Already at {active_goals}/{MAX_ACTIVE_GOALS} active goals. A goal "
+                "lane costs nightly attention: ask the user which goal to retire "
+                "before adding this one."
+            )
+        return serves, ExecutionStatus.QUEUED
     if requires_approval and title.strip():
         # One Approve button per piece of work: an identically-titled pending
         # proposal means this is a duplicate (rerun, retry, or model repeat),
