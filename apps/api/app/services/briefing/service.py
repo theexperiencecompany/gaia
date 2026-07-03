@@ -271,6 +271,41 @@ async def _clear_bootstrap(user_id: str, user: dict) -> None:
         )
 
 
+async def run_overnight_work(user_id: str) -> None:
+    """GAIA's night shift: work the user's goals so the morning brief reports results.
+
+    Runs hours before the briefing. The agent does internal work inline and via
+    immediately-executing queued todos (research, lists, drafts, documents) and
+    stages outward-facing sends as proposals; the approval rule is enforced by
+    the ``create_tracked_todo`` contract exactly as in any other run. Silent by
+    design: no payload, no notification; the 8am briefing narrates what exists.
+    """
+    log.set(service="briefing", operation="run_overnight_work", user_id=user_id)
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise BriefingGenerationError(f"Cannot run overnight work for unknown user {user_id}")
+    user["user_id"] = user_id
+    clock = context.resolve_clock(user.get("timezone"))
+
+    goal_block, has_goal = await context.format_goal_block(user_id, user)
+    if not has_goal:
+        log.info("briefing.overnight_no_goal_skip", user_id=user_id)
+        return
+    strikes = await get_rejection_strikes_summary(user_id)
+    todos_block = await context.format_todos_block(user_id)
+
+    prompt = build_overnight_work_prompt(
+        date_local=clock.date_str,
+        goal_block=goal_block,
+        todos_block=todos_block,
+        strikes_block=strikes,
+    )
+    # Reuse the silent-run plumbing; the run's value is its side effects (todos,
+    # canvases, drafts), so the text result is only logged.
+    result = await _run_silent(user, clock, prompt, conversation_key="overnight")
+    log.info("briefing.overnight_complete", user_id=user_id, result_preview=result[:200])
+
+
 async def run_daily_briefing(user_id: str) -> None:
     """Curate, look back, plan, and deliver one daily briefing for the user."""
     log.set(service="briefing", operation="run_daily_briefing", user_id=user_id)

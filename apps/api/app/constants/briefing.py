@@ -11,10 +11,14 @@ from typing import Final, Literal
 # System-workflow keys. The workflow ARQ path special-cases these to route into
 # the briefing service instead of the generic chat execution.
 DAILY_BRIEFING_WORKFLOW_KEY: Final[str] = "daily_briefing"
+OVERNIGHT_WORK_WORKFLOW_KEY: Final[str] = "overnight_work"
 WEEKLY_DIGEST_WORKFLOW_KEY: Final[str] = "weekly_digest"
 
 # Schedules (user-local timezone; the provisioner stamps the tz onto the trigger).
 DAILY_BRIEFING_CRON: Final[str] = "0 8 * * *"  # every day 08:00
+# The night shift runs well before the briefing so the 8am brief reports real,
+# finished work instead of intentions.
+OVERNIGHT_WORK_CRON: Final[str] = "0 5 * * *"  # every day 05:00
 WEEKLY_DIGEST_CRON: Final[str] = "0 17 * * 0"  # Sunday 17:00
 
 # Briefing kinds — key the payload variant and the unique-per-day constraint.

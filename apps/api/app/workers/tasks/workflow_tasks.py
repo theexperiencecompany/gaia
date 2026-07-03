@@ -18,6 +18,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
+    OVERNIGHT_WORK_WORKFLOW_KEY,
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
 from app.constants.log_tags import LogTag
@@ -288,15 +289,19 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
             # import cycle (same reason as call_agent_silent below).
             if workflow.system_workflow_key in {
                 DAILY_BRIEFING_WORKFLOW_KEY,
+                OVERNIGHT_WORK_WORKFLOW_KEY,
                 WEEKLY_DIGEST_WORKFLOW_KEY,
             }:
                 from app.services.briefing.service import (
                     run_daily_briefing,
+                    run_overnight_work,
                     run_weekly_digest,
                 )
 
                 if workflow.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY:
                     await run_daily_briefing(workflow.user_id)
+                elif workflow.system_workflow_key == OVERNIGHT_WORK_WORKFLOW_KEY:
+                    await run_overnight_work(workflow.user_id)
                 else:
                     await run_weekly_digest(workflow.user_id)
                 conversation_id = None

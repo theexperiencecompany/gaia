@@ -14,6 +14,8 @@ from uuid import uuid4
 from app.constants.briefing import (
     DAILY_BRIEFING_CRON,
     DAILY_BRIEFING_WORKFLOW_KEY,
+    OVERNIGHT_WORK_CRON,
+    OVERNIGHT_WORK_WORKFLOW_KEY,
     WEEKLY_DIGEST_CRON,
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
@@ -23,6 +25,37 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+
+
+def _overnight_work() -> CreateWorkflowRequest:
+    return CreateWorkflowRequest(
+        title="Overnight Work",
+        description="GAIA's night shift: works your goals so the morning brief reports finished work.",
+        prompt=(
+            "Decompose the user's stated goals into concrete internal work and execute it "
+            "now: research, lists, drafts, documents. Stage anything outward-facing as a "
+            "proposal awaiting approval."
+        ),
+        is_system_workflow=True,
+        system_workflow_key=OVERNIGHT_WORK_WORKFLOW_KEY,
+        trigger_config=TriggerConfig(
+            type=TriggerType.SCHEDULE,
+            cron_expression=OVERNIGHT_WORK_CRON,
+            enabled=True,
+        ),
+        steps=[
+            WorkflowStep(
+                id=str(uuid4()),
+                title="Work the goals",
+                category="gaia",
+                description=(
+                    "For each stated goal, complete or stage concrete work tonight: build the "
+                    "lists, write the drafts, produce the documents; queue outward sends as "
+                    "proposals for the morning tap."
+                ),
+            ),
+        ],
+    )
 
 
 def _daily_briefing() -> CreateWorkflowRequest:
@@ -85,6 +118,7 @@ def _weekly_digest() -> CreateWorkflowRequest:
 
 
 BRIEFING_SYSTEM_WORKFLOWS: list[tuple[str, Callable[[], CreateWorkflowRequest]]] = [
+    (OVERNIGHT_WORK_WORKFLOW_KEY, _overnight_work),
     (DAILY_BRIEFING_WORKFLOW_KEY, _daily_briefing),
     (WEEKLY_DIGEST_WORKFLOW_KEY, _weekly_digest),
 ]
