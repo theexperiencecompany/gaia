@@ -3239,7 +3239,7 @@ class TestMCPClientDoConnectSSRF:
         self, mock_resolver, mock_base_client_cls
     ):
         resolved = MagicMock()
-        resolved.mcp_config = _make_mcp_config(server_url="http://169.254.169.254/mcp")
+        resolved.mcp_config = _make_mcp_config(server_url="https://169.254.169.254/mcp")
         resolved.source = "platform"
         resolved.custom_doc = None
         mock_resolver.resolve = AsyncMock(return_value=resolved)
@@ -3258,7 +3258,7 @@ class TestMCPClientDoConnectSSRF:
         self, mock_resolver, mock_base_client_cls
     ):
         resolved = MagicMock()
-        resolved.mcp_config = _make_mcp_config(server_url="http://127.0.0.1:8000/mcp")
+        resolved.mcp_config = _make_mcp_config(server_url="https://127.0.0.1:8000/mcp")
         resolved.source = "platform"
         resolved.custom_doc = None
         mock_resolver.resolve = AsyncMock(return_value=resolved)
@@ -3277,7 +3277,7 @@ class TestProbeMcpConnectionSSRF:
 
     @patch("app.services.mcp.oauth_discovery.extract_auth_challenge", new_callable=AsyncMock)
     async def test_private_url_is_refused_without_probing(self, mock_extract):
-        result = await probe_mcp_connection("http://169.254.169.254/mcp")
+        result = await probe_mcp_connection("https://169.254.169.254/mcp")
 
         # The guard rejected it: surfaced as an error, and no outbound probe ran.
         assert result["auth_type"] == "unknown"

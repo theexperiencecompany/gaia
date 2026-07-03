@@ -11,9 +11,9 @@ import pytest
 _URL = "/api/v1/integrations/custom"
 
 BLOCKED_URLS = [
-    "http://169.254.169.254/latest/meta-data/",  # cloud metadata
-    "http://127.0.0.1:9000/mcp",  # loopback
-    "http://10.1.2.3/mcp",  # private
+    "https://169.254.169.254/latest/meta-data/",  # cloud metadata
+    "https://127.0.0.1:9000/mcp",  # loopback
+    "https://10.1.2.3/mcp",  # private
     "ftp://example.com/mcp",  # non-http scheme
 ]
 

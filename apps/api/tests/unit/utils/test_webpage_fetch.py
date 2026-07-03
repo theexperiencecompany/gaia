@@ -95,11 +95,11 @@ async def test_httpx_fetcher_extracts_main_content_to_markdown() -> None:
 async def test_httpx_fetcher_blocks_private_first_url() -> None:
     # The entry URL itself resolves to loopback: the fetch must be refused
     # before any outbound request is made (no SSRF to an internal service).
-    route = respx.get("http://internal.test/").mock(return_value=httpx.Response(200, text="x"))
+    route = respx.get("https://internal.test/").mock(return_value=httpx.Response(200, text="x"))
 
     with patch("app.utils.url_safety._resolve", _resolver({"internal.test": "127.0.0.1"})):
         with pytest.raises(FetchError):
-            await HttpxFetcher().fetch("http://internal.test/")
+            await HttpxFetcher().fetch("https://internal.test/")
 
     assert route.called is False
 
@@ -110,9 +110,9 @@ async def test_httpx_fetcher_blocks_redirect_to_private_address() -> None:
     # the redirect hop, not followed. httpx's own follow_redirects is disabled;
     # each hop is re-validated by the SSRF guard.
     respx.get("https://public.test/").mock(
-        return_value=httpx.Response(302, headers={"location": "http://internal.test/secret"})
+        return_value=httpx.Response(302, headers={"location": "https://internal.test/secret"})
     )
-    internal = respx.get("http://internal.test/secret").mock(
+    internal = respx.get("https://internal.test/secret").mock(
         return_value=httpx.Response(200, text="secret")
     )
 

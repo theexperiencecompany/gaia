@@ -14,14 +14,14 @@ from app.utils.url_safety import assert_public_http_url, assert_safe_url_shape
 # Addresses that must always be refused, by category. 169.254.169.254 is the
 # cloud metadata endpoint — the single most important target to keep blocked.
 BLOCKED_LITERAL_HOSTS = [
-    "http://127.0.0.1/",  # loopback v4
-    "http://[::1]/",  # loopback v6
-    "http://10.0.0.5/",  # private v4
-    "http://192.168.1.1/",  # private v4
-    "http://172.16.0.1/",  # private v4
-    "http://169.254.169.254/",  # link-local / cloud metadata
-    "http://0.0.0.0/",  # unspecified
-    "http://[fe80::1]/",  # link-local v6
+    "https://127.0.0.1/",  # loopback v4
+    "https://[::1]/",  # loopback v6
+    "https://10.0.0.5/",  # private v4
+    "https://192.168.1.1/",  # private v4
+    "https://172.16.0.1/",  # private v4
+    "https://169.254.169.254/",  # link-local / cloud metadata
+    "https://0.0.0.0/",  # unspecified
+    "https://[fe80::1]/",  # link-local v6
 ]
 
 BAD_SCHEME_URLS = [
@@ -56,7 +56,7 @@ def test_shape_rejects_missing_host() -> None:
 
 def test_shape_allows_public_literal_ip() -> None:
     # A public literal IP is fine — no DNS needed.
-    assert_safe_url_shape("http://93.184.216.34/")
+    assert_safe_url_shape("https://93.184.216.34/")
 
 
 def test_shape_allows_https_public_literal_ip() -> None:
@@ -68,7 +68,7 @@ def test_shape_defers_hostnames_without_resolving() -> None:
     # validator). A hostname — even a suspicious internal-looking one — is
     # allowed here; the resolving guard rejects it later at connect time.
     assert_safe_url_shape("https://example.com/mcp")
-    assert_safe_url_shape("http://metadata.google.internal/")
+    assert_safe_url_shape("https://metadata.google.internal/")
 
 
 # ---------------------------------------------------------------------------

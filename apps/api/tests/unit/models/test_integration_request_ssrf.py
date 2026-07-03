@@ -14,11 +14,11 @@ from app.schemas.integrations.requests import (
 )
 
 BLOCKED_URLS = [
-    "http://169.254.169.254/latest/meta-data/",  # cloud metadata
-    "http://127.0.0.1:8000/mcp",  # loopback
-    "http://10.0.0.5/mcp",  # private
-    "http://192.168.1.10/mcp",  # private
-    "http://[::1]/mcp",  # loopback v6
+    "https://169.254.169.254/latest/meta-data/",  # cloud metadata
+    "https://127.0.0.1:8000/mcp",  # loopback
+    "https://10.0.0.5/mcp",  # private
+    "https://192.168.1.10/mcp",  # private
+    "https://[::1]/mcp",  # loopback v6
     "ftp://example.com/mcp",  # non-http scheme
     "file:///etc/passwd",  # non-http scheme
 ]
