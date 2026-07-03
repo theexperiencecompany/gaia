@@ -271,19 +271,34 @@ export default memo(function TodoItem({
                 </Chip>
               )}
 
-              {todo.vfs_path && (
+              {todo.kind === "goal" ? (
                 <Chip
-                  className="flex items-center text-primary px-1"
+                  className="flex items-center px-1 text-warning"
                   size="sm"
                   radius="sm"
-                  color="primary"
+                  color="warning"
                   variant="flat"
                   startContent={
-                    <AiBrainIcon width={14} height={14} className="mx-1" />
+                    <Flag02Icon width={14} height={14} className="mx-1" />
                   }
                 >
-                  Tracked
+                  Goal
                 </Chip>
+              ) : (
+                todo.vfs_path && (
+                  <Chip
+                    className="flex items-center text-primary px-1"
+                    size="sm"
+                    radius="sm"
+                    color="primary"
+                    variant="flat"
+                    startContent={
+                      <AiBrainIcon width={14} height={14} className="mx-1" />
+                    }
+                  >
+                    Tracked
+                  </Chip>
+                )
               )}
 
               {todoProject && (

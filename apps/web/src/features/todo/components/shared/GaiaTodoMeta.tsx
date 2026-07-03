@@ -11,6 +11,22 @@ interface GaiaTodoMetaProps {
 }
 
 /**
+ * Strips the bookkeeping lead-in the agent/system prepends to `serves`
+ * ("Aryan confirmed: …", "user handoff: …") so the row shows only the reason.
+ */
+function cleanServes(serves: string): string {
+  const trimmed = serves.trim();
+  const colon = trimmed.indexOf(":");
+  if (colon > 0 && colon < 40) {
+    const lead = trimmed.slice(0, colon).toLowerCase();
+    if (/confirmed|handoff|request|asked|goal/.test(lead)) {
+      return trimmed.slice(colon + 1).trim();
+    }
+  }
+  return trimmed;
+}
+
+/**
  * Shared "because: {serves}" and failure-reason lines for a GAIA-assigned
  * todo. Used in both the list row (`TodoItem`) and the detail view
  * (`TodoSidebar`) so the two surfaces never drift apart.
@@ -24,7 +40,9 @@ export const GaiaTodoMeta: React.FC<GaiaTodoMetaProps> = ({
   return (
     <div className="mt-1 space-y-1">
       {serves && (
-        <p className="truncate text-xs text-zinc-500">because: {serves}</p>
+        <p className="truncate text-xs text-zinc-500">
+          because: {cleanServes(serves)}
+        </p>
       )}
       {errorMessage && (
         <p className="flex items-start gap-1 text-xs font-medium text-red-400">

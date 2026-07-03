@@ -58,6 +58,10 @@ export interface Todo {
   error_message?: string | null;
   /** Present on some user-owned todos GAIA is offering to take over. */
   gaia_offer?: string | null;
+  /** "task" (default) or "goal" — a long-lived lane whose canvas is its strategy. */
+  kind?: "task" | "goal";
+  /** For a task, the goal-todo it advances. */
+  goal_id?: string | null;
 }
 
 export interface TodoUpdate {
