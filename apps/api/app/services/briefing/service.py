@@ -501,17 +501,19 @@ async def run_daily_briefing(user_id: str) -> None:
     voice = _parse_voice(
         await _run_silent(user, clock, prompt, conversation_key=BRIEFING_KIND_DAILY)
     )
-    payload = BriefingPayload(
-        kicker="THE MORNING BRIEF",
-        date=clock.date_str,
-        headline=voice["headline"],
-        lede=voice["lede"],
-        stats=stats,
-        sections=sections,
-        mood="winback" if winback.is_winback else voice["mood"],
-        caption=voice["caption"],
-        hue=hue_for_day(clock.day_of_year),
-        message=voice["message"],
+    payload = BriefingPayload.model_validate(
+        {
+            "kicker": "THE MORNING BRIEF",
+            "date": clock.date_str,
+            "headline": voice["headline"],
+            "lede": voice["lede"],
+            "stats": stats,
+            "sections": sections,
+            "mood": "winback" if winback.is_winback else voice["mood"],
+            "caption": voice["caption"],
+            "hue": hue_for_day(clock.day_of_year),
+            "message": voice["message"],
+        }
     )
 
     briefing = await repository.upsert_briefing(
