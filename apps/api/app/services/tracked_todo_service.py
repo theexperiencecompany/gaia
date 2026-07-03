@@ -138,6 +138,7 @@ class TrackedTodoService:
         priority: Priority = Priority.NONE,
         labels: list[str] | None = None,
         initial_canvas: str | None = None,
+        auto_execute: bool = True,
     ) -> TodoResponse:
         """Create a GAIA-assigned todo with VFS canvas and ChromaDB indexing.
 
