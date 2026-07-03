@@ -17,7 +17,9 @@ from langchain_core.tools import tool
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoResponse
+from app.services.payments.payment_service import payment_service
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
+from app.services.todos import gaia_todo_lifecycle as lifecycle
 from app.services.todos.gaia_todo_lifecycle import (
     BudgetExceededError,
     TraceabilityError,
@@ -861,6 +863,62 @@ async def list_tracked_todos(
     return f"Active tracked todos ({len(docs)}):\n\n" + "\n\n".join(lines)
 
 
+@tool
+async def approve_todo(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the proposed todo the user is approving"],
+) -> str:
+    """Approve a proposed GAIA todo on the user's explicit say-so, releasing its
+    staged work for execution.
+
+    Use ONLY when the user has clearly told you to go ahead in this conversation
+    ("send them", "approve it", "yes, post it") — their words are the approval;
+    this tool records it and queues the execution. Never call it on your own
+    initiative: proposals exist precisely because this decision belongs to the
+    user. To adjust the staged content first, edit the canvas, then approve.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+    plan = await payment_service.get_cached_plan_type(user_id)
+    try:
+        await lifecycle.approve(todo_id, user_id, plan, channel="chat")
+    except lifecycle.ExecutionQuotaError as e:
+        return (
+            f"Blocked by the free plan's execution quota. Tell the user: {e.pitch} "
+            f"(resets {e.reset_time or 'next month'}; upgrading to {e.plan_required} lifts it)."
+        )
+    except lifecycle.InvalidTransitionError as e:
+        return f"Error: {e}"
+    return f"Approved: todo {todo_id} is queued and its staged work is executing."
+
+
+@tool
+async def dismiss_todo(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the proposed todo the user is declining"],
+    reason: Annotated[
+        str | None,
+        "The user's reason in their own words, when they gave one — it teaches "
+        "what not to propose again.",
+    ] = None,
+) -> str:
+    """Dismiss a proposed GAIA todo on the user's explicit say-so.
+
+    Use ONLY when the user has clearly declined the proposal in this
+    conversation ("don't send those", "skip it", "not this"). The rejection is
+    recorded as a memory signal so this kind of proposal stops recurring.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+    try:
+        await lifecycle.dismiss(todo_id, user_id, reason=reason, channel="chat")
+    except lifecycle.InvalidTransitionError as e:
+        return f"Error: {e}"
+    return f"Dismissed: todo {todo_id} will not run, and the rejection was recorded."
+
+
 tools = [
     create_tracked_todo,
     search_todo_context,
@@ -868,4 +926,6 @@ tools = [
     complete_tracked_todo,
     update_tracked_todo,
     list_tracked_todos,
+    approve_todo,
+    dismiss_todo,
 ]
