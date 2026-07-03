@@ -940,3 +940,69 @@ async def toggle_subtask_completion(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to toggle subtask",
         )
+
+
+# --- GAIA todo lifecycle (assignee model) -----------------------------------
+# Approve is the ONLY proposed→queued path and the free→pro conversion surface:
+# at quota it returns 402 with the staged work as the pitch instead of a
+# silent failure. Dismiss/handoff complete the user-facing lifecycle.
+
+
+@router.post("/todos/{todo_id}/approve", status_code=status.HTTP_200_OK)
+async def approve_gaia_todo(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    channel: str = Body(default="web", embed=True),
+):
+    """Approve a proposed GAIA todo: meter quota, queue it, enqueue execution."""
+    user_id = user["user_id"]
+    user_plan = await payment_service.get_cached_plan_type(user_id)
+    try:
+        await tracked_todo_service.approve_todo(todo_id, user_id, user_plan, channel=channel)
+    except GaiaExecutionQuotaError as e:
+        return JSONResponse(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            content={
+                "error": "gaia_execution_quota",
+                "todo_id": e.todo_id,
+                "pitch": e.pitch,
+                "plan_required": e.plan_required,
+                "reset_time": e.reset_time,
+            },
+        )
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    await delete_cache(f"counts:{user_id}")
+    return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
+
+
+@router.post("/todos/{todo_id}/dismiss", status_code=status.HTTP_200_OK)
+async def dismiss_gaia_todo(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    reason: str | None = Body(default=None, embed=True),
+    channel: str = Body(default="web", embed=True),
+):
+    """Dismiss a proposed GAIA todo; the rejection teaches memory (3-strike rule)."""
+    user_id = user["user_id"]
+    try:
+        await tracked_todo_service.dismiss_todo(todo_id, user_id, reason=reason, channel=channel)
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    await delete_cache(f"counts:{user_id}")
+    return {"success": True, "todo_id": todo_id, "execution_status": "dismissed"}
+
+
+@router.post("/todos/{todo_id}/handoff", status_code=status.HTTP_200_OK)
+async def handoff_todo_to_gaia(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+):
+    """Hand a user todo to GAIA (entry state queued; outward steps escalate mid-run)."""
+    user_id = user["user_id"]
+    try:
+        await tracked_todo_service.handoff_todo(todo_id, user_id)
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    await delete_cache(f"counts:{user_id}")
+    return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
