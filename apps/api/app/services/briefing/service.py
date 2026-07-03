@@ -234,6 +234,7 @@ async def _deliver(
             metadata={
                 "kind": notification_kind,
                 "todo_actions": todo_actions,
+                "platform_text": payload.message,
                 "briefing_id": briefing.id,
                 "date": briefing.date,
             },
