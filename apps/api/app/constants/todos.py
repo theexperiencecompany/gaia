@@ -65,3 +65,27 @@ def user_assigned_filter() -> dict[str, Any]:
     ``assignee`` field) AND no legacy ``gaia-tracked`` label.
     """
     return {"assignee": {"$ne": ASSIGNEE_GAIA}, "labels": {"$nin": [GAIA_TRACKED_LABEL]}}
+
+
+# Canvas skeleton for a GAIA-assigned todo's working memory (canvas.md). Lives
+# here so the lifecycle module and canvas service share one source of truth.
+CANVAS_TEMPLATE: Final[str] = """# {title}
+
+## Key Details
+<!-- email addresses, thread IDs, calendar IDs, issue IDs — everything needed to take action -->
+
+## Current State
+<!-- what's true RIGHT NOW — updated after every action -->
+
+## Activity Log
+<!-- which agent did what, which tools it used, what the outcome was — add entries HERE, not in Learnings -->
+
+## Timeline
+<!-- chronological list of actions taken and results -->
+
+## Context
+<!-- accumulated context from signals, related information, decisions made -->
+
+## Learnings
+<!-- written on completion: what worked, what didn't, key decisions, timing insights, optimizations for next time -->
+"""

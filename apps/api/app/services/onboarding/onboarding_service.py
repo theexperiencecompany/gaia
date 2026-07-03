@@ -5,6 +5,7 @@ from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
 from pymongo import ReturnDocument
 
+from app.constants.memory import MemorySourceType
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     conversations_collection,

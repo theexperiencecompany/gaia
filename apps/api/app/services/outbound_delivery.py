@@ -15,6 +15,7 @@ from app.constants.outbound import OUTBOUND_QUEUES
 from app.db.rabbitmq import RabbitMQPublisher, get_rabbitmq_publisher
 from app.models.chat_models import ConversationSource
 from app.schemas.outbound import (
+    OutboundAction,
     OutboundAttachment,
     OutboundMessageEnvelope,
 )

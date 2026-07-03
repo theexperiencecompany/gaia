@@ -4,6 +4,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.constants.todos import ASSIGNEE_USER
+
 # Who owns a todo. Replaces the legacy ``gaia-tracked`` label as the
 # discriminator for GAIA-owned todos.
 Assignee = Literal["user", "gaia"]

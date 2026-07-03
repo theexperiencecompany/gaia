@@ -34,7 +34,13 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
+from app.services.payments.payment_service import payment_service
 from app.services.todo_canvas_storage import read_canvas
+from app.services.todos import gaia_todo_lifecycle as lifecycle
+from app.services.todos.gaia_todo_lifecycle import (
+    ExecutionQuotaError,
+    InvalidTransitionError,
+)
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
@@ -958,8 +964,8 @@ async def approve_gaia_todo(
     user_id = user["user_id"]
     user_plan = await payment_service.get_cached_plan_type(user_id)
     try:
-        await tracked_todo_service.approve_todo(todo_id, user_id, user_plan, channel=channel)
-    except GaiaExecutionQuotaError as e:
+        await lifecycle.approve(todo_id, user_id, user_plan, channel=channel)
+    except ExecutionQuotaError as e:
         return JSONResponse(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             content={
@@ -986,7 +992,7 @@ async def dismiss_gaia_todo(
     """Dismiss a proposed GAIA todo; the rejection teaches memory (3-strike rule)."""
     user_id = user["user_id"]
     try:
-        await tracked_todo_service.dismiss_todo(todo_id, user_id, reason=reason, channel=channel)
+        await lifecycle.dismiss(todo_id, user_id, reason=reason, channel=channel)
     except InvalidTransitionError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     await delete_cache(f"counts:{user_id}")
@@ -1001,7 +1007,7 @@ async def handoff_todo_to_gaia(
     """Hand a user todo to GAIA (entry state queued; outward steps escalate mid-run)."""
     user_id = user["user_id"]
     try:
-        await tracked_todo_service.handoff_todo(todo_id, user_id)
+        await lifecycle.handoff(todo_id, user_id)
     except InvalidTransitionError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     await delete_cache(f"counts:{user_id}")
