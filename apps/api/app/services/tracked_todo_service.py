@@ -163,10 +163,9 @@ class TrackedTodoService:
                 "first and stage this proposal when the prep run finishes."
             )
 
-        # Keep the legacy label during the dual-read migration window.
+        # `assignee == "gaia"` is the discriminator now, so we no longer stamp
+        # the `gaia-tracked` label (it was redundant and showed as a stray chip).
         all_labels = list(labels or [])
-        if GAIA_TRACKED_LABEL not in all_labels:
-            all_labels.append(GAIA_TRACKED_LABEL)
 
         # Create the todo
         todo = TodoModel(

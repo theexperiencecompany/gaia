@@ -149,6 +149,11 @@ async def _core_agent_logic(
             "workflow_notify_on_completion", True
         )
 
+    # Night-shift prep runs work silently: their result is reported by the
+    # morning briefing, not pinged per-todo as it finishes.
+    if trigger_context and trigger_context.get("suppress_platform_delivery"):
+        config["configurable"]["suppress_platform_delivery"] = True
+
     log.set(
         agent=dict(
             model=config["configurable"].get("model_name"),

@@ -3,7 +3,6 @@
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import {
-  AiBrainIcon,
   AlertCircleIcon,
   CalendarCheckOut01Icon,
   CheckmarkCircle02Icon,
@@ -29,6 +28,7 @@ import {
 import { formatDate } from "@/utils/date/dateUtils";
 import { ExecutionStatusGlyph } from "./shared/ExecutionStatusGlyph";
 import { GaiaOfferBanner } from "./shared/GaiaOfferBanner";
+import { GaiaTodoBadge } from "./shared/GaiaTodoBadge";
 import { GaiaTodoMeta } from "./shared/GaiaTodoMeta";
 import { TodoProposalActions } from "./shared/TodoProposalActions";
 import { TodoTitle } from "./TodoTitle";
@@ -194,8 +194,10 @@ export default memo(function TodoItem({
               </p>
             )}
             {isGaiaTodo && (
+              // The row stays terse: only the failure reason shows here; the
+              // "because: …" rationale lives in the sidebar/detail view.
               <GaiaTodoMeta
-                serves={todo.serves}
+                serves={null}
                 errorMessage={
                   todo.execution_status === "failed" ? todo.error_message : null
                 }
@@ -271,35 +273,11 @@ export default memo(function TodoItem({
                 </Chip>
               )}
 
-              {todo.kind === "goal" ? (
-                <Chip
-                  className="flex items-center px-1 text-warning"
-                  size="sm"
-                  radius="sm"
-                  color="warning"
-                  variant="flat"
-                  startContent={
-                    <Flag02Icon width={14} height={14} className="mx-1" />
-                  }
-                >
-                  Goal
-                </Chip>
-              ) : (
-                todo.vfs_path && (
-                  <Chip
-                    className="flex items-center text-primary px-1"
-                    size="sm"
-                    radius="sm"
-                    color="primary"
-                    variant="flat"
-                    startContent={
-                      <AiBrainIcon width={14} height={14} className="mx-1" />
-                    }
-                  >
-                    Tracked
-                  </Chip>
-                )
-              )}
+              <GaiaTodoBadge
+                kind={todo.kind}
+                assignee={todo.assignee}
+                vfsPath={todo.vfs_path}
+              />
 
               {todoProject && (
                 <Chip

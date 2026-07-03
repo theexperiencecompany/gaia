@@ -251,7 +251,9 @@ async def gate_creation(
     return serves, entry_status
 
 
-async def enforce_budget_post_insert(user_id: str, todo_id: str, entry_status: ExecutionStatus) -> None:
+async def enforce_budget_post_insert(
+    user_id: str, todo_id: str, entry_status: ExecutionStatus
+) -> None:
     """Recount after insert and roll back the overshoot.
 
     The creation gate's check-then-insert is not atomic and the executor issues
@@ -260,9 +262,17 @@ async def enforce_budget_post_insert(user_id: str, todo_id: str, entry_status: E
     over deletes itself and surfaces the same budget error.
     """
     if entry_status is ExecutionStatus.PROPOSED:
-        cap, statuses, bucket = MAX_PENDING_PROPOSALS, [ExecutionStatus.PROPOSED.value], "pending proposals"
+        cap, statuses, bucket = (
+            MAX_PENDING_PROPOSALS,
+            [ExecutionStatus.PROPOSED.value],
+            "pending proposals",
+        )
     else:
-        cap, statuses, bucket = MAX_GAIA_TODOS_IN_FLIGHT, list(IN_FLIGHT_STATUSES), "GAIA todos in flight"
+        cap, statuses, bucket = (
+            MAX_GAIA_TODOS_IN_FLIGHT,
+            list(IN_FLIGHT_STATUSES),
+            "GAIA todos in flight",
+        )
     count = await todos_collection.count_documents(
         {
             "user_id": user_id,
@@ -390,9 +400,9 @@ async def handoff(todo_id: str, user_id: str) -> None:
         updates["log_content"] = (
             f"# System Log: {title}\n\n## {now.isoformat()} [HANDOFF]\n- Source: user\n"
         )
+    # assignee is the discriminator; no gaia-tracked label stamp (see create).
     await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {"$set": updates, "$addToSet": {"labels": GAIA_TRACKED_LABEL}},
+        {"_id": ObjectId(todo_id), "user_id": user_id}, {"$set": updates}
     )
     await schedule_execution(todo_id, now)
     await system_log(todo_id, user_id, "handoff", "User handed this todo to GAIA")

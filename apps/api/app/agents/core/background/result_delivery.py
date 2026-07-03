@@ -246,6 +246,12 @@ async def _narrate_and_deliver(
         )
         return notification_text, bot_message.message_id
 
+    # Night-shift prep runs are silent: the result is saved to its conversation
+    # (available in the app) but not pushed to the user's chat — the morning
+    # briefing is the single voice, so overnight work never pings per-todo.
+    if run.suppress_platform_delivery:
+        return notification_text, bot_message.message_id
+
     # Deliver over exactly one transport, decided by the conversation's source.
     # Bot conversations go to their platform's API; web/mobile/system go to the
     # WebSocket push. (The web conversation list excludes bot sources, so a

@@ -11,6 +11,7 @@ import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { ExecutionStatusGlyph } from "@/features/todo/components/shared/ExecutionStatusGlyph";
 import { GaiaOfferBanner } from "@/features/todo/components/shared/GaiaOfferBanner";
+import { GaiaTodoBadge } from "@/features/todo/components/shared/GaiaTodoBadge";
 import { GaiaTodoMeta } from "@/features/todo/components/shared/GaiaTodoMeta";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
@@ -149,6 +150,15 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                   {isGaiaTodo && (
                     <ExecutionStatusGlyph status={todo.execution_status} />
                   )}
+                </div>
+              )}
+              {isGaiaTodo && (
+                <div className="mt-2">
+                  <GaiaTodoBadge
+                    kind={todo.kind}
+                    assignee={todo.assignee}
+                    vfsPath={todo.vfs_path}
+                  />
                 </div>
               )}
               {isGaiaTodo && (

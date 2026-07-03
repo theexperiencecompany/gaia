@@ -361,6 +361,9 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         "todo_title": title,
         "active_todo_id": todo_id,
         "execution_mode": "background",
+        # Lane-child prep todos (linked to a goal) run silently overnight — the
+        # morning briefing reports them, so no per-todo chat ping.
+        "suppress_platform_delivery": bool(doc.get("goal_id")),
     }
 
     # Structural paper trail — write a start marker to the canvas Timeline

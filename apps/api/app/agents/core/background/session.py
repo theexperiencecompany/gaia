@@ -69,6 +69,9 @@ class ExecutorRun:
     workflow_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
+    # Night-shift prep runs suppress the per-todo platform message (the morning
+    # briefing reports them instead).
+    suppress_platform_delivery: bool = False
 
     @classmethod
     def from_configurable(
@@ -100,6 +103,7 @@ class ExecutorRun:
             workflow_id=configurable.get("workflow_id"),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
+            suppress_platform_delivery=configurable.get("suppress_platform_delivery", False),
         )
 
     @property
