@@ -15,6 +15,7 @@ import { renderForPlatform } from "../utils/formatters";
 import { type BotLogger, createBotLogger } from "../utils/logger";
 import { chunkResponse } from "../utils/text";
 import {
+  type OutboundAction,
   type OutboundAttachment,
   type OutboundMessageEnvelope,
   outboundMessageEnvelopeSchema,
@@ -31,8 +32,16 @@ const PREFETCH = 8;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
-/** Sends one already-rendered message to a platform destination. */
-type DeliverFn = (destinationId: string, text: string) => Promise<void>;
+/**
+ * Sends one already-rendered message to a platform destination. `actions`, when
+ * present, are interactive buttons the platform attaches to that message; the
+ * consumer passes them only on the final bubble of a chunked message.
+ */
+type DeliverFn = (
+  destinationId: string,
+  text: string,
+  actions?: OutboundAction[],
+) => Promise<void>;
 
 /** Sends one file attachment to a platform destination. */
 type DeliverFileFn = (
@@ -180,6 +189,7 @@ export class OutboundConsumer {
       env.destination_id,
       env.text,
       env.text_parts,
+      env.actions ?? undefined,
     );
   }
 
@@ -266,6 +276,7 @@ export class OutboundConsumer {
     destinationId: string,
     text: string | null | undefined,
     textParts: string[] | null | undefined,
+    actions: OutboundAction[] | undefined,
   ): Promise<void> {
     const sources = resolveSources(text, textParts);
     if (sources.length === 0) {
@@ -277,7 +288,7 @@ export class OutboundConsumer {
     // many chunks already went out — a partial send must NOT requeue.
     const progress = { delivered: 0 };
     try {
-      await this.deliverSources(destinationId, sources, progress);
+      await this.deliverSources(destinationId, sources, progress, actions);
       // Non-empty source text that rendered to nothing on every chunk: don't
       // silently ack it away (the backend recorded it DELIVERED). Dead-letter
       // it so the dropped message is visible for inspection.
@@ -315,26 +326,41 @@ export class OutboundConsumer {
    * <pre> blocks) can overflow the platform's message limit and be rejected.
    * Increments `progress.delivered` for each non-empty message sent, so the
    * caller sees the partial count even if a later send throws.
+   *
+   * `actions` (interactive buttons) are attached only to the FINAL bubble, so a
+   * multi-chunk briefing shows its approve buttons under the last message rather
+   * than repeated on every chunk. Rendering is pure, so all chunks are collected
+   * first (to know which is last) before any send happens.
    */
   private async deliverSources(
     destinationId: string,
     sources: string[],
     progress: { delivered: number },
+    actions?: OutboundAction[],
   ): Promise<void> {
     const render = (chunk: string): string =>
       renderForPlatform(chunk, this.platform);
-    // Await each send before the next so the bubbles arrive in the published
-    // order — never fan these out concurrently.
+    const rendered: string[] = [];
     for (const source of sources) {
       for (const chunk of chunkResponse(source, this.platform, render)) {
-        const rendered = render(chunk);
+        const message = render(chunk);
         // A chunk made up solely of strippable markup (e.g. a lone horizontal
         // rule) renders to nothing; platform send APIs reject empty text, so
         // skip it instead of throwing and dead-lettering the whole envelope.
-        if (!rendered.trim()) continue;
-        await this.deliver(destinationId, rendered);
-        progress.delivered += 1;
+        if (!message.trim()) continue;
+        rendered.push(message);
       }
+    }
+    // Await each send before the next so the bubbles arrive in the published
+    // order — never fan these out concurrently.
+    for (let i = 0; i < rendered.length; i++) {
+      const isLast = i === rendered.length - 1;
+      await this.deliver(
+        destinationId,
+        rendered[i],
+        isLast ? actions : undefined,
+      );
+      progress.delivered += 1;
     }
   }
 }

@@ -72,6 +72,7 @@ export function useOnboardingSubmission(
       profession: responses[FIELD_NAMES.PROFESSION] ?? "",
       timezone: getBrowserTimezone(),
       focus: responses[FIELD_NAMES.FOCUS] ?? "",
+      working_on: responses[FIELD_NAMES.WORKING_ON] ?? "",
       ...(clarifyAnswers ? { clarify_answers: clarifyAnswers } : {}),
     };
 

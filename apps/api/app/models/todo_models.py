@@ -1,8 +1,12 @@
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Who owns a todo. Replaces the legacy ``gaia-tracked`` label as the
+# discriminator for GAIA-owned todos.
+Assignee = Literal["user", "gaia"]
 
 
 class Priority(str, Enum):
@@ -10,6 +14,26 @@ class Priority(str, Enum):
     MEDIUM = "medium"  # yellow
     LOW = "low"  # blue
     NONE = "none"  # no color
+
+
+class ExecutionStatus(str, Enum):
+    """Lifecycle of a GAIA-assigned todo. Only set when ``assignee == "gaia"``.
+
+    Transitions are server-enforced (see ``tracked_todo_service``):
+    ``proposed`` → ``queued`` only via Approve; ``proposed`` → ``dismissed`` via
+    Dismiss; ``proposed`` → ``expired`` only by the curation pass; and
+    ``queued`` → ``running`` → ``done | failed | needs_you`` only by the
+    execution worker.
+    """
+
+    PROPOSED = "proposed"  # outward-facing work awaiting the user's Approve tap
+    QUEUED = "queued"  # approved or internal work, enqueued for execution
+    RUNNING = "running"  # execution worker is actively running it
+    NEEDS_YOU = "needs_you"  # blocked mid-run on a decision only the user can make
+    DONE = "done"  # completed successfully (set alongside completed/completed_at)
+    FAILED = "failed"  # execution failed after retries (carries error_message cause)
+    EXPIRED = "expired"  # proposal aged out past PROPOSAL_TTL_HOURS
+    DISMISSED = "dismissed"  # user declined the proposal
 
 
 class SubTask(BaseModel):
@@ -68,6 +92,30 @@ class TodoBase(BaseModel):
     references: list[str] = Field(
         default_factory=list,
         description="IDs of related past tracked todos (institutional memory references)",
+    )
+    assignee: Assignee = Field(
+        default=ASSIGNEE_USER,
+        description="Who owns this todo: 'user' (default) or 'gaia'. Replaces the gaia-tracked label.",
+    )
+    execution_status: ExecutionStatus | None = Field(
+        default=None,
+        description="GAIA execution lifecycle state. Only set when assignee == 'gaia'.",
+    )
+    serves: str | None = Field(
+        default=None,
+        description="The goal, memory item, or explicit user request this GAIA todo advances (traceability).",
+    )
+    error_message: str | None = Field(
+        default=None,
+        description="Human-readable failure cause; set when execution_status == 'failed'.",
+    )
+    gaia_offer: str | None = Field(
+        default=None,
+        description="Silent-classification offer to hand a user todo to GAIA (non-blocking affordance, no notification).",
+    )
+    pitch_expires_at: datetime | None = Field(
+        default=None,
+        description="While set, this proposal is an active tier-upgrade pitch and is exempt from PROPOSAL_TTL expiry.",
     )
 
 
@@ -240,3 +288,26 @@ class BulkOperationResponse(BaseModel):
     failed: list[dict] = Field(default_factory=list)
     total: int
     message: str
+
+
+# Silent classification of a newly created user todo (background step).
+class TodoClassificationOutput(BaseModel):
+    """LLM verdict on whether GAIA can take over a user-created todo.
+
+    - ``offer``: GAIA can fully do it → surface a dismissible offer on the todo.
+    - ``prep``: GAIA can partially help → prep supporting material into the work
+      log without changing the assignee.
+    - ``silent``: not something GAIA can do → no UI change, no message.
+    """
+
+    disposition: Literal["offer", "prep", "silent"] = Field(
+        description="offer (fully doable), prep (partially doable), or silent (not doable)."
+    )
+    offer: str | None = Field(
+        default=None,
+        description="One short line shown as the 'GAIA can do this' offer. Required when disposition == 'offer'.",
+    )
+    prep_note: str | None = Field(
+        default=None,
+        description="Supporting material to prep into the work log. Required when disposition == 'prep'.",
+    )

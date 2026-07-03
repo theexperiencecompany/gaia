@@ -35,6 +35,16 @@ export const outboundAttachmentSchema = z.object({
   caption: z.string().nullish(),
 });
 
+/**
+ * An interactive button the bot renders alongside the message (e.g. a Telegram
+ * inline-keyboard button). `callback_data` is the opaque token the bot posts
+ * back when the button is tapped. Mirrors ``OutboundAction`` in the Python schema.
+ */
+export const outboundActionSchema = z.object({
+  label: z.string().min(1),
+  callback_data: z.string().min(1),
+});
+
 export const outboundMessageEnvelopeSchema = z
   .object({
     /** Unique id (idempotency + tracing). */
@@ -54,6 +64,12 @@ export const outboundMessageEnvelopeSchema = z
     text_parts: z.array(z.string()).nullish(),
     /** A file to deliver (PDF/docx/etc.) — optional. */
     attachment: outboundAttachmentSchema.nullish(),
+    /**
+     * Interactive buttons attached to the message (e.g. briefing approvals as a
+     * Telegram inline keyboard). Omitted from the wire payload when the backend
+     * publishes no actions, so pre-actions envelopes validate unchanged.
+     */
+    actions: z.array(outboundActionSchema).nullish(),
     /** ISO-8601 enqueue timestamp. */
     enqueued_at: z.string(),
   })
@@ -63,6 +79,7 @@ export const outboundMessageEnvelopeSchema = z
     { message: "envelope requires text, text_parts, or attachment" },
   );
 
+export type OutboundAction = z.infer<typeof outboundActionSchema>;
 export type OutboundAttachment = z.infer<typeof outboundAttachmentSchema>;
 export type OutboundMessageEnvelope = z.infer<
   typeof outboundMessageEnvelopeSchema

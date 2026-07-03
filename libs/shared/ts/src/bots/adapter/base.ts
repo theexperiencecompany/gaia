@@ -36,7 +36,7 @@
 import { Analytics, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
-import type { OutboundAttachment } from "../consumer/envelope";
+import type { OutboundAction, OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import type {
   BotCommand,
@@ -235,7 +235,7 @@ export abstract class BaseBotAdapter {
     this._outboundConsumer = new OutboundConsumer(
       this.platform,
       url,
-      (id, text) => this.deliverOutbound(id, text),
+      (id, text, actions) => this.deliverOutbound(id, text, actions),
       (id, attachment) => this.deliverOutboundFile(id, attachment),
     );
     void this._outboundConsumer.start();

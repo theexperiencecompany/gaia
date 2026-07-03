@@ -26,6 +26,16 @@ class OutboundAttachment(BaseModel):
     caption: str | None = None
 
 
+class OutboundAction(BaseModel):
+    """An interactive button the bot renders alongside the message (e.g. a
+    Telegram inline-keyboard button). ``callback_data`` is the opaque token the
+    bot posts back when the button is tapped — for todo approvals it is
+    ``todo_approve:<todo_id>`` / ``todo_dismiss:<todo_id>``."""
+
+    label: str = Field(min_length=1)
+    callback_data: str = Field(min_length=1)
+
+
 class OutboundMessageEnvelope(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     platform: str = Field(min_length=1)
@@ -39,6 +49,10 @@ class OutboundMessageEnvelope(BaseModel):
     text: str | None = Field(default=None, min_length=1)
     text_parts: list[str] | None = None
     attachment: OutboundAttachment | None = None
+    # Optional interactive buttons attached to the message. Omitted from the wire
+    # payload when unset (see ``outbound_delivery._serialize``) so envelopes
+    # without actions remain byte-identical to the pre-actions format.
+    actions: list[OutboundAction] | None = None
     enqueued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")

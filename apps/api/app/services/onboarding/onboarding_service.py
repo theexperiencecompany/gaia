@@ -38,6 +38,20 @@ def _serialize_user(user_doc: dict[str, Any]) -> dict[str, Any]:
     return user_doc
 
 
+async def _seed_goal_memory(user_id: str, goal: str) -> None:
+    """Persist the user's stated onboarding goal to the memory system so every
+    future agent run can retrieve it. Best-effort background work: a memory
+    failure must not fail an already-completed onboarding."""
+    try:
+        await memory_engine.retain_single(
+            user_id,
+            f"The user is currently working on: {goal}",
+            source_type=MemorySourceType.MANUAL,
+        )
+    except Exception as e:
+        log.warning(f"{LogTag.ONBOARDING} Failed to seed goal memory for user {user_id}: {e}")
+
+
 async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
@@ -69,8 +83,14 @@ async def complete_onboarding(
         if onboarding_data.timezone:
             update_fields["timezone"] = onboarding_data.timezone.strip()
 
-        if onboarding_data.focus and onboarding_data.focus.strip():
-            update_fields["onboarding.focus"] = onboarding_data.focus.strip()
+        # Goal seed: the universal "what are you working on right now?" answer
+        # and the no-Gmail "focus" question capture the same intent. Unify them
+        # into the single canonical onboarding.focus field (reviving it on the
+        # Gmail path, which never set it) rather than duplicating a field. focus
+        # wins when present since it is the more specific this-week goal.
+        goal = (onboarding_data.focus or "").strip() or (onboarding_data.working_on or "").strip()
+        if goal:
+            update_fields["onboarding.focus"] = goal
 
         if onboarding_data.clarify_answers:
             kept = [
@@ -130,6 +150,11 @@ async def complete_onboarding(
             )
 
         background_tasks.add_task(seed_initial_user_data, user_id)
+
+        # Mirror the stated goal into the memory system so every future agent
+        # run sees it. Deferred so a memory failure can't fail onboarding.
+        if goal:
+            background_tasks.add_task(_seed_goal_memory, user_id, goal)
 
         log.info(f"{LogTag.ONBOARDING} Onboarding completed successfully for user {user_id}")
         return _serialize_user(updated_user)

@@ -109,6 +109,9 @@ class OnboardingRequest(BaseModel):
     focus: str | None = Field(
         None, max_length=500, description="User's current primary focus or goal"
     )
+    working_on: str | None = Field(
+        None, max_length=500, description="What the user is working on right now"
+    )
     clarify_answers: list[ClarifyAnswer] | None = Field(
         None,
         description="No-Gmail follow-up answers (scope/blocker/constraint)",
