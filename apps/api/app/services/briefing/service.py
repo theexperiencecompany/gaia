@@ -10,6 +10,7 @@ brief that reached a channel.
 from datetime import UTC, datetime, timedelta
 import json
 import re
+from uuid import uuid4
 
 from bson import ObjectId
 
@@ -114,8 +115,12 @@ async def _run_silent(user: dict, clock: UserClock, prompt: str, conversation_ke
         "email": user.get("email"),
         "timezone": clock.tz.key,
     }
-    # Fresh per-day thread so context never bloats and prior chat can't leak in.
-    conversation_id = f"briefing-{conversation_key}-{user['user_id']}-{clock.date_str}"
+    # Fresh thread per RUN, not per day: a same-day retry (or rerun) on a shared
+    # thread would resume the failed attempt's polluted state via the
+    # checkpointer, and stale turns would masquerade as today's context.
+    conversation_id = (
+        f"briefing-{conversation_key}-{user['user_id']}-{clock.date_str}-{uuid4().hex[:6]}"
+    )
     message, _ = await call_agent_silent(
         request=request,
         conversation_id=conversation_id,
