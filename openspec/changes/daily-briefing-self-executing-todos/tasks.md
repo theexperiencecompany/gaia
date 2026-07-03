@@ -9,7 +9,7 @@
 - [ ] 1.7 Silent classification of new user todos (offer / prep / stay-silent) as a post-create background step; offer renders as a dismissible affordance on the todo only — no notification.
 - [ ] 1.8 Execution-side approval contract: background-run prompt forbids outward actions on todos not entered via Approve; mid-run new outward action flips todo to `needs_you` with a linked conversation. Missing-integration handoff: complete with content + connect-or-take-content choice.
 - [ ] 1.9 Migration script: backfill `assignee`/`execution_status` from `gaia-tracked` labels, remove the label; dual-read in VFS projector (`tracked-todos-vfs` delta), context injection (`message_helpers.py`), and list filters for one release.
-- [ ] 1.10 Tier metering: add `gaia_todo_executions` to `apps/api/app/config/rate_limits.py` (free: launch-decision quota; pro: generous); enforce at the Approve/queue transition; at-quota Approve returns the upgrade state instead of a silent failure; pitched proposal exempt from TTL for 7 days; emit `upgrade_prompt_shown` / `upgrade_from_approve`.
+- [ ] 1.10 Tier metering: add `gaia_todo_executions` to `apps/api/app/config/rate_limits.py` (free: `month=5`, no daily cap; pro: generous); enforce at the Approve/queue transition; at-quota Approve returns the upgrade state instead of a silent failure; pitched proposal exempt from TTL for 7 days; emit `upgrade_prompt_shown` / `upgrade_from_approve`.
 - [ ] 1.11 `nx lint api && nx type-check api`; verify create → propose → approve → run → done/failed round-trip and the at-quota upgrade path in dev.
 
 ## 2. Phase B — Design exploration (gates all frontend build)
@@ -57,7 +57,8 @@
 
 ## 7. Phase G — Founder-persona end-to-end verification (gates all-users rollout)
 
-- [ ] 7.1 Run the full loop against the founder test account (`aryanranderiya1478@gmail.com`; memories readable via `ssh gaia-prod` over Tailscale) with goals "raise a pre-seed round / ship / post on socials": provision the briefing workflow, let it fire, and capture the actual generated briefing.
+- [ ] 7.0 Test setup (pre-authorized): snapshot the founder account's memories + todos (`aryanranderiya1478@gmail.com` via `ssh gaia-prod` over Tailscale — Mongo docs AND Chroma embeddings) into a dev seed; locate the test Telegram bot token in the existing `.env` files; pull ESP/PostHog/other credentials from Infisical (read-only, no writes); configure `brief@heygaia.io` as sender.
+- [ ] 7.1 Run the full loop against the seeded founder account with goals "raise a pre-seed round / ship / post on socials": provision the briefing workflow, fire it via execute-now, and capture the actual generated briefing. Simulate multi-day behaviors (72h expiry, 3-ignore winback, streak break, lookback) with backdated fixture records.
 - [ ] 7.2 Inspect and iterate until the bar is met: proposals trace to the real goals (investor research/DMs, shipping, socials — not generic inbox items), budgets hold, curation cleans, lookback reflects the prior day, idle/winback behaviors trigger correctly when simulated.
 - [ ] 7.3 Verify every channel end to end with the real account: dashboard card, Telegram inline Approve (tap → execution → message edit), email render + unsubscribe, heatmap/streak updates, at-quota upgrade path (simulated free tier).
 - [ ] 7.4 Only after sign-off: existing-user rollout — one-time all-channel announcement, memory-derivation vs bootstrap-interview branch per user, then the all-users provisioning backfill (design §12).

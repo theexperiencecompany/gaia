@@ -137,7 +137,7 @@ Progress state lives on the user doc (`first_steps: {step_key: completed_at}`), 
 
 ## 10. Free tier & conversion
 
-The hook is free; the labor is metered. Briefing, weekly digest, Mission Control, heatmap/streak, proposals, and the todo list are unlimited on free. GAIA todo **executions** meter through the existing tiered rate-limit system (`apps/api/app/config/rate_limits.py`) via a new `gaia_todo_executions` feature (free: small daily/monthly quota — exact numbers a launch decision, tuned by approve-rate data; pro: generous). GAIA proposes at full quality regardless of tier, with previews visible — so the at-quota Approve tap becomes the conversion surface: it opens the upgrade flow pitching the *specific staged work* ("12 investor DMs drafted and ready — upgrade to send"), reusing the existing rate-limit upgrade-CTA pattern. The pitched proposal is exempt from TTL expiry for up to 7 days. Conversion events (`upgrade_prompt_shown`, `upgrade_from_approve`) join the analytics set.
+The hook is free; the labor is metered. Briefing, weekly digest, Mission Control, heatmap/streak, proposals, and the todo list are unlimited on free. GAIA todo **executions** meter through the existing tiered rate-limit system (`apps/api/app/config/rate_limits.py`) via a new `gaia_todo_executions` feature (**free: 5/month launch default** — monthly, not daily, so every approve is felt; pro: generous; tuned by approve-rate + conversion data). GAIA proposes at full quality regardless of tier, with previews visible — so the at-quota Approve tap becomes the conversion surface: it opens the upgrade flow pitching the *specific staged work* ("12 investor DMs drafted and ready — upgrade to send"), reusing the existing rate-limit upgrade-CTA pattern. The pitched proposal is exempt from TTL expiry for up to 7 days. Conversion events (`upgrade_prompt_shown`, `upgrade_from_approve`) join the analytics set.
 
 ## 11. Design mandate
 
@@ -154,5 +154,6 @@ No cold starts. When briefings are provisioned for the existing base: (1) every 
 1. Todo model + migration ship first (dual-read window is a data-migration mechanism, not a flag).
 2. Founder-persona end-to-end verification (tasks Phase G) gates the all-users provisioning backfill: real account, real memories, goals "raise a pre-seed / ship / post on socials" — the generated briefing, proposals, approve round-trip, and channel delivery are inspected end to end and iterated until they meet the bar.
 3. Existing-user announcement + backfill run once verification passes (§12).
-4. Email requires ESP keys + sending domain (SPF/DKIM) in prod — an ops precondition satisfied before the backfill so default-on email works from day one.
+4. Email requires ESP keys + sending domain (SPF/DKIM) in prod — an ops precondition satisfied before the backfill so default-on email works from day one. Sender: `brief@heygaia.io`. All credentials (ESP, test Telegram bot token, PostHog) are read from Infisical / existing `.env` files — read-only, no secret writes.
+5. Founder E2E (Phase G) is pre-authorized: snapshot the founder account's memories + todos (`aryanranderiya1478@gmail.com`, via `ssh gaia-prod`) into a dev seed — Mongo docs and Chroma embeddings both.
 5. Post-login redirect stays `/c`; moving it to `/dashboard` is a deferred decision on approve-rate data.

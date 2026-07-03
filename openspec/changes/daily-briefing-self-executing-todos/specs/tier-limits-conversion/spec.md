@@ -2,7 +2,7 @@
 
 ### Requirement: The hook is free; the labor is metered
 
-The daily briefing, weekly digest, Mission Control (timeline, heatmap, streak), proposals, and the todo list SHALL be available to free users without limits — the retention hook is never paywalled. What free users pay for is GAIA's **execution**: approving/queueing GAIA todo executions SHALL be metered through the existing tiered rate-limit system (`apps/api/app/config/rate_limits.py`) with a new `gaia_todo_executions` feature entry (free: small daily/monthly quota; pro: generous). GAIA SHALL keep proposing at full quality regardless of tier — free users always see what GAIA *would* do.
+The daily briefing, weekly digest, Mission Control (timeline, heatmap, streak), proposals, and the todo list SHALL be available to free users without limits — the retention hook is never paywalled. What free users pay for is GAIA's **execution**: approving/queueing GAIA todo executions SHALL be metered through the existing tiered rate-limit system (`apps/api/app/config/rate_limits.py`) with a new `gaia_todo_executions` feature entry (free: **5 per month** launch default — monthly so each approve is felt; pro: generous). GAIA SHALL keep proposing at full quality regardless of tier — free users always see what GAIA *would* do.
 
 #### Scenario: Free user feels the magic first
 - **WHEN** a free user within quota taps Approve
