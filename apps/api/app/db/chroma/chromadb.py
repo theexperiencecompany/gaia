@@ -155,10 +155,13 @@ async def init_chromadb_client():
     host: str = settings.CHROMADB_HOST  # type: ignore
     port: int = settings.CHROMADB_PORT  # type: ignore
 
-    # Initialize ChromaDB async http client
+    # Initialize ChromaDB async http client. Anonymized telemetry is disabled:
+    # chromadb's bundled posthog capture() is incompatible with our pinned
+    # posthog version and spams "Failed to send telemetry event" on every call.
     client = await chromadb.AsyncHttpClient(
         host=host,
         port=port,
+        settings=Settings(anonymized_telemetry=False),
     )
 
     response = await client.heartbeat()

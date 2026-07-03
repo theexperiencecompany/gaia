@@ -228,7 +228,9 @@ full list of todos to create and their complete work orders. Never reply
 without the todos having been created.
 
 For each goal, create at most 2 INTERNAL todos (requires_approval=False), each
-with a description that is a complete work order: exactly what to produce,
+with goal_id set to that goal's id (MANDATORY — an unlinked todo is invisible
+to the goal's lane and to tomorrow's brief) and a description that is a
+complete work order: exactly what to produce,
 where to put it (canvas, or artifact link in canvas), and what done looks like.
 They run tonight on their own.
 
