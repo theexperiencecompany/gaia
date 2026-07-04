@@ -28,6 +28,7 @@ from app.agents.core.background.executor_capture import (
     teardown_executor_capture,
 )
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
+from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
@@ -36,6 +37,7 @@ from app.models.stream_events import (
     ConversationDescriptionFrame,
     ConversationInitializedFrame,
     ErrorFrame,
+    MainResponseCompleteFrame,
 )
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
@@ -53,7 +55,9 @@ from app.services.chat.workspace import (
     forward_artifact_events,
     schedule_last_active_touch,
 )
+from app.services.hil.conversational import resolve_pending_from_message
 from app.services.storage import flush_fs_metrics
+from app.utils.agent_utils import format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, log, wide_task
@@ -168,6 +172,13 @@ async def _run_chat_stream(
             is_new_conversation,
         )
 
+        # If this conversation has a HIL approval waiting and the user answered
+        # it in chat (yes/no) rather than via a button, resolve it here and end
+        # the turn without running the agent — the paused run continues on its
+        # original stream. An unrelated message auto-denies and falls through.
+        if await _resolve_pending_approval_turn(body, user, conversation_id, stream_id, state):
+            return
+
         # Start description generation only after the conversation row exists
         # (created in ``_publish_init_chunk``). Starting it earlier races the
         # row insert: the title LLM can finish first and the ``$set`` description
@@ -218,6 +229,43 @@ async def _run_chat_stream(
         state.error = await _handle_stream_error(stream_id, e)
     finally:
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
+
+
+async def _resolve_pending_approval_turn(
+    body: MessageRequestWithHistory,
+    user: dict,
+    conversation_id: str,
+    stream_id: str,
+    state: _StreamState,
+) -> bool:
+    """Resolve a pending approval from the user's chat reply.
+
+    Returns ``True`` when the reply approved/declined the pending action — the
+    turn is fully handled here (ack streamed + persisted) and the caller must
+    return without running the agent. Returns ``False`` when nothing was pending
+    or the message was unrelated (already auto-denied), so the normal turn runs.
+    """
+    user_id = user.get("user_id")
+    message = user_message_content_from(body)
+    if not user_id or not message:
+        return False
+
+    action = await resolve_pending_from_message(conversation_id, user_id, message)
+    if action not in ("approve", "deny"):
+        return False
+
+    ack = HIL_ACK_APPROVED if action == "approve" else HIL_ACK_DENIED
+    state.complete_message = ack
+    state.turn_completed_at = datetime.now(UTC)
+    await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
+    await stream_manager.publish_chunk(
+        stream_id,
+        f"data: {json.dumps(MainResponseCompleteFrame(main_response_complete=True).model_dump())}\n\n",
+    )
+    await _persist_turn(stream_id, body, user, conversation_id, state)
+    await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
+    await stream_manager.complete_stream(stream_id)
+    return True
 
 
 def _set_stream_log_context(
