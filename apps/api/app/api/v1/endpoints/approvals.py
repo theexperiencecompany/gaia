@@ -9,10 +9,15 @@ from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
     ApprovalDecisionResponse,
     HILPreferencesResponse,
+    SetToolOverrideRequest,
     UpdateHILPreferencesRequest,
 )
 from app.services.hil.bridge import relay_approval_decision
-from app.services.hil.preferences import get_hil_preferences, update_hil_preferences
+from app.services.hil.preferences import (
+    get_hil_preferences,
+    set_tool_override,
+    update_hil_preferences,
+)
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -63,6 +68,22 @@ async def put_preferences(
     prefs = await update_hil_preferences(
         user["user_id"],
         enabled=payload.enabled,
-        always_allowed_tools=payload.always_allowed_tools,
+        tool_overrides=payload.tool_overrides,
     )
+    return HILPreferencesResponse(**prefs.model_dump())
+
+
+@router.put("/tools/{tool_name}")
+async def set_tool_approval(
+    tool_name: str,
+    payload: SetToolOverrideRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> HILPreferencesResponse:
+    """Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override."""
+    log.set(
+        user={"id": user["user_id"]},
+        hil={"operation": "set_tool_override", "tool": tool_name, "ask": payload.ask},
+    )
+    await set_tool_override(user["user_id"], tool_name, payload.ask)
+    prefs = await get_hil_preferences(user["user_id"])
     return HILPreferencesResponse(**prefs.model_dump())

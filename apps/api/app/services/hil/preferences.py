@@ -20,7 +20,13 @@ async def get_hil_preferences(user_id: str) -> HILPreferences:
     user_doc = await users_collection.find_one(
         {"_id": ObjectId(user_id)}, {"hil_preferences": 1}
     )
-    prefs = HILPreferences(**((user_doc or {}).get("hil_preferences") or {}))
+    raw = (user_doc or {}).get("hil_preferences") or {}
+    # Legacy self-heal: fold a pre-override ``always_allowed_tools`` allow-list into
+    # the ``tool_overrides`` map (each becomes "never ask"). HIL is unlaunched, so
+    # this only ever touches dev docs; extra keys are ignored by the model.
+    if "tool_overrides" not in raw and "always_allowed_tools" in raw:
+        raw = {**raw, "tool_overrides": dict.fromkeys(raw["always_allowed_tools"] or [], False)}
+    prefs = HILPreferences(**raw)
     await set_cache(_cache_key(user_id), prefs.model_dump(), ttl=HIL_PREFS_CACHE_TTL)
     return prefs
 
@@ -29,22 +35,22 @@ async def update_hil_preferences(
     user_id: str,
     *,
     enabled: bool | None = None,
-    always_allowed_tools: list[str] | None = None,
+    tool_overrides: dict[str, bool] | None = None,
 ) -> HILPreferences:
     updates: dict[str, object] = {}
     if enabled is not None:
         updates["hil_preferences.enabled"] = enabled
-    if always_allowed_tools is not None:
-        updates["hil_preferences.always_allowed_tools"] = always_allowed_tools
+    if tool_overrides is not None:
+        updates["hil_preferences.tool_overrides"] = tool_overrides
     if updates:
         await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
         await delete_cache(_cache_key(user_id))
     return await get_hil_preferences(user_id)
 
 
-async def add_always_allowed_tool(user_id: str, tool_name: str) -> None:
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$addToSet": {"hil_preferences.always_allowed_tools": tool_name}},
-    )
+async def set_tool_override(user_id: str, tool_name: str, ask: bool | None) -> None:
+    """Set (``ask`` = True/False) or clear (``ask`` = None) one tool's override."""
+    field = f"hil_preferences.tool_overrides.{tool_name}"
+    update: dict[str, object] = {"$unset": {field: ""}} if ask is None else {"$set": {field: ask}}
+    await users_collection.update_one({"_id": ObjectId(user_id)}, update)
     await delete_cache(_cache_key(user_id))

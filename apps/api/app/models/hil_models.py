@@ -11,7 +11,11 @@ class HILPreferences(BaseModel):
     """Stored on the user document under ``hil_preferences``."""
 
     enabled: bool = HIL_DEFAULT_ENABLED
-    always_allowed_tools: list[str] = Field(default_factory=list)
+    # Per-tool overrides of the default (curated) gating: tool name -> should-ask.
+    # A tool absent from the map uses its default classification. Holds only the
+    # tools the user explicitly flipped, so it stays small and survives changes
+    # to the defaults.
+    tool_overrides: dict[str, bool] = Field(default_factory=dict)
 
 
 class HILToolRiskRecord(BaseModel):

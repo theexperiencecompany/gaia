@@ -21,7 +21,7 @@ from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
 from app.services.hil.bridge import ApprovalOutcome, build_summary, request_approval
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
-from app.services.hil.preferences import add_always_allowed_tool, get_hil_preferences
+from app.services.hil.preferences import get_hil_preferences, set_tool_override
 from shared.py.wide_events import log
 
 Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
@@ -58,14 +58,20 @@ async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMess
         return await handler(request)
 
     prefs = await get_hil_preferences(context.user_id)
-    if not prefs.enabled or tool_name in prefs.always_allowed_tools:
+    if not prefs.enabled:
         return await handler(request)
 
     tool = getattr(request, "tool", None)
-    description = getattr(tool, "description", "") or ""
-    if not await is_tool_destructive(
-        tool_name, description, destructive_hint=mcp_destructive_hint(tool)
-    ):
+    # A user's explicit per-tool choice wins in both directions — even over an MCP
+    # destructiveHint — since it's a deliberate setting on their own account. Only
+    # tools with no override fall back to the default classifier.
+    override = prefs.tool_overrides.get(tool_name)
+    if override is None:
+        description = getattr(tool, "description", "") or ""
+        override = await is_tool_destructive(
+            tool_name, description, destructive_hint=mcp_destructive_hint(tool)
+        )
+    if not override:
         return await handler(request)
 
     return await _await_decision_then_run(request, handler, context, tool_name, tool_call_id, args)
@@ -93,7 +99,7 @@ async def _await_decision_then_run(
 
     if outcome.status == "approved":
         if outcome.scope == "always_tool":
-            await add_always_allowed_tool(context.user_id, tool_name)
+            await set_tool_override(context.user_id, tool_name, False)
         return await handler(request)
 
     return _refusal_message(tool_name, tool_call_id, outcome)
