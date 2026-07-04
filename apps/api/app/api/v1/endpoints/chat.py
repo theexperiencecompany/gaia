@@ -21,7 +21,7 @@ from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.decorators import tiered_rate_limit
+from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
@@ -114,6 +114,10 @@ async def chat_stream_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_USER_ID_REQUIRED,
         )
+    # Cost wall: the decorator above caps how MANY messages; this caps how
+    # EXPENSIVE they were. 429s before any stream work when the day's LLM
+    # spend (recorded per call by LLMAccountingMiddleware) is exhausted.
+    await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
     # Seed the agent's home zone (DB-resolved, browser-header-healed) so its
     # "now" and schedule defaults run in the user's real zone, not stored UTC.
     user = {**user, "timezone": home_timezone}

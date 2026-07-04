@@ -14,9 +14,15 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     tiered_limiter,
 )
+from app.config.rate_limits import (
+    RateLimitPeriod,
+    get_daily_cost_budget_usd,
+    get_reset_time,
+)
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
+from app.services.cost_budget import get_cost
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -302,6 +308,32 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
         feature_key=feature_key,
         user_plan=user_plan,
     )
+
+
+async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
+    """Block when the user's rolling daily USD cost budget is exhausted.
+
+    The message-count limiter caps HOW MANY requests a user makes; this caps
+    HOW EXPENSIVE they were. Free budgets are a real usage wall; pro budgets
+    are abuse-level guards a legitimate user never hits. Raises the same
+    ``RateLimitExceededException`` (429) as the count limiter so the frontend
+    toast / upgrade-modal path renders identically.
+
+    ``feature_key`` names the surface being blocked (e.g. ``chat_messages``,
+    ``trigger_workflow_executions``) for the 429 payload and reset copy.
+    """
+    plan_type = await payment_service.get_cached_plan_type(user_id)
+    spent = await get_cost(user_id, RateLimitPeriod.DAY)
+    if spent >= get_daily_cost_budget_usd(plan_type):
+        log.warning(
+            f"{LogTag.API} Daily cost budget exhausted for user {user_id} "
+            f"(plan={plan_type.value}, spent=${spent:.4f}, feature={feature_key})"
+        )
+        raise RateLimitExceededException(
+            feature=feature_key,
+            plan_required="pro" if plan_type == PlanType.FREE else None,
+            reset_time=get_reset_time(RateLimitPeriod.DAY),
+        )
 
 
 def set_user_context(user_id: str, initiator: str = "frontend", **kwargs):
