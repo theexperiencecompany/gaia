@@ -146,7 +146,13 @@ const handleForbiddenError = (
   }
 };
 
-const handleRateLimitError = (errorData: unknown): boolean => {
+/**
+ * Renders the rate-limit upsell UI (feature-restricted / rate-limit toast)
+ * for a 429 response body. Returns false when the body is not the backend's
+ * rate_limit_exceeded shape so callers can fall back to a generic toast.
+ * Shared by the axios interceptor and the chat-stream client.
+ */
+export const handleRateLimitError = (errorData: unknown): boolean => {
   const rateLimitData =
     errorData && typeof errorData === "object" && "detail" in errorData
       ? (errorData as { detail: unknown }).detail
