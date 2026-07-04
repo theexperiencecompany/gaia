@@ -152,6 +152,13 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         ):
             if doc.get("recurrence"):
                 await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.QUEUED)
+            elif doc.get("execution_intent") == "release":
+                # A release run completes ONLY when the agent explicitly calls
+                # complete_tracked_todo after a real send (see _RELEASE_DIRECTIVE).
+                # Reaching here means it finished without that signal — the outward
+                # action was NOT confirmed, so hand it to the user instead of
+                # silently marking an unsent action done.
+                await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.NEEDS_YOU)
             else:
                 await tracked_todo_service.complete_tracked_todo(
                     todo_id, user_id, summary="Completed overnight by GAIA."
@@ -330,16 +337,29 @@ _RELEASE_DIRECTIVE = (
     "etc.). Do NOT reword, re-draft, re-plan, or ask again — the content is final "
     "and approved. Send to EXACTLY the recipients/destinations named in the "
     "deliverable and no others.\n"
-    "After executing, report precisely what you did: the action taken, the exact "
-    "recipients/destinations, and any confirmation IDs. If the required "
-    "integration is not connected or the send genuinely fails, STOP and say so "
-    "plainly — never claim it was sent when it was not, and never quietly turn it "
-    "back into a draft."
+    "Do NOT edit the notes or canvas, and do NOT call update_tracked_todo_canvas "
+    "or any notes-writing tool — the content is already final. Your ONLY job is to "
+    "DELIVER the action and then confirm it.\n"
+    "The user's approval has ALREADY happened — this run IS the post-approval send "
+    "step, so you must complete the delivery, not stop at a draft. For an email, "
+    "follow the two-step flow to the end: create the draft with "
+    "GMAIL_CREATE_EMAIL_DRAFT, then IMMEDIATELY call GMAIL_SEND_DRAFT with the "
+    "returned draft_id to actually deliver it to the recipient's inbox. Do NOT "
+    "stop after the draft — a draft that is never sent does NOT count.\n"
+    "When — and ONLY when — the send tool has returned a real success, call "
+    "complete_tracked_todo(todo_id='{todo_id}', summary=...) with a one-line "
+    "summary of exactly what you sent and to whom. That call is how you confirm "
+    "the action is truly done; it is the last thing you do.\n"
+    "If the integration is not connected, or the send genuinely fails, or you did "
+    "NOT get a real success back, do NOT call complete_tracked_todo — instead say "
+    "plainly what went wrong so the user can step in. Never claim it was sent when "
+    "it was not, and never quietly turn it back into a draft."
 )
 
 
 def _build_execution_prompt(
     *,
+    todo_id: str,
     title: str,
     description: str,
     deliverable: str | None,
@@ -362,7 +382,7 @@ def _build_execution_prompt(
             )
         if reference_context:
             parts.append(reference_context)
-        parts.append(_RELEASE_DIRECTIVE)
+        parts.append(_RELEASE_DIRECTIVE.replace("{todo_id}", todo_id))
         return "\n\n".join(parts)
 
     prompt_parts = [f"Execute the following scheduled task: {title}"]
@@ -376,65 +396,6 @@ def _build_execution_prompt(
         prompt_parts.append(reference_context)
     prompt_parts.append(_FACET_AUTHORING_DIRECTIVE)
     return "\n\n".join(prompt_parts)
-
-
-# An approved (release) run must actually PERFORM the outward action. We verify
-# this from the run's REAL tool results, not the agent's prose — the agent can
-# fabricate what it *says* ("sent, msg-12345") but not what a tool *returns*.
-# Deterministic + free (no model call, which matters when the primary model is
-# unavailable): a release counts as performed only if a tool whose name denotes
-# an outward action (send/post/create — NOT a draft or a read) was actually
-# invoked. Limitation: a called-but-errored action still counts; refine to parse
-# tool outputs when a real end-to-end trace is available to validate against.
-_RELEASE_ACTION_VERBS = (
-    "SEND",
-    "POST",
-    "PUBLISH",
-    "SUBMIT",
-    "REPLY",
-    "CREATE",
-    "ADD",
-    "INSERT",
-    "UPDATE",
-    "DELETE",
-)
-_RELEASE_NAME_KEYS = ("tool_name", "name", "tool", "toolName")
-
-
-def _collect_tool_names(blob: object) -> list[str]:
-    """Recursively pull every tool-name string out of a tool_data structure,
-    flattening nested subagent groups (the send may run inside a sub-agent)."""
-    names: list[str] = []
-    if isinstance(blob, dict):
-        for key in _RELEASE_NAME_KEYS:
-            v = blob.get(key)
-            if isinstance(v, str) and v and v not in ("subagent_group", "tool_calls_data"):
-                names.append(v)
-        for v in blob.values():
-            names.extend(_collect_tool_names(v))
-    elif isinstance(blob, list):
-        for item in blob:
-            names.extend(_collect_tool_names(item))
-    return names
-
-
-def _release_performed(tool_data: object) -> bool:
-    """True if the run actually invoked an outward-action tool (not a draft/read).
-
-    Integration/composio tools that reach external services are UPPER_SNAKE
-    (``GMAIL_SEND_EMAIL``); GAIA's own internal tools are lower_snake
-    (``update_tracked_todo_canvas``) — only the former perform outward actions, so
-    an internal tool that merely *contains* an action verb (update/create) never
-    counts.
-    """
-    for raw in _collect_tool_names(tool_data):
-        if not raw.isupper():
-            continue
-        if "DRAFT" in raw:
-            continue
-        if any(verb in raw for verb in _RELEASE_ACTION_VERBS):
-            return True
-    return False
 
 
 async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str:
@@ -470,6 +431,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     # Build prompt
     title: str = doc.get("title", "Untitled Todo")
     prompt = _build_execution_prompt(
+        todo_id=todo_id,
         title=title,
         description=doc.get("description", ""),
         deliverable=deliverable,
@@ -516,7 +478,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
 
     complete_message: str = ""
     try:
-        complete_message, tool_data = await call_agent_silent(
+        complete_message, _tool_data = await call_agent_silent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
@@ -545,31 +507,10 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         entry=f"✓ {end_iso} — scheduled run finished (summary={summary!r})",
     )
 
-    # Honesty gate for approved (release) runs: the agent may claim it sent when
-    # it only drafted or did nothing. Verify from the REAL tool results — if no
-    # outward-action tool actually ran, DON'T let this be marked done/sent; flip
-    # it to needs_you with the truth so the user is never told a lie.
-    if doc.get("execution_intent") == "release":
-        td = tool_data.get("tool_data") if isinstance(tool_data, dict) else tool_data
-        log.info("tracked_todo.release_tools", todo_id=todo_id, tools=_collect_tool_names(td))
-        performed = _release_performed(td)
-    else:
-        performed = True
-    if doc.get("execution_intent") == "release" and not performed:
-        log.warning("tracked_todo.release_not_performed", todo_id=todo_id)
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id)},
-            {
-                "$set": {
-                    "error_message": (
-                        "GAIA prepared this but couldn't confirm the send actually "
-                        "went through — it needs your attention."
-                    )
-                }
-            },
-        )
-        await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.NEEDS_YOU)
-
+    # Approved (release) runs confirm themselves: the agent calls
+    # complete_tracked_todo ONLY after a real send succeeds (see _RELEASE_DIRECTIVE).
+    # If it didn't, the todo stays not-completed and _execute_todo_with_retry routes
+    # it to needs_you — so an unsent action is never silently marked done.
     log.info("tracked_todo.agent_completed", todo_id=todo_id)
     return complete_message[:200] if complete_message else ""
 
