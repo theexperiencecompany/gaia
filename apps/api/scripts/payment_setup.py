@@ -127,7 +127,8 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "features": [
                 "All tools & 100s of integrations",
                 "Standard models",
-                "Standard usage limits",
+                "15 chat messages/day",
+                "50 saved memories",
                 "Community support",
             ],
             "is_active": True,
@@ -141,8 +142,10 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "duration": "monthly",
             "max_users": 1,
             "features": [
-                "Higher usage limits",
+                "3,000 chat messages/day",
+                "Unlimited memories",
                 "More powerful models",
+                "Run large tasks like full-inbox triage",
                 "Priority support",
                 "Early access to new features",
             ],
@@ -157,8 +160,10 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "duration": "yearly",
             "max_users": 1,
             "features": [
-                "Higher usage limits",
+                "3,000 chat messages/day",
+                "Unlimited memories",
                 "More powerful models",
+                "Run large tasks like full-inbox triage",
                 "Priority support",
                 "Early access to new features",
             ],
