@@ -6,6 +6,7 @@ Used by agent_helpers, subagent_runner, and chat_service.
 from datetime import UTC, datetime
 from typing import Any
 
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.utils.agent_utils import IntegrationMetadata, format_tool_call_entry
@@ -135,6 +136,27 @@ async def recover_stream_state(
     return complete_message, tool_data
 
 
+def _approval_id_of(entry: dict[str, Any]) -> str | None:
+    """The approval_id of a HIL ``approval_request`` tool_data entry, or None."""
+    if entry.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME:
+        return None
+    data = entry.get("data")
+    return data.get("approval_id") if isinstance(data, dict) else None
+
+
+def _append_or_upsert_tool_data(entries: list[dict[str, Any]], entry: dict[str, Any]) -> None:
+    """Append ``entry``, except a HIL approval frame replaces the prior frame for
+    the same approval_id in place — so the persisted turn carries exactly one
+    entry per approval, in its final (resolved) status rather than a stuck one."""
+    approval_id = _approval_id_of(entry)
+    if approval_id is not None:
+        for index, existing in enumerate(entries):
+            if _approval_id_of(existing) == approval_id:
+                entries[index] = entry
+                return
+    entries.append(entry)
+
+
 def absorb_collector_event(
     evt: dict[str, Any],
     accumulated: dict[str, Any],
@@ -147,7 +169,7 @@ def absorb_collector_event(
     list with associated outputs and subagent start/end pairs.
     """
     if "tool_data" in evt:
-        accumulated["tool_data"].append(evt["tool_data"])
+        _append_or_upsert_tool_data(accumulated["tool_data"], evt["tool_data"])
     if "tool_output" in evt:
         out = evt["tool_output"]
         tid, val = out.get("tool_call_id"), out.get("output")

@@ -73,8 +73,13 @@ async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMess
     stream_id = configurable.get("stream_id")
     user_id = configurable.get("user_id")
     conversation_id = configurable.get("thread_id")
-    # Interactive runs only: no stream or user means nobody can answer.
+    # Interactive runs only: no stream/user means nobody can answer, and a
+    # background run (scheduled workflow, queued task) has no live client to
+    # approve — gating it would just stall until timeout. Background approvals
+    # are a later phase.
     if not stream_id or not user_id or not conversation_id:
+        return await handler(request)
+    if configurable.get("execution_mode") == "background":
         return await handler(request)
 
     prefs = await get_hil_preferences(user_id)
