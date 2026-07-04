@@ -37,6 +37,11 @@ async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
         log.warning(f"{LogTag.AGENT} plan_model lookup failed; keeping default model", error=str(e))
         return
 
+    # Stamp the resolved plan on the configurable: children inherit it (see
+    # agent_helpers.build_agent_config) and the accounting middleware reads it
+    # for budget-wall enforcement.
+    configurable["plan_type"] = plan.value
+
     # Free runs the default model; every other (paid) tier gets the better model,
     # so new paid plans are covered without touching this routing.
     if plan == PlanType.FREE:

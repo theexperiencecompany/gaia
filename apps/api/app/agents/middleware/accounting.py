@@ -6,18 +6,28 @@ input/cached/output tokens, credits charged, step index, and agent name. Also
 emits ``recursion_high_water_mark`` when a run has consumed ≥80% of its
 recursion limit so we can tune the cap from real data.
 
-This middleware is a prerequisite for credit enforcement (CREDITS_PLAN.md
-phase 2) but explicitly does NOT decrement credits or gate calls today. The
-``@before_model`` hook is a no-op stub; turning it on in a later phase only
-requires flipping the gating logic.
+Also the budget enforcement seam: every model call records its USD cost into
+the user's day/month budget windows and its tokens into the request tree's
+aggregate counter (``app.services.cost_budget``), and ``awrap_model_call``
+short-circuits the invocation with a user-facing stop message when the daily
+cost budget or the per-request token ceiling is exhausted. This hook runs on
+every execution path (chat, workflows, bots, voice, subagents), so no entry
+point can bypass the walls — the endpoint-level 429 gates are the nice UX,
+this is the law.
 
 Runs as a LangChain :class:`AgentMiddleware` via `create_agent(middleware=...)`.
 """
 
+from collections.abc import Awaitable, Callable
 import time
 from typing import Any
 
-from langchain.agents.middleware.types import AgentMiddleware, AgentState
+from langchain.agents.middleware.types import (
+    AgentMiddleware,
+    AgentState,
+    ModelRequest,
+    ModelResponse,
+)
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime, get_config
@@ -25,7 +35,12 @@ from langgraph.runtime import Runtime, get_config
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
-from app.services.cost_budget import add_cost
+from app.models.payment_models import PlanType
+from app.services.cost_budget import (
+    add_cost,
+    add_request_tokens,
+    get_budget_stop_reason,
+)
 from shared.py.wide_events import ModelContext, log
 
 
@@ -103,9 +118,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     - High-water-mark emission: when the run's step counter passes
       ``RECURSION_HWM_FRACTION * AGENT_RECURSION_LIMIT``, emit
       ``recursion_high_water_mark`` exactly once per thread.
-    - ``@before_model``: stubbed no-op today. Will gate credit-exhausted users
-      in CREDITS_PLAN.md phase 2 via LangGraph's native
-      ``@hook_config(can_jump_to=["end"])`` mechanism — no exception raising.
+    - ``@awrap_model_call``: the budget wall — short-circuits the model call
+      with a stop message when the daily cost budget or per-request token
+      ceiling is exhausted (see :func:`get_budget_stop_reason`).
     """
 
     def __init__(self, agent_name: str, recursion_limit: int = AGENT_RECURSION_LIMIT) -> None:
@@ -145,18 +160,70 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         state: AgentState[Any],
         runtime: Runtime[Any],
     ) -> dict[str, Any] | None:
-        """Pre-call hook. Stub today.
+        """Pre-call hook: stamp the model-call start time for latency deltas.
 
-        Credit gating will flip on here in CREDITS_PLAN.md phase 2. When
-        enabled, return ``{"messages": [AIMessage("Credit limit reached…")]}``
-        plus the ``jump_to="end"`` marker — the native LangGraph escape
-        hatch — instead of raising an exception.
+        Budget GATING does not live here — a before_model return can only
+        merge state; the custom graph loop (create_agent.acall_model) never
+        routes on ``jump_to``, so it would not stop the call. Enforcement is
+        in :meth:`awrap_model_call`, which can short-circuit the invocation.
         """
         del state, runtime  # state not consulted in this pre-call hook yet
         config = _current_config()
         thread_id = self._thread_id(config)
         self._start_ts[thread_id] = time.monotonic()
         return None
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
+    ) -> ModelResponse:
+        """Budget wall: stop the run BEFORE the model is invoked when a limit binds.
+
+        Runs on every model call in every execution path (chat, workflows,
+        bots, voice, subagents) — the endpoint gates are UX; this is the
+        backstop no entry point can route around. Checks, in order:
+
+        1. Daily USD cost budget (free = usage wall, pro = abuse guard).
+        2. Per-request aggregate token ceiling across the whole agent tree
+           (keyed by the inherited ``root_request_id``).
+
+        On a hit, returns the user-facing stop text as the final AIMessage —
+        no tool calls, so the graph ends naturally. Fail-open on infra errors:
+        a Redis hiccup must never take down the turn.
+        """
+        configurable = _current_config().get("configurable", {}) or {}
+        user_id = configurable.get("user_id")
+        root_request_id = configurable.get("root_request_id")
+        plan_raw = configurable.get("plan_type")
+        plan_type: PlanType | None
+        try:
+            plan_type = PlanType(plan_raw) if plan_raw else None
+        except ValueError:
+            plan_type = None
+
+        try:
+            stop_reason = await get_budget_stop_reason(
+                str(user_id) if user_id else None,
+                plan_type,
+                str(root_request_id) if root_request_id else None,
+            )
+        except Exception as e:
+            log.warning(f"{LogTag.AGENT} Budget check failed (failing open): {e}")
+            stop_reason = None
+
+        if stop_reason is not None:
+            log.warning(
+                "budget_stop",
+                event_name="budget_stop",
+                agent_name=self.agent_name,
+                user_id=user_id,
+                plan_type=plan_raw,
+                root_request_id=root_request_id,
+            )
+            return ModelResponse(result=[AIMessage(content=stop_reason)])
+
+        return await handler(request)
 
     async def aafter_model(
         self,
@@ -198,15 +265,19 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             log.warning(f"{LogTag.AGENT} Token cost calc failed for {model_name}: {e}")
             total_cost = 0.0
 
-        # Record real spend into the day/month budget windows. This hook runs
-        # for every model call on every execution path (chat, workflows, bots,
-        # voice, subagents), making it the single metering seam. Fail-open: a
-        # Redis hiccup must never fail the model call.
-        if user_id and total_cost > 0:
-            try:
+        # Record real spend into the day/month budget windows and the request
+        # tree's aggregate token counter. This hook runs for every model call
+        # on every execution path (chat, workflows, bots, voice, subagents),
+        # making it the single metering seam. Fail-open: a Redis hiccup must
+        # never fail the model call.
+        root_request_id = configurable.get("root_request_id")
+        try:
+            if user_id and total_cost > 0:
                 await add_cost(str(user_id), total_cost)
-            except Exception as e:
-                log.warning(f"{LogTag.AGENT} Cost budget recording failed: {e}")
+            if root_request_id:
+                await add_request_tokens(str(root_request_id), input_tokens + output_tokens)
+        except Exception as e:
+            log.warning(f"{LogTag.AGENT} Cost/token budget recording failed: {e}")
 
         step_index = self._next_step(thread_id)
         start = self._start_ts.pop(thread_id, None)

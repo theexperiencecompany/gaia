@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import json
 import re
 from typing import cast
+from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
@@ -311,6 +312,16 @@ def build_agent_config(  # NOSONAR python:S107
         "__pinned_memories__": resolved["pinned_memories"],
         "__pinned_skills__": resolved["pinned_skills"],
     }
+
+    # One id for the WHOLE user turn: generated at the top-level call (no
+    # parent) and inherited by every child agent (executor, handoff subagents,
+    # spawn loops). The accounting middleware keys the request tree's aggregate
+    # token counter on it, so the per-request ceiling binds across the tree
+    # instead of resetting per graph. plan_type is stamped by apply_plan_model
+    # on the top-level configurable and propagated the same way.
+    configurable["root_request_id"] = inherited.get("root_request_id") or str(uuid4())
+    if inherited.get("plan_type"):
+        configurable["plan_type"] = inherited["plan_type"]
 
     # Stash in configurable so child agents (spawned via asyncio.create_task)
     # re-emit the same trace_id from their own build_agent_config call.
