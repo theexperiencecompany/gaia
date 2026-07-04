@@ -2,10 +2,11 @@
 
 The high-craft edition template (``editions/``) targets a real browser, so it
 leans on modern CSS that Gmail/Outlook strip. Rather than degrade the design to
-email-safe HTML, we rasterize the edition to a PNG (``render.py``) and embed it
-inline in the email, with a small, genuinely email-safe **action strip** beneath
-it (real links + alt text) so approvals stay one tap and the mail degrades
-gracefully when images are blocked.
+email-safe HTML, we rasterize the edition to a PNG (``render.py``), host it on
+the CDN, and reference it by URL — Gmail blocks base64 ``data:`` images and a
+hosted URL has no size ceiling, so the full-res edition renders everywhere.
+Beneath it sits a small, genuinely email-safe **action strip** (real links +
+alt text) so approvals stay one tap and the mail degrades if images are off.
 
 Nothing here performs an outward action — links deep-link into the app where the
 user approves. The email can never approve or send on its own.
@@ -13,7 +14,7 @@ user approves. The email can never approve or send on its own.
 
 from __future__ import annotations
 
-import base64
+import asyncio
 from datetime import date as date_cls
 from html import escape
 
@@ -22,21 +23,28 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.services.briefing.editions.broadsheet import render_edition
+from app.services.briefing.editions.gaia import render_edition
 from app.services.briefing.render import render_html_to_image
+from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
 
-# JPEG quality tuned so the base64 image + strip stays under Gmail's ~102KB clip
-# (a clipped mail truncates the data URI → broken image). Downscaled to a 640px
-# display the compression is invisible. Full-res PNG is the R2/hosted follow-up.
-_EMAIL_JPEG_QUALITY = 62
+# The edition is hosted (Cloudinary) and referenced by URL, so it renders in
+# Gmail (which blocks base64 data: URIs) with no size ceiling — full-res 2x PNG.
+_EMAIL_IMAGE_SCALE = 2
 
-# Edition numbering is cosmetic newspaper furniture; anchor it to a fixed epoch so
-# the number is stable and monotonic across days without any stored counter.
+# Edition numbering is cosmetic furniture; anchor it to a fixed epoch so the
+# number is stable and monotonic across days without any stored counter.
 _EDITION_EPOCH = date_cls(2026, 1, 1)
 _EDITION_WIDTH = 1180
-_PAPER = "#f7f5ef"
 _PUBLIC_APP_URL = "https://heygaia.io"
+
+# GAIA email palette: dark-first, single cyan accent (matches DESIGN.md).
+_BG = "#000000"
+_ACCENT = "#00bbff"
+_ACCENT_FG = "#000000"
+_TEXT = "#f4f4f5"
+_MUTED = "#a1a1aa"
+_HAIRLINE = "#27272a"
 
 
 def _public_app_url() -> str:
@@ -81,12 +89,13 @@ def _action_strip(payload: dict, unsubscribe_url: str) -> str:
     app_url = _public_app_url()
     actions = _action_items(payload)
 
+    sans = "Inter,-apple-system,Helvetica,Arial,sans-serif"
     rows = [
-        '<tr><td align="center" style="padding:22px 24px 8px 24px;">'
+        f'<tr><td align="center" style="padding:24px 24px 8px 24px;">'
         f'<a href="{escape(app_url)}" '
-        'style="display:inline-block;background:#8a1c1c;color:#ffffff;'
-        "text-decoration:none;font:600 15px/1.2 -apple-system,Helvetica,Arial,sans-serif;"
-        'letter-spacing:.02em;padding:13px 28px;border-radius:2px;">'
+        f'style="display:inline-block;background:{_ACCENT};color:{_ACCENT_FG};'
+        f"text-decoration:none;font:600 15px/1.2 {sans};"
+        'padding:13px 30px;border-radius:10px;">'
         "Open today&#39;s brief in GAIA</a></td></tr>"
     ]
 
@@ -96,31 +105,30 @@ def _action_strip(payload: dict, unsubscribe_url: str) -> str:
             href = _resolve_link(item.get("link")) or app_url
             text = escape((item.get("text") or "").strip())
             links.append(
-                f'<div style="margin:6px 0;font:400 13px/1.5 -apple-system,Helvetica,Arial,sans-serif;color:#333;">'
-                f"&#8226;&nbsp;{text} &nbsp;"
-                f'<a href="{escape(href)}" style="color:#8a1c1c;text-decoration:none;font-weight:600;">Review</a>'
+                f'<div style="margin:7px 0;font:400 13px/1.5 {sans};color:{_TEXT};">'
+                f"{text} &nbsp;"
+                f'<a href="{escape(href)}" style="color:{_ACCENT};text-decoration:none;font-weight:600;">Review</a>'
                 f"</div>"
             )
         rows.append(
-            '<tr><td style="padding:6px 32px 4px 32px;">'
-            '<div style="font:600 11px/1.4 -apple-system,Helvetica,Arial,sans-serif;'
-            "letter-spacing:.12em;text-transform:uppercase;color:#8a1c1c;"
-            'border-top:1px solid #ddd;padding-top:12px;">Waiting on your call</div>'
+            f'<tr><td style="padding:8px 32px 4px 32px;">'
+            f'<div style="font:600 12px/1.4 {sans};color:{_MUTED};'
+            f'border-top:1px solid {_HAIRLINE};padding-top:14px;">Waiting on your call</div>'
             + "".join(links)
             + "</td></tr>"
         )
 
     rows.append(
-        '<tr><td align="center" style="padding:18px 24px 26px 24px;">'
-        '<div style="font:400 11px/1.5 -apple-system,Helvetica,Arial,sans-serif;color:#999;">'
+        f'<tr><td align="center" style="padding:20px 24px 28px 24px;">'
+        f'<div style="font:400 11px/1.5 {sans};color:{_MUTED};">'
         "You&#39;re getting this because GAIA works your day. "
-        f'<a href="{escape(unsubscribe_url)}" style="color:#999;">Unsubscribe</a>.'
+        f'<a href="{escape(unsubscribe_url)}" style="color:{_MUTED};">Unsubscribe</a>.'
         "</div></td></tr>"
     )
 
     return (
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        f'style="max-width:640px;margin:0 auto;background:{_PAPER};">' + "".join(rows) + "</table>"
+        f'style="max-width:640px;margin:0 auto;background:{_BG};">' + "".join(rows) + "</table>"
     )
 
 
@@ -128,14 +136,16 @@ async def render_edition_email(
     payload: dict,
     *,
     kind: str,
+    user_id: str,
     generated_local: str = "",
     tz_label: str = "",
     unsubscribe_url: str,
 ) -> str:
-    """Render the edition to an inline PNG and wrap it with the action strip.
+    """Render the edition to a hosted image and wrap it with the action strip.
 
-    Returns the full email HTML. Raises on render failure so the caller can fall
-    back to the plain HTML briefing template.
+    The full-res PNG is uploaded to the CDN and referenced by URL — Gmail blocks
+    base64 ``data:`` images, and a hosted URL has no size ceiling. Raises on any
+    render/upload failure so the caller can fall back to the plain HTML template.
     """
     edition_no = _edition_no(payload.get("date", ""))
     edition_html = render_edition(
@@ -144,19 +154,17 @@ async def render_edition_email(
         generated_local=generated_local,
         tz_label=tz_label,
     )
-    # JPEG at 1x keeps the inlined base64 under Gmail's ~102KB clip; at a 640px
-    # display the 1180px source is downscaled ~1.8x so the compression is unseen.
-    # TODO: host the full-res PNG (R2 / signed API route) and reference by URL.
     image = await render_html_to_image(
-        edition_html,
-        width=_EDITION_WIDTH,
-        device_scale_factor=1,
-        image_format="jpeg",
-        quality=_EMAIL_JPEG_QUALITY,
+        edition_html, width=_EDITION_WIDTH, device_scale_factor=_EMAIL_IMAGE_SCALE
     )
-    b64 = base64.b64encode(image).decode("ascii")
+    public_id = f"briefing/editions/{user_id}/{kind}_{payload.get('date', 'latest')}"
+    image_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
     log.debug(
-        "briefing.edition_email.rendered", kind=kind, edition_no=edition_no, image_bytes=len(image)
+        "briefing.edition_email.rendered",
+        kind=kind,
+        edition_no=edition_no,
+        image_bytes=len(image),
+        url=image_url,
     )
 
     alt = escape(
@@ -165,11 +173,11 @@ async def render_edition_email(
     app_url = _public_app_url()
 
     return (
-        f'<div style="margin:0;padding:0;background:{_PAPER};">'
-        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{_PAPER};">'
+        f'<div style="margin:0;padding:0;background:{_BG};">'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{_BG};">'
         '<tr><td align="center" style="padding:0;">'
         f'<a href="{escape(app_url)}" style="text-decoration:none;">'
-        f'<img src="data:image/jpeg;base64,{b64}" alt="{alt}" width="640" '
+        f'<img src="{escape(image_url)}" alt="{alt}" width="640" '
         'style="display:block;width:100%;max-width:640px;height:auto;border:0;" /></a>'
         "</td></tr></table>" + _action_strip(payload, unsubscribe_url) + "</div>"
     )

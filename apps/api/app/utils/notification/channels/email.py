@@ -88,7 +88,7 @@ class EmailChannelAdapter(ChannelAdapter):
         if is_edition_kind(kind) and payload:
             try:
                 html = await render_edition_email(
-                    payload, kind=kind, unsubscribe_url=unsubscribe_url
+                    payload, kind=kind, user_id=user_id, unsubscribe_url=unsubscribe_url
                 )
                 subject = payload.get("headline") or content.get("title") or "Your GAIA brief"
             except Exception as exc:
