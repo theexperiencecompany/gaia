@@ -146,6 +146,34 @@ DEV_MODEL_OPTIONS: dict[str, dict] = {
     },
 }
 
+# --- Tier cost enforcement (free = usage walls, pro = abuse guards) --------------
+# Hard ceiling on TOTAL tokens (input + output, summed across comms + executor +
+# every subagent) a single request may consume before it is stopped mid-flight
+# via the accounting middleware. Free = usage wall; pro is set high enough that
+# only a runaway loop trips it — real work (full-inbox triage) must finish.
+FREE_PER_REQUEST_TOKEN_CEILING = 300_000  # TUNE
+PRO_PER_REQUEST_TOKEN_CEILING = 5_000_000  # TUNE
+
+# Rolling daily USD cost budget. Free: a real usage wall — when the UTC day's
+# cumulative cost reaches it, ALL chat is blocked until reset. Pro: an
+# abuse-level burst guard only — a legitimate power user must never hit it.
+FREE_DAILY_COST_BUDGET_USD = 0.05  # TUNE
+PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
+
+# Rolling monthly USD cost budget for pro: the ECONOMIC guard. Set ~1x the
+# subscription price so the worst-case whale is break-even. On exhaustion pro
+# is NOT blocked — model routing degrades to the free-tier model for the rest
+# of the month (see apply_plan_model).
+PRO_MONTHLY_COST_BUDGET_USD = 25.00  # TUNE
+
+# TTLs for the budget Redis keys: sized just past their window so keys expire
+# on their own (26h > 24h day, 32d > 31d month) even with clock skew.
+DAILY_BUDGET_TTL_SECONDS = 26 * 60 * 60
+MONTHLY_BUDGET_TTL_SECONDS = 32 * 24 * 60 * 60
+# TTL for the per-request aggregate token counter (a single request never runs
+# this long; the key just needs to outlive the longest legitimate run).
+REQUEST_TOKEN_COUNTER_TTL_SECONDS = 30 * 60
+
 # --- Tool-loop guardrails (LoopGuardMiddleware) ---------------------------------
 # Escalating thresholds for a model stuck retrying a failing tool. "Identical"
 # counts failures of the same tool with the same arguments; "same_tool" counts

@@ -22,6 +22,12 @@ from enum import Enum
 
 from pydantic import BaseModel
 
+from app.constants.llm import (
+    FREE_DAILY_COST_BUDGET_USD,
+    FREE_PER_REQUEST_TOKEN_CEILING,
+    PRO_DAILY_COST_BUDGET_USD,
+    PRO_PER_REQUEST_TOKEN_CEILING,
+)
 from app.models.payment_models import PlanType
 
 
@@ -58,7 +64,7 @@ class TieredRateLimits(BaseModel):
 FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     # CORE COMMUNICATION
     "chat_messages": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),  # Unchanged - good trial
+        free=RateLimitConfig(day=15, month=200),  # TUNE — hard daily wall for conversion
         pro=RateLimitConfig(day=3000, month=60000),  # +20% / +50%
         info=FeatureInfo(title="Chat Messages", description="Send messages to AI assistants"),
     ),
@@ -320,6 +326,20 @@ def get_time_window_key(period: RateLimitPeriod) -> str:
         return now.strftime("%Y%m%d")
     # MONTH
     return now.strftime("%Y%m")
+
+
+def get_per_request_token_ceiling(plan_type: PlanType) -> int:
+    """Aggregate token ceiling for a single request, by plan."""
+    return (
+        FREE_PER_REQUEST_TOKEN_CEILING
+        if plan_type == PlanType.FREE
+        else PRO_PER_REQUEST_TOKEN_CEILING
+    )
+
+
+def get_daily_cost_budget_usd(plan_type: PlanType) -> float:
+    """Rolling daily USD cost budget, by plan. Free = usage wall, pro = abuse guard."""
+    return FREE_DAILY_COST_BUDGET_USD if plan_type == PlanType.FREE else PRO_DAILY_COST_BUDGET_USD
 
 
 def get_feature_info(feature_key: str) -> dict[str, str]:

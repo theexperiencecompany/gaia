@@ -158,6 +158,14 @@ RECENT_FACTS_LIMIT = 10
 # anything durable is present, so trivial turns ("hi", "thanks") cost nothing.
 MIN_USER_CONTENT_CHARS = 8
 
+# Max number of LIVE memory facts (is_latest, not forgotten) a free user may
+# accumulate. At the cap, NEW fact inserts are skipped (passive ingestion
+# silently, the explicit add_memory tool with an upsell card); UPDATES to
+# existing facts still apply and reads are never gated. Pro is uncapped.
+# NOTE: the pricing-card copy ("50 saved memories" / "Unlimited memories" in
+# the plans collection) must be updated if this changes.
+FREE_MEMORY_FACT_LIMIT = 50  # TUNE
+
 # Max length of an agent/user-supplied forget reason (matches the DB column).
 FORGET_REASON_MAX_CHARS = 200
 
