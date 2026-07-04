@@ -36,6 +36,7 @@ from app.constants.hil import (
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
+from app.services.hil.notify import notify_approval_pending
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -44,6 +45,10 @@ ApprovalStatus = Literal["pending", "approved", "denied", "timeout"]
 _PUBSUB_POLL_SECONDS = 1.0
 _MAX_SUMMARY_ARGS = 2
 _MAX_ARG_VALUE_LEN = 60
+
+# Keep-alive set so fire-and-forget notify tasks aren't GC'd mid-flight
+# (asyncio.create_task holds only a weak reference).
+_notify_tasks: set[asyncio.Task[None]] = set()
 
 
 class ApprovalRequestNotFound(AppError):
@@ -119,9 +124,7 @@ async def _publish_entry(stream_id: str, entry: dict[str, Any]) -> None:
     The session append mirrors ``make_redis_stream_writer`` so the executor
     drain path persists the card; the SSE publish reaches live/reloaded clients.
     """
-    await stream_manager.publish_chunk(
-        stream_id, f"data: {json.dumps({'tool_data': entry})}\n\n"
-    )
+    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'tool_data': entry})}\n\n")
     session = get_session(stream_id)
     if session is not None:
         session.tool_events.append({"tool_data": entry})
@@ -177,6 +180,13 @@ async def request_approval(
                 integration_name=integration_name,
             ),
         )
+        # Wake clients that aren't actively watching the stream. Best-effort and
+        # detached — never let a notify failure block the approval wait.
+        notify_task = asyncio.create_task(
+            notify_approval_pending(user_id, conversation_id, approval_id, summary)
+        )
+        _notify_tasks.add(notify_task)
+        notify_task.add_done_callback(_notify_tasks.discard)
 
         try:
             async with asyncio.timeout(HIL_APPROVAL_TIMEOUT_SECONDS):
