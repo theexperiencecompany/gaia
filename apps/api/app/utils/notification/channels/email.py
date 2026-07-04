@@ -33,6 +33,7 @@ from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
 )
+from app.services.briefing.edition_email import is_edition_kind, render_edition_email
 from app.utils.email_utils import normalize_email
 from app.utils.notification.channels.base import ChannelAdapter
 from app.utils.notification.email_templates import (
@@ -77,7 +78,29 @@ class EmailChannelAdapter(ChannelAdapter):
         if not email:
             return self._skipped("email: no email address on file")
 
-        subject, html = self._render(content, build_unsubscribe_url(user_id))
+        unsubscribe_url = build_unsubscribe_url(user_id)
+        kind = content.get("kind")
+        payload = content.get("payload") or {}
+
+        # Briefings render as a print-quality edition image inlined in the email.
+        # If that render fails, degrade to the plain HTML template rather than drop
+        # the user's brief entirely — logged loudly, not swallowed.
+        if is_edition_kind(kind) and payload:
+            try:
+                html = await render_edition_email(
+                    payload, kind=kind, unsubscribe_url=unsubscribe_url
+                )
+                subject = payload.get("headline") or content.get("title") or "Your GAIA brief"
+            except Exception as exc:
+                log.warning(
+                    f"{LogTag.NOTIFICATION} Edition render failed, using plain template",
+                    user_id=user_id,
+                    kind=kind,
+                    error=str(exc),
+                )
+                subject, html = self._render(content, unsubscribe_url)
+        else:
+            subject, html = self._render(content, unsubscribe_url)
 
         try:
             async with httpx.AsyncClient(timeout=_SEND_TIMEOUT_SECONDS) as client:
