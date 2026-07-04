@@ -130,7 +130,7 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     ),
     "deep_research": TieredRateLimits(
         # Heaviest tool: one call fans out to many searches and page fetches.
-        free=RateLimitConfig(day=5, month=30),
+        free=RateLimitConfig(day=1, month=5),  # TUNE — a taste, not a workload
         pro=RateLimitConfig(day=100, month=2000),
         info=FeatureInfo(
             title="Deep Research",
@@ -144,8 +144,10 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     ),
     # WEB FEATURES (Moderate Cost)
     "web_search": TieredRateLimits(
-        # Low marginal cost: Exa free tier backed by an unlimited self-hosted fallback.
-        free=RateLimitConfig(day=100, month=1000),
+        # Search itself is cheap (Exa free tier + self-hosted fallback), but
+        # every result feeds LLM context and 100/day invites scripted scraping
+        # through the agent.
+        free=RateLimitConfig(day=20, month=150),  # TUNE
         pro=RateLimitConfig(day=5000, month=50000),
         info=FeatureInfo(title="Web Search", description="Search the web for information"),
     ),
@@ -215,7 +217,9 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     ),
     # Coding tools (persistent E2B workspace)
     "sandbox_creation": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=20),  # Each create provisions a fresh E2B VM
+        # Each create provisions a fresh E2B VM — real infra cost the LLM cost
+        # budget cannot see, so the count is the only guard here.
+        free=RateLimitConfig(day=1, month=5),  # TUNE
         pro=RateLimitConfig(day=150, month=3000),
         info=FeatureInfo(
             title="Sandbox Creation",
@@ -223,7 +227,8 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         ),
     ),
     "bash_execution": TieredRateLimits(
-        free=RateLimitConfig(day=20, month=200),  # Restrictive: sandbox cost
+        # Sandbox compute time — invisible to the token budget.
+        free=RateLimitConfig(day=10, month=100),  # TUNE
         pro=RateLimitConfig(day=1500, month=45000),
         info=FeatureInfo(
             title="Shell Execution",
@@ -239,7 +244,7 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         ),
     ),
     "workspace_write": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),
+        free=RateLimitConfig(day=50, month=1000),  # TUNE — trial use, not automation
         pro=RateLimitConfig(day=5000, month=150000),
         info=FeatureInfo(
             title="Workspace Write",
@@ -247,7 +252,7 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         ),
     ),
     "workspace_edit": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),
+        free=RateLimitConfig(day=50, month=1000),  # TUNE — trial use, not automation
         pro=RateLimitConfig(day=5000, month=150000),
         info=FeatureInfo(
             title="Workspace Edit",
