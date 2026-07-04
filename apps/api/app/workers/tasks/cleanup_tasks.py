@@ -7,7 +7,9 @@ from app.db.mongodb.collections import users_collection
 from app.models.user_models import OnboardingPhase
 from app.services.onboarding.intelligence_job import (
     enqueue_intelligence_job,
+    enqueue_workflows_job,
     is_intelligence_job_live,
+    is_workflows_job_live,
 )
 from shared.py.wide_events import log, wide_task
 
@@ -50,6 +52,30 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                 updated_at = user.get("updated_at", "unknown")
 
                 try:
+                    onboarding = user.get("onboarding") or {}
+                    if onboarding.get("pipeline_mode") == "split" and onboarding.get(
+                        "early_intelligence_done_at"
+                    ):
+                        if not onboarding.get("workflows_job_id"):
+                            # Early half finished; user is still choosing
+                            # integrations — waiting on input, not stuck.
+                            skipped_live_count += 1
+                            continue
+                        if await is_workflows_job_live(user_id):
+                            skipped_live_count += 1
+                            continue
+                        job_id = await enqueue_workflows_job(user_id)
+                        if job_id:
+                            log.info(
+                                f"{LogTag.WORKER} re-queued stuck workflows phase",
+                                user_id=user_id,
+                                job_id=job_id,
+                            )
+                            queued_count += 1
+                        else:
+                            error_count += 1
+                        continue
+
                     if await is_intelligence_job_live(user_id):
                         log.info(
                             f"{LogTag.WORKER} skipping live pipeline",

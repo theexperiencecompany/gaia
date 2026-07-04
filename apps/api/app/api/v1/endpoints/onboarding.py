@@ -19,6 +19,7 @@ from app.db.mongodb.collections import (
 )
 from app.models.user_models import (
     BioStatus,
+    OnboardingIntegrationsRequest,
     OnboardingPhaseUpdateRequest,
     OnboardingPreferences,
     OnboardingRequest,
@@ -30,6 +31,7 @@ from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
     reset_onboarding,
+    submit_onboarding_integrations,
     update_onboarding_preferences,
 )
 from app.services.onboarding.social_profile_service import save_confirmed_profiles
@@ -93,6 +95,20 @@ async def complete_user_onboarding(
     except Exception as e:
         log.error(f"{LogTag.ONBOARDING} Error completing onboarding: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
+
+
+@router.post("/integrations", response_model=dict)
+async def submit_integrations(
+    request: OnboardingIntegrationsRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Persist selected integrations and start the deferred workflows phase (split-mode onboarding)."""
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={"operation": "submit_integrations"},
+    )
+    result = await submit_onboarding_integrations(user["user_id"], request.selected_integrations)
+    return {"success": True, **result}
 
 
 class ClarifyQuestionsRequest(BaseModel):

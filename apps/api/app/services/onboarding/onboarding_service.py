@@ -24,7 +24,10 @@ from app.services.integrations.integration_connection_service import (
 )
 from app.services.onboarding.intelligence_job import (
     abort_active_intelligence_job,
+    abort_active_workflows_job,
     enqueue_intelligence_job,
+    enqueue_workflows_job,
+    is_workflows_job_live,
 )
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 from app.services.workflow.service import WorkflowService
@@ -63,6 +66,7 @@ async def complete_onboarding(
             "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING,
             "onboarding.bio_status": BioStatus.PENDING,
             "onboarding.preferences": preferences.model_dump(),
+            "onboarding.pipeline_mode": ("split" if onboarding_data.defer_workflows else "full"),
             "updated_at": datetime.now(UTC),
         }
 
@@ -147,6 +151,58 @@ async def complete_onboarding(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
+
+
+async def submit_onboarding_integrations(
+    user_id: str,
+    selected_integrations: list[str],
+) -> dict[str, str]:
+    """Persist the user's selected integrations and enqueue the workflows-phase
+    job. Only valid for split-mode onboarding; idempotent under retries."""
+    log.set(auth={"user_id": user_id})
+
+    user_doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {"onboarding": 1})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    onboarding = user_doc.get("onboarding") or {}
+    if not onboarding:
+        raise HTTPException(status_code=409, detail="Onboarding has not been submitted yet")
+    if onboarding.get("pipeline_mode") != "split":
+        raise HTTPException(
+            status_code=409, detail="Onboarding is not awaiting integration selection"
+        )
+
+    if onboarding.get("first_message_conversation_id"):
+        log.info(f"{LogTag.ONBOARDING} integrations replay — onboarding already complete")
+        return {"status": "already_complete"}
+    if onboarding.get("workflows_job_id") and await is_workflows_job_live(user_id):
+        log.info(f"{LogTag.ONBOARDING} integrations replay — workflows job already running")
+        return {"status": "already_running"}
+
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {
+            "$set": {
+                "onboarding.selected_integrations": selected_integrations,
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+
+    job_id = await enqueue_workflows_job(user_id)
+    if job_id is None:
+        raise HTTPException(
+            status_code=503, detail="Could not start workflow creation. Please retry."
+        )
+
+    log.info(
+        f"{LogTag.ONBOARDING} integrations submitted, workflows phase queued",
+        user_id=user_id,
+        selected_count=len(selected_integrations),
+        job_id=job_id,
+    )
+    return {"status": "queued"}
 
 
 async def get_user_onboarding_status(user_id: str) -> dict[str, Any]:
@@ -266,8 +322,9 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
     # after the doc is wiped.
     try:
         await abort_active_intelligence_job(user_id)
+        await abort_active_workflows_job(user_id)
     except Exception as e:
-        log.warning(f"{LogTag.ONBOARDING} reset_onboarding failed to abort intelligence job: {e}")
+        log.warning(f"{LogTag.ONBOARDING} reset_onboarding failed to abort onboarding jobs: {e}")
 
     onboarding = user_doc.get("onboarding", {}) or {}
     workflow_ids: list[Any] = onboarding.get("suggested_workflows", []) or []

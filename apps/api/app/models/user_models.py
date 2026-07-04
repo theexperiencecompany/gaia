@@ -97,6 +97,18 @@ class OnboardingPreferences(BaseModel):
         return None if v == "" else v
 
 
+def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
+    if not v:
+        return v
+    seen: set[str] = set()
+    out: list[str] = []
+    for slug in v:
+        if slug not in seen:
+            seen.add(slug)
+            out.append(slug)
+    return out
+
+
 class ClarifyAnswer(BaseModel):
     """One answered no-Gmail clarify question, persisted on onboarding.clarify_answers."""
 
@@ -128,19 +140,18 @@ class OnboardingRequest(BaseModel):
         max_length=25,
         description="Integration slugs the user selected during onboarding.",
     )
+    defer_workflows: bool = Field(
+        default=False,
+        description=(
+            "Gmail-path split: run inbox intelligence immediately and defer "
+            "workflow creation until the user submits selected integrations."
+        ),
+    )
 
     @field_validator("selected_integrations")
     @classmethod
     def dedupe_integrations(cls, v: list[str] | None) -> list[str] | None:
-        if not v:
-            return v
-        seen: set[str] = set()
-        out: list[str] = []
-        for slug in v:
-            if slug not in seen:
-                seen.add(slug)
-                out.append(slug)
-        return out
+        return _dedupe_slugs(v)
 
     @field_validator("name")
     @classmethod
@@ -182,6 +193,19 @@ class OnboardingResponse(BaseModel):
     success: bool = Field(..., description="Whether onboarding was successful")
     message: str = Field(..., description="Response message")
     user: dict[str, Any] | None = Field(None, description="Updated user data")
+
+
+class OnboardingIntegrationsRequest(BaseModel):
+    selected_integrations: list[IntegrationSlug] = Field(
+        default_factory=list,
+        max_length=25,
+        description="Integration slugs the user selected during onboarding.",
+    )
+
+    @field_validator("selected_integrations")
+    @classmethod
+    def dedupe_integrations(cls, v: list[str]) -> list[str]:
+        return _dedupe_slugs(v) or []
 
 
 class OnboardingPhaseUpdateRequest(BaseModel):
