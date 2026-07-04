@@ -254,6 +254,25 @@ export async function cancelStream(streamId: string): Promise<boolean> {
   }
 }
 
+export async function postApprovalDecision(
+  approvalId: string,
+  decision: {
+    decision: "approve" | "deny";
+    feedback?: string;
+    scope?: "once" | "always_tool";
+  },
+): Promise<boolean> {
+  try {
+    await apiService.post(`/approvals/${approvalId}/decision`, decision);
+    return true;
+  } catch (error) {
+    // A 410 means the approval was already resolved elsewhere — the resolved
+    // card arrives over the stream regardless, so this is not a user error.
+    console.warn("Error submitting approval decision:", error);
+    return false;
+  }
+}
+
 export interface UploadFileInput {
   uri: string;
   name: string;
@@ -340,6 +359,7 @@ export const chatApi = {
   uploadFile,
   branchConversation,
   submitMessageFeedback,
+  postApprovalDecision,
 };
 
 export * from "./chat-stream";

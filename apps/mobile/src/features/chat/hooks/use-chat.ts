@@ -1,5 +1,8 @@
 import type { ToolDataEntry } from "@gaia/shared/chat";
-import { mergeToolOutputIntoToolData } from "@gaia/shared/chat";
+import {
+  mergeToolOutputIntoToolData,
+  upsertApprovalToolData,
+} from "@gaia/shared/chat";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -322,10 +325,12 @@ export function useChat(
                 .updateLastMessageFollowUp(activeConvIdRef.current!, actions);
             },
             onToolData: (entry) => {
-              streamingToolDataRef.current = [
-                ...streamingToolDataRef.current,
+              // A HIL approval frame replaces the prior frame for its
+              // approval_id in place; every other entry is appended.
+              streamingToolDataRef.current = upsertApprovalToolData(
+                streamingToolDataRef.current,
                 entry,
-              ];
+              );
               // Keep the last AI message in sync with accumulated tool data
               // so tool cards render live during streaming.
               useChatStore
