@@ -51,6 +51,7 @@ class RateLimitExceededException(HTTPException):
         feature: str,
         plan_required: str | None = None,
         reset_time: datetime | None = None,
+        message: str | None = None,
     ):
         detail = {
             "error": "rate_limit_exceeded",
@@ -64,8 +65,30 @@ class RateLimitExceededException(HTTPException):
             )
         if reset_time:
             detail["reset_time"] = reset_time.isoformat()
+        if message:
+            detail["message"] = message
 
         super().__init__(status_code=429, detail=detail)
+
+
+class CostBudgetExceededException(RateLimitExceededException):
+    """429 raised when a rolling USD cost budget (not a count limit) binds.
+
+    Same wire shape as the count-limit 429 — the frontend toast / upgrade
+    modal path renders identically — but a distinct type so callers (e.g.
+    the workflow worker) can branch their user-facing copy on the cause.
+    """
+
+    def __init__(
+        self,
+        feature: str,
+        plan_required: str | None = None,
+        reset_time: datetime | None = None,
+    ):
+        budget_message = "You've used today's AI usage allowance."
+        if plan_required:
+            budget_message += f" Upgrade to {plan_required.upper()} for higher limits."
+        super().__init__(feature, plan_required, reset_time, message=budget_message)
 
 
 class TieredRateLimiter:

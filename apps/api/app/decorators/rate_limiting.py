@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from langgraph.config import get_stream_writer
 
 from app.api.v1.middleware.tiered_rate_limiter import (
+    CostBudgetExceededException,
     RateLimitExceededException,
     tiered_limiter,
 )
@@ -329,7 +330,7 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
             f"{LogTag.API} Daily cost budget exhausted for user {user_id} "
             f"(plan={plan_type.value}, spent=${spent:.4f}, feature={feature_key})"
         )
-        raise RateLimitExceededException(
+        raise CostBudgetExceededException(
             feature=feature_key,
             plan_required="pro" if plan_type == PlanType.FREE else None,
             reset_time=get_reset_time(RateLimitPeriod.DAY),

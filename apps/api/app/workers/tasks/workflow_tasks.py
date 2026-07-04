@@ -13,12 +13,14 @@ from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_PROMPT_TEMPLATE,
 )
 from app.api.v1.middleware.tiered_rate_limiter import (
+    CostBudgetExceededException,
     RateLimitExceededException,
     tiered_rate_limit,
 )
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
 from app.db.mongodb.collections import todos_collection
+from app.decorators import enforce_daily_cost_budget
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
     MessageRequestWithHistory,
@@ -269,6 +271,15 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                         f"(positive = late, negative = early)",
                     )
 
+            # Cost wall BEFORE any execution record or LLM work: when the
+            # user's daily budget is spent, the run is skipped cleanly (no
+            # confusing "failed" row) and the except branch below sends the
+            # budget-specific notification + re-arms the next occurrence, so
+            # a recurring workflow resumes after the budget resets.
+            await enforce_daily_cost_budget(
+                workflow.user_id, feature_key="trigger_workflow_executions"
+            )
+
             # Create execution record at start
             execution = await create_execution(
                 workflow_id=workflow_id,
@@ -350,7 +361,17 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                         plan_required = detail.get("plan_required", "pro").upper()
                         reset_time_str = detail.get("reset_time", "")
 
-                        if reset_time_str:
+                        if isinstance(e, CostBudgetExceededException):
+                            # Budget (cost) wall, not the execution-count quota —
+                            # different cause, different copy. Runs resume after
+                            # the daily reset; the re-arm below keeps the cron.
+                            body = (
+                                f"'{workflow.title}' couldn't run — you're out of "
+                                f"AI usage for today. It will run again after your "
+                                f"usage resets. Upgrade to {plan_required} for "
+                                f"much higher limits."
+                            )
+                        elif reset_time_str:
                             # Quota exhausted — show when the limit resets
                             try:
                                 reset_dt = datetime.fromisoformat(reset_time_str)
