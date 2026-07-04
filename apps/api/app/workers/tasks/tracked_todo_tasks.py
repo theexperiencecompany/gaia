@@ -549,9 +549,13 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     # it only drafted or did nothing. Verify from the REAL tool results — if no
     # outward-action tool actually ran, DON'T let this be marked done/sent; flip
     # it to needs_you with the truth so the user is never told a lie.
-    if doc.get("execution_intent") == "release" and not _release_performed(
-        tool_data.get("tool_data") if isinstance(tool_data, dict) else tool_data
-    ):
+    if doc.get("execution_intent") == "release":
+        td = tool_data.get("tool_data") if isinstance(tool_data, dict) else tool_data
+        log.info("tracked_todo.release_tools", todo_id=todo_id, tools=_collect_tool_names(td))
+        performed = _release_performed(td)
+    else:
+        performed = True
+    if doc.get("execution_intent") == "release" and not performed:
         log.warning("tracked_todo.release_not_performed", todo_id=todo_id)
         await todos_collection.update_one(
             {"_id": ObjectId(todo_id)},
