@@ -351,3 +351,60 @@ def get_feature_info(feature_key: str) -> dict[str, str]:
         "title": feature_key.replace("_", " ").title(),
         "description": f"Usage for {feature_key}",
     }
+
+
+def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
+    """One upsell bullet comparing free vs pro for a feature, or None."""
+    limits = FEATURE_LIMITS[feature_key]
+    if limits.free.day > 0 and limits.pro.day > 0:
+        return {
+            "title": limits.info.title,
+            "detail": f"{limits.pro.day:,}/day on Pro — you have {limits.free.day:,}",
+        }
+    if limits.free.month > 0 and limits.pro.month > 0:
+        return {
+            "title": limits.info.title,
+            "detail": f"{limits.pro.month:,}/month on Pro — you have {limits.free.month:,}",
+        }
+    return None
+
+
+def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, str]]:
+    """Build upsell bullets from FEATURE_LIMITS — the same config that enforces
+    the limits, so the promised benefits can never drift from reality.
+
+    Order: (1) the feature the user just hit, (2) Pro-only features (no free
+    access at all), (3) the largest free->pro daily multipliers.
+    """
+    benefits: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    if hit_feature in FEATURE_LIMITS:
+        delta = _free_pro_delta(hit_feature)
+        if delta:
+            benefits.append(delta)
+            seen.add(hit_feature)
+
+    for key, limits in FEATURE_LIMITS.items():
+        if key in seen:
+            continue
+        free_gated = limits.free.day <= 0 and limits.free.month <= 0
+        pro_has_access = limits.pro.day > 0 or limits.pro.month > 0
+        if free_gated and pro_has_access:
+            benefits.append({"title": limits.info.title, "detail": "Pro exclusive"})
+            seen.add(key)
+
+    multipliers = sorted(
+        (
+            (limits.pro.day / limits.free.day, key)
+            for key, limits in FEATURE_LIMITS.items()
+            if key not in seen and limits.free.day > 0 and limits.pro.day > 0
+        ),
+        reverse=True,
+    )
+    for _, key in multipliers[:max_other]:
+        delta = _free_pro_delta(key)
+        if delta:
+            benefits.append(delta)
+
+    return benefits

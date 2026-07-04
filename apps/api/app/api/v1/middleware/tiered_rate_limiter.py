@@ -38,6 +38,7 @@ from app.models.usage_models import (
     UsagePeriod,
     UserUsageSnapshot,
 )
+from app.services.limit_upsell import schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
@@ -115,8 +116,24 @@ class TieredRateLimiter:
         """Enforce all limits for a feature, then atomically count this use.
 
         Raises ``RateLimitExceededException`` when any window is exhausted or
-        the user's plan has no access to the feature at all.
+        the user's plan has no access to the feature at all. Every exceed for
+        a FREE user also fires the upsell side effects (analytics event +
+        weekly-deduped email) — one seam covering all decorated endpoints and
+        agent tools.
         """
+        try:
+            return await self._check_and_increment(user_id, feature_key, user_plan, credits_used)
+        except RateLimitExceededException:
+            schedule_limit_upsell(user_id, feature_key, user_plan)
+            raise
+
+    async def _check_and_increment(
+        self,
+        user_id: str,
+        feature_key: str,
+        user_plan: PlanType,
+        credits_used: float = 0.0,
+    ) -> dict[str, UsageInfo]:
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}
 

@@ -24,6 +24,7 @@ from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.services.cost_budget import get_cost
+from app.services.limit_upsell import schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -330,6 +331,7 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
             f"{LogTag.API} Daily cost budget exhausted for user {user_id} "
             f"(plan={plan_type.value}, spent=${spent:.4f}, feature={feature_key})"
         )
+        schedule_limit_upsell(user_id, feature_key, plan_type)
         raise CostBudgetExceededException(
             feature=feature_key,
             plan_required="pro" if plan_type == PlanType.FREE else None,

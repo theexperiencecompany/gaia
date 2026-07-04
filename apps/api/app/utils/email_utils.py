@@ -7,6 +7,7 @@ from bson import ObjectId
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import resend
 
+from app.config.rate_limits import derive_pro_benefits, get_feature_info
 from app.config.settings import settings
 from app.constants.email import MAILTO_PREFIX
 from app.constants.log_tags import LogTag
@@ -330,6 +331,57 @@ async def send_inactive_user_email(
     except Exception as e:
         log.error(f"{LogTag.MAIL} Failed to send inactive user email to {user_email}: {e!s}")
         raise
+
+
+async def send_limit_reached_email(
+    user_id: str,
+    hit_feature: str,
+) -> bool:
+    """Upsell email when a FREE user hits a usage wall, deduped to 1/week.
+
+    The benefits list is derived live from FEATURE_LIMITS — the same config
+    that enforces the limits — so the email can never promise something the
+    plan doesn't deliver. Returns True if sent, False if skipped (dedupe or
+    missing user/email).
+    """
+    user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    if not user or not user.get("email"):
+        log.warning(f"{LogTag.MAIL} Limit email skipped — user {user_id} not found or no email")
+        return False
+
+    now = datetime.now(UTC)
+    last_sent = user.get("last_limit_email_sent")
+    if last_sent and last_sent.tzinfo is None:
+        last_sent = last_sent.replace(tzinfo=UTC)
+    # One nudge per week: a daily 429 toast is expected UX; a daily email is spam.
+    if last_sent and (now - last_sent).days < 7:
+        return False
+
+    feature_title = get_feature_info(hit_feature)["title"]
+    template = jinja_env.get_template("limit_reached.html")
+    html_content = template.render(
+        user_name=user.get("name"),
+        hit_feature_title=feature_title,
+        benefits=derive_pro_benefits(hit_feature),
+        pricing_url=f"{settings.FRONTEND_URL}/pricing",
+        contact_email=CONTACT_EMAIL,
+    )
+
+    resend.Emails.send(
+        {
+            "from": f"Aryan from GAIA <{CONTACT_EMAIL}>",
+            "to": [user["email"]],
+            "subject": "You hit your GAIA limit today — here's what Pro unlocks",
+            "html": html_content,
+            "reply_to": CONTACT_EMAIL,
+        }
+    )
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"last_limit_email_sent": now}},
+    )
+    log.info(f"{LogTag.MAIL} Limit-reached upsell email sent to {user['email']}")
+    return True
 
 
 def generate_pro_subscription_html(
