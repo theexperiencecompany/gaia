@@ -25,6 +25,7 @@ from langgraph.runtime import Runtime, get_config
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
+from app.services.cost_budget import add_cost
 from shared.py.wide_events import ModelContext, log
 
 
@@ -196,6 +197,16 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         except Exception as e:
             log.warning(f"{LogTag.AGENT} Token cost calc failed for {model_name}: {e}")
             total_cost = 0.0
+
+        # Record real spend into the day/month budget windows. This hook runs
+        # for every model call on every execution path (chat, workflows, bots,
+        # voice, subagents), making it the single metering seam. Fail-open: a
+        # Redis hiccup must never fail the model call.
+        if user_id and total_cost > 0:
+            try:
+                await add_cost(str(user_id), total_cost)
+            except Exception as e:
+                log.warning(f"{LogTag.AGENT} Cost budget recording failed: {e}")
 
         step_index = self._next_step(thread_id)
         start = self._start_ts.pop(thread_id, None)
