@@ -9,6 +9,7 @@ import {
   NoteEditIcon,
   NotificationIcon,
   PuzzleIcon,
+  ShieldIcon,
   UserCircleIcon,
   VoiceIdIcon,
   WhatsappIcon,
@@ -50,6 +51,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Notifications",
     icon: NotificationIcon,
     href: "/settings/notifications",
+  },
+  {
+    key: "approvals",
+    label: "Approvals",
+    icon: ShieldIcon,
+    href: "/settings/approvals",
   },
   {
     key: "subscription",
