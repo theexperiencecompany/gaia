@@ -20,6 +20,7 @@
  */
 import type { Analytics } from "../../analytics";
 import { BOT_EVENTS } from "../../analytics/events/bots";
+import type { ApprovalRequestData } from "../../chat";
 import {
   NEW_MESSAGE_BREAK_TOKEN,
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
@@ -27,6 +28,21 @@ import {
 import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
 import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
+
+/** Render a HIL approval frame as a text prompt/status for a bot message. */
+function formatApprovalPrompt(data: ApprovalRequestData): string {
+  if (data.status === "pending") {
+    const minutes = Math.max(1, Math.round(data.timeout_seconds / 60));
+    return (
+      `**Approval needed:** ${data.summary}\n` +
+      `Reply **yes** to approve or **no** to decline. This expires in ${minutes} minutes.`
+    );
+  }
+  if (data.status === "approved") return "Approved — continuing.";
+  if (data.status === "denied") return "Declined.";
+  return "Approval timed out.";
+}
+
 import {
   createBotLogger,
   hashLogIdentifier,
@@ -395,6 +411,19 @@ export async function handleStreamingChat(
     await onGenericError(formattedError);
   };
 
+  // HIL approval prompts are delivered out-of-band as their own message so a
+  // non-streaming platform (Discord/WhatsApp, which shows nothing until the
+  // stream ends) still surfaces the question while the agent is paused waiting.
+  const render = PLATFORM_MARKDOWN[options.platform];
+  const handleApprovalUpdate = async (data: ApprovalRequestData) => {
+    const text = render(formatApprovalPrompt(data));
+    if (sendNewMessage) {
+      await sendNewMessage(text);
+    } else {
+      await editMessage(text);
+    }
+  };
+
   const streamFn = (
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
@@ -421,6 +450,7 @@ export async function handleStreamingChat(
         await onDone(fullText, convId);
       },
       onError,
+      handleApprovalUpdate,
     );
 
   try {
