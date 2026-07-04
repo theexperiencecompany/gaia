@@ -36,6 +36,7 @@ import type {
   RedditSearchData,
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
+import ApprovalRequestSection from "../ApprovalRequestSection";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
 import CalendarEventSection from "../CalendarEventSection";
@@ -431,6 +432,15 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     const items = (Array.isArray(data) ? data : [data]) as MemoryData[];
     return <MemoryCard key={`tool-memory-${index}`} items={items} />;
   },
+
+  // HIL approval — one card per approval_id; pending→resolved updates replace
+  // it in place via upsertApprovalToolData (shared turn accumulator).
+  approval_request: (data, index) => (
+    <ApprovalRequestSection
+      key={`approval-${data.approval_id || index}`}
+      data={data}
+    />
+  ),
 };
 
 export function renderTool<K extends ToolName>(

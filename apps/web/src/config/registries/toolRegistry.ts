@@ -1,4 +1,5 @@
 import type {
+  ApprovalRequestData,
   SubagentGroupData as SharedSubagentGroupData,
   ToolCallEntry as SharedToolCallEntry,
 } from "@shared/chat";
@@ -188,6 +189,7 @@ export const TOOL_REGISTRY = {
   artifact_data: null as unknown as ArtifactData[],
   screenshot_data: null as unknown as ScreenshotData,
   memory_data: null as unknown as MemoryData,
+  approval_request: null as unknown as ApprovalRequestData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;

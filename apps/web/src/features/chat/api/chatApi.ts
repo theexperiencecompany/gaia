@@ -474,4 +474,21 @@ export const chatApi = {
       silent: true,
     });
   },
+
+  /**
+   * Relay a HIL approval decision to the awaiting agent gate. Silent — the
+   * resolved card arrives over the stream (a 410 means already-resolved).
+   */
+  postApprovalDecision: async (
+    approvalId: string,
+    decision: {
+      decision: "approve" | "deny";
+      feedback?: string;
+      scope?: "once" | "always_tool";
+    },
+  ): Promise<void> => {
+    await apiService.post(`/approvals/${approvalId}/decision`, decision, {
+      silent: true,
+    });
+  },
 };

@@ -1,5 +1,7 @@
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
 import {
+  APPROVAL_REQUEST_TOOL_NAME,
+  type ApprovalRequestData,
   applyStreamEvent,
   type ChatStreamEvent,
   createTurnAccumulator,
@@ -322,6 +324,21 @@ export class TurnSession {
         if (hints) {
           const { message, ...toolInfo } = hints;
           this.setLoadingText(message, toolInfo);
+        }
+      }
+      if (event.entry.tool_name === APPROVAL_REQUEST_TOOL_NAME) {
+        const status = (event.entry.data as ApprovalRequestData | null)?.status;
+        if (status === "pending") {
+          // The agent is idle waiting on the user; the card IS the state, so
+          // stop the spinner (any later event re-arms it). Surface unread when
+          // the user isn't looking so they know a decision is waiting.
+          this.setSpinner(false);
+          if (
+            this.conversationId &&
+            !isViewingConversation(this.conversationId)
+          ) {
+            markConversationUnread(this.conversationId);
+          }
         }
       }
     }
