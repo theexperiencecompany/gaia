@@ -15,7 +15,10 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.llm.client import init_llm
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import (
+    get_tool_registry,
+    integration_destructive_tools,
+)
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -83,6 +86,7 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
                     tools=tools,
                     space=config.tool_space,
                     integration_name=subagent.id,
+                    destructive_tools=integration_destructive_tools(subagent.id),
                 )
                 await tool_registry._index_category_tools(category_name)
                 log.info(f"{LogTag.AGENT} Registered {len(tools)} MCP tools for {subagent.id}")

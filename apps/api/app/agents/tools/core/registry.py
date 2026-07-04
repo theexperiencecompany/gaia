@@ -422,7 +422,7 @@ class ToolRegistry:
             integration_name=toolkit_name,
             is_delegated=True,
             space=space_name,
-            destructive_tools=_composio_destructive_tools(toolkit_name),
+            destructive_tools=integration_destructive_tools(toolkit_name),
         )
 
         await self._index_category_tools(toolkit_name)
@@ -690,14 +690,18 @@ class ToolRegistry:
         return [tool.name for tool in tools]
 
 
-def _composio_destructive_tools(toolkit_name: str) -> set[str] | None:
-    """Curated destructive slugs for a Composio toolkit, from its integration
-    config. ``None`` (uncurated) leaves the toolkit's tools unclassified so the
+def integration_destructive_tools(name: str) -> set[str] | None:
+    """Curated HIL destructive tools for an integration, matched by id or (for
+    Composio) toolkit. ``None`` (uncurated) leaves the tools unclassified so the
     HIL LLM classifier resolves them at gate time (fail closed)."""
     for integration in OAUTH_INTEGRATIONS:
-        config = integration.composio_config
-        if config and config.toolkit.lower() == toolkit_name.lower():
-            return None if config.destructive_tools is None else set(config.destructive_tools)
+        toolkit = integration.composio_config.toolkit if integration.composio_config else None
+        if integration.id == name or (toolkit and toolkit.lower() == name.lower()):
+            return (
+                None
+                if integration.destructive_tools is None
+                else set(integration.destructive_tools)
+            )
     return None
 
 

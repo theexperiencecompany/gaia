@@ -57,13 +57,6 @@ class ComposioConfig(BaseModel):
     auth_config_id: str
     toolkit: str
     toolkit_version: str | None = None
-    # Composio slugs for this toolkit that the HIL gate must treat as
-    # destructive (e.g. GMAIL_SEND_EMAIL). The single source of truth for this
-    # integration's destructive tools. ``None`` = uncurated: the HIL LLM
-    # classifier resolves each tool at gate time and fails closed. A list
-    # (possibly empty) = reviewed: exactly those slugs are destructive, the rest
-    # are safe.
-    destructive_tools: list[str] | None = None
 
 
 class SubAgentConfig(BaseModel):
