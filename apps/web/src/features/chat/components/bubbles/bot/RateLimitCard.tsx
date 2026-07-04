@@ -52,13 +52,18 @@ const PRO_BENEFITS = [
   "Priority responses and faster processing",
 ];
 
+function formatPlanName(plan?: string): string {
+  if (!plan) return "Pro";
+  return plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase();
+}
+
 export default function RateLimitCard({ data }: RateLimitCardProps) {
-  const { feature, plan_required, reset_time } = data;
+  const { feature, plan_required, reset_time, message } = data;
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const isUpgradeRequired = !!plan_required;
   const resetInfo = getResetInfo(reset_time);
   const featureName = formatFeatureName(feature);
-  const planName = plan_required?.toUpperCase() ?? "PRO";
+  const planName = formatPlanName(plan_required);
 
   return (
     <div className="flex w-full max-w-md flex-col gap-0 rounded-3xl bg-zinc-800 backdrop-blur-lg overflow-hidden">
@@ -80,9 +85,11 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
               {featureName}
             </span>
             <span className="text-xs text-zinc-500">
-              {isUpgradeRequired
-                ? `Requires ${planName} plan`
-                : "Daily limit reached"}
+              {message
+                ? "Free plan limit reached"
+                : isUpgradeRequired
+                  ? `Requires ${planName} plan`
+                  : "Daily limit reached"}
             </span>
           </div>
         </div>
@@ -106,15 +113,20 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
       <div className="flex flex-col gap-3 p-4">
         {isUpgradeRequired ? (
           <>
-            {/* Explanation */}
-            <p className="text-xs leading-relaxed text-zinc-400">
-              <span className="font-medium text-zinc-200">{featureName}</span>{" "}
-              is a{" "}
-              <span className="font-medium text-warning-400">{planName}</span>{" "}
-              feature and isn&apos;t included in your current plan. Upgrade to
-              unlock it and get significantly higher limits across every
-              feature.
-            </p>
+            {/* Explanation — backend copy wins when provided (capped feature),
+                otherwise the generic plan-gated copy applies. */}
+            {message ? (
+              <p className="text-xs leading-relaxed text-zinc-400">{message}</p>
+            ) : (
+              <p className="text-xs leading-relaxed text-zinc-400">
+                <span className="font-medium text-zinc-200">{featureName}</span>{" "}
+                is a{" "}
+                <span className="font-medium text-warning-400">{planName}</span>{" "}
+                feature and isn&apos;t included in your current plan. Upgrade to
+                unlock it and get significantly higher limits across every
+                feature.
+              </p>
+            )}
 
             {/* Benefits */}
             <div className="flex flex-col gap-1.5">
@@ -156,7 +168,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
               <Alert01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
               <p className="text-xs text-zinc-400">
                 Need more? Upgrade to{" "}
-                <span className="font-medium text-zinc-300">PRO</span> for 10×
+                <span className="font-medium text-zinc-300">Pro</span> for 10×
                 higher daily limits on {featureName} and all other features.
               </p>
             </div>

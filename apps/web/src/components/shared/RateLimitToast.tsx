@@ -39,10 +39,14 @@ export const showRateLimitToast = ({
       ? Timer02Icon
       : Alert01Icon;
 
+  const planName = planRequired
+    ? planRequired.charAt(0).toUpperCase() + planRequired.slice(1).toLowerCase()
+    : undefined;
+
   // Auto-generate message if not provided
   if (!message) {
     if (isUpgradeRequired) {
-      message = `${feature || "This feature"} is only available in the ${planRequired.toUpperCase()} plan. Upgrade to continue using it.`;
+      message = `${feature || "This feature"} is only available in the ${planName} plan. Upgrade to continue using it.`;
     } else if (resetTime) {
       const resetDate = new Date(resetTime);
       const now = new Date();
@@ -77,9 +81,7 @@ export const showRateLimitToast = ({
   // Add upgrade action if needed
   if (showUpgradeButton) {
     toastConfig.action = {
-      label: isUpgradeRequired
-        ? `Upgrade to ${planRequired?.toUpperCase()}`
-        : "Upgrade Now",
+      label: isUpgradeRequired ? `Upgrade to ${planName}` : "Upgrade Now",
       onClick: () => usePricingModalStore.getState().openModal(),
     };
   }
@@ -104,7 +106,7 @@ export const showTokenLimitToast = (feature: string, planRequired?: string) => {
   showRateLimitToast({
     title: "Token Limit Exceeded",
     message: planRequired
-      ? `${feature} token limit exceeded. Upgrade to ${planRequired.toUpperCase()} for higher token limits.`
+      ? `${feature} token limit exceeded. Upgrade to ${planRequired.charAt(0).toUpperCase() + planRequired.slice(1).toLowerCase()} for higher token limits.`
       : `${feature} token limit exceeded. Please wait or upgrade for higher limits.`,
     planRequired,
     showUpgradeButton: !!planRequired,

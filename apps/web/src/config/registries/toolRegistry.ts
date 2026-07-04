@@ -141,6 +141,9 @@ export interface RateLimitData {
   feature: string;
   plan_required?: string;
   reset_time?: string;
+  /** Backend-provided explanation; overrides the card's generic copy (used
+   *  when a feature is capped rather than plan-gated, e.g. the memory cap). */
+  message?: string;
 }
 
 // The canonical ToolCallEntry / SubagentGroupData shapes live in @shared/chat

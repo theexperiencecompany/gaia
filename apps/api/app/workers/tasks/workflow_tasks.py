@@ -358,7 +358,7 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                     if isinstance(e, RateLimitExceededException):
                         title = f"Workflow Failed: {workflow.title}"
                         detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
-                        plan_required = detail.get("plan_required", "pro").upper()
+                        plan_required = detail.get("plan_required", "pro").capitalize()
                         reset_time_str = detail.get("reset_time", "")
 
                         if isinstance(e, CostBudgetExceededException):

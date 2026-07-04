@@ -62,7 +62,7 @@ class RateLimitExceededException(HTTPException):
         if plan_required:
             detail["plan_required"] = plan_required
             detail["message"] = (
-                f"{feature} is not available in your current plan. Upgrade to {plan_required.upper()} to access this feature."
+                f"{feature} is not available in your current plan. Upgrade to {plan_required.capitalize()} to access this feature."
             )
         if reset_time:
             detail["reset_time"] = reset_time.isoformat()
@@ -88,7 +88,7 @@ class CostBudgetExceededException(RateLimitExceededException):
     ):
         budget_message = "You've used today's AI usage allowance."
         if plan_required:
-            budget_message += f" Upgrade to {plan_required.upper()} for higher limits."
+            budget_message += f" Upgrade to {plan_required.capitalize()} for higher limits."
         super().__init__(feature, plan_required, reset_time, message=budget_message)
 
 

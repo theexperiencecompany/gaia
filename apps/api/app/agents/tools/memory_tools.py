@@ -40,6 +40,7 @@ from langgraph.config import get_stream_writer
 
 from app.constants.memory import (
     DEFAULT_RECALL_LIMIT,
+    FREE_MEMORY_FACT_LIMIT,
     MEMORY_DOC_FILENAMES,
     MEMORY_TOOL_CONTENT_MAX_CHARS,
     MEMORY_TOOL_DOCUMENT_MAX_CHARS,
@@ -103,8 +104,10 @@ def _stream_memory_limit_card() -> None:
 
     Same ``rate_limit_data`` payload the @with_rate_limiting decorator emits
     (see app/decorators/rate_limiting.py), so the frontend RateLimitCard with
-    its upgrade CTA renders with zero new frontend work. ``feature: "memory"``
-    maps to the existing FEATURE_LIMITS entry for title/description.
+    its upgrade CTA renders with zero new frontend work. The explicit
+    ``message`` matters: memory is NOT plan-gated (free includes a capped
+    amount), so the card must say the cap is full rather than the generic
+    "not included in your plan" copy.
     """
     try:
         writer = get_stream_writer()
@@ -120,6 +123,12 @@ def _stream_memory_limit_card() -> None:
                     "plan_required": "pro",
                     "reset_time": None,
                     "current_plan": PlanType.FREE.value,
+                    "message": (
+                        f"Your free plan stores up to {FREE_MEMORY_FACT_LIMIT} "
+                        "memories and they are all used. Everything already "
+                        "saved keeps working. Upgrade to Pro for unlimited "
+                        "memories."
+                    ),
                 },
                 "timestamp": datetime.now(UTC).isoformat(),
             }

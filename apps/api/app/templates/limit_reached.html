@@ -38,9 +38,9 @@
                 "
               >
                 Hey{% if user_name %} {{ user_name }}{% endif %},<br />
-                Aryan here – one of the founders of GAIA.<br /><br />
-                You hit your free plan's {{ hit_feature_title }} limit today —
-                which honestly means you're getting real use out of GAIA, and I
+                Aryan here, one of the founders of GAIA.<br /><br />
+                You hit your free plan's {{ hit_feature_title }} limit today.
+                Honestly, that means you're getting real use out of GAIA, and I
                 love that.<br /><br />
                 If you want to keep going without the walls, Pro gives you:
               </p>
@@ -64,7 +64,7 @@
                         padding-left: 0.5rem;
                       "
                     >
-                      &bull; <strong>{{ benefit.title }}</strong> —
+                      &bull; <strong>{{ benefit.title }}</strong>:
                       {{ benefit.detail }}
                     </td>
                   </tr>
@@ -124,7 +124,7 @@
                   margin-bottom: 16px;
                 "
               >
-                Your limits reset on their own too — so either way, GAIA will be
+                Your limits also reset on their own, so either way GAIA will be
                 ready for you tomorrow. Questions? Just reply, or reach me at
                 <a
                   href="mailto:{{ contact_email }}"

@@ -65,7 +65,11 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     # CORE COMMUNICATION
     "chat_messages": TieredRateLimits(
         free=RateLimitConfig(day=15, month=200),  # TUNE — hard daily wall for conversion
-        pro=RateLimitConfig(day=3000, month=60000),  # +20% / +50%
+        # Pro has NO daily message count: usage is priced by the cost budgets
+        # (daily abuse guard + monthly economic guard), not by counting
+        # messages. The monthly count stays only as an extreme abuse backstop
+        # a human can never hit.
+        pro=RateLimitConfig(day=0, month=60000),
         info=FeatureInfo(title="Chat Messages", description="Send messages to AI assistants"),
     ),
     # VOICE (Very Expensive - LiveKit + STT + TTS per session)
@@ -354,17 +358,22 @@ def get_feature_info(feature_key: str) -> dict[str, str]:
 
 
 def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
-    """One upsell bullet comparing free vs pro for a feature, or None."""
+    """One upsell bullet comparing free vs pro for a feature, or None.
+
+    A pro limit of 0 means that period is uncapped on Pro, which is the
+    strongest possible pitch.
+    """
     limits = FEATURE_LIMITS[feature_key]
-    if limits.free.day > 0 and limits.pro.day > 0:
-        return {
-            "title": limits.info.title,
-            "detail": f"{limits.pro.day:,}/day on Pro — you have {limits.free.day:,}",
-        }
+    if limits.free.day > 0:
+        if limits.pro.day > 0:
+            detail = f"{limits.pro.day:,} per day instead of {limits.free.day:,}"
+        else:
+            detail = f"unlimited daily use instead of {limits.free.day:,} per day"
+        return {"title": limits.info.title, "detail": detail}
     if limits.free.month > 0 and limits.pro.month > 0:
         return {
             "title": limits.info.title,
-            "detail": f"{limits.pro.month:,}/month on Pro — you have {limits.free.month:,}",
+            "detail": f"{limits.pro.month:,} per month instead of {limits.free.month:,}",
         }
     return None
 
@@ -391,7 +400,7 @@ def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, 
         free_gated = limits.free.day <= 0 and limits.free.month <= 0
         pro_has_access = limits.pro.day > 0 or limits.pro.month > 0
         if free_gated and pro_has_access:
-            benefits.append({"title": limits.info.title, "detail": "Pro exclusive"})
+            benefits.append({"title": limits.info.title, "detail": "included with Pro"})
             seen.add(key)
 
     multipliers = sorted(
