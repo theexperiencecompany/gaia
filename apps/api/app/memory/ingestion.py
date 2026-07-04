@@ -16,6 +16,7 @@ from app.constants.memory import (
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
     EPISODE_ENTRY_TIME_FORMAT,
+    FREE_MEMORY_FACT_LIMIT,
     RECENT_FACTS_LIMIT,
     TRANSCRIPT_CHUNK_MAX_CHARS,
     TRANSCRIPT_CHUNK_OVERLAP_CHARS,
@@ -37,11 +38,48 @@ from app.memory.reconciliation import ReconciledFact, reconcile
 from app.memory.schemas import ExtractedFact
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry
+from app.models.payment_models import PlanType
 from app.services.memory_fs import schedule_memory_vfs_sync
+from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 _DEFAULT_USER_NAME = "the user"
 _FALLBACK_CATEGORY_PATH = "general"
+
+
+class MemoryLimitReachedError(Exception):
+    """An explicit memory add was blocked by the free plan's live-fact cap.
+
+    Raised only by ``retain_single`` (add_memory tool / POST endpoint) so the
+    caller can surface an upgrade prompt. Passive ingestion never raises — it
+    silently drops NEW facts at the cap (see ``retain``).
+    """
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        super().__init__(
+            f"Free plan memory limit reached ({limit} saved memories). "
+            "Upgrade to Pro for unlimited memories."
+        )
+
+
+async def _free_cap_reached(user_id: str) -> bool:
+    """True when a FREE user's live-fact count is at/over the plan cap.
+
+    Uses the cached plan lookup (Redis-backed) — retain() runs from many
+    callers (chat turns, subagents, email ingestion, API endpoints), so
+    resolving here keeps one canonical check instead of threading plan_type
+    through every path. Fails open on infra errors: memory should not stop
+    working because the plan lookup hiccuped.
+    """
+    try:
+        plan = await payment_service.get_cached_plan_type(user_id)
+    except Exception as e:
+        log.warning(f"Memory cap plan lookup failed (failing open): {e}")
+        return False
+    if plan != PlanType.FREE:
+        return False
+    return await pg_store.count_live_memories(user_id) >= FREE_MEMORY_FACT_LIMIT
 
 
 @dataclass
@@ -158,6 +196,25 @@ async def retain(
     reconciled = await reconcile(user_id, batch.facts, embeddings)
     timings["reconcile_ms"] = _elapsed_ms(stage)
 
+    # Free-plan cap: at the live-fact limit, passive ingestion silently drops
+    # facts that would GROW the set (NEW/EXTENDS). UPDATES still supersede
+    # (net count unchanged) so what GAIA knows stays current, and reads are
+    # never gated — the cap blocks growth, it does not lobotomize.
+    grows_set = [
+        item
+        for item in reconciled
+        if item.outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
+    ]
+    if grows_set and await _free_cap_reached(user_id):
+        reconciled = [item for item in reconciled if item not in grows_set]
+        log.info(
+            "memory_cap_reached",
+            event_name="memory_cap_reached",
+            user_id=user_id,
+            dropped=len(grows_set),
+            limit=FREE_MEMORY_FACT_LIMIT,
+        )
+
     stage = time.perf_counter()
     applied = await _apply_reconciled(
         user_id, reconciled, source_type=source_type, source_id=source_id, mentioned_at=now
@@ -222,7 +279,14 @@ async def retain_single(
     categorize LLM call assigns folder/kind/importance/entities — the
     full extraction prompt is tuned to filter conversational noise and
     could drop an explicitly requested fact, so it is not reused here.
+
+    Raises ``MemoryLimitReachedError`` when a free user is at the live-fact
+    cap — explicit adds fail LOUD so the tool/endpoint can upsell, unlike
+    passive ingestion which drops silently.
     """
+    if await _free_cap_reached(user_id):
+        raise MemoryLimitReachedError(FREE_MEMORY_FACT_LIMIT)
+
     now = datetime.now(UTC)
     fact = await _build_single_fact(user_id, content, category_path, now)
 
