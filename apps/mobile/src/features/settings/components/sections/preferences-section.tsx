@@ -1,9 +1,14 @@
 import { Button, Card, Chip, Spinner, TextField } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
+import { ShieldUserIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import type { OnboardingPreferences } from "@/features/settings/api/settings-api";
+import type {
+  HilPreferences,
+  OnboardingPreferences,
+} from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
+import { SettingsSwitchRow } from "@/features/settings/components/settings-row";
 import { useResponsive } from "@/lib/responsive";
 
 const PROFESSIONS = [
@@ -47,6 +52,36 @@ export function PreferencesSection() {
   const [timezone, setTimezone] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [hilEnabled, setHilEnabled] = useState(false);
+  const [hilSaving, setHilSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    settingsApi
+      .getHilPreferences()
+      .then((p: HilPreferences) => {
+        if (!cancelled) setHilEnabled(p.enabled);
+      })
+      .catch(() => {
+        // silently ignore — default keeps the toggle usable
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleHilToggle = useCallback(async (enabled: boolean) => {
+    setHilEnabled(enabled);
+    setHilSaving(true);
+    try {
+      await settingsApi.updateHilPreferences({ enabled });
+    } catch {
+      setHilEnabled(!enabled);
+      Alert.alert("Error", "Failed to update approval preference.");
+    } finally {
+      setHilSaving(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +153,21 @@ export function PreferencesSection() {
         paddingBottom: 40,
       }}
     >
+      {/* Approvals */}
+      <Card variant="secondary" className="rounded-2xl bg-surface">
+        <Card.Body className="px-4 py-2">
+          <SettingsSwitchRow
+            icon={ShieldUserIcon}
+            title="Ask before destructive actions"
+            subtitle="Approve or decline before GAIA sends, deletes, or posts on your behalf."
+            value={hilEnabled}
+            onValueChange={handleHilToggle}
+            disabled={hilSaving}
+            isLast
+          />
+        </Card.Body>
+      </Card>
+
       {/* Profession */}
       <Card variant="secondary" className="rounded-2xl bg-surface">
         <Card.Body className="gap-5 px-4 py-4">

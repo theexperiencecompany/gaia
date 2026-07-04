@@ -96,4 +96,19 @@ export const settingsApi = {
   getUserStats(): Promise<UserStats> {
     return apiService.get<UserStats>("/user/stats");
   },
+
+  getHilPreferences(): Promise<HilPreferences> {
+    return apiService.get<HilPreferences>("/approvals/preferences");
+  },
+
+  updateHilPreferences(
+    payload: Partial<HilPreferences>,
+  ): Promise<HilPreferences> {
+    return apiService.put<HilPreferences>("/approvals/preferences", payload);
+  },
 };
+
+export interface HilPreferences {
+  enabled: boolean;
+  always_allowed_tools: string[];
+}
