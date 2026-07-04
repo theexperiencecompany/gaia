@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.override.langgraph_bigtool.utils import State
+from app.services.hil.gate import gate_tool_call
 
 
 def format_tool_error(exc: Exception) -> str:
@@ -70,6 +71,22 @@ async def timeout_guarded_tool_call(
             name=tool_name,
             status="error",
         )
+
+
+async def hil_and_timeout_guarded_tool_call(
+    request: ToolCallRequest,
+    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
+) -> ToolMessage | Command:
+    """Parent ToolNode ``awrap_tool_call`` for InjectedState/middleware tools.
+
+    The HIL gate sits OUTSIDE the timeout guard so the approval wait never counts
+    against the tool-execution timeout. Both nest around the raw ``execute``.
+    """
+
+    async def timed(req: ToolCallRequest) -> ToolMessage | Command:
+        return await timeout_guarded_tool_call(req, execute)
+
+    return await gate_tool_call(request, timed)
 
 
 class DynamicToolNode(ToolNode):

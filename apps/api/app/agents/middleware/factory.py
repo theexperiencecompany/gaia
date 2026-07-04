@@ -11,6 +11,7 @@ from langchain_core.tools import BaseTool
 from app.agents.llm.client import get_default_llm
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
+from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
@@ -143,6 +144,13 @@ def create_middleware_stack(
                 "accounting_enabled": True,
             }
         )
+
+    # HIL approval gate — outermost tool-call wrapper (only accounting, a
+    # before/after_model hook, precedes it) so no other middleware runs a side
+    # effect before the user decides. A no-op unless the user's HIL preference is
+    # on, so it needs no build-time flag.
+    middleware.append(HILApprovalMiddleware())
+    log.debug(f"{LogTag.AGENT} HILApprovalMiddleware enabled for {agent_name}")
 
     # SubagentMiddleware - spawn_subagent tool for parallel/focused work
     if enable_subagent:
