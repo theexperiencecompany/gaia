@@ -1,21 +1,46 @@
 """Per-plan LLM routing: free -> Gemini, any paid plan -> MiniMax (OpenRouter), hardcoded
 by subscription plan. Set on the comms configurable; executor/subagents inherit it.
+
+Also the pro ECONOMIC guard: when a paid user's rolling monthly LLM spend
+exceeds ``PRO_MONTHLY_COST_BUDGET_USD``, routing degrades to the free-tier
+model for the rest of the month instead of blocking — a paying user is never
+hard-walled mid-month. All other pro entitlements (rate limits, memory,
+per-request ceiling) stay intact; only the model changes.
 """
 
+import asyncio
+
+from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.constants.llm import (
     COMMS_REASONING,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL_NAME,
     DEV_MODEL_OPTIONS,
+    MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
     PAID_MODEL_MODEL_KWARGS,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
+    PRO_MONTHLY_COST_BUDGET_USD,
 )
 from app.constants.log_tags import LogTag
+from app.db.redis import redis_cache
+from app.models.notification.notification_models import (
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+    NotificationType,
+)
 from app.models.payment_models import PlanType
+from app.services.cost_budget import get_cost
+from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
+
+_DEGRADE_NOTICE_KEY = "cost_budget_notified:{user_id}:{window}"
+
+# asyncio.create_task only keeps a weakref; hold refs so notices aren't GC'd mid-flight.
+_notice_tasks: set[asyncio.Task] = set()
 
 
 def _pin_model(configurable: dict, provider: str, model: str) -> None:
@@ -44,8 +69,23 @@ async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
 
     # Free runs the default model; every other (paid) tier gets the better model,
     # so new paid plans are covered without touching this routing.
+    degraded = False
     if plan == PlanType.FREE:
         _pin_model(configurable, DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME)
+    elif await _pro_monthly_budget_exhausted(user_id):
+        # Economic guard: this month's priority compute is spent — degrade to
+        # the free-tier model instead of blocking. Entitlements stay pro.
+        degraded = True
+        _pin_model(configurable, DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME)
+        log.warning(
+            "pro_model_degraded",
+            event_name="pro_model_degraded",
+            user_id=user_id,
+            plan=plan.value,
+        )
+        task = asyncio.create_task(_notify_degrade_once(user_id))
+        _notice_tasks.add(task)
+        task.add_done_callback(_notice_tasks.discard)
     else:
         # Paid: MiniMax M3 via OpenRouter, comms-specific reasoning, first-party
         # provider pin. The executor + provider subagents inherit this model and the
@@ -54,7 +94,51 @@ async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
         configurable["reasoning"] = COMMS_REASONING
         configurable["model_kwargs"] = PAID_MODEL_MODEL_KWARGS
 
-    log.set(plan_model={"plan": plan.value, "model": configurable["model"]})
+    log.set(plan_model={"plan": plan.value, "model": configurable["model"], "degraded": degraded})
+
+
+async def _pro_monthly_budget_exhausted(user_id: str) -> bool:
+    """True when the month's spend has crossed the pro economic guard.
+
+    Fails open (False) on infra errors — never punish a paying user for a
+    Redis hiccup.
+    """
+    try:
+        spent = await get_cost(user_id, RateLimitPeriod.MONTH)
+    except Exception as e:
+        log.warning(f"{LogTag.AGENT} Monthly budget read failed; keeping paid model: {e}")
+        return False
+    return spent >= PRO_MONTHLY_COST_BUDGET_USD
+
+
+async def _notify_degrade_once(user_id: str) -> None:
+    """In-app notice on the FIRST degraded turn of the month (Redis SET NX gate)."""
+    try:
+        client = redis_cache.redis
+        if client is None:
+            return
+        key = _DEGRADE_NOTICE_KEY.format(
+            user_id=user_id, window=get_time_window_key(RateLimitPeriod.MONTH)
+        )
+        if not await client.set(key, "1", nx=True, ex=MONTHLY_BUDGET_TTL_SECONDS):
+            return
+        reset_time = get_reset_time(RateLimitPeriod.MONTH)
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=user_id,
+                source=NotificationSourceEnum.USAGE_LIMIT,
+                type=NotificationType.INFO,
+                content=NotificationContent(
+                    title="Priority compute used for this month",
+                    body=(
+                        "You've used this month's priority AI compute. GAIA keeps "
+                        f"working on the standard model until {reset_time:%b %d}."
+                    ),
+                ),
+            )
+        )
+    except Exception as e:
+        log.warning(f"{LogTag.AGENT} Degrade notice failed: {e}")
 
 
 def _apply_dev_model(configurable: dict, option: dict, reasoning_cfg: dict) -> None:
