@@ -32,22 +32,29 @@ class DecisionResult(BaseModel):
     feedback: str | None = None
 
 
-def _prompt(message: str, pending_summaries: list[str]) -> str:
-    actions = "\n".join(f"- {summary}" for summary in pending_summaries)
-    return (
-        "The assistant is waiting for the user to approve or decline these "
-        "pending actions:\n"
-        f"{actions}\n\n"
-        f"The user just sent this message:\n{message!r}\n\n"
-        "Is the user approving those actions, declining them, or making an "
-        "unrelated new request? Reply with action='approve', 'deny', or "
-        "'unrelated', and extract any feedback or conditions they gave."
-    )
+async def resolve_pending_from_message(
+    conversation_id: str, user_id: str, message: str
+) -> DecisionAction | None:
+    """Resolve every pending approval in the conversation from ``message``.
+
+    Returns the classified action, or ``None`` when nothing was pending. One
+    reply applies to all pending approvals in the conversation — concurrent
+    distinct approvals in one thread are rare and a single reply can't
+    disambiguate them.
+    """
+    pending = await pending_approvals_for_conversation(conversation_id)
+    if not pending:
+        return None
+
+    result = await interpret_decision_message(message, [p.get("summary", "") for p in pending])
+    decision = "deny" if result.action != "approve" else "approve"
+    feedback = UNRELATED_FEEDBACK if result.action == "unrelated" else result.feedback
+    for item in pending:
+        await _safe_relay(item["approval_id"], user_id, decision, feedback)
+    return result.action
 
 
-async def interpret_decision_message(
-    message: str, pending_summaries: list[str]
-) -> DecisionResult:
+async def interpret_decision_message(message: str, pending_summaries: list[str]) -> DecisionResult:
     """Classify a chat reply against pending approvals. Fails toward ``unrelated``
     (normal chat), never toward silently executing an action."""
     try:
@@ -59,6 +66,9 @@ async def interpret_decision_message(
     except Exception as e:
         log.warning(f"{LogTag.HIL} Conversational resolve failed, treating as unrelated: {e}")
         return DecisionResult(action="unrelated")
+
+
+# --- internals -----------------------------------------------------------------
 
 
 async def _safe_relay(
@@ -77,29 +87,14 @@ async def _safe_relay(
         pass
 
 
-async def resolve_pending_from_message(
-    conversation_id: str, user_id: str, message: str
-) -> DecisionAction | None:
-    """Resolve every pending approval in the conversation from ``message``.
-
-    Returns the classified action, or ``None`` when nothing was pending. One
-    reply applies to all pending approvals in the conversation — concurrent
-    distinct approvals in one thread are rare and a single reply can't
-    disambiguate them.
-    """
-    pending = await pending_approvals_for_conversation(conversation_id)
-    if not pending:
-        return None
-
-    result = await interpret_decision_message(
-        message, [p.get("summary", "") for p in pending]
+def _prompt(message: str, pending_summaries: list[str]) -> str:
+    actions = "\n".join(f"- {summary}" for summary in pending_summaries)
+    return (
+        "The assistant is waiting for the user to approve or decline these "
+        "pending actions:\n"
+        f"{actions}\n\n"
+        f"The user just sent this message:\n{message!r}\n\n"
+        "Is the user approving those actions, declining them, or making an "
+        "unrelated new request? Reply with action='approve', 'deny', or "
+        "'unrelated', and extract any feedback or conditions they gave."
     )
-    if result.action == "unrelated":
-        for item in pending:
-            await _safe_relay(item["approval_id"], user_id, "deny", UNRELATED_FEEDBACK)
-        return "unrelated"
-
-    decision = "approve" if result.action == "approve" else "deny"
-    for item in pending:
-        await _safe_relay(item["approval_id"], user_id, decision, result.feedback)
-    return result.action

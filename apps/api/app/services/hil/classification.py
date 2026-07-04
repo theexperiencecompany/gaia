@@ -3,23 +3,31 @@
 Resolution order (first match wins):
 
 1. Exempt orchestration/plumbing tools → safe.
-2. The tool registry's ``destructive`` flag — authoritative for internal tools
-   and curated integration slugs.
-3. For unclassified (custom MCP) tools, a cached Mongo classification.
-4. A one-shot LLM classification, written back to Mongo and the live registry.
-5. Any failure or a tool absent from the registry → destructive (fail closed).
+2. A server-declared MCP ``destructiveHint`` → destructive. Escalation-only: an
+   untrusted MCP server may flag danger but never clear it, so ``readOnlyHint``
+   and ``destructiveHint=False`` are ignored; a true hint gates even over a
+   reviewed-safe registry flag.
+3. The tool registry's flag — authoritative for internal tools and curated
+   integration slugs.
+4. A cached Mongo classification for a previously-seen custom tool.
+5. A one-shot LLM classification, persisted to Mongo + the live registry.
+
+Any failure — registry unavailable, LLM error, or a tool absent from every
+source — resolves to destructive (fail closed).
 """
 
 import hashlib
 
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import ainvoke_structured
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import hil_tool_risk_collection
 from app.models.hil_models import HILToolRiskRecord
+from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from shared.py.wide_events import log
 
 _CLASSIFY_PROMPT = (
@@ -37,49 +45,104 @@ class _ClassifyResult(BaseModel):
     rationale: str = Field(default="", description="One short sentence of reasoning.")
 
 
-def _description_hash(description: str) -> str:
-    return hashlib.md5(description.encode(), usedforsecurity=False).hexdigest()  # nosec B324
+async def is_tool_destructive(
+    tool_name: str,
+    description: str = "",
+    *,
+    destructive_hint: bool | None = None,
+) -> bool:
+    """Return whether ``tool_name`` must be gated by HIL. Fails closed.
 
-
-async def is_tool_destructive(tool_name: str, description: str = "") -> bool:
-    """Return whether ``tool_name`` must be gated by HIL. Fails closed."""
+    ``destructive_hint`` is the caller-read MCP ``destructiveHint`` (see
+    :func:`mcp_destructive_hint`); it escalates an otherwise-unclassified tool
+    to destructive without an LLM call.
+    """
     if tool_name in HIL_EXEMPT_TOOLS:
         return False
-
+    # A server-declared destructive hint escalates even over a reviewed-safe
+    # registry flag: gating a safe tool is only friction, letting a destructive
+    # one through is the failure we're guarding against.
+    if destructive_hint is True:
+        return True
     try:
         registry = await get_tool_registry()
         flag = registry.is_tool_destructive(tool_name)
         if flag is not None:
             return flag
-
-        description_hash = _description_hash(description)
-        record = await hil_tool_risk_collection.find_one(
-            {"tool_name": tool_name, "description_hash": description_hash}
-        )
-        if record is not None:
-            registry.mark_tool_destructive(tool_name, record["is_destructive"])
-            return bool(record["is_destructive"])
-
-        result = await ainvoke_structured(
-            _ClassifyResult,
-            _CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
-            label="hil_tool_classification",
-        )
-        classification = HILToolRiskRecord(
-            tool_name=tool_name,
-            description_hash=description_hash,
-            is_destructive=result.is_destructive,
-            rationale=result.rationale,
-        )
-        await hil_tool_risk_collection.update_one(
-            {"tool_name": tool_name, "description_hash": description_hash},
-            {"$set": classification.model_dump()},
-            upsert=True,
-        )
-        registry.mark_tool_destructive(tool_name, result.is_destructive)
-        return result.is_destructive
+        return await _classify_unknown_tool(registry, tool_name, description)
     except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} Failed to classify '{tool_name}', failing closed (destructive): {e}"
-        )
+        # Fail closed: every failure mode (registry/LLM/Mongo down, unknown tool)
+        # must gate rather than let a possibly-destructive call run unattended.
+        log.warning(f"{LogTag.HIL} Failed to classify {tool_name!r}, failing closed: {e}")
         return True
+
+
+def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
+    """Return ``True`` only when an MCP tool declares itself destructive.
+
+    Honors the MCP ``destructiveHint`` annotation that
+    ``SanitizingLangChainAdapter`` stashes on the tool's metadata. Escalation-
+    only — a server may flag danger but never clear it — so a falsey or missing
+    hint yields ``None`` (defer to the other resolution steps), never ``False``.
+    """
+    metadata = getattr(tool, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    annotations = metadata.get(MCP_ANNOTATIONS_METADATA_KEY)
+    if isinstance(annotations, dict) and annotations.get("destructiveHint") is True:
+        return True
+    return None
+
+
+async def _classify_unknown_tool(
+    registry: ToolRegistry, tool_name: str, description: str
+) -> bool:
+    """Resolve an unclassified custom tool from the Mongo cache, else the LLM."""
+    description_hash = _description_hash(description)
+    cached = await _cached_classification(tool_name, description_hash)
+    if cached is not None:
+        registry.mark_tool_destructive(tool_name, cached)
+        return cached
+
+    result = await _classify_with_llm(tool_name, description)
+    await _persist_classification(tool_name, description_hash, result)
+    registry.mark_tool_destructive(tool_name, result.is_destructive)
+    return result.is_destructive
+
+
+async def _cached_classification(tool_name: str, description_hash: str) -> bool | None:
+    """A prior classification for this exact tool+description, or ``None``."""
+    record = await hil_tool_risk_collection.find_one(
+        {"tool_name": tool_name, "description_hash": description_hash}
+    )
+    return bool(record["is_destructive"]) if record else None
+
+
+async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResult:
+    return await ainvoke_structured(
+        _ClassifyResult,
+        _CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
+        label="hil_tool_classification",
+    )
+
+
+async def _persist_classification(
+    tool_name: str, description_hash: str, result: _ClassifyResult
+) -> None:
+    """Cache the classification in Mongo so restarts/refreshes don't re-run the
+    LLM (the description_hash key means only a changed description re-classifies)."""
+    record = HILToolRiskRecord(
+        tool_name=tool_name,
+        description_hash=description_hash,
+        is_destructive=result.is_destructive,
+        rationale=result.rationale,
+    )
+    await hil_tool_risk_collection.update_one(
+        {"tool_name": tool_name, "description_hash": description_hash},
+        {"$set": record.model_dump()},
+        upsert=True,
+    )
+
+
+def _description_hash(description: str) -> str:
+    return hashlib.md5(description.encode(), usedforsecurity=False).hexdigest()  # nosec B324

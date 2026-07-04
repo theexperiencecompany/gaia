@@ -14,6 +14,7 @@ purely by ``stream_id``, is what makes the card work at every nesting depth.
 """
 
 import asyncio
+import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
@@ -74,27 +75,205 @@ class ApprovalOutcome:
     scope: str = "once"
 
 
+async def request_approval(
+    *,
+    stream_id: str,
+    user_id: str,
+    conversation_id: str,
+    tool_call: dict[str, Any],
+    summary: str,
+    integration_name: str | None,
+) -> ApprovalOutcome:
+    """Publish the approval card and block until the user decides or it times out."""
+    if not redis_cache.redis:
+        log.error(f"{LogTag.HIL} HIL bridge: Redis unavailable — failing closed")
+        return ApprovalOutcome(status="denied", feedback="approval system unavailable")
+
+    approval_id = str(uuid4())
+    log.set(hil={"approval_id": approval_id, "tool": tool_call.get("name"), "stream_id": stream_id})
+    await _register_pending_request(
+        approval_id, conversation_id, stream_id, user_id, summary, tool_call.get("name", "")
+    )
+
+    pubsub = redis_cache.redis.pubsub()
+    try:
+        # Subscribe before publishing so a fast decision can never slip through.
+        await pubsub.subscribe(_result_channel(approval_id))
+        await _publish_entry(
+            stream_id,
+            _approval_entry(approval_id, tool_call, "pending", summary, integration_name),
+        )
+        _schedule_pending_notification(user_id, conversation_id, approval_id, summary)
+
+        outcome = await _wait_for_decision(pubsub)
+        await _publish_entry(
+            stream_id,
+            _approval_entry(
+                approval_id, tool_call, outcome.status, summary, integration_name, outcome.feedback
+            ),
+        )
+        return outcome
+    finally:
+        await _cleanup_pending_request(approval_id, conversation_id, pubsub)
+
+
+async def relay_approval_decision(
+    *,
+    approval_id: str,
+    user_id: str,
+    decision: str,
+    feedback: str | None,
+    scope: str,
+) -> dict[str, Any]:
+    """Validate ownership, consume the pending key, publish the decision.
+
+    Returns the pending-request payload (the conversational resolver uses it).
+    Deletes the request key before publishing so late/duplicate deliveries
+    cannot double-resolve — the same idempotency contract as the desktop bridge.
+    """
+    pending = await redis_cache.get(_request_key(approval_id))
+    if not pending:
+        raise ApprovalRequestNotFound()
+    if pending.get("user_id") != user_id:
+        raise ApprovalRequestForbidden()
+
+    await redis_cache.delete(_request_key(approval_id))
+    await redis_cache.redis.publish(
+        _result_channel(approval_id),
+        json.dumps({"decision": decision, "feedback": feedback, "scope": scope}),
+    )
+    return pending
+
+
+async def pending_approvals_for_conversation(conversation_id: str) -> list[dict[str, Any]]:
+    """Pending request payloads (with ids) for the conversational resolver."""
+    if not redis_cache.redis:
+        return []
+    ids = await redis_cache.redis.smembers(_pending_set_key(conversation_id))
+    out: list[dict[str, Any]] = []
+    for raw_id in ids:
+        approval_id = raw_id.decode() if isinstance(raw_id, bytes) else raw_id
+        payload = await redis_cache.get(_request_key(approval_id))
+        if payload:
+            out.append({"approval_id": approval_id, **payload})
+    return out
+
+
 def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | None) -> str:
     """Deterministic one-line summary of a gated call (no LLM in the hot path)."""
     label = tool_name.replace("_", " ").strip().capitalize()
     if integration_name:
         label = f"{label} ({integration_name})"
-    parts: list[str] = []
-    for key, value in (args or {}).items():
-        if len(parts) >= _MAX_SUMMARY_ARGS:
-            break
-        if isinstance(value, (str, int, float, bool)):
-            text = str(value)
-            if len(text) > _MAX_ARG_VALUE_LEN:
-                text = f"{text[:_MAX_ARG_VALUE_LEN]}…"
-            parts.append(f"{key}: {text}")
+    parts = _summary_arg_parts(args)
     return f"{label} — {', '.join(parts)}" if parts else label
 
 
-def _entry(
+# --- internals -----------------------------------------------------------------
+
+
+async def _register_pending_request(
+    approval_id: str,
+    conversation_id: str,
+    stream_id: str,
+    user_id: str,
+    summary: str,
+    tool_name: str,
+) -> None:
+    """Record the pending request (owner + per-conversation index) in Redis."""
+    ttl = int(HIL_APPROVAL_TIMEOUT_SECONDS) + HIL_REQUEST_TTL_GRACE_SECONDS
+    await redis_cache.set(
+        _request_key(approval_id),
+        {
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "stream_id": stream_id,
+            "tool_name": tool_name,
+            "summary": summary,
+        },
+        ttl=ttl,
+    )
+    await redis_cache.redis.sadd(_pending_set_key(conversation_id), approval_id)
+    await redis_cache.redis.expire(_pending_set_key(conversation_id), ttl)
+
+
+async def _wait_for_decision(pubsub: Any) -> ApprovalOutcome:
+    """Block on the result channel until a decision arrives or the timeout fires."""
+    try:
+        async with asyncio.timeout(HIL_APPROVAL_TIMEOUT_SECONDS):
+            return await _read_decision(pubsub)
+    except TimeoutError:
+        return ApprovalOutcome(status="timeout")
+
+
+async def _read_decision(pubsub: Any) -> ApprovalOutcome:
+    while True:
+        message = await pubsub.get_message(
+            ignore_subscribe_messages=True, timeout=_PUBSUB_POLL_SECONDS
+        )
+        if message is None or message["type"] != "message":
+            continue
+        payload = _parse_decision(message["data"])
+        if payload is None:
+            continue
+        decision = payload.get("decision")
+        return ApprovalOutcome(
+            status="approved" if decision == "approve" else "denied",
+            feedback=payload.get("feedback"),
+            scope=payload.get("scope", "once"),
+        )
+
+
+def _parse_decision(raw: Any) -> dict[str, Any] | None:
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        log.warning(f"{LogTag.HIL} HIL bridge: discarding malformed decision payload")
+        return None
+
+
+async def _cleanup_pending_request(approval_id: str, conversation_id: str, pubsub: Any) -> None:
+    """Drop the request key + pending index and tear down the pubsub.
+
+    Best-effort in independent guards: the request key also carries a TTL, and a
+    cleanup failure must never mask the real approval outcome.
+    """
+    with contextlib.suppress(Exception):
+        await redis_cache.delete(_request_key(approval_id))
+        await redis_cache.redis.srem(_pending_set_key(conversation_id), approval_id)
+    with contextlib.suppress(Exception):
+        await pubsub.unsubscribe(_result_channel(approval_id))
+        await pubsub.aclose()
+
+
+def _schedule_pending_notification(
+    user_id: str, conversation_id: str, approval_id: str, summary: str
+) -> None:
+    """Wake clients not watching the stream. Detached — a notify failure must
+    never block the approval wait."""
+    task = asyncio.create_task(
+        notify_approval_pending(user_id, conversation_id, approval_id, summary)
+    )
+    _notify_tasks.add(task)
+    task.add_done_callback(_notify_tasks.discard)
+
+
+async def _publish_entry(stream_id: str, entry: dict[str, Any]) -> None:
+    """Deliver a frame live (replayable event log) AND record it for persistence.
+
+    The session append mirrors ``make_redis_stream_writer`` so the executor
+    drain path persists the card; the SSE publish reaches live/reloaded clients.
+    """
+    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'tool_data': entry})}\n\n")
+    session = get_session(stream_id)
+    if session is not None:
+        session.tool_events.append({"tool_data": entry})
+
+
+def _approval_entry(
     approval_id: str,
     tool_call: dict[str, Any],
-    *,
     status: ApprovalStatus,
     summary: str,
     integration_name: str | None,
@@ -118,170 +297,27 @@ def _entry(
     }
 
 
-async def _publish_entry(stream_id: str, entry: dict[str, Any]) -> None:
-    """Deliver a frame live (replayable event log) AND record it for persistence.
-
-    The session append mirrors ``make_redis_stream_writer`` so the executor
-    drain path persists the card; the SSE publish reaches live/reloaded clients.
-    """
-    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'tool_data': entry})}\n\n")
-    session = get_session(stream_id)
-    if session is not None:
-        session.tool_events.append({"tool_data": entry})
-
-
-async def request_approval(
-    *,
-    stream_id: str,
-    user_id: str,
-    conversation_id: str,
-    tool_call: dict[str, Any],
-    summary: str,
-    integration_name: str | None,
-) -> ApprovalOutcome:
-    """Publish the approval card and block until decision or timeout."""
-    if not redis_cache.redis:
-        log.error(f"{LogTag.HIL} HIL bridge: Redis unavailable — failing closed")
-        return ApprovalOutcome(status="denied", feedback="approval system unavailable")
-
-    approval_id = str(uuid4())
-    request_key = f"{HIL_REQUEST_PREFIX}{approval_id}"
-    pending_set_key = f"{HIL_PENDING_CONVERSATION_PREFIX}{conversation_id}"
-    result_channel = f"{HIL_RESULT_CHANNEL_PREFIX}{approval_id}"
-    ttl = int(HIL_APPROVAL_TIMEOUT_SECONDS) + HIL_REQUEST_TTL_GRACE_SECONDS
-
-    log.set(hil={"approval_id": approval_id, "tool": tool_call.get("name"), "stream_id": stream_id})
-
-    await redis_cache.set(
-        request_key,
-        {
-            "user_id": user_id,
-            "conversation_id": conversation_id,
-            "stream_id": stream_id,
-            "tool_name": tool_call.get("name", ""),
-            "summary": summary,
-        },
-        ttl=ttl,
-    )
-    await redis_cache.redis.sadd(pending_set_key, approval_id)
-    await redis_cache.redis.expire(pending_set_key, ttl)
-
-    pubsub = redis_cache.redis.pubsub()
-    try:
-        # Subscribe before publishing so a fast decision can never slip through.
-        await pubsub.subscribe(result_channel)
-        await _publish_entry(
-            stream_id,
-            _entry(
-                approval_id,
-                tool_call,
-                status="pending",
-                summary=summary,
-                integration_name=integration_name,
-            ),
-        )
-        # Wake clients that aren't actively watching the stream. Best-effort and
-        # detached — never let a notify failure block the approval wait.
-        notify_task = asyncio.create_task(
-            notify_approval_pending(user_id, conversation_id, approval_id, summary)
-        )
-        _notify_tasks.add(notify_task)
-        notify_task.add_done_callback(_notify_tasks.discard)
-
-        try:
-            async with asyncio.timeout(HIL_APPROVAL_TIMEOUT_SECONDS):
-                outcome = await _await_decision(pubsub)
-        except TimeoutError:
-            outcome = ApprovalOutcome(status="timeout")
-
-        await _publish_entry(
-            stream_id,
-            _entry(
-                approval_id,
-                tool_call,
-                status=outcome.status,
-                summary=summary,
-                integration_name=integration_name,
-                feedback=outcome.feedback,
-            ),
-        )
-        return outcome
-    finally:
-        # Best-effort cleanup in independent guards — never mask the outcome.
-        try:
-            await redis_cache.delete(request_key)
-            await redis_cache.redis.srem(pending_set_key, approval_id)
-        except Exception:  # nosec B110 - cleanup must not mask the outcome
-            pass
-        try:
-            await pubsub.unsubscribe(result_channel)
-            await pubsub.aclose()
-        except Exception:  # nosec B110 - cleanup must not mask the outcome
-            pass
+def _summary_arg_parts(args: dict[str, Any]) -> list[str]:
+    """Up to ``_MAX_SUMMARY_ARGS`` short ``key: value`` scalars for the summary."""
+    parts: list[str] = []
+    for key, value in (args or {}).items():
+        if len(parts) >= _MAX_SUMMARY_ARGS:
+            break
+        if isinstance(value, (str, int, float, bool)):
+            text = str(value)
+            if len(text) > _MAX_ARG_VALUE_LEN:
+                text = f"{text[:_MAX_ARG_VALUE_LEN]}…"
+            parts.append(f"{key}: {text}")
+    return parts
 
 
-async def _await_decision(pubsub: Any) -> ApprovalOutcome:
-    while True:
-        message = await pubsub.get_message(
-            ignore_subscribe_messages=True, timeout=_PUBSUB_POLL_SECONDS
-        )
-        if message is None or message["type"] != "message":
-            continue
-        raw = message["data"]
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8")
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            log.warning(f"{LogTag.HIL} HIL bridge: discarding malformed decision payload")
-            continue
-        decision = payload.get("decision")
-        return ApprovalOutcome(
-            status="approved" if decision == "approve" else "denied",
-            feedback=payload.get("feedback"),
-            scope=payload.get("scope", "once"),
-        )
+def _request_key(approval_id: str) -> str:
+    return f"{HIL_REQUEST_PREFIX}{approval_id}"
 
 
-async def relay_approval_decision(
-    *,
-    approval_id: str,
-    user_id: str,
-    decision: str,
-    feedback: str | None,
-    scope: str,
-) -> dict[str, Any]:
-    """Validate ownership, consume the pending key, publish the decision.
-
-    Returns the pending-request payload (the conversational resolver uses it).
-    Deletes the request key before publishing so late/duplicate deliveries
-    cannot double-resolve — the same idempotency contract as the desktop bridge.
-    """
-    request_key = f"{HIL_REQUEST_PREFIX}{approval_id}"
-    pending = await redis_cache.get(request_key)
-    if not pending:
-        raise ApprovalRequestNotFound()
-    if pending.get("user_id") != user_id:
-        raise ApprovalRequestForbidden()
-
-    await redis_cache.delete(request_key)
-    await redis_cache.redis.publish(
-        f"{HIL_RESULT_CHANNEL_PREFIX}{approval_id}",
-        json.dumps({"decision": decision, "feedback": feedback, "scope": scope}),
-    )
-    return pending
+def _result_channel(approval_id: str) -> str:
+    return f"{HIL_RESULT_CHANNEL_PREFIX}{approval_id}"
 
 
-async def pending_approvals_for_conversation(conversation_id: str) -> list[dict[str, Any]]:
-    """Pending request payloads (with ids) for the conversational resolver."""
-    if not redis_cache.redis:
-        return []
-    pending_set_key = f"{HIL_PENDING_CONVERSATION_PREFIX}{conversation_id}"
-    ids = await redis_cache.redis.smembers(pending_set_key)
-    out: list[dict[str, Any]] = []
-    for raw_id in ids:
-        approval_id = raw_id.decode() if isinstance(raw_id, bytes) else raw_id
-        payload = await redis_cache.get(f"{HIL_REQUEST_PREFIX}{approval_id}")
-        if payload:
-            out.append({"approval_id": approval_id, **payload})
-    return out
+def _pending_set_key(conversation_id: str) -> str:
+    return f"{HIL_PENDING_CONVERSATION_PREFIX}{conversation_id}"
