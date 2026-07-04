@@ -11,7 +11,6 @@ import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 
 const EMPTY_PREFS: HilPreferences = {
@@ -57,11 +56,7 @@ export default function ApprovalSettings() {
     const next = prefs.always_allowed_tools.filter((t) => t !== tool);
     setPrefs((p) => ({ ...p, always_allowed_tools: next }));
     try {
-      await apiService.put(
-        "/approvals/preferences",
-        { always_allowed_tools: next },
-        { silent: true },
-      );
+      await approvalsApi.putHilPreferences({ always_allowed_tools: next });
     } catch {
       setPrefs(previous);
       toast.error("Failed to update allowed tools");
