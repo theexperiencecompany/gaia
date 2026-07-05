@@ -2,6 +2,16 @@ import type { StreamToolDataEntry } from "./streaming";
 
 export const APPROVAL_REQUEST_TOOL_NAME = "approval_request";
 
+/**
+ * Per-user HIL preferences. `tool_overrides` maps a tool name to whether it
+ * should ask before running, holding only the user's diffs from the default
+ * (curated) gating — a tool absent from the map uses its default classification.
+ */
+export interface HilPreferences {
+  enabled: boolean;
+  tool_overrides: Record<string, boolean>;
+}
+
 export type ApprovalStatus = "pending" | "approved" | "denied" | "timeout";
 
 export interface ApprovalRequestData {

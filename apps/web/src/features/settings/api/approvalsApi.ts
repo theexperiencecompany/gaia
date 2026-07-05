@@ -1,10 +1,7 @@
+import type { HilPreferences } from "@shared/chat";
 import { apiService } from "@/lib/api/service";
 
-export interface HilPreferences {
-  enabled: boolean;
-  /** tool name -> should-ask. Holds only user overrides of the default gating. */
-  tool_overrides: Record<string, boolean>;
-}
+export type { HilPreferences };
 
 export const approvalsApi = {
   getHilPreferences: (): Promise<HilPreferences> =>
