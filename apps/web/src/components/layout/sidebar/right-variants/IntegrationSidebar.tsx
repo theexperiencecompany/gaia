@@ -53,9 +53,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const { isOwnIntegration, isForkedIntegration } =
     useIntegrationOwnership(integration);
   const { prefs: hilPrefs } = useHilPreferences();
-  // When HIL is on, the tool list doubles as the per-tool approval config;
-  // otherwise it stays a plain browse view of what the integration can do.
-  const showApprovals = isConnected && !!hilPrefs?.enabled;
+  const hilEnabled = !!hilPrefs?.enabled;
+  // A connected integration's tool list is always the per-tool approval view
+  // (same shape whether HIL is on or off — off just renders it read-only with an
+  // enable prompt). Not-connected integrations show a plain browse view.
 
   // Show the tool skeleton both on the initial on-demand fetch and while a
   // just-connected integration is still discovering tools in the background —
@@ -116,10 +117,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         {integrationTools.length > 0 && (
           <div className="relative right-1 mt-3">
             <h2 className="text-sm font-medium text-zinc-300">
-              {showApprovals ? "Tool approvals" : "Available tools"} (
+              {isConnected ? "Tool approvals" : "Available tools"} (
               {integrationTools.length})
             </h2>
-            {showApprovals && (
+            {isConnected && hilEnabled && (
               <p className="mt-0.5 text-xs text-zinc-500">
                 Toggle which tools ask before running.
               </p>
@@ -136,8 +137,11 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       <SidebarContent className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {integrationTools.length > 0 && (
           <div className="flex-1 min-h-0 overflow-y-auto pb-2">
-            {showApprovals ? (
-              <IntegrationToolApprovals tools={integrationTools} />
+            {isConnected ? (
+              <IntegrationToolApprovals
+                tools={integrationTools}
+                disabled={!hilEnabled}
+              />
             ) : (
               <div className="flex flex-wrap gap-2 content-start">
                 {integrationTools.map((tool) => (

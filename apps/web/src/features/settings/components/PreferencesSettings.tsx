@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { CustomResponseStyleInput } from "@/features/settings/components/CustomResponseStyleInput";
+import { HilApprovalToggle } from "@/features/settings/components/HilApprovalToggle";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -379,6 +380,8 @@ export default function PreferencesSettings({
             )}
         </SettingsRow>
       </SettingsSection>
+
+      <HilApprovalToggle />
 
       <SettingsSection>
         <SettingsRow

@@ -2,7 +2,6 @@
 
 import type React from "react";
 import AccountSettings from "@/features/settings/components/AccountSettings";
-import ApprovalSettings from "@/features/settings/components/ApprovalSettings";
 import DesktopSettings from "@/features/settings/components/DesktopSettings";
 import { IntegrationInstructionsSettings } from "@/features/settings/components/IntegrationInstructionsSettings";
 import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
@@ -51,8 +50,6 @@ export function SectionComponent({
       return <SkillsSettings />;
     case "notifications":
       return <NotificationSettings />;
-    case "approvals":
-      return <ApprovalSettings />;
     case "desktop":
       return <DesktopSettings />;
   }
