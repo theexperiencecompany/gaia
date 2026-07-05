@@ -1,5 +1,8 @@
+import type { HilPreferences } from "@gaia/shared/chat";
 import type { FeatureUsage, UsageSummary } from "@gaia/shared/types";
 import { apiService } from "@/lib/api";
+
+export type { HilPreferences };
 
 export type {
   FeatureUsage,
@@ -106,9 +109,15 @@ export const settingsApi = {
   ): Promise<HilPreferences> {
     return apiService.put<HilPreferences>("/approvals/preferences", payload);
   },
-};
 
-export interface HilPreferences {
-  enabled: boolean;
-  always_allowed_tools: string[];
-}
+  // ask: true = always ask, false = never ask, null = clear override (use default).
+  setToolOverride(
+    toolName: string,
+    ask: boolean | null,
+  ): Promise<HilPreferences> {
+    return apiService.put<HilPreferences>(
+      `/approvals/tools/${encodeURIComponent(toolName)}`,
+      { ask },
+    );
+  },
+};

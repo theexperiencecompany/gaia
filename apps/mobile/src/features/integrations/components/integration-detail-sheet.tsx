@@ -257,6 +257,7 @@ export const IntegrationDetailSheet = forwardRef<
             <IntegrationToolsPanel
               tools={tools}
               categoryPrefix={integration.name}
+              isConnected={isConnected}
             />
 
             {isCustom ? (
