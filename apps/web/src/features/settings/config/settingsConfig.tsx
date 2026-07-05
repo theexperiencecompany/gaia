@@ -93,6 +93,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     icon: PuzzleIcon,
     href: "/settings/skills",
   },
+  {
+    key: "devices",
+    label: "Devices",
+    icon: ComputerIcon,
+    href: "/settings/devices",
+  },
   // Only rendered inside the Electron app (filtered in SettingsSidebar).
   {
     key: "desktop",

@@ -2,12 +2,26 @@
 
 import os
 import re
+import socket
 from typing import Any
 
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, BaseMessage
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+
+def pick_free_port() -> int:
+    """Bind to port 0, read the OS-assigned port, then release it.
+
+    For tests that need a real bound TCP port (a live uvicorn server an
+    external process can actually dial into), not an in-process ASGI transport.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def worker_redis_url(base_url: str) -> str:
@@ -73,3 +87,54 @@ def extract_tool_calls(messages: list[BaseMessage]) -> list[dict[str, Any]]:
         if isinstance(msg, AIMessage) and msg.tool_calls:
             tool_calls.extend(msg.tool_calls)  # type: ignore[arg-type]
     return tool_calls
+
+
+class MockAuthMiddleware(BaseHTTPMiddleware):
+    """Injects a test user into request.state, standing in for WorkOSAuthMiddleware.
+
+    WorkOS SSO can't be driven headlessly in a test, so every API-level test in
+    this repo that needs "a signed-in user" swaps this in for the real auth
+    middleware instead (see tests/integration/api/conftest.py and
+    tests/service/conftest.py). It does not touch any of the business logic
+    under test — only the login step no automated test can perform for real.
+    """
+
+    def __init__(self, app, user: dict):
+        super().__init__(app)
+        self._user = user
+
+    async def dispatch(self, request: Request, call_next):
+        request.state.authenticated = True
+        request.state.user = self._user
+        return await call_next(request)
+
+
+class NoAuthMiddleware(BaseHTTPMiddleware):
+    """Sets request.state to unauthenticated, for testing 401 responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        request.state.authenticated = False
+        request.state.user = None
+        return await call_next(request)
+
+
+class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
+    """Test-only stand-in for WorkOSAuthMiddleware that trusts an
+    ``X-Test-User-Id`` header instead of a real WorkOS session.
+
+    Unlike MockAuthMiddleware (one fixed user baked in at app-construction
+    time), this lets a single live server be hit as several different
+    signed-in users — simulating separate browsers/accounts — by varying a
+    request header, which a plain httpx client pointed at a real bound port
+    can do per-call.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        user_id = request.headers.get("x-test-user-id")
+        if user_id:
+            request.state.authenticated = True
+            request.state.user = {"user_id": user_id, "email": f"{user_id}@test.local"}
+        else:
+            request.state.authenticated = False
+            request.state.user = None
+        return await call_next(request)
