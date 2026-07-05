@@ -10,6 +10,7 @@ import { escapeRegExp } from "../utils/toolMentions";
 export interface IntegrationToolEntry {
   name: string;
   label: string;
+  destructive: boolean;
 }
 
 export interface UseIntegrationToolsReturn {
@@ -38,10 +39,8 @@ export const useIntegrationTools = (
       ? new RegExp(`^${escapeRegExp(categoryPrefix)}\\s*`, "i")
       : null;
 
-    const names = (data?.tools ?? []).map((tool) => tool.name);
-
-    const entries: IntegrationToolEntry[] = names.map((name) => {
-      const formatted = formatToolName(name);
+    const entries: IntegrationToolEntry[] = (data?.tools ?? []).map((tool) => {
+      const formatted = formatToolName(tool.name);
       const stripped = prefixRegex
         ? formatted.replace(prefixRegex, "").trim()
         : formatted;
@@ -49,7 +48,7 @@ export const useIntegrationTools = (
       // (e.g. removing "Gmail" from "Gmailsearch" yields "search"), so
       // re-apply Title Case to guarantee every word starts uppercase.
       const label = toTitleCase(stripped || formatted);
-      return { name, label };
+      return { name: tool.name, label, destructive: tool.destructive ?? false };
     });
 
     const mentionNames = Array.from(

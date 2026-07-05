@@ -29,6 +29,8 @@ export type IntegrationManagedBy = "composio" | "mcp" | "internal" | "self";
 export interface IntegrationTool {
   name: string;
   description?: string | null;
+  /** HIL default: gated (irreversible) unless the user overrides it. */
+  destructive?: boolean;
 }
 
 export interface IntegrationCreator {
