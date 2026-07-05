@@ -222,6 +222,7 @@ export const TOOLS_MESSAGE_KEYS = Object.keys(
 // Tools that should merge multiple calls into one component
 // Add any tool name here - its data will be accumulated into an array
 export const GROUPED_TOOLS = new Set<ToolName>([
+  "approval_request",
   "search_results",
   "reddit_data",
   "integration_connection_required",

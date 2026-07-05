@@ -1,6 +1,10 @@
 import { Chip } from "@heroui/chip";
 import { Alert01Icon } from "@icons";
 import {
+  APPROVAL_REQUEST_TOOL_NAME,
+  type ApprovalRequestData,
+} from "@shared/chat";
+import {
   parseOpenUISegments,
   splitByBreaksPreservingFences,
 } from "@shared/utils";
@@ -114,6 +118,21 @@ export default function TextBubble({
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
   const { timeline, processedTools } = useSubagentSynthesis(tool_data);
 
+  // Tool calls currently blocked on a HIL approval, keyed by the shared
+  // tool_call_id. Lets the tool row/subagent show "Waiting for approval"
+  // instead of a generic spinner while the approval card handles the decision.
+  const pendingApprovalToolCallIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    tool_data?.forEach((entry) => {
+      if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
+      const data = entry.data as ApprovalRequestData | null;
+      if (data?.status === "pending" && data.tool_call_id) {
+        ids.add(data.tool_call_id);
+      }
+    });
+    return ids;
+  }, [tool_data]);
+
   return (
     <>
       {parsedContent.thinking && (
@@ -125,6 +144,7 @@ export default function TextBubble({
           key={`${baseId}-unified-tools`}
           timeline={timeline}
           isStreaming={!!loading}
+          pendingApprovalToolCallIds={pendingApprovalToolCallIds}
         />
       )}
 

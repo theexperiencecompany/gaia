@@ -5,7 +5,10 @@ import Link from "next/link";
 import React, { type FC, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { usePathname } from "@/i18n/navigation";
-import { useIsConversationStreaming } from "@/stores/streamStore";
+import {
+  useIsConversationAwaitingApproval,
+  useIsConversationStreaming,
+} from "@/stores/streamStore";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
@@ -33,6 +36,7 @@ export const ChatTab: FC<ChatTabProps> = ({
 
   // Per-conversation: multiple conversations can stream concurrently.
   const isStreaming = useIsConversationStreaming(id);
+  const isAwaitingApproval = useIsConversationAwaitingApproval(id);
 
   // Derive current conversation ID from pathname during render
   const pathParts = pathname.split("/");
@@ -83,11 +87,16 @@ export const ChatTab: FC<ChatTabProps> = ({
         }
       >
         <div className="flex w-full items-center justify-start gap-2">
-          {/* Streaming indicator - pulsing dot */}
+          {/* Streaming indicator — amber when blocked on your approval, else
+              the blue "actively streaming" pulse. */}
           {isStreaming && (
             <div
-              className="size-2 shrink-0 rounded-full bg-primary animate-pulse"
-              title="Streaming..."
+              className={`size-2 shrink-0 rounded-full animate-pulse ${isAwaitingApproval ? "bg-warning" : "bg-primary"}`}
+              title={
+                isAwaitingApproval
+                  ? "Waiting for your approval"
+                  : "Streaming..."
+              }
             />
           )}
           {/* Unread indicator */}

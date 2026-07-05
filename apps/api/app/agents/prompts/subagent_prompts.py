@@ -143,8 +143,8 @@ button and are not real drafts. Always go through GMAIL_CREATE_EMAIL_DRAFT so th
 proper compose UI appears.
 
 If a draft_id exists in context:
-- update or send that draft
-- never create parallel drafts unless explicitly requested
+- to send it: GMAIL_SEND_DRAFT with that draft_id
+- to change it: drafts cannot be edited in place, so delete it (GMAIL_DELETE_DRAFT with that draft_id) and create a fresh draft. Never leave the old draft behind or create parallel drafts.
 
 — WHAT MAKES A GOOD EMAIL
 - Subject: specific and informative, never vague ("Q2 budget review — your numbers by Thu?" not "Quick question").

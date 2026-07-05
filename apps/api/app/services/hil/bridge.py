@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import hashlib
 from http import HTTPStatus
 import json
 from typing import Any, Literal
@@ -24,6 +25,7 @@ from uuid import uuid4
 
 from app.agents.core.background.session import get_session
 from app.constants.cache import (
+    HIL_DECLINED_PREFIX,
     HIL_PENDING_CONVERSATION_PREFIX,
     HIL_REQUEST_PREFIX,
     HIL_RESULT_CHANNEL_PREFIX,
@@ -32,6 +34,7 @@ from app.constants.hil import (
     APPROVAL_REQUEST_TOOL_NAME,
     APPROVAL_TOOL_CATEGORY,
     HIL_APPROVAL_TIMEOUT_SECONDS,
+    HIL_DECLINE_MEMORY_TTL_SECONDS,
     HIL_REQUEST_TTL_GRACE_SECONDS,
 )
 from app.constants.log_tags import LogTag
@@ -157,6 +160,32 @@ async def pending_approvals_for_conversation(conversation_id: str) -> list[dict[
         if payload:
             out.append({"approval_id": approval_id, **payload})
     return out
+
+
+async def remember_declined_call(
+    stream_id: str, tool_name: str, args: dict[str, Any], feedback: str | None
+) -> None:
+    """Record that the user declined this exact call for the rest of the turn."""
+    if not redis_cache.redis:
+        return
+    await redis_cache.set(
+        _declined_key(stream_id, tool_name, args),
+        {"feedback": feedback},
+        ttl=HIL_DECLINE_MEMORY_TTL_SECONDS,
+    )
+
+
+async def recall_declined_call(
+    stream_id: str, tool_name: str, args: dict[str, Any]
+) -> ApprovalOutcome | None:
+    """The prior decline for this exact call in this turn, if any — so the gate
+    can auto-deny a retry with the user's original feedback and never re-prompt."""
+    if not redis_cache.redis:
+        return None
+    record = await redis_cache.get(_declined_key(stream_id, tool_name, args))
+    if not record:
+        return None
+    return ApprovalOutcome(status="denied", feedback=record.get("feedback"))
 
 
 def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | None) -> str:
@@ -321,3 +350,13 @@ def _result_channel(approval_id: str) -> str:
 
 def _pending_set_key(conversation_id: str) -> str:
     return f"{HIL_PENDING_CONVERSATION_PREFIX}{conversation_id}"
+
+
+def _declined_key(stream_id: str, tool_name: str, args: dict[str, Any]) -> str:
+    return f"{HIL_DECLINED_PREFIX}{stream_id}:{tool_name}:{_args_hash(args)}"
+
+
+def _args_hash(args: dict[str, Any]) -> str:
+    # md5 over the canonical args — a cache key, not a security boundary.
+    payload = json.dumps(args or {}, sort_keys=True, default=str)
+    return hashlib.md5(payload.encode(), usedforsecurity=False).hexdigest()  # nosec B324

@@ -19,7 +19,13 @@ from langgraph.types import Command
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
-from app.services.hil.bridge import ApprovalOutcome, build_summary, request_approval
+from app.services.hil.bridge import (
+    ApprovalOutcome,
+    build_summary,
+    recall_declined_call,
+    remember_declined_call,
+    request_approval,
+)
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences, set_tool_override
 from shared.py.wide_events import log
@@ -74,6 +80,14 @@ async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMess
     if not override:
         return await handler(request)
 
+    # The user already declined this exact call earlier in the turn. Re-asking
+    # is the loop we want to kill (the executor doesn't learn the subagent was
+    # declined, so it retries) — auto-deny with their original feedback instead.
+    prior = await recall_declined_call(context.stream_id, tool_name, args)
+    if prior is not None:
+        log.info(f"{LogTag.HIL} auto-denying {tool_name}: declined earlier this turn")
+        return _refusal_message(tool_name, tool_call_id, prior)
+
     return await _await_decision_then_run(request, handler, context, tool_name, tool_call_id, args)
 
 
@@ -102,6 +116,11 @@ async def _await_decision_then_run(
             await set_tool_override(context.user_id, tool_name, False)
         return await handler(request)
 
+    # Remember an explicit decline so a retry of the same call this turn is
+    # auto-denied without prompting again (timeouts aren't remembered — the user
+    # may simply have been away).
+    if outcome.status == "denied":
+        await remember_declined_call(context.stream_id, tool_name, args, outcome.feedback)
     return _refusal_message(tool_name, tool_call_id, outcome)
 
 

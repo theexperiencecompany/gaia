@@ -123,6 +123,10 @@ DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 HIL_REQUEST_PREFIX = "hil:request:"
 HIL_RESULT_CHANNEL_PREFIX = "hil:result:"
 HIL_PENDING_CONVERSATION_PREFIX = "hil:pending:"
+# Remembers a declined call for the rest of the turn (keyed by stream_id) so a
+# retrying agent is auto-denied instead of re-prompting the user for the same
+# action.
+HIL_DECLINED_PREFIX = "hil:declined:"
 HIL_PREFS_CACHE_PREFIX = "hil:prefs:"
 HIL_PREFS_CACHE_TTL = FIVE_MINUTES_TTL
 EXECUTOR_BUSY_PREFIX = "executor:busy:"

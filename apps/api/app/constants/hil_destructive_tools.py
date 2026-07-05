@@ -24,9 +24,12 @@ GOOGLEDOCS_DESTRUCTIVE_TOOLS: list[str] = [
     "GOOGLEDOCS_DELETE_TAB",
 ]
 
+# GMAIL_DELETE_DRAFT is intentionally NOT gated: a draft is an unsent, agent-managed
+# artifact, and revising a draft means deleting the old one and creating a new one
+# (Gmail has no in-place edit). Gating it would prompt on every draft edit — routine
+# cleanup, not irreversible loss of real mail. Real message deletes below stay gated.
 GMAIL_DESTRUCTIVE_TOOLS: list[str] = [
     "GMAIL_BATCH_DELETE_MESSAGES",
-    "GMAIL_DELETE_DRAFT",
     "GMAIL_DELETE_FILTER",
     "GMAIL_DELETE_LABEL",
     "GMAIL_DELETE_MESSAGE",

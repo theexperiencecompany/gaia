@@ -16,6 +16,12 @@ HIL_DEFAULT_ENABLED = False
 HIL_APPROVAL_TIMEOUT_SECONDS = 900.0
 HIL_REQUEST_TTL_GRACE_SECONDS = 60
 
+# How long a declined call is remembered so a retrying agent is auto-denied
+# without re-prompting. Keyed by stream_id (unique per turn), so this only
+# suppresses re-asks within the same turn — a genuinely new request in a later
+# turn still prompts. Generous enough to outlast a long-running executor turn.
+HIL_DECLINE_MEMORY_TTL_SECONDS = 1800
+
 # Orchestration/plumbing tools that must never be gated (they don't touch the
 # outside world themselves; their inner tool calls are gated in the child graph).
 # These are the only names hardcoded here — everything else is registry-driven.

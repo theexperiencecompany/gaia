@@ -1,3 +1,4 @@
+import type { ApprovalRequestData } from "@shared/chat";
 import type React from "react";
 import type {
   MemoryData,
@@ -36,7 +37,7 @@ import type {
   RedditSearchData,
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
-import ApprovalRequestSection from "../ApprovalRequestSection";
+import ApprovalRequestGroup from "../ApprovalRequestGroup";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
 import CalendarEventSection from "../CalendarEventSection";
@@ -433,14 +434,21 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     return <MemoryCard key={`tool-memory-${index}`} items={items} />;
   },
 
-  // HIL approval — one card per approval_id; pending→resolved updates replace
-  // it in place via upsertApprovalToolData (shared turn accumulator).
-  approval_request: (data, index) => (
-    <ApprovalRequestSection
-      key={`approval-${data.approval_id || index}`}
-      data={data}
-    />
-  ),
+  // HIL approval — grouped so a run needing many decisions doesn't stack a full
+  // card each: pending ones show side by side, resolved ones collapse into one
+  // accordion. Each approval_id is a single entry (pending→resolved replaced in
+  // place via upsertApprovalToolData); grouping collects them into the array.
+  approval_request: (data, index) => {
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as ApprovalRequestData[];
+    return (
+      <ApprovalRequestGroup
+        key={`approval-group-${items[0]?.approval_id || index}`}
+        items={items}
+      />
+    );
+  },
 };
 
 export function renderTool<K extends ToolName>(

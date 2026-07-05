@@ -69,6 +69,10 @@ export class TurnSession {
   private flushHandle: number | null = null;
   private lastPartialPersistAt = 0;
   private closeHandled = false;
+  /** Approval ids currently pending a user decision. The turn is "awaiting
+   *  approval" while non-empty; a set (not a bool) so multiple gated tools
+   *  resolve independently without prematurely clearing the state. */
+  private readonly pendingApprovalIds = new Set<string>();
   private aborted = false;
   private readonly isNewConversation: boolean;
 
@@ -327,19 +331,9 @@ export class TurnSession {
         }
       }
       if (event.entry.tool_name === APPROVAL_REQUEST_TOOL_NAME) {
-        const status = (event.entry.data as ApprovalRequestData | null)?.status;
-        if (status === "pending") {
-          // The agent is idle waiting on the user; the card IS the state, so
-          // stop the spinner (any later event re-arms it). Surface unread when
-          // the user isn't looking so they know a decision is waiting.
-          this.setSpinner(false);
-          if (
-            this.conversationId &&
-            !isViewingConversation(this.conversationId)
-          ) {
-            markConversationUnread(this.conversationId);
-          }
-        }
+        this.handleApprovalFrame(
+          event.entry.data as ApprovalRequestData | null,
+        );
       }
     }
 
@@ -565,6 +559,38 @@ export class TurnSession {
     });
   }
 
+  private setAwaitingApproval(active: boolean): void {
+    const store = useStreamStore.getState();
+    const session = store.sessions[this.key];
+    if (!session || session.awaitingApproval === active) return;
+    store.updateSession(this.key, { awaitingApproval: active });
+  }
+
+  /** Drive the awaiting-approval UI from an approval_request tool frame. */
+  private handleApprovalFrame(approval: ApprovalRequestData | null): void {
+    const approvalId = approval?.approval_id;
+    if (!approval || !approvalId) return;
+
+    if (approval.status !== "pending") {
+      // Resolved (approved / denied / timeout): clear this approval and only
+      // leave the awaiting state if another gated tool is still open.
+      this.pendingApprovalIds.delete(approvalId);
+      this.setAwaitingApproval(this.pendingApprovalIds.size > 0);
+      return;
+    }
+
+    // The agent is idle waiting on the user. Swap the streaming spinner for the
+    // distinct "awaiting approval" indicator (any later event re-arms the
+    // spinner). Surface unread when the user isn't looking so they know a
+    // decision is waiting.
+    this.pendingApprovalIds.add(approvalId);
+    this.setSpinner(false);
+    this.setAwaitingApproval(true);
+    if (this.conversationId && !isViewingConversation(this.conversationId)) {
+      markConversationUnread(this.conversationId);
+    }
+  }
+
   private setLoadingText(
     text: string,
     toolInfo?: {
@@ -695,6 +721,7 @@ export class TurnSession {
     useStreamStore.getState().updateSession(key, {
       phase: "awaiting_executor",
       spinnerActive: false,
+      awaitingApproval: false,
       composerLocked: false,
     });
     // The session's transport work is over — release it so new sends in this
