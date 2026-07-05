@@ -32,6 +32,20 @@ const emailComposeSchema = z.object({
 
 const emailValidationSchema = z.string().email("Invalid email address");
 
+type RecipientField = "to" | "cc" | "bcc";
+
+const RECIPIENT_FIELDS: {
+  field: RecipientField;
+  label: string;
+  addLabel: string;
+}[] = [
+  { field: "to", label: "To", addLabel: "Add Recipients" },
+  { field: "cc", label: "Cc", addLabel: "Add Cc" },
+  { field: "bcc", label: "Bcc", addLabel: "Add Bcc" },
+];
+
+type RecipientMap = Record<RecipientField, string[]>;
+
 function HtmlEmailBody({ html }: { html: string }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
 
@@ -65,6 +79,42 @@ interface EmailData {
 interface EmailComposeCardProps {
   emailData: EmailData;
   onSent?: () => void;
+}
+
+function RecipientRow({
+  label,
+  addLabel,
+  emails,
+  onEdit,
+}: {
+  label: string;
+  addLabel: string;
+  emails: string[];
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-zinc-400">
+      <span>{label}:</span>
+      <span className="flex w-full items-center justify-between font-medium text-zinc-200">
+        {emails.join(", ") || ""}
+        <Button
+          size="sm"
+          onPress={onEdit}
+          variant={emails.length === 0 ? "flat" : "light"}
+          isIconOnly={emails.length !== 0}
+          endContent={
+            emails.length === 0 ? (
+              ""
+            ) : (
+              <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+            )
+          }
+        >
+          {emails.length === 0 ? addLabel : ``}
+        </Button>
+      </span>
+    </div>
+  );
 }
 
 function EditEmailModal({
@@ -155,6 +205,7 @@ function RecipientSelectionModal({
   isOpen,
   onClose,
   onConfirm,
+  title,
   suggestions,
   selectedEmails,
   setSelectedEmails,
@@ -167,6 +218,7 @@ function RecipientSelectionModal({
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  title: string;
   suggestions: string[];
   selectedEmails: string[];
   setSelectedEmails: React.Dispatch<React.SetStateAction<string[]>>;
@@ -199,30 +251,32 @@ function RecipientSelectionModal({
     <Modal isOpen={isOpen} onOpenChange={onClose} size="sm">
       <ModalContent>
         <ModalBody>
-          <div className="pt-2 text-sm font-medium">Email Suggestions</div>
+          <div className="pt-2 text-sm font-medium">{title}</div>
 
           {/* Suggestions */}
-          <div className="flex flex-wrap gap-2">
-            {suggestions.map((email) => (
-              <Chip
-                key={email}
-                size="sm"
-                variant="flat"
-                color={selectedEmails.includes(email) ? "primary" : "default"}
-                className="cursor-pointer text-xs"
-                onClick={() => handleSuggestionToggle(email)}
-                endContent={
-                  selectedEmails.includes(email) ? (
-                    <Cancel01Icon className="h-3 w-3" />
-                  ) : null
-                }
-              >
-                {email}
-              </Chip>
-            ))}
-          </div>
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((email) => (
+                <Chip
+                  key={email}
+                  size="sm"
+                  variant="flat"
+                  color={selectedEmails.includes(email) ? "primary" : "default"}
+                  className="cursor-pointer text-xs"
+                  onClick={() => handleSuggestionToggle(email)}
+                  endContent={
+                    selectedEmails.includes(email) ? (
+                      <Cancel01Icon className="h-3 w-3" />
+                    ) : null
+                  }
+                >
+                  {email}
+                </Chip>
+              ))}
+            </div>
+          )}
 
-          <hr className="my-2 border-zinc-700" />
+          {suggestions.length > 0 && <hr className="my-2 border-zinc-700" />}
 
           <div className="flex gap-2">
             <Input
@@ -252,12 +306,7 @@ function RecipientSelectionModal({
             <Button variant="light" size="sm" onPress={onClose}>
               Cancel
             </Button>
-            <Button
-              color="primary"
-              size="sm"
-              onPress={onConfirm}
-              isDisabled={selectedEmails.length === 0}
-            >
+            <Button color="primary" size="sm" onPress={onConfirm}>
               Done ({selectedEmails.length})
             </Button>
           </div>
@@ -272,39 +321,71 @@ export default function EmailComposeCard({
   onSent,
 }: EmailComposeCardProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isRecipientModalOpen, setIsRecipientModalOpen] = useState(false);
+  const [activeRecipientField, setActiveRecipientField] =
+    useState<RecipientField | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [editData, setEditData] = useState<EmailData>(emailData);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Suggestions come from emailData.to - these are resolved email addresses from the agent
-  const [suggestions, setSuggestions] = useState<string[]>(emailData.to || []);
+  // Selected recipients per field, seeded from the agent-resolved emailData.
+  const [recipients, setRecipients] = useState<RecipientMap>({
+    to: emailData.to || [],
+    cc: emailData.cc || [],
+    bcc: emailData.bcc || [],
+  });
 
-  // Selected emails state - starts with emails from emailData (resolved by agent)
-  const [selectedEmails, setSelectedEmails] = useState<string[]>(
-    emailData.to || [],
-  );
+  // Suggestion chips per field (agent-resolved addresses + any custom ones).
+  const [recipientSuggestions, setRecipientSuggestions] =
+    useState<RecipientMap>({
+      to: emailData.to || [],
+      cc: emailData.cc || [],
+      bcc: emailData.bcc || [],
+    });
 
   // Custom email input state
   const [customEmailInput, setCustomEmailInput] = useState("");
   const [customEmailError, setCustomEmailError] = useState("");
 
-  // Initialize with empty emails array - user must select recipients
-  // If there's only one email, select it by default
+  // Re-seed recipients whenever the agent supplies new email data.
+  // "To" must be explicitly chosen by the user, so it only auto-selects when a
+  // single suggestion exists. Cc/Bcc default to the agent-provided values.
   useEffect(() => {
-    const suggestions = emailData.to || [];
-    setEditData((prev) => ({ ...prev, to: [] }));
-    setSuggestions(suggestions);
+    const toSuggestions = emailData.to || [];
+    const cc = emailData.cc || [];
+    const bcc = emailData.bcc || [];
 
-    // If there's exactly one email suggestion, select it by default
-    if (suggestions.length === 1) setSelectedEmails([suggestions[0]]);
-    else setSelectedEmails([]);
-  }, [emailData.to]);
+    setRecipientSuggestions({ to: toSuggestions, cc, bcc });
+    setRecipients({
+      to: toSuggestions.length === 1 ? [toSuggestions[0]] : [],
+      cc,
+      bcc,
+    });
+  }, [emailData.to, emailData.cc, emailData.bcc]);
+
+  const activeEmails = activeRecipientField
+    ? recipients[activeRecipientField]
+    : [];
+  const activeSuggestions = activeRecipientField
+    ? recipientSuggestions[activeRecipientField]
+    : [];
+
+  const setActiveFieldEmails: React.Dispatch<React.SetStateAction<string[]>> = (
+    value,
+  ) => {
+    if (!activeRecipientField) return;
+    setRecipients((prev) => ({
+      ...prev,
+      [activeRecipientField]:
+        typeof value === "function"
+          ? (value as (p: string[]) => string[])(prev[activeRecipientField])
+          : value,
+    }));
+  };
 
   const validateForm = (data: { subject: string; body: string }) => {
     try {
       emailComposeSchema.parse({
-        to: selectedEmails,
+        to: recipients.to,
         subject: data.subject,
         body: data.body,
       });
@@ -339,7 +420,7 @@ export default function EmailComposeCard({
   };
 
   const handleSend = async () => {
-    if (selectedEmails.length === 0) {
+    if (recipients.to.length === 0) {
       toast.error("Please select at least one recipient");
       return;
     }
@@ -364,14 +445,14 @@ export default function EmailComposeCard({
       } else {
         // Send email directly (existing logic)
         const formData = new FormData();
-        formData.append("to", selectedEmails.join(", "));
+        formData.append("to", recipients.to.join(", "));
         formData.append("subject", editData.subject);
         formData.append("body", editData.body);
-        if (emailData.bcc && emailData.bcc.length > 0) {
-          formData.append("bcc", emailData.bcc.join(", "));
+        if (recipients.cc.length > 0) {
+          formData.append("cc", recipients.cc.join(", "));
         }
-        if (emailData.cc && emailData.cc.length > 0) {
-          formData.append("cc", emailData.cc.join(", "));
+        if (recipients.bcc.length > 0) {
+          formData.append("bcc", recipients.bcc.join(", "));
         }
         if (emailData.thread_id) {
           formData.append("thread_id", emailData.thread_id);
@@ -397,7 +478,6 @@ export default function EmailComposeCard({
       ...prev,
       subject: draft.subject,
       body: draft.body,
-      to: selectedEmails,
     }));
     setIsEditModalOpen(false);
     toast.success("Email updated successfully!");
@@ -408,8 +488,16 @@ export default function EmailComposeCard({
     setIsEditModalOpen(true);
   };
 
-  // Handle custom email addition
+  const openRecipientModal = (field: RecipientField) => {
+    setCustomEmailInput("");
+    setCustomEmailError("");
+    setActiveRecipientField(field);
+  };
+
+  // Add a manually typed email to the currently active recipient field.
   const handleAddCustomEmail = () => {
+    if (!activeRecipientField) return;
+
     const trimmedEmail = customEmailInput.trim();
 
     if (!trimmedEmail) {
@@ -421,38 +509,36 @@ export default function EmailComposeCard({
       return;
     }
 
-    if (selectedEmails.includes(trimmedEmail)) {
-      setCustomEmailError("Email already selected");
+    if (recipients[activeRecipientField].includes(trimmedEmail)) {
+      setCustomEmailError("Email already added");
       return;
     }
 
-    // Add to selected emails
-    setSelectedEmails((prev) => [...prev, trimmedEmail]);
+    setRecipients((prev) => ({
+      ...prev,
+      [activeRecipientField]: [...prev[activeRecipientField], trimmedEmail],
+    }));
 
-    // Add to suggestions if not already there
-    if (!suggestions.includes(trimmedEmail)) {
-      setSuggestions((prev) => [...prev, trimmedEmail]);
-    }
+    setRecipientSuggestions((prev) =>
+      prev[activeRecipientField].includes(trimmedEmail)
+        ? prev
+        : {
+            ...prev,
+            [activeRecipientField]: [
+              ...prev[activeRecipientField],
+              trimmedEmail,
+            ],
+          },
+    );
 
-    // Clear input
     setCustomEmailInput("");
     setCustomEmailError("");
     toast.success(`Added ${trimmedEmail}`);
   };
 
-  // const handleRemoveSelectedEmail = (email: string) => {
-  //   setSelectedEmails((prev) => prev.filter((e) => e !== email));
-  // };
-
-  const handleConfirmRecipients = () => {
-    setEditData((prev) => ({ ...prev, to: selectedEmails }));
-    setIsRecipientModalOpen(false);
-  };
-
-  // Filter suggestions based on search term - commented out as not used
-  // const filteredSuggestions = suggestions.filter((email) =>
-  //   email.toLowerCase().includes(_searchTerm.toLowerCase()),
-  // );
+  const activeFieldConfig = RECIPIENT_FIELDS.find(
+    (f) => f.field === activeRecipientField,
+  );
 
   return (
     <>
@@ -473,28 +559,17 @@ export default function EmailComposeCard({
           </div>
         </div>
         <div className="flex flex-col gap-1 px-6">
-          <div className="flex items-center gap-2 text-sm text-zinc-400">
-            <span>To:</span>
-            <span className="flex w-full items-center justify-between font-medium text-zinc-200">
-              {selectedEmails.join(", ") || ""}
-              <Button
-                size="sm"
-                onPress={() => setIsRecipientModalOpen(true)}
-                variant={selectedEmails.length === 0 ? "flat" : "light"}
-                isIconOnly={selectedEmails.length !== 0}
-                endContent={
-                  selectedEmails.length === 0 ? (
-                    ""
-                  ) : (
-                    <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-                  )
-                }
-              >
-                {selectedEmails.length === 0 ? "Add Recipients" : ``}
-              </Button>
-            </span>
-          </div>
-          <Separator className="my-1.5 bg-zinc-700" />
+          {RECIPIENT_FIELDS.map(({ field, label, addLabel }) => (
+            <div key={field}>
+              <RecipientRow
+                label={label}
+                addLabel={addLabel}
+                emails={recipients[field]}
+                onEdit={() => openRecipientModal(field)}
+              />
+              <Separator className="my-1.5 bg-zinc-700" />
+            </div>
+          ))}
           <div className="flex w-full items-center justify-between text-sm text-gray-400">
             <div className="flex items-center gap-2">
               <span>Subject:</span>
@@ -533,7 +608,7 @@ export default function EmailComposeCard({
             color="primary"
             onPress={handleSend}
             isLoading={isSending}
-            isDisabled={selectedEmails.length === 0}
+            isDisabled={recipients.to.length === 0}
             radius="full"
             className="font-medium"
           >
@@ -555,12 +630,13 @@ export default function EmailComposeCard({
       />
 
       <RecipientSelectionModal
-        isOpen={isRecipientModalOpen}
-        onClose={() => setIsRecipientModalOpen(false)}
-        onConfirm={handleConfirmRecipients}
-        suggestions={suggestions}
-        selectedEmails={selectedEmails}
-        setSelectedEmails={setSelectedEmails}
+        isOpen={activeRecipientField !== null}
+        onClose={() => setActiveRecipientField(null)}
+        onConfirm={() => setActiveRecipientField(null)}
+        title={activeFieldConfig ? `${activeFieldConfig.label} recipients` : ""}
+        suggestions={activeSuggestions}
+        selectedEmails={activeEmails}
+        setSelectedEmails={setActiveFieldEmails}
         customEmailInput={customEmailInput}
         setCustomEmailInput={setCustomEmailInput}
         customEmailError={customEmailError}
