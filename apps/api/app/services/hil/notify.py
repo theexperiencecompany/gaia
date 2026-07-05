@@ -19,6 +19,8 @@ from shared.py.wide_events import log
 
 _EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 _EXPO_PUSH_TIMEOUT_SECONDS = 10.0
+# Expo rejects a push request carrying more than 100 messages.
+_EXPO_PUSH_BATCH_SIZE = 100
 
 
 async def notify_approval_pending(
@@ -93,5 +95,38 @@ async def _send_expo_push(
         }
         for token in tokens
     ]
+
+    dead_tokens: list[str] = []
     async with httpx.AsyncClient(timeout=_EXPO_PUSH_TIMEOUT_SECONDS) as client:
-        await client.post(_EXPO_PUSH_URL, json=messages)
+        for start in range(0, len(messages), _EXPO_PUSH_BATCH_SIZE):
+            batch = messages[start : start + _EXPO_PUSH_BATCH_SIZE]
+            response = await client.post(_EXPO_PUSH_URL, json=batch)
+            dead_tokens.extend(_dead_tokens_from_receipts(batch, response))
+
+    if dead_tokens:
+        await _deactivate_device_tokens(dead_tokens)
+
+
+def _dead_tokens_from_receipts(batch: list[dict[str, Any]], response: httpx.Response) -> list[str]:
+    """Return the tokens Expo reported as ``DeviceNotRegistered`` for this batch.
+
+    Expo replies with ``{"data": [ticket, ...]}`` aligned to the messages sent; a
+    ticket flags a permanently dead token (app uninstalled / token expired).
+    """
+    try:
+        tickets = response.json().get("data", [])
+    except ValueError:
+        return []
+    dead: list[str] = []
+    for message, ticket in zip(batch, tickets, strict=False):
+        if isinstance(ticket, dict) and ticket.get("status") == "error":
+            if (ticket.get("details") or {}).get("error") == "DeviceNotRegistered":
+                dead.append(message["to"])
+    return dead
+
+
+async def _deactivate_device_tokens(tokens: list[str]) -> None:
+    """Mark dead tokens inactive so ``_active_device_tokens`` stops retrying them."""
+    await device_tokens_collection.update_many(
+        {"token": {"$in": tokens}}, {"$set": {"is_active": False}}
+    )

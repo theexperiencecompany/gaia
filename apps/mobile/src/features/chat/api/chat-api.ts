@@ -1,6 +1,6 @@
 import type { ToolDataEntry } from "@gaia/shared/chat";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
-import { apiService } from "@/lib/api";
+import { ApiError, apiService } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/constants";
 
 export interface FileUploadResponse {
@@ -267,7 +267,9 @@ export async function postApprovalDecision(
     return true;
   } catch (error) {
     // A 410 means the approval was already resolved elsewhere — the resolved
-    // card arrives over the stream regardless, so this is not a user error.
+    // card arrives over the stream regardless, so treat it as success. Only a
+    // genuine submission failure returns false.
+    if (error instanceof ApiError && error.status === 410) return true;
     console.warn("Error submitting approval decision:", error);
     return false;
   }

@@ -175,7 +175,8 @@ async def _run_chat_stream(
         # If this conversation has a HIL approval waiting and the user answered
         # it in chat (yes/no) rather than via a button, resolve it here and end
         # the turn without running the agent — the paused run continues on its
-        # original stream. An unrelated message auto-denies and falls through.
+        # original stream. An unrelated message abandons the parked run and falls
+        # through to a normal turn (see ``resolve_pending_from_message``).
         if await _resolve_pending_approval_turn(body, user, conversation_id, stream_id, state):
             return
 

@@ -10,6 +10,7 @@ import { MoreHorizontalIcon, ShieldIcon } from "@icons";
 import type { ApprovalRequestData } from "@shared/chat";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
+import { toast } from "@/lib/toast";
 
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
@@ -54,9 +55,11 @@ export default function ApprovalRequestSection({
         feedback: feedback.trim() || undefined,
         scope,
       });
-      // The resolved frame arrives over the stream and replaces this card;
-      // a 410 (already resolved elsewhere) is handled the same way.
+      // The resolved frame arrives over the stream and replaces this card; a 410
+      // (already resolved elsewhere) is swallowed by postApprovalDecision, so
+      // reaching this catch means the decision genuinely failed to submit.
     } catch {
+      toast.error("Couldn't submit your decision — please try again");
       setSubmitting(null);
     }
   };

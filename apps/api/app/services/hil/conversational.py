@@ -1,10 +1,15 @@
 """Resolve a pending HIL approval from the user's next chat message.
 
-When a conversation has an approval waiting and the user simply replies in chat
-(instead of clicking a button), one fast LLM call classifies the reply as
+When a conversation has a single approval waiting and the user simply replies in
+chat (instead of clicking a button), one fast LLM call classifies the reply as
 approving, declining, or an unrelated new request. Approve/deny relays the
-decision to the awaiting gate; an unrelated message auto-denies the pending
-action (so the gate never hangs) and lets the new turn run normally.
+decision to the awaiting gate; an unrelated message abandons the parked run (so
+the gate never hangs and the run never races the new turn) and lets the new turn
+run normally.
+
+Chat resolution only fires when exactly one approval is pending: a single
+"yes"/"no" cannot say which of several concurrent approvals it means, so with
+more than one in flight this defers to the per-card approve/decline buttons.
 """
 
 from typing import Literal
@@ -16,6 +21,7 @@ from app.constants.log_tags import LogTag
 from app.services.hil.bridge import (
     ApprovalRequestForbidden,
     ApprovalRequestNotFound,
+    abandon_pending_run,
     pending_approvals_for_conversation,
     relay_approval_decision,
 )
@@ -37,22 +43,27 @@ class DecisionResult(BaseModel):
 async def resolve_pending_from_message(
     conversation_id: str, user_id: str, message: str
 ) -> DecisionAction | None:
-    """Resolve every pending approval in the conversation from ``message``.
+    """Resolve a lone pending approval in the conversation from ``message``.
 
-    Returns the classified action, or ``None`` when nothing was pending. One
-    reply applies to all pending approvals in the conversation — concurrent
-    distinct approvals in one thread are rare and a single reply can't
-    disambiguate them.
+    Returns the classified action, or ``None`` when zero — or more than one —
+    approvals are pending. With several in flight a single reply can't say which
+    it means, so those are left for the per-card buttons rather than guessed at.
     """
     pending = await pending_approvals_for_conversation(conversation_id)
-    if not pending:
+    if len(pending) != 1:
         return None
 
-    result = await interpret_decision_message(message, [p.get("summary", "") for p in pending])
-    decision = "deny" if result.action != "approve" else "approve"
-    feedback = UNRELATED_FEEDBACK if result.action == "unrelated" else result.feedback
-    for item in pending:
-        await _safe_relay(item["approval_id"], user_id, decision, feedback)
+    item = pending[0]
+    result = await interpret_decision_message(message, [item.get("summary", "")])
+    if result.action == "unrelated":
+        # The user moved on. Abandon the parked run (cancel it, don't deny-and-
+        # resume) so it can't race the new turn about to run for this message.
+        await abandon_pending_run(
+            item["approval_id"], user_id, item.get("stream_id", ""), UNRELATED_FEEDBACK
+        )
+        return "unrelated"
+
+    await _safe_relay(item["approval_id"], user_id, result.action, result.feedback)
     return result.action
 
 

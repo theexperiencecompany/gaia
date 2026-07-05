@@ -49,8 +49,21 @@ async def update_hil_preferences(
 
 
 async def set_tool_override(user_id: str, tool_name: str, ask: bool | None) -> None:
-    """Set (``ask`` = True/False) or clear (``ask`` = None) one tool's override."""
-    field = f"hil_preferences.tool_overrides.{tool_name}"
-    update: dict[str, object] = {"$unset": {field: ""}} if ask is None else {"$set": {field: ask}}
-    await users_collection.update_one({"_id": ObjectId(user_id)}, update)
+    """Set (``ask`` = True/False) or clear (``ask`` = None) one tool's override.
+
+    Writes the whole ``tool_overrides`` map rather than a dotted field path: MCP
+    tool names can contain dots (e.g. ``server.action``), which Mongo would split
+    into a nested subdocument on a dotted ``$set`` path, diverging from the flat
+    map the read path expects.
+    """
+    prefs = await get_hil_preferences(user_id)
+    overrides = dict(prefs.tool_overrides)
+    if ask is None:
+        overrides.pop(tool_name, None)
+    else:
+        overrides[tool_name] = ask
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"hil_preferences.tool_overrides": overrides}},
+    )
     await delete_cache(_cache_key(user_id))

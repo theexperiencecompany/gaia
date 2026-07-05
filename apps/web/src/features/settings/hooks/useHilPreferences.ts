@@ -3,6 +3,7 @@ import {
   approvalsApi,
   type HilPreferences,
 } from "@/features/settings/api/approvalsApi";
+import { toast } from "@/lib/toast";
 
 const HIL_PREFS_KEY = ["hil", "preferences"] as const;
 
@@ -29,6 +30,9 @@ export function useHilPreferences() {
     mutationFn: ({ name, ask }: { name: string; ask: boolean | null }) =>
       approvalsApi.setToolOverride(name, ask),
     onSuccess: (data) => qc.setQueryData(HIL_PREFS_KEY, data),
+    // The mutation is fire-and-forget from every call site (`.mutate()`), so
+    // this is the single place a failed per-tool save can surface to the user.
+    onError: () => toast.error("Failed to update tool approval"),
   });
 
   return {

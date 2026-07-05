@@ -31,14 +31,17 @@ export function useHilPreferences() {
   }, []);
 
   const setEnabled = useCallback(
-    async (enabled: boolean) => {
+    async (enabled: boolean): Promise<boolean> => {
       const previous = prefs;
       setPrefs((p) => ({ ...p, enabled }));
       try {
         setPrefs(await settingsApi.updateHilPreferences({ enabled }));
-      } catch (error) {
+        return true;
+      } catch {
+        // Roll back and report failure without rejecting, matching
+        // setToolApproval — callers decide whether to surface an error.
         setPrefs(previous);
-        throw error;
+        return false;
       }
     },
     [prefs],

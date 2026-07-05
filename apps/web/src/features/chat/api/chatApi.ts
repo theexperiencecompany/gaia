@@ -24,6 +24,7 @@ export class DuplicateTurnError extends Error {
 }
 
 const HTTP_CONFLICT = 409;
+const HTTP_GONE = 410;
 
 export interface ChatStreamRequest {
   inputText: string;
@@ -477,7 +478,8 @@ export const chatApi = {
 
   /**
    * Relay a HIL approval decision to the awaiting agent gate. Silent — the
-   * resolved card arrives over the stream (a 410 means already-resolved).
+   * caller surfaces real failures; a 410 (already resolved elsewhere) resolves
+   * over the stream regardless, so it's swallowed here rather than surfaced.
    */
   postApprovalDecision: async (
     approvalId: string,
@@ -487,8 +489,15 @@ export const chatApi = {
       scope?: "once" | "always_tool";
     },
   ): Promise<void> => {
-    await apiService.post(`/approvals/${approvalId}/decision`, decision, {
-      silent: true,
-    });
+    try {
+      await apiService.post(`/approvals/${approvalId}/decision`, decision, {
+        silent: true,
+      });
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (status === HTTP_GONE) return;
+      throw error;
+    }
   },
 };

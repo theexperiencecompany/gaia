@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Pressable, Switch, View } from "react-native";
+import { Alert, Pressable, Switch, View } from "react-native";
 import { AppIcon, ShieldUserIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
@@ -30,6 +30,11 @@ export function IntegrationToolApprovals({
   const { fontSize, spacing } = useResponsive();
   const { prefs, setEnabled, setToolApproval } = useHilPreferences();
   const disabled = !prefs.enabled;
+
+  const handleEnable = async () => {
+    const ok = await setEnabled(true);
+    if (!ok) Alert.alert("Error", "Failed to enable approvals.");
+  };
 
   const ordered = useMemo(
     () =>
@@ -67,7 +72,7 @@ export function IntegrationToolApprovals({
           >
             Approvals are off — GAIA won't ask before running these.
           </Text>
-          <Pressable onPress={() => void setEnabled(true)} hitSlop={8}>
+          <Pressable onPress={handleEnable} hitSlop={8}>
             <Text style={{ fontSize: fontSize.xs, color: "#16c1ff" }}>
               Enable
             </Text>
@@ -121,7 +126,7 @@ export function IntegrationToolApprovals({
               <Switch
                 value={ask}
                 onValueChange={(v) =>
-                  void setToolApproval(tool.name, v, tool.destructive)
+                  setToolApproval(tool.name, v, tool.destructive)
                 }
                 disabled={disabled}
                 trackColor={{ false: "#3a3a3c", true: "rgba(22,193,255,0.6)" }}

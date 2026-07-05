@@ -2,7 +2,7 @@ import type { ApprovalRequestData, ApprovalStatus } from "@gaia/shared/chat";
 import * as Haptics from "expo-haptics";
 import { Button, Chip } from "heroui-native";
 import { useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Alert, Pressable, TextInput, View } from "react-native";
 import {
   AlertCircleIcon,
   AppIcon,
@@ -77,14 +77,22 @@ export function ApprovalRequestCard({ data }: ApprovalRequestCardProps) {
   ) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSubmitting(decision);
-    // The resolved frame replaces this card over the stream; reset local state
-    // only if the request itself failed (a 410 still resolves the card).
+    // The resolved frame replaces this card over the stream; a 410 still counts
+    // as resolved. Only a genuine failure re-enables the buttons and tells the
+    // user their decision didn't go through.
     const ok = await chatApi.postApprovalDecision(data.approval_id, {
       decision,
       feedback: feedback.trim() || undefined,
       scope,
     });
-    if (!ok) setSubmitting(null);
+    if (!ok) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        "Couldn't submit",
+        "Your decision didn't go through. Please try again.",
+      );
+      setSubmitting(null);
+    }
   };
 
   const shell = (children: React.ReactNode) => (

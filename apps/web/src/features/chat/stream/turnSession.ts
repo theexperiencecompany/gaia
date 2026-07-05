@@ -94,6 +94,13 @@ export class TurnSession {
     return this.conversationId;
   }
 
+  /** The store key the live session lives under. `bindNewConversation()` rekeys
+   *  it from the pending `this.key` to the real conversation id, so every store
+   *  read/write must resolve through here to survive that move. */
+  private get sessionKey(): string {
+    return this.conversationId ?? this.key;
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async start(): Promise<void> {
@@ -537,7 +544,7 @@ export class TurnSession {
   private handleMainResponseComplete(): void {
     const store = useStreamStore.getState();
     // The comms agent acked — unlock the composer so the user can queue.
-    store.updateSession(this.key, { composerLocked: false });
+    store.updateSession(this.sessionKey, { composerLocked: false });
 
     // A delegated turn isn't done: the executor streams over this same SSE
     // moments later. Dropping the spinner here would leave a dead frame until
@@ -545,15 +552,15 @@ export class TurnSession {
     if (hasExecutorDelegation(this.acc.toolData)) return;
 
     this.setSpinner(false);
-    store.resetSessionLoadingText(this.key);
+    store.resetSessionLoadingText(this.sessionKey);
     this.scheduleFlush();
   }
 
   private setSpinner(active: boolean): void {
     const store = useStreamStore.getState();
-    const session = store.sessions[this.key];
+    const session = store.sessions[this.sessionKey];
     if (!session || session.spinnerActive === active) return;
-    store.updateSession(this.key, {
+    store.updateSession(this.sessionKey, {
       spinnerActive: active,
       phase: "streaming",
     });
@@ -561,9 +568,9 @@ export class TurnSession {
 
   private setAwaitingApproval(active: boolean): void {
     const store = useStreamStore.getState();
-    const session = store.sessions[this.key];
+    const session = store.sessions[this.sessionKey];
     if (!session || session.awaitingApproval === active) return;
-    store.updateSession(this.key, { awaitingApproval: active });
+    store.updateSession(this.sessionKey, { awaitingApproval: active });
   }
 
   /** Drive the awaiting-approval UI from an approval_request tool frame. */
@@ -601,7 +608,9 @@ export class TurnSession {
       showCategory?: boolean;
     },
   ): void {
-    useStreamStore.getState().setSessionLoadingText(this.key, text, toolInfo);
+    useStreamStore
+      .getState()
+      .setSessionLoadingText(this.sessionKey, text, toolInfo);
   }
 
   // ── Store / DB flushes ─────────────────────────────────────────────────────
@@ -713,7 +722,7 @@ export class TurnSession {
 
   /** SSE is done but a background executor still owes its result message. */
   private enterAwaitingExecutor(): void {
-    const key = this.conversationId ?? this.key;
+    const key = this.sessionKey;
     streamLog("lifecycle", "turn:awaiting-executor", {
       turnKey: this.key,
       conversationId: this.conversationId,

@@ -347,6 +347,7 @@ async function streamChatOnce(
         onError,
         true,
         endpoint,
+        onApprovalUpdate,
       );
     }
 

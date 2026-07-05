@@ -3,12 +3,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { ShieldUserIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import type {
-  HilPreferences,
-  OnboardingPreferences,
-} from "@/features/settings/api/settings-api";
+import type { OnboardingPreferences } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
 import { SettingsSwitchRow } from "@/features/settings/components/settings-row";
+import { useHilPreferences } from "@/features/settings/hooks/use-hil-preferences";
 import { useResponsive } from "@/lib/responsive";
 
 const PROFESSIONS = [
@@ -52,36 +50,18 @@ export function PreferencesSection() {
   const [timezone, setTimezone] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [hilEnabled, setHilEnabled] = useState(false);
+  const { prefs: hilPrefs, setEnabled: setHilEnabled } = useHilPreferences();
   const [hilSaving, setHilSaving] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    settingsApi
-      .getHilPreferences()
-      .then((p: HilPreferences) => {
-        if (!cancelled) setHilEnabled(p.enabled);
-      })
-      .catch(() => {
-        // silently ignore — default keeps the toggle usable
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleHilToggle = useCallback(async (enabled: boolean) => {
-    setHilEnabled(enabled);
-    setHilSaving(true);
-    try {
-      await settingsApi.updateHilPreferences({ enabled });
-    } catch {
-      setHilEnabled(!enabled);
-      Alert.alert("Error", "Failed to update approval preference.");
-    } finally {
+  const handleHilToggle = useCallback(
+    async (enabled: boolean) => {
+      setHilSaving(true);
+      const ok = await setHilEnabled(enabled);
+      if (!ok) Alert.alert("Error", "Failed to update approval preference.");
       setHilSaving(false);
-    }
-  }, []);
+    },
+    [setHilEnabled],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -160,7 +140,7 @@ export function PreferencesSection() {
             icon={ShieldUserIcon}
             title="Ask before destructive actions"
             subtitle="Approve or decline before GAIA sends, deletes, or posts on your behalf."
-            value={hilEnabled}
+            value={hilPrefs.enabled}
             onValueChange={handleHilToggle}
             disabled={hilSaving}
             isLast

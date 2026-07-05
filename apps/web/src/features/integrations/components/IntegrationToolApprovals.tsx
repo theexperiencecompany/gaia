@@ -9,6 +9,7 @@ import {
   toolAsks,
   useHilPreferences,
 } from "@/features/settings/hooks/useHilPreferences";
+import { toast } from "@/lib/toast";
 
 interface IntegrationToolApprovalsProps {
   tools: IntegrationToolEntry[];
@@ -30,6 +31,14 @@ export const IntegrationToolApprovals = ({
   const { prefs, setToolApproval, setEnabled, isSavingEnabled } =
     useHilPreferences();
 
+  const handleEnable = async () => {
+    try {
+      await setEnabled(true);
+    } catch {
+      toast.error("Failed to enable approvals");
+    }
+  };
+
   const ordered = useMemo(
     () =>
       [...tools].sort((a, b) => Number(b.destructive) - Number(a.destructive)),
@@ -47,7 +56,7 @@ export const IntegrationToolApprovals = ({
             size="sm"
             variant="flat"
             isLoading={isSavingEnabled}
-            onPress={() => setEnabled(true)}
+            onPress={handleEnable}
           >
             Enable
           </Button>

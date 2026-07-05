@@ -154,6 +154,29 @@ async def relay_approval_decision(
     return pending
 
 
+async def abandon_pending_run(
+    approval_id: str, user_id: str, stream_id: str, feedback: str | None
+) -> None:
+    """Stop the run parked on a pending approval instead of resuming it.
+
+    Used when the user moves on to an unrelated request. Cancelling the owning
+    stream makes the parked run abort at its next cancellation check; relaying a
+    deny unblocks the gate's decision wait so it reaches that check. Doing both
+    (rather than a bare deny, which resumes the run and lets it keep working)
+    keeps the abandoned run from racing the user's new turn on the same thread.
+    """
+    if stream_id:
+        await stream_manager.cancel_stream(stream_id)
+    with contextlib.suppress(ApprovalRequestNotFound, ApprovalRequestForbidden):
+        await relay_approval_decision(
+            approval_id=approval_id,
+            user_id=user_id,
+            decision="deny",
+            feedback=feedback,
+            scope="once",
+        )
+
+
 async def pending_approvals_for_conversation(conversation_id: str) -> list[dict[str, Any]]:
     """Pending request payloads (with ids) for the conversational resolver."""
     if not redis_cache.redis:
