@@ -7,10 +7,12 @@ import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Cancel01Icon, PencilEdit01Icon, PlusSignIcon } from "@icons";
 import DOMPurify from "dompurify";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { Gmail } from "@/components/shared/icons";
+import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
 import { mailApi } from "@/features/mail/api/mailApi";
 import { toast } from "@/lib/toast";
@@ -321,6 +323,8 @@ export default function EmailComposeCard({
   onSent,
 }: EmailComposeCardProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  // Card starts expanded; users can collapse it to a compact header.
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [activeRecipientField, setActiveRecipientField] =
     useState<RecipientField | null>(null);
   const [isSending, setIsSending] = useState(false);
@@ -544,9 +548,17 @@ export default function EmailComposeCard({
     <>
       {/* Main Email Card - Redesigned UI */}
       <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-zinc-800">
-        {/* Header with status chip */}
-        <div className="flex items-center justify-between px-6 py-1">
-          <div className="flex flex-row items-center gap-2 pt-3 pb-2">
+        {/* Header with status chip — toggles the card open/collapsed */}
+        <Button
+          fullWidth
+          disableRipple
+          variant="light"
+          radius="none"
+          onPress={() => setIsCollapsed((prev) => !prev)}
+          aria-expanded={!isCollapsed}
+          className="h-auto justify-between px-6 pt-4 pb-3"
+        >
+          <span className="flex flex-row items-center gap-2">
             <Gmail width={18} height={18} />
             <span className="text-sm font-medium">
               {emailData.draft_id ? "Email Draft" : "Compose Email"}
@@ -556,69 +568,88 @@ export default function EmailComposeCard({
                 Reply
               </Chip>
             )}
-          </div>
-        </div>
-        <div className="flex flex-col gap-1 px-6">
-          {RECIPIENT_FIELDS.map(({ field, label, addLabel }) => (
-            <div key={field}>
-              <RecipientRow
-                label={label}
-                addLabel={addLabel}
-                emails={recipients[field]}
-                onEdit={() => openRecipientModal(field)}
-              />
-              <Separator className="my-1.5 bg-zinc-700" />
-            </div>
-          ))}
-          <div className="flex w-full items-center justify-between text-sm text-gray-400">
-            <div className="flex items-center gap-2">
-              <span>Subject:</span>
-              <span className="font-medium text-gray-200">
-                {editData.subject}
-              </span>
-            </div>
+          </span>
+          <ChevronRight
+            className={`h-4 w-4 text-zinc-400 transition-transform ${
+              isCollapsed ? "rotate-0" : "rotate-90"
+            }`}
+          />
+        </Button>
 
-            <Button
-              variant="light"
-              size="sm"
-              isIconOnly
-              onPress={handleEditClick}
+        <AnimatePresence initial={false}>
+          {!isCollapsed && (
+            <m.div
+              key="compose-body"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden"
             >
-              <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-            </Button>
-          </div>
-          <Separator className="my-1.5 bg-zinc-700" />
+              <div className="flex flex-col gap-1 px-6">
+                {RECIPIENT_FIELDS.map(({ field, label, addLabel }) => (
+                  <div key={field}>
+                    <RecipientRow
+                      label={label}
+                      addLabel={addLabel}
+                      emails={recipients[field]}
+                      onEdit={() => openRecipientModal(field)}
+                    />
+                    <Separator className="my-1.5 bg-zinc-700" />
+                  </div>
+                ))}
+                <div className="flex w-full items-center justify-between text-sm text-gray-400">
+                  <div className="flex items-center gap-2">
+                    <span>Subject:</span>
+                    <span className="font-medium text-gray-200">
+                      {editData.subject}
+                    </span>
+                  </div>
 
-          <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
-            <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
-              <Button
-                variant="light"
-                size="sm"
-                isIconOnly
-                onPress={handleEditClick}
-              >
-                <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-              </Button>
-            </div>
-            <HtmlEmailBody html={editData.body} />
-          </ScrollShadow>
-        </div>
-        <div className="flex justify-end px-6 pb-5">
-          <Button
-            color="primary"
-            onPress={handleSend}
-            isLoading={isSending}
-            isDisabled={recipients.to.length === 0}
-            radius="full"
-            className="font-medium"
-          >
-            {isSending
-              ? "Sending..."
-              : emailData.draft_id
-                ? "Send Draft"
-                : "Send"}
-          </Button>
-        </div>
+                  <Button
+                    variant="light"
+                    size="sm"
+                    isIconOnly
+                    onPress={handleEditClick}
+                  >
+                    <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+                  </Button>
+                </div>
+                <Separator className="my-1.5 bg-zinc-700" />
+
+                <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
+                  <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
+                    <Button
+                      variant="light"
+                      size="sm"
+                      isIconOnly
+                      onPress={handleEditClick}
+                    >
+                      <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+                    </Button>
+                  </div>
+                  <HtmlEmailBody html={editData.body} />
+                </ScrollShadow>
+              </div>
+              <div className="flex justify-end px-6 pb-5">
+                <Button
+                  color="primary"
+                  onPress={handleSend}
+                  isLoading={isSending}
+                  isDisabled={recipients.to.length === 0}
+                  radius="full"
+                  className="font-medium"
+                >
+                  {isSending
+                    ? "Sending..."
+                    : emailData.draft_id
+                      ? "Send Draft"
+                      : "Send"}
+                </Button>
+              </div>
+            </m.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <EditEmailModal
