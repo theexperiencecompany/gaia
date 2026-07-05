@@ -56,6 +56,8 @@ _notify_tasks: set[asyncio.Task[None]] = set()
 
 
 class ApprovalRequestNotFound(AppError):
+    """Raised (410) when an approval request has expired or was already resolved."""
+
     def __init__(self) -> None:
         super().__init__(
             message="Approval request expired or already resolved",
@@ -64,6 +66,8 @@ class ApprovalRequestNotFound(AppError):
 
 
 class ApprovalRequestForbidden(AppError):
+    """Raised (403) when an approval request belongs to a different user."""
+
     def __init__(self) -> None:
         super().__init__(
             message="Approval request belongs to another user",
@@ -73,6 +77,8 @@ class ApprovalRequestForbidden(AppError):
 
 @dataclass
 class ApprovalOutcome:
+    """The resolved result of an approval request: status, optional feedback, and scope."""
+
     status: ApprovalStatus
     feedback: str | None = None
     scope: str = "once"

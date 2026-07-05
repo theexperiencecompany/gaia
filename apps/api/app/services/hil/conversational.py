@@ -28,6 +28,8 @@ UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform t
 
 
 class DecisionResult(BaseModel):
+    """LLM classification of a user's reply to a pending approval."""
+
     action: DecisionAction
     feedback: str | None = None
 
@@ -71,9 +73,7 @@ async def interpret_decision_message(message: str, pending_summaries: list[str])
 # --- internals -----------------------------------------------------------------
 
 
-async def _safe_relay(
-    approval_id: str, user_id: str, decision: str, feedback: str | None
-) -> None:
+async def _safe_relay(approval_id: str, user_id: str, decision: str, feedback: str | None) -> None:
     """Relay one decision, tolerating an already-resolved/expired approval."""
     try:
         await relay_approval_decision(

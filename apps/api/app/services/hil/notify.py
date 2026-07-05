@@ -70,7 +70,9 @@ async def _push_to_devices(
 
 
 async def _active_device_tokens(user_id: str) -> list[str]:
-    cursor = device_tokens_collection.find({"user_id": user_id, "is_active": True}, {"token": 1})
+    # {"token": 1} is a MongoDB field projection (include the token field), not a secret.
+    projection = {"token": 1}  # nosec B105
+    cursor = device_tokens_collection.find({"user_id": user_id, "is_active": True}, projection)
     return [doc["token"] async for doc in cursor if doc.get("token")]
 
 

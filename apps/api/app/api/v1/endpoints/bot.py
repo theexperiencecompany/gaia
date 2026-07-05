@@ -87,10 +87,7 @@ def _bot_approval_payload(chunk: dict) -> dict | None:
     Returns the approval data, or ``None`` if ``chunk`` isn't such a card.
     """
     tool_data = chunk.get("tool_data")
-    if (
-        not isinstance(tool_data, dict)
-        or tool_data.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME
-    ):
+    if not isinstance(tool_data, dict) or tool_data.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME:
         return None
     data = tool_data.get("data")
     return data if isinstance(data, dict) else None

@@ -54,6 +54,7 @@ async def post_approval_decision(
 async def get_preferences(
     user: Annotated[dict, Depends(get_current_user)],
 ) -> HILPreferencesResponse:
+    """Return the current user's HIL approval preferences."""
     log.set(user={"id": user["user_id"]}, hil={"operation": "get_preferences"})
     prefs = await get_hil_preferences(user["user_id"])
     return HILPreferencesResponse(**prefs.model_dump())
@@ -64,6 +65,7 @@ async def put_preferences(
     payload: UpdateHILPreferencesRequest,
     user: Annotated[dict, Depends(get_current_user)],
 ) -> HILPreferencesResponse:
+    """Apply a partial update to the current user's HIL preferences."""
     log.set(user={"id": user["user_id"]}, hil={"operation": "update_preferences"})
     prefs = await update_hil_preferences(
         user["user_id"],

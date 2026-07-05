@@ -13,13 +13,12 @@ def _cache_key(user_id: str) -> str:
 
 
 async def get_hil_preferences(user_id: str) -> HILPreferences:
+    """Return a user's HIL preferences, reading through a short Redis cache."""
     cached = await get_cache(_cache_key(user_id))
     if cached is not None:
         return HILPreferences(**cached)
 
-    user_doc = await users_collection.find_one(
-        {"_id": ObjectId(user_id)}, {"hil_preferences": 1}
-    )
+    user_doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {"hil_preferences": 1})
     raw = (user_doc or {}).get("hil_preferences") or {}
     # Legacy self-heal: fold a pre-override ``always_allowed_tools`` allow-list into
     # the ``tool_overrides`` map (each becomes "never ask"). HIL is unlaunched, so
@@ -37,6 +36,7 @@ async def update_hil_preferences(
     enabled: bool | None = None,
     tool_overrides: dict[str, bool] | None = None,
 ) -> HILPreferences:
+    """Apply a partial update to a user's HIL preferences and invalidate the cache."""
     updates: dict[str, object] = {}
     if enabled is not None:
         updates["hil_preferences.enabled"] = enabled

@@ -20,6 +20,8 @@ Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
 
 
 class HILApprovalMiddleware(AgentMiddleware):
+    """Middleware-chain adapter that routes regular tool calls through the HIL gate."""
+
     async def awrap_tool_call(
         self, request: ToolCallRequest, handler: Handler
     ) -> ToolMessage | Command[Any]:

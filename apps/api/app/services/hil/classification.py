@@ -94,9 +94,7 @@ def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
     return None
 
 
-async def _classify_unknown_tool(
-    registry: ToolRegistry, tool_name: str, description: str
-) -> bool:
+async def _classify_unknown_tool(registry: ToolRegistry, tool_name: str, description: str) -> bool:
     """Resolve an unclassified custom tool from the Mongo cache, else the LLM."""
     description_hash = _description_hash(description)
     cached = await _cached_classification(tool_name, description_hash)
