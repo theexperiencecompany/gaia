@@ -12,7 +12,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from app.agents.core.graph_manager import GraphManager
+from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
@@ -23,6 +23,7 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import build_agent_config
@@ -30,8 +31,10 @@ from app.helpers.message_helpers import (
     build_current_time_message,
     create_system_message,
 )
+from app.models.stream_events import ReasoningPayload, ToolOutputPayload
+from app.services.chat.chunks import normalize_custom_event
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
-from app.utils.stream_utils import extract_tool_entries_from_update, normalize_custom_event
+from app.utils.stream_utils import extract_tool_entries_from_update
 from shared.py.wide_events import log
 
 
@@ -200,23 +203,22 @@ def _process_messages_payload(
         if stream_writer:
             reasoning_delta = _extract_reasoning_delta(chunk)
             if reasoning_delta:
-                reasoning_event: dict = {"content": reasoning_delta}
-                if subagent_id:
-                    reasoning_event["subagent_id"] = subagent_id
-                stream_writer({"reasoning": reasoning_event})
+                reasoning_payload = ReasoningPayload(
+                    content=reasoning_delta, subagent_id=subagent_id
+                )
+                stream_writer({"reasoning": reasoning_payload.model_dump(exclude_none=True)})
 
     # Emit tool_output when ToolMessage arrives
     elif chunk and isinstance(chunk, ToolMessage):
         content_str = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
         complete_message = _capture_finish_task_content(chunk, complete_message)
         if stream_writer:
-            tool_output_data: dict = {
-                "tool_call_id": chunk.tool_call_id,
-                "output": content_str,
-            }
-            if subagent_id:
-                tool_output_data["subagent_id"] = subagent_id
-            stream_writer({"tool_output": tool_output_data})
+            tool_output_payload = ToolOutputPayload(
+                tool_call_id=chunk.tool_call_id,
+                output=content_str,
+                subagent_id=subagent_id,
+            )
+            stream_writer({"tool_output": tool_output_payload.model_dump(exclude_none=True)})
 
     return complete_message
 
@@ -255,6 +257,15 @@ async def execute_subagent_stream(
         ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
         config=run_config,
+        # Persist checkpoints only when this executor/subagent run exits, not
+        # after every step (langgraph's default durability="async"). The
+        # executor/subagent path is a single logical unit of work whose
+        # intermediate steps never need to survive a mid-run crash — only the
+        # final state must be durable so the next turn on the same thread
+        # resumes with full context. This collapses O(steps) checkpoint writes
+        # per run to one, cutting Postgres checkpoint churn. The comms graph
+        # driver keeps "async" (its mid-run checkpoints are needed).
+        durability="exit",
     ):
         # Check for cancellation
         if ctx.stream_id and await stream_manager.is_cancelled(ctx.stream_id):
@@ -352,9 +363,15 @@ async def prepare_executor_execution(
     # one executor call are visible to the next.
     vfs_session_id = configurable.get("vfs_session_id") or thread_id
 
-    # Load executor graph
-    executor_graph = await GraphManager.get_graph("executor_agent")
-    if not executor_graph:
+    # Load executor graph. Degrade contract: comms must still receive a
+    # tool-result string, so log the real cause loudly and return the error.
+    try:
+        executor_graph = await GraphManager.get_graph("executor_agent")
+    except GraphUnavailableError as e:
+        log.error(
+            f"{LogTag.AGENT} prepare_executor_execution: executor_agent graph unavailable",
+            error=str(e),
+        )
         return None, "Executor agent not available"
 
     # Build user dict for config
@@ -373,6 +390,7 @@ async def prepare_executor_execution(
         agent_name="executor_agent",
         subagent_id="executor_agent",  # Use agent_name as the memory namespace id
         vfs_session_id=vfs_session_id,
+        recursion_limit=EXECUTOR_RECURSION_LIMIT,
     )
     new_configurable = config.get("configurable", {})
 

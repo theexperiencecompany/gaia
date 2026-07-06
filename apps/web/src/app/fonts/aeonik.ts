@@ -15,6 +15,6 @@ export const aeonik = localFont({
   ],
   variable: "--font-aeonik",
   display: "swap",
-  preload: true,
+  preload: false,
   fallback: ["system-ui", "sans-serif"],
 });

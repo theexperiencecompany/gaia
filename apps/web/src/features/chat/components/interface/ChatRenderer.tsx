@@ -14,6 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { MessageScrollerItem } from "@/components/ui/message-scroller";
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
@@ -24,8 +25,6 @@ import MemoryModal from "@/features/chat/components/memory/MemoryModal";
 import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
-import { useLoading } from "@/features/chat/hooks/useLoading";
-import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { useRetryMessage } from "@/features/chat/hooks/useRetryMessage";
 import {
   filterEmptyMessagePairs,
@@ -33,6 +32,11 @@ import {
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
 import { useChatStore } from "@/stores/chatStore";
+import {
+  useActiveLoading,
+  useIsAwaitingExecutor,
+  useIsConversationStreaming,
+} from "@/stores/streamStore";
 import type {
   ChatBubbleBotProps,
   ChatBubbleUserProps,
@@ -193,38 +197,29 @@ export default function ChatRenderer({
   const { conversations } = useConversationList();
   const [openGeneratedImage, setOpenGeneratedImage] = useState<boolean>(false);
   const [openMemoryModal, setOpenMemoryModal] = useState<boolean>(false);
-  const { isLoading } = useLoading();
-  const { loadingText, loadingTextKey, toolInfo } = useLoadingText();
+  // Loading state for the ACTIVE conversation only — a stream running in
+  // another conversation renders its own indicator there, not here. Includes
+  // the awaiting-executor bridge and auxiliary (voice/upload) loading.
+  const { isLoading, loadingText, loadingTextKey, toolInfo } =
+    useActiveLoading();
   const { id: convoIdParam } = useParams<{ id: string }>();
-  const streamingConversationId = useChatStore(
-    (state) => state.streamingConversationId,
-  );
-  const activeConversationId = useChatStore(
-    (state) => state.activeConversationId,
-  );
-  const executorPendingConversationId = useChatStore(
-    (state) => state.executorPendingConversationId,
-  );
-  // While this conversation is "in progress", suppress follow-up actions and
-  // the hover action/timestamp row — they belong to a *finished* turn. A turn
-  // is in progress while its SSE stream runs (including the executor phase) AND,
-  // for turns that delegated to a background executor, until that executor's
-  // result message arrives via WebSocket (a few seconds after SSE close).
-  //
   // NB: compare against the store's `activeConversationId`, not the route param
   // — new conversations rewrite the URL via `history.replaceState`, which does
   // not update Next's `useParams`, so `convoIdParam` is stale during streaming.
-  const isAwaitingExecutorResult =
-    !!executorPendingConversationId &&
-    executorPendingConversationId === activeConversationId;
-  const isConversationStreaming =
-    (!!streamingConversationId &&
-      streamingConversationId === activeConversationId) ||
-    isAwaitingExecutorResult;
-  // The conversation is "working" while the bottom loading indicator is visible
-  // (`isLoading || awaiting`) or its SSE stream runs. This is used to suppress
-  // the follow-ups + action row on the *active turn's* bubble only (see
-  // `suppressForBusy` below) — finished turns above it keep their follow-ups.
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
+  // While this conversation is "in progress", suppress follow-up actions and
+  // the hover action/timestamp row — they belong to a *finished* turn. A turn
+  // is in progress while its SSE stream runs (including the executor phase)
+  // AND, for turns that delegated to a background executor, until that
+  // executor's result message arrives via WebSocket.
+  const isAwaitingExecutorResult = useIsAwaitingExecutor(activeConversationId);
+  const isTurnOpen = useIsConversationStreaming(activeConversationId);
+  const isConversationStreaming = isTurnOpen || isAwaitingExecutorResult;
+  // "Working" = the SSE turn runs or the loading indicator is visible. Used to
+  // suppress the follow-ups + action row on the *active turn's* bubble only
+  // (see `suppressForBusy` below) — finished turns keep their follow-ups.
   const isConversationBusy = isConversationStreaming || isLoading;
   const scrolledToMessageRef = useRef<string | null>(null);
   const { retryMessage, isRetrying } = useRetryMessage();
@@ -474,20 +469,28 @@ export default function ChatRenderer({
             index === lastRenderedIndex && isConversationBusy;
 
           return (
-            <ChatMessageItem
+            // The scroller virtualizes rows (content-visibility) with anchor
+            // math it owns — replaces the old per-bubble inline hack that
+            // fought scroll restoration. User messages are turn anchors.
+            <MessageScrollerItem
               key={message.message_id || index}
-              message={message}
-              options={messagePropsOptions}
-              isFollowedByBot={isFollowedByBot}
-              isPrecededByBot={isPrecededByBot}
-              suppressForBusy={suppressForBusy}
-              compact={compact}
-              bubbleKey={String(message.message_id || index)}
-            />
+              messageId={String(message.message_id || index)}
+              scrollAnchor={message.type === "user"}
+            >
+              <ChatMessageItem
+                message={message}
+                options={messagePropsOptions}
+                isFollowedByBot={isFollowedByBot}
+                isPrecededByBot={isPrecededByBot}
+                suppressForBusy={suppressForBusy}
+                compact={compact}
+                bubbleKey={String(message.message_id || index)}
+              />
+            </MessageScrollerItem>
           );
         },
       )}
-      {(isLoading || isAwaitingExecutorResult) && (
+      {isLoading && (
         <AnimatePresence>
           <LoadingIndicator
             loadingText={loadingText}

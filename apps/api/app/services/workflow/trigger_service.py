@@ -10,9 +10,10 @@ from typing import Any
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
-from app.models.workflow_models import TriggerConfig
+from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError
+from app.utils.workflow_utils import ensure_trigger_config_object
 from shared.py.wide_events import log
 
 
@@ -184,3 +185,56 @@ class TriggerService:
         except Exception as e:
             log.error(f"{LogTag.WORKFLOW} Error unregistering triggers: {e}")
             return False
+
+    @staticmethod
+    async def resync_user_workflow_triggers(user_id: str, trigger_names: list[str]) -> None:
+        """Re-register a user's activated integration workflows after a (re)connect.
+
+        Reconnecting an integration creates a fresh Composio connected account,
+        so per-workflow triggers registered against the old account stop firing
+        and the stored ``composio_trigger_ids`` go permanently stale. Re-register
+        each affected workflow against the current account and repoint its ids.
+        Failures are logged per workflow — one broken workflow must not block
+        the rest of the resync (or the OAuth flow it runs behind).
+        """
+        if not trigger_names:
+            return
+        query = {
+            "user_id": user_id,
+            "activated": True,
+            "trigger_config.type": TriggerType.INTEGRATION,
+            "trigger_config.enabled": True,
+            "trigger_config.trigger_name": {"$in": trigger_names},
+        }
+        async for doc in workflows_collection.find(query):
+            workflow_id = doc["_id"]
+            tc = ensure_trigger_config_object(doc.get("trigger_config") or {})
+            if not tc.trigger_name:
+                continue
+            old_ids = tc.composio_trigger_ids or []
+            try:
+                new_ids = await TriggerService.register_triggers(
+                    user_id, workflow_id, tc.trigger_name, tc
+                )
+            except Exception as e:
+                log.error(
+                    f"{LogTag.WORKFLOW} Trigger resync failed for workflow {workflow_id} "
+                    f"({tc.trigger_name}): {e}"
+                )
+                continue
+            # Account-level triggers (e.g. gmail_new_message) return no ids — nothing to repoint.
+            if not new_ids or set(new_ids) == set(old_ids):
+                continue
+            await workflows_collection.update_one(
+                {"_id": workflow_id},
+                {"$set": {"trigger_config.composio_trigger_ids": new_ids}},
+            )
+            stale_ids = [i for i in old_ids if i not in new_ids]
+            if stale_ids:
+                await TriggerService.unregister_triggers(
+                    user_id, tc.trigger_name, stale_ids, workflow_id
+                )
+            log.info(
+                f"{LogTag.WORKFLOW} Resynced triggers for workflow {workflow_id} "
+                f"({tc.trigger_name}): {old_ids} -> {new_ids}"
+            )

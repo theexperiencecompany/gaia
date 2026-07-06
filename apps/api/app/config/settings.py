@@ -277,7 +277,7 @@ class ProductionSettings(CommonSettings):
     # Webhook Secrets & Security
     # ----------------------------------------------
     COMPOSIO_WEBHOOK_SECRET: str
-    DODO_WEBHOOK_PAYMENTS_SECRET: str = ""
+    DODO_WEBHOOK_PAYMENTS_SECRET: str
 
     # ----------------------------------------------
     # Content Management

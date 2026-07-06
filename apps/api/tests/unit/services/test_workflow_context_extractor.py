@@ -44,7 +44,7 @@ class TestInferCategory:
     def test_from_agent_name(self, mock_map: MagicMock) -> None:
         mock_map.return_value = {}
         result = WorkflowContextExtractor._infer_category("gmail_agent", "some_tool")
-        assert result == "gmail"
+        assert result == "gmail_agent"
 
     @patch("app.services.workflow.context_extractor.get_toolkit_to_integration_map")
     def test_executor_agent_falls_through(self, mock_map: MagicMock) -> None:

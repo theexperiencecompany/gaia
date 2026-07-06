@@ -289,7 +289,9 @@ class TestAuthenticateWorkosSession:
 
         assert user_info == {}
         assert new_session is None
-        mock_log.error.assert_called_once_with("Refresh result doesn't have expected structure")
+        mock_log.error.assert_called_once_with(
+            "[AGENT] Refresh result doesn't have expected structure"
+        )
 
     # -- workos_user is None after auth ------------------------------------
 
@@ -306,7 +308,7 @@ class TestAuthenticateWorkosSession:
 
         assert user_info == {}
         assert new_session is None
-        mock_log.error.assert_called_once_with("Invalid user data from WorkOS")
+        mock_log.error.assert_called_once_with("[AGENT] Invalid user data from WorkOS")
 
     async def test_workos_user_none_after_refresh(self) -> None:
         """When refresh succeeds but user is None in refresh dict, return ({}, new_session)."""
@@ -330,7 +332,9 @@ class TestAuthenticateWorkosSession:
 
         assert user_info == {}
         assert new_session == "refreshed_session_tok"
-        mock_log.error.assert_any_call("Refresh successful but no user data in refresh result")
+        mock_log.error.assert_any_call(
+            "[AGENT] Refresh successful but no user data in refresh result"
+        )
 
     # -- User not found in database ----------------------------------------
 
@@ -597,7 +601,7 @@ class TestAuthenticateWorkosSession:
         assert user_info == {}
         assert new_session == "some_session"
         mock_log.error.assert_called_once_with(
-            "Refresh successful but no user data in refresh result"
+            "[AGENT] Refresh successful but no user data in refresh result"
         )
 
     async def test_refresh_dict_missing_sealed_session(self) -> None:

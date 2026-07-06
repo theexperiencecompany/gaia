@@ -40,7 +40,6 @@ class TestCallAgentReal:
             patches[4],
             patches[5],
             patches[6],
-            patches[7],
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 body = MessageRequestWithHistory(
@@ -51,7 +50,7 @@ class TestCallAgentReal:
 
                 with (
                     patch(
-                        "app.agents.core.agent.store_user_message_memory",
+                        "app.agents.core.agent.apply_plan_model",
                         new=AsyncMock(),
                     ),
                     # GraphManager.get_graph uses providers.aget which is patched

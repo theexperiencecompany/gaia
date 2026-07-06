@@ -30,7 +30,7 @@ from app.models.message_models import (
 class TestCreateSystemMessage:
     """The main system prompt must be byte-identical across users/channels so
     implicit LLM caching hits. No `{user_name}` interpolation lives here —
-    dynamic context flows via build_dynamic_context_message."""
+    dynamic context flows via build_dynamic_context_messages."""
 
     def test_comms_agent_static_is_per_channel(self) -> None:
         """Different user_name must produce identical content on the same

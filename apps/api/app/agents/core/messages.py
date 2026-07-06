@@ -4,7 +4,7 @@ from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
 from app.helpers.message_helpers import (
     build_current_time_message,
-    build_dynamic_context_message,
+    build_dynamic_context_messages,
     create_system_message,
     format_calendar_event_context,
     format_files_list,
@@ -82,11 +82,13 @@ async def construct_langchain_messages(
     user_preferences = onboarding.get("preferences") if onboarding else None
     writing_style = onboarding.get("writing_style") if onboarding else None
 
-    # Dynamic-context SystemMessage — user name, preferences, memories,
-    # tracked-todos, and (on bound / headless runs) run-binding banners.
-    # Intentionally does NOT contain the clock or any output-format
+    # Dynamic context, split by volatility: a byte-stable identity message
+    # (name, timezone, preferences, integrations) that stays at index 1, and an
+    # optional volatile memory-recall message (memories, knowledge, skills,
+    # tracked-todos, run banners) that manage_system_prompts_node slots at the
+    # tail of the system block. Neither contains the clock or output-format
     # instructions; both live elsewhere to protect the cache prefix.
-    dynamic_msg = await build_dynamic_context_message(
+    dynamic_ctx = await build_dynamic_context_messages(
         user_id=user_id,
         query=query,
         user_name=user_name,
@@ -99,9 +101,13 @@ async def construct_langchain_messages(
     )
     # Current time lives in a HumanMessage in ``contents`` (not
     # ``system_instruction``) so minute ticks never invalidate the cache
-    # prefix. See ``build_current_time_message`` for the full reasoning.
+    # prefix. It is appended LAST (after the human turn) so the growing history
+    # prefix stays byte-stable; manage_system_prompts_node keeps it at the tail
+    # of contents on later turns. See ``build_current_time_message``.
     time_msg = build_current_time_message(user_timezone=user_timezone)
-    chain_msgs: list[AnyMessage] = [system_msg, dynamic_msg, time_msg]
+    chain_msgs: list[AnyMessage] = [system_msg, dynamic_ctx.stable]
+    if dynamic_ctx.memory_recall is not None:
+        chain_msgs.append(dynamic_ctx.memory_recall)
 
     # Extract user's latest message content
     user_content = (
@@ -146,4 +152,4 @@ async def construct_langchain_messages(
         content += f"\n\n{files_str}"
 
     human_msg = HumanMessage(content=content)
-    return [*chain_msgs, human_msg]
+    return [*chain_msgs, human_msg, time_msg]

@@ -11,7 +11,6 @@ import { SystemPurpose } from "@/features/chat/api/chatApi";
 import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatBubble_Actions";
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
-import { useLoading } from "@/features/chat/hooks/useLoading";
 import {
   MESSAGE_BREAK_DURATION_SECONDS,
   MESSAGE_BREAK_EASE_OUT_QUART,
@@ -47,7 +46,7 @@ export default function ChatBubbleBot(
     isConvoSystemGenerated,
     systemPurpose,
     follow_up_actions,
-    isLastMessage,
+    error,
     disableActions = false,
     hideAvatar = false,
     isGroupedWithNext = false,
@@ -56,7 +55,6 @@ export default function ChatBubbleBot(
     onRetry,
     isRetrying,
   } = props;
-  const { isLoading } = useLoading();
 
   const actionsRef = useRef<HTMLDivElement>(null);
 
@@ -74,11 +72,14 @@ export default function ChatBubbleBot(
     }
   }, [disableActions]);
 
-  const renderedComponent = useMemo(() => {
-    if (image_data) return <ImageBubble {...props} image_data={image_data} />;
-
-    return <TextBubble {...props} />;
-  }, [image_data, props]);
+  // Not memoized on purpose: `props` is rebuilt by getMessageProps every
+  // render, so a useMemo keyed on it never hits. Real render protection lives
+  // one level up in ChatMessageItem's memo (stable idle message refs).
+  const renderedComponent = image_data ? (
+    <ImageBubble {...props} image_data={image_data} />
+  ) : (
+    <TextBubble {...props} />
+  );
 
   const itShouldShowTextBubble = shouldShowTextBubble(
     text,
@@ -96,10 +97,20 @@ export default function ChatBubbleBot(
     return Math.max(0, parts.length - 1) * MESSAGE_BREAK_STAGGER_SECONDS;
   }, [text, itShouldShowTextBubble]);
 
+  // A failed turn with no response text still shows the quiet error bubble.
+  const hasError = shouldShowTextBubble(
+    text,
+    isConvoSystemGenerated,
+    systemPurpose,
+  )
+    ? false
+    : !!error;
+
   // Check if there's actual content to display
   const hasContent =
     image_data ||
     !!text ||
+    hasError ||
     (isConvoSystemGenerated &&
       systemPurpose === SystemPurpose.EMAIL_PROCESSING) ||
     props.tool_data?.length;
@@ -108,7 +119,9 @@ export default function ChatBubbleBot(
   // Let ChatRenderer's loading indicator handle it
   if (loading && !hasContent) return null;
 
-  const showBubbleChrome = itShouldShowTextBubble;
+  // The error bubble gets the same chrome as a text bubble (avatar + actions,
+  // so Retry is reachable).
+  const showBubbleChrome = itShouldShowTextBubble || hasError;
 
   return (
     (loading || hasContent) && (
@@ -117,7 +130,6 @@ export default function ChatBubbleBot(
         onMouseOver={handleMouseOver}
         onMouseOut={handleMouseOut}
         className={`relative flex flex-col ${isGroupedWithPrev ? "mt-1.5" : ""}`}
-        style={{ contentVisibility: "auto", containIntrinsicSize: "0 120px" }}
       >
         {/*
           Alignment is structural, not per-message. Every bot bubble reserves
@@ -130,7 +142,7 @@ export default function ChatBubbleBot(
         <div className="relative">
           {!hideAvatar && !isGroupedWithNext && showBubbleChrome && (
             <m.div
-              className={`${isLoading && isLastMessage ? "animate-spin" : ""} absolute bottom-0 left-0 z-5 transition duration-900`}
+              className="absolute bottom-0 left-0 z-5 transition duration-900"
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{

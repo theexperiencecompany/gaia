@@ -521,9 +521,9 @@ class TestConcurrentRequests:
         Some should succeed and some should raise RateLimitExceededException.
         The total successful increments must not exceed the limit.
         """
-        # deep_research free = 2/day
-        limit = 2
-        num_requests = 10
+        # deep_research free = 5/day (current production value)
+        limit = 5
+        num_requests = 20
 
         with (
             frozen_time("2026-04-01T12:00:00"),
@@ -545,9 +545,11 @@ class TestConcurrentRequests:
             succeeded = sum(1 for r in results if r)
             rate_limited = sum(1 for r in results if not r)
 
-        # Exactly `limit` requests should have succeeded
+        # Exactly `limit` requests should have succeeded; the rest are rate-limited
         assert succeeded == limit, f"Expected {limit} successes, got {succeeded}"
-        assert rate_limited == num_requests - limit
+        assert rate_limited == num_requests - limit, (
+            f"Expected {num_requests - limit} rate-limited, got {rate_limited}"
+        )
 
 
 # ---------------------------------------------------------------------------

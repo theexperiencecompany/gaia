@@ -2,10 +2,15 @@ import {
   type Conversation,
   type ConversationSyncItem,
   chatApi,
+  type SyncedConversation,
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
-import { streamState } from "@/lib/streamState";
+import {
+  hasAnyLiveTurn,
+  isConversationStreamingNow,
+  shouldBlockSyncForConversation,
+} from "@/stores/streamStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
 // When a remote message overwrites an existing local one, carry forward a
@@ -46,7 +51,7 @@ const mergeMessageLists = (
       // CRITICAL: Only preserve "sending" status if we are ACTUALLY streaming this conversation.
       // If we are not streaming (e.g. page refresh, crash recovery), this "sending" status is stale
       // and MUST be overwritten by the remote message (which has the true final state).
-      if (streamState.isStreamingConversation(existing.conversationId)) {
+      if (isConversationStreamingNow(existing.conversationId)) {
         return;
       }
       // Not streaming? Clean up stale "sending" message by overwriting from remote,
@@ -61,21 +66,10 @@ const mergeMessageLists = (
     }
   });
 
-  // CRITICAL: Clean up orphaned optimistic messages
-  // These are optimistic messages whose backend counterparts have different IDs
-  // This happens when the stream was interrupted before replaceOptimisticMessage was called
-  if (remoteMessages.length > 0) {
-    for (const [id, msg] of messageMap) {
-      if (
-        msg.optimistic &&
-        !streamState.isStreamingConversation(msg.conversationId)
-      ) {
-        // This optimistic message wasn't replaced and we're not streaming
-        // It's orphaned - the backend has the real version with a different ID
-        messageMap.delete(id);
-      }
-    }
-  }
+  // No orphan sweep: the client's send id IS the persisted message id (single
+  // identity), so the server copy lands on the same key above and replaces the
+  // optimistic record naturally. Sends the server never received stay visible
+  // and are marked failed by the turn lifecycle — never silently deleted.
 
   // Convert back to array and sort by creation time
   return Array.from(messageMap.values()).toSorted(
@@ -107,11 +101,14 @@ const mapApiMessagesToStored = (
       toolName: message.selectedTool ?? null,
       toolCategory: message.toolCategory ?? null,
       workflowId: message.selectedWorkflow?.id ?? null,
-      follow_up_actions: message.follow_up_actions,
-      image_data: message.image_data,
+      follow_up_actions: message.follow_up_actions ?? null,
+      image_data: message.image_data ?? null,
       isConvoSystemGenerated: message.isConvoSystemGenerated,
-      memory_data: message.memory_data,
-      tool_data: message.tool_data,
+      error: message.error ?? null,
+      memory_data: message.memory_data ?? null,
+      tool_data: message.tool_data ?? null,
+      todo_progress: message.todo_progress ?? null,
+      pinned: message.pinned ?? false,
       selectedCalendarEvent: message.selectedCalendarEvent,
       selectedWorkflow: message.selectedWorkflow,
       replyToMessageId: message.replyToMessage?.id ?? null,
@@ -206,7 +203,7 @@ const identifyDeletedConversations = (
     if (remoteIds.has(local.id)) continue;
 
     // Skip if conversation is currently being streamed
-    if (streamState.isStreamingConversation(local.id)) continue;
+    if (isConversationStreamingNow(local.id)) continue;
 
     // Safety: Skip recently created/updated conversations
     // They might not have synced to the server yet, or might be beyond the pagination limit
@@ -224,8 +221,10 @@ const identifyDeletedConversations = (
 };
 
 export const batchSyncConversations = async (): Promise<void> => {
-  // CRITICAL: Skip sync if there's an active stream to prevent data corruption
-  if (streamState.isStreaming()) {
+  // CRITICAL: Skip sync while any turn streams to prevent data corruption —
+  // per-conversation guards above handle the fine-grained cases, this is the
+  // conservative whole-batch gate.
+  if (hasAnyLiveTurn()) {
     console.debug("[SyncService] Skipped — stream in progress");
     return;
   }
@@ -276,7 +275,7 @@ export const batchSyncConversations = async (): Promise<void> => {
         const messages = conversation.messages ?? [];
 
         // Skip syncing if streaming or pending save (e.g., after abort)
-        if (streamState.shouldBlockSync(conversationId)) return;
+        if (shouldBlockSyncForConversation(conversationId)) return;
 
         const mappedConversation: IConversation = {
           id: conversationId,
@@ -340,6 +339,56 @@ export const batchSyncConversations = async (): Promise<void> => {
 };
 
 /**
+ * Merge an already-fetched conversation payload into IndexedDB. No-op while
+ * the conversation streams or a save is pending — a live turn's messages must
+ * never be overwritten by the server's not-yet-persisted copy.
+ */
+export const applySyncedConversation = async (
+  conversationId: string,
+  conversation: SyncedConversation,
+): Promise<void> => {
+  if (shouldBlockSyncForConversation(conversationId)) {
+    return;
+  }
+
+  const messages = conversation.messages ?? [];
+
+  // Map conversation to IndexedDB format
+  const mappedConversation: IConversation = {
+    id: conversationId,
+    title: conversation.description || "Untitled conversation",
+    description: conversation.description,
+    starred: conversation.starred ?? false,
+    isSystemGenerated: conversation.is_system_generated ?? false,
+    isOnboardingConversation: conversation.is_onboarding_conversation ?? false,
+    systemPurpose: conversation.system_purpose ?? null,
+    isUnread: conversation.is_unread ?? false,
+    createdAt: new Date(conversation.createdAt),
+    updatedAt: conversation.updatedAt
+      ? new Date(conversation.updatedAt)
+      : new Date(conversation.createdAt),
+  };
+
+  // Map messages
+  const remoteMessages = mapApiMessagesToStored(messages, conversationId);
+  const localMessages = await db.getMessagesForConversation(conversationId);
+
+  const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
+
+  // Persist to IndexedDB
+  await Promise.allSettled([
+    db.putConversation(mappedConversation),
+    messages.length > 0
+      ? db.syncMessages(conversationId, mergedMessages)
+      : Promise.resolve(),
+  ]);
+
+  console.debug(
+    `[SyncService] Synced conversation ${conversationId} with ${messages.length} messages`,
+  );
+};
+
+/**
  * Sync a single conversation from backend to IndexedDB.
  * Used after stream cancellation to ensure local data matches backend.
  */
@@ -347,7 +396,7 @@ export const syncSingleConversation = async (
   conversationId: string,
 ): Promise<void> => {
   // Skip sync if streaming or pending save to prevent overwriting in-flight data
-  if (streamState.shouldBlockSync(conversationId)) {
+  if (shouldBlockSyncForConversation(conversationId)) {
     return;
   }
 
@@ -363,43 +412,7 @@ export const syncSingleConversation = async (
       return;
     }
 
-    const conversation = freshConversations[0];
-    const messages = conversation.messages ?? [];
-
-    // Map conversation to IndexedDB format
-    const mappedConversation: IConversation = {
-      id: conversationId,
-      title: conversation.description || "Untitled conversation",
-      description: conversation.description,
-      starred: conversation.starred ?? false,
-      isSystemGenerated: conversation.is_system_generated ?? false,
-      isOnboardingConversation:
-        conversation.is_onboarding_conversation ?? false,
-      systemPurpose: conversation.system_purpose ?? null,
-      isUnread: conversation.is_unread ?? false,
-      createdAt: new Date(conversation.createdAt),
-      updatedAt: conversation.updatedAt
-        ? new Date(conversation.updatedAt)
-        : new Date(conversation.createdAt),
-    };
-
-    // Map messages
-    const remoteMessages = mapApiMessagesToStored(messages, conversationId);
-    const localMessages = await db.getMessagesForConversation(conversationId);
-
-    const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
-
-    // Persist to IndexedDB
-    await Promise.allSettled([
-      db.putConversation(mappedConversation),
-      messages.length > 0
-        ? db.syncMessages(conversationId, mergedMessages)
-        : Promise.resolve(),
-    ]);
-
-    console.debug(
-      `[SyncService] Synced conversation ${conversationId} with ${messages.length} messages`,
-    );
+    await applySyncedConversation(conversationId, freshConversations[0]);
   } catch (error) {
     console.error(
       `[SyncService] Failed to sync conversation ${conversationId}:`,

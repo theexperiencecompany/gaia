@@ -9,8 +9,6 @@ import { usePathname } from "@/i18n/navigation";
 
 import CalendarHeader from "./CalendarHeader";
 import ChatHeader from "./ChatHeader";
-import GoalHeader from "./GoalHeader";
-import GoalsHeader from "./GoalsHeader";
 import SettingsHeader from "./SettingsHeader";
 import TodosHeader from "./TodosHeader";
 
@@ -58,8 +56,6 @@ export default function HeaderManager() {
           <TodosHeader />
         </Suspense>
       );
-    if (pathname.match(/^\/goals\/[^/]+$/)) return <GoalHeader />;
-    if (pathname.startsWith("/goals")) return <GoalsHeader />;
     if (pathname.startsWith("/settings")) return <SettingsHeader />;
     return null;
   }, [pathname]);

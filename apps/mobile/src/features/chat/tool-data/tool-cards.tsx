@@ -17,7 +17,6 @@ export { DeepResearchCard } from "./cards/deep-research-card";
 export * from "./cards/email-fetch-card";
 export * from "./cards/email-sent-card";
 export * from "./cards/email-thread-card";
-export * from "./cards/goal-card";
 export * from "./cards/google-docs-card";
 export * from "./cards/integration-connection-card";
 export * from "./cards/integration-list-card";

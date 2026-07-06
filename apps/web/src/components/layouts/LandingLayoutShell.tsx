@@ -1,5 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
+import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import Navbar from "@/components/navigation/Navbar";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
@@ -53,6 +55,37 @@ export default function LandingLayoutShell({
             {children}
           </main>
         </LazyMotionProvider>
+
+        {!isDesktopLogin && (
+          <div className="flex w-full flex-row items-center justify-center gap-3 px-4 py-6">
+            <Link
+              href="https://startupfa.me/s/gaia?utm_source=heygaia.io"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Image
+                src="https://startupfa.me/badges/featured/dark-small-rounded.webp"
+                alt="GAIA - Featured on Startup Fame"
+                width={240}
+                height={37}
+                unoptimized
+              />
+            </Link>
+            <Link
+              href="https://www.producthunt.com/products/heygaia/launches/gaia-v0?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-gaia-v0"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Image
+                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1000528&theme=dark&t=1782806818421"
+                alt="GAIA v0 - Your Personal AI assistant for email, calendar, tasks & more | Product Hunt"
+                width={250}
+                height={54}
+                unoptimized
+              />
+            </Link>
+          </div>
+        )}
 
         {!isDesktopLogin && <Footer />}
       </div>

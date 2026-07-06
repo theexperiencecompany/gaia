@@ -130,7 +130,12 @@ def _mock_response(text: str, status_code: int = 200) -> MagicMock:
     """Create a mock httpx.Response."""
     response = MagicMock(spec=httpx.Response)
     response.text = text
+    # Production code uses response.content[:MAX] for BeautifulSoup — supply bytes.
+    response.content = text.encode()
     response.status_code = status_code
+    # Production code uses manual redirect loop with follow_redirects=False.
+    # Set is_redirect=False so the loop exits immediately on the first response.
+    response.is_redirect = False
     response.raise_for_status = MagicMock()
     if status_code >= 400:
         response.raise_for_status.side_effect = httpx.HTTPStatusError(
@@ -369,7 +374,8 @@ class TestFetchUrlMetadata:
 
         assert isinstance(exc_info.value, HTTPException)
         assert exc_info.value.status_code == 400
-        assert "Invalid URL" in exc_info.value.detail
+        # ftp:// triggers the scheme guard, not the parse guard
+        assert "Only http(s) URLs are allowed" in exc_info.value.detail
 
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.search_urls_collection")
@@ -398,7 +404,8 @@ class TestFetchUrlMetadata:
         mock_collection.find_one.assert_not_called()
         mock_set_cache.assert_not_awaited()
         assert result.title == "Cached Title"
-        assert str(result.url) == "https://example.com/"
+        # URLResponse.url is a plain str — no trailing-slash normalisation
+        assert result.url == "https://example.com"
 
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.search_urls_collection")
@@ -491,6 +498,7 @@ class TestFetchUrlMetadata:
         assert isinstance(exc_info.value, HTTPException)
         assert exc_info.value.status_code == 400
 
+    @patch("app.utils.internet_utils._validate_url_for_fetch", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.search_urls_collection")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
@@ -499,6 +507,7 @@ class TestFetchUrlMetadata:
         mock_get_cache: AsyncMock,
         mock_collection: MagicMock,
         mock_set_cache: AsyncMock,
+        mock_validate: AsyncMock,
     ) -> None:
         """Cache key follows the 'url_metadata:{url}' format."""
         cached_data = {

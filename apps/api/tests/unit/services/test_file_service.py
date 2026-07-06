@@ -110,7 +110,8 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "report.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"x" * 100)
+            # PDF magic bytes required by validate_upload's verify_magic_bytes check
+            file.read = AsyncMock(return_value=b"%PDF-" + b"x" * 95)
 
             result = await upload_file_service(
                 file=file,
@@ -163,16 +164,16 @@ class TestUploadFileService:
         assert exc_info.value.status_code == 400
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_file_too_large_raises_400(self, mock_del_cache):
+    async def test_file_too_large_raises_413(self, mock_del_cache):
         file = MagicMock()
         file.filename = "huge.pdf"
         file.content_type = "application/pdf"
-        # 11 MB file
+        # 11 MB file — validate_upload raises HTTP 413 (not 400) via read_bounded
         file.read = AsyncMock(return_value=b"x" * (11 * 1024 * 1024))
 
         with pytest.raises(HTTPException) as exc_info:
             await upload_file_service(file=file, user_id="user-abc")
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.status_code == 413
         assert "10 MB" in exc_info.value.detail
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
@@ -199,7 +200,8 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "big.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"x" * (10 * 1024 * 1024))
+            # Exactly 10 MB with PDF magic bytes so both size and magic-byte checks pass
+            file.read = AsyncMock(return_value=b"%PDF-" + b"x" * (10 * 1024 * 1024 - 5))
 
             result = await upload_file_service(file=file, user_id="user-abc")
         assert "file_id" in result
@@ -220,7 +222,8 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "test.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"small content")
+            # PDF magic bytes required; content after prefix is arbitrary
+            file.read = AsyncMock(return_value=b"%PDF-small")
 
             with pytest.raises(HTTPException) as exc_info:
                 await upload_file_service(file=file, user_id="user-abc")
@@ -243,7 +246,8 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "test.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"small content")
+            # PDF magic bytes required so validate_upload passes before reaching Cloudinary
+            file.read = AsyncMock(return_value=b"%PDF-small")
 
             with pytest.raises(HTTPException) as exc_info:
                 await upload_file_service(file=file, user_id="user-abc")
@@ -275,7 +279,8 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "test.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"content")
+            # PDF magic bytes required so validate_upload passes before DB insertion
+            file.read = AsyncMock(return_value=b"%PDF-content")
 
             with pytest.raises(HTTPException) as exc_info:
                 await upload_file_service(file=file, user_id="user-abc")
@@ -304,7 +309,7 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "report.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"x" * 100)
+            file.read = AsyncMock(return_value=b"%PDF-" + b"x" * 95)
 
             result = await upload_file_service(
                 file=file,
@@ -339,7 +344,7 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "multipage.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"x" * 100)
+            file.read = AsyncMock(return_value=b"%PDF-" + b"x" * 95)
 
             result = await upload_file_service(
                 file=file,
@@ -957,6 +962,48 @@ class TestUpdateFileService:
 
         assert result["filename"] == "new.pdf"
         mock_files_collection.update_one.assert_awaited_once()
+
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_ignores_non_allowlisted_fields(self, mock_del_cache, mock_files_collection):
+        """Only filename/description may be written — protected fields in the
+        payload must never reach the ``$set`` (mass-assignment guard)."""
+        original_file = {
+            "_id": ObjectId(),
+            "file_id": "f-1",
+            "user_id": "user-abc",
+            "filename": "old.pdf",
+            "type": "application/pdf",
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
+        }
+        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, original_file])
+        mock_update_result = MagicMock()
+        mock_update_result.modified_count = 1
+        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+
+        await update_file_service(
+            file_id="f-1",
+            user_id="user-abc",
+            update_data={
+                "filename": "new.pdf",
+                # Everything below is attacker-supplied and must be dropped.
+                "user_id": "someone-else",
+                "file_id": "f-hijack",
+                "created_at": datetime(2000, 1, 1, tzinfo=UTC),
+                "is_admin": True,
+                "type": "text/html",
+            },
+        )
+
+        set_fields = mock_files_collection.update_one.call_args[0][1]["$set"]
+        assert set(set_fields) == {"filename", "updated_at"}
+        assert set_fields["filename"] == "new.pdf"
+        for forbidden in ("user_id", "file_id", "created_at", "is_admin", "type"):
+            assert forbidden not in set_fields
+
+        # The query still scopes the write to the caller's own user_id.
+        query_filter = mock_files_collection.update_one.call_args[0][0]
+        assert query_filter["user_id"] == "user-abc"
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_with_file_content_regenerates_description(

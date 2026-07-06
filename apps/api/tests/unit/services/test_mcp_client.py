@@ -7,6 +7,7 @@ LangChain adapter schema sanitization, and resilient adapter retry/skip logic.
 """
 
 import asyncio
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import json
@@ -334,6 +335,15 @@ class TestMCPClientConnect:
 
 @pytest.mark.unit
 class TestMCPClientDoConnect:
+    @pytest.fixture(autouse=True)
+    def _mock_ssrf_guard(self) -> Iterator[None]:
+        """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
+        with patch(
+            "app.services.mcp.mcp_client.assert_public_http_url",
+            new_callable=AsyncMock,
+        ):
+            yield
+
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
     @patch("app.services.mcp.mcp_client.BaseMCPClient")
     @patch("app.services.mcp.mcp_client.ResilientLangChainAdapter")
@@ -1754,6 +1764,15 @@ class TestDiscoverOAuthConfig:
 
 @pytest.mark.unit
 class TestProbeMcpConnection:
+    @pytest.fixture(autouse=True)
+    def _mock_ssrf_guard(self) -> Iterator[None]:
+        """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
+        with patch(
+            "app.services.mcp.oauth_discovery.assert_public_http_url",
+            new_callable=AsyncMock,
+        ):
+            yield
+
     async def test_auth_required(self):
         with patch(
             "app.services.mcp.oauth_discovery.extract_auth_challenge",
@@ -3203,3 +3222,65 @@ class TestMCPToolsStoreGetAll:
 
         assert "int1" in result
         assert result["int1"]["name"] == "Integration 1"
+
+
+@pytest.mark.unit
+class TestMCPClientDoConnectSSRF:
+    """The connect path must run the real SSRF guard (no autouse mock here).
+
+    Regression fence for the connect-time DNS-rebinding re-check: a config whose
+    server_url points at the cloud-metadata / a private address must be refused
+    *before* any MCP client is constructed or any outbound connection is made.
+    """
+
+    @patch("app.services.mcp.mcp_client.BaseMCPClient")
+    @patch("app.services.mcp.mcp_client.IntegrationResolver")
+    async def test_private_server_url_blocked_before_connect(
+        self, mock_resolver, mock_base_client_cls
+    ):
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(server_url="https://169.254.169.254/mcp")
+        resolved.source = "platform"
+        resolved.custom_doc = None
+        mock_resolver.resolve = AsyncMock(return_value=resolved)
+
+        client = MCPClient(user_id=USER_ID)
+
+        with pytest.raises(ValueError, match="non-public"):
+            await client._do_connect(INTEGRATION_ID)
+
+        # The guard fired first: no outbound MCP client was ever built.
+        mock_base_client_cls.assert_not_called()
+
+    @patch("app.services.mcp.mcp_client.BaseMCPClient")
+    @patch("app.services.mcp.mcp_client.IntegrationResolver")
+    async def test_loopback_server_url_blocked_before_connect(
+        self, mock_resolver, mock_base_client_cls
+    ):
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(server_url="https://127.0.0.1:8000/mcp")
+        resolved.source = "platform"
+        resolved.custom_doc = None
+        mock_resolver.resolve = AsyncMock(return_value=resolved)
+
+        client = MCPClient(user_id=USER_ID)
+
+        with pytest.raises(ValueError, match="non-public"):
+            await client._do_connect(INTEGRATION_ID)
+
+        mock_base_client_cls.assert_not_called()
+
+
+@pytest.mark.unit
+class TestProbeMcpConnectionSSRF:
+    """probe_mcp_connection must run the real SSRF guard before probing."""
+
+    @patch("app.services.mcp.oauth_discovery.extract_auth_challenge", new_callable=AsyncMock)
+    async def test_private_url_is_refused_without_probing(self, mock_extract):
+        result = await probe_mcp_connection("https://169.254.169.254/mcp")
+
+        # The guard rejected it: surfaced as an error, and no outbound probe ran.
+        assert result["auth_type"] == "unknown"
+        assert result["requires_auth"] is False
+        assert "error" in result
+        mock_extract.assert_not_awaited()

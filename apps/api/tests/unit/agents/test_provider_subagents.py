@@ -321,6 +321,7 @@ class TestCreateSubagentForUser:
 
     async def test_returns_none_when_not_mcp(self):
         from app.agents.core.subagents.provider_subagents import (
+            SubagentUnavailableError,
             create_subagent_for_user,
         )
 
@@ -329,9 +330,8 @@ class TestCreateSubagentForUser:
             "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
             return_value=subagent,
         ):
-            result = await create_subagent_for_user("test_int", "user_123")
-
-        assert result is None
+            with pytest.raises(SubagentUnavailableError, match="is not an MCP integration"):
+                await create_subagent_for_user("test_int", "user_123")
 
     async def test_mcp_with_cached_tools(self):
         from app.agents.core.subagents.provider_subagents import (
@@ -388,6 +388,7 @@ class TestCreateSubagentForUser:
 
     async def test_mcp_connect_failure_returns_none(self):
         from app.agents.core.subagents.provider_subagents import (
+            SubagentUnavailableError,
             create_subagent_for_user,
         )
 
@@ -420,12 +421,12 @@ class TestCreateSubagentForUser:
                 return_value=mock_mcp_client,
             ),
         ):
-            result = await create_subagent_for_user("test_int", "user_123")
-
-        assert result is None
+            with pytest.raises(SubagentUnavailableError, match="connection fail"):
+                await create_subagent_for_user("test_int", "user_123")
 
     async def test_mcp_no_tools_returns_none(self):
         from app.agents.core.subagents.provider_subagents import (
+            SubagentUnavailableError,
             create_subagent_for_user,
         )
 
@@ -458,9 +459,8 @@ class TestCreateSubagentForUser:
                 return_value=mock_mcp_client,
             ),
         ):
-            result = await create_subagent_for_user("test_int", "user_123")
-
-        assert result is None
+            with pytest.raises(SubagentUnavailableError, match="exposed no usable tools"):
+                await create_subagent_for_user("test_int", "user_123")
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +472,7 @@ class TestCreateSubagentForUser:
 class TestCreateCustomMcpSubagent:
     async def test_returns_none_when_not_found_in_mongo(self):
         from app.agents.core.subagents.provider_subagents import (
+            SubagentUnavailableError,
             _create_custom_mcp_subagent,
         )
 
@@ -479,9 +480,8 @@ class TestCreateCustomMcpSubagent:
             "app.agents.core.subagents.provider_subagents.integrations_collection"
         ) as mock_col:
             mock_col.find_one = AsyncMock(return_value=None)
-            result = await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-        assert result is None
+            with pytest.raises(SubagentUnavailableError, match="not found"):
+                await _create_custom_mcp_subagent("custom_abc", "user_123")
 
     async def test_creates_graph_for_custom_mcp(self):
         from app.agents.core.subagents.provider_subagents import (
@@ -654,6 +654,7 @@ class TestCreateCustomMcpSubagent:
 
     async def test_connect_failure_returns_none(self):
         from app.agents.core.subagents.provider_subagents import (
+            SubagentUnavailableError,
             _create_custom_mcp_subagent,
         )
 
@@ -689,12 +690,12 @@ class TestCreateCustomMcpSubagent:
             ),
         ):
             mock_col.find_one = AsyncMock(return_value=custom_doc)
-            result = await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-        assert result is None
+            with pytest.raises(SubagentUnavailableError, match="conn fail"):
+                await _create_custom_mcp_subagent("custom_abc", "user_123")
 
     async def test_no_tools_returns_none(self):
         from app.agents.core.subagents.provider_subagents import (
+            SubagentUnavailableError,
             _create_custom_mcp_subagent,
         )
 
@@ -730,9 +731,8 @@ class TestCreateCustomMcpSubagent:
             ),
         ):
             mock_col.find_one = AsyncMock(return_value=custom_doc)
-            result = await _create_custom_mcp_subagent("custom_abc", "user_123")
-
-        assert result is None
+            with pytest.raises(SubagentUnavailableError, match="exposed no usable tools"):
+                await _create_custom_mcp_subagent("custom_abc", "user_123")
 
 
 # ---------------------------------------------------------------------------

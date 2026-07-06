@@ -43,7 +43,6 @@ tool_fields = [
     "send_notification_data",
     "memory_data",
     "todo_data",
-    "goal_data",
     "code_data",
     "google_docs_data",
     "integration_connection_required",
@@ -81,6 +80,9 @@ class MessageModel(BaseModel):
     follow_up_actions: list[str] | None = None
     metadata: dict | None = None
     replyToMessage: ReplyToMessageData | None = None
+    # Terminal stream error for a bot turn that produced no response — rendered
+    # on reload instead of an empty bubble.
+    error: str | None = None
 
 
 class SystemPurpose(str, Enum):

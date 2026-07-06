@@ -178,13 +178,22 @@ class ChromaStore(BaseStore):
     async def abatch(self, ops: Iterable[Op]) -> list[Result]:
         """Execute a batch of operations (async version)."""
         collection = await self._get_collection()
-        results, put_ops, search_ops = await self._prepare_ops(ops, collection)
+        results, put_ops, search_ops, search_error = await self._prepare_ops(ops, collection)
 
-        if search_ops:
-            await self._batch_search(search_ops, results, collection)
+        if search_error is None and search_ops:
+            try:
+                await self._batch_search(search_ops, results, collection)
+            except Exception as e:
+                search_error = e
 
+        # A sibling read failing must never drop durable writes: apply the queued
+        # puts before surfacing the search failure, so a batch that mixes SearchOp
+        # and PutOp still persists its writes when the search path raises.
         if put_ops:
             await self._apply_put_ops(put_ops, collection)
+
+        if search_error is not None:
+            raise search_error
 
         return results
 
@@ -194,12 +203,19 @@ class ChromaStore(BaseStore):
         list[Result],
         dict[tuple[tuple[str, ...], str], PutOp],
         dict[int, tuple[SearchOp, list[str]]],
+        Exception | None,
     ]:
-        """Prepare operations for execution."""
+        """Prepare operations for execution.
+
+        Search filtering runs here; a filter failure is captured and returned
+        (not raised) so ``abatch`` can still apply sibling writes before it
+        surfaces the error.
+        """
         ops_list = list(ops)
         results: list[Result] = [None] * len(ops_list)
         put_ops: dict[tuple[tuple[str, ...], str], PutOp] = {}
         search_ops: dict[int, tuple[SearchOp, list[str]]] = {}
+        search_error: Exception | None = None
 
         # Collect async operations to parallelize
         get_tasks = []
@@ -225,18 +241,24 @@ class ChromaStore(BaseStore):
                 results[idx] = result
 
         if search_tasks:
-            search_results = await asyncio.gather(*[task for _, task in search_tasks])
-            for (idx, _), candidate_ids in zip(search_tasks, search_results):
-                op = ops_list[idx]
-                if isinstance(op, SearchOp):
-                    search_ops[idx] = (op, candidate_ids)
+            try:
+                search_results = await asyncio.gather(*[task for _, task in search_tasks])
+            except Exception as e:
+                # Capture the first filter failure; writes in the same batch still
+                # run in abatch() before this is re-raised.
+                search_error = e
+            else:
+                for (idx, _), candidate_ids in zip(search_tasks, search_results):
+                    op = ops_list[idx]
+                    if isinstance(op, SearchOp):
+                        search_ops[idx] = (op, candidate_ids)
 
         if list_ns_tasks:
             list_ns_results = await asyncio.gather(*[task for _, task in list_ns_tasks])
             for (idx, _), namespaces in zip(list_ns_tasks, list_ns_results):
                 results[idx] = namespaces
 
-        return results, put_ops, search_ops
+        return results, put_ops, search_ops, search_error
 
     async def _get_item(
         self, namespace: tuple[str, ...], key: str, collection: AsyncCollection
@@ -313,8 +335,11 @@ class ChromaStore(BaseStore):
 
             return filtered_ids
         except Exception as e:
-            log.error(f"{LogTag.CHROMA} Error filtering items: {e}")
-            return []
+            # Re-raise so callers can tell an unreachable ChromaDB apart from an
+            # empty namespace (same contract as the write path). Per-document
+            # data issues are already handled item-by-item above.
+            log.error(f"{LogTag.CHROMA} Error filtering items: {type(e).__name__}: {e}")
+            raise
 
     def _matches_namespace_prefix(
         self, namespace: tuple[str, ...], prefix: tuple[str, ...]
@@ -455,8 +480,10 @@ class ChromaStore(BaseStore):
                     # Apply pagination
                     results[i] = items[op.offset : op.offset + op.limit]
                 except Exception as e:
-                    log.error(f"{LogTag.CHROMA} Error in vector search: {e}")
-                    results[i] = []
+                    # Re-raise so an unreachable ChromaDB doesn't masquerade as
+                    # zero search hits (same contract as the write path).
+                    log.error(f"{LogTag.CHROMA} Error in vector search: {type(e).__name__}: {e}")
+                    raise
             else:
                 # No query, just return filtered items with pagination
                 # Parallelize item retrieval

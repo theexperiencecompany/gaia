@@ -1,10 +1,15 @@
 import asyncio
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import uuid4
 
 from bson import ObjectId
 from fastapi import HTTPException, status
+from psycopg_pool import AsyncConnectionPool
 
+from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
+from app.constants.log_tags import LogTag
+from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -19,6 +24,53 @@ from app.utils.tool_data_utils import (
     convert_legacy_tool_data,
 )
 from shared.py.wide_events import log
+
+
+def _like_escape(value: str) -> str:
+    """Escape LIKE wildcards so a conversation_id matches literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def _delete_checkpoint_threads(conversation_id: str) -> None:
+    """Delete the LangGraph Postgres checkpoint threads for a conversation.
+
+    A conversation owns its base thread (`thread_id == conversation_id`) plus
+    derived threads that embed the id — `executor_<conv>`,
+    `<integration>_executor_<conv>_<runhex>`, `workflow_<conv>`, and nested
+    combinations. Rather than enumerate the (dynamic, per-integration) prefixes,
+    match every thread whose id contains the conversation_id and delete each via
+    the saver. Best-effort: the nightly `prune_checkpoint_versions` orphan sweep
+    is the backstop if this fails, so a failure here never fails the API call.
+    """
+
+    manager = await get_checkpointer_manager()
+    checkpointer = manager.get_checkpointer()
+    # `CheckpointerManager.pool` is populated by `setup()` before the provider
+    # resolves; get_checkpointer() above already asserts the manager is ready.
+    pool = cast(AsyncConnectionPool, manager.pool)
+    async with pool.connection() as conn, conn.cursor() as cur:
+        await cur.execute(
+            "SELECT DISTINCT thread_id FROM checkpoints WHERE thread_id LIKE %s ESCAPE '\\'",
+            (f"%{_like_escape(conversation_id)}%",),
+        )
+        thread_ids = [row[0] for row in await cur.fetchall()]
+    for thread_id in thread_ids:
+        await checkpointer.adelete_thread(thread_id)
+
+
+async def _cleanup_checkpoint_threads(conversation_id: str) -> None:
+    """Best-effort wrapper around `_delete_checkpoint_threads` for delete paths.
+
+    Mirrors the session-dir cleanup contract: a failure is logged and swallowed
+    so a Postgres hiccup never fails an already-committed conversation delete;
+    the nightly orphan sweep cleans up anything left behind.
+    """
+    try:
+        await _delete_checkpoint_threads(conversation_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.AGENT} checkpoint thread cleanup failed", conv=conversation_id, error=str(e)
+        )
 
 
 async def create_conversation_service(conversation: ConversationModel, user: dict) -> dict:
@@ -179,6 +231,11 @@ async def delete_all_conversations(user: dict) -> dict:
     Delete all conversations for the authenticated user.
     """
     user_id = user.get("user_id")
+    # Capture the conversation ids before deleting so their checkpoint threads
+    # can be cleaned up — the checkpoints table is not user-scoped.
+    conversation_ids = await conversations_collection.distinct(
+        "conversation_id", {"user_id": user_id}
+    )
     delete_result = await conversations_collection.delete_many({"user_id": user_id})
 
     if delete_result.deleted_count == 0:
@@ -186,6 +243,9 @@ async def delete_all_conversations(user: dict) -> dict:
             status_code=404,
             detail="No conversations found for the user",
         )
+
+    for conversation_id in conversation_ids:
+        await _cleanup_checkpoint_threads(conversation_id)
 
     return {"message": "All conversations deleted successfully"}
 
@@ -215,15 +275,21 @@ async def delete_conversation(conversation_id: str, user: dict) -> dict:
         except Exception as e:
             log.warning("[conversation] session dir cleanup failed", error=str(e))
 
+    await _cleanup_checkpoint_threads(conversation_id)
+
     return {
         "message": "Conversation deleted successfully",
         "conversation_id": conversation_id,
     }
 
 
-async def update_messages(request: UpdateMessagesRequest, user: dict) -> dict:
-    """
-    Add messages to an existing conversation, including any file IDs attached to the messages.
+async def update_messages(
+    request: UpdateMessagesRequest, user: dict, max_messages: int | None = None
+) -> dict:
+    """Append messages to a conversation.
+
+    ``max_messages`` caps stored history to the most recent N (via ``$slice``) so
+    per-workflow threads can't outgrow MongoDB's 16MB document limit.
     """
     user_id = user.get("user_id")
     conversation_id = request.conversation_id
@@ -236,10 +302,15 @@ async def update_messages(request: UpdateMessagesRequest, user: dict) -> dict:
         message_dict.setdefault("message_id", str(ObjectId()))
         messages.append(message_dict)
 
+    push_spec: dict[str, Any] = {"$each": messages}
+    if max_messages is not None:
+        # Negative slice keeps only the most recent ``max_messages`` entries.
+        push_spec["$slice"] = -max_messages
+
     update_result = await conversations_collection.update_one(
         {"user_id": user_id, "conversation_id": conversation_id},
         {
-            "$push": {"messages": {"$each": messages}},
+            "$push": {"messages": push_spec},
             "$currentDate": {"updatedAt": True},
         },
     )
@@ -451,7 +522,9 @@ def _convert_ids(conversations):
 async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dict:
     """
     Batch sync conversations - returns only conversations that have been updated
-    since the provided timestamp, including their messages.
+    since the provided timestamp, including their messages and the stream id of
+    an in-flight turn (``active_stream_id``) so a reloaded client can re-attach
+    without a separate discovery request.
     """
     user_id = user.get("user_id")
     if not user_id:
@@ -510,7 +583,7 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
     conversations = await conversations_collection.aggregate(pipeline).to_list(None)
 
     # Convert datetime objects to ISO strings
-    for conv in conversations:
+    for index, conv in enumerate(conversations):
         _convert_datetime_to_iso(conv, "createdAt", "updatedAt")
 
         # Convert message timestamps
@@ -518,7 +591,13 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
             for message in conv["messages"]:
                 _convert_datetime_to_iso(message, "timestamp", "createdAt", "date")
 
-        # Convert legacy tool data
+        # convert_conversation_messages returns a copy — write it back, or the
+        # conversion and every field set after it are silently discarded.
         conv = convert_conversation_messages(conv)
+
+        conv["active_stream_id"] = await stream_manager.get_resumable_stream_id(
+            user_id, conv["conversation_id"]
+        )
+        conversations[index] = conv
 
     return {"conversations": conversations}

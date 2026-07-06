@@ -10,8 +10,6 @@ Full page content is returned untruncated; callers decide on any length limits.
 
 from abc import ABC, abstractmethod
 import asyncio
-import ipaddress
-import socket
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -26,10 +24,12 @@ from app.constants.cache import WEBPAGE_FETCH_CACHE_TTL
 from app.constants.search import (
     CRAWL4AI_PAGE_TIMEOUT_MS,
     CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
+    MAX_HTTPX_REDIRECTS,
 )
 from app.decorators.caching import Cacheable
 from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
 from app.utils.exceptions import FetchError
+from app.utils.url_safety import assert_public_http_url
 from shared.py.wide_events import log
 
 _BROWSER_HEADERS = {
@@ -45,43 +45,20 @@ _FIRECRAWL_BLOCK_MARKERS = ("401", "403", "500", "blocked", "bot", "timeout")
 _NON_CONTENT_TAGS = ["script", "style", "nav", "footer", "aside", "iframe", "noscript", "head"]
 
 
-def _resolve_addresses(host: str, port: int) -> list[str]:
-    return [str(info[4][0]) for info in socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)]
-
-
 def _elapsed_ms(start: float) -> float:
     return round((time.monotonic() - start) * 1000, 1)
 
 
 async def _ensure_url_allowed(url: str) -> None:
-    """Reject non-HTTP(S) schemes and hosts that resolve to non-public addresses.
+    """SSRF guard for the agent-controlled fetch URL (delegates to the shared policy).
 
-    Guards against SSRF — the agent can pass arbitrary URLs, so a request must not
-    be able to reach loopback, private, link-local (incl. cloud metadata), or
-    otherwise reserved ranges.
+    Raises ``FetchError`` if the URL isn't HTTP(S) or resolves to a non-public
+    address (loopback, private, link-local incl. cloud metadata, or reserved).
     """
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise FetchError(f"unsupported URL scheme: {parsed.scheme!r}", url=url)
-    host = parsed.hostname
-    if not host:
-        raise FetchError("URL has no host", url=url)
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
-        addresses = await asyncio.to_thread(_resolve_addresses, host, port)
-    except OSError as e:
-        raise FetchError(f"DNS resolution failed: {e}", url=url) from e
-    for address in addresses:
-        ip = ipaddress.ip_address(address)
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
-            raise FetchError(f"refusing to fetch non-public address {ip}", url=url)
+        await assert_public_http_url(url)
+    except ValueError as e:
+        raise FetchError(str(e), url=url) from e
 
 
 class WebpageFetcher(ABC):
@@ -167,12 +144,32 @@ class HttpxFetcher(WebpageFetcher):
         """Always available — pure-Python, no external service."""
         return True
 
+    @staticmethod
+    async def _get_following_redirects(client: httpx.AsyncClient, url: str) -> httpx.Response:
+        """GET ``url``, following redirects manually so each hop is SSRF-checked.
+
+        httpx's own ``follow_redirects`` would let a public URL bounce to a
+        private/metadata address, bypassing the entry validation. Every hop is
+        re-run through ``_ensure_url_allowed`` before it is requested.
+        """
+        await _ensure_url_allowed(url)
+        for _ in range(MAX_HTTPX_REDIRECTS + 1):
+            response = await client.get(url)
+            if not response.is_redirect:
+                return response
+            location = response.headers.get("location")
+            if not location:
+                return response
+            url = str(response.url.join(location))
+            await _ensure_url_allowed(url)
+        raise FetchError("too many redirects", url=url)
+
     async def fetch(self, url: str) -> str:
         """Fetch the page over HTTP and convert its main content to markdown."""
         async with httpx.AsyncClient(
-            timeout=_HTTPX_TIMEOUT, follow_redirects=True, headers=_BROWSER_HEADERS
+            timeout=_HTTPX_TIMEOUT, follow_redirects=False, headers=_BROWSER_HEADERS
         ) as client:
-            response = await client.get(url)
+            response = await self._get_following_redirects(client, url)
             response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "lxml")

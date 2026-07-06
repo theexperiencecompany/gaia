@@ -78,7 +78,13 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             if isinstance(self.trigger, tuple):
                 trigger_type, trigger_value = self.trigger
                 if trigger_type == "fraction":
-                    max_tokens = getattr(self, "_max_tokens", 128000)
+                    # Resolve the window exactly like the parent trigger
+                    # (SummarizationMiddleware._should_summarize) so the archive
+                    # gate fires in lockstep with summarization. __init__ already
+                    # rejects fraction triggers when the model has no profile.
+                    max_tokens = self._get_profile_limits()
+                    if max_tokens is None:
+                        return False
                     return token_count > max_tokens * trigger_value
                 if trigger_type == "tokens":
                     return token_count > trigger_value
@@ -143,7 +149,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         for msg in messages:
             if isinstance(msg, HumanMessage):
                 additional_kwargs = getattr(msg, "additional_kwargs", {})
-                if additional_kwargs.get("is_summary"):
+                if additional_kwargs.get("lc_source") == "summarization":
                     if hasattr(msg, "content") and isinstance(msg.content, str):
                         msg.content += (
                             f"\n\n[Full history archived at: {archive_path}. "

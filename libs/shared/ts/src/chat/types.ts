@@ -585,66 +585,6 @@ export interface TodoToolData {
 }
 
 // ---------------------------------------------------------------------------
-// Goals
-// ---------------------------------------------------------------------------
-
-export interface GoalRoadmapNode {
-  id: string;
-  data: {
-    id?: string;
-    title?: string;
-    label?: string;
-    isComplete?: boolean;
-    type?: string;
-    subtask_id?: string;
-  };
-}
-
-export interface GoalRoadmap {
-  nodes?: GoalRoadmapNode[];
-  edges?: Array<{
-    id: string;
-    source: string;
-    target: string;
-  }>;
-}
-
-export interface GoalItem {
-  id: string;
-  title: string;
-  description?: string;
-  progress?: number;
-  roadmap?: GoalRoadmap;
-  created_at?: string;
-  todo_project_id?: string;
-  todo_id?: string;
-}
-
-export interface GoalStats {
-  total_goals: number;
-  goals_with_roadmaps: number;
-  total_tasks: number;
-  completed_tasks: number;
-  overall_completion_rate: number;
-  active_goals: Array<{
-    id: string;
-    title: string;
-    progress: number;
-  }>;
-  active_goals_count: number;
-}
-
-export interface GoalDataMessageType {
-  goals?: GoalItem[];
-  action?: string;
-  message?: string;
-  goal_id?: string;
-  deleted_goal_id?: string;
-  stats?: GoalStats;
-  error?: string;
-}
-
-// ---------------------------------------------------------------------------
 // Documents & Code
 // ---------------------------------------------------------------------------
 
@@ -816,6 +756,34 @@ export interface ToolCallEntry {
   output?: string;
   icon_url?: string;
   integration_name?: string;
+  // When set, this entry is the model's thinking for the step (not a tool call).
+  // It rides the same ordered tool_calls stream so it interleaves between steps.
+  reasoning?: string;
+}
+
+// tool_name marker for a thinking/reasoning step (a ToolCallEntry with `reasoning`).
+export const REASONING_TOOL_NAME = "reasoning";
+
+// tool_name marker for a subagent group entry in tool_data.
+export const SUBAGENT_GROUP_TOOL_NAME = "subagent_group";
+
+export interface SubagentGroupData {
+  subagent_id: string;
+  subagent_name: string;
+  /** "handoff" = integration subagent (Gmail, GitHub etc); "spawned" = lightweight task agent */
+  agent_type: "handoff" | "spawned";
+  /** Accumulated tool calls from this subagent, in order of emission */
+  tool_calls: ToolCallEntry[];
+  duration_ms: number | null;
+  token_count: number | null;
+  started_at: string;
+  completed_at: string | null;
+  /** Integration icon URL forwarded from the backend */
+  icon_url: string | null;
+  /** Integration category ID used for icon lookup (e.g. "gmail", "googlecalendar") */
+  tool_category: string | null;
+  /** Spawned subagents launched from within this subagent (nested in the UI) */
+  nested_subagents: SubagentGroupData[];
 }
 
 // ---------------------------------------------------------------------------
@@ -843,7 +811,6 @@ export type ToolName =
   | "google_docs_data"
   | "code_data"
   | "todo_data"
-  | "goal_data"
   | "integration_connection_required"
   | "integration_list_data"
   | "connection_status_data"
@@ -883,7 +850,6 @@ export interface ToolDataMap {
   google_docs_data: GoogleDocsData;
   code_data: CodeData;
   todo_data: TodoToolData;
-  goal_data: GoalDataMessageType;
   integration_connection_required: GenericToolData;
   integration_list_data: GenericToolData;
   connection_status_data: GenericToolData;
@@ -930,7 +896,6 @@ export function isKnownTool(name: string): name is ToolName {
     "google_docs_data",
     "code_data",
     "todo_data",
-    "goal_data",
     "integration_connection_required",
     "integration_list_data",
     "connection_status_data",

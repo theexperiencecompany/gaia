@@ -46,11 +46,14 @@ class TestUploadFile:
         assert data["message"] == "File uploaded successfully"
 
     @patch(
+        "app.api.v1.endpoints.file.conversations_collection",
+    )
+    @patch(
         "app.api.v1.endpoints.file.upload_file_service",
         new_callable=AsyncMock,
     )
     async def test_upload_file_with_conversation_id(
-        self, mock_upload: AsyncMock, client: AsyncClient
+        self, mock_upload: AsyncMock, mock_convs, client: AsyncClient
     ):
         mock_upload.return_value = {
             "file_id": "file-002",
@@ -58,6 +61,8 @@ class TestUploadFile:
             "filename": "doc.pdf",
             "type": "file",
         }
+        # Simulate that the conversation is owned by the authenticated user.
+        mock_convs.find_one = AsyncMock(return_value={"_id": "some-id"})
         file_content = BytesIO(b"fake pdf data")
         response = await client.post(
             f"{FILE_BASE}/upload",

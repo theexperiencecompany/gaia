@@ -21,6 +21,7 @@ from app.utils.mcp_oauth_utils import (
     validate_https_url,
     validate_oauth_endpoints,
 )
+from app.utils.url_safety import assert_public_http_url
 from mcp.shared.auth import OAuthMetadata
 from shared.py.wide_events import log
 
@@ -123,6 +124,10 @@ async def discover_oauth_config(
 async def probe_mcp_connection(server_url: str) -> dict:
     """Probe an MCP server to determine auth requirements."""
     try:
+        # SSRF re-check before the outbound probe (DNS-rebinding defense). A raised
+        # ValueError is caught below and surfaced through the existing error dict.
+        await assert_public_http_url(server_url)
+
         challenge = await extract_auth_challenge(server_url)
 
         # Empty dict => the probe got a non-401 response: no auth required.

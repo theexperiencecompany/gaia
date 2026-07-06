@@ -19,3 +19,8 @@ MESSAGE_ID_KEY = "message_id"
 # Comms re-voices the payload; these markers are stripped from its reply.
 EXECUTOR_RESULT_MARKER = "[EXECUTOR_RESULT]"
 EXECUTOR_ERROR_MARKER = "[EXECUTOR_ERROR]"
+
+# User-facing error text when the executor exhausts its recursion budget
+# (GraphRecursionError). Handed to comms as the error result so it's re-voiced in
+# GAIA's persona instead of leaking the raw LangGraph traceback string.
+EXECUTOR_STEP_LIMIT_MESSAGE = "This task hit its step limit — try breaking it into smaller pieces."

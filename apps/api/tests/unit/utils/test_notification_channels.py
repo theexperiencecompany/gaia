@@ -121,8 +121,11 @@ class TestInAppChannelAdapter:
         assert InAppChannelAdapter().can_handle(request) is True
 
     def test_can_handle_without_inapp_channel(self) -> None:
+        # InAppChannelAdapter always returns True — in-app delivery is unconditional.
+        # The orchestrator handles targeting; checking the channel list here would
+        # silently skip real-time pushes when channels are auto-injected (empty list).
         request = _make_request(channels=[ChannelConfig(channel_type="telegram", enabled=True)])
-        assert InAppChannelAdapter().can_handle(request) is False
+        assert InAppChannelAdapter().can_handle(request) is True
 
     async def test_transform_basic(self) -> None:
         request = _make_request(title="Hello", body="World")
