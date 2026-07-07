@@ -122,6 +122,50 @@ async def real_redis(redis_url: str, monkeypatch):
     await client.aclose()  # type: ignore[attr-defined]
 
 
+@pytest.fixture
+async def real_integration_collections(mongodb_url: str, monkeypatch):
+    """Rebind the integration Mongo collections to a fresh per-test Motor client.
+
+    ``integrations_collection`` / ``user_integrations_collection`` are process-
+    global Motor collections cached in ``app.db.mongodb.collections`` and pulled
+    into ~a dozen modules via ``from ... import`` (early binding). Under real-
+    services runs the global mongo mock is skipped, so those references stay
+    bound to whichever earlier test's now-closed function-scoped event loop first
+    created the client — and the device register path (insert_one, then
+    get_integration_details -> resolve -> find_one, then add_user_integration)
+    raises ``RuntimeError: Event loop is closed`` on the first Mongo call.
+
+    Mirror the conversations_collection fixture, but repoint EVERY importer at
+    once: a fresh client on THIS test's loop (DB "GAIA", matching ``init_mongodb``
+    so it agrees with the sync client and any un-repointed reference), swapped
+    into every module that early-bound either name. Targeting a hand-picked
+    subset is fragile — the register path alone spans device_service,
+    integration_resolver and user_integrations.
+    """
+    import sys
+
+    from app.db.mongodb import collections as collections_mod
+
+    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
+    db = client["GAIA"]
+    fresh = {
+        "integrations_collection": db["integrations"],
+        "user_integrations_collection": db["user_integrations"],
+    }
+
+    for module in list(sys.modules.values()):
+        module_dict = getattr(module, "__dict__", None)
+        if not module_dict or module is collections_mod:
+            continue
+        for name, coll in fresh.items():
+            if name in module_dict:
+                monkeypatch.setattr(module, name, coll)
+
+    yield
+
+    client.close()
+
+
 @asynccontextmanager
 async def _device_bridge_lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Real device-bridge listener startup, skipping the rest of unified_startup.
@@ -221,11 +265,13 @@ class LiveApiServer:
 
 
 @pytest.fixture
-async def live_api_server(real_redis) -> AsyncIterator[LiveApiServer]:
+async def live_api_server(real_redis, real_integration_collections) -> AsyncIterator[LiveApiServer]:
     """A live, real GAIA API bound to a real localhost port.
 
     Depends on real_redis so redis_cache.redis is already patched to the
-    per-worker test Redis before the app (and its listeners) start.
+    per-worker test Redis, and on real_integration_collections so the device
+    path's Mongo collections are bound to this test's event loop — both before
+    the app (and its listeners) start.
     """
     app = _create_live_app()
     server = LiveApiServer(pick_free_port(), app)
