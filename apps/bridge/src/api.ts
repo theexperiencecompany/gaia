@@ -1,5 +1,15 @@
 // Thin HTTP client for the device-bridge REST endpoints.
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export interface StartPairingResponse {
   device_code: string;
   user_code: string;
@@ -43,7 +53,7 @@ async function post<T>(
     } catch {
       // non-JSON error body; keep the status line
     }
-    throw new Error(detail);
+    throw new ApiError(detail, res.status);
   }
   return (await res.json()) as T;
 }

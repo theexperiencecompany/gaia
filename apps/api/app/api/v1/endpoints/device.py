@@ -27,7 +27,7 @@ from app.schemas.device.responses import (
     RegisterServerResponse,
     StartPairingResponse,
 )
-from app.services.device.bridge import online_device_ids, request_revoke
+from app.services.device.bridge import online_device_ids
 from app.services.device.device_auth import create_device_token, verify_device_token
 from app.services.device.device_service import (
     PairingError,
@@ -161,5 +161,4 @@ async def list_user_devices(user_id: str = Depends(get_user_id)) -> DeviceListRe
 async def revoke(device_id: str, user_id: str = Depends(get_user_id)) -> dict[str, str]:
     if not await revoke_device(user_id, device_id):
         raise HTTPException(status_code=404, detail="Device not found")
-    await request_revoke(device_id)
     return {"device_id": device_id, "status": "revoked"}

@@ -35,12 +35,12 @@ export async function runUp(): Promise<void> {
   }
 
   const tunnel = new Tunnel({ ...creds, refreshToken: token.refresh_token });
-  const shutdown = () => {
+  const shutdown = async () => {
     console.error("\n[gaia bridge] shutting down…");
-    tunnel.stop();
+    await tunnel.stop();
     process.exit(0);
   };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
   await tunnel.run();
 }

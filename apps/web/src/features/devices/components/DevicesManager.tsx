@@ -34,7 +34,7 @@ function DeviceRow({
             </div>
             <p className="text-sm text-zinc-500">
               {device.platform ?? "unknown"}
-              {device.daemon_version ? ` · v${device.daemon_version}` : ""}
+              {device.daemon_version ? ` v${device.daemon_version}` : ""}
             </p>
           </div>
         </div>

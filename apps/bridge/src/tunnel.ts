@@ -5,7 +5,7 @@
 
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import WebSocket from "ws";
-import { exchangeToken } from "./api.js";
+import { ApiError, exchangeToken } from "./api.js";
 import { type Credentials, loadConfig, saveCredentials } from "./config.js";
 import {
   FRAME,
@@ -39,17 +39,30 @@ export class Tunnel {
       try {
         await this.connectOnce();
       } catch (e) {
-        console.error(
-          `[gaia bridge] connection error: ${e instanceof Error ? e.message : e}`,
-        );
+        if (e instanceof ApiError && e.status === 401) {
+          // A definitive auth failure (revoked or unpaired) will never recover
+          // on retry — exit instead of reconnect-looping forever.
+          console.error(
+            "[gaia bridge] this device is no longer authorized (revoked or unpaired). Re-pair with: gaia bridge login",
+          );
+          this.stopped = true;
+        } else {
+          console.error(
+            `[gaia bridge] connection error: ${e instanceof Error ? e.message : e}`,
+          );
+        }
       }
       if (this.stopped) break;
       await this.backoff();
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true;
+    // Close sessions first so spawned local MCP child processes are terminated
+    // (transport.close()), then drop the socket. On a signal-driven shutdown the
+    // caller can await this before process.exit so nothing is orphaned.
+    await this.closeAllSessions();
     this.ws?.close();
   }
 
@@ -139,7 +152,7 @@ export class Tunnel {
         return;
       case FRAME.REVOKE:
         console.error("[gaia bridge] this device was revoked — exiting.");
-        this.stop();
+        await this.stop();
         return;
       default:
         return;
@@ -177,6 +190,19 @@ export class Tunnel {
         });
       };
       session.transport.onclose = () => {
+        // closeSession() removes the session from the map before closing the
+        // transport, so a still-registered session here means the local server
+        // exited on its own. Tell the cloud so its call fails immediately
+        // instead of hanging until the read timeout; an intentional close
+        // (already removed) skips this.
+        if (this.sessions.has(sid)) {
+          this.send({
+            t: FRAME.MCP_ERROR,
+            sid,
+            pod,
+            error: `Local server '${serverKey}' exited`,
+          });
+        }
         void this.closeSession(sid);
       };
       await session.transport.start();

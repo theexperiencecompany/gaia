@@ -1,7 +1,8 @@
 // gaia — the GAIA CLI. `gaia bridge` connects your machine's MCP servers and
 // files to GAIA over one secure outbound tunnel.
 
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import {
   apiUrlFromEnvOrCreds,
   clearCredentials,
@@ -46,11 +47,18 @@ function parseFlags(
   return { flags, positionals };
 }
 
+/** Expand a leading ~ so quoted paths like "~/Documents" still resolve to $HOME. */
+function expandTilde(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/")) return join(homedir(), p.slice(2));
+  return p;
+}
+
 function cmdFs(args: string[]): void {
   const { flags, positionals } = parseFlags(args, ["write"]);
   if (positionals.length === 0)
     fail("usage: gaia bridge fs <dir> [<dir>…] [--write]");
-  const allow = positionals.map((p) => resolve(p));
+  const allow = positionals.map((p) => resolve(expandTilde(p)));
   upsertServer({
     type: "filesystem",
     key: FILESYSTEM_SERVER_KEY,

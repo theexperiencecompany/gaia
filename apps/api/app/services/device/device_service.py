@@ -15,9 +15,11 @@ from urllib.parse import quote
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants.device_bridge import (
     DEVICE_CATEGORY,
+    DEVICE_CODE_BYTES,
     DEVICE_PAIRING_PREFIX,
     DEVICE_REFRESH_RETRY_PREFIX,
     DEVICE_TRANSPORT,
@@ -41,6 +43,7 @@ from app.models.device import (
 )
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig
+from app.services.device.bridge import request_revoke
 from app.services.device.device_auth import (
     generate_refresh_token,
     hash_refresh_token,
@@ -80,7 +83,7 @@ async def start_pairing(
     name: str, platform: str | None, daemon_version: str | None
 ) -> dict[str, str | int]:
     """Create a pending pairing and return the codes for the daemon."""
-    device_code = secrets.token_urlsafe(32)
+    device_code = secrets.token_urlsafe(DEVICE_CODE_BYTES)
     user_code = _generate_user_code()
 
     record = {
@@ -238,8 +241,14 @@ async def rotate_refresh_token(refresh_token: str) -> tuple[str, str, str]:
                 # attribute, including the primary key) — it raises
                 # MissingGreenlet instead of transparently refetching.
                 replayed_id = replayed.id
+                replayed_user_id = replayed.user_id
                 replayed.status = DeviceStatus.REVOKED
+                integration_ids = await _device_server_integration_ids(session, replayed_id)
                 await session.commit()
+                # Same teardown as an explicit revoke: otherwise the device drops
+                # out of the ACTIVE-only list with its integrations left dangling
+                # and any live tunnel stays up until the connect JWT expires.
+                await _teardown_revoked_device(replayed_user_id, replayed_id, integration_ids)
                 log.warning(
                     f"{LogTag.API} Device refresh-token reuse detected — revoking device",
                     device_id=replayed_id,
@@ -392,8 +401,30 @@ async def list_device_servers(device_ids: list[str]) -> dict[str, list[DeviceMCP
         return grouped
 
 
+async def _device_server_integration_ids(session: AsyncSession, device_id: str) -> list[str]:
+    """Integration ids of every MCP server a device exposes (for revoke teardown)."""
+    return list(
+        (
+            await session.execute(
+                select(DeviceMCPServer.integration_id).where(DeviceMCPServer.device_id == device_id)
+            )
+        ).scalars()
+    )
+
+
+async def _teardown_revoked_device(
+    user_id: str, device_id: str, integration_ids: list[str]
+) -> None:
+    """Post-revocation cleanup: drop the device's server integrations and fan out a
+    revoke so whichever pod owns the live socket closes it immediately."""
+    for integration_id in integration_ids:
+        await integrations_collection.delete_one({"integration_id": integration_id})
+        await remove_user_integration(user_id, integration_id)
+    await request_revoke(device_id)
+
+
 async def revoke_device(user_id: str, device_id: str) -> bool:
-    """Revoke a device: mark revoked, tear down its server integrations."""
+    """Revoke a device: mark revoked, tear down its server integrations, drop its socket."""
     async with get_db_session() as session:
         device = (
             await session.execute(
@@ -403,21 +434,9 @@ async def revoke_device(user_id: str, device_id: str) -> bool:
         if device is None:
             return False
         device.status = DeviceStatus.REVOKED
-        servers = list(
-            (
-                await session.execute(
-                    select(DeviceMCPServer).where(DeviceMCPServer.device_id == device_id)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        integration_ids = [s.integration_id for s in servers]
+        integration_ids = await _device_server_integration_ids(session, device_id)
         await session.commit()
 
-    for integration_id in integration_ids:
-        await integrations_collection.delete_one({"integration_id": integration_id})
-        await remove_user_integration(user_id, integration_id)
-
+    await _teardown_revoked_device(user_id, device_id, integration_ids)
     log.set(device={"operation": "revoke", "device_id": device_id}, user={"id": user_id})
     return True

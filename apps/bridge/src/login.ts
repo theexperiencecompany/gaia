@@ -1,7 +1,7 @@
 // Device pairing flow, reusable by both `gaia bridge login` and the add wizard.
 
 import { hostname, platform } from "node:os";
-import { pollPairing, startPairing } from "./api.js";
+import { type PollPairingResponse, pollPairing, startPairing } from "./api.js";
 import {
   apiUrlFromEnvOrCreds,
   loadCredentials,
@@ -32,7 +32,17 @@ export async function runLogin(
   const deadline = Date.now() + started.expires_in * 1000;
   while (Date.now() < deadline) {
     await sleep(started.interval * 1000);
-    const poll = await pollPairing(apiUrl, started.device_code);
+    let poll: PollPairingResponse;
+    try {
+      poll = await pollPairing(apiUrl, started.device_code);
+    } catch (e) {
+      // A transient network/HTTP blip mid-window must not abort pairing —
+      // keep polling until the deadline. Only denied/expired/timeout stop us.
+      console.error(
+        `[gaia bridge] poll failed, retrying: ${e instanceof Error ? e.message : e}`,
+      );
+      continue;
+    }
     if (poll.status === "approved" && poll.device_id && poll.refresh_token) {
       saveCredentials({
         apiUrl,
