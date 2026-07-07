@@ -92,6 +92,7 @@ from app.utils.mcp_oauth_utils import (
 from app.utils.mcp_utils import (
     wrap_tools_with_null_filter,
 )
+from app.utils.url_safety import assert_public_http_url
 from mcp.client.auth.oauth2 import PKCEParameters
 from mcp.client.auth.utils import (
     create_client_registration_request,
@@ -648,17 +649,23 @@ class MCPClient:
         is_custom = resolved.source == "custom"
         is_device = mcp_config.transport == DEVICE_TRANSPORT
 
-        config: dict = {"mcpServers": {}} if is_device else await self._build_config(
-            integration_id, mcp_config
-        )
-
         try:
             if is_device:
-                log.info(
-                    f"{LogTag.MCP} [{integration_id}] Opening device-tunnel MCP session"
-                )
+                # Device servers have no outbound URL (device://...) and are reached
+                # over the tunnel, so the SSRF re-check below doesn't apply to them.
+                log.info(f"{LogTag.MCP} [{integration_id}] Opening device-tunnel MCP session")
                 client = await self._build_device_client(integration_id, mcp_config)
             else:
+                # SSRF re-check (DNS-rebinding defense): the schema validator only ran a
+                # shape check at create/update time. Re-resolve the host right before the
+                # outbound connection, inside the try so a rejection is handled like any
+                # other connection failure rather than escaping uncaught. Run it before
+                # _build_config, which can trigger an OAuth token refresh (outbound I/O)
+                # to the still-unvalidated host.
+                await assert_public_http_url(mcp_config.server_url)
+
+                config = await self._build_config(integration_id, mcp_config)
+
                 log.info(
                     f"{LogTag.MCP} [{integration_id}] Starting connection to MCP server. Config: {self._sanitize_config(config)}"
                 )
