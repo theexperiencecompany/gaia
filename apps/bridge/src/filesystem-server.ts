@@ -15,7 +15,7 @@ import {
 import { dirname, join, resolve, sep } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { FilesystemServer } from "./config.js";
+import type { FilesystemServer } from "./config.types.js";
 import { MAX_READ_BYTES } from "./constants.js";
 
 class PathDeniedError extends Error {}

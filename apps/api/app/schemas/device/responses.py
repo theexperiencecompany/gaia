@@ -37,6 +37,8 @@ class DeviceTokenResponse(BaseModel):
 
 
 class DeviceServerResponse(BaseModel):
+    """One MCP server a device exposes, as shown in the device list."""
+
     server_key: str
     display_name: str
     integration_id: str
@@ -45,6 +47,8 @@ class DeviceServerResponse(BaseModel):
 
 
 class DeviceResponse(BaseModel):
+    """A paired device with its status and exposed servers."""
+
     id: str
     name: str
     platform: str | None
@@ -57,9 +61,13 @@ class DeviceResponse(BaseModel):
 
 
 class DeviceListResponse(BaseModel):
+    """The user's paired devices."""
+
     devices: list[DeviceResponse]
 
 
 class RegisterServerResponse(BaseModel):
+    """Result of registering a device's MCP server."""
+
     integration_id: str
     server_key: str

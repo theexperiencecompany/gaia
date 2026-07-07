@@ -55,6 +55,7 @@ def _extract_token(websocket: WebSocket) -> str | None:
 
 @router.websocket("/device")
 async def device_ws(websocket: WebSocket) -> None:
+    """Device tunnel socket: authenticate the daemon, then relay MCP frames both ways."""
     token = _extract_token(websocket)
     info = verify_device_token(token) if token else None
     if not info:

@@ -4,41 +4,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type {
+  Credentials,
+  FilesystemServer,
+  ServerConfig,
+} from "./config.types.js";
 import { DEFAULT_API_URL, FILESYSTEM_SERVER_KEY } from "./constants.js";
-
-export interface Credentials {
-  apiUrl: string;
-  deviceId: string;
-  refreshToken: string;
-}
-
-export interface FilesystemServer {
-  type: "filesystem";
-  key: string;
-  name: string;
-  allow: string[];
-  allowWrite: boolean;
-}
-
-export interface UrlServer {
-  type: "url";
-  key: string;
-  name: string;
-  url: string;
-}
-
-export interface StdioServer {
-  type: "stdio";
-  key: string;
-  name: string;
-  command: string;
-  args: string[];
-  // Resolved values, stored 0600. Captured once at setup (whether typed or
-  // pulled from the user's environment) so `up` works from any launch context.
-  env: Record<string, string>;
-}
-
-export type ServerConfig = FilesystemServer | UrlServer | StdioServer;
 
 interface BridgeConfig {
   servers: ServerConfig[];
@@ -89,7 +60,7 @@ export function loadConfig(): BridgeConfig {
   }
 }
 
-export function saveConfig(config: BridgeConfig): void {
+function saveConfig(config: BridgeConfig): void {
   ensureDir();
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), { mode: 0o600 });
 }

@@ -13,7 +13,7 @@ import {
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { ServerConfig } from "./config.js";
+import type { ServerConfig } from "./config.types.js";
 import { buildFilesystemServer } from "./filesystem-server.js";
 
 export interface ServerSession {

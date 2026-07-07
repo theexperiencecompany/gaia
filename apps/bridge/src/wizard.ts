@@ -4,7 +4,8 @@
 // starts and lists tools → save → offer to bring the tunnel up.
 
 import { basename } from "node:path";
-import { loadConfig, type ServerConfig, upsertServer } from "./config.js";
+import { loadConfig, upsertServer } from "./config.js";
+import type { ServerConfig } from "./config.types.js";
 import { FILESYSTEM_SERVER_KEY } from "./constants.js";
 import { isPaired, runLogin } from "./login.js";
 import { ask, askSecret, choose, confirm } from "./prompt.js";
@@ -20,7 +21,7 @@ function slugify(name: string): string {
 }
 
 /** Split a command line into command + args, honoring single/double quotes. */
-export function tokenizeCommand(line: string): {
+function tokenizeCommand(line: string): {
   command: string;
   args: string[];
 } {

@@ -65,6 +65,7 @@ async def _current_device(authorization: str = Header(default="")) -> dict[str, 
 
 @router.post("/pair/start", response_model=StartPairingResponse)
 async def pair_start(payload: StartPairingRequest) -> StartPairingResponse:
+    """Start a device pairing request (RFC 8628); returns the codes for the daemon."""
     log.set(device={"operation": "pair_start", "name": payload.name})
     try:
         result = await start_pairing(payload.name, payload.platform, payload.daemon_version)
@@ -75,6 +76,7 @@ async def pair_start(payload: StartPairingRequest) -> StartPairingResponse:
 
 @router.post("/pair/poll", response_model=PollPairingResponse)
 async def pair_poll(payload: PollPairingRequest) -> PollPairingResponse:
+    """Daemon polls for the user's browser approval of a pending pairing."""
     result = await poll_pairing(payload.device_code)
     return PollPairingResponse(**result)  # type: ignore[arg-type]
 
@@ -83,6 +85,7 @@ async def pair_poll(payload: PollPairingRequest) -> PollPairingResponse:
 async def pair_approve(
     payload: ApprovePairingRequest, user_id: str = Depends(get_user_id)
 ) -> dict[str, str]:
+    """Approve a pending pairing from the signed-in browser by its short user code."""
     log.set(device={"operation": "pair_approve"}, user={"id": user_id})
     try:
         device_id, name = await approve_pairing(user_id, payload.user_code)
@@ -93,6 +96,7 @@ async def pair_approve(
 
 @router.post("/token", response_model=DeviceTokenResponse)
 async def device_token(payload: DeviceTokenRequest) -> DeviceTokenResponse:
+    """Exchange (and rotate) the refresh credential for a short-lived connect JWT."""
     try:
         device_id, user_id, new_refresh = await rotate_refresh_token(payload.refresh_token)
     except PairingError as e:
@@ -110,6 +114,7 @@ async def device_token(payload: DeviceTokenRequest) -> DeviceTokenResponse:
 async def register_server(
     payload: RegisterServerRequest, device: dict[str, str] = Depends(_current_device)
 ) -> RegisterServerResponse:
+    """Register (or re-register) one MCP server the device exposes; authed by the device JWT."""
     log.set(
         device={"operation": "register_server", "id": device["device_id"]},
         user={"id": device["user_id"]},
@@ -124,6 +129,7 @@ async def register_server(
 
 @router.get("/list", response_model=DeviceListResponse)
 async def list_user_devices(user_id: str = Depends(get_user_id)) -> DeviceListResponse:
+    """List the current user's active devices with their online status and servers."""
     devices = await list_devices(user_id)
     device_ids = [d.id for d in devices]
     online = await online_device_ids(device_ids)
@@ -159,6 +165,7 @@ async def list_user_devices(user_id: str = Depends(get_user_id)) -> DeviceListRe
 
 @router.delete("/{device_id}", status_code=200)
 async def revoke(device_id: str, user_id: str = Depends(get_user_id)) -> dict[str, str]:
+    """Revoke a device and tear down its server integrations."""
     if not await revoke_device(user_id, device_id):
         raise HTTPException(status_code=404, detail="Device not found")
     return {"device_id": device_id, "status": "revoked"}

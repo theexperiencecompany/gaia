@@ -35,8 +35,7 @@ POD_ID: Final[str] = uuid.uuid4().hex
 # Compare-and-delete: clear the presence key only if it still holds this pod's id,
 # so a device that moved to another pod isn't marked offline by the old pod.
 _PRESENCE_CAD_LUA: Final[str] = (
-    "if redis.call('get', KEYS[1]) == ARGV[1] then "
-    "return redis.call('del', KEYS[1]) end\nreturn 0"
+    "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end\nreturn 0"
 )
 
 

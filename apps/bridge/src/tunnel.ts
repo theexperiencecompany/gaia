@@ -6,7 +6,8 @@
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import WebSocket from "ws";
 import { ApiError, exchangeToken } from "./api.js";
-import { type Credentials, loadConfig, saveCredentials } from "./config.js";
+import { loadConfig, saveCredentials } from "./config.js";
+import type { Credentials } from "./config.types.js";
 import {
   FRAME,
   RECONNECT_MAX_MS,

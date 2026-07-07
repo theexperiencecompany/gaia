@@ -93,7 +93,9 @@ async def start_pairing(
         "daemon_version": daemon_version,
         "user_code": user_code,
         "device_id": None,
-        "refresh_token": None,
+        # "refresh_token" is a schema placeholder overwritten on approval, not a
+        # hardcoded credential (bandit B105 false positive).
+        "refresh_token": None,  # nosec B105
     }
     stored = await set_cache(_pairing_key(device_code), record, ttl=PAIRING_TTL_SECONDS)
     code_stored = await set_cache(
@@ -181,11 +183,13 @@ async def poll_pairing(device_code: str) -> dict[str, str | None]:
     """Daemon poll. On ``approved`` the pairing is consumed and won't poll again."""
     record = await get_cache(_pairing_key(device_code))
     if not isinstance(record, dict):
-        return {"status": "expired", "device_id": None, "refresh_token": None}
+        # "refresh_token" is a response field name, not a hardcoded secret (B105 FP).
+        return {"status": "expired", "device_id": None, "refresh_token": None}  # nosec B105
 
     status = record.get("status")
     if status != "approved":
-        return {"status": "pending", "device_id": None, "refresh_token": None}
+        # "refresh_token" is a response field name, not a hardcoded secret (B105 FP).
+        return {"status": "pending", "device_id": None, "refresh_token": None}  # nosec B105
 
     # Consume the pairing so the refresh token is handed out exactly once.
     await redis_cache.delete(_pairing_key(device_code))
