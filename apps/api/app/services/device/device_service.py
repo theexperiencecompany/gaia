@@ -55,7 +55,7 @@ from app.services.integrations.user_integrations import (
 )
 from shared.py.wide_events import log
 
-PAIRING_VERIFICATION_PATH = "/devices/approve"
+PAIRING_VERIFICATION_PATH = "/settings/devices/approve"
 
 
 class PairingError(Exception):

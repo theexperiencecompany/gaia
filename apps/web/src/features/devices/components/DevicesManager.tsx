@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import { ComputerIcon, Delete02Icon, Folder01Icon, Link04Icon } from "@icons";
+import { BRIDGE_ADD_COMMAND, BRIDGE_CLI_NAME } from "../constants";
 import { useDevices } from "../hooks/useDevices";
 import type { Device } from "../types";
 
@@ -98,8 +99,8 @@ export function DevicesManager() {
     return (
       <div className="rounded-2xl bg-zinc-800 p-6 text-center text-sm text-zinc-400">
         No devices paired yet. Install the{" "}
-        <span className="font-mono">gaia</span> CLI and run{" "}
-        <span className="font-mono">gaia bridge add</span> to connect your
+        <span className="font-mono">{BRIDGE_CLI_NAME}</span> CLI and run{" "}
+        <span className="font-mono">{BRIDGE_ADD_COMMAND}</span> to connect your
         machine.
       </div>
     );

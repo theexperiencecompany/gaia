@@ -3,7 +3,7 @@ import { ApproveDeviceForm } from "@/features/devices/components/ApproveDeviceFo
 
 export default function ApproveDevicePage() {
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col px-6 py-16">
+    <div className="mx-auto flex w-full max-w-lg flex-col px-6 py-16">
       <Suspense fallback={null}>
         <ApproveDeviceForm />
       </Suspense>

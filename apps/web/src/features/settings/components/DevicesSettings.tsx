@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import { PlusSignIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { DevicesManager } from "@/features/devices/components/DevicesManager";
@@ -13,7 +14,12 @@ export default function DevicesSettings() {
     <SettingsPage>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-medium">Devices</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-medium">Devices</h2>
+            <Chip size="sm" variant="flat" color="success">
+              Beta
+            </Chip>
+          </div>
           <p className="text-sm text-zinc-400">
             Machines connected to GAIA through the gaia bridge daemon. Each
             device can expose local MCP servers and file access. Revoke a device
@@ -24,8 +30,9 @@ export default function DevicesSettings() {
           size="sm"
           variant="flat"
           color="primary"
+          className="shrink-0"
           startContent={<PlusSignIcon className="size-4" />}
-          onPress={() => router.push("/devices/approve")}
+          onPress={() => router.push("/settings/devices/approve")}
         >
           Add device
         </Button>
