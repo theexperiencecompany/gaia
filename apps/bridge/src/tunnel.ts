@@ -3,6 +3,7 @@
 // inbound ports. Reconnects with jittered backoff; refreshes the connect token
 // each dial (and rotates the stored refresh credential).
 
+import { randomInt } from "node:crypto";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import WebSocket from "ws";
 import { ApiError, exchangeToken } from "./api.js";
@@ -256,9 +257,11 @@ export class Tunnel {
   }
 
   private async backoff(): Promise<void> {
-    // Exponential with full jitter.
-    const jittered = Math.random() * this.reconnectDelay;
-    console.error(`[gaia bridge] reconnecting in ${Math.round(jittered)}ms…`);
+    // Exponential with full jitter. randomInt (CSPRNG) rather than Math.random():
+    // the jitter is not security-sensitive, but this runs at most once per
+    // reconnect, so there is no cost to avoiding a weak PRNG.
+    const jittered = randomInt(this.reconnectDelay);
+    console.error(`[gaia bridge] reconnecting in ${jittered}ms…`);
     await new Promise((r) => setTimeout(r, jittered));
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_MS);
   }
