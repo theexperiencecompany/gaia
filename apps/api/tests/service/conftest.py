@@ -17,13 +17,17 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 import os
+import sys
 from unittest.mock import patch
 
 from bson import ObjectId
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import pytest
 from redis.asyncio import Redis
+from sqlalchemy import text
+from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
 from tests.helpers import HeaderDrivenAuthMiddleware, pick_free_port, worker_redis_url
@@ -123,7 +127,9 @@ async def real_redis(redis_url: str, monkeypatch):
 
 
 @pytest.fixture
-async def real_integration_collections(mongodb_url: str, monkeypatch):
+async def real_integration_collections(
+    mongodb_url: str, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[None]:
     """Rebind the integration Mongo collections to a fresh per-test Motor client.
 
     ``integrations_collection`` / ``user_integrations_collection`` are process-
@@ -141,11 +147,14 @@ async def real_integration_collections(mongodb_url: str, monkeypatch):
     into every module that early-bound either name. Targeting a hand-picked
     subset is fragile — the register path alone spans device_service,
     integration_resolver and user_integrations.
+
+    The sweep only reaches modules already in ``sys.modules``, which is why every
+    ``app.*`` import in this file is deliberately deferred into its function.
+    Hoisting them to module scope imports oauth_service / endpoints.integrations
+    (both early-bind ``integrations_collection``) before this fixture runs, so the
+    sweep repoints them at this test's client too and the device E2E test then
+    fails Mongo auth. Keep them function-local.
     """
-    import sys
-
-    from app.db.mongodb import collections as collections_mod
-
     client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
     db = client["GAIA"]
     fresh = {
@@ -155,7 +164,7 @@ async def real_integration_collections(mongodb_url: str, monkeypatch):
 
     for module in list(sys.modules.values()):
         module_dict = getattr(module, "__dict__", None)
-        if not module_dict or module is collections_mod:
+        if not module_dict:
             continue
         for name, coll in fresh.items():
             if name in module_dict:
@@ -189,6 +198,7 @@ async def _device_bridge_lifespan(app: FastAPI) -> AsyncIterator[None]:
     this test's now-dead event loop (see ProviderRegistry.reset, "for testing
     only").
     """
+    # Deferred, not hoisted — see real_integration_collections.
     from app.core.lazy_loader import providers
     from app.core.provider_registration import register_lazy_providers
     from app.db.postgresql import close_postgresql_db
@@ -208,8 +218,6 @@ async def _device_bridge_lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def _cors_only_middleware(app: FastAPI) -> None:
-    from fastapi.middleware.cors import CORSMiddleware
-
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -229,6 +237,7 @@ def _create_live_app() -> FastAPI:
         patch("app.core.app_factory.lifespan", _device_bridge_lifespan),
         patch("app.core.app_factory.configure_middleware", _cors_only_middleware),
     ):
+        # Deferred, not hoisted — see real_integration_collections.
         from app.core.app_factory import create_app
 
         app = create_app()
@@ -242,7 +251,7 @@ class LiveApiServer:
     real ``gaia bridge`` daemon — can dial into it over an actual WebSocket.
     """
 
-    def __init__(self, port: int, app: FastAPI):
+    def __init__(self, port: int, app: FastAPI) -> None:
         self.port = port
         self.url = f"http://127.0.0.1:{port}"
         config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
@@ -265,7 +274,9 @@ class LiveApiServer:
 
 
 @pytest.fixture
-async def live_api_server(real_redis, real_integration_collections) -> AsyncIterator[LiveApiServer]:
+async def live_api_server(
+    real_redis: Redis, real_integration_collections: None
+) -> AsyncIterator[LiveApiServer]:
     """A live, real GAIA API bound to a real localhost port.
 
     Depends on real_redis so redis_cache.redis is already patched to the
@@ -292,9 +303,6 @@ async def clean_bridge_tables(live_api_server: LiveApiServer) -> AsyncIterator[N
     teardown only (before live_api_server disposes the engine, since fixture
     teardown order is the reverse of setup order).
     """
-    from sqlalchemy import text
-    from sqlalchemy.exc import ProgrammingError
-
     from app.core.lazy_loader import providers
 
     yield
