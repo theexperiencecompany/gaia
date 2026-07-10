@@ -998,12 +998,15 @@ async def approve_gaia_todo(
     todo_id: str,
     user: Annotated[dict, Depends(get_current_user)],
     channel: str = Body(default="web", embed=True),
+    instruction: str | None = Body(default=None, embed=True),
 ):
     """Approve a proposed GAIA todo: meter quota, queue it, enqueue execution."""
     user_id = user["user_id"]
     user_plan = await payment_service.get_cached_plan_type(user_id)
     try:
-        await lifecycle.approve(todo_id, user_id, user_plan, channel=channel)
+        await lifecycle.approve(
+            todo_id, user_id, user_plan, channel=channel, instruction=instruction
+        )
     except ExecutionQuotaError as e:
         return JSONResponse(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,

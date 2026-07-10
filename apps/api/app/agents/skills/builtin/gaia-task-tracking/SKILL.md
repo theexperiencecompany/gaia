@@ -24,7 +24,7 @@ Always available to the executor — no `retrieve_tools` needed:
 - `complete_tracked_todo` — mark done, archive, requires completion summary
 - `search_todo_context` — semantic search across all canvas embeddings (ChromaDB); includes completed
 - `list_tracked_todos` — list all active tracked todos (up to 50) with full metadata
-- `approve_todo` — release a proposed todo for execution, ONLY on the user's explicit go-ahead
+- `approve_todo` — release a proposed todo for execution, ONLY on the user's explicit go-ahead; when their go-ahead carries a qualification ("only the Sequoia one"), pass their verbatim words as `instruction`
 - `dismiss_todo` — decline a proposed todo on the user's explicit say-so; records the rejection signal
 - `block_todo` — pause a run on a decision only the user can make; asks one clear question
 - `answer_todo` — resume a blocked (needs_you) todo with the user's answer

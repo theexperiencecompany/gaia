@@ -926,22 +926,31 @@ async def list_tracked_todos(
 async def approve_todo(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the proposed todo the user is approving"],
+    instruction: Annotated[
+        str | None,
+        "The user's VERBATIM qualifying words about how to execute, whenever "
+        "their approval narrowed or adjusted the staged work (e.g. 'only send "
+        "the Sequoia one', 'drop the deck link'). Pass their exact words, never "
+        "a paraphrase; omit only when they approved without qualification.",
+    ] = None,
 ) -> str:
     """Approve a proposed GAIA todo on the user's explicit say-so, releasing its
     staged work for execution.
 
     Use ONLY when the user has clearly told you to go ahead in this conversation
     ("send them", "approve it", "yes, post it") — their words are the approval;
-    this tool records it and queues the execution. Never call it on your own
-    initiative: proposals exist precisely because this decision belongs to the
-    user. To adjust the staged content first, edit the canvas, then approve.
+    this tool records it and queues the execution. If their go-ahead came with a
+    qualification ("send only...", "but change..."), pass it as ``instruction``
+    so the run obeys it. Never call it on your own initiative: proposals exist
+    precisely because this decision belongs to the user. To adjust the staged
+    content first, edit the canvas, then approve.
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
         return _ERR_NO_USER_ID
     plan = await payment_service.get_cached_plan_type(user_id)
     try:
-        await lifecycle.approve(todo_id, user_id, plan, channel="chat")
+        await lifecycle.approve(todo_id, user_id, plan, channel="chat", instruction=instruction)
     except lifecycle.ExecutionQuotaError as e:
         return (
             f"Blocked by the free plan's execution quota. Tell the user: {e.pitch} "
@@ -982,9 +991,7 @@ async def dismiss_todo(
 async def block_todo(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the todo whose run is blocked"],
-    question: Annotated[
-        str, "The decision you need from the user, phrased as one clear question"
-    ],
+    question: Annotated[str, "The decision you need from the user, phrased as one clear question"],
 ) -> str:
     """Pause a todo you are executing on a decision only the user can make.
 

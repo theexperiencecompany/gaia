@@ -313,11 +313,11 @@ _FACET_AUTHORING_DIRECTIVE = (
     "- Do NOT put a '## Deliverable' or '## Output' section inside notes. The "
     "finished output lives ONLY in the deliverable facet; notes must never hold it.\n"
     "- log: one short line of what you did this run.\n"
-    "- Before finishing, end NOTES with a \"## Learnings\" section: 2-4 bullets a "
+    '- Before finishing, end NOTES with a "## Learnings" section: 2-4 bullets a '
     "FUTURE run on a similar task must know, written for a stranger — what worked, "
-    "what to avoid, key contacts/links/IDs with dates (e.g. \"Replies came only "
-    "from subject lines naming their portfolio company\", \"foo@fund.com bounced "
-    "2026-07-09 — use their partner form\"). Not a diary of this run; only reusable "
+    'what to avoid, key contacts/links/IDs with dates (e.g. "Replies came only '
+    'from subject lines naming their portfolio company", "foo@fund.com bounced '
+    '2026-07-09 — use their partner form"). Not a diary of this run; only reusable '
     "knowledge.\n\n"
     "Before you finish, check: is the complete finished result in the DELIVERABLE "
     "facet (not just notes)? If not, write it there now. If a real value doesn't "
@@ -377,6 +377,7 @@ def _build_execution_prompt(
     reference_context: str,
     intent: str | None = None,
     log_facet: str | None = None,
+    instruction: str | None = None,
 ) -> str:
     """Assemble the scheduled-run prompt from the todo's facets and context.
 
@@ -384,6 +385,8 @@ def _build_execution_prompt(
     PERFORM the outward action from the deliverable instead of doing prep/drafting.
     For a release, the LOG facet is injected as the send record so a retry sees
     which recipients already went out — instead of trusting the agent to fetch it.
+    ``instruction`` is the user's verbatim qualification at approval; it overrides
+    the staged content where they conflict.
     """
     if intent == "release":
         parts = [f"APPROVED ACTION — execute this now: {title}"]
@@ -392,6 +395,13 @@ def _build_execution_prompt(
         if deliverable:
             parts.append(
                 f"The approved content to send/perform (final — do not change it):\n{deliverable}"
+            )
+        if instruction and instruction.strip():
+            parts.append(
+                "The user approved WITH an instruction, in their own words — follow "
+                "it exactly; where it narrows or adjusts the approved content (e.g. "
+                "send only a subset), the instruction wins over the staged content:\n"
+                f"{instruction.strip()}"
             )
         if log_facet and log_facet.strip():
             parts.append(
@@ -521,6 +531,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         reference_context=reference_context,
         intent=doc.get("execution_intent"),
         log_facet=log_facet,
+        instruction=doc.get("approve_instruction"),
     )
 
     # Generate a fresh conversation_id for each execution to prevent

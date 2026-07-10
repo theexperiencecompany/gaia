@@ -333,8 +333,18 @@ async def _record_rejection_signal(
         log.warning("gaia_todo.rejection_signal_failed", todo_id=str(doc.get("_id")), error=str(e))
 
 
-async def approve(todo_id: str, user_id: str, user_plan: PlanType, channel: str = "web") -> None:
+async def approve(
+    todo_id: str,
+    user_id: str,
+    user_plan: PlanType,
+    channel: str = "web",
+    instruction: str | None = None,
+) -> None:
     """Approve a proposed todo: meter quota, queue it, enqueue execution.
+
+    ``instruction`` carries the user's verbatim qualifying words at approval
+    ("only send the Sequoia one") — persisted on the doc and injected into the
+    release run, where it overrides the staged content on conflict.
 
     At quota, marks the proposal as the active upgrade pitch (TTL-exempt for
     PITCH_TTL_DAYS) and raises ``ExecutionQuotaError`` with the staged work.
@@ -370,12 +380,21 @@ async def approve(todo_id: str, user_id: str, user_plan: PlanType, channel: str 
                 # Approval means "do it now" — the execution must PERFORM the
                 # outward action from the deliverable, not re-draft it.
                 "execution_intent": "release",
+                # Always set (None clears a stale instruction from a prior cycle).
+                "approve_instruction": instruction,
             }
         },
     )
     await schedule_execution(todo_id, now)
-    await system_log(todo_id, user_id, "approved", f"User approved execution via {channel}")
-    track(user_id, "todo_approved", {"todo_id": todo_id, "channel": channel})
+    log_detail = f"User approved execution via {channel}"
+    if instruction:
+        log_detail += f' with instruction: "{instruction}"'
+    await system_log(todo_id, user_id, "approved", log_detail)
+    track(
+        user_id,
+        "todo_approved",
+        {"todo_id": todo_id, "channel": channel, "has_instruction": bool(instruction)},
+    )
     await first_steps_service.mark_step(user_id, first_steps_service.STEP_FIRST_APPROVE)
     await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
     schedule_gaia_tasks_sync(user_id)
@@ -530,7 +549,9 @@ async def answer(todo_id: str, user_id: str, answer_text: str, channel: str = "w
         },
     )
     await schedule_execution(todo_id, now)
-    await system_log(todo_id, user_id, "answered", f"User answered via {channel}: {answer_text[:200]}")
+    await system_log(
+        todo_id, user_id, "answered", f"User answered via {channel}: {answer_text[:200]}"
+    )
     track(user_id, "todo_answered", {"todo_id": todo_id, "channel": channel})
     await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
     schedule_gaia_tasks_sync(user_id)
