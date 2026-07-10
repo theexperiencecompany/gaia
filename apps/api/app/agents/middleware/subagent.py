@@ -30,6 +30,7 @@ from langgraph.types import Command
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm, is_default_model_config
 from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.agents.llm.vision import strip_media_blocks_for_non_vision
 from app.agents.middleware.compaction import compact_tool_output, estimate_context_usage
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
@@ -48,6 +49,7 @@ from app.utils.agent_utils import (
     format_subagent_end_event,
     format_subagent_start_event,
 )
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 _RETRIEVE_TOOLS_NAME = "retrieve_tools"
@@ -352,7 +354,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 AIMessage,
                 await ainvoke_llm(
                     llm_with_tools,
-                    messages,
+                    # Non-vision lanes reject inline media blocks in tool
+                    # results — strip them at the request boundary only, so the
+                    # loop state keeps the original messages.
+                    strip_media_blocks_for_non_vision(messages, config),
                     fallback=_fallback,
                     config=config,
                     label="subagent",
@@ -460,7 +465,13 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         compacted
                         if compacted is not None
                         else ToolMessage(
-                            content=str(raw_content),
+                            # Preserve block-list content (inline media) — str()
+                            # would destroy it; only non-message shapes stringify.
+                            content=(
+                                raw_content
+                                if isinstance(raw_content, str | list)
+                                else str(raw_content)
+                            ),
                             tool_call_id=tc_id,
                             name=name,
                             status=tool_status,
@@ -471,7 +482,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                             {
                                 "tool_output": {
                                     "tool_call_id": tc_id or "",
-                                    "output": str(tool_message.content),
+                                    "output": extract_text_content(tool_message.content),
                                     "subagent_id": subagent_id,
                                 }
                             }

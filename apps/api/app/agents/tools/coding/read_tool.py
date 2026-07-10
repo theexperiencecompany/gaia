@@ -9,12 +9,14 @@ falls back to reading through the sandbox so file reads still work.
 
 from __future__ import annotations
 
+import base64
 from typing import Annotated, Any
 
 from e2b import NotFoundException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
+from app.agents.llm.vision import describe_image, model_supports_vision
 from app.agents.tools.coding._context import (
     canonical_path,
     get_session_id,
@@ -27,8 +29,18 @@ from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
-from app.services.storage.juicefs import page_bounds, user_owns_regular_file
+from app.services.storage.juicefs import (
+    page_bounds,
+    read_user_file_bytes,
+    user_owns_regular_file,
+)
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
+from app.utils.multimodal import (
+    MAX_IMAGE_FILE_BYTES,
+    fit_image_to_inline_budget,
+    image_content_block,
+    image_mime_from_path,
+)
 from shared.py.wide_events import log
 
 DEFAULT_LIMIT = 2000
@@ -36,6 +48,13 @@ MAX_LIMIT = 10_000
 # Native-dev sandbox-read fallback slurps the whole file into memory (no
 # server-side range read), so cap it to avoid OOMing the worker on a huge file.
 MAX_SANDBOX_READ_BYTES = 10 * 1024 * 1024  # 10 MB
+
+_IMAGE_DESCRIBE_PROMPT = (
+    "This is the image file at {path} from the user's workspace. Describe it in "
+    "detail: layout, subjects, colors, and any text or UI elements (transcribe "
+    "important text exactly). The description substitutes for the image for a "
+    "model that cannot view it."
+)
 
 
 @tool
@@ -46,7 +65,7 @@ async def read(
     path: Annotated[str, "Path inside the workspace (relative = session scratch)"],
     offset: Annotated[int, "Starting line (1-indexed); 0 = start of file"] = 0,
     limit: Annotated[int, "Max lines to return"] = DEFAULT_LIMIT,
-) -> str:
+) -> str | list[dict[str, Any]]:
     """Read a file from the persistent workspace."""
 
     log.set(tool={"name": "read", "action": "read"})
@@ -58,12 +77,24 @@ async def read(
     except ValueError as e:
         return f"Error: {e}"
 
-    offset = max(offset, 0)
-    limit = max(1, min(limit, MAX_LIMIT))
     # `abs_path` is always under /workspace (canonical_path enforces it); the
     # relative remainder maps to the user's host root, where read_user_file
     # re-checks containment so a model-supplied path can't escape it.
     rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
+
+    image_mime = image_mime_from_path(abs_path)
+    if image_mime is not None:
+        return await _read_image(
+            user_id=user_id,
+            rel=rel,
+            abs_path=abs_path,
+            mime_type=image_mime,
+            config=config,
+            session_id=session_id,
+        )
+
+    offset = max(offset, 0)
+    limit = max(1, min(limit, MAX_LIMIT))
 
     # System-owned files (INDEX.md, the GUIDE.md docs, builtin skills) are
     # authored by GAIA and held in process memory — serve them without touching
@@ -94,6 +125,84 @@ async def read(
     except Exception as e:
         log.error(f"{LogTag.SANDBOX} read tool failed: {e}", exc_info=True)
         return f"Error reading file: {e}"
+
+
+async def _read_image(
+    *,
+    user_id: str,
+    rel: str,
+    abs_path: str,
+    mime_type: str,
+    config: RunnableConfig,
+    session_id: str | None,
+) -> str | list[dict[str, Any]]:
+    """Read an image file and return it as inline content blocks.
+
+    On vision-capable lanes the model receives the actual pixels (the block
+    list is wrapped into the ToolMessage unchanged); other lanes get a text
+    description via the canonical vision fallback.
+    """
+    try:
+        async with fs_timer(FsOps.TOOL_READ):
+            try:
+                data = await read_user_file_bytes(user_id, rel, max_bytes=MAX_IMAGE_FILE_BYTES)
+            except JuiceFSUnavailable:
+                # Native dev (no host mount): read through the sandbox instead.
+                log.set(read_via="sandbox_fallback")
+                async with acquire_sandbox(user_id) as sbx:
+                    data = await _read_sandbox_bytes(sbx, abs_path, MAX_IMAGE_FILE_BYTES)
+    except FileNotFoundError:
+        return f"Error: file not found at {abs_path}"
+    except ValueError as e:
+        return f"Error: {e}"
+    except SandboxAcquisitionError as e:
+        return f"Error: sandbox unavailable — {e}"
+    except Exception as e:
+        log.error(f"{LogTag.SANDBOX} read tool failed: {e}", exc_info=True)
+        return f"Error reading file: {e}"
+
+    original_size = len(data)
+    try:
+        data, mime_type = fit_image_to_inline_budget(data, mime_type)
+    except Exception as e:
+        return f"Error: {abs_path} is not a readable image: {e}"
+
+    safe_emit(
+        {
+            "file_data": {
+                "operation": "read",
+                "path": abs_path,
+                "bytes": original_size,
+                "mime_type": mime_type,
+            }
+        },
+        session_id=session_id,
+    )
+
+    image_b64 = base64.b64encode(data).decode("ascii")
+    header = f"Image file {abs_path} ({mime_type}, {original_size} bytes)"
+
+    if model_supports_vision(config):
+        log.set(read_media="inline")
+        return [
+            {"type": "text", "text": f"{header} — shown below."},
+            image_content_block(image_b64, mime_type),
+        ]
+
+    log.set(read_media="described")
+    description = await describe_image(
+        image_b64,
+        mime_type,
+        prompt=_IMAGE_DESCRIBE_PROMPT.format(path=abs_path),
+        label="read_image_vision",
+    )
+    if description is None:
+        return (
+            f"Error: {abs_path} is an image, but it could not be analyzed because "
+            "no vision-capable model was available. Try again, or ask the user "
+            "what it shows."
+        )
+    return f"{header}, described by a vision model:\n\n{description}"
 
 
 def _format_text_read(
@@ -159,6 +268,27 @@ def _format_read(
     return numbered + footer
 
 
+async def _read_sandbox_bytes(sbx: Any, abs_path: str, max_bytes: int) -> bytes:
+    # Native-dev fallback (host JuiceFS absent): read through the sandbox with
+    # the native filesystem API. There's no server-side range read, so we slurp
+    # the whole file — fine for this dev-only path, but cap the size first via
+    # get_info so a huge file can't OOM the worker (the host path streams
+    # line-by-line and needs no such guard).
+    try:
+        info = await sbx.files.get_info(abs_path)
+    except NotFoundException:
+        raise FileNotFoundError(abs_path) from None
+    size = getattr(info, "size", 0) or 0
+    if size > max_bytes:
+        raise ValueError(f"file is {size} bytes; exceeds the {max_bytes}-byte sandbox-read limit")
+
+    try:
+        return bytes(await sbx.files.read(abs_path, format="bytes"))
+    except NotFoundException:
+        # Deleted between the get_info check and the read — same answer.
+        raise FileNotFoundError(abs_path) from None
+
+
 async def _read_file_sandbox(
     sbx: Any,
     abs_path: str,
@@ -166,27 +296,12 @@ async def _read_file_sandbox(
     limit: int,
     session_id: str | None,
 ) -> str:
-    # Native-dev fallback (host JuiceFS absent): read through the sandbox with
-    # the native filesystem API. There's no server-side range read, so we slurp
-    # the whole file and slice in Python — fine for this dev-only path, but cap
-    # the size first via get_info so a huge file can't OOM the worker (the host
-    # path streams line-by-line and needs no such guard). Read as bytes and
-    # decode with errors="replace" to stay binary-safe, matching read_user_file.
     try:
-        info = await sbx.files.get_info(abs_path)
-    except NotFoundException:
+        raw = await _read_sandbox_bytes(sbx, abs_path, MAX_SANDBOX_READ_BYTES)
+    except FileNotFoundError:
         return f"Error: file not found at {abs_path}"
-    size = getattr(info, "size", 0) or 0
-    if size > MAX_SANDBOX_READ_BYTES:
-        return (
-            f"Error: file is {size} bytes; exceeds the {MAX_SANDBOX_READ_BYTES}-byte "
-            "sandbox-read limit — read a narrower range or run with the host mount"
-        )
-
-    try:
-        raw = bytes(await sbx.files.read(abs_path, format="bytes"))
-    except NotFoundException:
-        # Deleted between the get_info check and the read — same answer.
-        return f"Error: file not found at {abs_path}"
+    except ValueError as e:
+        return f"Error: {e} — read a narrower range or run with the host mount"
+    # Decode with errors="replace" to stay binary-safe, matching read_user_file.
     text = raw.decode("utf-8", errors="replace")
     return _format_text_read(abs_path, text, offset, limit, session_id)

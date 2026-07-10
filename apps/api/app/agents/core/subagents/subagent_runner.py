@@ -34,6 +34,7 @@ from app.helpers.message_helpers import (
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
+from app.utils.multimodal import extract_text_content
 from app.utils.stream_utils import extract_tool_entries_from_update
 from shared.py.wide_events import log
 
@@ -208,9 +209,10 @@ def _process_messages_payload(
                 )
                 stream_writer({"reasoning": reasoning_payload.model_dump(exclude_none=True)})
 
-    # Emit tool_output when ToolMessage arrives
+    # Emit tool_output when ToolMessage arrives. Text-extract block content so
+    # inline media (base64 image blocks) never streams to the frontend.
     elif chunk and isinstance(chunk, ToolMessage):
-        content_str = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+        content_str = extract_text_content(chunk.content)
         complete_message = _capture_finish_task_content(chunk, complete_message)
         if stream_writer:
             tool_output_payload = ToolOutputPayload(

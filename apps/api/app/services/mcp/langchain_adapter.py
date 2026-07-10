@@ -3,11 +3,60 @@ Custom LangChain adapter with schema sanitization for MCP tools.
 
 This adapter fixes field name issues that cause Pydantic validation failures
 when MCP servers return tool schemas with leading underscores (e.g., _postman_id).
+It also replaces mcp_use's tool-result parsing, which stringifies the MCP
+content list (leaking ``TextContent(...)`` pydantic reprs to the model and
+destroying image content entirely).
 """
 
-from typing import Any
+import asyncio
+import base64
+from typing import Any, NoReturn
 
+from langchain_core.tools import BaseTool
+
+# Module import (not a direct symbol import) so this adapter picks up the
+# memoized jsonschema_to_pydantic that resilient_adapter patches onto the module.
+import mcp_use.agents.adapters.langchain_adapter as _mcp_use_lc_adapter
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
+from mcp_use.client.connectors.base import BaseConnector
+from mcp_use.errors.error_formatting import format_error
+from pydantic import BaseModel
+
+from app.utils.multimodal import fit_image_to_inline_budget, image_content_block
+from mcp.types import CallToolResult, ImageContent, TextContent, Tool as MCPTool
+
+
+def _image_item_to_block(data_b64: str, mime_type: str) -> dict[str, Any]:
+    """Decode, validate, and budget-fit an MCP image item into a content block.
+
+    CPU-bound (Pillow) — callers run it off the event loop.
+    """
+    data = base64.b64decode(data_b64)
+    data, mime_type = fit_image_to_inline_budget(data, mime_type)
+    return image_content_block(base64.b64encode(data).decode("ascii"), mime_type)
+
+
+async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str, Any]]:
+    """Map MCP content items to LangChain message content.
+
+    Text-only results collapse to a plain string (the common case). Image items
+    become standard image content blocks — validated and downsized to the
+    inline budget — so multimodal models see the actual pixels; non-vision
+    lanes are protected downstream (sanitize_media_node / compaction skip).
+    """
+    blocks: list[dict[str, Any]] = []
+    has_media = False
+    for item in result.content:
+        if isinstance(item, TextContent):
+            blocks.append({"type": "text", "text": item.text})
+        elif isinstance(item, ImageContent):
+            has_media = True
+            blocks.append(await asyncio.to_thread(_image_item_to_block, item.data, item.mimeType))
+        else:
+            blocks.append({"type": "text", "text": str(item)})
+    if has_media:
+        return blocks
+    return "\n".join(block["text"] for block in blocks)
 
 
 class SanitizingLangChainAdapter(LangChainAdapter):
@@ -74,3 +123,47 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             return [self.fix_schema(item) for item in schema]
 
         return schema
+
+    def _convert_tool(self, mcp_tool: MCPTool, connector: BaseConnector) -> BaseTool | None:
+        """Convert an MCP tool to LangChain format.
+
+        Mirrors mcp_use's implementation except for result parsing: upstream
+        returns ``str(tool_result.content)``, which leaks pydantic reprs and
+        destroys media blocks — this version parses content items properly
+        (see ``_tool_result_to_content``).
+        """
+        if mcp_tool.name in self.disallowed_tools:
+            return None
+
+        adapter_self = self
+
+        class McpToLangChainAdapter(BaseTool):
+            name: str = mcp_tool.name or "NO NAME"
+            description: str = mcp_tool.description or ""
+            args_schema: type[BaseModel] = _mcp_use_lc_adapter.jsonschema_to_pydantic(
+                adapter_self.fix_schema(mcp_tool.inputSchema)
+            )
+            tool_connector: BaseConnector = connector
+            handle_tool_error: bool = True
+
+            def __repr__(self) -> str:
+                return f"MCP tool: {self.name}: {self.description}"
+
+            def _run(self, **kwargs: Any) -> NoReturn:
+                raise NotImplementedError("MCP tools only support async operations")
+
+            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]]:
+                try:
+                    tool_result: CallToolResult = await self.tool_connector.call_tool(
+                        self.name, kwargs
+                    )
+                    try:
+                        return await _tool_result_to_content(tool_result)
+                    except Exception as e:
+                        return format_error(e, tool=self.name, tool_content=tool_result.content)
+                except Exception as e:
+                    if self.handle_tool_error:
+                        return format_error(e, tool=self.name)
+                    raise
+
+        return McpToLangChainAdapter()

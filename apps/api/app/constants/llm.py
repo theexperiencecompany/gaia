@@ -76,6 +76,23 @@ DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 PAID_MODEL_PROVIDER = "openrouter"
 PAID_MODEL_NAME = "z-ai/glm-5.2"
 
+# (provider, model) lanes verified to accept inline image content blocks inside
+# tool results (ToolMessage). langchain_google_genai converts data content blocks
+# in tool messages into real media Parts, so the direct-Gemini lane works. The
+# OpenRouter (OpenAI-format) lane is UNVERIFIED — several upstream providers
+# reject image parts in tool-role messages — so OpenRouter models stay off this
+# list until a real call proves acceptance. Models not listed here fall back to
+# a text description of the image (see app/agents/llm/vision.py).
+VISION_TOOL_RESULT_MODELS: frozenset[tuple[str, str]] = frozenset(
+    {(DEFAULT_LLM_PROVIDER, DEFAULT_GEMINI_MODEL_NAME)}
+)
+
+# Context-estimation cost of one inline media block, mirroring
+# count_tokens_approximately's fixed per-image penalty. Without this, char-based
+# heuristics would count a 1 MB base64 payload as ~350k tokens and prematurely
+# trigger compaction/summarization.
+MEDIA_BLOCK_TOKEN_ESTIMATE = 1000
+
 # GLM 5.2's first-party (z-ai) lane exposes a 1M-token context window and a 131k
 # output ceiling. Cap output well under that; the summarization / compaction
 # middleware keeps input bounded (compaction at 0.40, summary at 0.60 of the

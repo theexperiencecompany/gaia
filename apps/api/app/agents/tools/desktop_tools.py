@@ -12,7 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.vision import describe_image
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.chat_models import ConversationSource
@@ -86,41 +86,15 @@ def _emit_tool_data(tool_name: str, data: dict[str, Any]) -> None:
 
 
 async def _describe_screenshot(image_b64: str, query: str) -> str | None:
-    """Run a one-off vision call so any provider can 'see' the screen.
-
-    Image blocks inside tool results are not portable across providers
-    (OpenAI rejects them), so the screenshot is described here in a regular
-    user-role message and the description is returned to the agent.
-
-    The default model (Gemini) is multimodal, so the screenshot is described on
-    it via ``ainvoke_llm``. Should the model reject the image (transient provider
-    error), return ``None`` so the caller degrades gracefully instead of failing
-    the whole tool.
-    """
-    try:
-        response = await ainvoke_llm(
-            get_default_llm(),
-            [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": _SCREENSHOT_VISION_PROMPT.format(query=query)},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{image_b64}"},
-                        },
-                    ],
-                }
-            ],
-            label="desktop_vision",
-        )
-    except Exception as exc:  # any provider failure degrades gracefully
-        log.warning(f"{LogTag.TOOL} Screenshot vision call failed: {exc}")
-        return None
-    # ``.text`` flattens the message's content blocks to a string; ``.content``
-    # may be a list (Gemini), whose repr would leak into the description.
-    description = response.text.strip()
-    return description or None
+    """Describe the screen via the canonical vision fallback so any provider
+    can 'see' it — screenshots are returned as text, not image blocks, because
+    tool-result image blocks only work on vision-capable lanes."""
+    return await describe_image(
+        image_b64,
+        "image/png",
+        prompt=_SCREENSHOT_VISION_PROMPT.format(query=query),
+        label="desktop_vision",
+    )
 
 
 @tool

@@ -12,11 +12,21 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { FilesystemServer } from "./config.types.js";
-import { MAX_READ_BYTES } from "./constants.js";
+import { MAX_IMAGE_READ_BYTES, MAX_READ_BYTES } from "./constants.js";
+
+// Mirrors IMAGE_MIME_BY_EXTENSION in apps/api/app/utils/multimodal.py — the
+// backend only inlines these formats into model context.
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+};
 
 class PathDeniedError extends Error {}
 
@@ -151,7 +161,8 @@ export function buildFilesystemServer(config: FilesystemServer): McpServer {
   server.registerTool(
     "read_file",
     {
-      description: "Read the contents of a text file on the user's machine.",
+      description:
+        "Read the contents of a text or image file on the user's machine.",
       inputSchema: { path: z.string().describe("Absolute path to a file") },
     },
     async ({ path }) => {
@@ -159,6 +170,25 @@ export function buildFilesystemServer(config: FilesystemServer): McpServer {
         const target = await resolveWithin(path, await roots(), true);
         const info = await stat(target);
         if (!info.isFile()) return denied(`Not a file: ${path}`);
+
+        const imageMime =
+          IMAGE_MIME_BY_EXTENSION[extname(target).toLowerCase()];
+        if (imageMime) {
+          if (info.size > MAX_IMAGE_READ_BYTES) {
+            return denied(`Image is too large to read (${info.size} bytes).`);
+          }
+          const data = await readFile(target);
+          return {
+            content: [
+              {
+                type: "image",
+                data: data.toString("base64"),
+                mimeType: imageMime,
+              },
+            ],
+          };
+        }
+
         if (info.size > MAX_READ_BYTES) {
           return denied(`File is too large to read (${info.size} bytes).`);
         }
