@@ -4,12 +4,15 @@ import { Pagination } from "@heroui/pagination";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FeaturedCategoryBanner } from "@/components/shared/FeaturedCategoryBanner";
+import { wallpapers } from "@/config/wallpapers";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
 import {
   PublicIntegrationCard,
   PublicIntegrationCardSkeletonGrid,
 } from "@/features/integrations/components/PublicIntegrationCard";
+import { FEATURED_INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 
@@ -155,8 +158,8 @@ export function IntegrationsPageClient() {
     <div className="min-h-screen pt-32 pb-16">
       <div className="absolute inset-0 top-0 z-0 h-[70vh] w-full">
         <Image
-          src={"/images/wallpapers/library.webp"}
-          alt="GAIA Use-Cases Wallpaper"
+          src={wallpapers.integration.webp}
+          alt="GAIA Integration Marketplace Wallpaper"
           sizes="100vw"
           priority
           fill
@@ -177,9 +180,25 @@ export function IntegrationsPageClient() {
           </p>
         </div>
 
+        <div className="mb-10">
+          <h2 className="mb-4 text-sm font-medium text-zinc-300">Featured</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {FEATURED_INTEGRATION_CATEGORIES.map((featured) => (
+              <FeaturedCategoryBanner
+                key={featured.key}
+                name={featured.label}
+                description={featured.description}
+                icons={featured.icons}
+                onPress={() => handleFilterChange({ category: featured.key })}
+              />
+            ))}
+          </div>
+        </div>
+
         <IntegrationsFilters
           onFilterChange={handleFilterChange}
-          initialFilters={filters}
+          category={filters.category}
+          initialFilters={{ search: filters.search, sort: filters.sort }}
         />
 
         {displayLoading && (
