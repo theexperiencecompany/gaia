@@ -38,11 +38,14 @@ const ENTERPRISE_CONTACT_HREF =
 interface PricingCardsProps {
   durationIsMonth?: boolean;
   initialPlans?: Plan[];
+  /** Hide the enterprise contact bar (e.g. on the landing page section). */
+  hideEnterprise?: boolean;
 }
 
 export function PricingCards({
   durationIsMonth = false,
   initialPlans = [],
+  hideEnterprise = false,
 }: PricingCardsProps) {
   const { plans, isLoading, error, subscriptionStatus } =
     usePricing(initialPlans);
@@ -190,7 +193,7 @@ export function PricingCards({
         })}
       </div>
 
-      {enterprisePlan && (
+      {enterprisePlan && !hideEnterprise && (
         <EnterpriseBar
           plan={enterprisePlan}
           ctaHref={ENTERPRISE_CONTACT_HREF}
