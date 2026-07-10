@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { cloneElement, isValidElement } from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
@@ -85,9 +86,15 @@ export default function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 title={link.description}
-                className="transition-opacity hover:opacity-80"
+                className="text-zinc-400 transition-colors hover:text-zinc-200"
               >
-                {link.icon}
+                {/* Strip the brand color so icons render monochrome via currentColor. */}
+                {isValidElement(link.icon)
+                  ? cloneElement(
+                      link.icon as React.ReactElement<{ color?: string }>,
+                      { color: "currentColor" },
+                    )
+                  : link.icon}
               </Link>
             ))}
           </div>
