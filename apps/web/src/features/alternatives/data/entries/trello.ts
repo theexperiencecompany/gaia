@@ -8,7 +8,7 @@ export const entry: AlternativeData = {
   tagline: "Kanban-style visual task boards for teams and individuals",
   painPoints: [
     "Boards become cluttered and unmaintained over time",
-    "No AI or proactive features — entirely manual card management",
+    "No AI or proactive features, only manual card management",
     "Limited functionality beyond basic Kanban without Power-Ups",
     "Power-Ups add cost and complexity to what should be simple",
     "Lacks email and calendar integration without third-party tools",
@@ -41,7 +41,7 @@ export const entry: AlternativeData = {
     "Status updates surfaced proactively instead of requiring board reviews",
   ],
   gaiaAdvantages: [
-    "Tasks are created and prioritized automatically — no manual card management",
+    "Tasks are created and prioritized automatically, no manual card management",
     "Email and calendar deeply integrated so nothing falls through the cracks",
     "Conversational interface is faster than drag-and-drop boards",
     "Free tier with meaningful features, not just a card limit increase",

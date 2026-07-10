@@ -7,7 +7,7 @@ export const entry: AlternativeData = {
   category: "notes",
   tagline: "Classic note-taking app with web clipper and document scanning",
   painPoints: [
-    "Pricing restructured to Starter ($100/year) and Advanced ($250/year) — expensive for a note app",
+    "Pricing restructured to Starter ($100/year) and Advanced ($250/year), expensive for a note app",
     "No proactive AI; all capture and organization is manual",
     "Frequent pricing changes and plan restructuring erode user trust",
     "No email, calendar, or task integration for automatic knowledge capture",
@@ -31,7 +31,7 @@ export const entry: AlternativeData = {
     "evernote alternative 2026",
   ],
   whyPeopleLook:
-    "Evernote was the undisputed king of note-taking for over a decade, but years of ownership changes, feature stagnation, and aggressive pricing restructuring have pushed millions of users to look elsewhere. In 2026, Evernote's Starter plan costs $100/year and the Advanced plan costs $250/year — steep prices for an app that still requires you to manually clip, write, and organize everything yourself. There is no proactive AI, no email integration, and no workflow automation. Users want a tool that captures knowledge automatically from their email and meetings, not one that charges a premium for the privilege of doing it manually.",
+    "Evernote was the undisputed king of note-taking for over a decade, but years of ownership changes, feature stagnation, and aggressive pricing restructuring have pushed millions of users to look elsewhere. In 2026, Evernote's Starter plan costs $100/year and the Advanced plan costs $250/year. Those are steep prices for an app that still requires you to manually clip, write, and organize everything yourself. There is no proactive AI, no email integration, and no workflow automation. Users want a tool that captures knowledge automatically from their email and meetings, not one that charges a premium for the privilege of doing it manually.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Knowledge capture from email threads and calendar events automatically",
@@ -41,7 +41,7 @@ export const entry: AlternativeData = {
     "Cross-platform note access on web, desktop, mobile, and bots",
   ],
   gaiaAdvantages: [
-    "Knowledge is built automatically from your email and calendar — no manual clipping",
+    "Knowledge is built automatically from your email and calendar, with no manual clipping",
     "Proactive surfacing means relevant notes appear when you need them",
     "Open-source and self-hostable; Evernote is closed-source SaaS",
     "Free tier available without aggressive pricing restructuring",
@@ -67,7 +67,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA have notebooks and tags like Evernote?",
       answer:
-        "GAIA uses graph-based memory rather than notebooks and tags. Knowledge is organized by relationships between people, projects, and events — surfaced contextually rather than browsed in a folder hierarchy.",
+        "GAIA uses graph-based memory rather than notebooks and tags. Knowledge is organized by relationships between people, projects, and events, surfaced contextually rather than browsed in a folder hierarchy.",
     },
     {
       question: "Can I import my existing Evernote notes into GAIA?",

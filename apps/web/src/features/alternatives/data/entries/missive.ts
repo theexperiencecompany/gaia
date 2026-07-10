@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "missive alternative 2026",
   ],
   whyPeopleLook:
-    "Missive is built for teams that need to manage a shared inbox collaboratively — assigning conversations, leaving internal comments, and coordinating responses without forwarding emails around. It does this well. But for individuals or users who do not need a shared inbox, Missive is expensive and over-engineered. There is no proactive AI monitoring your personal inbox, no automatic task creation, and no calendar integration. Users searching for Missive alternatives are often either looking for a cheaper shared inbox tool or a more capable personal AI email assistant.",
+    "Missive is built for teams that need to manage a shared inbox collaboratively: assigning conversations, leaving internal comments, and coordinating responses without forwarding emails around. It does this well. But for individuals or users who do not need a shared inbox, Missive is expensive and over-engineered. There is no proactive AI monitoring your personal inbox, no automatic task creation, and no calendar integration. Users searching for Missive alternatives are often either looking for a cheaper shared inbox tool or a more capable personal AI email assistant.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Personal email triage and proactive inbox monitoring",
@@ -69,7 +69,7 @@ export const entry: AlternativeData = {
       question:
         "Does GAIA have Missive's internal comment and assignment features?",
       answer:
-        "GAIA does not include internal team email comments or assignment workflows. Its focus is on proactive personal AI assistance — automatically triaging, drafting, and creating tasks from your email.",
+        "GAIA does not include internal team email comments or assignment workflows. Its focus is on proactive personal AI assistance: automatically triaging, drafting, and creating tasks from your email.",
     },
     {
       question: "Can GAIA work alongside Missive for individuals on a team?",

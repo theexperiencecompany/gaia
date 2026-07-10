@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "smart scheduling AI",
   ],
   whyPeopleLook:
-    "Calendly solves one specific problem: letting others book time on your calendar without email back-and-forth. But many users find they need more than inbound scheduling — they need help managing their existing calendar, triaging email, creating tasks from meetings, and proactively organizing their day. Calendly is a piece of the puzzle; GAIA is the puzzle itself.",
+    "Calendly solves one specific problem: letting others book time on your calendar without email back-and-forth. But many users find they need more than inbound scheduling. They need help managing their existing calendar, triaging email, creating tasks from meetings, and proactively organizing their day. Calendly is a piece of the puzzle; GAIA is the puzzle itself.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Outbound scheduling via email drafting and calendar coordination",
@@ -62,7 +62,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA replace Calendly for scheduling meetings?",
       answer:
-        "For scheduling meetings with people you communicate with over email, yes — GAIA can handle the coordination. For sharing a public booking link on your website or LinkedIn, Calendly remains useful.",
+        "For scheduling meetings with people you communicate with over email, yes: GAIA can handle the coordination. For sharing a public booking link on your website or LinkedIn, Calendly remains useful.",
     },
     {
       question: "Is GAIA cheaper than Calendly Teams?",
@@ -72,7 +72,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA create tasks from meetings automatically?",
       answer:
-        "Yes. GAIA can analyze calendar events and create follow-up tasks automatically — for example, creating a task to send meeting notes after a call ends.",
+        "Yes. GAIA can analyze calendar events and create follow-up tasks automatically, for example creating a task to send meeting notes after a call ends.",
     },
   ],
 };

@@ -45,7 +45,7 @@ export default function FollowUpQueueCard() {
           <div key={item.id} className="rounded-xl bg-zinc-900 p-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-zinc-100">
-                {item.company} — {item.contact}
+                {item.company}: {item.contact}
               </span>
               {item.urgent && (
                 <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] text-red-400">

@@ -35,7 +35,7 @@ const RECALL_MESSAGES: ChatMessage[] = [
     id: "mem-recall-4",
     role: "assistant",
     content:
-      "Maya's vegetarian, so I picked three places with serious plant-based menus. Osteria Verde has a table free at 7 — want me to book it?",
+      "Maya's vegetarian, so I picked three places with serious plant-based menus. Osteria Verde has a table free at 7. Want me to book it?",
     delay: 900,
   },
 ];

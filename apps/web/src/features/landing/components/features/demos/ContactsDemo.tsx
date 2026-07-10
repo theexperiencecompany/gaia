@@ -106,7 +106,7 @@ const CONTACTS_MESSAGES: ChatMessage[] = [
     id: "ct5",
     role: "assistant",
     content:
-      "Found Alex Chen across Gmail and HubSpot. He's VP of Engineering at Acme Corp — want me to draft an email or log a note in HubSpot?",
+      "Found Alex Chen across Gmail and HubSpot. He's VP of Engineering at Acme Corp. Want me to draft an email or log a note in HubSpot?",
     delay: 700,
   },
 ];

@@ -4,7 +4,7 @@ const HANDLED_ITEMS = [
   {
     id: "em-1",
     icon: "github",
-    label: "2 PRs flagged — PR #214 stale for 4 days",
+    label: "2 PRs flagged: PR #214 stale for 4 days",
     detail: "flagged",
     detailClass: "text-red-400",
   },
@@ -25,7 +25,7 @@ const HANDLED_ITEMS = [
   {
     id: "em-4",
     icon: "sentry",
-    label: "P2 error grouped with past incidents — triaged",
+    label: "P2 error grouped with past incidents: triaged",
     detail: "done",
     detailClass: "text-zinc-500",
   },

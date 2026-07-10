@@ -10,7 +10,7 @@ export const entry: AlternativeData = {
   painPoints: [
     "Steep learning curve for the visual scenario builder",
     "Operation-based pricing gets expensive for high-frequency automations",
-    "No AI reasoning layer — scenarios are rigid and context-unaware",
+    "No AI reasoning layer: scenarios are rigid and context-unaware",
     "Error handling and debugging requires significant technical skill",
     "No personal assistant or proactive features beyond automation execution",
   ],
@@ -34,7 +34,7 @@ export const entry: AlternativeData = {
     "Zapier alternative with AI reasoning",
   ],
   whyPeopleLook:
-    "Make (formerly Integromat) offers more power than Zapier with its visual scenario builder, but that power comes with complexity. Setting up advanced workflows requires understanding modules, routers, iterators, and error handlers — concepts that are genuinely technical. Many users want the power of Make without the complexity, and they increasingly want automation that includes AI reasoning rather than just data routing.",
+    "Make (formerly Integromat) offers more power than Zapier with its visual scenario builder, but that power comes with complexity. Setting up advanced workflows requires understanding modules, routers, iterators, and error handlers, concepts that are genuinely technical. Many users want the power of Make without the complexity, and they increasingly want automation that includes AI reasoning rather than just data routing.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Natural language workflow creation replacing visual scenario building",

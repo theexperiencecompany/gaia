@@ -88,7 +88,7 @@ const SUBAGENTS_MESSAGES: ChatMessage[] = [
   {
     id: "sa1",
     role: "user",
-    content: "Handle my open GitHub PRs — summarize and add review comments",
+    content: "Handle my open GitHub PRs: summarize and add review comments",
   },
   {
     id: "sa2",

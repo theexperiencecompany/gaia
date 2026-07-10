@@ -7,9 +7,9 @@ export const entry: AlternativeData = {
   category: "automation",
   tagline: "Human-in-the-loop workflow automation with AI and approval steps",
   painPoints: [
-    "Professional plan starts at $38/month — expensive for individual automation",
+    "Professional plan starts at $38/month, expensive for individual automation",
     "Human-in-the-loop focus means many automations still require manual approval",
-    "Free plan limited to 200 steps per month — quickly exhausted",
+    "Free plan limited to 200 steps per month, quickly exhausted",
     "No personal AI assistant; Relay is a workflow automation platform only",
     "Complexity grows with more sophisticated multi-step automations",
   ],
@@ -31,7 +31,7 @@ export const entry: AlternativeData = {
     "relay.app alternative 2026",
   ],
   whyPeopleLook:
-    "Relay.app's human-in-the-loop model is genuinely useful for automations where you want a human to review and approve before an AI takes action — for example, checking a GPT-generated reply before it is sent. But this model also means Relay.app is not fully autonomous: many workflows pause waiting for your approval, defeating the purpose of automation for users who want hands-off execution. At $38/month for the Professional plan, it is also expensive for individual users who need a proactive AI assistant rather than a supervised automation platform.",
+    "Relay.app's human-in-the-loop model is genuinely useful for automations where you want a human to review and approve before an AI takes action, for example checking a GPT-generated reply before it is sent. But this model also means Relay.app is not fully autonomous: many workflows pause waiting for your approval, defeating the purpose of automation for users who want hands-off execution. At $38/month for the Professional plan, it is also expensive for individual users who need a proactive AI assistant rather than a supervised automation platform.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Autonomous email and task automations without mandatory approval steps",
@@ -40,7 +40,7 @@ export const entry: AlternativeData = {
     "Natural language workflow creation replacing visual flow builder configuration",
   ],
   gaiaAdvantages: [
-    "Proactive by default — executes on your behalf without requiring approval for routine tasks",
+    "Proactive by default: executes on your behalf without requiring approval for routine tasks",
     "Free tier available; Relay.app's free plan is limited to 200 steps/month",
     "Open-source and self-hostable; Relay.app is closed-source SaaS",
     "Full personal AI assistant beyond workflow automation",
@@ -56,7 +56,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA support human-in-the-loop approval like Relay.app?",
       answer:
-        "GAIA can be configured to ask for confirmation before taking sensitive actions. However, its default mode is proactive and autonomous — it handles routine tasks without requiring manual approval each time.",
+        "GAIA can be configured to ask for confirmation before taking sensitive actions. However, its default mode is proactive and autonomous. It handles routine tasks without requiring manual approval each time.",
     },
     {
       question: "Is GAIA cheaper than Relay.app?",
@@ -66,7 +66,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA have Relay.app's AI-powered workflow steps?",
       answer:
-        "Yes. GAIA's workflows include AI reasoning between steps — it can read email content, classify intent, draft responses, and route actions intelligently without requiring you to configure each decision point manually.",
+        "Yes. GAIA's workflows include AI reasoning between steps. It can read email content, classify intent, draft responses, and route actions intelligently without requiring you to configure each decision point manually.",
     },
     {
       question: "Can GAIA and Relay.app work together?",

@@ -7,7 +7,7 @@ export const entry: AlternativeData = {
   category: "email",
   tagline: "AI email filtering that prioritizes your inbox automatically",
   painPoints: [
-    "Only filters and organizes email — cannot draft, reply, or take action",
+    "Only filters and organizes email, cannot draft, reply, or take action",
     "Expensive for what is essentially a smart email filter ($7–$36/month)",
     "No calendar, task, or workflow integration",
     "Works on top of your email client rather than replacing it",
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "email management AI",
   ],
   whyPeopleLook:
-    "SaneBox is effective at separating important email from noise, but its intelligence stops at filtering. It moves email to folders but does not tell you what to do with those emails, cannot draft replies, and has no awareness of your tasks or calendar. Users who want a more active AI email partner — one that summarizes threads, drafts replies, creates tasks, and connects email to the rest of their workflow — quickly outgrow SaneBox.",
+    "SaneBox is effective at separating important email from noise, but its intelligence stops at filtering. It moves email to folders but does not tell you what to do with those emails, cannot draft replies, and has no awareness of your tasks or calendar. Users who want a more active AI email partner (one that summarizes threads, drafts replies, creates tasks, and connects email to the rest of their workflow) quickly outgrow SaneBox.",
   gaiaFitScore: 5,
   gaiaReplaces: [
     "Intelligent inbox triage beyond folder sorting",
@@ -59,7 +59,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA filter and organize email like SaneBox?",
       answer:
-        "GAIA triages email proactively and can categorize and prioritize messages. Rather than moving email to folders automatically, GAIA surfaces what needs your attention and can take action — drafting replies, creating tasks, and scheduling meetings.",
+        "GAIA triages email proactively and can categorize and prioritize messages. Rather than moving email to folders automatically, GAIA surfaces what needs your attention and can take action: drafting replies, creating tasks, and scheduling meetings.",
     },
     {
       question: "Is GAIA more expensive than SaneBox?",

@@ -478,7 +478,7 @@ function ChatDemoWindow() {
               rel="noopener noreferrer"
               href={`https://${appConfig.site.domain}`}
             >
-              {appConfig.site.name} — {appConfig.site.domain}
+              {appConfig.site.name}: {appConfig.site.domain}
             </a>
           </div>
         </div>

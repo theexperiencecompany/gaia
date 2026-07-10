@@ -9,7 +9,7 @@ export const entry: AlternativeData = {
   painPoints: [
     "Per-seat pricing escalates quickly; costs balloon as teams grow",
     "Requires significant admin time to configure boards and automations",
-    "No personal AI assistant layer — everything is manual input",
+    "No personal AI assistant layer: everything is manual input",
     "Steep learning curve for non-technical team members",
     "Automations feel rigid and break when workflows change",
   ],
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "tasks from email AI",
   ],
   whyPeopleLook:
-    "Monday.com is built for team visibility and project tracking, but individual contributors and small teams often find it overkill. The per-seat pricing model means costs grow linearly with headcount, and the platform demands a dedicated admin to keep boards clean and automations running. More critically, Monday.com has no proactive intelligence — it tracks work you log, but never tells you what to do next. GAIA inverts this model: instead of a board you maintain, you get an AI assistant that monitors your tasks, email, and calendar and proactively nudges you toward what matters most.",
+    "Monday.com is built for team visibility and project tracking, but individual contributors and small teams often find it overkill. The per-seat pricing model means costs grow linearly with headcount, and the platform demands a dedicated admin to keep boards clean and automations running. More critically, Monday.com has no proactive intelligence: it tracks work you log, but never tells you what to do next. GAIA inverts this model: instead of a board you maintain, you get an AI assistant that monitors your tasks, email, and calendar and proactively nudges you toward what matters most.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Personal task tracking and prioritization without board maintenance",
@@ -41,7 +41,7 @@ export const entry: AlternativeData = {
     "Workflow automation for recurring personal and team processes",
   ],
   gaiaAdvantages: [
-    "No per-seat pricing — GAIA's cost doesn't scale with team size for individuals",
+    "No per-seat pricing: GAIA's cost doesn't scale with team size for individuals",
     "Proactive AI surfaces urgent tasks and deadlines without manual flagging",
     "50+ integrations via MCP connect GAIA to tools Monday.com cannot reach",
     "Self-hostable for teams with strict data sovereignty requirements",
@@ -72,7 +72,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA replace Monday.com's reporting features?",
       answer:
-        "GAIA does not provide Gantt charts or team dashboards. Its strength is proactive personal AI assistance — surfacing what you should work on, summarizing your day, and automating repetitive tasks rather than visualizing team progress.",
+        "GAIA does not provide Gantt charts or team dashboards. Its strength is proactive personal AI assistance: surfacing what you should work on, summarizing your day, and automating repetitive tasks rather than visualizing team progress.",
     },
   ],
 };

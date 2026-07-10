@@ -159,10 +159,10 @@ export const MODEL_PROVIDERS = ["Anthropic", "Google", "xAI"];
 // ─── Founder email for EmailComposeCard ───────────────────────────────────────
 export const FOUNDER_EMAIL = {
   to: ["investors@sequoia.com"],
-  subject: "GAIA — Q4 Update: 3x MRR, $2.1M ARR, Series A Prep",
+  subject: "Q4 Update from GAIA: 3x MRR, $2.1M ARR, Series A Prep",
   body: `Hi all,
 
-Q4 Update — November 2025
+Q4 Update: November 2025
 
 → MRR: $175K (+3x QoQ)
 → ARR: $2.1M run rate
@@ -171,7 +171,8 @@ Q4 Update — November 2025
 
 Heading into Series A. Happy to connect this week.
 
-— Aryan`,
+Best,
+Aryan`,
   thread_id: "demo-founder",
 };
 
@@ -212,7 +213,7 @@ export const USE_CASES: UseCase[] = [
       "Pulling Q4 metrics",
     ],
     botResponse:
-      "I've drafted your Q4 investor update using 12 recent investor emails and your Google Sheets metrics. It covers 3x MRR growth, key milestones, and a Series A narrative — review and send when you're ready:",
+      "I've drafted your Q4 investor update using 12 recent investor emails and your Google Sheets metrics. It covers 3x MRR growth, key milestones, and a Series A narrative. Review and send when you're ready:",
     finalCard: "email",
   },
   {
@@ -286,7 +287,7 @@ export const USE_CASES: UseCase[] = [
       "Drafting social content",
     ],
     botResponse:
-      "Based on your top performers, data-led threads get 3× more engagement. I've drafted 2 posts — one for X on Monday morning and one for LinkedIn mid-week — and logged both to your content calendar:",
+      "Based on your top performers, data-led threads get 3× more engagement. I've drafted 2 posts (one for X on Monday morning and one for LinkedIn mid-week) and logged both to your content calendar:",
     finalCard: "tools",
   },
   {
@@ -323,7 +324,7 @@ export const USE_CASES: UseCase[] = [
       "Reviewing your notes",
     ],
     botResponse:
-      "Here's your finals study plan built around 3 upcoming deadlines and your Notion lecture notes. I've created 5 prioritised tasks starting Monday — high-priority chapters first, mock exam Thursday, revision Friday:",
+      "Here's your finals study plan built around 3 upcoming deadlines and your Notion lecture notes. I've created 5 prioritised tasks starting Monday: high-priority chapters first, mock exam Thursday, revision Friday:",
     finalCard: "tasks",
   },
   {

@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "AI-powered project management",
   ],
   whyPeopleLook:
-    "Basecamp carved out a niche with its opinionated, simple approach to project management. But simplicity has its limits. Users looking for Basecamp alternatives typically want more intelligence, not more features — they want a tool that reads their email, knows their calendar, and tells them what to focus on. Basecamp's flat-rate pricing ($99–$299/month for unlimited users) also alienates individuals and very small teams who feel they are overpaying for team features they do not need.",
+    "Basecamp carved out a niche with its opinionated, simple approach to project management. But simplicity has its limits. Users looking for Basecamp alternatives typically want more intelligence, not more features. They want a tool that reads their email, knows their calendar, and tells them what to focus on. Basecamp's flat-rate pricing ($99–$299/month for unlimited users) also alienates individuals and very small teams who feel they are overpaying for team features they do not need.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Personal to-do management with AI-driven prioritization",

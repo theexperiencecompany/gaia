@@ -8,7 +8,7 @@ export const entry: AlternativeData = {
   tagline:
     "Mindful daily planner that combines tasks and calendar into a unified day view",
   painPoints: [
-    "No permanent free tier — only a 14-day trial before $20/month kicks in",
+    "No permanent free tier, only a 14-day trial before $20/month kicks in",
     "Daily planning ritual is intentional but time-consuming each morning",
     "AI features assist planning but do not take autonomous action",
     "Email integration imports tasks but does not auto-prioritize or act on them",
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "sunsama alternative 2026",
   ],
   whyPeopleLook:
-    "Sunsama has built a devoted following with its mindful daily planning approach — spending intentional time each morning to plan your day across tasks, calendar, and integrations. But this approach has a cost: the daily planning ritual itself takes time, the AI helps you plan but does not take action for you, and at $20/month with no free tier, it is one of the more expensive pure-planning tools. Users who want their AI to handle the planning automatically — reading email, checking the calendar, and surfacing priorities without a daily review session — look for Sunsama alternatives.",
+    "Sunsama has built a devoted following with its mindful daily planning approach: spending intentional time each morning to plan your day across tasks, calendar, and integrations. But this approach has a cost: the daily planning ritual itself takes time, the AI helps you plan but does not take action for you, and at $20/month with no free tier, it is one of the more expensive pure-planning tools. Users who want their AI to handle the planning automatically (reading email, checking the calendar, and surfacing priorities without a daily review session) look for Sunsama alternatives.",
   gaiaFitScore: 5,
   gaiaReplaces: [
     "Automatic daily briefing covering email, calendar, and task priorities",
@@ -43,7 +43,7 @@ export const entry: AlternativeData = {
   ],
   gaiaAdvantages: [
     "Proactive daily briefings without a manual morning planning ritual",
-    "Email and calendar connected natively — no pull-in required",
+    "Email and calendar connected natively, no pull-in required",
     "Free tier available; Sunsama has no free plan",
     "Open-source and self-hostable; Sunsama is closed-source SaaS",
     "Works continuously in background rather than only during a morning session",
@@ -73,7 +73,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA help with end-of-day reviews like Sunsama?",
       answer:
-        "Yes. GAIA can generate end-of-day summaries covering completed tasks, pending items, and tomorrow's calendar — providing the reflection and planning context Sunsama's end-of-day review offers, without requiring manual input.",
+        "Yes. GAIA can generate end-of-day summaries covering completed tasks, pending items, and tomorrow's calendar, providing the reflection and planning context Sunsama's end-of-day review offers, without requiring manual input.",
     },
   ],
 };

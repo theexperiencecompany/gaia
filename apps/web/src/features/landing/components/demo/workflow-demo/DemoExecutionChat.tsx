@@ -33,7 +33,7 @@ const TOOLS = [
 ];
 
 const EXECUTION_RESPONSE =
-  "Your morning briefing is ready. 23 emails processed — 4 urgent action items posted to Slack, full briefing doc created.";
+  "Your morning briefing is ready. 23 emails processed, 4 urgent action items posted to Slack, full briefing doc created.";
 
 const wfEase = [0.32, 0.72, 0, 1] as const;
 const wfTx = { duration: 0.22, ease: wfEase };

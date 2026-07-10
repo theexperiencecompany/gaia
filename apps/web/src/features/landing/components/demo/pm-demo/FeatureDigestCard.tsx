@@ -11,7 +11,7 @@ export default function FeatureDigestCard() {
           showBackground: false,
         })}
         <span className="text-sm font-medium text-zinc-100">
-          Feature Digest — this week
+          Feature Digest: this week
         </span>
         <span className="flex items-center gap-1 text-[11px] text-zinc-500">
           11 requests <ArrowRight02Icon width={10} height={10} /> 4 themes
@@ -81,7 +81,7 @@ export default function FeatureDigestCard() {
             </span>
           </div>
           <p className="text-xs text-zinc-400">
-            &quot;SAML SSO&quot; — from enterprise prospect
+            &quot;SAML SSO&quot;: from enterprise prospect
           </p>
           <p className="flex items-center gap-1 text-xs text-primary">
             <ArrowRight02Icon width={11} height={11} />
