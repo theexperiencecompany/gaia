@@ -88,7 +88,7 @@ export const appConfig = {
       },
       {
         href: "/marketplace",
-        label: "Integration Marketplace",
+        label: "Integrations",
         icon: <ConnectIcon width={20} height={20} color={"currentColor"} />,
         description: "Connect GAIA to the tools you already use",
       },
@@ -202,11 +202,10 @@ export const appConfig = {
         description: "What's new, what's fixed, what's better",
       },
       {
-        href: "https://docs.heygaia.io",
-        label: "Documentation",
-        icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
-        external: true,
-        description: "Setup, guides, and API reference",
+        href: "/about",
+        label: "About",
+        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
+        description: "Learn about GAIA and the team behind it",
       },
       {
         href: "/request-feature",
@@ -214,13 +213,6 @@ export const appConfig = {
         icon: <Idea01Icon width={20} height={20} color={"currentColor"} />,
         external: true,
         description: "Tell us what to build next",
-      },
-      {
-        href: "/status",
-        label: "Status",
-        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
-        external: true,
-        description: "Live system health",
       },
       {
         href: "/learn",
@@ -255,12 +247,6 @@ export const appConfig = {
     ] as AppLink[],
 
     company: [
-      {
-        href: "/about",
-        label: "About",
-        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
-        description: "Learn about GAIA and the team behind it",
-      },
       {
         href: "/manifesto",
         label: "Manifesto",

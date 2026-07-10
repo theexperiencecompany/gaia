@@ -1,4 +1,4 @@
-import { CircleArrowRight02Icon, DiscoverCircleIcon } from "@icons";
+import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import { Link } from "@/i18n/navigation";
@@ -15,7 +15,7 @@ export default function HeroSection({
   latestRelease?: LatestRelease | null;
 }) {
   return (
-    <div className="relative w-full flex-col gap-8 py-20 sm:py-30">
+    <div className="relative w-full flex-col gap-8 pt-32 pb-20 sm:pt-44 sm:pb-30">
       {/* Above-the-fold: blur-in is CSS-driven (see TextSoftBlurIn/SoftBlurInBlock
           `immediate`), so the hero paints and animates straight from SSR HTML
           without waiting for React hydration. A plain layout div replaces the old
@@ -55,7 +55,7 @@ export default function HeroSection({
 
         <div onClick={onTextClick} className="cursor-default select-none">
           <h1
-            aria-label="Get a workday back every week."
+            aria-label="Get a workday back every week"
             className="max-w-(--breakpoint-2xl) text-center text-[3.2rem] leading-none sm:text-[5.75rem] font-normal overflow-visible font-serif"
           >
             <TextSoftBlurIn
@@ -71,7 +71,7 @@ export default function HeroSection({
               }
             />
             <TextSoftBlurIn
-              text="every week."
+              text="every week"
               as="span"
               immediate
               startDelay={0.4}
@@ -88,7 +88,7 @@ export default function HeroSection({
       </div>
 
       {/* Subtitle + CTA rendered outside MotionContainer to avoid stagger delay (LCP fix) */}
-      <div className="relative z-2 flex flex-col items-center gap-4 bg-transparent">
+      <div className="relative z-2 mt-8 flex flex-col items-center gap-4 bg-transparent sm:mt-10">
         <SoftBlurInBlock immediate delay={0.35} className="relative">
           <div
             className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 sm:px-0 sm:text-xl ${isDark ? "text-zinc-200" : "text-black"}`}
@@ -130,11 +130,11 @@ export default function HeroSection({
                   height={100}
                 />
               </Link>
-              <span>— or use the web app.</span>
+              <span>or use the web app.</span>
             </div>
           </div>
         </SoftBlurInBlock>
-        <div className="flex gap-8 mt-4">
+        <div className="mt-4 flex gap-8">
           <SoftBlurInBlock immediate delay={0.55}>
             <GetStartedButton
               btnColor={isDark ? "#00bbff" : "#000000"}
@@ -148,18 +148,6 @@ export default function HeroSection({
                   Sign Up <CircleArrowRight02Icon width={20} height={20} />
                 </div>
               }
-            />
-          </SoftBlurInBlock>
-          <SoftBlurInBlock immediate delay={0.75}>
-            <GetStartedButton
-              btnColor="#ffffff"
-              classname="px-1 hover:scale-105"
-              text={
-                <div className="flex items-center gap-1.5">
-                  Explore <DiscoverCircleIcon width={20} height={20} />
-                </div>
-              }
-              href="/use-cases"
             />
           </SoftBlurInBlock>
         </div>

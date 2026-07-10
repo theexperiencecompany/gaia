@@ -139,8 +139,6 @@ export default function LandingPageClient({
           <ChatDemoSection />
         </section>
 
-        <TimeSavedCounter />
-
         <div>
           {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
@@ -154,6 +152,9 @@ export default function LandingPageClient({
           {/* Memory — an assistant that actually knows you */}
           <MemoryShowcaseSection />
           {/* <TodoShowcaseSection /> — replaced by "GAIA runs your day" post-#854 */}
+
+          {/* Payoff — quantify the time saved, now that the visitor has seen how */}
+          <TimeSavedCounter />
 
           <OpenSource />
 

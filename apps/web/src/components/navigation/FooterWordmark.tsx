@@ -145,14 +145,17 @@ function drawHalftone(
       const y = (row + 0.5) * cell;
       const t = Math.min(1, y / cssH);
 
-      // Contrast-stretch: the logo's shades span ~0.10–0.65 luminance; map
-      // that to 0–1 so dark petals get ~1/3 the radius of light ones.
+      // The logo has three flat blues plus white text. Contrast-stretch the
+      // narrow luminance spread, then POSTERIZE into three discrete shade
+      // bands so each blue reads as a distinctly different dot size (dark
+      // navy → tiny, mid blue → medium, light cyan / white → full).
       const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-      const tone = Math.min(1, Math.max(0, (lum - 0.1) / 0.55));
+      const stretched = Math.min(1, Math.max(0, (lum - 0.1) / 0.55));
+      const toneMul = stretched < 0.38 ? 0.28 : stretched < 0.72 ? 0.62 : 1.0;
       const radius =
         maxR *
         Math.sqrt(coverage) *
-        (0.22 + 0.78 * tone) *
+        toneMul *
         (1 - 0.7 * smoothstep(0.2, 1.05, t));
       if (radius < MIN_DOT_RADIUS) continue;
 

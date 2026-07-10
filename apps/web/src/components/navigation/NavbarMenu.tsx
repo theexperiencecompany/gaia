@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight01Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useRef } from "react";
@@ -47,7 +48,16 @@ function MenuItem({ link }: { link: AppLink }) {
           </span>
         ))}
       <span className="flex flex-col gap-0.5">
-        <span className="text-sm text-zinc-100">{link.label}</span>
+        <span className="flex items-center gap-1 text-sm text-zinc-100">
+          {link.label}
+          {link.external && (
+            <ArrowUpRight01Icon
+              width={13}
+              height={13}
+              className="text-zinc-500"
+            />
+          )}
+        </span>
         {link.description && (
           <span className="line-clamp-1 text-xs font-light text-zinc-400">
             {link.description}
