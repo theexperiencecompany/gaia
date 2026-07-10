@@ -1,17 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "@/lib/toast";
-import {
-  DISMISSED_ALL_STEP,
-  FIRST_STEPS,
-  type FirstStepDefinition,
-} from "../constants";
+import { FIRST_STEPS, type FirstStepDefinition } from "../constants";
 import { useFirstStepsQuery } from "./useFirstStepsQuery";
-import { useMarkFirstStepMutation } from "./useMarkFirstStepMutation";
 
-// Client-only: the backend contract only exposes per-step *completion* and a
-// whole-widget dismissal, not a per-step dismissal endpoint. Hiding a single
-// row without marking it complete is therefore tracked locally per browser.
+// Client-only: the backend contract only exposes per-step *completion*, not a
+// per-step dismissal endpoint. Hiding a single row without marking it complete
+// is therefore tracked locally per browser.
 const HIDDEN_STEPS_STORAGE_KEY = "gaia:first-steps:hidden-steps";
+
+// Closing the widget minimizes it to the pill; that choice survives reloads.
+const COLLAPSED_STORAGE_KEY = "gaia:first-steps:collapsed";
 
 function readHiddenSteps(): string[] {
   if (typeof window === "undefined") return [];
@@ -46,24 +44,29 @@ interface UseFirstStepsWidgetResult {
   completedAt: Record<string, string | null>;
   completedCount: number;
   totalCount: number;
-  dismissAll: () => void;
   hideStep: (stepKey: string) => void;
 }
 
 export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
   const { data, isLoading } = useFirstStepsQuery();
-  const { mutate: markFirstStep } = useMarkFirstStepMutation();
-  const [expanded, setExpanded] = useState(false);
-  const [dismissedAll, setDismissedAll] = useState(false);
+  const [expanded, setExpandedState] = useState(true);
   const [hiddenSteps, setHiddenSteps] = useState<string[]>([]);
   const hasCelebrated = useRef(false);
 
   useEffect(() => {
     setHiddenSteps(readHiddenSteps());
+    setExpandedState(
+      window.localStorage.getItem(COLLAPSED_STORAGE_KEY) !== "true",
+    );
     // Seed the guard from the persisted flag so a finished user isn't
     // re-congratulated on every reload.
     hasCelebrated.current = readCelebrated();
   }, []);
+
+  const setExpanded = (next: boolean) => {
+    setExpandedState(next);
+    window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(!next));
+  };
 
   const completedAt = data?.steps ?? {};
   const visibleSteps = FIRST_STEPS.filter(
@@ -83,11 +86,6 @@ export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
     }
   }, [allComplete]);
 
-  const dismissAll = () => {
-    setDismissedAll(true);
-    markFirstStep(DISMISSED_ALL_STEP);
-  };
-
   const hideStep = (stepKey: string) => {
     const next = [...hiddenSteps, stepKey];
     setHiddenSteps(next);
@@ -95,8 +93,9 @@ export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
   };
 
   const isReady = !isLoading && Boolean(data);
-  const shouldRender =
-    isReady && !dismissedAll && !allComplete && visibleSteps.length > 0;
+  // Auto-closes for good once everything is complete (the celebration toast
+  // is the goodbye) — no dismissal path needed beyond minimizing.
+  const shouldRender = isReady && !allComplete && visibleSteps.length > 0;
 
   return {
     isReady,
@@ -107,7 +106,6 @@ export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
     completedAt,
     completedCount,
     totalCount: FIRST_STEPS.length,
-    dismissAll,
     hideStep,
   };
 };

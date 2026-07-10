@@ -41,7 +41,7 @@ export const GaiaTodoMeta: React.FC<GaiaTodoMetaProps> = ({
     <div className="mt-1 space-y-1">
       {serves && (
         <p className="truncate text-xs text-zinc-500">
-          because: {cleanServes(serves)}
+          For: {cleanServes(serves)}
         </p>
       )}
       {errorMessage && (

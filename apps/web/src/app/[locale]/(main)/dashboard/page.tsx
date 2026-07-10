@@ -1,80 +1,99 @@
 "use client";
 
-import { Avatar } from "@heroui/avatar";
-import { getSimpleTimeGreeting } from "@shared/utils";
-import { useState } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
-import { BriefingCard } from "@/features/briefing/components/BriefingCard";
-import { useLatestBriefingQuery } from "@/features/briefing/hooks/useLatestBriefingQuery";
-import { ActionRail } from "@/features/dashboard/components/ActionRail";
-import { ContributionHeatmap } from "@/features/dashboard/components/ContributionHeatmap";
-import { TodayTimeline } from "@/features/dashboard/components/TodayTimeline";
-import { useHeatmapQuery } from "@/features/dashboard/hooks/useHeatmapQuery";
+import { Skeleton } from "@heroui/skeleton";
+import { DoneRow } from "@/features/dashboard/components/DoneRow";
+import { InFlightRow } from "@/features/dashboard/components/InFlightRow";
+import { NeedsYouRow } from "@/features/dashboard/components/NeedsYouRow";
+import { SuggestedRow } from "@/features/dashboard/components/SuggestedRow";
+import { TodayHeader } from "@/features/dashboard/components/TodayHeader";
+import { TodaySection } from "@/features/dashboard/components/TodaySection";
+import { YourTaskRow } from "@/features/dashboard/components/YourTaskRow";
+import { useTodayLiveUpdates } from "@/features/dashboard/hooks/useTodayLiveUpdates";
 import { useTodayQuery } from "@/features/dashboard/hooks/useTodayQuery";
 import { useTrackRouteVisit } from "@/features/first-steps/hooks/useTrackRouteVisit";
-import { useTodoData } from "@/features/todo/hooks/useTodoData";
 
-function GreetingHeader() {
-  const user = useUser();
-  const simpleGreeting = getSimpleTimeGreeting();
-
+function TodaySkeleton() {
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-zinc-800 p-5">
-      {user?.profilePicture && (
-        <Avatar
-          src={user.profilePicture}
-          name={user.name || "User"}
-          size="md"
-          className="shrink-0"
-        />
-      )}
-      <div>
-        <h1 className="text-xl font-medium text-zinc-100">
-          {simpleGreeting}, {user?.name?.split(" ")[0]}
-        </h1>
-        <p className="text-sm text-zinc-500">
-          Here's where things stand today.
-        </p>
+    <div className="flex flex-col gap-6 px-3">
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-8 w-3/4 rounded-lg" />
+        <Skeleton className="h-4 w-1/2 rounded-lg" />
       </div>
+      {[0, 1, 2].map((section) => (
+        <div key={section} className="flex flex-col gap-2">
+          <Skeleton className="h-3 w-24 rounded-lg" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+        </div>
+      ))}
     </div>
   );
 }
 
 export default function HomePage() {
   useTrackRouteVisit("visit_dashboard");
+  useTodayLiveUpdates();
 
-  const [briefingCollapsed, setBriefingCollapsed] = useState(false);
+  const { data, isLoading } = useTodayQuery();
 
-  const { data: briefing, isLoading: briefingLoading } =
-    useLatestBriefingQuery();
-  const { data: todayData, isLoading: todayLoading } = useTodayQuery();
-  const { data: heatmapData, isLoading: heatmapLoading } = useHeatmapQuery();
-  const { todos, loading: todosLoading } = useTodoData();
+  const isEmpty =
+    !!data &&
+    data.needs_you.length === 0 &&
+    data.suggested.length === 0 &&
+    data.in_flight.length === 0 &&
+    data.your_tasks.length === 0 &&
+    data.done_today.length === 0;
 
   return (
-    <div className="mx-auto flex h-fit min-h-screen w-full max-w-4xl flex-col gap-6 overflow-y-scroll p-6 pt-0 outline-none">
-      {!briefingLoading && briefing ? (
-        <BriefingCard
-          payload={briefing.payload}
-          collapsed={briefingCollapsed}
-          onCollapsedChange={setBriefingCollapsed}
-        />
+    <div className="mx-auto flex h-fit min-h-screen w-full max-w-3xl flex-col gap-8 overflow-y-scroll p-6 pt-10 outline-none">
+      {isLoading || !data ? (
+        <TodaySkeleton />
       ) : (
-        !briefingLoading && <GreetingHeader />
+        <>
+          <TodayHeader
+            headline={data.headline}
+            subline={data.subline}
+            runs={data.runs}
+          />
+
+          <TodaySection label="Needs you" count={data.needs_you.length}>
+            {data.needs_you.map((item) => (
+              <NeedsYouRow key={item.todo_id} item={item} />
+            ))}
+          </TodaySection>
+
+          <TodaySection label="Suggested" count={data.suggested.length}>
+            {data.suggested.map((item) => (
+              <SuggestedRow key={item.todo_id} item={item} />
+            ))}
+          </TodaySection>
+
+          <TodaySection label="In flight" count={data.in_flight.length}>
+            {data.in_flight.map((item) => (
+              <InFlightRow key={item.todo_id} item={item} />
+            ))}
+          </TodaySection>
+
+          <TodaySection label="Your tasks" count={data.your_tasks.length}>
+            {data.your_tasks.map((item) => (
+              <YourTaskRow key={item.todo_id} item={item} />
+            ))}
+          </TodaySection>
+
+          <TodaySection label="Done today" count={data.done_today.length}>
+            {data.done_today.map((item) => (
+              <DoneRow key={item.todo_id} item={item} />
+            ))}
+          </TodaySection>
+
+          {isEmpty && (
+            <p className="px-3 text-sm text-zinc-500">
+              Nothing on the board yet. Chat with GAIA about a goal and
+              tomorrow's briefing will have something to show.
+            </p>
+          )}
+        </>
       )}
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <TodayTimeline data={todayData} isLoading={todayLoading} />
-        </div>
-        <ActionRail
-          todos={todos}
-          todosLoading={todosLoading}
-          todayData={todayData}
-        />
-      </div>
-
-      <ContributionHeatmap data={heatmapData} isLoading={heatmapLoading} />
     </div>
   );
 }

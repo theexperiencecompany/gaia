@@ -27,6 +27,7 @@ from app.constants.todos import (
     ASSIGNEE_GAIA,
     DELIVERABLE_TEMPLATE,
     FACET_LOG,
+    FACET_NOTES,
     GAIA_TODO_EXECUTIONS_FEATURE,
     GAIA_TRACKED_LABEL,
     MAX_ACTIVE_GOALS,
@@ -39,6 +40,7 @@ from app.constants.todos import (
     REJECTION_STRIKE_THRESHOLD,
     gaia_assigned_filter,
 )
+from app.core.websocket_manager import WebSocketManager
 from app.db.mongodb.collections import todos_collection
 from app.memory.engine import memory_engine
 from app.models.payment_models import PlanType
@@ -151,6 +153,20 @@ async def system_log(todo_id: str, user_id: str, event_type: str, details: str) 
     await append_facet(
         todo_id, user_id, FACET_LOG, f"\n## {now.isoformat()} [{event_type}]\n- {details}\n"
     )
+
+
+async def _broadcast_status(user_id: str, todo_id: str, status: str) -> None:
+    """Push the transition to the user's open sessions (dashboard live updates).
+
+    Best-effort by design: the state change is already persisted, so a push
+    failure only delays the UI until its next refetch — log it, never raise.
+    """
+    try:
+        await WebSocketManager().broadcast_to_user(
+            user_id, {"type": "todo.execution_status", "todo_id": todo_id, "status": status}
+        )
+    except Exception as e:
+        log.warning("gaia_todo.ws_broadcast_failed", todo_id=todo_id, error=str(e))
 
 
 async def schedule_execution(todo_id: str, scheduled_at: datetime) -> bool:
@@ -361,6 +377,7 @@ async def approve(todo_id: str, user_id: str, user_plan: PlanType, channel: str 
     await system_log(todo_id, user_id, "approved", f"User approved execution via {channel}")
     track(user_id, "todo_approved", {"todo_id": todo_id, "channel": channel})
     await first_steps_service.mark_step(user_id, first_steps_service.STEP_FIRST_APPROVE)
+    await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
     schedule_gaia_tasks_sync(user_id)
 
 
@@ -369,9 +386,19 @@ async def dismiss(
 ) -> None:
     """Dismiss a proposed todo; the rejection teaches memory (3-strike rule)."""
     doc = await _require_status(todo_id, user_id, ExecutionStatus.PROPOSED, "dismissed")
+    # Persist the verbatim reason (and when) on the doc so the strike summary can
+    # surface it without reaching into memory recall — the summary stays derived
+    # from the todos collection, where the 3-strike rule cannot silently degrade.
     await todos_collection.update_one(
         {"_id": ObjectId(todo_id), "user_id": user_id},
-        {"$set": {"execution_status": ExecutionStatus.DISMISSED.value, "completed": True}},
+        {
+            "$set": {
+                "execution_status": ExecutionStatus.DISMISSED.value,
+                "completed": True,
+                "dismiss_reason": reason,
+                "dismissed_at": datetime.now(UTC),
+            }
+        },
     )
     await _record_rejection_signal(user_id, doc, "dismissed", reason)
     track(
@@ -379,6 +406,7 @@ async def dismiss(
         "todo_dismissed",
         {"todo_id": todo_id, "channel": channel, "has_reason": bool(reason)},
     )
+    await _broadcast_status(user_id, todo_id, ExecutionStatus.DISMISSED.value)
     schedule_gaia_tasks_sync(user_id)
 
 
@@ -417,27 +445,94 @@ async def handoff(todo_id: str, user_id: str) -> None:
     await schedule_execution(todo_id, now)
     await system_log(todo_id, user_id, "handoff", "User handed this todo to GAIA")
     track(user_id, "handoff_created", {"todo_id": todo_id})
+    await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
     schedule_gaia_tasks_sync(user_id)
 
 
 async def mark_execution_status(
-    todo_id: str, user_id: str, status: ExecutionStatus, error_message: str | None = None
+    todo_id: str,
+    user_id: str,
+    status: ExecutionStatus,
+    error_message: str | None = None,
+    blocker_question: str | None = None,
 ) -> None:
     """Worker-owned transitions (``queued → running → done | failed | needs_you``).
 
     ``failed`` requires a human-readable cause and renders as loudly as ``done``.
+    ``needs_you`` carries the blocking question so every surface can ask it and
+    ``answer`` can resume the run.
     """
     if status == ExecutionStatus.FAILED and not (error_message or "").strip():
         raise InvalidTransitionError("failed status requires an error_message cause")
     updates = {
         "execution_status": status.value,
         "error_message": error_message if status == ExecutionStatus.FAILED else None,
+        "blocker_question": blocker_question if status == ExecutionStatus.NEEDS_YOU else None,
     }
     await todos_collection.update_one(
         {"_id": ObjectId(todo_id), "user_id": user_id}, {"$set": updates}
     )
     if status == ExecutionStatus.DONE:
         track(user_id, "gaia_todo_completed", {"todo_id": todo_id})
+    await _broadcast_status(user_id, todo_id, status.value)
+    schedule_gaia_tasks_sync(user_id)
+
+
+async def block(todo_id: str, user_id: str, question: str) -> None:
+    """Pause a queued/running todo on a decision only the user can make.
+
+    The guarded ``→ needs_you`` entry point for the agent's ``block_todo`` tool;
+    a proposed or terminal todo cannot be blocked.
+    """
+    question = question.strip()
+    if not question:
+        raise InvalidTransitionError("block requires a non-empty question")
+    doc = await _get_gaia_todo(todo_id, user_id)
+    current = doc.get("execution_status")
+    if current not in (ExecutionStatus.QUEUED.value, ExecutionStatus.RUNNING.value):
+        raise InvalidTransitionError(
+            f"Only queued/running todos can be blocked (todo {todo_id} is {current!r})"
+        )
+    await mark_execution_status(
+        todo_id, user_id, ExecutionStatus.NEEDS_YOU, blocker_question=question
+    )
+    await system_log(todo_id, user_id, "blocked", f"Run paused on: {question[:200]}")
+
+
+async def answer(todo_id: str, user_id: str, answer_text: str, channel: str = "web") -> None:
+    """Answer a blocked todo: record the reply and re-queue the run.
+
+    The ONLY ``needs_you → queued`` path. The Q&A is appended to the notes
+    facet so the next execution reads it naturally; the run resumes with
+    whatever ``execution_intent`` it already had.
+    """
+    answer_text = answer_text.strip()
+    if not answer_text:
+        raise InvalidTransitionError("answer requires a non-empty reply")
+    doc = await _require_status(todo_id, user_id, ExecutionStatus.NEEDS_YOU, "answered")
+    now = datetime.now(UTC)
+    question = doc.get("blocker_question") or doc.get("error_message") or "the open question"
+    await append_facet(
+        todo_id,
+        user_id,
+        FACET_NOTES,
+        f"\n## User answer ({now.isoformat()})\nQ: {question}\nA: {answer_text}\n",
+    )
+    await todos_collection.update_one(
+        {"_id": ObjectId(todo_id), "user_id": user_id},
+        {
+            "$set": {
+                "execution_status": ExecutionStatus.QUEUED.value,
+                "scheduled_at": now,
+                "blocker_question": None,
+                "error_message": None,
+            }
+        },
+    )
+    await schedule_execution(todo_id, now)
+    await system_log(todo_id, user_id, "answered", f"User answered via {channel}: {answer_text[:200]}")
+    track(user_id, "todo_answered", {"todo_id": todo_id, "channel": channel})
+    await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
     schedule_gaia_tasks_sync(user_id)
 
 
@@ -472,10 +567,14 @@ async def expire_stale_proposals(user_id: str) -> list[str]:
 
 
 async def get_rejection_strikes_summary(user_id: str) -> str:
-    """Kinds rejected/expired REJECTION_STRIKE_THRESHOLD+ times, for prompt injection.
+    """Rejected-kind steering block for prompt injection: counts, blocks, reasons.
 
     Derived from the todos collection (not memory recall) so the 3-strike rule
-    cannot silently degrade.
+    cannot silently degrade. Each kind carries its strike count and the user's
+    most recent verbatim dismissal reason so the agent can adapt (choose a
+    different approach that honors the reason) rather than only avoid. Kinds at
+    REJECTION_STRIKE_THRESHOLD+ are BLOCKED; sub-threshold kinds appear only when
+    the user gave a reason worth learning from.
     """
     query = {
         "user_id": user_id,
@@ -485,13 +584,40 @@ async def get_rejection_strikes_summary(user_id: str) -> str:
         **gaia_assigned_filter(),
     }
     strikes: dict[str, int] = {}
-    async for doc in todos_collection.find(query, {"title": 1, "labels": 1, "serves": 1}):
+    reasons: dict[str, str] = {}
+    projection = {"title": 1, "labels": 1, "serves": 1, "dismiss_reason": 1, "dismissed_at": 1}
+    # Newest dismissal first, so the first reason seen per kind is the most recent
+    # (expiries have no reason and no dismissed_at — they only add to the count).
+    cursor = todos_collection.find(query, projection).sort("dismissed_at", -1)
+    async for doc in cursor:
         kind = derive_proposal_kind(doc)
         strikes[kind] = strikes.get(kind, 0) + 1
-    blocked = sorted(k for k, n in strikes.items() if n >= REJECTION_STRIKE_THRESHOLD)
-    if not blocked:
+        reason = (doc.get("dismiss_reason") or "").strip()
+        if reason and kind not in reasons:
+            reasons[kind] = reason
+
+    lines: list[str] = []
+    has_blocked = False
+    for kind in sorted(strikes, key=lambda k: (-strikes[k], k)):
+        count = strikes[kind]
+        latest_reason = reasons.get(kind)
+        if count >= REJECTION_STRIKE_THRESHOLD:
+            has_blocked = True
+            tag = f"{kind} ({count}x, BLOCKED)"
+        elif latest_reason:
+            tag = f"{kind} ({count}x)"
+        else:
+            # Sub-threshold with no stated reason teaches nothing — skip it.
+            continue
+        lines.append(f'- {tag}: user said "{latest_reason}"' if latest_reason else f"- {tag}")
+
+    if not lines:
         return ""
-    return (
-        "Do NOT propose these kinds again (rejected 3+ times, unless the user "
-        "explicitly asks): " + ", ".join(blocked)
-    )
+    summary = "Rejected work — adapt, don't just avoid:\n" + "\n".join(lines)
+    if has_blocked:
+        summary += (
+            f"\nBLOCKED kinds (rejected {REJECTION_STRIKE_THRESHOLD}+ times) must not "
+            "be proposed again unless the user explicitly asks — use the reasons to "
+            "pick a different approach that honors them."
+        )
+    return summary

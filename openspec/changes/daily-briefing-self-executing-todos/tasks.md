@@ -30,8 +30,8 @@
 ## 4. Phase D — Briefing artifacts & channels
 
 - [x] 4.1 OpenUI briefing component family (`apps/web/src/config/openui/` + components) implementing the selected Phase B design: masthead, bands-gradient hero with `hue-rotate`, Aeonik/Playfair display type, stat row, numbered sections, caption. Archive view of past briefs.
-- [x] 4.2 Extend outbound envelope with optional `actions: [{label, callback_data}]` in `apps/api/app/schemas/outbound.py` and the TS twin in `libs/shared/ts/src/bots/`; keep byte-compatible when absent.
-- [x] 4.3 Telegram adapter (`apps/bots/telegram/src/adapter.ts`): render actions as inline keyboard; callback handler posts to approve/dismiss endpoints with platform-link identity; edit message after action.
+- [ ] 4.2 ~~Extend outbound envelope with optional `actions`~~ — **SUPERSEDED 2026-07-10** (was checked but never implemented — no `actions` field exists in either envelope twin). Decision: no buttons on chat platforms; natural-language replies are the cross-platform interface.
+- [ ] 4.3 ~~Telegram inline keyboard + callback handler~~ — **SUPERSEDED 2026-07-10** (was checked but never implemented — no inline-keyboard/callback code exists in any bot). Replaced by the reply loop: proposal/briefing texts invite a reply; the chat agent acts via `approve_todo` / `dismiss_todo` / `answer_todo` (todo-context now carries `execution_status` + `blocker_question`).
 - [x] 4.4 Email channel adapter in `apps/api/app/utils/notification/channels/`: HTTP ESP behind env config (no-op with log until keys — ops precondition, not a flag); **default-enabled for briefing/digest kinds**; one-click unsubscribe link mapping to the channel preference; register in orchestrator; add to channel preferences + `NotificationSettings.tsx`.
 - [x] 4.5 Email templates (daily brief, weekly digest, plain notification) implementing the selected Phase B design; template selection by `kind`.
 - [x] 4.6 Lint/type-check across api, web, bots; verify: same payload renders on dashboard, Telegram (with working Approve), and email preview; unsubscribe round-trip works.
@@ -39,10 +39,10 @@
 ## 5. Phase E — Mission Control dashboard + todos surface redesign
 
 - [x] 5.1 `GET /dashboard/today` aggregation endpoint (todos + calendar + `WorkflowExecution`, chronological) and heatmap aggregation endpoint over `completed_at`.
-- [x] 5.2 Rebuild `apps/web/src/app/[locale]/(main)/dashboard/page.tsx` as Mission Control per the selected Phase B design — direct replacement, no flag; delete the old widget-grid code from this page: briefing header (OpenUI component, collapsible), timeline left, action rail right (Next up / Waiting on you with inline Approve + preview / Done today GAIA n · You n), heatmap.
+- [x] 5.2 Rebuild `apps/web/src/app/[locale]/(main)/dashboard/page.tsx` as Mission Control per the selected Phase B design — **REVISED 2026-07-10: Mission Control replaced by the Today view before rollout** (see Phase H and the updated `mission-control-dashboard` spec).
 - [x] 5.3 Todos sidebar + detail redesign per the selected Phase B design: assignee/state glyphs (no label chips), proposal treatment with inline Approve/Dismiss + one-glance previews, work log as a first-class document view (replaces sidebar-only `CanvasViewer` placement), quiet GAIA-offer affordances.
-- [x] 5.4 Live updates over the existing notification WebSocket (todo state changes, executions).
-- [x] 5.5 Lint/type-check; verify timeline interleaving, rail approve round-trip, heatmap gray-day honesty, and the redesigned sidebar states in dev.
+- [x] 5.4 Live updates over the existing notification WebSocket — **corrected 2026-07-10: was checked but not implemented; now real** via `todo.execution_status` broadcasts from every lifecycle transition + client invalidation.
+- [x] 5.5 Lint/type-check; verify timeline interleaving, rail approve round-trip, heatmap gray-day honesty, and the redesigned sidebar states in dev. **Timeline/rail/heatmap superseded by Phase H.**
 
 ## 6. Phase F — Onboarding seed, first-steps nudge & retention loop
 
@@ -60,8 +60,18 @@
 - [x] 7.0 Test setup (pre-authorized): snapshot the founder account's memories + todos (`aryanranderiya1478@gmail.com` via `ssh gaia-prod` over Tailscale — Mongo docs AND Chroma embeddings) into a dev seed; locate the test Telegram bot token in the existing `.env` files; pull ESP/PostHog/other credentials from Infisical (read-only, no writes); configure `brief@heygaia.io` as sender.
 - [x] 7.1 Run the full loop against the seeded founder account with goals "raise a pre-seed round / ship / post on socials": provision the briefing workflow, fire it via execute-now, and capture the actual generated briefing. Simulate multi-day behaviors (72h expiry, 3-ignore winback, streak break, lookback) with backdated fixture records.
 - [x] 7.2 Inspect and iterate until the bar is met: proposals trace to the real goals (investor research/DMs, shipping, socials — not generic inbox items), budgets hold, curation cleans, lookback reflects the prior day, idle/winback behaviors trigger correctly when simulated.
-- [x] 7.3 Verify every channel end to end with the real account: dashboard card, Telegram inline Approve (tap → execution → message edit), email render + unsubscribe, heatmap/streak updates, at-quota upgrade path (simulated free tier).
+- [ ] 7.3 Verify every channel end to end with the real account: dashboard Today view, Telegram **reply-based** approve/answer (text → agent tool → execution), email render + unsubscribe, streak updates in the briefing, at-quota upgrade path (simulated free tier). **Re-opened 2026-07-10: the prior check claimed Telegram inline-Approve verification, which cannot have run (that UI never existed); must be re-run against the Today view + reply loop.**
 - [x] 7.4 Only after sign-off: existing-user rollout — one-time all-channel announcement, memory-derivation vs bootstrap-interview branch per user, then the all-users provisioning backfill (design §12).
+
+## 7b. Phase H — Today view redesign (2026-07-10, branch `feat/today-dashboard`)
+
+- [x] H.1 `blocker_question` on `TodoBase`; guarded lifecycle entry points `block()` (queued/running → needs_you) and `answer()` (the only needs_you → queued path; Q&A appended to the notes facet, run re-enqueued). Honesty-gate message now lands in `blocker_question` instead of being wiped.
+- [x] H.2 `POST /todos/{id}/answer` endpoint + `block_todo` / `answer_todo` agent tools; background-run prompt and todo prompts updated (block instead of guessing; lifecycle tools explained).
+- [x] H.3 `todo.execution_status` WebSocket broadcasts from every lifecycle transition (approve/dismiss/handoff/answer/mark_execution_status; complete path routed through the lifecycle).
+- [x] H.4 `GET /dashboard/today` rewritten to the sectioned Today payload (headline w/ noon flip, subline, runs quota via new `tiered_limiter.get_usage`, five sections); heatmap endpoint deleted (activity.py streak math retained for the briefing).
+- [x] H.5 Frontend Today view: header + five row sections, inline approve/skip/run/answer/checkbox, ws invalidation + focus refetch + in-flight-only poll; Mission Control components (TodayTimeline, ActionRail, ContributionHeatmap) deleted.
+- [x] H.6 Tracked-todo tool audit (16 findings fixed): dead `gaia-tracked` queries, references-only update no-op, unguarded block path, false docstrings, SKILL.md drift (`initial_canvas`, missing required args, facet model).
+- [ ] H.7 Badges/awards product decision: shame-audit gamification (streak framing, GAIA-vs-You split) — brainstorm, fully implement, or remove.
 
 ## 8. Documentation & cleanup
 

@@ -2,13 +2,15 @@
 
 import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
-import { AlertCircleIcon, CheckmarkCircle02Icon } from "@icons";
 import type React from "react";
+import { StatusGlyph } from "@/components/shared/StatusGlyph";
 import { cn } from "@/lib/utils";
 import type { ExecutionStatus } from "@/types/features/todoTypes";
 
 interface ExecutionStatusGlyphProps {
   status: ExecutionStatus | null | undefined;
+  /** Mark size in px — 16 inline next to text, ~20 as a row's leading mark. */
+  size?: number;
   className?: string;
 }
 
@@ -24,12 +26,13 @@ const STATUS_LABEL: Record<ExecutionStatus, string> = {
 };
 
 /**
- * Small state glyph for a GAIA-assigned todo's `execution_status` — a dot,
- * spinner, or icon, never a labeled `<Chip>` (GAIA todos read as ambient
- * state, not another badge).
+ * Compact state mark for a GAIA todo's `execution_status` in list rows —
+ * the same glyph language as the Today dashboard, sized down. Terminal
+ * expired/dismissed states stay a muted dot; running is a real Spinner.
  */
 export const ExecutionStatusGlyph: React.FC<ExecutionStatusGlyphProps> = ({
   status,
+  size = 16,
   className,
 }) => {
   if (!status) return null;
@@ -37,24 +40,22 @@ export const ExecutionStatusGlyph: React.FC<ExecutionStatusGlyphProps> = ({
   let glyph: React.ReactNode;
   switch (status) {
     case "proposed":
-      glyph = (
-        <span className="block size-2 rounded-full border border-zinc-500" />
-      );
+      glyph = <StatusGlyph kind="proposed" size={size} />;
       break;
     case "queued":
-      glyph = <span className="block size-2 rounded-full bg-zinc-400" />;
+      glyph = <StatusGlyph kind="queued" size={size} />;
       break;
     case "running":
       glyph = <Spinner size="sm" color="primary" />;
       break;
     case "needs_you":
-      glyph = <AlertCircleIcon className="size-4 text-amber-400" />;
+      glyph = <StatusGlyph kind="blocked" size={size} />;
       break;
     case "done":
-      glyph = <CheckmarkCircle02Icon className="size-4 text-green-400" />;
+      glyph = <StatusGlyph kind="done" size={size} />;
       break;
     case "failed":
-      glyph = <AlertCircleIcon className="size-4 text-red-400" />;
+      glyph = <StatusGlyph kind="failed" size={size} />;
       break;
     case "expired":
     case "dismissed":
@@ -65,7 +66,7 @@ export const ExecutionStatusGlyph: React.FC<ExecutionStatusGlyphProps> = ({
   }
 
   return (
-    <Tooltip content={STATUS_LABEL[status]}>
+    <Tooltip content={STATUS_LABEL[status]} size="sm" delay={200}>
       <span
         className={cn(
           "inline-flex shrink-0 items-center justify-center",

@@ -26,6 +26,12 @@ export interface HandoffTodoResponse {
   todo_id: string;
 }
 
+export interface AnswerTodoResponse {
+  success: boolean;
+  todo_id: string;
+  execution_status: "queued";
+}
+
 /** Shape of the 402 body returned when the user is out of GAIA execution quota. */
 export interface GaiaExecutionQuotaError {
   error: "gaia_execution_quota";
@@ -58,6 +64,17 @@ export function handoffTodo(todoId: string): Promise<HandoffTodoResponse> {
   return apiService.post<HandoffTodoResponse>(
     `/todos/${todoId}/handoff`,
     {},
+    { silent: true },
+  );
+}
+
+export function answerTodo(
+  todoId: string,
+  answer: string,
+): Promise<AnswerTodoResponse> {
+  return apiService.post<AnswerTodoResponse>(
+    `/todos/${todoId}/answer`,
+    { answer, channel: "web" satisfies TodoActionChannel },
     { silent: true },
   );
 }

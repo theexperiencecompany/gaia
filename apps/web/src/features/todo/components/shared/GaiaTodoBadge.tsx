@@ -37,13 +37,14 @@ export function GaiaTodoBadge({
     );
   }
   // `vfs_path` is a fallback signal during the assignee migration window.
+  // Violet is GAIA's identity color everywhere (offer banner, dashboard);
+  // cyan stays reserved for the primary action.
   if (assignee === "gaia" || vfsPath) {
     return (
       <Chip
-        className="flex items-center px-1 text-primary"
+        className="flex items-center px-1 text-violet-400 bg-violet-400/10"
         size={size}
         radius="sm"
-        color="primary"
         variant="flat"
         startContent={<AiBrainIcon width={14} height={14} className="mx-1" />}
       >
