@@ -3,15 +3,18 @@
 import { useEffect, useRef } from "react";
 
 const WORD = "GAIA";
-const DOT_RGB = "228,228,231";
+/** Colored circle mark, drawn at the same height as the lettering. */
+const LOGO_SRC = "/images/logos/logo.webp";
+/** Gap between the mark and the lettering, as a fraction of the row height. */
+const GAP_RATIO = 0.22;
+const TEXT_RGB = "#e4e4e7";
 const COVERAGE_FLOOR = 0.08;
 const MIN_DOT_RADIUS = 0.45;
 
 interface WordRaster {
-  alpha: Uint8ClampedArray;
+  pixels: Uint8ClampedArray;
   width: number;
   height: number;
-  glyphH: number;
 }
 
 function smoothstep(a: number, b: number, x: number): number {
@@ -19,42 +22,77 @@ function smoothstep(a: number, b: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Rasterize the wordmark offscreen and return its alpha channel + metrics. */
-function rasterizeWord(family: string, cssW: number): WordRaster | null {
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+/**
+ * Compose the lockup — circle logo and the word at the SAME height, side by
+ * side — sized so the whole row spans cssW, then return its pixel data.
+ */
+function rasterizeLockup(
+  family: string,
+  logo: HTMLImageElement,
+  cssW: number,
+): WordRaster | null {
   const off = document.createElement("canvas");
   const ctx = off.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
 
+  // Measure at 100px to solve the font size where logo + gap + text == cssW
+  // with the logo height locked to the glyph height.
   ctx.font = `700 100px ${family}`;
-  const fontPx = (100 * cssW) / ctx.measureText(WORD).width;
+  const m100 = ctx.measureText(WORD);
+  const h100 = m100.actualBoundingBoxAscent + m100.actualBoundingBoxDescent;
+  const w100 = m100.width;
+  const logoAspect = logo.naturalWidth / logo.naturalHeight;
+  const fontPx = (100 * cssW) / (h100 * (logoAspect + GAP_RATIO) + w100);
+
   ctx.font = `700 ${fontPx}px ${family}`;
-  const metrics = ctx.measureText(WORD);
-  const ascent = metrics.actualBoundingBoxAscent;
-  const glyphH = ascent + metrics.actualBoundingBoxDescent;
+  const m = ctx.measureText(WORD);
+  const ascent = m.actualBoundingBoxAscent;
+  const rowH = ascent + m.actualBoundingBoxDescent;
+  const logoW = rowH * logoAspect;
 
   off.width = Math.ceil(cssW);
-  off.height = Math.ceil(glyphH);
+  off.height = Math.ceil(rowH);
   ctx.font = `700 ${fontPx}px ${family}`;
   ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = "#fff";
-  ctx.fillText(WORD, (cssW - metrics.width) / 2, ascent);
+  ctx.drawImage(logo, 0, 0, logoW, rowH);
+  ctx.fillStyle = TEXT_RGB;
+  ctx.fillText(WORD, logoW + rowH * GAP_RATIO, ascent);
 
   return {
-    alpha: ctx.getImageData(0, 0, off.width, off.height).data,
+    pixels: ctx.getImageData(0, 0, off.width, off.height).data,
     width: off.width,
     height: off.height,
-    glyphH,
   };
 }
 
-/** 3x3 area coverage for one grid cell, so radii ramp smoothly on glyph edges. */
-function cellCoverage(
+interface CellSample {
+  coverage: number;
+  r: number;
+  g: number;
+  b: number;
+}
+
+/** 3x3 area sample for one grid cell: alpha coverage plus the alpha-weighted
+ * average color, so the logo's own shading carries through into the dots. */
+function sampleCell(
   raster: WordRaster,
   col: number,
   row: number,
   cell: number,
-): number {
-  let acc = 0;
+): CellSample {
+  let aAcc = 0;
+  let rAcc = 0;
+  let gAcc = 0;
+  let bAcc = 0;
   for (let sy = 0; sy < 3; sy++) {
     for (let sx = 0; sx < 3; sx++) {
       const px = Math.min(
@@ -65,10 +103,21 @@ function cellCoverage(
         raster.height - 1,
         Math.floor(row * cell + ((sy + 0.5) * cell) / 3),
       );
-      acc += raster.alpha[(py * raster.width + px) * 4 + 3];
+      const i = (py * raster.width + px) * 4;
+      const a = raster.pixels[i + 3];
+      aAcc += a;
+      rAcc += raster.pixels[i] * a;
+      gAcc += raster.pixels[i + 1] * a;
+      bAcc += raster.pixels[i + 2] * a;
     }
   }
-  return acc / (9 * 255);
+  const coverage = aAcc / (9 * 255);
+  return {
+    coverage,
+    r: aAcc > 0 ? Math.round(rAcc / aAcc) : 0,
+    g: aAcc > 0 ? Math.round(gAcc / aAcc) : 0,
+    b: aAcc > 0 ? Math.round(bAcc / aAcc) : 0,
+  };
 }
 
 /** Area-true halftone: sqrt-coverage dots with a size + tone fade to black. */
@@ -81,12 +130,12 @@ function drawHalftone(
 ): void {
   const maxR = cell * 0.46;
   const cols = Math.floor(cssW / cell);
-  const rows = Math.floor(raster.glyphH / cell);
+  const rows = Math.floor(raster.height / cell);
 
   ctx.clearRect(0, 0, cssW, cssH);
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      const coverage = cellCoverage(raster, col, row, cell);
+      const { coverage, r, g, b } = sampleCell(raster, col, row, cell);
       if (coverage <= COVERAGE_FLOOR) continue;
 
       const x = (col + 0.5) * cell;
@@ -96,7 +145,11 @@ function drawHalftone(
       if (radius < MIN_DOT_RADIUS) continue;
 
       const alpha = 1 - 0.88 * smoothstep(0.1, 1.05, t);
-      ctx.fillStyle = `rgba(${DOT_RGB},${alpha.toFixed(3)})`;
+      // Monochrome: keep the logo's shading as luminance, not its hue —
+      // darker regions become dimmer whites so the mark's detail survives.
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      const v = Math.round(130 + 105 * lum);
+      ctx.fillStyle = `rgba(${v},${v},${Math.min(255, v + 3)},${alpha.toFixed(3)})`;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
@@ -105,9 +158,10 @@ function drawHalftone(
 }
 
 /**
- * Halftone footer wordmark: the display font's letterforms rasterized offscreen
- * and re-drawn as a dot grid whose size and brightness fade toward the bottom.
- * Purely decorative, static, DPR-crisp.
+ * Halftone footer lockup: the colored circle mark and the display-font
+ * lettering composed at equal height, rasterized offscreen and redrawn as a
+ * color-sampled dot grid that fades toward the bottom. Decorative, static,
+ * DPR-crisp.
  */
 export function FooterWordmark() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -123,15 +177,18 @@ export function FooterWordmark() {
     const build = async () => {
       // next/font hashes the family name — resolve it from a probe element.
       const family = getComputedStyle(probe).fontFamily;
-      await document.fonts.load(`700 100px ${family}`);
+      const [logo] = await Promise.all([
+        loadImage(LOGO_SRC),
+        document.fonts.load(`700 100px ${family}`),
+      ]);
       if (cancelled) return;
 
       const cssW = canvas.clientWidth;
       if (!cssW) return;
-      const raster = rasterizeWord(family, cssW);
+      const raster = rasterizeLockup(family, logo, cssW);
       if (!raster) return;
 
-      const cssH = raster.glyphH;
+      const cssH = raster.height;
       const cell = Math.max(11, Math.min(17, cssW / 78));
       const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
       canvas.width = Math.round(cssW * dpr);
@@ -172,7 +229,7 @@ export function FooterWordmark() {
         ref={canvasRef}
         aria-hidden
         className="block w-full"
-        style={{ aspectRatio: "14 / 3" }}
+        style={{ aspectRatio: "23 / 4" }}
       />
     </>
   );
