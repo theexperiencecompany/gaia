@@ -99,7 +99,7 @@ export default function HeroSection({
             </span>
             <br />
             <div className="inline-flex flex-wrap items-center justify-center gap-y-1 align-middle">
-              <span>Reachable from</span>
+              <span>Text it on</span>
               <Link href={"/bots"}>
                 <Image
                   src="/images/icons/macos/whatsapp.webp"
@@ -108,7 +108,6 @@ export default function HeroSection({
                   width={100}
                   height={100}
                 />
-                {/* <span>WhatsApp,</span> */}
                 <Image
                   src="/images/icons/macos/slack.webp"
                   alt="Slack"
@@ -116,7 +115,6 @@ export default function HeroSection({
                   width={100}
                   height={100}
                 />
-                {/* <span>Slack,</span> */}
                 <Image
                   src="/images/icons/macos/discord.webp"
                   alt="Discord"
@@ -124,7 +122,6 @@ export default function HeroSection({
                   width={100}
                   height={100}
                 />
-                {/* <span>Discord,</span> */}
                 <Image
                   src="/images/icons/macos/telegram.webp"
                   alt="Telegram"
@@ -132,9 +129,8 @@ export default function HeroSection({
                   width={100}
                   height={100}
                 />
-                <span>Telegram, </span>
-                <span>or the web.</span>
               </Link>
+              <span>— or use the web app.</span>
             </div>
           </div>
         </SoftBlurInBlock>
