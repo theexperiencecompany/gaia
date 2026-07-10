@@ -48,6 +48,7 @@ from app.db.mongodb.collections import (
     workflows_collection,
 )
 from app.helpers.integration_helpers import generate_unique_integration_slug
+from app.services.short_link_service import SLUG_LENGTH
 from shared.py.wide_events import log
 
 
@@ -1005,14 +1006,32 @@ async def create_e2b_sandbox_indexes() -> None:
 async def create_short_link_indexes() -> None:
     """Create indexes for the short_links collection.
 
-    The (user_id, slug) unique index enforces the per-user slug namespace and
-    is the constraint the mint retry loop races against on collision.
+    Slugs are capability URLs: globally unique, so one index enforces the whole
+    namespace and the mint retry loop races against it. Legacy per-user 3-char
+    links predate the capability model (their resolution was auth-gated and is
+    gone); they are derived data the briefing re-mints on its next run, so they
+    are deleted rather than migrated — a global unique index cannot be built
+    over per-user slugs.
     """
     try:
+        legacy = await short_links_collection.delete_many(
+            {"$expr": {"$lt": [{"$strLenCP": "$slug"}, SLUG_LENGTH]}}
+        )
+        if legacy.deleted_count:
+            log.info(f"{LogTag.MONGO} Deleted {legacy.deleted_count} legacy per-user short links")
+        try:
+            await short_links_collection.drop_index("user_slug_unique")
+        except OperationFailure:
+            pass  # index (or the collection itself) never existed — nothing to drop
         await short_links_collection.create_index(
-            [("user_id", 1), ("slug", 1)],
+            [("slug", 1)],
             unique=True,
-            name="user_slug_unique",
+            name="slug_unique",
+        )
+        # Mint-idempotency lookup: one link per (user, target).
+        await short_links_collection.create_index(
+            [("user_id", 1), ("target_type", 1), ("target_id", 1)],
+            name="user_target",
         )
     except Exception as e:
         log.error(f"{LogTag.MONGO} Error creating short link indexes: {e!s}")
