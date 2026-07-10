@@ -61,7 +61,11 @@ async def get_steps(user_id: str) -> dict[str, Any]:
     if STEP_CONNECT_INTEGRATION not in steps:
         # Any connected non-Gmail integration satisfies the step retroactively.
         connected = await user_integrations_collection.find_one(
-            {"user_id": user_id, "status": INTEGRATION_STATUS_CONNECTED, "integration_id": {"$ne": "gmail"}}
+            {
+                "user_id": user_id,
+                "status": INTEGRATION_STATUS_CONNECTED,
+                "integration_id": {"$ne": "gmail"},
+            }
         )
         if connected:
             await mark_step(user_id, STEP_CONNECT_INTEGRATION)

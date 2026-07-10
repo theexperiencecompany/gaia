@@ -430,4 +430,4 @@ rejection means map mutual connections, not more cold drafts).
 No user-facing message and no payload: the user is asleep and the morning
 briefing does the talking. End with one terse line listing the todos you
 created (consumed by logs only).
-"""
+"""  # nosec B608 - natural-language prompt; bandit's SQL heuristic matches the words "update ... set" in prose, there is no SQL here
