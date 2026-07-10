@@ -65,6 +65,10 @@ const OpenSource = dynamic(
   () => import("@/features/landing/components/sections/OpenSource"),
   { loading: SectionLoader },
 );
+const PricingSection = dynamic(
+  () => import("@/features/landing/components/sections/PricingSection"),
+  { loading: SectionLoader },
+);
 const FAQAccordion = dynamic(
   () =>
     import("@/features/pricing/components/FAQAccordion").then((mod) => ({
@@ -171,6 +175,9 @@ export default function LandingPageClient({
           <TodoShowcaseSection />
 
           <OpenSource />
+
+          {/* Decision — price */}
+          <PricingSection />
 
           {/* Objections + final CTA */}
           <FAQAccordion faqs={homepageFAQs} />
