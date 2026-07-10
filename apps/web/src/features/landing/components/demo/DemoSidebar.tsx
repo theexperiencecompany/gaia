@@ -431,6 +431,7 @@ const DemoSidebar = memo(function DemoSidebar({
         <div className="flex items-center px-2 py-2">
           <LogoWithContextMenu
             className="group flex items-center gap-2 px-1"
+            width={80}
             height={24}
           />
         </div>
