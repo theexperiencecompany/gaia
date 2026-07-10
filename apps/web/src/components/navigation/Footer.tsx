@@ -50,7 +50,7 @@ export default function Footer() {
           <div className="mx-auto flex w-full max-w-7xl flex-wrap justify-between gap-10">
             {footerSections.map((section) => (
               <div key={section.title} className="flex flex-col items-start">
-                <div className="mb-3 text-sm font-medium text-foreground">
+                <div className="mb-3 font-serif text-sm font-medium uppercase tracking-wider text-white">
                   {section.title}
                 </div>
                 {section.links.map((link) => (
@@ -60,7 +60,7 @@ export default function Footer() {
                     prefetch={false}
                     target={link.external ? "_blank" : undefined}
                     rel={link.external ? "noopener noreferrer" : undefined}
-                    className="py-1 text-sm text-zinc-400 transition-colors hover:text-primary"
+                    className="py-1 text-sm text-zinc-200 transition-colors hover:text-primary"
                   >
                     {link.label}
                   </Link>
