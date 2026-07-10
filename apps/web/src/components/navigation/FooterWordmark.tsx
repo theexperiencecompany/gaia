@@ -145,10 +145,11 @@ function drawHalftone(
       if (radius < MIN_DOT_RADIUS) continue;
 
       const alpha = 1 - 0.88 * smoothstep(0.1, 1.05, t);
-      // Monochrome: keep the logo's shading as luminance, not its hue —
-      // darker regions become dimmer whites so the mark's detail survives.
+      // Monochrome: keep the logo's shading as luminance, not its hue.
+      // Wide tonal range so the mark's internal detail clearly reads —
+      // dark regions drop to dim gray, highlights hit full white.
       const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-      const v = Math.round(130 + 105 * lum);
+      const v = Math.round(55 + 200 * lum);
       ctx.fillStyle = `rgba(${v},${v},${Math.min(255, v + 3)},${alpha.toFixed(3)})`;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
