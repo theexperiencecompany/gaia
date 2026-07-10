@@ -31,6 +31,8 @@ export interface ChatMessageItem {
   typing?: boolean;
   /** Render the platform's "chat with the real GAIA" button inside the bubble */
   cta?: boolean;
+  /** Centered date/time chip (WhatsApp/Telegram date pill) instead of a bubble */
+  divider?: string;
 }
 
 export interface ChatDemoProps {
@@ -43,6 +45,12 @@ export interface ChatDemoProps {
   showHeader?: boolean;
   theme?: "light" | "dark";
   composerPlaceholder?: string;
+  /**
+   * Sequenced reveal: when set, messages stay hidden until `play` flips true,
+   * then pop in one by one with typing indicators (leave undefined to render
+   * the full thread statically).
+   */
+  play?: boolean;
   className?: string;
 }
 
@@ -156,6 +164,46 @@ function useAutoScroll(messages: ChatMessageItem[]) {
   return ref;
 }
 
+/**
+ * Reveal `base` one message at a time once `play` flips true — typing dots
+ * lead each GAIA message, and the final (payoff) message gets an extra beat.
+ * With `play` undefined the full thread renders statically.
+ */
+function useSequencedThread(
+  base: ChatMessageItem[],
+  play?: boolean,
+): ChatMessageItem[] {
+  const enabled = play !== undefined;
+  const [count, setCount] = useState(0);
+  const [showTyping, setShowTyping] = useState(false);
+
+  useEffect(() => {
+    if (!enabled || !play || count >= base.length) return;
+    const next = base[count];
+    const isLast = count === base.length - 1;
+    const lead = (next.divider ? 300 : 500) + (isLast ? 700 : 0);
+    const timers: number[] = [];
+    if (!next.divider && (next.from ?? "them") === "them") {
+      timers.push(window.setTimeout(() => setShowTyping(true), lead));
+      timers.push(
+        window.setTimeout(() => {
+          setShowTyping(false);
+          setCount((c) => c + 1);
+        }, lead + 750),
+      );
+    } else {
+      timers.push(window.setTimeout(() => setCount((c) => c + 1), lead));
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [enabled, play, count, base]);
+
+  if (!enabled) return base;
+  const visible = base.slice(0, count);
+  return showTyping
+    ? [...visible, { id: "reveal-typing", from: "them", typing: true }]
+    : visible;
+}
+
 function useDemoChat(base: ChatMessageItem[]) {
   const [extra, setExtra] = useState<ChatMessageItem[]>([]);
   const [draft, setDraft] = useState("");
@@ -262,9 +310,11 @@ export function ChatDemo({
   showHeader = true,
   theme,
   composerPlaceholder,
+  play,
   className,
 }: ChatDemoProps) {
-  const { messages, draft, setDraft, send } = useDemoChat(baseMessages);
+  const revealed = useSequencedThread(baseMessages, play);
+  const { messages, draft, setDraft, send } = useDemoChat(revealed);
   const composer: DemoComposerProps = {
     composerValue: draft,
     onComposerChange: setDraft,
@@ -436,6 +486,8 @@ function CurvedBubble({
 }
 
 type CurvedThread = {
+  /** Set for date/time chip entries — items is empty for these */
+  divider?: string;
   from: "me" | "them";
   items: ChatMessageItem[];
 };
@@ -443,12 +495,45 @@ type CurvedThread = {
 function curvedThread(messages: ChatMessageItem[]): CurvedThread[] {
   const out: CurvedThread[] = [];
   for (const m of messages) {
+    if (m.divider) {
+      out.push({ divider: m.divider, from: "them", items: [] });
+      continue;
+    }
     const from = m.from ?? "them";
     const last = out[out.length - 1];
-    if (last && last.from === from) last.items.push(m);
+    if (last && !last.divider && last.from === from) last.items.push(m);
     else out.push({ from, items: [m] });
   }
   return out;
+}
+
+/** Centered date/time pill between message groups (WhatsApp/Telegram chrome). */
+function DividerChip({
+  label,
+  background,
+  color,
+}: {
+  label: string;
+  background: string;
+  color: string;
+}) {
+  return (
+    <div
+      className="chat-bubble-pop self-center"
+      style={{
+        background,
+        color,
+        borderRadius: 8,
+        padding: "4px 11px",
+        fontSize: 12.5,
+        fontWeight: 500,
+        letterSpacing: "-0.01em",
+        boxShadow: "0 1px 1px rgba(0,0,0,0.06)",
+      }}
+    >
+      {label}
+    </div>
+  );
 }
 
 /* =========================================================================
@@ -542,6 +627,23 @@ function IMessageDemo({
         style={{ scrollbarWidth: "none", gap: 8 }}
       >
         {grouped.map((group, gi) => {
+          if (group.divider) {
+            return (
+              <div
+                key={`div-${gi}`}
+                className="chat-bubble-pop self-center text-center"
+                style={{
+                  fontSize: 11,
+                  color: "rgba(60,60,67,0.6)",
+                  fontWeight: 500,
+                  letterSpacing: "-0.01em",
+                  marginTop: gi === 0 ? 4 : 6,
+                }}
+              >
+                {group.divider}
+              </div>
+            );
+          }
           const groupTime = group.items[0].time;
           return (
             <div key={gi} className="flex flex-col" style={{ gap: 8 }}>
@@ -817,6 +919,16 @@ function WhatsAppDemo({
         }}
       >
         {grouped.map((group, gi) => {
+          if (group.divider) {
+            return (
+              <DividerChip
+                key={`div-${gi}`}
+                label={group.divider}
+                background="#FFFFFF"
+                color="#54656F"
+              />
+            );
+          }
           const isMe = group.from === "me";
           return (
             <div
@@ -1106,6 +1218,16 @@ function TelegramDemo({
         }}
       >
         {grouped.map((group, gi) => {
+          if (group.divider) {
+            return (
+              <DividerChip
+                key={`div-${gi}`}
+                label={group.divider}
+                background="rgba(0,0,0,0.18)"
+                color="#FFFFFF"
+              />
+            );
+          }
           const isMe = group.from === "me";
           return (
             <div
@@ -2336,6 +2458,7 @@ type AuthorGroup = {
 function groupByAuthor(messages: ChatMessageItem[]): AuthorGroup[] {
   const out: AuthorGroup[] = [];
   for (const m of messages) {
+    if (m.divider) continue; // date chips are a bubble-platform concept
     const last = out[out.length - 1];
     if (last && last.author?.name === m.author) {
       last.items.push(m);

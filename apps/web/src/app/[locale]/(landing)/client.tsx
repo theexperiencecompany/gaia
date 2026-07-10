@@ -25,10 +25,12 @@ const ChatDemoSection = dynamic(
   () => import("@/features/landing/components/demo/ChatDemoSection"),
   { loading: SectionLoader },
 );
-const TimeSavedCounter = dynamic(
-  () => import("@/features/landing/components/sections/TimeSavedCounter"),
-  { loading: SectionLoader, ssr: false },
-);
+// Cut: invented numbers failed the "rooted in fact" bar — the day section's
+// evening-wrap message now carries the time-saved claim credibly.
+// const TimeSavedCounter = dynamic(
+//   () => import("@/features/landing/components/sections/TimeSavedCounter"),
+//   { loading: SectionLoader, ssr: false },
+// );
 const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),
   { loading: SectionLoader },
@@ -116,8 +118,7 @@ export default function LandingPageClient({
 
           <UseCasesSectionLanding />
 
-          {/* Payoff — quantify the time saved, now that the visitor has seen how */}
-          <TimeSavedCounter />
+          {/* <TimeSavedCounter /> — cut, see note at the commented import */}
 
           <OpenSource />
 
