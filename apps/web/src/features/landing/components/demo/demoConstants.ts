@@ -1,8 +1,6 @@
 import {
-  Calendar03Icon,
   CheckListIcon,
   ConnectIcon,
-  DashboardSquare02Icon,
   MessageMultiple02Icon,
   ZapIcon,
 } from "@icons";
@@ -36,9 +34,7 @@ export const NAV_BUTTONS: {
   label: string;
   page?: DemoPage;
 }[] = [
-  { Icon: DashboardSquare02Icon, label: "Dashboard", page: "dashboard" },
-  { Icon: Calendar03Icon, label: "Calendar", page: "calendar" },
-  { Icon: CheckListIcon, label: "Todos", page: "todos" },
+  { Icon: CheckListIcon, label: "Tasks", page: "todos" },
   { Icon: ConnectIcon, label: "Integrations", page: "integrations" },
   { Icon: ZapIcon, label: "Workflows", page: "workflows" },
   { Icon: MessageMultiple02Icon, label: "Chats", page: "chats" },

@@ -15,8 +15,6 @@ interface WordRaster {
   pixels: Uint8ClampedArray;
   width: number;
   height: number;
-  /** Right edge of the circle-mark region — it gets a finer dot grid. */
-  logoEndX: number;
 }
 
 function smoothstep(a: number, b: number, x: number): number {
@@ -73,7 +71,6 @@ function rasterizeLockup(
     pixels: ctx.getImageData(0, 0, off.width, off.height).data,
     width: off.width,
     height: off.height,
-    logoEndX: logoW + (rowH * GAP_RATIO) / 2,
   };
 }
 
@@ -123,49 +120,10 @@ function sampleCell(
   };
 }
 
-/** One horizontal band of the halftone at a given grid density. */
-function drawRegion(
-  ctx: CanvasRenderingContext2D,
-  raster: WordRaster,
-  x0: number,
-  x1: number,
-  cssH: number,
-  cell: number,
-): void {
-  const maxR = cell * 0.46;
-  const colStart = Math.floor(x0 / cell);
-  const colEnd = Math.ceil(x1 / cell);
-  const rows = Math.floor(raster.height / cell);
-
-  for (let row = 0; row < rows; row++) {
-    for (let col = colStart; col < colEnd; col++) {
-      const x = (col + 0.5) * cell;
-      if (x < x0 || x >= x1) continue;
-      const { coverage, r, g, b } = sampleCell(raster, col, row, cell);
-      if (coverage <= COVERAGE_FLOOR) continue;
-
-      const y = (row + 0.5) * cell;
-      const t = Math.min(1, y / cssH);
-      const radius = maxR * Math.sqrt(coverage) * (1 - 0.62 * t);
-      if (radius < MIN_DOT_RADIUS) continue;
-
-      // Pure white dots — the logo's shading maps to OPACITY, not gray values,
-      // so highlights stay truly white and detail reads as transparency.
-      // Floored at 0.3 so even the darkest regions stay clearly visible.
-      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-      const shade = 0.3 + 0.7 * lum;
-      const alpha = shade * (1 - 0.88 * smoothstep(0.1, 1.05, t));
-      ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-/** Area-true halftone. The circle mark gets a 2x finer grid than the text so
- * its internal detail actually resolves — the mark is only ~1/5 of the row's
- * width, so at text density it would get too few dots to read. */
+/** Area-true halftone: uniform grid, FULLY OPAQUE white dots. Tone is carried
+ * by dot size alone. The logo's three flat blues have a narrow luminance
+ * spread, so we contrast-stretch it before mapping to size — otherwise the
+ * shades come out within ~15% of each other and the detail is invisible. */
 function drawHalftone(
   ctx: CanvasRenderingContext2D,
   raster: WordRaster,
@@ -173,9 +131,37 @@ function drawHalftone(
   cssH: number,
   cell: number,
 ): void {
+  const maxR = cell * 0.48;
+  const cols = Math.floor(cssW / cell);
+  const rows = Math.floor(raster.height / cell);
+
   ctx.clearRect(0, 0, cssW, cssH);
-  drawRegion(ctx, raster, 0, raster.logoEndX, cssH, cell / 2);
-  drawRegion(ctx, raster, raster.logoEndX, cssW, cssH, cell);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const { coverage, r, g, b } = sampleCell(raster, col, row, cell);
+      if (coverage <= COVERAGE_FLOOR) continue;
+
+      const x = (col + 0.5) * cell;
+      const y = (row + 0.5) * cell;
+      const t = Math.min(1, y / cssH);
+
+      // Contrast-stretch: the logo's shades span ~0.10–0.65 luminance; map
+      // that to 0–1 so dark petals get ~1/3 the radius of light ones.
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      const tone = Math.min(1, Math.max(0, (lum - 0.1) / 0.55));
+      const radius =
+        maxR *
+        Math.sqrt(coverage) *
+        (0.35 + 0.65 * tone) *
+        (1 - 0.7 * smoothstep(0.2, 1.05, t));
+      if (radius < MIN_DOT_RADIUS) continue;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 /**
@@ -210,7 +196,7 @@ export function FooterWordmark() {
       if (!raster) return;
 
       const cssH = raster.height;
-      const cell = Math.max(7, Math.min(11, cssW / 120));
+      const cell = Math.max(6, Math.min(9, cssW / 165));
       const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
       canvas.width = Math.round(cssW * dpr);
       canvas.height = Math.round(cssH * dpr);

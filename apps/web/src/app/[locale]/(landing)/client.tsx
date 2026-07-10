@@ -3,10 +3,8 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
-import { TimeOfDayToggle } from "@/features/landing/components/shared/TimeOfDayToggle";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import {
   getNextTimeOfDay,
@@ -120,40 +118,23 @@ export default function LandingPageClient({
   return (
     <LazyMotionProvider>
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 h-screen w-full opacity-100">
-          <HeroImage timeOfDay={timeOfDay} />
-        </div>
-
-        <section className="relative flex min-h-screen w-full flex-col items-center justify-center">
-          <HeroSection
-            isDark={isDark}
-            onTextClick={handleTextClick}
-            latestRelease={latestRelease}
-          />
-          <div className="absolute bottom-6 right-6 z-[1002]">
-            <TimeOfDayToggle timeOfDay={timeOfDay} onPress={handleTimeChange} />
-          </div>
-        </section>
-
-        <section className="relative z-20 w-full py-16 sm:py-12 mb-12 sm:mb-16">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
-
+        {/* Hero and the live demo share one section over the bands-gradient
+            wallpaper — the demo IS the hero image. */}
+        <section className="relative flex min-h-screen w-full flex-col items-center justify-center pb-16">
           <Image
             src="/images/wallpapers/bands_gradient_1.webp"
-            alt="Gradient background"
-            width={1920}
-            height={1080}
+            alt=""
+            fill
+            priority
             sizes="100vw"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              position: "absolute",
-              top: 0,
-              left: 0,
-            }}
-            className="-z-10 opacity-90"
-            loading="lazy"
+            className="z-0 object-cover opacity-90"
+          />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[15vh] bg-linear-to-t from-black to-transparent" />
+
+          <HeroSection
+            isDark
+            onTextClick={handleTextClick}
+            latestRelease={latestRelease}
           />
           <ChatDemoSection />
         </section>

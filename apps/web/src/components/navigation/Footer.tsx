@@ -29,17 +29,16 @@ export default function Footer() {
     <>
       <JsonLd data={navigationSchema} />
       {/* z above the fixed bottom BlurStack (z-1000) so the wordmark is never
-          blurred by the viewport-edge blur. */}
-      <footer className="relative z-[1001] m-0! flex min-h-[50vh] flex-col items-center justify-end gap-6 p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
-        <div className="pointer-events-none absolute inset-x-0 -top-20 z-[-1] h-[30vh] bg-linear-to-t from-background to-transparent" />
-
-        {/* Anchor to the bottom so the band glow tracks the footer's real
-            height instead of being center-cropped away. */}
+          blurred by the viewport-edge blur. Height comes from content — no
+          min-height, no artificial empty space. */}
+      <footer className="relative z-[1001] m-0! flex flex-col items-center gap-6 overflow-hidden p-4 pt-16 font-light sm:gap-7 sm:p-5 sm:pt-20 lg:p-10 lg:pt-24 lg:pb-5">
+        {/* Keep the image's black top region leading so the footer stays dark
+            and the band glow sits low, near the wordmark. */}
         <Image
           src="/images/wallpapers/bands_gradient_black.png"
           alt=""
           fill
-          className="z-[-1] object-cover object-bottom"
+          className="z-[-1] object-cover object-top"
         />
 
         {/* Columns share the wordmark's container: same max width, centered,
