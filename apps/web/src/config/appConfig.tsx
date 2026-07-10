@@ -461,6 +461,13 @@ export const footerSections: LinkSection[] = [
       { label: "Branding", href: "/brand" },
     ],
   },
+  {
+    title: "Legal",
+    links: [
+      { label: "Terms of Use", href: "/terms" },
+      { label: "Privacy Policy", href: "/privacy" },
+    ],
+  },
 ];
 
 // Direct access to link categories for navigation
