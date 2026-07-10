@@ -14,32 +14,32 @@ export const homepageFAQs: FAQItem[] = [
   {
     question: "Is this just another chatbot like ChatGPT?",
     answer:
-      "No. ChatGPT waits for you to ask. GAIA watches your inbox, calendar, and tools, and acts before you ask — drafting replies, scheduling meetings, and closing tasks on its own. Less chatbot, more teammate who actually does the work.",
+      "No. ChatGPT waits for you to ask. GAIA watches your inbox, calendar, and tools, and acts before you ask: drafting replies, scheduling meetings, and closing tasks on its own. Less chatbot, more teammate who actually does the work.",
   },
   {
     question: "Can GAIA really run my whole day?",
     answer:
-      "Yes — that's the point. Every morning GAIA sends you a briefing: the two or three things that need you, and the list it's planning to handle itself. Approve with one tap and it gets to work — drafting, scheduling, following up — then reports back in the evening with what got done. Anything outward-facing waits for your OK first.",
+      "Yes, that's the point. Every morning GAIA sends you a briefing: the two or three things that need you, and the list it's planning to handle itself. Approve with one tap and it gets to work drafting, scheduling, and following up, then reports back in the evening with what got done. Anything outward-facing waits for your OK first.",
   },
   {
     question: "What does that look like on a normal day?",
     answer:
-      'You wake up to a briefing instead of forty unread emails. GAIA has already drafted the replies that need answers, moved the meeting that clashed, and prepped notes for your 10 AM. During the day you text it things as they come up — "chase the invoice", "find time with Sarah next week" — and they just get done.',
+      'You wake up to a briefing instead of forty unread emails. GAIA has already drafted the replies that need answers, moved the meeting that clashed, and prepped notes for your 10 AM. During the day you text it things as they come up, like "chase the invoice" or "find time with Sarah next week", and they just get done.',
   },
   {
     question: "Do I need to be technical to use this?",
     answer:
-      'No. If you can send a text, you can use GAIA. You write in plain English — "plan my mum\'s visit next month" — and GAIA does the research, books the calendar, and sets the reminders. Connecting your apps is one click each. No setup, no code.',
+      'No. If you can send a text, you can use GAIA. You write in plain English, like "plan my mum\'s visit next month", and GAIA does the research, books the calendar, and sets the reminders. Connecting your apps is one click each. No setup, no code.',
   },
   {
     question: "Is my personal data safe?",
     answer:
-      "Yes. We never train on your data, never sell it, and never share it with model providers. GAIA is open source, so every line of code that touches your data is inspectable — and if you want total control, you can self-host the whole thing.",
+      "Yes. We never train on your data, never sell it, and never share it with model providers. GAIA is open source, so every line of code that touches your data is inspectable. And if you want total control, you can self-host the whole thing.",
   },
   {
     question: "Can I talk to a real human?",
     answer:
-      "Yes. Email support@heygaia.io, or reach our founder Aryan directly at aryan@heygaia.io — he reads every email. There's also an active Discord and WhatsApp community. Most replies go out within 24–48 hours, often faster.",
+      "Yes. Email support@heygaia.io, or reach our founder Aryan directly at aryan@heygaia.io. He reads every email. There's also an active Discord and WhatsApp community. Most replies go out within 24 to 48 hours, often faster.",
   },
 ];
 
@@ -69,7 +69,7 @@ export const faqData: FAQItem[] = [
     question:
       "How is this different from Siri, Google Assistant, or existing AI tools?",
     answer:
-      "Voice assistants are basically search with a microphone — they forget you exist between questions. GAIA remembers everything about you: your work, your relationships, your goals. It connects your apps, runs multi-step workflows, and gets sharper the longer you use it. Less smart speaker, more digital teammate who knows you personally.",
+      "Voice assistants are basically search with a microphone. They forget you exist between questions. GAIA remembers everything about you: your work, your relationships, your goals. It connects your apps, runs multi-step workflows, and gets sharper the longer you use it. Less smart speaker, more digital teammate who knows you personally.",
   },
   {
     question: "How does GAIA learn my preferences?",

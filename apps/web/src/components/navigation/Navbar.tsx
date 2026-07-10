@@ -141,7 +141,7 @@ export default function Navbar() {
     >
       <div
         ref={wrapperRef}
-        className="relative mx-auto w-full sm:w-6xl"
+        className="relative mx-auto w-full max-w-7xl"
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div

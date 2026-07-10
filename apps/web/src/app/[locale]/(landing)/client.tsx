@@ -33,23 +33,18 @@ const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),
   { loading: SectionLoader },
 );
-const MemoryShowcaseSection = dynamic(
-  () => import("@/features/landing/components/sections/MemoryShowcaseSection"),
+const RunsYourDaySection = dynamic(
+  () => import("@/features/landing/components/sections/RunsYourDaySection"),
   { loading: SectionLoader },
 );
-// Superseded by the upcoming "GAIA runs your day" section (blocked on PR #854).
-// const WorkflowSection = dynamic(
-//   () => import("@/features/landing/components/sections/WorkflowSection"),
-//   { loading: SectionLoader },
-// );
+const MemorySection = dynamic(
+  () => import("@/features/landing/components/sections/MemorySection"),
+  { loading: SectionLoader },
+);
 const UseCasesSectionLanding = dynamic(
   () => import("@/features/landing/components/sections/Productivity"),
   { loading: SectionLoader },
 );
-// const TodoShowcaseSection = dynamic(
-//   () => import("@/features/landing/components/sections/TodoShowcaseSection"),
-//   { loading: SectionLoader },
-// );
 const BotsShowcaseSection = dynamic(
   () => import("@/features/landing/components/sections/BotsShowcaseSection"),
   { loading: SectionLoader },
@@ -107,18 +102,19 @@ export default function LandingPageClient({
         </section>
 
         <div>
+          {/* The core promise — GAIA runs your day, told in the chats you use */}
+          <RunsYourDaySection />
+
           {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
+
+          {/* Depth — it knows you, not just your tools */}
+          <MemorySection />
 
           {/* Reach — where you can use it */}
           <BotsShowcaseSection />
 
-          {/* <WorkflowSection /> — replaced by "GAIA runs your day" post-#854 */}
           <UseCasesSectionLanding />
-
-          {/* Memory — an assistant that actually knows you */}
-          <MemoryShowcaseSection />
-          {/* <TodoShowcaseSection /> — replaced by "GAIA runs your day" post-#854 */}
 
           {/* Payoff — quantify the time saved, now that the visitor has seen how */}
           <TimeSavedCounter />
