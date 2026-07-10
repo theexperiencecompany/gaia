@@ -76,15 +76,14 @@ const menuItemsConfig = [
 interface LogoWithContextMenuProps {
   className?: string;
   imageClassName?: string;
-  width?: number;
+  /** Icon size in px; the wordmark text scales with it. */
   height?: number;
 }
 
 export function LogoWithContextMenu({
   className = "px-2",
   imageClassName = "object-contain",
-  width = 100,
-  height = 30,
+  height = 28,
 }: LogoWithContextMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -193,15 +192,22 @@ export function LogoWithContextMenu({
     <ContextMenu onOpenChange={setIsOpen} modal={false}>
       <ContextMenuTrigger asChild>
         <Button as={Link} href={"/"} variant="light" className={className}>
-          <div className="transition-transform duration-200 hover:scale-[1.02]">
+          <div className="flex items-center gap-2 transition-transform duration-200 hover:scale-[1.02]">
             <Image
-              src="/images/logos/text_w_logo_white.webp"
+              src="/images/logos/logo.webp"
               alt="GAIA Logo"
-              width={width}
+              width={height}
               height={height}
               priority
               className={imageClassName}
             />
+            {/* Live text in the display font instead of the baked wordmark image. */}
+            <span
+              className="font-serif font-bold leading-none text-white"
+              style={{ fontSize: Math.round(height * 0.62) }}
+            >
+              GAIA
+            </span>
           </div>
         </Button>
       </ContextMenuTrigger>
