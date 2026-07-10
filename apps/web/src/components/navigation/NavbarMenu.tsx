@@ -108,7 +108,7 @@ export function NavbarMenu({
       className="absolute top-full z-40 pt-2 transition-[left,width] duration-300 ease-out"
       style={{ left, width: menu.width }}
     >
-      <div className="overflow-hidden rounded-2xl border border-white/5 bg-zinc-900/95 shadow-2xl backdrop-blur-xl">
+      <div className="overflow-hidden rounded-2xl border border-white/5 bg-zinc-900/60 shadow-2xl backdrop-blur-2xl">
         <AnimatePresence mode="wait" initial={false} custom={direction}>
           <m.div
             key={activeMenu}

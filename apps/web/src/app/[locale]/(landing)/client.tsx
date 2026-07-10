@@ -43,18 +43,19 @@ const MemoryShowcaseSection = dynamic(
   () => import("@/features/landing/components/sections/MemoryShowcaseSection"),
   { loading: SectionLoader },
 );
-const WorkflowSection = dynamic(
-  () => import("@/features/landing/components/sections/WorkflowSection"),
-  { loading: SectionLoader },
-);
+// Superseded by the upcoming "GAIA runs your day" section (blocked on PR #854).
+// const WorkflowSection = dynamic(
+//   () => import("@/features/landing/components/sections/WorkflowSection"),
+//   { loading: SectionLoader },
+// );
 const UseCasesSectionLanding = dynamic(
   () => import("@/features/landing/components/sections/Productivity"),
   { loading: SectionLoader },
 );
-const TodoShowcaseSection = dynamic(
-  () => import("@/features/landing/components/sections/TodoShowcaseSection"),
-  { loading: SectionLoader },
-);
+// const TodoShowcaseSection = dynamic(
+//   () => import("@/features/landing/components/sections/TodoShowcaseSection"),
+//   { loading: SectionLoader },
+// );
 const BotsShowcaseSection = dynamic(
   () => import("@/features/landing/components/sections/BotsShowcaseSection"),
   { loading: SectionLoader },
@@ -129,7 +130,6 @@ export default function LandingPageClient({
             sizes="100vw"
             className="z-0 object-cover opacity-90"
           />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[15vh] bg-linear-to-t from-black to-transparent" />
 
           <HeroSection
             isDark
@@ -148,12 +148,12 @@ export default function LandingPageClient({
           {/* Reach — where you can use it */}
           <BotsShowcaseSection />
 
-          <WorkflowSection />
+          {/* <WorkflowSection /> — replaced by "GAIA runs your day" post-#854 */}
           <UseCasesSectionLanding />
 
           {/* Memory — an assistant that actually knows you */}
           <MemoryShowcaseSection />
-          <TodoShowcaseSection />
+          {/* <TodoShowcaseSection /> — replaced by "GAIA runs your day" post-#854 */}
 
           <OpenSource />
 

@@ -131,7 +131,7 @@ function drawHalftone(
   cssH: number,
   cell: number,
 ): void {
-  const maxR = cell * 0.48;
+  const maxR = cell * 0.44;
   const cols = Math.floor(cssW / cell);
   const rows = Math.floor(raster.height / cell);
 
@@ -152,7 +152,7 @@ function drawHalftone(
       const radius =
         maxR *
         Math.sqrt(coverage) *
-        (0.35 + 0.65 * tone) *
+        (0.22 + 0.78 * tone) *
         (1 - 0.7 * smoothstep(0.2, 1.05, t));
       if (radius < MIN_DOT_RADIUS) continue;
 
