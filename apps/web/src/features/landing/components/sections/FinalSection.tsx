@@ -172,7 +172,7 @@ export default function FinalSection({
     <div className="relative w-full px-4 py-10 sm:px-6 sm:py-14">
       <div
         ref={containerRef}
-        className="relative mx-auto flex min-h-[52vh] w-full max-w-7xl flex-col items-center justify-center gap-4 overflow-hidden rounded-[2.5rem] px-4 py-16 sm:px-6"
+        className="relative mx-auto flex min-h-[440px] w-full max-w-7xl flex-col items-center justify-center gap-4 overflow-hidden rounded-[2.5rem] px-4 py-20 sm:min-h-[520px] sm:px-6"
       >
         {shouldPreloadOthers && (
           <div

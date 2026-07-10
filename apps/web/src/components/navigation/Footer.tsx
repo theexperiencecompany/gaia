@@ -29,47 +29,49 @@ export default function Footer() {
     <>
       <JsonLd data={navigationSchema} />
       {/* z above the fixed bottom BlurStack (z-1000) so the wordmark is never
-          blurred by the viewport-edge blur. Height comes from content — no
-          min-height, no artificial empty space. */}
-      <footer className="relative z-[1001] m-0! flex flex-col items-center gap-6 overflow-hidden p-4 pt-16 font-light sm:gap-7 sm:p-5 sm:pt-20 lg:p-10 lg:pt-24 lg:pb-5">
-        {/* Keep the image's black top region leading so the footer stays dark
-            and the band glow sits low, near the wordmark. */}
+          blurred by the viewport-edge blur. The bands wallpaper is shown in
+          FULL — it sets the footer height as a full-width banner (natural 3:2
+          aspect, capped so ultra-wide screens don't get an enormous footer)
+          and the content is overlaid on top of it. */}
+      <footer className="relative z-[1001] w-full overflow-hidden">
         <Image
           src="/images/wallpapers/bands_gradient_black.png"
           alt=""
-          fill
-          className="z-[-1] object-cover object-top"
+          width={1536}
+          height={1024}
+          priority={false}
+          className="pointer-events-none block max-h-[820px] w-full select-none object-cover object-bottom"
         />
 
-        {/* Columns share the wordmark's container: same max width, centered,
-            distributed edge-to-edge so they align with the halftone GAIA. */}
-        <div className="flex w-full max-w-7xl flex-wrap justify-between gap-10">
-          {footerSections.map((section) => (
-            <div key={section.title} className="flex flex-col items-start">
-              <div className="mb-3 text-sm font-medium text-foreground">
-                {section.title}
+        {/* Content overlay: link columns and the halftone wordmark grouped
+            together at the bottom, over the bright beams (the black upper half
+            of the wallpaper stays empty to blend with the page above). */}
+        <div className="absolute inset-0 flex flex-col justify-end gap-8 px-6 sm:gap-10 sm:px-8 lg:px-10">
+          <div className="mx-auto flex w-full max-w-7xl flex-wrap justify-between gap-10">
+            {footerSections.map((section) => (
+              <div key={section.title} className="flex flex-col items-start">
+                <div className="mb-3 text-sm font-medium text-foreground">
+                  {section.title}
+                </div>
+                {section.links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    prefetch={false}
+                    target={link.external ? "_blank" : undefined}
+                    rel={link.external ? "noopener noreferrer" : undefined}
+                    className="py-1 text-sm text-zinc-400 transition-colors hover:text-primary"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
               </div>
-              {section.links.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  prefetch={false}
-                  target={link.external ? "_blank" : undefined}
-                  rel={link.external ? "noopener noreferrer" : undefined}
-                  className="py-1 text-sm text-zinc-400 transition-colors hover:text-primary"
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        {/* Halftone wordmark, constrained to the content width, sitting flush
-            on the footer's bottom edge. Negative bottom margin cancels footer
-            padding so the fade lands on the page edge. */}
-        <div className="-mb-4 mt-6 w-full max-w-7xl sm:-mb-5">
-          <FooterWordmark />
+          <div className="mx-auto w-full max-w-7xl">
+            <FooterWordmark />
+          </div>
         </div>
       </footer>
     </>

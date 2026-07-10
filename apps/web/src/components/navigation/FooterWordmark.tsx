@@ -159,7 +159,8 @@ function drawHalftone(
         (1 - 0.7 * smoothstep(0.2, 1.05, t));
       if (radius < MIN_DOT_RADIUS) continue;
 
-      ctx.fillStyle = "#ffffff";
+      // Slightly translucent so the beams read through — glassy dots.
+      ctx.fillStyle = "rgba(255,255,255,0.82)";
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
