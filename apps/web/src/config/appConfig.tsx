@@ -66,8 +66,6 @@ const BotStackIcon = (): ReactElement => (
 
 export interface AppLink {
   label: string;
-  /** Override the label when rendered in the footer. */
-  footerLabel?: string;
   href: string;
   icon?: ReactElement;
   /** Render the icon without the default pill background (e.g. stacked logos). */
@@ -77,7 +75,6 @@ export interface AppLink {
   guestOnly?: boolean;
   commented?: boolean;
   description?: string;
-  hideFooter?: boolean;
   hideNavbar?: boolean;
 }
 
@@ -143,7 +140,6 @@ export const appConfig = {
       {
         href: "/bots",
         label: "Talk to GAIA in the apps you already use",
-        footerLabel: "Bots",
         icon: <BotStackIcon />,
         richIcon: true,
         description: "Without leaving Slack, Discord, Telegram, or WhatsApp",
@@ -166,7 +162,6 @@ export const appConfig = {
         label: "Tailored For Your Role",
         icon: <UserGroupIcon width={20} height={20} color={"currentColor"} />,
         description: "Workflows tuned for your job, not generic ones",
-        hideFooter: true,
       },
       {
         href: "/compare",
@@ -282,14 +277,12 @@ export const appConfig = {
         label: "Terms",
         icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
         description: "Terms of service and usage",
-        hideFooter: true,
       },
       {
         href: "/privacy",
         label: "Privacy",
         icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
         description: "Our privacy policy",
-        hideFooter: true,
       },
     ] as AppLink[],
 
@@ -408,30 +401,52 @@ export const appConfig = {
       },
     ] as AppLink[],
   },
-
-  // Footer mapping - references existing link categories
-  footerMapping: {
-    Product: ["product"],
-    Resources: ["resources"],
-    "Built For": ["personas"],
-    Company: ["company"],
-    Socials: ["connect"],
-  } as Record<string, string[]>,
 };
 
-// Utility functions for footer generation
-const getFooterSections = (): LinkSection[] => {
-  return Object.entries(appConfig.footerMapping).map(([title, categories]) => ({
-    title,
-    links: categories.flatMap(
-      (category) =>
-        appConfig.links[category as keyof typeof appConfig.links] || [],
-    ),
-  }));
-};
-
-// Streamlined exports
-export const footerSections = getFooterSections();
+// Curated footer — hand-picked and hand-ordered, independent of the navbar
+// link pool. Programmatic SEO pages (glossary, alternatives, automation
+// combos, personas) are intentionally excluded; they are linked from their
+// hub pages and sitemaps instead.
+export const footerSections: LinkSection[] = [
+  {
+    title: "Product",
+    links: [
+      { label: "Download", href: "/download" },
+      { label: "Use Cases", href: "/use-cases" },
+      { label: "Marketplace", href: "/marketplace" },
+      { label: "Bots", href: "/bots" },
+      { label: "Pricing", href: "/pricing" },
+      { label: "Roadmap", href: "/roadmap", external: true },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      {
+        label: "Documentation",
+        href: "https://docs.heygaia.io",
+        external: true,
+      },
+      { label: "Blog", href: "/blog" },
+      {
+        label: "Release Notes",
+        href: "https://docs.heygaia.io/release-notes",
+        external: true,
+      },
+      { label: "Status", href: "/status", external: true },
+      { label: "Request a Feature", href: "/request-feature", external: true },
+    ],
+  },
+  {
+    title: "Company",
+    links: [
+      { label: "About", href: "/about" },
+      { label: "Manifesto", href: "/manifesto" },
+      { label: "Contact", href: "/contact" },
+      { label: "Branding", href: "/brand" },
+    ],
+  },
+];
 
 // Direct access to link categories for navigation
 export const { product, resources, company, connect, auth } = appConfig.links;

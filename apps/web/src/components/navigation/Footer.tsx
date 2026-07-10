@@ -1,23 +1,14 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
 import { appConfig, connect, footerSections } from "@/config/appConfig";
-import { useUser } from "@/features/auth/hooks/useUser";
 import { siteConfig } from "@/lib/seo";
 
-export default function Footer() {
-  const user = useUser();
-  // Gate auth-dependent rendering to client-only to prevent SSR/client hydration mismatch.
-  // SSR and first client render both treat the user as unauthenticated.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  const isAuthenticated = mounted ? user?.email : undefined;
+const TAGLINE = "GAIA doesn't just answer. It acts.";
 
+export default function Footer() {
   const navigationSchema: WithContext<SiteNavigationElement> = {
     "@context": "https://schema.org",
     "@type": "SiteNavigationElement",
@@ -25,182 +16,78 @@ export default function Footer() {
     url: siteConfig.url,
     hasPart: footerSections.flatMap((section) =>
       section.links
-        .filter(
-          (link) => !link.external && !link.hideFooter && !link.requiresAuth,
-        )
+        .filter((link) => !link.external)
         .map(
           (link): WebPage => ({
             "@type": "WebPage",
             name: link.label,
             url: `${siteConfig.url}${link.href}`,
-            description: link.description,
           }),
         ),
     ),
   };
 
-  const taglines = [
-    "Life. Simplified.",
-    "Productivity without friction.",
-    "Frictionless productivity",
-    "AI that actually works.",
-    "Your silent superpower.",
-    "Effortless intelligence.",
-    "Time is yours again.",
-    "The assistant that thinks ahead.",
-    "Everything you need. Before you need it.",
-    "GAIA doesn’t just answer. It acts.",
-    "The future of personal intelligence is already here.",
-    "Productivity, personalized.",
-    "Your life. Simplified.",
-    "One step ahead, always.",
-    "Where productivity meets intelligence.",
-    "Because your time should be yours.",
-    "Your second brain, always on.",
-    "Do less. Live more. GAIA takes care of the rest.",
-    "Smarter days start here.",
-    "Not just an assistant. A partner in progress.",
-    "Life, organized. Future, unlocked.",
-    "Your silent superpower.",
-    "AI that works quietly for you.",
-    "Empowering your workflow, silently.",
-    "Productivity, reimagined.",
-    "Smarter, quieter, better.",
-    "Let your work speak.",
-    "AI, always in the background.",
-    "Unleash silent productivity.",
-    "The power behind your ideas.",
-    "Work smarter, not louder.",
-  ];
-  // Deterministic initial value — randomised after mount to prevent SSR/client mismatch.
-  // Math.random() during render produces different values server vs client → hydration error.
-  const [randomTagline, setRandomTagline] = useState(taglines[0]);
-  useEffect(() => {
-    setRandomTagline(taglines[Math.floor(Math.random() * taglines.length)]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <>
       <JsonLd data={navigationSchema} />
-      <div className="relative z-1 m-0! flex flex-col items-center gap-6 p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5 min-h-[50vh] ">
+      <footer className="relative z-1 m-0! flex min-h-[50vh] flex-col items-center justify-end gap-6 p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-[-1] h-[30vh] bg-linear-to-t from-background to-transparent" />
 
         <Image
           src="/images/wallpapers/bands_gradient_black.png"
           alt=""
-          fill={true}
-          className="z-[-1]"
+          fill
+          className="z-[-1] object-cover"
         />
-        <div className="flex h-fit w-full items-center justify-center px-6 sm:px-4">
-          <div className="grid w-full max-w-7xl grid-cols-2 sm:grid-cols-6 gap-6 sm:gap-3">
-            <div className="relative -top-1 col-span-2 md:col-span-1 flex h-full flex-col gap-1 text-foreground-600 sm:-top-2">
-              <div className="flex w-fit items-center justify-center rounded-xl p-1">
-                <iframe
-                  src="https://status.heygaia.io/badge?theme=dark"
-                  title="GAIA API Status"
-                  scrolling="no"
-                  height={30}
-                  width={186}
-                  style={{ colorScheme: "normal" }}
+
+        <div className="flex w-full items-center justify-center px-6 sm:px-4">
+          <div className="grid w-full max-w-7xl grid-cols-2 gap-10 sm:grid-cols-5 sm:gap-6">
+            <div className="col-span-2 flex flex-col items-start gap-3">
+              <Link href="https://twitter.com/madebyexp">
+                <Image
+                  src="/brand/experience_logo_white.svg"
+                  alt="The Experience Company Logo"
+                  width={70}
+                  height={70}
                 />
-              </div>
-              <div className="mt-2 flex flex-col items-start px-2 text-xl font-medium text-white sm:px-3 sm:text-2xl">
-                {/* <Link href={"/"}>
-                  <Image
-                    src="/images/logos/text_w_logo_white.webp"
-                    alt="GAIA Logo"
-                    width={150}
-                    height={45}
-                  />
-                </Link> */}
-
-                <Link href={"https://twitter.com/madebyexp"}>
-                  <Image
-                    src="/brand/experience_logo_white.svg"
-                    className="my-2"
-                    alt="The Experience Company Logo"
-                    width={70}
-                    height={70}
-                  />
-                </Link>
-
-                <div
-                  className="mt-2 text-sm font-light text-foreground-400"
-                  suppressHydrationWarning
-                >
-                  {randomTagline}
-                </div>
-              </div>
+              </Link>
+              <p className="text-sm text-foreground-400">{TAGLINE}</p>
             </div>
 
             {footerSections.map((section) => (
-              <div
-                key={section.title}
-                className="flex h-full w-full flex-col items-start text-foreground-500 sm:items-end"
-              >
-                <div className="mb-2 pl-0 text-sm font-medium text-foreground sm:mb-3 sm:pl-2">
+              <div key={section.title} className="flex flex-col items-start">
+                <div className="mb-3 text-sm font-medium text-foreground">
                   {section.title}
                 </div>
-                {section.links
-
-                  .filter(
-                    (link) =>
-                      ((!link.requiresAuth && !link.guestOnly) ||
-                        (link.requiresAuth && isAuthenticated) ||
-                        (link.guestOnly && !isAuthenticated)) &&
-                      !link.hideFooter,
-                  )
-                  .sort((a, b) => {
-                    if (section.title === "Built For") return 0;
-                    const aLabel = a.footerLabel ?? a.label;
-                    const bLabel = b.footerLabel ?? b.label;
-                    if (
-                      typeof aLabel !== "string" ||
-                      typeof bLabel !== "string"
-                    )
-                      return 0;
-                    return aLabel.localeCompare(bLabel, undefined, {
-                      sensitivity: "base",
-                    });
-                  })
-                  .map((link) => (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      // Footer renders ~37 internal links always in the DOM;
-                      // skip eager RSC prefetch (Next still prefetches on hover).
-                      prefetch={false}
-                      className="group relative flex w-full cursor-pointer justify-start py-1 text-sm sm:justify-end"
-                    >
-                      <span className="text-zinc-400 transition-colors group-hover:text-primary">
-                        {link.footerLabel ?? link.label}
-                      </span>
-                    </Link>
-                  ))}
+                {section.links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    prefetch={false}
+                    target={link.external ? "_blank" : undefined}
+                    rel={link.external ? "noopener noreferrer" : undefined}
+                    className="py-1 text-sm text-zinc-400 transition-colors hover:text-primary"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
               </div>
             ))}
           </div>
         </div>
-        <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-2 py-6 pb-3 text-xs font-light text-black sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10 mb-5">
-          <div className="order-2 flex items-center gap-3 sm:order-1">
+
+        <div className="mx-auto mt-6 mb-5 flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-2 py-6 text-xs font-light text-zinc-400 sm:flex-row sm:gap-0 sm:px-4">
+          <div className="order-2 flex items-center gap-4 sm:order-1">
             {connect.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                target={link.external ? "_blank" : "_self"}
-                rel={link.external ? "noopener noreferrer" : undefined}
-                className="cursor-pointer text-black transition-colors hover:text-zinc-700"
+                target="_blank"
+                rel="noopener noreferrer"
                 title={link.description}
+                className="transition-opacity hover:opacity-80"
               >
-                {React.isValidElement(link.icon)
-                  ? React.cloneElement(
-                      link.icon as React.ReactElement<{ color?: string }>,
-                      {
-                        color: undefined,
-                      },
-                    )
-                  : link.icon}
+                {link.icon}
               </Link>
             ))}
           </div>
@@ -208,14 +95,14 @@ export default function Footer() {
             {appConfig.site.copyright}
           </div>
 
-          <div className="order-3 flex border-separate items-center gap-2 text-center">
+          <div className="order-3 flex items-center gap-2">
             <Link
               href={"/terms"}
               className="underline-offset-2 hover:underline"
             >
               Terms of Use
             </Link>
-            <div className="h-4 border-l border-black" />
+            <div className="h-4 border-l border-zinc-600" />
 
             <Link
               href={"/privacy"}
@@ -225,7 +112,7 @@ export default function Footer() {
             </Link>
           </div>
         </div>
-      </div>
+      </footer>
     </>
   );
 }
