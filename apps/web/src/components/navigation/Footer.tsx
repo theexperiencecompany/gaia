@@ -2,12 +2,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { cloneElement, isValidElement } from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
-
+import { FooterWordmark } from "@/components/navigation/FooterWordmark";
 import JsonLd from "@/components/seo/JsonLd";
-import { appConfig, connect, footerSections } from "@/config/appConfig";
+import { connect, footerSections } from "@/config/appConfig";
 import { siteConfig } from "@/lib/seo";
-
-const TAGLINE = "GAIA doesn't just answer. It acts.";
 
 export default function Footer() {
   const navigationSchema: WithContext<SiteNavigationElement> = {
@@ -31,7 +29,9 @@ export default function Footer() {
   return (
     <>
       <JsonLd data={navigationSchema} />
-      <footer className="relative z-1 m-0! flex min-h-[50vh] flex-col items-center justify-end gap-6 p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
+      {/* z above the fixed bottom BlurStack (z-1000) so the wordmark and legal
+          bar are never blurred by the viewport-edge blur. */}
+      <footer className="relative z-[1001] m-0! flex min-h-[50vh] flex-col items-center justify-end gap-6 p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-[-1] h-[30vh] bg-linear-to-t from-background to-transparent" />
 
         <Image
@@ -42,19 +42,7 @@ export default function Footer() {
         />
 
         <div className="flex w-full items-center justify-center px-6 sm:px-4">
-          <div className="grid w-full max-w-7xl grid-cols-2 gap-10 sm:grid-cols-5 sm:gap-6">
-            <div className="col-span-2 flex flex-col items-start gap-3">
-              <Link href="https://twitter.com/madebyexp">
-                <Image
-                  src="/brand/experience_logo_white.svg"
-                  alt="The Experience Company Logo"
-                  width={70}
-                  height={70}
-                />
-              </Link>
-              <p className="text-sm text-foreground-400">{TAGLINE}</p>
-            </div>
-
+          <div className="grid w-full max-w-7xl grid-cols-2 gap-10 sm:grid-cols-3 sm:gap-6">
             {footerSections.map((section) => (
               <div key={section.title} className="flex flex-col items-start">
                 <div className="mb-3 text-sm font-medium text-foreground">
@@ -77,46 +65,52 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mx-auto mt-6 mb-5 flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-2 py-6 text-xs font-light text-zinc-400 sm:flex-row sm:gap-0 sm:px-4">
-          <div className="order-2 flex items-center gap-4 sm:order-1">
-            {connect.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={link.description}
-                className="text-zinc-400 transition-colors hover:text-zinc-200"
-              >
-                {/* Strip the brand color so icons render monochrome via currentColor. */}
-                {isValidElement(link.icon)
-                  ? cloneElement(
-                      link.icon as React.ReactElement<{ color?: string }>,
-                      { color: "currentColor" },
-                    )
-                  : link.icon}
-              </Link>
-            ))}
-          </div>
-          <div className="order-1 text-center sm:order-2">
-            {appConfig.site.copyright}
-          </div>
+        {/* Halftone wordmark, constrained to the content width, sitting flush
+            on the footer's bottom edge with the legal bar floating over its
+            fading lower rows. Negative bottom margin cancels footer padding. */}
+        <div className="relative -mb-4 mt-6 w-full max-w-7xl sm:-mb-5">
+          <FooterWordmark />
 
-          <div className="order-3 flex items-center gap-2">
-            <Link
-              href={"/terms"}
-              className="underline-offset-2 hover:underline"
-            >
-              Terms of Use
-            </Link>
-            <div className="h-4 border-l border-zinc-600" />
+          <div className="absolute inset-x-0 bottom-0">
+            <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-4 py-5 text-xs font-light text-zinc-400 sm:flex-row sm:gap-0">
+              <div className="flex items-center gap-4">
+                {connect.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={link.description}
+                    className="text-zinc-400 transition-colors hover:text-zinc-200"
+                  >
+                    {/* Strip the brand color so icons render monochrome via currentColor. */}
+                    {isValidElement(link.icon)
+                      ? cloneElement(
+                          link.icon as React.ReactElement<{ color?: string }>,
+                          { color: "currentColor" },
+                        )
+                      : link.icon}
+                  </Link>
+                ))}
+              </div>
 
-            <Link
-              href={"/privacy"}
-              className="underline-offset-2 hover:underline"
-            >
-              Privacy Policy
-            </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={"/terms"}
+                  className="underline-offset-2 hover:underline"
+                >
+                  Terms of Use
+                </Link>
+                <div className="h-4 border-l border-zinc-600" />
+
+                <Link
+                  href={"/privacy"}
+                  className="underline-offset-2 hover:underline"
+                >
+                  Privacy Policy
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </footer>

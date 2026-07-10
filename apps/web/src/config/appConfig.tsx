@@ -61,7 +61,6 @@ export const appConfig = {
   // Site information
   site: {
     name: "GAIA",
-    copyright: "Copyright © 2025 The Experience Company. All rights reserved.",
     domain: "heygaia.io",
     mobileWaitlist:
       "https://heygaia.notion.site/307023640e7b802ca404dee12cb04e89?pvs=105",
