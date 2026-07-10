@@ -4,22 +4,29 @@ import { useCallback, useEffect, useState } from "react";
 
 import { apiService } from "@/lib/api/service";
 
+type TodoFacet = "deliverable" | "notes" | "log";
+
 interface UseTodoCanvasOptions {
   /** Fetch immediately on mount instead of waiting for `fetchContent()` to be called. */
   auto?: boolean;
+  /**
+   * Which facet to read. Defaults to the legacy `/canvas` alias (the notes
+   * facet). Approval previews MUST read `deliverable` — that is the exact
+   * content Approve releases, not GAIA's working memory.
+   */
+  facet?: TodoFacet;
 }
 
 /**
- * Fetches a todo's `canvas.md` (GAIA's working memory / work log for that
- * task). Shared by `WorkLogSection` (always-rendered inline section) and
- * `TodoProposalActions` (on-demand preview) so every consumer reads the
- * same content and retry behavior instead of forking the fetch logic.
+ * Fetches a tracked todo's facet content. Shared by `WorkLogSection` (notes),
+ * `TodoProposalActions` (deliverable) and the artifact reader so every
+ * consumer reads the same content and retry behavior.
  */
 export function useTodoCanvas(
   todoId: string,
   options: UseTodoCanvasOptions = {},
 ) {
-  const { auto = false } = options;
+  const { auto = false, facet } = options;
   const [content, setContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -31,17 +38,19 @@ export function useTodoCanvas(
     setIsLoading(true);
     setHasError(false);
     try {
-      const res = await apiService.get<{ content: string }>(
-        `/todos/${todoId}/canvas`,
-        { silent: true },
-      );
+      const path = facet
+        ? `/todos/${todoId}/facets/${facet}`
+        : `/todos/${todoId}/canvas`;
+      const res = await apiService.get<{ content: string }>(path, {
+        silent: true,
+      });
       setContent(res.content);
     } catch {
       setHasError(true);
     } finally {
       setIsLoading(false);
     }
-  }, [todoId, content]);
+  }, [todoId, facet, content]);
 
   useEffect(() => {
     if (auto) {

@@ -27,6 +27,7 @@ from app.constants.todos import (
     ASSIGNEE_GAIA,
     DELIVERABLE_TEMPLATE,
     FACET_LOG,
+    FACET_NOTES,
     GAIA_TODO_EXECUTIONS_FEATURE,
     GAIA_TRACKED_LABEL,
     MAX_ACTIVE_GOALS,
@@ -39,6 +40,7 @@ from app.constants.todos import (
     REJECTION_STRIKE_THRESHOLD,
     gaia_assigned_filter,
 )
+from app.core.websocket_manager import WebSocketManager
 from app.db.mongodb.collections import todos_collection
 from app.memory.engine import memory_engine
 from app.models.payment_models import PlanType
@@ -151,6 +153,20 @@ async def system_log(todo_id: str, user_id: str, event_type: str, details: str) 
     await append_facet(
         todo_id, user_id, FACET_LOG, f"\n## {now.isoformat()} [{event_type}]\n- {details}\n"
     )
+
+
+async def _broadcast_status(user_id: str, todo_id: str, status: str) -> None:
+    """Push the transition to the user's open sessions (dashboard live updates).
+
+    Best-effort by design: the state change is already persisted, so a push
+    failure only delays the UI until its next refetch — log it, never raise.
+    """
+    try:
+        await WebSocketManager().broadcast_to_user(
+            user_id, {"type": "todo.execution_status", "todo_id": todo_id, "status": status}
+        )
+    except Exception as e:
+        log.warning("gaia_todo.ws_broadcast_failed", todo_id=todo_id, error=str(e))
 
 
 async def schedule_execution(todo_id: str, scheduled_at: datetime) -> bool:
@@ -361,6 +377,7 @@ async def approve(todo_id: str, user_id: str, user_plan: PlanType, channel: str 
     await system_log(todo_id, user_id, "approved", f"User approved execution via {channel}")
     track(user_id, "todo_approved", {"todo_id": todo_id, "channel": channel})
     await first_steps_service.mark_step(user_id, first_steps_service.STEP_FIRST_APPROVE)
+    await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
     schedule_gaia_tasks_sync(user_id)
 
 
@@ -389,6 +406,7 @@ async def dismiss(
         "todo_dismissed",
         {"todo_id": todo_id, "channel": channel, "has_reason": bool(reason)},
     )
+    await _broadcast_status(user_id, todo_id, ExecutionStatus.DISMISSED.value)
     schedule_gaia_tasks_sync(user_id)
 
 
@@ -427,27 +445,94 @@ async def handoff(todo_id: str, user_id: str) -> None:
     await schedule_execution(todo_id, now)
     await system_log(todo_id, user_id, "handoff", "User handed this todo to GAIA")
     track(user_id, "handoff_created", {"todo_id": todo_id})
+    await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
     schedule_gaia_tasks_sync(user_id)
 
 
 async def mark_execution_status(
-    todo_id: str, user_id: str, status: ExecutionStatus, error_message: str | None = None
+    todo_id: str,
+    user_id: str,
+    status: ExecutionStatus,
+    error_message: str | None = None,
+    blocker_question: str | None = None,
 ) -> None:
     """Worker-owned transitions (``queued → running → done | failed | needs_you``).
 
     ``failed`` requires a human-readable cause and renders as loudly as ``done``.
+    ``needs_you`` carries the blocking question so every surface can ask it and
+    ``answer`` can resume the run.
     """
     if status == ExecutionStatus.FAILED and not (error_message or "").strip():
         raise InvalidTransitionError("failed status requires an error_message cause")
     updates = {
         "execution_status": status.value,
         "error_message": error_message if status == ExecutionStatus.FAILED else None,
+        "blocker_question": blocker_question if status == ExecutionStatus.NEEDS_YOU else None,
     }
     await todos_collection.update_one(
         {"_id": ObjectId(todo_id), "user_id": user_id}, {"$set": updates}
     )
     if status == ExecutionStatus.DONE:
         track(user_id, "gaia_todo_completed", {"todo_id": todo_id})
+    await _broadcast_status(user_id, todo_id, status.value)
+    schedule_gaia_tasks_sync(user_id)
+
+
+async def block(todo_id: str, user_id: str, question: str) -> None:
+    """Pause a queued/running todo on a decision only the user can make.
+
+    The guarded ``→ needs_you`` entry point for the agent's ``block_todo`` tool;
+    a proposed or terminal todo cannot be blocked.
+    """
+    question = question.strip()
+    if not question:
+        raise InvalidTransitionError("block requires a non-empty question")
+    doc = await _get_gaia_todo(todo_id, user_id)
+    current = doc.get("execution_status")
+    if current not in (ExecutionStatus.QUEUED.value, ExecutionStatus.RUNNING.value):
+        raise InvalidTransitionError(
+            f"Only queued/running todos can be blocked (todo {todo_id} is {current!r})"
+        )
+    await mark_execution_status(
+        todo_id, user_id, ExecutionStatus.NEEDS_YOU, blocker_question=question
+    )
+    await system_log(todo_id, user_id, "blocked", f"Run paused on: {question[:200]}")
+
+
+async def answer(todo_id: str, user_id: str, answer_text: str, channel: str = "web") -> None:
+    """Answer a blocked todo: record the reply and re-queue the run.
+
+    The ONLY ``needs_you → queued`` path. The Q&A is appended to the notes
+    facet so the next execution reads it naturally; the run resumes with
+    whatever ``execution_intent`` it already had.
+    """
+    answer_text = answer_text.strip()
+    if not answer_text:
+        raise InvalidTransitionError("answer requires a non-empty reply")
+    doc = await _require_status(todo_id, user_id, ExecutionStatus.NEEDS_YOU, "answered")
+    now = datetime.now(UTC)
+    question = doc.get("blocker_question") or doc.get("error_message") or "the open question"
+    await append_facet(
+        todo_id,
+        user_id,
+        FACET_NOTES,
+        f"\n## User answer ({now.isoformat()})\nQ: {question}\nA: {answer_text}\n",
+    )
+    await todos_collection.update_one(
+        {"_id": ObjectId(todo_id), "user_id": user_id},
+        {
+            "$set": {
+                "execution_status": ExecutionStatus.QUEUED.value,
+                "scheduled_at": now,
+                "blocker_question": None,
+                "error_message": None,
+            }
+        },
+    )
+    await schedule_execution(todo_id, now)
+    await system_log(todo_id, user_id, "answered", f"User answered via {channel}: {answer_text[:200]}")
+    track(user_id, "todo_answered", {"todo_id": todo_id, "channel": channel})
+    await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
     schedule_gaia_tasks_sync(user_id)
 
 

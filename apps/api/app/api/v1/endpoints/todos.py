@@ -1038,6 +1038,23 @@ async def dismiss_gaia_todo(
     return {"success": True, "todo_id": todo_id, "execution_status": "dismissed"}
 
 
+@router.post("/todos/{todo_id}/answer", status_code=status.HTTP_200_OK)
+async def answer_gaia_todo(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    answer: str = Body(embed=True, min_length=1),
+    channel: str = Body(default="web", embed=True),
+):
+    """Answer a blocked (needs_you) GAIA todo: record the reply and re-queue the run."""
+    user_id = user["user_id"]
+    try:
+        await lifecycle.answer(todo_id, user_id, answer, channel=channel)
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    await delete_cache(f"counts:{user_id}")
+    return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
+
+
 @router.post("/todos/{todo_id}/handoff", status_code=status.HTTP_200_OK)
 async def handoff_todo_to_gaia(
     todo_id: str,

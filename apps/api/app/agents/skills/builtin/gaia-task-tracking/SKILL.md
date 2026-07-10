@@ -18,12 +18,16 @@ When the user says "email Rahul about the contract" and months later asks "what 
 
 Always available to the executor — no `retrieve_tools` needed:
 
-- `create_tracked_todo` — create todo with VFS canvas
+- `create_tracked_todo` — create todo with its facet workspace (notes / deliverable / log)
 - `update_tracked_todo` — update labels, due_date, priority, scheduled_at, recurrence, expires_at, references
-- `update_tracked_todo_canvas` — write to canvas.md; modes: append (default), section, replace
-- `complete_tracked_todo` — mark done, archive VFS, requires completion summary
+- `update_tracked_todo_canvas` — write a facet (notes / deliverable / log); modes: append (default), section, replace
+- `complete_tracked_todo` — mark done, archive, requires completion summary
 - `search_todo_context` — semantic search across all canvas embeddings (ChromaDB); includes completed
 - `list_tracked_todos` — list all active tracked todos (up to 50) with full metadata
+- `approve_todo` — release a proposed todo for execution, ONLY on the user's explicit go-ahead
+- `dismiss_todo` — decline a proposed todo on the user's explicit say-so; records the rejection signal
+- `block_todo` — pause a run on a decision only the user can make; asks one clear question
+- `answer_todo` — resume a blocked (needs_you) todo with the user's answer
 
 ## Search First, Create Last
 
@@ -104,26 +108,20 @@ update_tracked_todo_canvas(todo_id="...", mode="replace", content="# Title\n\n##
 
 ### Structure
 
-Default template (used when `initial_canvas` is omitted):
+A tracked todo's workspace has three facets (pass `facet` to `update_tracked_todo_canvas`):
+
+- **notes** — GAIA's private working memory: plan, key details, current state. Seeded from `initial_notes`, or this default template:
 
 ```markdown
 # {title}
 
 ## Key Details
 
-<!-- email addresses, thread IDs, calendar IDs, issue URLs — everything needed to act -->
+<!-- email addresses, thread IDs, calendar IDs, issue IDs — everything needed to take action -->
 
 ## Current State
 
 <!-- what's true RIGHT NOW — updated after every action -->
-
-## Activity Log
-
-<!-- which agent did what, which tools it used, what the outcome was — add entries HERE, not in Learnings -->
-
-## Timeline
-
-<!-- chronological list of actions with dates -->
 
 ## Context
 
@@ -131,16 +129,21 @@ Default template (used when `initial_canvas` is omitted):
 
 ## Learnings
 
-<!-- written ONLY at completion time: what worked, what didn't, timing insights, reusable patterns. DO NOT write activity log entries here -->
+<!-- written on completion: what worked, what didn't, key decisions, timing insights. DO NOT write activity log entries here -->
 ```
+
+- **deliverable** — the polished, send-ready output the user sees. For a proposal (`requires_approval=True`) this is the EXACT content Approve releases, seeded from the required `initial_deliverable`. Internal todos start from a light template.
+- **log** — the activity/timeline audit trail. Chronological activity (Activity Log, Timeline) lives HERE, not in notes.
 
 ### Activity Log
 
-After subagents return, record their structured reports in the canvas:
+After subagents return, record their structured reports in the **log** facet:
+
+```python
+update_tracked_todo_canvas(todo_id="...", facet="log", mode="append", content="### 2026-03-26\n- **Gmail agent**: Sent email...")
+```
 
 ```markdown
-## Activity Log
-
 ### 2026-03-26
 
 - **Gmail agent**: Sent email to rahul@example.com re: Q2 contract renewal.
@@ -152,14 +155,17 @@ After subagents return, record their structured reports in the canvas:
 
 ### System Log
 
-`log.md` is auto-written by the system (creation, canvas updates, completion). Don't write to it directly.
+The log facet also receives system-written entries automatically (creation, canvas updates, completion). Append your activity entries; never rewrite or delete the system ones.
 
 ## Create Fields
 
 - `title` (required) — short descriptive title
+- `serves` (required) — the goal, memory item, or explicit user request this todo advances; creation is rejected when empty
+- `requires_approval` (required) — the approval rule. `True` for outward-visible work (sending email/DMs, posting, inviting others, spending money): enters `proposed` and waits for the user's Approve tap, and MUST carry its finished `initial_deliverable`. `False` for work only the user and GAIA can see (research, drafts, triage, prep): enters `queued` and runs immediately
 - `description` — what needs to happen and expected outcome
-- `initial_canvas` — markdown content; default template if omitted
-- `labels` — list of strings; `gaia-tracked` added automatically
+- `initial_deliverable` — deliverable facet: the polished, send-ready output. REQUIRED for proposals (it is what Approve releases); optional otherwise
+- `initial_notes` — notes facet: initial working memory; default template if omitted
+- `labels` — list of strings
 - `priority` — `high` | `medium` | `low` | `none` (default `none`)
 - `scheduled_at` — ISO datetime when GAIA should auto-execute (must be future). Omit for cron recurrence — first fire is computed from the cron.
 - `recurrence` — repeat pattern. Cron-style works alone (no `scheduled_at` needed); shortcut values still need `scheduled_at` as anchor.
@@ -216,7 +222,7 @@ Manually link related past todos:
 update_tracked_todo(todo_id="abc", references=["old_todo_id_1"])
 ```
 
-References are appended (not replaced). Use `search_todo_context` to find past todos worth referencing, then read their canvases via `vfs_read` to understand past approaches.
+References are appended (not replaced). Use `search_todo_context` to find past todos worth referencing — its snippets surface the past approaches.
 
 ### Writing Learnings Before Completion
 
@@ -230,7 +236,7 @@ Before calling `complete_tracked_todo`, update the canvas with a thorough `## Le
 ### Before Acting
 
 1. Check the `ACTIVE TRACKED TODOS:` block in your context — does the request relate to an existing todo?
-2. If yes: `vfs_read` its canvas.md, then act, then update canvas
+2. If yes: pull its context (key details from the context block or `search_todo_context`), then act, then update its facets
 3. If unclear: `search_todo_context(query="...")` to check for duplicates
 
 ### After Acting
@@ -250,7 +256,9 @@ Before calling `complete_tracked_todo`, update the canvas with a thorough `## Le
 ```python
 create_tracked_todo(
   title="Sent Q2 report to Sarah",
-  initial_canvas="# Sent Q2 report to Sarah\n\n## Key Details\n- Recipient: sarah@example.com\n\n## Activity Log\n\n## Learnings\n"
+  serves="User asked to send Sarah the Q2 report",
+  requires_approval=False,
+  initial_notes="# Sent Q2 report to Sarah\n\n## Key Details\n- Recipient: sarah@example.com\n\n## Current State\nReport sent in this conversation.\n\n## Learnings\n"
 )
 # handoff to Gmail → collect report → update canvas → complete
 ```
@@ -260,10 +268,13 @@ create_tracked_todo(
 ```python
 create_tracked_todo(
   title="Follow up with Rahul re: contract",
+  serves="User asked GAIA to chase the Q2 vendor contract with Rahul",
+  requires_approval=True,
   description="Sent initial email. Follow up if no reply.",
   scheduled_at="2026-04-01T09:00:00Z",
   expires_at="2026-04-08T00:00:00Z",
-  initial_canvas="# Rahul Contract Follow-up\n\n## Key Details\n- Email: rahul@example.com\n- Thread ID: 18f3a2b\n- Contract: Q2 vendor agreement\n\n## Current State\nInitial email sent. Waiting for reply.\n\n## Activity Log\n### 2026-03-25\n- **Gmail agent**: Sent email re: Q2 contract. Tools: GMAIL_CREATE_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b.\n\n## Learnings\n"
+  initial_deliverable="# Follow-up email to Rahul\n\nHi Rahul, just checking in on the Q2 vendor agreement I sent last week. Any questions I can answer?",
+  initial_notes="# Rahul Contract Follow-up\n\n## Key Details\n- Email: rahul@example.com\n- Thread ID: 18f3a2b\n- Contract: Q2 vendor agreement\n\n## Current State\nInitial email sent. Waiting for reply.\n\n## Learnings\n"
 )
 ```
 
@@ -272,6 +283,8 @@ create_tracked_todo(
 ```python
 create_tracked_todo(
   title="Daily HN top posts summary",
+  serves="User asked for a daily HN top posts summary",
+  requires_approval=False,
   scheduled_at="2026-03-26T08:00:00Z",
   recurrence="daily"
 )
@@ -282,6 +295,8 @@ create_tracked_todo(
 ```python
 create_tracked_todo(
   title="Weekday standup prep",
+  serves="User asked GAIA to prep their standup every weekday",
+  requires_approval=False,
   scheduled_at="2026-03-26T09:00:00Z",
   recurrence="0 9 * * 1-5"
 )
@@ -293,7 +308,7 @@ create_tracked_todo(
 update_tracked_todo(todo_id="abc123", due_date="2026-04-15")
 update_tracked_todo(todo_id="abc123", scheduled_at="2026-03-30T10:00:00Z")
 update_tracked_todo(todo_id="abc123", scheduled_at="", recurrence="")  # Clear scheduling
-update_tracked_todo(todo_id="abc123", labels=["gaia-tracked", "waiting-for-reply"])
+update_tracked_todo(todo_id="abc123", labels=["waiting-for-reply"])
 ```
 
 ## Anti-Patterns

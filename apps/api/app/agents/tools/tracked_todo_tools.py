@@ -14,7 +14,12 @@ from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.constants.todos import FACET_FIELDS, FACET_NOTES, GAIA_TRACKED_LABEL
+from app.constants.todos import (
+    FACET_FIELDS,
+    FACET_NOTES,
+    GAIA_TRACKED_LABEL,
+    gaia_assigned_filter,
+)
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoResponse
 from app.services.payments.payment_service import payment_service
@@ -219,11 +224,9 @@ def _format_first_fire_note(parsed_scheduled_at: datetime, user_tz_name: str | N
 
 
 def _build_labels_update(labels: list[str] | None, update_fields: dict[str, object]) -> str | None:
-    """Apply a labels update, ensuring GAIA_TRACKED_LABEL is present."""
+    """Apply a labels update, setting the labels exactly as passed."""
     if labels is None:
         return None
-    if GAIA_TRACKED_LABEL not in labels:
-        labels = [*labels, GAIA_TRACKED_LABEL]
     update_fields["labels"] = labels
     return None
 
@@ -359,7 +362,7 @@ def _format_tracked_todo_full(doc: dict, now: datetime) -> str:
     """Format one tracked-todo doc as the multi-line block used by list_tracked_todos."""
     todo_id = str(doc["_id"])
     title = doc.get("title", "Untitled")
-    labels = [lbl for lbl in doc.get("labels", []) if lbl != "gaia-tracked"]
+    labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
     labels_str = f" [{', '.join(labels)}]" if labels else ""
     priority = doc.get("priority", "none")
     age_days = (now - doc.get("created_at", now)).days
@@ -478,7 +481,7 @@ async def create_tracked_todo(
     ] = None,
     labels: Annotated[
         list[str] | None,
-        "Optional labels for categorization (gaia-tracked is added automatically)",
+        "Optional labels for categorization",
     ] = None,
     priority: Annotated[
         str,
@@ -736,7 +739,8 @@ async def complete_tracked_todo(
     todo_id: Annotated[str, "ID of the tracked todo to complete"],
     summary: Annotated[str, "One or two sentences describing what was achieved"],
 ) -> str:
-    """Complete a tracked todo: archive VFS canvas, remove from search index, mark done.
+    """Complete a tracked todo: mark it done and archive its canvas. The canvas
+    stays in the search index (flagged completed) so past work remains findable.
 
     Call when the todo's goal is fully achieved. Use the regular todo update for
     partial completion or status changes only.
@@ -749,7 +753,7 @@ async def complete_tracked_todo(
         todo_id=todo_id, user_id=user_id, summary=summary
     )
     if not success:
-        return f"Error: could not complete tracked todo {todo_id} — not found or missing vfs_path"
+        return f"Error: could not complete tracked todo {todo_id} — not found"
     return f"Tracked todo {todo_id} completed and archived."
 
 
@@ -759,8 +763,7 @@ async def update_tracked_todo(
     todo_id: Annotated[str, "ID of the tracked todo to update"],
     labels: Annotated[
         list[str] | None,
-        "New labels to SET on the todo (replaces all existing labels). "
-        "Always include 'gaia-tracked' in the list.",
+        "New labels to SET on the todo (replaces all existing labels).",
     ] = None,
     due_date: Annotated[
         str | None,
@@ -803,7 +806,7 @@ async def update_tracked_todo(
 
     Args:
         todo_id: The tracked todo ID (from ACTIVE TRACKED TODOS context block).
-        labels: Replace labels. Always include 'gaia-tracked'.
+        labels: Replace labels.
         due_date: Set or clear due date.
         priority: Change priority.
         scheduled_at: Schedule or reschedule execution. Must be in the future.
@@ -836,13 +839,13 @@ async def update_tracked_todo(
     if error := _build_clearable_datetime_update(expires_at, "expires_at", update_fields):
         return error
 
-    if not update_fields:
+    if not update_fields and references is None:
         return "No fields to update. Provide at least one field to change."
 
     # Validate the resulting state against the existing doc — the in-call guards
     # alone can't catch corruption when the DB already has scheduling fields set.
     existing = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id, "vfs_path": {"$exists": True}}
+        {"_id": ObjectId(todo_id), "user_id": user_id, **gaia_assigned_filter()}
     )
     if not existing:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
@@ -902,8 +905,8 @@ async def list_tracked_todos(
         todos_collection.find(
             {
                 "user_id": user_id,
-                "labels": "gaia-tracked",
                 "completed": False,
+                **gaia_assigned_filter(),
             }
         )
         .sort("updated_at", -1)
@@ -975,6 +978,53 @@ async def dismiss_todo(
     return f"Dismissed: todo {todo_id} will not run, and the rejection was recorded."
 
 
+@tool
+async def block_todo(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the todo whose run is blocked"],
+    question: Annotated[
+        str, "The decision you need from the user, phrased as one clear question"
+    ],
+) -> str:
+    """Pause a todo you are executing on a decision only the user can make.
+
+    Use mid-run when continuing would mean guessing (which recipient, which
+    figure, spend or not) or when an approved plan grows a NEW outward action.
+    The question is shown on the dashboard and asked in chat; the run resumes
+    automatically once the user answers. Never guess instead of blocking.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+    try:
+        await lifecycle.block(todo_id, user_id, question)
+    except lifecycle.InvalidTransitionError as e:
+        return f"Error: {e}"
+    return f"Blocked: todo {todo_id} is waiting on the user's answer to: {question}"
+
+
+@tool
+async def answer_todo(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the needs_you todo the user is answering"],
+    answer: Annotated[str, "The user's answer, in their own words"],
+) -> str:
+    """Resume a blocked (needs_you) todo with the user's answer.
+
+    Use ONLY when the user has answered the blocking question in this
+    conversation. Records the answer in the todo's notes and re-queues the
+    run; the next execution reads it and continues where it stopped.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+    try:
+        await lifecycle.answer(todo_id, user_id, answer, channel="chat")
+    except lifecycle.InvalidTransitionError as e:
+        return f"Error: {e}"
+    return f"Answered: todo {todo_id} is queued again and will continue with the user's answer."
+
+
 tools = [
     create_tracked_todo,
     search_todo_context,
@@ -984,4 +1034,6 @@ tools = [
     list_tracked_todos,
     approve_todo,
     dismiss_todo,
+    block_todo,
+    answer_todo,
 ]

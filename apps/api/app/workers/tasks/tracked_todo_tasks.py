@@ -527,6 +527,13 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     # history accumulation in PostgreSQL. Each execution is independent.
     conversation_id = str(uuid4())
 
+    # Persisted up front so the dashboard can link into the live run, not just
+    # the finished one.
+    await todos_collection.update_one(
+        {"_id": ObjectId(todo_id)},
+        {"$set": {"last_run_conversation_id": conversation_id}},
+    )
+
     # The human turn must be in `messages` — construct_langchain_messages does
     # not consult `message` alone when no workflow/tool is selected, so an empty
     # list fails the run with "No human message or selected tool".
@@ -598,18 +605,15 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         tool_data.get("tool_data") if isinstance(tool_data, dict) else tool_data
     ):
         log.warning("tracked_todo.release_not_performed", todo_id=todo_id)
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id)},
-            {
-                "$set": {
-                    "error_message": (
-                        "GAIA prepared this but couldn't confirm the send actually "
-                        "went through — it needs your attention."
-                    )
-                }
-            },
+        await lifecycle.mark_execution_status(
+            todo_id,
+            user_id,
+            ExecutionStatus.NEEDS_YOU,
+            blocker_question=(
+                "GAIA prepared this but couldn't confirm the send actually went "
+                "through. Retry the send, or will you handle it yourself?"
+            ),
         )
-        await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.NEEDS_YOU)
 
     log.info("tracked_todo.agent_completed", todo_id=todo_id)
     return complete_message[:200] if complete_message else ""

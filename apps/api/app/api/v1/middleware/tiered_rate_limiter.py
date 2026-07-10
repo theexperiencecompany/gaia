@@ -82,6 +82,11 @@ class TieredRateLimiter:
         reset_time = get_reset_time(period)
         return int((reset_time - datetime.now(UTC)).total_seconds())
 
+    async def get_usage(self, user_id: str, feature: str, period: RateLimitPeriod) -> int:
+        """Current usage count for a feature window (0 when unset)."""
+        value = await self.redis.get(self._get_redis_key(user_id, feature, period))
+        return int(value) if value else 0
+
     async def check_and_increment(
         self,
         user_id: str,

@@ -18,14 +18,14 @@ export const FIRST_STEPS: FirstStepDefinition[] = [
     label: "Link Telegram",
     href: "/settings/linked-accounts",
   },
-  { key: "visit_dashboard", label: "Meet Mission Control", href: "/dashboard" },
+  {
+    key: "visit_dashboard",
+    label: "Check your Today view",
+    href: "/dashboard",
+  },
   {
     key: "first_approve",
     label: "Approve your first GAIA todo",
     href: "/todos",
   },
 ];
-
-// Special step value PATCHed to mark the entire widget dismissed, independent
-// of individual step completion.
-export const DISMISSED_ALL_STEP = "dismissed_all";

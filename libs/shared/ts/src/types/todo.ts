@@ -56,6 +56,10 @@ export interface Todo {
   serves?: string | null;
   /** Populated when `execution_status === "failed"` — surfaced loudly in the UI. */
   error_message?: string | null;
+  /** The decision a `needs_you` run is blocked on; answering re-queues it. */
+  blocker_question?: string | null;
+  /** Conversation of the most recent execution run — click-through into the chat. */
+  last_run_conversation_id?: string | null;
   /** Present on some user-owned todos GAIA is offering to take over. */
   gaia_offer?: string | null;
   /** "task" (default) or "goal" — a long-lived lane whose canvas is its strategy. */

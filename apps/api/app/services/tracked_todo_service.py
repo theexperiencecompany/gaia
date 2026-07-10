@@ -107,17 +107,26 @@ def _format_signal_entry(doc: dict, key_details: str) -> str:
 
 
 def _format_tracked_todo_line(doc: dict, now: datetime, active_todo_id: str | None) -> str:
-    """Format one tracked-todo doc as a context-injection summary line."""
+    """Format one tracked-todo doc as a context-injection summary line.
+
+    State (and the blocker question, when waiting) is what lets the agent act
+    on a chat reply — "yes send it" needs the proposed item, an answer needs
+    the blocked one.
+    """
     age_days = (now - doc.get("created_at", now)).days
     last_update = (now - doc.get("updated_at", now)).days
     labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
     labels_str = f" [{', '.join(labels)}]" if labels else ""
     todo_id = str(doc["_id"])
     prefix = "⭐ ACTIVE " if todo_id == active_todo_id else ""
+    state = doc.get("execution_status")
+    state_str = f" | state: {state}" if state else ""
+    if state == ExecutionStatus.NEEDS_YOU.value and doc.get("blocker_question"):
+        state_str += f' | waiting on user: "{doc["blocker_question"]}"'
     return (
         f'  {prefix}"{doc["title"]}"{labels_str}{_format_due_string(doc.get("due_date"), now)}'
         f" — {age_days}d old, updated {last_update}d ago"
-        f" | ID: {todo_id} | VFS: {doc.get('vfs_path', 'none')}"
+        f"{state_str} | ID: {todo_id} | VFS: {doc.get('vfs_path', 'none')}"
     )
 
 
@@ -313,21 +322,20 @@ class TrackedTodoService:
         # Switch the display label to the archived form (purely cosmetic).
         archive_path = vfs_path.replace("/todos/", "/todos/archive/")
 
-        # Update todo
+        # Update todo (the execution_status flip goes through the lifecycle so
+        # the transition is broadcast; it also emits the completion track event).
         await todos_collection.update_one(
             {"_id": ObjectId(todo_id), "user_id": user_id},
             {
                 "$set": {
                     "completed": True,
                     "completed_at": now,
-                    "execution_status": ExecutionStatus.DONE.value,
                     "vfs_path": archive_path,
                     "updated_at": now,
                 }
             },
         )
-
-        track(user_id, "gaia_todo_completed", {"todo_id": todo_id})
+        await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.DONE)
 
         # Invalidate Redis cache so the frontend reflects completion immediately
         await TodoService._invalidate_cache(
@@ -424,8 +432,8 @@ class TrackedTodoService:
         cursor = todos_collection.find(
             {
                 "user_id": user_id,
-                "labels": GAIA_TRACKED_LABEL,
                 "completed": False,
+                **gaia_assigned_filter(),
             }
         ).sort("updated_at", -1)
         docs = await cursor.to_list(length=15)

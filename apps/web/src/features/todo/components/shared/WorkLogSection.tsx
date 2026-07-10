@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import {
   Modal,
   ModalBody,
@@ -39,21 +40,18 @@ const WorkLogSection: React.FC<WorkLogSectionProps> = ({ todoId, isGoal }) => {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-full items-center gap-3 rounded-2xl bg-zinc-800 p-4 text-left transition-colors hover:bg-zinc-700/70"
+      {/* A small real button: the one interactive row in the context block
+          should look interactive, unlike the static text around it. */}
+      <Button
+        size="sm"
+        variant="flat"
+        radius="lg"
+        onPress={onOpen}
+        startContent={<CanvasIcon className="size-4 text-violet-400" />}
+        className="text-zinc-300"
       >
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-violet-500/15">
-          <CanvasIcon className="size-4 text-violet-400" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-zinc-300">{title}</p>
-          <p className="truncate text-xs text-zinc-500">
-            {subtitle} — tap to open
-          </p>
-        </div>
-      </button>
+        {title}
+      </Button>
 
       <Modal
         isOpen={isOpen}

@@ -28,6 +28,22 @@ GAIA-assigned todos SHALL carry `execution_status`: `proposed | queued | running
 - **WHEN** any caller attempts to set a `proposed` todo directly to `running`
 - **THEN** the service rejects the transition
 
+### Requirement: A blocked run carries its question and resumes on the answer
+
+When a run pauses on a decision only the user can make, the todo SHALL flip to `needs_you` via a guarded lifecycle entry point (`block`: only from `queued`/`running`, agent-callable as `block_todo`) carrying a `blocker_question`. The honesty gate's unconfirmed-send flip SHALL also set `blocker_question`. Every surface renders the same question: the dashboard row shows it with an inline answer input; the chat agent relays it and matches the user's reply. `answer` SHALL be the only `needs_you → queued` path (`POST /todos/{id}/answer` or the `answer_todo` agent tool): it records the Q&A into the notes facet — which the next execution reads — clears the blocker, and re-enqueues the run with its existing `execution_intent`. Answering never re-meters the execution quota.
+
+#### Scenario: Blocked run asks one question everywhere
+- **WHEN** a run calls `block_todo` with "Which MRR figure should lead?"
+- **THEN** the todo is `needs_you`, the dashboard row shows the question with an answer box, and the chat context lists the todo as waiting on that question
+
+#### Scenario: A texted answer resumes the run
+- **WHEN** the user replies "41.2k" on any chat platform and the agent calls `answer_todo`
+- **THEN** the Q&A lands in the notes facet, the todo re-queues, and the resumed run reads the answer and continues
+
+#### Scenario: Blocking a terminal todo is rejected
+- **WHEN** `block_todo` is called on a `done` or `proposed` todo
+- **THEN** the lifecycle rejects the transition
+
 ### Requirement: Approval rule decides the entry state
 
 Todo creation by the agent SHALL require a `requires_approval: bool` argument classified by the outward-visibility rule: actions observable outside the user–GAIA pair (sending email/DMs, posting, inviting others, spending) SHALL be `true` → entry state `proposed`; work only the pair can see (research, drafts, triage, prep) SHALL be `false` → entry state `queued`, executing without permission. During execution, the silent-run prompt contract SHALL forbid outward-facing actions on todos that did not enter via Approve; when an approved plan grows a new outward action mid-run, the todo SHALL flip to `needs_you` instead of acting. Missing integrations SHALL never block work: the run produces the deliverable as content and completes with a connect-or-take-content handoff.

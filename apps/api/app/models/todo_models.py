@@ -176,6 +176,20 @@ class TodoBase(BaseModel):
         default=None,
         description="Human-readable failure cause; set when execution_status == 'failed'.",
     )
+    blocker_question: str | None = Field(
+        default=None,
+        description=(
+            "The decision the run is blocked on; set when execution_status == 'needs_you'. "
+            "Answering it (lifecycle.answer) re-queues the run."
+        ),
+    )
+    last_run_conversation_id: str | None = Field(
+        default=None,
+        description=(
+            "Conversation of the most recent execution run — the dashboard's "
+            "click-through into where the work happened/is happening."
+        ),
+    )
     gaia_offer: str | None = Field(
         default=None,
         description="Silent-classification offer to hand a user todo to GAIA (non-blocking affordance, no notification).",

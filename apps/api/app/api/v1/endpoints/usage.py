@@ -126,14 +126,10 @@ async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, An
         for period in ["day", "month"]:
             limit = getattr(current_limits, period, 0)
             if limit > 0:
-                # Get real-time usage from Redis
-                redis_key = tiered_limiter._get_redis_key(
-                    user_id, feature_key, getattr(RateLimitPeriod, period.upper())
-                )
-                current_usage = await tiered_limiter.redis.get(redis_key)
-                current_usage = int(current_usage) if current_usage else 0
+                rate_period = getattr(RateLimitPeriod, period.upper())
+                current_usage = await tiered_limiter.get_usage(user_id, feature_key, rate_period)
 
-                reset_time = get_reset_time(getattr(RateLimitPeriod, period.upper()))
+                reset_time = get_reset_time(rate_period)
                 percentage = (current_usage / limit * 100) if limit > 0 else 0
                 remaining = max(0, limit - current_usage)
 
