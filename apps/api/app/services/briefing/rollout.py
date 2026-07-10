@@ -38,7 +38,7 @@ _SPARSE_INTEGRATION_MAX = 1
 _ANNOUNCE_TITLE = "Your daily briefing starts tomorrow"
 _ANNOUNCE_BODY = (
     "Every morning I'll curate your list, look back at what shipped, and plan the "
-    "day in one short brief — with work you can approve in a tap. First one lands "
+    "day in one short brief — with work a single reply releases. First one lands "
     "tomorrow morning. Change the time or turn it off anytime in your workflows."
 )
 

@@ -49,7 +49,8 @@ Schema (all fields required unless marked optional):
 friend, not publishing a report. 2-4 short sentences of natural prose covering
 the same substance (what's staged, what needs them, why it matters today). No
 headline-speak, no bullet lists, no corporate voice; contractions welcome, vary
-the rhythm, mention the tap when something is waiting on approval. Always show
+the rhythm, mention that a reply releases it when something is waiting on
+approval. Always show
 your reasoning link: connect what you did to why ("since you're heads-down on
 the raise, i put together..." / "because X slipped yesterday, i've..."), so the
 user sees GAIA acting FROM their context, not at random. Each goal is its own
@@ -58,7 +59,7 @@ goals into one causal sentence (fundraising work does not happen "because of"
 a user-growth goal). Same truth rule applies.
 
 Item ``kind`` is one of: ``gaia`` (GAIA is doing it), ``you`` (needs the user),
-``proposal`` (awaiting an Approve tap), ``lookback`` (yesterday's result), or
+``proposal`` (awaiting the user's approval), ``lookback`` (yesterday's result), or
 ``note`` (a plain highlight). Set ``todo_id`` only for items bound to a real
 todo you can see or just created. Never emit HTML or Markdown styling inside any
 string; the renderer owns all styling.
@@ -75,7 +76,7 @@ what, why now, and what happens next. Shape (not content) of each kind:
 
 - "you" item: the ONE concrete action plus the reason it is today's.
 - "gaia" item: what GAIA is doing and what the user gets, with when.
-- "proposal" item: what is already staged and what one tap unleashes. Only
+- "proposal" item: what is already staged and what approving it releases. Only
   surface proposals whose staged content you can actually see (their canvas);
   prep still running is a "gaia" item ("I'm on it, drafts land by ..."), and
   failed prep is reported plainly with its cause, never hidden.
@@ -106,7 +107,7 @@ fence. No prose before or after it.
   "lede": "<1-2 sentences setting up the day>",
   "caption": "<one witty closing line>",
   "mood": "<clear | packed | idle | winback>",
-  "bubbles": ["<one chat bubble per goal, in the order the goals appear below>"]
+  "bubbles": ["<the chat messages; you decide how many and where they break>"]
 }
 ```
 
@@ -137,7 +138,7 @@ great progress!", "Let's make today count", "Another productive day ahead",
 with a specific pulled from the facts, in second person, naming the goal it
 serves:
 - BAD headline: "A productive day ahead" / GOOD: "Two investor drafts staged; one
-  tap sends them"
+  word sends them"
 - BAD lede: "You're making steady progress on your goals." / GOOD: "The Sequoia
   and Accel drafts are ready; the only open question is whether the deck link
   goes in the first email."
@@ -148,7 +149,7 @@ plain beats cute.
 
 LEAD WITH THE DECISION. Scan the facts for items marked ``awaiting your action``
 and pick the one with the most leverage toward the goal. The headline or lede
-puts that decision in front of the user with what one tap unleashes. Finished
+puts that decision in front of the user with what one yes releases. Finished
 work is the supporting cast, never the opener, whenever a decision is waiting. If
 nothing awaits the user, open on the biggest finished result instead.
 
@@ -166,7 +167,7 @@ open earns a link; a large research trail behind a one-line decision does not.
 
 When you do link, drop the exact URL inline after your summary the way a person
 pastes one ("...12 investors — elad gil, nat friedman, daniel gross and more —
-full list here: heygaia.link/abc"), and note a tap or reply releases anything
+full list here: heygaia.link/abc"), and note that a reply releases anything
 staged. The number of links follows the work, not a per-bubble habit. Never
 invent or alter a link, and never paste an artifact's contents into a bubble. Do
 not overcorrect into forced quirkiness.
@@ -174,7 +175,7 @@ not overcorrect into forced quirkiness.
 ONE ASK, MAYBE: you may end with ONE extra bubble containing a single closed
 question, only when the facts genuinely raise one (a staged proposal needs a
 call, a failed todo needs a decision, a lane's work has clearly shifted). Ground
-it in a named fact and make it answerable in one word or one tap. Never "anything
+it in a named fact and make it answerable in one word. Never "anything
 else you need?", never two questions, and skip the bubble entirely when nothing
 needs deciding.
 """.strip()
@@ -186,16 +187,42 @@ def build_briefing_voice_prompt(
     facts_block: str,
     goal_block: str,
     lookback_block: str,
+    replies_block: str,
     strikes_block: str,
     awards_block: str,
     winback: bool,
     is_first_briefing: bool,
+    wind_down: str | None = None,
 ) -> str:
-    """Voice pass over code-built facts: the model narrates, never testifies."""
+    """Voice pass over code-built facts: the model narrates, never testifies.
+
+    ``wind_down`` escalates an idle streak: "warn" announces that the loop
+    pauses tomorrow unless a goal arrives; "final" is the one goodbye message
+    before GAIA goes dormant.
+    """
+    wind_down_note = ""
+    if wind_down == "warn":
+        wind_down_note = (
+            "\nGAIA has had nothing to work on for days: no goal, no lanes. Say so "
+            "plainly in ONE short message and warn honestly: unless they tell you "
+            "what they're working on, tomorrow's brief is the last one and the "
+            "nightly work pauses with it. Not a guilt trip, plain operational "
+            "honesty; end on the one question that restarts everything (what are "
+            "you working on right now?).\n"
+        )
+    elif wind_down == "final":
+        wind_down_note = (
+            "\nThis is the goodbye brief. ONE bubble only: you're pausing the daily "
+            "briefs and the night work because there's nothing to work on, and one "
+            "reply naming a goal brings it all back the moment they send it. No "
+            "summary, no stats, no filler; warm, short, zero guilt. This overrides "
+            "the goal-question guidance below: no multi-option question, just the "
+            "goodbye.\n"
+        )
     winback_note = (
         (
             "\nThis user has ignored the last several briefings; this is the one "
-            "message before GAIA goes quiet. Set mood to \"winback\" and send ONE "
+            'message before GAIA goes quiet. Set mood to "winback" and send ONE '
             "short message. Lead with the single most valuable specific sitting in "
             "the facts: the staged draft they never released or the finished "
             "deliverable they never opened, named concretely ('the 12-investor "
@@ -223,12 +250,18 @@ def build_briefing_voice_prompt(
 ## YESTERDAY (context for tone, not new facts)
 {lookback_block}
 
+## WHAT THE USER SAID SINCE THE LAST BRIEF (their bot-chat replies; continuity, not new facts)
+{replies_block}
+Weigh these when choosing the lead and the ask: never re-ask what a reply already
+answered, and acknowledge a redirect only when today's facts show the work
+actually changed in response.
+
 ## DO-NOT-PROPOSE CONTEXT
 {strikes_block}
 {awards_block}
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {goal_block}
-{winback_note}{first_note}
+{winback_note}{first_note}{wind_down_note}
 If no goal lane exists but the goal knowledge above names something specific, the
 whole brief is one short honest message plus ONE confirming question that quotes
 it and offers to open the lane ("You mentioned <specific thing> [on <date>], want
@@ -290,6 +323,7 @@ def build_overnight_work_prompt(
     goal_block: str,
     todos_block: str,
     strikes_block: str,
+    replies_block: str,
 ) -> str:
     """Assemble the night-shift contract: do the goals' work now, silently."""
 
@@ -369,6 +403,13 @@ recipient-specific fact the prep run actually verified (the fund's stated thesis
 their recent post or investment, the shared connection). A draft that would read
 identically with any name swapped in is not approvable; the work order must name
 what to research per recipient before drafting.
+
+## WHAT THE USER SAID SINCE THE LAST BRIEF (their bot-chat replies)
+{replies_block}
+Treat these replies as tonight's freshest strategy input, same weight as a
+rejection reason: fold direction changes into the goal's notes facet and choose
+work that honors them. A reply that redirects a lane outranks the lane's older
+written strategy.
 
 Do not extrapolate beyond the stated goals; do not create work nobody asked
 for. If a similar todo already exists below, improve or leave it, never
