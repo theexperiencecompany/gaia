@@ -139,10 +139,10 @@ export const appConfig = {
       },
       {
         href: "/bots",
-        label: "Talk to GAIA in the apps you already use",
+        label: "Bots",
         icon: <BotStackIcon />,
         richIcon: true,
-        description: "Without leaving Slack, Discord, Telegram, or WhatsApp",
+        description: "Talk to GAIA in Slack, Discord, Telegram, or WhatsApp",
       },
       {
         href: "/features",
@@ -450,13 +450,6 @@ export const footerSections: LinkSection[] = [
 
 // Direct access to link categories for navigation
 export const { product, resources, company, connect, auth } = appConfig.links;
-
-// Utility function to get description for a link by label
-export const getLinkDescription = (label: string): string => {
-  const allLinks = Object.values(appConfig.links).flat();
-  const link = allLinks.find((link) => link.label === label);
-  return link?.description || "";
-};
 
 // Utility function to get a link by label from all categories
 export const getLinkByLabel = (label: string): AppLink | undefined => {
