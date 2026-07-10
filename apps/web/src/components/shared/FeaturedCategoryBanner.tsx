@@ -9,6 +9,14 @@ const ROTATE_BASE_MS = 3400;
 const ROTATE_JITTER_MS = 1400;
 const FADE_MS = 300;
 
+/** Stable per-banner jitter (0..ROTATE_JITTER_MS) derived from the name, so
+ * sibling banners never swap in sync without needing a random source. */
+function nameJitterMs(name: string): number {
+  let hash = 0;
+  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 997;
+  return (hash / 997) * ROTATE_JITTER_MS;
+}
+
 interface FeaturedCategoryBannerProps {
   name: string;
   description: string;
@@ -39,30 +47,29 @@ export function FeaturedCategoryBanner({
 
     let fadeTimeout: ReturnType<typeof setTimeout>;
     // Jittered per-instance interval so sibling banners never swap in sync.
-    const interval = setInterval(
-      () => {
-        const slot = Math.floor(Math.random() * VISIBLE_ICONS);
-        setFadingSlot(slot);
-        fadeTimeout = setTimeout(() => {
-          setVisible((prev) => {
-            const candidates = icons.filter((icon) => !prev.includes(icon));
-            if (candidates.length === 0) return prev;
-            const next = [...prev];
-            next[slot] = candidates[swapCount.current % candidates.length];
-            swapCount.current += 1;
-            return next;
-          });
-          setFadingSlot(null);
-        }, FADE_MS);
-      },
-      ROTATE_BASE_MS + Math.random() * ROTATE_JITTER_MS,
-    );
+    const interval = setInterval(() => {
+      // Walk the slots in a fixed cycle; the varying interval already keeps
+      // the rotation from feeling mechanical.
+      const slot = swapCount.current % VISIBLE_ICONS;
+      setFadingSlot(slot);
+      fadeTimeout = setTimeout(() => {
+        setVisible((prev) => {
+          const candidates = icons.filter((icon) => !prev.includes(icon));
+          if (candidates.length === 0) return prev;
+          const next = [...prev];
+          next[slot] = candidates[swapCount.current % candidates.length];
+          swapCount.current += 1;
+          return next;
+        });
+        setFadingSlot(null);
+      }, FADE_MS);
+    }, ROTATE_BASE_MS + nameJitterMs(name));
 
     return () => {
       clearInterval(interval);
       clearTimeout(fadeTimeout);
     };
-  }, [icons]);
+  }, [icons, name]);
 
   return (
     <Card
