@@ -15,6 +15,8 @@ interface WordRaster {
   pixels: Uint8ClampedArray;
   width: number;
   height: number;
+  /** Right edge of the circle-mark region — it gets a finer dot grid. */
+  logoEndX: number;
 }
 
 function smoothstep(a: number, b: number, x: number): number {
@@ -71,6 +73,7 @@ function rasterizeLockup(
     pixels: ctx.getImageData(0, 0, off.width, off.height).data,
     width: off.width,
     height: off.height,
+    logoEndX: logoW + (rowH * GAP_RATIO) / 2,
   };
 }
 
@@ -120,25 +123,27 @@ function sampleCell(
   };
 }
 
-/** Area-true halftone: sqrt-coverage dots with a size + tone fade to black. */
-function drawHalftone(
+/** One horizontal band of the halftone at a given grid density. */
+function drawRegion(
   ctx: CanvasRenderingContext2D,
   raster: WordRaster,
-  cssW: number,
+  x0: number,
+  x1: number,
   cssH: number,
   cell: number,
 ): void {
   const maxR = cell * 0.46;
-  const cols = Math.floor(cssW / cell);
+  const colStart = Math.floor(x0 / cell);
+  const colEnd = Math.ceil(x1 / cell);
   const rows = Math.floor(raster.height / cell);
 
-  ctx.clearRect(0, 0, cssW, cssH);
   for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
+    for (let col = colStart; col < colEnd; col++) {
+      const x = (col + 0.5) * cell;
+      if (x < x0 || x >= x1) continue;
       const { coverage, r, g, b } = sampleCell(raster, col, row, cell);
       if (coverage <= COVERAGE_FLOOR) continue;
 
-      const x = (col + 0.5) * cell;
       const y = (row + 0.5) * cell;
       const t = Math.min(1, y / cssH);
       const radius = maxR * Math.sqrt(coverage) * (1 - 0.62 * t);
@@ -156,6 +161,21 @@ function drawHalftone(
       ctx.fill();
     }
   }
+}
+
+/** Area-true halftone. The circle mark gets a 2x finer grid than the text so
+ * its internal detail actually resolves — the mark is only ~1/5 of the row's
+ * width, so at text density it would get too few dots to read. */
+function drawHalftone(
+  ctx: CanvasRenderingContext2D,
+  raster: WordRaster,
+  cssW: number,
+  cssH: number,
+  cell: number,
+): void {
+  ctx.clearRect(0, 0, cssW, cssH);
+  drawRegion(ctx, raster, 0, raster.logoEndX, cssH, cell / 2);
+  drawRegion(ctx, raster, raster.logoEndX, cssW, cssH, cell);
 }
 
 /**

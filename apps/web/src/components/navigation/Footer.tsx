@@ -33,11 +33,13 @@ export default function Footer() {
       <footer className="relative z-[1001] m-0! flex min-h-[50vh] flex-col items-center justify-end gap-6 p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-[-1] h-[30vh] bg-linear-to-t from-background to-transparent" />
 
+        {/* Anchor to the bottom so the band glow tracks the footer's real
+            height instead of being center-cropped away. */}
         <Image
           src="/images/wallpapers/bands_gradient_black.png"
           alt=""
           fill
-          className="z-[-1] object-cover"
+          className="z-[-1] object-cover object-bottom"
         />
 
         {/* Columns share the wordmark's container: same max width, centered,
