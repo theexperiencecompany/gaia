@@ -56,7 +56,7 @@ export default function HeroSection({
         <div onClick={onTextClick} className="cursor-default select-none">
           <h1
             aria-label="Get a workday back every week."
-            className="max-w-(--breakpoint-lg) text-center text-[3.2rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible font-serif"
+            className="max-w-(--breakpoint-lg) text-center text-[3.2rem] leading-none sm:text-[6.5rem] font-normal overflow-visible font-serif"
           >
             <TextSoftBlurIn
               text="Get a workday back"
@@ -91,7 +91,7 @@ export default function HeroSection({
       <div className="relative z-2 flex flex-col items-center gap-4 bg-transparent">
         <SoftBlurInBlock immediate delay={0.35} className="relative">
           <div
-            className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl ${isDark ? "text-zinc-200" : "text-black"}`}
+            className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 sm:px-0 sm:text-xl ${isDark ? "text-zinc-200" : "text-black"}`}
           >
             <span>
               GAIA watches your inbox, calendar, and tools and acts before you
