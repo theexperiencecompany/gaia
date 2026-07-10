@@ -154,14 +154,28 @@ def _format_awards(badge_labels: list[str]) -> str:
     )
 
 
+def _group_by_serves(docs: list[dict]) -> str:
+    """GAIA completions grouped by the goal they served, each with a deliverable
+    snippet so the digest voices specifics instead of bare titles."""
+    groups: dict[str, list[dict]] = {}
+    for d in docs[:15]:
+        key = (d.get("serves") or "").strip() or "unfiled"
+        groups.setdefault(key, []).append(d)
+    lines: list[str] = []
+    for serves, items in groups.items():
+        lines.append(f"{serves}:")
+        for d in items:
+            snippet = _canvas_snippet(facet_from_doc(d, FACET_DELIVERABLE, allow_canvas_fallback=True))
+            title = d.get("title", "untitled")
+            lines.append(f"  - {title}" + (f": {snippet}" if snippet else ""))
+    return "\n".join(lines)
+
+
 def _format_week(completed: context.CompletedWork) -> str:
     gaia_n, user_n = len(completed.gaia), len(completed.user)
     lines = [f"GAIA completed {gaia_n} todo(s); you completed {user_n}."]
     if completed.gaia:
-        lines.append(
-            "GAIA shipped:\n"
-            + "\n".join(f"- {d.get('title', 'untitled')}" for d in completed.gaia[:15])
-        )
+        lines.append("GAIA shipped, grouped by the goal it served:\n" + _group_by_serves(completed.gaia))
     if completed.user:
         lines.append(
             "You finished:\n"
@@ -556,6 +570,7 @@ async def run_daily_briefing(user_id: str) -> None:
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
         facts_block=facts_block,
+        goal_block=goal_block,
         lookback_block=lookback_block,
         strikes_block=strikes_block or "No blocked proposal kinds.",
         awards_block=_format_awards(badge_labels),
@@ -607,7 +622,7 @@ async def run_weekly_digest(user_id: str) -> None:
     clock = context.resolve_clock(user.get("timezone"))
 
     since = context.day_start_utc(clock, days_ago=7)
-    completed = await context.gather_completed_since(user_id, since)
+    completed = await context.gather_completed_since(user_id, since, include_deliverables=True)
     hours_saved = round(len(completed.gaia) * MINUTES_SAVED_PER_GAIA_TODO / 60)
     streak = await activity.compute_streak(user_id, clock.tz)
     badge_labels = await check_and_award_badges(user_id, clock, streak)

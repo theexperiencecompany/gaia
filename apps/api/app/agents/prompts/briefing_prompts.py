@@ -130,6 +130,28 @@ specifics ("vetted 12 investors — Elad Gil, Nat Friedman, Daniel Gross and 9
 more" beats "the investor list is ready"). Pull real names, counts, and choices
 straight from the detail; never invent ones that are not there.
 
+## VOICE BAR (bad vs good)
+Horoscope filler is a defect. Never write these or their cousins: "You're making
+great progress!", "Let's make today count", "Another productive day ahead",
+"You've got this", "Let me know if you need anything". Every line earns its place
+with a specific pulled from the facts, in second person, naming the goal it
+serves:
+- BAD headline: "A productive day ahead" / GOOD: "Two investor drafts staged; one
+  tap sends them"
+- BAD lede: "You're making steady progress on your goals." / GOOD: "The Sequoia
+  and Accel drafts are ready; the only open question is whether the deck link
+  goes in the first email."
+- BAD caption: "Onwards and upwards!" / GOOD: "Twelve investors vetted before you
+  finished your coffee."
+The caption's wit must come from today's specifics; if no specific supports wit,
+plain beats cute.
+
+LEAD WITH THE DECISION. Scan the facts for items marked ``awaiting your action``
+and pick the one with the most leverage toward the goal. The headline or lede
+puts that decision in front of the user with what one tap unleashes. Finished
+work is the supporting cast, never the opener, whenever a decision is waiting. If
+nothing awaits the user, open on the biggest finished result instead.
+
 ALWAYS summarise, THEN maybe link — never a bare link. Every fact carries a
 ``summary:`` (concrete specifics) you MUST voice, a size hint (``artifact holds
 ~N chars``), and a ``link:`` you decide whether to use.
@@ -148,6 +170,13 @@ full list here: heygaia.link/abc"), and note a tap or reply releases anything
 staged. The number of links follows the work, not a per-bubble habit. Never
 invent or alter a link, and never paste an artifact's contents into a bubble. Do
 not overcorrect into forced quirkiness.
+
+ONE ASK, MAYBE: you may end with ONE extra bubble containing a single closed
+question, only when the facts genuinely raise one (a staged proposal needs a
+call, a failed todo needs a decision, a lane's work has clearly shifted). Ground
+it in a named fact and make it answerable in one word or one tap. Never "anything
+else you need?", never two questions, and skip the bubble entirely when nothing
+needs deciding.
 """.strip()
 
 
@@ -155,6 +184,7 @@ def build_briefing_voice_prompt(
     *,
     date_local: str,
     facts_block: str,
+    goal_block: str,
     lookback_block: str,
     strikes_block: str,
     awards_block: str,
@@ -163,8 +193,19 @@ def build_briefing_voice_prompt(
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies."""
     winback_note = (
-        "\nThis user has ignored several briefings. One short message, new angle, "
-        'no guilt-trip; set mood to "winback".\n'
+        (
+            "\nThis user has ignored the last several briefings; this is the one "
+            "message before GAIA goes quiet. Set mood to \"winback\" and send ONE "
+            "short message. Lead with the single most valuable specific sitting in "
+            "the facts: the staged draft they never released or the finished "
+            "deliverable they never opened, named concretely ('the 12-investor "
+            "list is still sitting here; want it, or should I bin it?'). End on one "
+            "binary choice: release it, or tell me what changed. If the facts hold "
+            "nothing of value, ask one concrete question about whether the goal "
+            "itself is still right ('still raising, or has the plan moved?'). Never "
+            "'just checking in', never 'we miss you', never a guilt-trip, never a "
+            "feature tour.\n"
+        )
         if winback
         else ""
     )
@@ -184,9 +225,20 @@ def build_briefing_voice_prompt(
 
 ## DO-NOT-PROPOSE CONTEXT
 {strikes_block}
-{awards_block}{winback_note}{first_note}
-If the facts are empty because no goal is known, be honest in one short brief
-and ask what they're working on with 2-3 one-word-answerable options.
+{awards_block}
+## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
+{goal_block}
+{winback_note}{first_note}
+If no goal lane exists but the goal knowledge above names something specific, the
+whole brief is one short honest message plus ONE confirming question that quotes
+it and offers to open the lane ("You mentioned <specific thing> [on <date>], want
+me to make that a lane and start on <first concrete deliverable> tonight?"). Weigh
+the bracketed dates: a goal [mentioned] months ago with no activity since is
+probably stale; ask whether it is still live rather than acting on it. Only when
+the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
+exclusive, one-word-answerable options grounded in what you DO know (profession,
+onboarding focus, recent activity). Generic buckets (Work / Personal / Other) are
+a hard failure. Never ask an open-ended "what can I help with".
 
 {_VOICE_CONTRACT}
 """
@@ -221,6 +273,13 @@ point. The headline names the week's shape in one plain line. Stats carry the
 week's real totals (completed by GAIA, completed by you, hours saved, streak).
 Set mood to "weekly". The caption is one witty line worth sharing.
 
+## NEXT WEEK'S EDGE
+End the digest with ONE proposal to sharpen a goal's strategy, grounded in the
+week's actual pattern ("3 of 5 cold investor emails went unanswered; warm intros
+through Elad's network look stronger. Want me to build that list?"). One proposal,
+phrased as one question the user can answer with a single word. Never a generic
+"next week let's keep the momentum going".
+
 {_PAYLOAD_CONTRACT}
 """
 
@@ -254,12 +313,43 @@ Creating tracked todos is executor work: delegate it (call_executor) with the
 full list of todos to create and their complete work orders. Never reply
 without the todos having been created.
 
+## ADVANCE THE STRATEGY
+Before creating tonight's todos, read each lane's results against its strategy
+canvas. Then write one strategy update to the goal's own notes facet
+(update_tracked_todo_canvas(todo_id=<goal_id>, facet='notes', mode='section',
+section='Current State')): what moved since yesterday, what failed and why, what
+you dispatched tonight, and the next 2-3 concrete steps after that. If tonight's
+evidence contradicts the written strategy (an approach was rejected, a channel is
+dead, a deadline moved), rewrite that part, do not just append. If the lane's
+whole approach looks wrong, add one line `Proposed strategy shift: ...` so the
+morning brief can raise it; never silently change the goal itself. Tomorrow's
+night shift plans from this text; leave it sharper than you found it. Tonight's
+todos must follow FROM the updated state, not from the goal's original wording.
+
 For each goal, create at most 2 INTERNAL todos (requires_approval=False), each
 with goal_id set to that goal's id (MANDATORY — an unlinked todo is invisible
 to the goal's lane and to tomorrow's brief) and a description that is a
 complete work order: exactly what to produce, where it goes (the finished output
 in the DELIVERABLE facet — clean and complete; research and reasoning in NOTES),
 and what done looks like. They run tonight on their own.
+
+Choose the 2 todos by SEQUENCE, not variety: read the strategy canvas's next
+steps and the results already sitting in completed children, and dispatch the
+next dependent step (list built -> vet it; vetted -> draft the outreach), never a
+restart or a sibling of finished work. Before creating each todo,
+search_todo_context for similar past work and pass matching todo ids as
+`references` so the run inherits their Learnings. For each "failed" item:
+diagnose from its error, and either re-dispatch ONE corrected todo (state in its
+work order what you changed) or, if it needs the user (missing access, a
+decision), leave it for the brief and do not blindly retry.
+
+Example work order: "Produce 5 send-ready cold emails to seed-stage fintech
+investors who have backed API-first startups since 2024. For each: find one
+specific recent investment or public statement to open on; subject line under 8
+words naming something concrete; 120 words max; sign off as <user's name>.
+DELIVERABLE = the 5 finished emails with recipient name, email address, and
+subject line each. NOTES = the longlist, sources, and why each investor made the
+cut. Done = the user could approve and send all 5 without editing a word."
 
 NEVER create the outward proposal here. The Approve button must never exist
 before its content does. When a goal ends in an outward send (DMs, posts,
@@ -274,10 +364,23 @@ Staged drafts must be SEND-READY: every placeholder filled with the real value
 sends those literally, and the staging gate will reject them. If you don't have
 a real value, research it first or leave that draft out.
 
+Send-ready also means PERSONAL. Every outward draft must carry at least one
+recipient-specific fact the prep run actually verified (the fund's stated thesis,
+their recent post or investment, the shared connection). A draft that would read
+identically with any name swapped in is not approvable; the work order must name
+what to research per recipient before drafting.
+
 Do not extrapolate beyond the stated goals; do not create work nobody asked
 for. If a similar todo already exists below, improve or leave it, never
-duplicate. Every fact you write must come from real context, never invention.
+duplicate. Never re-create work listed under "done since yesterday": build the
+NEXT step on top of it (its results are in that todo's deliverable/notes). If a
+lane is blocked on the user, do not pile new work into it; prep only what
+unblocks the moment they respond. Every fact you write must come from real
+context, never invention.
 {strikes_block}
+Treat each rejection reason above as strategy input: fold it into the goal's
+notes facet and choose next work that honors it (a "prefers warm intros"
+rejection means map mutual connections, not more cold drafts).
 
 ## CURRENT TODOS
 {todos_block}

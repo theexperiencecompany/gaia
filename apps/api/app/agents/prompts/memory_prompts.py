@@ -17,8 +17,7 @@ Memory Categories:
 # BASE MEMORY EXTRACTION PROMPT
 # =============================================================================
 
-BASE_MEMORY_EXTRACTION_PROMPT = """You are a memory extraction specialist for the {provider_name} integration.
-Your job is to extract CRITICAL REUSABLE INFORMATION that will help future tasks succeed.
+BASE_MEMORY_EXTRACTION_PROMPT = """These notes say WHAT to prioritize when extracting memories from {provider_name} activity. They SUPPLEMENT the core extraction rules and never override them: output format, fact structure, folder routing, importance calibration, temporal fields, and the stranger/noise gate always follow the core prompt. When a note below conflicts with a core rule, the core rule wins.
 
 EXTRACTION PRIORITY (HIGHEST TO LOWEST):
 
@@ -78,15 +77,6 @@ Capture explicit and implicit preferences:
 4. AVOID DUPLICATES: Don't re-extract information already known
 5. SKIP EPHEMERAL DATA: One-time values with no future use
 6. NO SECRETS: Never extract passwords, tokens, API keys, or credentials
-
-## MEMORY FORMAT:
-
-Each memory should be a clear, standalone statement that can be retrieved and used:
-- BAD: "The user mentioned something about email"
-- GOOD: "User's manager Sarah Chen can be reached at sarah.chen@company.com"
-
-- BAD: "Sent a message to a channel"
-- GOOD: "The #product-updates channel (C0912345ABC) is used for announcing new features"
 """
 
 
@@ -154,15 +144,14 @@ TIMING PREFERENCES:
 - "Don't send emails to Japan team after 6pm JST"
 - Scheduling/delay sending patterns
 
-CRITICALLY EXTRACT EVERY EMAIL ADDRESS SEEN:
-When you see ANY email address in the conversation - whether it's:
-- A recipient of an email
-- In a CC or BCC field
-- Mentioned in email body
-- Part of a signature
-- Referenced as a contact
+EXTRACT EMAIL ADDRESSES OF PEOPLE THE USER ACTUALLY KNOWS OR CORRESPONDS WITH:
+Teammates, clients they work with, friends, family, and anyone the user
+deliberately emails or replies to. Store as "[Name if known] - [email] - [context/role if known]".
 
-ALWAYS create a memory: "[Name if known] - [email] - [context/role if known]"
+Do NOT store the address of a stranger who merely appears in the inbox:
+newsletter senders, no-reply addresses, cold outreach, one-off support
+threads, or names that only occur in the signature or From-field of
+unengaged mail. Minting a memory per inbox sender is noise, not thoroughness.
 """,
 )
 
@@ -249,9 +238,13 @@ CHANNEL HIERARCHY:
 - Which channels require specific etiquette
 - Read-only announcement channels vs discussion channels
 
-EVERY USER MENTION SHOULD BE STORED:
-When you see <@U1234567>, immediately create a memory mapping that ID.
-When someone says "ask John" or "tell Sarah", resolve and store the mapping.
+STORE USER-ID MAPPINGS FOR PEOPLE THE USER ACTUALLY INTERACTS WITH:
+When you see <@U1234567> for a teammate, collaborator, or someone the user
+works with, create a memory mapping that ID to their name. When the user says
+"ask John" or "tell Sarah", resolve and store the mapping.
+
+Do NOT store bots, apps, or drive-by mentions of people the user has no
+relationship with: mapping every ID that scrolls past is noise, not a directory.
 """,
 )
 

@@ -31,6 +31,7 @@ from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cach
 from app.memory import pg_store
 from app.memory.extraction import rewrite_core_document
 from app.memory.management import update_document
+from app.memory.mappers import entry_to_note, row_to_entry
 from app.memory.prompts import (
     AGENDA_DOC_CONSOLIDATION_PROMPT,
     INSIGHTS_DOC_CONSOLIDATION_PROMPT,
@@ -62,6 +63,7 @@ CATEGORY_DOC_MAP: dict[str, tuple[MemoryDocType, ...]] = {
     "location": (MemoryDocType.USER_MD,),
     "routines": (MemoryDocType.USER_MD, MemoryDocType.INSIGHTS_MD),
     "projects": (MemoryDocType.USER_MD, MemoryDocType.AGENDA_MD),
+    "agenda": (MemoryDocType.AGENDA_MD,),
     "goals": (MemoryDocType.AGENDA_MD, MemoryDocType.USER_MD),
     "commitments": (MemoryDocType.AGENDA_MD,),
     "deadlines": (MemoryDocType.AGENDA_MD,),
@@ -300,10 +302,15 @@ async def _gather_inputs(
 
 
 def _facts_section(facts: list[MemoryRecord], *, heading: str = "## Latest facts") -> list[str]:
-    """Render fact rows as one input section (empty list when there are none)."""
+    """Render fact rows as one input section (empty list when there are none).
+
+    Routes each row through the canonical ``entry_to_note`` renderer so
+    consolidation inputs carry the same [occurred]/[mentioned] annotations
+    every other memory consumer sees, instead of a bare stored date.
+    """
     if not facts:
         return []
-    lines = "\n".join(f"- {fact.content} (stored {fact.created_at:%Y-%m-%d})" for fact in facts)
+    lines = "\n".join(f"- {entry_to_note(row_to_entry(fact, []))}" for fact in facts)
     return [f"{heading}\n{lines}"]
 
 

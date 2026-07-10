@@ -54,6 +54,7 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 - Relationships and key dates: partners, family, friends, colleagues — names, roles, and especially dates (birthdays, anniversaries). Capture anyone {user_name} actually refers to or interacts with in the conversation; only skip names that merely appear as a passing reference with no tie to {user_name} (a signature, a From-field, a name in a quoted list).
 - Preferences: food and dietary choices, communication style, favorite tools, brands, formats, likes and dislikes.
 - Life and work context: where they live and work, projects they are building, teams, goals, health context, big changes.
+- Goals, aspirations, and their stakes: what {user_name} is trying to achieve, by WHEN, and WHY ("wants to close a $2M seed by October to hire two engineers", "training for the Berlin half-marathon on Sept 27"). Put the target date in occurred_start so recall can reason about how close it is. These are among the highest-importance facts you extract.
 - Changes and corrections to things already true: when {user_name} says an amount, status, or plan CHANGED ("now I'm pre-approved for $400k" after an earlier $350k, "the meeting moved to Thursday", "I switched to the night shift"), always extract the NEW fact — it replaces the old one. Never drop a changed value just because the old one exists; the latest must be captured or recall returns the stale answer.
 - Commitments and deadlines: things {user_name} promised, things owed to them, upcoming obligations.
 - Identity mappings for {user_name} and the people they actually know: {user_name}'s own emails, usernames, handles, and account/service IDs, and the contact details of their real contacts (a teammate, a friend, a client they work with) — "{user_name}'s GitHub handle is ..." or "{user_name}'s Google Cloud billing account is ..." is gold. Do NOT capture the email or handle of a STRANGER who merely appears in the inbox (a customer, lead, sales rep, support requester, anyone who just emailed in) — see the relationships rule.
@@ -76,7 +77,7 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 8. Future-useful only — never store the current task as a fact: "{user_name} is looking for restaurant recommendations right now" or "is asking about X" describes the conversation, not the user, and is worthless next week. Extract the durable thing the request reveals instead ("{user_name} plans date nights in Ahmedabad" -> a preference), or nothing. The journal, not the fact store, records what happened today.
 9. No summary facts: never emit a fact that merely combines or restates other facts you are extracting or that already exist ("Sam has two phone numbers" when each number is its own fact). One attribute per subject, stated once, in its most complete form.
 10. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
-11. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
+11. Importance: 0.9-1.0 life-defining facts AND active goals, aspirations, hard deadlines, and commitments made or owed; 0.6-0.8 stable preferences and recurring context; 0.3-0.5 incidental.
 
 ## Entities and edges
 
@@ -133,7 +134,7 @@ CATEGORIZE_SYSTEM_PROMPT = (
 Given the fact below, assign:
 - category_path: a lowercase-kebab folder chosen by the rules below (at most three segments separated by '/').
 - kind: 'fact' for stable knowledge (preferences, relationships, identity, context); 'experience' for something that happened.
-- importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
+- importance: 0.9-1.0 life-defining facts AND active goals, aspirations, hard deadlines, and commitments made or owed; 0.6-0.8 stable preferences and recurring context; 0.3-0.5 incidental.
 - entities and edges: named entities the fact mentions and entity-to-entity relationships it asserts.
 
 """
@@ -165,7 +166,10 @@ _CONSOLIDATION_SHARED_RULES = """## Rules
 6. Resolve conflicts in favor of the newest input (the world changed).
 7. Stay in your lane: every fact has exactly ONE home document. Respect the
    ownership rules above — repeating a fact that belongs to another document
-   is a containment failure, not thoroughness."""
+   is a containment failure, not thoroughness.
+8. Facts carry [occurred YYYY-MM-DD] and [mentioned YYYY-MM-DD] annotations:
+   use occurred dates to judge whether an item is upcoming, due, or past, and
+   mentioned dates to judge freshness when inputs conflict."""
 
 
 USER_DOC_CONSOLIDATION_PROMPT = (
@@ -222,9 +226,12 @@ AGENDA_DOC_CONSOLIDATION_PROMPT = (
 # Current agenda
 ## Active projects
 ## Commitments & deadlines
+## Overdue
 ## GAIA owes the user
 
-This document holds OPEN loops only: DROP every item that the inputs mark as completed or resolved, and every dated item whose date is already past. An item is also completed when GAIA already delivered it (a request for recommendations is closed once the recommendations were given). Keep each remaining item to one bullet with its concrete date when known.
+This document holds OPEN loops only: DROP items the inputs mark as completed or resolved, and dated items that clearly self-expired (a meeting or event whose time passed). NEVER drop a commitment or deadline just because its date passed with no evidence it was done: move it to the '## Overdue' section, keep its original date, and prefix it 'OVERDUE since <date>'. These are the items GAIA must chase. An item is also completed when GAIA already delivered it (a request for recommendations is closed once the recommendations were given). Keep each remaining item to one bullet with its concrete date when known.
+
+Under Active projects, do the opposite of dropping: ENRICH. When inputs show progress on a project or goal (a completed step, a meeting held, a new sub-commitment), fold it into that project's bullet as 'last: <what happened, dated>' and 'next: <the concrete next step the inputs imply>'. A goal bullet should read like a live thread ('Seed raise: pitched Accel Jul 8, follow-up list owed; target close Oct'), never a static label. Invent nothing: 'next' must be an inputs-stated or directly implied step.
 
 EXCLUDE GAIA's own internal or system operations — memory processing, embedding, indexing, "extract memories", background jobs, and any technical operation GAIA performs on its own infrastructure. The agenda is strictly the USER's real commitments, deadlines, goals, and things GAIA owes the user as a concrete deliverable.
 
@@ -262,8 +269,11 @@ INSIGHTS_DOC_CONSOLIDATION_PROMPT = (
 # Insights
 ## Routines
 ## Patterns
+## Worth asking
 
 Record only patterns the inputs actually evidence — things observed to happen, ideally more than once. Never psychoanalyze, never speculate about motives or feelings, never generalize from a single event unless the user stated it as a routine.
+
+Under Worth asking, keep at most 3 bullets: concrete, high-leverage questions the inputs raise but do not answer, each grounded in a known fact and phrased so GAIA could ask it verbatim ("You mentioned pitching Accel: what size round are you raising?"). Never generic filler ("what are your goals?"). Drop a question the moment the inputs answer it.
 
 """
     + _CONSOLIDATION_SHARED_RULES

@@ -15,6 +15,7 @@ CONVERSION LENS (what to pick):
 - Pick the next steps that keep the user moving and quietly show what GAIA can do for them. The best action turns a one-off answer into ongoing help: reading something -> acting on it, an answer -> a saved reminder or a drafted message, a search -> the obvious next dig.
 - Lead with the action that delivers the most value for the least effort, the one they'd most likely actually want. Make them want to tap it.
 - Suggest things GAIA can genuinely do given the available tools/context. Never promise something it can't deliver.
+- When the context names what the user is working toward, prefer the chip that advances THAT goal over a generic next step: "Draft the Accel follow-up" beats "Search for more investors".
 
 FORM:
 - Short (aim under ~30 characters), self-contained, and actionable. It must stand on its own as a message.

@@ -23,6 +23,7 @@ from app.db.mongodb.collections import (
     workflows_collection,
 )
 from app.memory.engine import memory_engine
+from app.memory.mappers import entry_to_note
 from app.models.briefing_models import BriefingMood
 from app.models.todo_models import ExecutionStatus
 
@@ -111,9 +112,9 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
             user_id, "what is the user currently working on and their goals", limit=5
         )
         for entry in result.memories:
-            content = (entry.content or "").strip()
-            if content and content not in lines:
-                lines.append(f"- {content}")
+            note = entry_to_note(entry).strip()
+            if note and note not in lines:
+                lines.append(f"- {note}")
     except Exception:
         # Memory recall is best-effort context, not a hard dependency of the run.
         pass
@@ -142,6 +143,54 @@ class GoalLane:
 
 
 _LANE_CANVAS_EXCERPT_CHARS = 700
+# The nightly pass writes its freshest thinking into these sections, so they lead
+# the excerpt regardless of where they sit in the notes facet.
+_PRIORITY_CANVAS_SECTIONS = ("current state", "next steps")
+
+
+def _split_markdown_sections(text: str) -> list[tuple[str, str]]:
+    """Split markdown into (heading, block) pairs by ``## `` headers.
+
+    Each block keeps its own heading line; text before the first header is
+    returned under an empty heading.
+    """
+    sections: list[tuple[str, str]] = []
+    heading = ""
+    buf: list[str] = []
+    for line in text.splitlines():
+        if line.lstrip().startswith("## "):
+            if buf:
+                sections.append((heading, "\n".join(buf).strip()))
+            heading = line.lstrip()[3:].strip()
+            buf = [line]
+        else:
+            buf.append(line)
+    if buf:
+        sections.append((heading, "\n".join(buf).strip()))
+    return sections
+
+
+def _excerpt_canvas(notes: str) -> str:
+    """The freshest slice of a goal's notes facet for the night shift to plan from.
+
+    A head-truncation converges on the oldest plan text as the notes grow, hiding
+    exactly the ``## Current State`` the nightly pass should plan from. So the
+    priority sections lead, the rest of the budget is filled from the top of
+    everything else, and when no such sections exist the tail (most recently
+    appended) wins over the head.
+    """
+    notes = notes.strip()
+    if len(notes) <= _LANE_CANVAS_EXCERPT_CHARS:
+        return notes
+    sections = _split_markdown_sections(notes)
+    priority = [b for h, b in sections if h.lower() in _PRIORITY_CANVAS_SECTIONS]
+    if not priority:
+        return notes[-_LANE_CANVAS_EXCERPT_CHARS:].strip()
+    rest = [b for h, b in sections if h.lower() not in _PRIORITY_CANVAS_SECTIONS]
+    excerpt = "\n\n".join(priority).strip()
+    if rest and len(excerpt) < _LANE_CANVAS_EXCERPT_CHARS:
+        excerpt += "\n\n" + "\n\n".join(rest).strip()
+    return excerpt[:_LANE_CANVAS_EXCERPT_CHARS].strip()
 
 
 async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
@@ -161,7 +210,7 @@ async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
         lane = GoalLane(
             goal_id=goal_id,
             title=goal.get("title", "untitled goal"),
-            canvas_excerpt=goal_notes[:_LANE_CANVAS_EXCERPT_CHARS],
+            canvas_excerpt=_excerpt_canvas(goal_notes),
         )
         async for child in todos_collection.find(
             {"user_id": user_id, "goal_id": goal_id},
@@ -221,9 +270,11 @@ def format_goal_lanes_block(lanes: list[GoalLane]) -> str:
         if lane.canvas_excerpt.strip():
             lines.append(f"strategy canvas:\n{lane.canvas_excerpt.strip()}")
         for label, docs in (
+            ("done since yesterday", lane.completed),
             ("open work", lane.running),
             ("staged proposals", lane.staged),
             ("failed", lane.failed),
+            ("blocked on the user", lane.needs_you),
         ):
             if docs:
                 lines.append(label + ": " + "; ".join(d.get("title", "?") for d in docs))
@@ -233,11 +284,17 @@ def format_goal_lanes_block(lanes: list[GoalLane]) -> str:
     return "\n\n".join(parts)
 
 
-async def gather_completed_since(user_id: str, since: datetime) -> CompletedWork:
+async def gather_completed_since(
+    user_id: str, since: datetime, *, include_deliverables: bool = False
+) -> CompletedWork:
+    projection = {"title": 1, "assignee": 1, "labels": 1, "completed_at": 1, "serves": 1}
+    if include_deliverables:
+        # The weekly digest voices deliverable snippets; the daily look-back only
+        # needs titles, so it skips the heavier facet fields.
+        projection |= {"deliverable_content": 1, "canvas_content": 1}
     work = CompletedWork()
     cursor = todos_collection.find(
-        {"user_id": user_id, "completed_at": {"$gte": since}},
-        {"title": 1, "assignee": 1, "labels": 1, "completed_at": 1, "serves": 1},
+        {"user_id": user_id, "completed_at": {"$gte": since}}, projection
     )
     async for doc in cursor:
         is_gaia = doc.get("assignee") == "gaia" or "gaia-tracked" in doc.get("labels", [])

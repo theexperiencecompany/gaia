@@ -369,9 +369,19 @@ async def dismiss(
 ) -> None:
     """Dismiss a proposed todo; the rejection teaches memory (3-strike rule)."""
     doc = await _require_status(todo_id, user_id, ExecutionStatus.PROPOSED, "dismissed")
+    # Persist the verbatim reason (and when) on the doc so the strike summary can
+    # surface it without reaching into memory recall — the summary stays derived
+    # from the todos collection, where the 3-strike rule cannot silently degrade.
     await todos_collection.update_one(
         {"_id": ObjectId(todo_id), "user_id": user_id},
-        {"$set": {"execution_status": ExecutionStatus.DISMISSED.value, "completed": True}},
+        {
+            "$set": {
+                "execution_status": ExecutionStatus.DISMISSED.value,
+                "completed": True,
+                "dismiss_reason": reason,
+                "dismissed_at": datetime.now(UTC),
+            }
+        },
     )
     await _record_rejection_signal(user_id, doc, "dismissed", reason)
     track(
@@ -472,10 +482,14 @@ async def expire_stale_proposals(user_id: str) -> list[str]:
 
 
 async def get_rejection_strikes_summary(user_id: str) -> str:
-    """Kinds rejected/expired REJECTION_STRIKE_THRESHOLD+ times, for prompt injection.
+    """Rejected-kind steering block for prompt injection: counts, blocks, reasons.
 
     Derived from the todos collection (not memory recall) so the 3-strike rule
-    cannot silently degrade.
+    cannot silently degrade. Each kind carries its strike count and the user's
+    most recent verbatim dismissal reason so the agent can adapt (choose a
+    different approach that honors the reason) rather than only avoid. Kinds at
+    REJECTION_STRIKE_THRESHOLD+ are BLOCKED; sub-threshold kinds appear only when
+    the user gave a reason worth learning from.
     """
     query = {
         "user_id": user_id,
@@ -485,13 +499,40 @@ async def get_rejection_strikes_summary(user_id: str) -> str:
         **gaia_assigned_filter(),
     }
     strikes: dict[str, int] = {}
-    async for doc in todos_collection.find(query, {"title": 1, "labels": 1, "serves": 1}):
+    reasons: dict[str, str] = {}
+    projection = {"title": 1, "labels": 1, "serves": 1, "dismiss_reason": 1, "dismissed_at": 1}
+    # Newest dismissal first, so the first reason seen per kind is the most recent
+    # (expiries have no reason and no dismissed_at — they only add to the count).
+    cursor = todos_collection.find(query, projection).sort("dismissed_at", -1)
+    async for doc in cursor:
         kind = derive_proposal_kind(doc)
         strikes[kind] = strikes.get(kind, 0) + 1
-    blocked = sorted(k for k, n in strikes.items() if n >= REJECTION_STRIKE_THRESHOLD)
-    if not blocked:
+        reason = (doc.get("dismiss_reason") or "").strip()
+        if reason and kind not in reasons:
+            reasons[kind] = reason
+
+    lines: list[str] = []
+    has_blocked = False
+    for kind in sorted(strikes, key=lambda k: (-strikes[k], k)):
+        count = strikes[kind]
+        latest_reason = reasons.get(kind)
+        if count >= REJECTION_STRIKE_THRESHOLD:
+            has_blocked = True
+            tag = f"{kind} ({count}x, BLOCKED)"
+        elif latest_reason:
+            tag = f"{kind} ({count}x)"
+        else:
+            # Sub-threshold with no stated reason teaches nothing — skip it.
+            continue
+        lines.append(f'- {tag}: user said "{latest_reason}"' if latest_reason else f"- {tag}")
+
+    if not lines:
         return ""
-    return (
-        "Do NOT propose these kinds again (rejected 3+ times, unless the user "
-        "explicitly asks): " + ", ".join(blocked)
-    )
+    summary = "Rejected work — adapt, don't just avoid:\n" + "\n".join(lines)
+    if has_blocked:
+        summary += (
+            f"\nBLOCKED kinds (rejected {REJECTION_STRIKE_THRESHOLD}+ times) must not "
+            "be proposed again unless the user explicitly asks — use the reasons to "
+            "pick a different approach that honors them."
+        )
+    return summary
