@@ -57,6 +57,8 @@ export default function FinalSection({
         />
         {/* Legibility scrim over the Earth photo. */}
         <div className="pointer-events-none absolute inset-0 z-10 bg-black/30" />
+        {/* Soft outline in the design language — slightly thick, low opacity. */}
+        <div className="pointer-events-none absolute inset-0 z-30 rounded-[2.5rem] border-2 border-white/10" />
 
         <div className="relative z-20 flex w-full max-w-5xl flex-col items-center justify-center gap-4 text-center">
           <TextSoftBlurIn
@@ -75,10 +77,6 @@ export default function FinalSection({
             classname="w-full max-w-xs sm:w-auto text-black! text-sm sm:text-lg h-9 sm:h-12 px-6 rounded-xl hover:scale-105"
             text="Try GAIA Free"
           />
-
-          <p className="mt-1 text-sm font-light text-zinc-300 max-[760px]:text-xs">
-            Free forever for personal use. No credit card.
-          </p>
 
           {showSocials && (
             <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-zinc-300 sm:mt-6 max-[700px]:hidden">

@@ -8,7 +8,7 @@ export const wallpapers = {
     webp: "/images/wallpapers/staircase.webp",
   },
   integration: {
-    png: "/images/wallpapers/library.png",
-    webp: "/images/wallpapers/library.webp",
+    png: "/images/wallpapers/earth_satellite.png",
+    webp: "/images/wallpapers/earth_satellite.png",
   },
 } as const;
