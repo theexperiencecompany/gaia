@@ -190,7 +190,7 @@ export function FooterWordmark() {
       if (!raster) return;
 
       const cssH = raster.height;
-      const cell = Math.max(11, Math.min(17, cssW / 78));
+      const cell = Math.max(7, Math.min(11, cssW / 120));
       const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
       canvas.width = Math.round(cssW * dpr);
       canvas.height = Math.round(cssH * dpr);
