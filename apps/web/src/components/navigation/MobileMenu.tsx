@@ -40,40 +40,42 @@ export default function MobileMenu() {
               <p className="mb-2 text-xs tracking-wide text-zinc-500 uppercase">
                 Product
               </p>
-              {product.map((link) => {
-                const isComingSoon = link.commented;
-                if (isComingSoon) {
-                  return (
-                    <span
+              {product
+                .filter((link) => !link.hideNavbar)
+                .map((link) => {
+                  const isComingSoon = link.commented;
+                  if (isComingSoon) {
+                    return (
+                      <span
+                        key={link.href}
+                        className="cursor-not-allowed py-1.5 text-sm text-zinc-600 opacity-50 select-none"
+                      >
+                        {link.label}
+                      </span>
+                    );
+                  }
+                  return link.external ? (
+                    <a
                       key={link.href}
-                      className="cursor-not-allowed py-1.5 text-sm text-zinc-600 opacity-50 select-none"
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                      onClick={() => setSheetOpen(false)}
                     >
                       {link.label}
-                    </span>
+                    </a>
+                  ) : (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                      onClick={() => setSheetOpen(false)}
+                    >
+                      {link.label}
+                    </Link>
                   );
-                }
-                return link.external ? (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
-                    onClick={() => setSheetOpen(false)}
-                  >
-                    {link.label}
-                  </a>
-                ) : (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
-                    onClick={() => setSheetOpen(false)}
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
+                })}
             </div>
 
             {/* General — top-level nav links mirroring desktop navbar */}
@@ -111,40 +113,42 @@ export default function MobileMenu() {
               <p className="mb-2 text-xs tracking-wide text-zinc-500 uppercase">
                 Resources
               </p>
-              {resources.map((link) => {
-                const isComingSoon = link.commented;
-                if (isComingSoon) {
-                  return (
-                    <span
+              {resources
+                .filter((link) => !link.hideNavbar)
+                .map((link) => {
+                  const isComingSoon = link.commented;
+                  if (isComingSoon) {
+                    return (
+                      <span
+                        key={link.href}
+                        className="cursor-not-allowed py-1.5 text-sm text-zinc-600 opacity-50 select-none"
+                      >
+                        {link.label}
+                      </span>
+                    );
+                  }
+                  return link.external ? (
+                    <a
                       key={link.href}
-                      className="cursor-not-allowed py-1.5 text-sm text-zinc-600 opacity-50 select-none"
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                      onClick={() => setSheetOpen(false)}
                     >
                       {link.label}
-                    </span>
+                    </a>
+                  ) : (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                      onClick={() => setSheetOpen(false)}
+                    >
+                      {link.label}
+                    </Link>
                   );
-                }
-                return link.external ? (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
-                    onClick={() => setSheetOpen(false)}
-                  >
-                    {link.label}
-                  </a>
-                ) : (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
-                    onClick={() => setSheetOpen(false)}
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
+                })}
             </div>
 
             {/* Company Section */}

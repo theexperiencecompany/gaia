@@ -26,41 +26,15 @@ import {
   YoutubeIcon,
 } from "@/components/shared/icons";
 
-const BOT_ICONS: { src: string; alt: string; rotate: string }[] = [
-  {
-    src: "/images/icons/macos/discord.webp",
-    alt: "Discord",
-    rotate: "-rotate-6",
-  },
-  { src: "/images/icons/macos/slack.webp", alt: "Slack", rotate: "rotate-6" },
-  {
-    src: "/images/icons/macos/telegram.webp",
-    alt: "Telegram",
-    rotate: "-rotate-6",
-  },
-  {
-    src: "/images/icons/macos/whatsapp.webp",
-    alt: "WhatsApp",
-    rotate: "rotate-6",
-  },
-];
-
-const BotStackIcon = (): ReactElement => (
-  <div className="flex -space-x-3">
-    {BOT_ICONS.map((bot) => (
-      <div
-        key={bot.alt}
-        className={`relative size-9 shrink-0 ${bot.rotate} drop-shadow-md transition-transform duration-200 group-hover:rotate-0`}
-      >
-        <Image
-          src={bot.src}
-          alt={bot.alt}
-          fill
-          sizes="36px"
-          className="object-contain"
-        />
-      </div>
-    ))}
+const BotPlatformIcon = ({
+  src,
+  alt,
+}: {
+  src: string;
+  alt: string;
+}): ReactElement => (
+  <div className="relative size-9 shrink-0">
+    <Image src={src} alt={alt} fill sizes="36px" className="object-contain" />
   </div>
 );
 
@@ -138,18 +112,74 @@ export const appConfig = {
         description: "Keep your data on your own infrastructure",
       },
       {
-        href: "/bots",
-        label: "Bots",
-        icon: <BotStackIcon />,
+        href: "/whatsapp",
+        label: "WhatsApp",
+        icon: (
+          <BotPlatformIcon
+            src="/images/icons/macos/whatsapp.webp"
+            alt="WhatsApp"
+          />
+        ),
         richIcon: true,
-        description: "Talk to GAIA in Slack, Discord, Telegram, or WhatsApp",
+        description: "Chat with GAIA on WhatsApp",
+      },
+      {
+        href: "/bots",
+        label: "Telegram",
+        icon: (
+          <BotPlatformIcon
+            src="/images/icons/macos/telegram.webp"
+            alt="Telegram"
+          />
+        ),
+        richIcon: true,
+        description: "Chat with GAIA on Telegram",
+      },
+      {
+        href: "/slack-bot",
+        label: "Slack",
+        icon: (
+          <BotPlatformIcon src="/images/icons/macos/slack.webp" alt="Slack" />
+        ),
+        richIcon: true,
+        description: "Bring GAIA into your workspace",
+      },
+      {
+        href: "/discord-bot",
+        label: "Discord",
+        icon: (
+          <BotPlatformIcon
+            src="/images/icons/macos/discord.webp"
+            alt="Discord"
+          />
+        ),
+        richIcon: true,
+        description: "Add GAIA to your server",
       },
       {
         href: "/features",
         label: "Features",
         icon: <MapsIcon width={20} height={20} color={"currentColor"} />,
         description: "Every capability in one place",
+        hideNavbar: true,
       },
+      {
+        href: "/for",
+        label: "Tailored For Your Role",
+        icon: <UserGroupIcon width={20} height={20} color={"currentColor"} />,
+        description: "Workflows tuned for your job, not generic ones",
+        hideNavbar: true,
+      },
+      {
+        href: "/compare",
+        label: "Compare",
+        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
+        description: "Side-by-side with ChatGPT, Claude, and Poke",
+        hideNavbar: true,
+      },
+    ] as AppLink[],
+
+    resources: [
       {
         href: "/roadmap",
         label: "Roadmap",
@@ -157,21 +187,6 @@ export const appConfig = {
         external: true,
         description: "What we're shipping next",
       },
-      {
-        href: "/for",
-        label: "Tailored For Your Role",
-        icon: <UserGroupIcon width={20} height={20} color={"currentColor"} />,
-        description: "Workflows tuned for your job, not generic ones",
-      },
-      {
-        href: "/compare",
-        label: "Compare",
-        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
-        description: "Side-by-side with ChatGPT, Claude, and Poke",
-      },
-    ] as AppLink[],
-
-    resources: [
       {
         href: "/blog",
         label: "Blog",
@@ -229,6 +244,7 @@ export const appConfig = {
         label: "Automation Combos",
         icon: <ConnectIcon width={20} height={20} color={"currentColor"} />,
         description: "Recipes for connecting any two tools",
+        hideNavbar: true,
       },
       {
         href: "/feed.xml",
