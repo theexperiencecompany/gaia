@@ -2,10 +2,10 @@
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
 
-import { getAllFAQs } from "@/lib/faq";
+import { type FAQItem, getAllFAQs } from "@/lib/faq";
 
-export function FAQAccordion() {
-  const faqItems = getAllFAQs();
+export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
+  const faqItems = faqs ?? getAllFAQs();
 
   return (
     <div className="relative flex h-fit w-full items-center justify-center px-2 py-8 sm:px-4">

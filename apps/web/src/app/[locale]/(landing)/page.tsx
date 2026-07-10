@@ -4,7 +4,7 @@ import LandingPageClient from "@/app/[locale]/(landing)/client";
 import JsonLd from "@/components/seo/JsonLd";
 import { getLatestRelease } from "@/features/landing/utils/getLatestRelease";
 import { getTimeOfDay } from "@/features/landing/utils/timeOfDay";
-import { homepageFAQs } from "@/lib/page-faqs";
+import { homepageFAQs } from "@/lib/faq";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,

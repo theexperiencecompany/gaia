@@ -14,6 +14,7 @@ import {
   isDarkTimeOfDay,
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
+import { homepageFAQs } from "@/lib/faq";
 
 function SectionLoader() {
   return (
@@ -36,10 +37,6 @@ const TimeSavedCounter = dynamic(
   () => import("@/features/landing/components/sections/TimeSavedCounter"),
   { loading: SectionLoader, ssr: false },
 );
-// const BuiltForEveryone = dynamic(
-//   () => import("@/features/landing/components/sections/BuiltForEveryone"),
-//   { loading: SectionLoader, ssr: false },
-// );
 const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),
   { loading: SectionLoader },
@@ -64,10 +61,6 @@ const BotsShowcaseSection = dynamic(
   () => import("@/features/landing/components/sections/BotsShowcaseSection"),
   { loading: SectionLoader },
 );
-const ComparisonGrid = dynamic(
-  () => import("@/features/landing/components/sections/ComparisonGrid"),
-  { loading: SectionLoader },
-);
 const OpenSource = dynamic(
   () => import("@/features/landing/components/sections/OpenSource"),
   { loading: SectionLoader },
@@ -76,13 +69,6 @@ const FAQAccordion = dynamic(
   () =>
     import("@/features/pricing/components/FAQAccordion").then((mod) => ({
       default: mod.FAQAccordion,
-    })),
-  { loading: SectionLoader },
-);
-const LandingDownloadSection = dynamic(
-  () =>
-    import("@/features/download/components/DownloadPage").then((mod) => ({
-      default: mod.LandingDownloadSection,
     })),
   { loading: SectionLoader },
 );
@@ -184,17 +170,10 @@ export default function LandingPageClient({
           <MemoryShowcaseSection />
           <TodoShowcaseSection />
 
-          {/* Decision — how it stacks up, trust, price */}
-          <ComparisonGrid />
-
-          {/* Positioning — why GAIA exists */}
-          {/* <BuiltForEveryone /> */}
-
           <OpenSource />
 
           {/* Objections + final CTA */}
-          <FAQAccordion />
-          <LandingDownloadSection />
+          <FAQAccordion faqs={homepageFAQs} />
           <FinalSection
             showSocials={false}
             timeOfDay={timeOfDay}
