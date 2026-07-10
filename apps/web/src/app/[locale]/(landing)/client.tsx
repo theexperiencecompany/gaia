@@ -2,16 +2,10 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
-import {
-  getNextTimeOfDay,
-  getTimeOfDay,
-  isDarkTimeOfDay,
-  type TimeOfDay,
-} from "@/features/landing/utils/timeOfDay";
 import { homepageFAQs } from "@/lib/faq";
 
 function SectionLoader() {
@@ -81,33 +75,10 @@ const FinalSection = dynamic(
 );
 
 export default function LandingPageClient({
-  initialTimeOfDay,
   latestRelease,
 }: {
-  initialTimeOfDay: TimeOfDay;
   latestRelease: LatestRelease | null;
 }) {
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(initialTimeOfDay);
-  const [clickCount, setClickCount] = useState(0);
-  const isDark = isDarkTimeOfDay(timeOfDay);
-
-  const handleTextClick = () => {
-    const next = clickCount + 1;
-    setClickCount(next);
-    if (next % 3 === 0) {
-      setTimeOfDay((prev) => getNextTimeOfDay(prev));
-    }
-  };
-
-  const handleTimeChange = useCallback(() => {
-    setTimeOfDay((prev) => getNextTimeOfDay(prev));
-  }, []);
-
-  useEffect(() => {
-    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setTimeOfDay(getTimeOfDay(userTimezone));
-  }, []);
-
   useEffect(() => {
     document.documentElement.style.overflowY = "scroll";
 
@@ -131,11 +102,7 @@ export default function LandingPageClient({
             className="z-0 object-cover opacity-90"
           />
 
-          <HeroSection
-            isDark
-            onTextClick={handleTextClick}
-            latestRelease={latestRelease}
-          />
+          <HeroSection isDark latestRelease={latestRelease} />
           <ChatDemoSection />
         </section>
 
@@ -163,13 +130,7 @@ export default function LandingPageClient({
 
           {/* Objections + final CTA */}
           <FAQAccordion faqs={homepageFAQs} />
-          <FinalSection
-            showSocials={false}
-            timeOfDay={timeOfDay}
-            isDark={isDark}
-            onTextClick={handleTextClick}
-            onTimeChange={handleTimeChange}
-          />
+          <FinalSection showSocials={false} />
         </div>
       </div>
     </LazyMotionProvider>
