@@ -252,20 +252,28 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
             />
           </svg>
         )}
-        <div className="absolute inset-0 flex items-center justify-center">
+        {/* "left" lives INSIDE the gauge: a bare "99%" under a "Usage" heading
+            reads as 99% USED — the unit must be inseparable from the number. */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-2xl font-semibold leading-none tracking-tight text-white tabular-nums">
             {remaining}%
+          </span>
+          <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+            left
           </span>
         </div>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-zinc-400">
-          {win === "day" ? "Usage today" : "Usage this month"}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium text-zinc-400">
+            {win === "day" ? "Today" : "This month"}
+          </p>
+          <InfoTip text="What's left of your allowance this window, measured against whichever limit you're closest to — message caps or compute usage." />
+        </div>
         <p className="mt-1 text-xl font-semibold text-white">
           {win === "day"
-            ? "of today's allowance left"
-            : "of this month's allowance left"}
+            ? "of your daily allowance left"
+            : "of your monthly allowance left"}
         </p>
         <p className="mt-2 text-[13px] text-zinc-500">
           {win === "day"
@@ -514,10 +522,20 @@ function Stats({
         sub={`of ${elapsedDays} days this month`}
         accent={
           streak > 0 ? (
-            <span className="flex items-center gap-0.5 text-xs font-medium text-orange-400">
-              <Fire02Icon size={13} />
-              {streak}
-            </span>
+            <Tooltip
+              content={`${streak}-day streak — you've been active every day for the last ${streak} days`}
+              placement="top"
+              delay={150}
+              closeDelay={0}
+              classNames={{
+                content: "max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl",
+              }}
+            >
+              <span className="flex cursor-default items-center gap-0.5 text-xs font-medium text-orange-400">
+                <Fire02Icon size={13} />
+                {streak}
+              </span>
+            </Tooltip>
           ) : undefined
         }
       />

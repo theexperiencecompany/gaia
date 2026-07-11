@@ -229,7 +229,7 @@ export default function SettingsMenu({
       showDivider: true,
       items: [
         ...settingsPageItems.filter((item) =>
-          ["memory", "linked-accounts"].includes(item.key),
+          ["memory", "linked-accounts", "usage"].includes(item.key),
         ),
         {
           key: "keyboard_shortcuts",
