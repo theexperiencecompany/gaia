@@ -12,7 +12,6 @@ import {
   AreaChart,
   Bar,
   BarChart,
-  Cell,
   PolarAngleAxis,
   RadialBar,
   RadialBarChart,
@@ -136,7 +135,7 @@ export function UsageView({
       <Stats summary={summary} history={history} />
       <Trend history={history} summary={summary} />
       <div className="flex items-stretch gap-4">
-        <DailyBars history={history} summary={summary} />
+        <DailyBars history={history} />
         {activity && <ActivityBadge tier={activity.tier} activity={activity} />}
       </div>
       {activity && <UsageHeatmap activity={activity} />}
@@ -274,7 +273,10 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
   );
 }
 
-// --- Daily bars: the day-by-day pattern, colored by how close to the limit -
+// --- Daily bars: plain daily activity. No limit theater — limits change with
+// plans over time, so coloring history against ANY single limit misleads.
+// Friction messaging lives in the upgrade banner; this chart just answers
+// "how much did I use each day". (#12 will turn this into daily usage-%.)
 
 function DailyTooltip({
   active,
@@ -282,22 +284,18 @@ function DailyTooltip({
 }: {
   active?: boolean;
   payload?: {
-    payload: { label: string; messages: number; dayLimit: number };
+    payload: { label: string; messages: number };
   }[];
 }) {
   if (!active || !payload?.length) return null;
-  const { label, messages, dayLimit } = payload[0].payload;
-  const color = severityColor(
-    dayLimit > 0 ? (messages / dayLimit) * 100 : 0,
-    HEALTHY,
-  );
+  const { label, messages } = payload[0].payload;
   return (
     <div className="rounded-lg bg-zinc-800 px-2.5 py-1.5 text-xs shadow-xl">
       <p className="mb-1 text-zinc-400">{label}</p>
       <div className="flex items-center gap-1.5">
         <span
           className="size-2 rounded-[2px]"
-          style={{ backgroundColor: color }}
+          style={{ backgroundColor: HEALTHY }}
         />
         <span className="font-medium text-zinc-100">
           {messages} {messages === 1 ? "message" : "messages"}
@@ -307,65 +305,38 @@ function DailyTooltip({
   );
 }
 
-function DailyBars({
-  history,
-  summary,
-}: {
-  history: UsageHistoryEntry[];
-  summary: UsageSummary;
-}) {
-  const limit = summary.features.chat_messages?.periods.day?.limit ?? 0;
+function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
   const data = useMemo(() => {
     if (!history.length) return [];
     const dayKey = (d: Date) =>
       `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
-    // Each day keeps its OWN stored limit: coloring history against today's
-    // limit fabricates "limit hit" days for anyone whose plan ever changed
-    // (a past Pro day would render red against the free 15-cap).
-    const byDay = new Map<string, { used: number; limit: number }>();
+    const byDay = new Map<string, number>();
     let end = 0;
     for (const e of history) {
       const d = new Date(e.date);
-      const day = e.features.chat_messages?.periods.day;
-      if (day?.used !== undefined) {
-        byDay.set(dayKey(d), { used: day.used, limit: day.limit ?? 0 });
-      }
+      const used = e.features.chat_messages?.periods.day?.used;
+      if (used !== undefined) byDay.set(dayKey(d), used);
       end = Math.max(end, d.getTime());
     }
     // Trailing 30 days ending on the latest day we have data for (= today).
     return Array.from({ length: 30 }, (_, i) => {
       const d = new Date(end - (29 - i) * 86_400_000);
       const key = dayKey(d);
-      const entry = byDay.get(key);
       return {
         key,
         label: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`,
-        messages: entry?.used ?? 0,
-        dayLimit: entry?.limit ?? 0,
+        messages: byDay.get(key) ?? 0,
       };
     });
   }, [history]);
 
-  const daysHit = data.filter(
-    (d) => d.dayLimit > 0 && d.messages >= d.dayLimit,
-  ).length;
   if (data.length < 2) return null;
 
   return (
     <section className={cn(CARD, "flex min-w-0 flex-1 flex-col p-5")}>
-      <div className="mb-4 flex items-baseline justify-between">
-        <div className="flex items-center gap-1.5">
-          <p className="text-base font-semibold text-white">Day by day</p>
-          <InfoTip text="Messages sent each day over the last 30 days. Bars turn amber as you near the daily limit and red on days you hit it." />
-        </div>
-        {daysHit > 0 && (
-          <p className="text-[13px] text-zinc-500">
-            Limit hit on{" "}
-            <span className="font-medium text-zinc-300">
-              {daysHit} {daysHit === 1 ? "day" : "days"}
-            </span>
-          </p>
-        )}
+      <div className="mb-4 flex items-center gap-1.5">
+        <p className="text-base font-semibold text-white">Day by day</p>
+        <InfoTip text="Messages sent each day over the last 30 days." />
       </div>
       <ChartContainer
         config={{ messages: { label: "Messages", color: HEALTHY } }}
@@ -383,35 +354,11 @@ function DailyBars({
             minTickGap={36}
             tick={{ fill: "#71717a", fontSize: 11 }}
           />
-          {limit > 0 && <YAxis hide domain={[0, Math.round(limit * 1.28)]} />}
-          {limit > 0 && (
-            <ReferenceLine
-              y={limit}
-              stroke="#3f3f46"
-              strokeDasharray="3 3"
-              label={{
-                value: `${limit} limit`,
-                position: "top",
-                fill: "#71717a",
-                fontSize: 10,
-              }}
-            />
-          )}
           <ChartTooltip
             cursor={{ fill: "#ffffff08" }}
             content={<DailyTooltip />}
           />
-          <Bar dataKey="messages" radius={5} maxBarSize={9}>
-            {data.map((d) => (
-              <Cell
-                key={d.key}
-                fill={severityColor(
-                  d.dayLimit > 0 ? (d.messages / d.dayLimit) * 100 : 0,
-                  HEALTHY,
-                )}
-              />
-            ))}
-          </Bar>
+          <Bar dataKey="messages" radius={5} maxBarSize={9} fill={HEALTHY} />
         </BarChart>
       </ChartContainer>
     </section>
@@ -719,9 +666,16 @@ function Trend({
       const byDom = cumulativeByDay(history, window);
       // Today's point comes from the LIVE month counter — the same number the
       // hero gauge shows — so the two widgets can never disagree about "now"
-      // (snapshots lag up to an hour behind the live Redis counter).
+      // (snapshots lag up to an hour behind the live Redis counter). The
+      // cumulative series must never DECREASE: if the live counter reads lower
+      // than history (counter eviction/reset), keep the historical maximum
+      // instead of drawing an impossible cliff.
       if (liveMonthUsed !== undefined) {
-        byDom.set(new Date().getUTCDate(), liveMonthUsed);
+        const historicalMax = Math.max(0, ...byDom.values());
+        byDom.set(
+          new Date().getUTCDate(),
+          Math.max(liveMonthUsed, historicalMax),
+        );
       }
       if (byDom.size < 2) return { ...empty, monthName: window.name };
       return {
