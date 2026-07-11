@@ -77,6 +77,14 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         self.agent_only_paths = ["/api/v1/chat-stream"]
         self.agent_only_path_prefixes: tuple[str, ...] = ()
         self.user_cache_expiry = 3600
+        self.dev_bypass_email = (
+            settings.DEV_AUTH_BYPASS_EMAIL if settings.ENV == "development" else None
+        )
+        if self.dev_bypass_email:
+            log.warning(
+                f"{LogTag.API} DEV AUTH BYPASS ACTIVE — every request is "
+                f"authenticated as {self.dev_bypass_email} (development only)"
+            )
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -84,6 +92,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         """Authenticate, then invoke the next handler. Refresh cookies on the way out."""
         if any(request.url.path.startswith(path) for path in self.exclude_paths):
             return await call_next(request)
+
+        if self.dev_bypass_email:
+            return await self._dispatch_dev_bypass(request, call_next)
 
         wos_session = request.cookies.get("wos_session")
         if not wos_session:
@@ -168,6 +179,34 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             )
 
         return response
+
+    async def _dispatch_dev_bypass(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Authenticate the request as the configured dev user, skipping WorkOS.
+
+        Only reachable when ``DEV_AUTH_BYPASS_EMAIL`` is set in development
+        (production refuses to boot with it — see ``get_settings``). A bypass
+        email that doesn't resolve to a Mongo user is a config error and is
+        logged on every request rather than silently degrading to 401s.
+        """
+        request.state.user = None
+        request.state.authenticated = False
+        request.state.new_session = None
+
+        user_data = await users_collection.find_one({"email": self.dev_bypass_email})
+        if user_data:
+            request.state.user = build_user_context(
+                user_data, auth_provider="workos", dev_bypass=True
+            )
+            request.state.authenticated = True
+        else:
+            log.error(
+                f"{LogTag.API} DEV_AUTH_BYPASS_EMAIL is set to "
+                f"{self.dev_bypass_email!r} but no such user exists in Mongo — "
+                "create the user (log in once normally) or fix the email."
+            )
+        return await call_next(request)
 
     async def _authenticate_session(
         self, wos_session: str
