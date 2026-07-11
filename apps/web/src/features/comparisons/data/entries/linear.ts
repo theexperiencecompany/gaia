@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "The system for product development",
   description:
     "Linear is a fast, opinionated issue tracker built for engineering teams. GAIA integrates with Linear while also managing your email, calendar, and entire personal workflow as a proactive AI assistant.",
-  metaTitle: "Linear Alternative with AI Email & Calendar | GAIA vs Linear",
+  metaTitle: "Linear Alternative with AI Email & Calendar — GAIA vs Linear",
   metaDescription:
     "Linear is a great issue tracker but doesn't manage your inbox or calendar. GAIA is an open-source Linear alternative that integrates with Linear while proactively managing email, calendar, and tasks across 50+ tools — with a free tier.",
   keywords: [

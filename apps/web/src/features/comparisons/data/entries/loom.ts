@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Async video messaging that replaces meetings",
   description:
     "Loom is an async video messaging tool that lets teams share screen recordings to replace unnecessary meetings. GAIA is a proactive AI productivity assistant that manages the tasks, workflows, and communications that surround your work — with or without video.",
-  metaTitle: "Loom Alternative for Async Workflow Automation | GAIA vs Loom",
+  metaTitle: "Loom Alternative for Async Workflow Automation — GAIA vs Loom",
   metaDescription:
     "Loom replaces meetings with video but won't manage your tasks or workflows. GAIA is an open-source alternative that automates your inbox, calendar, and cross-tool workflows across 50+ integrations.",
   keywords: [

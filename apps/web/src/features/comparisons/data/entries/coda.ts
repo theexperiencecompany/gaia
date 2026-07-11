@@ -7,8 +7,7 @@ export const entry: ComparisonData = {
   tagline: "The doc that thinks like an app",
   description:
     "Coda.io is a powerful all-in-one platform that blends documents, spreadsheets, and app builder functionality into a single workspace. GAIA is a proactive AI assistant that connects your entire digital workflow — email, calendar, tasks, and 50+ integrations — with autonomous action.",
-  metaTitle:
-    "Coda.io Alternative with Proactive AI & Workflow Automation | GAIA vs Coda",
+  metaTitle: "Coda.io Alternative with Proactive AI & Workflow Automation — GAIA vs Coda",
   metaDescription:
     "Coda is powerful but complex. GAIA is a free, open-source Coda alternative with proactive AI email management, calendar automation, and cross-tool workflows across 50+ integrations — no formula expertise required.",
   keywords: [

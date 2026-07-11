@@ -7,8 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Visual workspace for wireframes, flowcharts, and mind maps",
   description:
     "Whimsical is a visual collaboration tool for creating wireframes, flowcharts, mind maps, and sticky-note boards. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations — connecting the planning phase to the execution layer of your work.",
-  metaTitle:
-    "Whimsical Alternative with AI Workflow Automation & Task Management | GAIA vs Whimsical",
+  metaTitle: "Whimsical Alternative with AI Workflow Automation & Task Management — GAIA vs Whimsical",
   metaDescription:
     "Whimsical is great for visual thinking but stays in the design phase. GAIA is a free, open-source Whimsical alternative with proactive AI email management, task automation, and workflow orchestration across 50+ integrations.",
   keywords: [

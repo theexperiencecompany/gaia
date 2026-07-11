@@ -7,8 +7,7 @@ export const entry: ComparisonData = {
   tagline: "AI-powered calendar optimizer for teams",
   description:
     "Clockwise optimizes team calendars by auto-scheduling focus time and finding the best meeting slots. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across your entire digital life.",
-  metaTitle:
-    "Clockwise Alternative with AI Email Management | GAIA vs Clockwise",
+  metaTitle: "Clockwise Alternative with AI Email Management — GAIA vs Clockwise",
   metaDescription:
     "Clockwise optimizes team calendars but doesn't touch your inbox or automate cross-tool workflows. GAIA is an open-source Clockwise alternative with AI email management, calendar intelligence, and workflow automation across 50+ tools.",
   keywords: [

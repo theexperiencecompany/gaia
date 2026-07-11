@@ -14,8 +14,7 @@ export const entry: AlternativeData = {
     "Perplexity Pro is $20/month but is limited to web search and AI answers; it doesn't automate or manage anything",
     "No automation or workflow capabilities — Perplexity surfaces information but never takes action on your behalf",
   ],
-  metaTitle:
-    "Perplexity Alternative | GAIA — AI Assistant That Manages Your Work, Not Just Searches It",
+  metaTitle: "Perplexity Alternative — GAIA — AI Assistant That Manages Your Work, Not Just Searches It",
   metaDescription:
     "Need more than AI search? GAIA is a personal AI assistant that manages your email, tasks, and calendar — with persistent memory and 50+ integrations. Open source, self-hostable, free tier available.",
   keywords: [

@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Visual no-code automation platform connecting 2,000+ apps",
   description:
     "Make (formerly Integromat) is a powerful visual automation platform where you build workflows by dragging and connecting modules on a canvas — with routers, iterators, aggregators, and error handlers for complex data pipelines. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and integrations through natural language and autonomous action, requiring no scenario-building or technical configuration to get started.",
-  metaTitle: "Make.com Alternative with AI Reasoning | GAIA vs Make",
+  metaTitle: "Make.com Alternative with AI Reasoning — GAIA vs Make",
   metaDescription:
     "Compare GAIA and Make.com. Make is powerful for custom no-code automation, but GAIA manages email, calendar, tasks, and workflows through natural language — no scenario-building required.",
   keywords: [

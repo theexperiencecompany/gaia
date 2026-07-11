@@ -7,8 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Salesforce's collaborative docs and spreadsheets platform",
   description:
     "Quip is Salesforce's collaborative documents and spreadsheets platform, designed to bring live CRM data into team documents. GAIA is a proactive AI assistant that connects email, calendar, tasks, and 50+ integrations with autonomous action — beyond the Salesforce ecosystem.",
-  metaTitle:
-    "Quip Alternative with AI Automation Beyond Salesforce | GAIA vs Quip",
+  metaTitle: "Quip Alternative with AI Automation Beyond Salesforce — GAIA vs Quip",
   metaDescription:
     "Quip is powerful within Salesforce but limited outside it. GAIA is a free, open-source Quip alternative with proactive AI email management, calendar automation, and workflow orchestration across 50+ integrations.",
   keywords: [

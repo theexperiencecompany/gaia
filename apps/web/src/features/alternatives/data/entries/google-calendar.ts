@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Natural language entry is limited; creating a recurring event with exceptions requires navigating multiple menus",
     "No cross-tool awareness — Calendar doesn't know about your Todoist tasks, Gmail threads, or Notion docs related to a meeting",
   ],
-  metaTitle: "Google Calendar Alternative | GAIA — AI-Powered Smart Calendar",
+  metaTitle: "Google Calendar Alternative — GAIA — AI-Powered Smart Calendar",
   metaDescription:
     "Looking for a smarter Google Calendar alternative? GAIA adds an AI intelligence layer to your calendar: proactive briefings, automatic event creation from email, conflict detection, and 50+ integrations. Open source, self-hostable.",
   keywords: [

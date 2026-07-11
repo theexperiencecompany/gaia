@@ -7,8 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Record, transcribe, and search everything on your Mac",
   description:
     "Rewind records and transcribes everything you see and hear on your Mac, creating a searchable archive of your digital activity. GAIA takes a fundamentally different approach — building structured, graph-based memory from real integrations across email, calendar, and tasks, then acting on that context proactively.",
-  metaTitle:
-    "Rewind AI Alternative with Active Task Management | GAIA vs Rewind",
+  metaTitle: "Rewind AI Alternative with Active Task Management — GAIA vs Rewind",
   metaDescription:
     "Rewind records and searches your screen passively but doesn't take action. GAIA is an open-source Rewind alternative with active task management — it reads live integrations, acts on email, manages your calendar, and automates workflows.",
   keywords: [

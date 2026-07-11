@@ -14,8 +14,7 @@ export const entry: AlternativeData = {
     "Roam is web-only with limited offline support — a significant drawback for users who need mobile or desktop-native experiences",
     "The knowledge graph is only as good as your capture discipline; missed meetings and unlogged emails leave gaps that passive tools would have filled automatically",
   ],
-  metaTitle:
-    "Roam Research Alternative | GAIA — AI Knowledge Assistant That Builds Its Own Graph",
+  metaTitle: "Roam Research Alternative — GAIA — AI Knowledge Assistant That Builds Its Own Graph",
   metaDescription:
     "Tired of manually feeding Roam Research? GAIA is an open-source AI assistant with graph-based memory that builds itself from your email, calendar, and meetings — no daily notes ritual required.",
   keywords: [

@@ -7,8 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Free time tracker for teams and project billing",
   description:
     "Clockify is a free time tracking tool for teams, offering timesheets, project tracking, and billing reports. GAIA goes beyond time logging to proactively manage your tasks, email, and workflows with AI.",
-  metaTitle:
-    "Clockify Alternative with AI Task & Workflow Management | GAIA vs Clockify",
+  metaTitle: "Clockify Alternative with AI Task & Workflow Management — GAIA vs Clockify",
   metaDescription:
     "Clockify tracks time but won't manage your tasks or automate your workflow. GAIA is a free, open-source alternative that proactively handles your inbox, calendar, and tasks across 50+ integrations.",
   keywords: [

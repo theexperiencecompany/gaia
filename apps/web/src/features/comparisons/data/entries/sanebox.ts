@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Email management for any inbox",
   description:
     "SaneBox is an email filtering service that moves non-urgent messages out of your inbox into smart folders so you focus on what matters. GAIA goes further by reading, triaging, drafting replies, creating tasks, and automating cross-tool workflows — replacing a passive filter with an active AI assistant.",
-  metaTitle: "SaneBox Alternative with Proactive AI | GAIA vs SaneBox",
+  metaTitle: "SaneBox Alternative with Proactive AI — GAIA vs SaneBox",
   metaDescription:
     "SaneBox filters email passively but can't draft replies or create tasks. GAIA is an open-source SaneBox alternative with proactive AI that reads, triages, and acts on email — while automating workflows across 50+ tools with a free tier.",
   keywords: [

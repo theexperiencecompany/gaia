@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Unified task inbox and calendar time-blocking tool for power users",
   description:
     "Akiflow is a keyboard-driven productivity app that aggregates tasks from 30+ tools (Asana, Todoist, Jira, Gmail, Slack) into a unified inbox and lets you time-block them directly onto a synced calendar — designed for power users who juggle multiple task systems and want a single planning hub. GAIA is a proactive AI productivity OS that creates tasks autonomously from your email and conversations, manages your calendar, and runs cross-tool workflows — reducing the administrative layer that Akiflow helps you organize.",
-  metaTitle: "Akiflow Alternative with Proactive AI | GAIA vs Akiflow",
+  metaTitle: "Akiflow Alternative with Proactive AI — GAIA vs Akiflow",
   metaDescription:
     "Compare GAIA and Akiflow. Akiflow unifies tasks from 30+ apps for calendar time-blocking, but GAIA creates tasks autonomously from email, manages your calendar, and automates cross-tool workflows.",
   keywords: [
