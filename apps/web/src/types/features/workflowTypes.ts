@@ -60,7 +60,13 @@ export interface PublicWorkflowStep {
 
 // Re-export trigger types for convenience
 // Re-export shared types that are identical between web and mobile
-export type { ExecutionConfig, TriggerConfig, TriggerFieldSchema, TriggerSchema, WorkflowMetadata };
+export type {
+  ExecutionConfig,
+  TriggerConfig,
+  TriggerFieldSchema,
+  TriggerSchema,
+  WorkflowMetadata,
+};
 
 // ============================================================================
 // COMMUNITY & EXPLORE WORKFLOW TYPES
