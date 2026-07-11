@@ -267,7 +267,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolB: "Google Drive",
     toolBSlug: "google-drive",
     tagline: "Automatically save email attachments and content to Google Drive",
-    metaTitle: "Gmail + Google Drive Automation - Save Attachments Automatically",
+    metaTitle:
+      "Gmail + Google Drive Automation - Save Attachments Automatically",
     metaDescription:
       "Connect Gmail and Google Drive with GAIA. Auto-save email attachments to Drive folders, convert email threads to Drive documents, and keep files organized without manual downloading.",
     keywords: [
@@ -783,7 +784,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "microsoft-teams",
     tagline:
       "Route important Gmail messages to Microsoft Teams channels automatically",
-    metaTitle: "Gmail + Microsoft Teams Automation - Email to Teams Notifications",
+    metaTitle:
+      "Gmail + Microsoft Teams Automation - Email to Teams Notifications",
     metaDescription:
       "Connect Gmail and Microsoft Teams with GAIA. Forward important emails to Teams channels, get inbox alerts in Teams, and keep your Microsoft 365 team updated from Gmail automatically.",
     keywords: [
@@ -956,7 +958,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "google-drive",
     tagline:
       "Save Slack files to Google Drive and access Drive documents from Slack",
-    metaTitle: "Slack + Google Drive Automation - File Sync, Drive Access in Slack",
+    metaTitle:
+      "Slack + Google Drive Automation - File Sync, Drive Access in Slack",
     metaDescription:
       "Connect Slack and Google Drive with GAIA. Automatically save Slack file uploads to Drive folders, share Drive documents in Slack, and keep your team's files organized and accessible.",
     keywords: [
@@ -1216,7 +1219,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "stripe",
     tagline:
       "Get real-time Stripe payment alerts and revenue summaries in Slack",
-    metaTitle: "Slack + Stripe Automation - Payment Alerts and Revenue in Slack",
+    metaTitle:
+      "Slack + Stripe Automation - Payment Alerts and Revenue in Slack",
     metaDescription:
       "Connect Slack and Stripe with GAIA. Receive real-time payment notifications in Slack, get revenue milestone alerts, monitor failed charges, and keep your team informed of financial events.",
     keywords: [
@@ -1303,7 +1307,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "salesforce",
     tagline:
       "Surface Salesforce CRM updates in Slack and create records from conversations",
-    metaTitle: "Slack + Salesforce Automation - CRM Updates in Slack, Record Creation",
+    metaTitle:
+      "Slack + Salesforce Automation - CRM Updates in Slack, Record Creation",
     metaDescription:
       "Connect Slack and Salesforce with GAIA. Get CRM opportunity updates in Slack, create Salesforce tasks and leads from Slack messages, and keep your sales team aligned without switching platforms.",
     keywords: [
