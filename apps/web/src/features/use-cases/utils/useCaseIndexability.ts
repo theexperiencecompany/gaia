@@ -27,6 +27,8 @@ export function isIndexableUseCase(useCase: UseCase): boolean {
  * Sitemap variant for list-endpoint entries where only the description is
  * available. Used to keep thin community workflows out of the sitemap.
  */
-export function isIndexableWorkflowListing(description?: string | null): boolean {
+export function isIndexableWorkflowListing(
+  description?: string | null,
+): boolean {
   return (description ?? "").trim().length >= MIN_INDEXABLE_DESCRIPTION_LENGTH;
 }
