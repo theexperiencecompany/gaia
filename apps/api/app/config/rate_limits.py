@@ -58,6 +58,11 @@ class TieredRateLimits(BaseModel):
     free: RateLimitConfig = RateLimitConfig()
     pro: RateLimitConfig = RateLimitConfig()
     info: FeatureInfo
+    # Whether a successful call is a deliberate user action that shows on the
+    # activity heatmap. False for infra/polling endpoints (artifact fetches,
+    # agent file reads, system notifications) that would otherwise drown it out
+    # and distort the cross-user percentile thresholds.
+    counts_as_activity: bool = True
 
 
 # RECOMMENDED FEATURE LIMITS FOR $30/MONTH
@@ -77,7 +82,7 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         free=RateLimitConfig(day=0, month=0),  # Paid-only: no free usage
         # Counted per /token mint (session start), so heavy daily use plus
         # reconnects must fit comfortably.
-        pro=RateLimitConfig(day=200, month=3000),
+        pro=RateLimitConfig(day=200, month=6000),  # month = day x30
         info=FeatureInfo(
             title="Voice Mode",
             description="Real-time voice conversations with GAIA",
@@ -110,6 +115,7 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             title="Session Files",
             description="Fetch workspace artifacts and uploaded files",
         ),
+        counts_as_activity=False,  # polling, not a user action
     ),
     # SKILLS
     "skill_operations": TieredRateLimits(
@@ -131,6 +137,8 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     "deep_research": TieredRateLimits(
         # Heaviest tool: one call fans out to many searches and page fetches.
         free=RateLimitConfig(day=1, month=5),  # TUNE — a taste, not a workload
+        # Monthly is intentionally below day x30 (would be 3000): this is the most
+        # expensive tool, so the month acts as an economic guard, not a x30 mirror.
         pro=RateLimitConfig(day=100, month=2000),
         info=FeatureInfo(
             title="Deep Research",
@@ -148,6 +156,8 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         # every result feeds LLM context and 100/day invites scripted scraping
         # through the agent.
         free=RateLimitConfig(day=20, month=150),  # TUNE
+        # Monthly is intentionally below day x30 (would be 150000): every result
+        # feeds LLM context, so the month caps context-cost abuse, not a x30 mirror.
         pro=RateLimitConfig(day=5000, month=50000),
         info=FeatureInfo(title="Web Search", description="Search the web for information"),
     ),
@@ -178,14 +188,14 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     # PRODUCTIVITY TOOLS (Generous - Core Value)
     "todo_operations": TieredRateLimits(
         free=RateLimitConfig(day=50, month=1000),  # Good trial experience
-        pro=RateLimitConfig(day=1500, month=22500),  # +50% (1000→1500, 15000→22500)
+        pro=RateLimitConfig(day=1500, month=45000),  # month = day x30
         info=FeatureInfo(
             title="Todo Operations", description="Create, update, and manage todo items"
         ),
     ),
     "calendar_management": TieredRateLimits(
         free=RateLimitConfig(day=5, month=50),  # Keep restrictive for trial
-        pro=RateLimitConfig(day=1500, month=22500),  # +50% (1000→1500, 15000→22500)
+        pro=RateLimitConfig(day=1500, month=45000),  # month = day x30
         info=FeatureInfo(
             title="Calendar Management",
             description="Create, update, and manage calendar events",
@@ -220,7 +230,7 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         # Each create provisions a fresh E2B VM — real infra cost the LLM cost
         # budget cannot see, so the count is the only guard here.
         free=RateLimitConfig(day=1, month=5),  # TUNE
-        pro=RateLimitConfig(day=150, month=3000),
+        pro=RateLimitConfig(day=150, month=4500),  # month = day x30
         info=FeatureInfo(
             title="Sandbox Creation",
             description="Provision a fresh coding sandbox for shell and workspace tools",
@@ -242,6 +252,7 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             title="Workspace Read",
             description="Read files from the persistent coding workspace",
         ),
+        counts_as_activity=False,  # high-frequency agent reads, not a user action
     ),
     "workspace_write": TieredRateLimits(
         free=RateLimitConfig(day=50, month=1000),  # TUNE — trial use, not automation
@@ -275,19 +286,22 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         free=RateLimitConfig(day=50, month=1000),  # Reduced from 100/2000 (too generous)
         pro=RateLimitConfig(day=7500, month=225000),  # +50% (5000→7500, 150000→225000)
         info=FeatureInfo(title="Notification Operations", description="Manage user notifications"),
+        counts_as_activity=False,  # system-driven, not a user action
     ),
     # MARKETPLACE (Community)
     "integration_publish": TieredRateLimits(
-        free=RateLimitConfig(day=10, month=50),  # Unchanged - encourage sharing
-        pro=RateLimitConfig(day=75, month=750),  # +50% (50→75, 500→750)
+        # Community engagement — near-frictionless on both tiers (low cost, high value).
+        free=RateLimitConfig(day=50, month=1500),
+        pro=RateLimitConfig(day=1500, month=45000),  # month = day x30
         info=FeatureInfo(
             title="Integration Publishing",
             description="Publish custom integrations to the community marketplace",
         ),
     ),
     "integration_clone": TieredRateLimits(
-        free=RateLimitConfig(day=20, month=100),  # Unchanged - encourage adoption
-        pro=RateLimitConfig(day=150, month=1500),  # +50% (100→150, 1000→1500)
+        # Cloning is the common path — keep it wide open on both tiers.
+        free=RateLimitConfig(day=100, month=3000),
+        pro=RateLimitConfig(day=3000, month=90000),  # month = day x30
         info=FeatureInfo(
             title="Integration Cloning",
             description="Clone community integrations to your workspace",
