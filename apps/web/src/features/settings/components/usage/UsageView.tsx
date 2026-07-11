@@ -12,6 +12,7 @@ import {
   AreaChart,
   Bar,
   BarChart,
+  Cell,
   PolarAngleAxis,
   RadialBar,
   RadialBarChart,
@@ -273,10 +274,11 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
   );
 }
 
-// --- Daily bars: plain daily activity. No limit theater — limits change with
-// plans over time, so coloring history against ANY single limit misleads.
-// Friction messaging lives in the upgrade banner; this chart just answers
-// "how much did I use each day". (#12 will turn this into daily usage-%.)
+// --- Daily bars: messages per day, each day judged against ITS OWN stored
+// limit (snapshots persist the limit that applied that day). Coloring history
+// against today's limit fabricates hits after a plan change; per-day limits
+// stay honest. Cost has no per-day history yet, so these are message-%s only
+// (#12's daily cost rollup upgrades this to true usage-%).
 
 function DailyTooltip({
   active,
@@ -284,59 +286,89 @@ function DailyTooltip({
 }: {
   active?: boolean;
   payload?: {
-    payload: { label: string; messages: number };
+    payload: { label: string; messages: number; dayLimit: number };
   }[];
 }) {
   if (!active || !payload?.length) return null;
-  const { label, messages } = payload[0].payload;
+  const { label, messages, dayLimit } = payload[0].payload;
+  const pct = dayLimit > 0 ? Math.round((messages / dayLimit) * 100) : 0;
   return (
     <div className="rounded-lg bg-zinc-800 px-2.5 py-1.5 text-xs shadow-xl">
       <p className="mb-1 text-zinc-400">{label}</p>
       <div className="flex items-center gap-1.5">
         <span
           className="size-2 rounded-[2px]"
-          style={{ backgroundColor: HEALTHY }}
+          style={{ backgroundColor: severityColor(pct, HEALTHY) }}
         />
         <span className="font-medium text-zinc-100">
           {messages} {messages === 1 ? "message" : "messages"}
         </span>
+        {dayLimit > 0 && (
+          <span className="text-zinc-500">
+            · {pct}% of that day&apos;s {dayLimit} limit
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
 function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
-  const data = useMemo(() => {
-    if (!history.length) return [];
+  const { data, daysHit, uniformLimit } = useMemo(() => {
+    if (!history.length) return { data: [], daysHit: 0, uniformLimit: 0 };
     const dayKey = (d: Date) =>
       `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
-    const byDay = new Map<string, number>();
+    const byDay = new Map<string, { used: number; limit: number }>();
     let end = 0;
     for (const e of history) {
       const d = new Date(e.date);
-      const used = e.features.chat_messages?.periods.day?.used;
-      if (used !== undefined) byDay.set(dayKey(d), used);
+      const day = e.features.chat_messages?.periods.day;
+      if (day?.used !== undefined) {
+        byDay.set(dayKey(d), { used: day.used, limit: day.limit ?? 0 });
+      }
       end = Math.max(end, d.getTime());
     }
     // Trailing 30 days ending on the latest day we have data for (= today).
-    return Array.from({ length: 30 }, (_, i) => {
+    const data = Array.from({ length: 30 }, (_, i) => {
       const d = new Date(end - (29 - i) * 86_400_000);
       const key = dayKey(d);
+      const entry = byDay.get(key);
       return {
         key,
         label: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`,
-        messages: byDay.get(key) ?? 0,
+        messages: entry?.used ?? 0,
+        dayLimit: entry?.limit ?? 0,
       };
     });
+    const daysHit = data.filter(
+      (d) => d.dayLimit > 0 && d.messages >= d.dayLimit,
+    ).length;
+    // The guide line only makes sense when ONE limit applied across the whole
+    // window — after a plan change there is no single line to draw honestly.
+    const limits = new Set(
+      data.filter((d) => d.dayLimit > 0).map((d) => d.dayLimit),
+    );
+    const uniformLimit = limits.size === 1 ? [...limits][0] : 0;
+    return { data, daysHit, uniformLimit };
   }, [history]);
 
   if (data.length < 2) return null;
 
   return (
     <section className={cn(CARD, "flex min-w-0 flex-1 flex-col p-5")}>
-      <div className="mb-4 flex items-center gap-1.5">
-        <p className="text-base font-semibold text-white">Day by day</p>
-        <InfoTip text="Messages sent each day over the last 30 days." />
+      <div className="mb-4 flex items-baseline justify-between">
+        <div className="flex items-center gap-1.5">
+          <p className="text-base font-semibold text-white">Day by day</p>
+          <InfoTip text="Messages sent each day over the last 30 days, colored against the daily limit that applied on that day — amber near it, red when hit." />
+        </div>
+        {daysHit > 0 && (
+          <p className="text-[13px] text-zinc-500">
+            Limit hit on{" "}
+            <span className="font-medium text-zinc-300">
+              {daysHit} {daysHit === 1 ? "day" : "days"}
+            </span>
+          </p>
+        )}
       </div>
       <ChartContainer
         config={{ messages: { label: "Messages", color: HEALTHY } }}
@@ -354,11 +386,37 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
             minTickGap={36}
             tick={{ fill: "#71717a", fontSize: 11 }}
           />
+          {uniformLimit > 0 && (
+            <YAxis hide domain={[0, Math.round(uniformLimit * 1.28)]} />
+          )}
+          {uniformLimit > 0 && (
+            <ReferenceLine
+              y={uniformLimit}
+              stroke="#3f3f46"
+              strokeDasharray="3 3"
+              label={{
+                value: `${uniformLimit} limit`,
+                position: "top",
+                fill: "#71717a",
+                fontSize: 10,
+              }}
+            />
+          )}
           <ChartTooltip
             cursor={{ fill: "#ffffff08" }}
             content={<DailyTooltip />}
           />
-          <Bar dataKey="messages" radius={5} maxBarSize={9} fill={HEALTHY} />
+          <Bar dataKey="messages" radius={5} maxBarSize={9}>
+            {data.map((d) => (
+              <Cell
+                key={d.key}
+                fill={severityColor(
+                  d.dayLimit > 0 ? (d.messages / d.dayLimit) * 100 : 0,
+                  HEALTHY,
+                )}
+              />
+            ))}
+          </Bar>
         </BarChart>
       </ChartContainer>
     </section>
