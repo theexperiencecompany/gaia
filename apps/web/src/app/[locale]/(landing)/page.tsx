@@ -21,11 +21,16 @@ import {
 // freezing it at build time.
 export const revalidate = 3600;
 
+// Title leads with the head terms the homepage should rank for — brand-only
+// titles waste the strongest-equity URL on queries it already owns.
+const HOMEPAGE_TITLE = "GAIA — Open Source Personal AI Assistant";
+
 export const metadata: Metadata = generatePageMetadata({
-  title: siteConfig.name,
+  title: HOMEPAGE_TITLE,
   path: "/",
   keywords: [
     "personal AI assistant",
+    "open source AI assistant",
     "productivity tool",
     "task automation",
     "email management",
@@ -44,7 +49,7 @@ export default function LandingPage() {
   const organizationSchema = generateOrganizationSchema();
   const websiteSchema = generateWebSiteSchema();
   const webPageSchema = generateWebPageSchema(
-    siteConfig.name,
+    HOMEPAGE_TITLE,
     siteConfig.description,
     siteConfig.url,
   );

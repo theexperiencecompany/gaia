@@ -94,8 +94,8 @@ export default function HeroSection({
             className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl ${isDark ? "text-zinc-200" : "text-black"}`}
           >
             <span>
-              GAIA watches your inbox, calendar, and tools and acts before you
-              ask.
+              GAIA is your open-source personal AI assistant — it watches your
+              inbox, calendar, and tools and acts before you ask.
             </span>
             <br />
             <div className="inline-flex flex-wrap items-center justify-center gap-y-1 align-middle">

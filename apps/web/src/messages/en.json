@@ -34,7 +34,10 @@
     "how_well_replace": "How well does GAIA replace {name}?",
     "honest_fit_score": "Honest fit score based on feature overlap",
     "what_gaia_replaces": "What GAIA replaces from {name}",
-    "how_to_migrate": "How to migrate from {name} to GAIA"
+    "how_to_migrate": "How to migrate from {name} to GAIA",
+    "by_gaia_team": "By the GAIA team",
+    "updated_on": "Updated {date}",
+    "see_gaia_in_action": "See GAIA in action"
   },
   "automate": {
     "breadcrumb": "Automate",

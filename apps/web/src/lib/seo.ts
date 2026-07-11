@@ -128,21 +128,11 @@ export function generatePageMetadata({
   // (e.g. "Asana Alternative — GAIA vs Asana") renders as-is, otherwise the
   // layout template would double it ("… GAIA vs Asana | GAIA").
   const isHomepage = path === "/" || title === siteConfig.name;
-  const containsBrand = new RegExp(`\\b${siteConfig.short_name}\\b`).test(
-    title,
-  );
-  const pageTitle = isHomepage
-    ? { absolute: siteConfig.name }
-    : containsBrand
-      ? { absolute: title }
-      : title;
-
+  const containsBrand = new RegExp(`\b${siteConfig.short_name}\b`).test(title);
+  const pageTitle = isHomepage || containsBrand ? { absolute: title } : title;
   // Full title for OpenGraph (suffix only when the title doesn't already carry the brand)
-  const fullTitle = isHomepage
-    ? siteConfig.fullName
-    : containsBrand
-      ? title
-      : `${title} | ${siteConfig.short_name}`;
+  const fullTitle =
+    isHomepage || containsBrand ? title : `${title} | ${siteConfig.short_name}`;
 
   const allKeywords = [...commonKeywords, ...keywords];
 
@@ -304,6 +294,7 @@ export function generateWebPageSchema(
   url: string,
   breadcrumbs?: Array<{ name: string; url: string }>,
   publishedDate?: string,
+  modifiedDate?: string,
 ): WithContext<WebPage> {
   const schema: WithContext<WebPage> = {
     "@context": "https://schema.org",
@@ -316,8 +307,12 @@ export function generateWebPageSchema(
       name: siteConfig.short_name,
       url: siteConfig.url,
     },
-    datePublished: publishedDate ?? "2025-01-01",
-    dateModified: new Date().toISOString().split("T")[0],
+    // Dates are emitted only when real ones exist — a hardcoded or
+    // render-time date is a fake freshness signal Google learns to ignore.
+    ...(publishedDate ? { datePublished: publishedDate } : {}),
+    ...(modifiedDate || publishedDate
+      ? { dateModified: modifiedDate ?? publishedDate }
+      : {}),
     isPartOf: {
       "@type": "WebSite",
       url: siteConfig.url,

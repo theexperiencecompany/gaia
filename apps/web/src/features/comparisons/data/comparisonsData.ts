@@ -47,6 +47,9 @@ export interface ComparisonData {
   migrationSteps?: string[];
   /** FAQs from the alternative page not already covered by `faqs` — rendered after them. */
   alternativeFaqs?: Array<{ question: string; answer: string }>;
+  /** Real editorial dates derived from git history (YYYY-MM-DD) — see scripts note in PR. */
+  datePublished?: string;
+  dateModified?: string;
 }
 
 const FEATURE = "comparisons";

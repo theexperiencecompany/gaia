@@ -252,6 +252,7 @@ export async function generateMetadata({
       description: config.metaDescription,
       path: `/for/${persona}`,
       keywords: config.keywords,
+      image: `/api/og/persona?slug=${persona}`,
     });
     return {
       ...metadata,
@@ -270,6 +271,7 @@ export async function generateMetadata({
     description: data.metaDescription,
     path: `/for/${persona}`,
     keywords: data.keywords,
+    image: `/api/og/persona?slug=${persona}`,
   });
   return {
     ...metadata,
