@@ -262,7 +262,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolB: "Figma",
     toolBSlug: "figma",
     tagline: "Link Figma design deliverables directly to Asana project tasks",
-    metaTitle: "Asana + Figma Automation - Connect Design Deliverables to Project Tasks",
+    metaTitle:
+      "Asana + Figma Automation - Connect Design Deliverables to Project Tasks",
     metaDescription:
       "Bridge design and project management with GAIA. Automatically attach Figma files to Asana tasks, notify teams when designs are ready for review, and track design approval status without leaving Asana.",
     keywords: [
@@ -347,7 +348,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolB: "Discord",
     toolBSlug: "discord",
     tagline: "Post Asana task updates to Discord team channels automatically",
-    metaTitle: "Asana + Discord Automation - Project Updates in Your Discord Server",
+    metaTitle:
+      "Asana + Discord Automation - Project Updates in Your Discord Server",
     metaDescription:
       "Keep your Discord community and team informed with GAIA. Automatically post Asana task completions, new assignments, and milestone updates to Discord channels so everyone stays aligned.",
     keywords: [
@@ -432,7 +434,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "google-drive",
     tagline:
       "Attach Drive documents to Asana tasks and organize deliverables automatically",
-    metaTitle: "Asana + Google Drive Automation - Link Documents to Project Tasks",
+    metaTitle:
+      "Asana + Google Drive Automation - Link Documents to Project Tasks",
     metaDescription:
       "Connect Asana and Google Drive with GAIA. Automatically attach Drive files to Asana tasks, create project folders when projects launch, and keep all deliverables organized and accessible.",
     keywords: [
@@ -518,7 +521,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "zoom",
     tagline:
       "Schedule project kickoffs from Asana milestones and post Zoom summaries to tasks",
-    metaTitle: "Asana + Zoom Automation - Connect Project Milestones to Video Meetings",
+    metaTitle:
+      "Asana + Zoom Automation - Connect Project Milestones to Video Meetings",
     metaDescription:
       "Automate Asana and Zoom with GAIA. Schedule Zoom calls when Asana milestones are reached, post meeting summaries to tasks, and create follow-up action items without leaving your project management tool.",
     keywords: [
@@ -604,7 +608,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "salesforce",
     tagline:
       "Link client project tasks in Asana to Salesforce opportunities and accounts",
-    metaTitle: "Asana + Salesforce Automation - Connect Project Delivery to CRM",
+    metaTitle:
+      "Asana + Salesforce Automation - Connect Project Delivery to CRM",
     metaDescription:
       "Bridge project management and sales with GAIA. Automatically create Asana projects from Salesforce opportunities, sync delivery milestones to CRM records, and give account teams full visibility into project health.",
     keywords: [
@@ -691,7 +696,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "notion",
     tagline:
       "Embed Trello boards in Notion and sync cards to Notion databases automatically",
-    metaTitle: "Trello + Notion Automation - Connect Boards to Your Knowledge Base",
+    metaTitle:
+      "Trello + Notion Automation - Connect Boards to Your Knowledge Base",
     metaDescription:
       "Bridge Trello and Notion with GAIA. Sync Trello cards to Notion databases, embed board status in Notion project pages, and keep your knowledge base and task management in perfect alignment.",
     keywords: [
@@ -863,7 +869,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "github",
     tagline:
       "Move Trello cards when PRs merge and link GitHub issues to Trello cards",
-    metaTitle: "Trello + GitHub Automation - Connect Code Delivery to Project Boards",
+    metaTitle:
+      "Trello + GitHub Automation - Connect Code Delivery to Project Boards",
     metaDescription:
       "Link your GitHub development workflow to Trello with GAIA. Automatically move Trello cards when pull requests merge, create cards from GitHub issues, and keep engineering and project management perfectly aligned.",
     keywords: [
@@ -950,7 +957,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "google-calendar",
     tagline:
       "Add Trello due dates to your calendar and create cards from calendar events",
-    metaTitle: "Trello + Google Calendar Automation - Sync Task Deadlines with Your Calendar",
+    metaTitle:
+      "Trello + Google Calendar Automation - Sync Task Deadlines with Your Calendar",
     metaDescription:
       "Connect Trello and Google Calendar with GAIA. Automatically add Trello card due dates to your calendar, create Trello cards from calendar events, and never miss a project deadline again.",
     keywords: [
@@ -1036,7 +1044,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "google-drive",
     tagline:
       "Attach Drive files to Trello cards and organize project assets automatically",
-    metaTitle: "Trello + Google Drive Automation - Link Documents to Your Trello Cards",
+    metaTitle:
+      "Trello + Google Drive Automation - Link Documents to Your Trello Cards",
     metaDescription:
       "Connect Trello and Google Drive with GAIA. Automatically create Drive folders for Trello boards, attach relevant files to cards, and keep all project documents organized and accessible from your Kanban board.",
     keywords: [
@@ -1122,7 +1131,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "figma",
     tagline:
       "Link Figma designs to Trello product cards and automate the design review workflow",
-    metaTitle: "Trello + Figma Automation - Connect Design Files to Product Cards",
+    metaTitle:
+      "Trello + Figma Automation - Connect Design Files to Product Cards",
     metaDescription:
       "Bridge design and product management with GAIA. Automatically attach Figma files to Trello cards, move cards when designs are approved, and keep your design review workflow on track without manual status updates.",
     keywords: [
@@ -1208,7 +1218,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "discord",
     tagline:
       "Post Trello board updates to Discord community channels automatically",
-    metaTitle: "Trello + Discord Automation - Board Updates in Your Discord Server",
+    metaTitle:
+      "Trello + Discord Automation - Board Updates in Your Discord Server",
     metaDescription:
       "Keep your Discord community informed with GAIA. Automatically post Trello card completions, new assignments, and board activity to Discord channels so your team always knows what's happening.",
     keywords: [
@@ -1295,7 +1306,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "zoom",
     tagline:
       "Schedule Trello sprint calls and post Zoom meeting summaries back to cards",
-    metaTitle: "Trello + Zoom Automation - Connect Sprint Meetings to Your Trello Board",
+    metaTitle:
+      "Trello + Zoom Automation - Connect Sprint Meetings to Your Trello Board",
     metaDescription:
       "Link Trello and Zoom with GAIA. Schedule sprint calls when boards move to new stages, post Zoom meeting summaries to Trello cards, and turn call action items into cards automatically.",
     keywords: [
@@ -1382,7 +1394,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "notion",
     tagline:
       "Sync HubSpot CRM data to Notion docs and document deals and customer research",
-    metaTitle: "HubSpot + Notion Automation - Bring CRM Data into Your Knowledge Base",
+    metaTitle:
+      "HubSpot + Notion Automation - Bring CRM Data into Your Knowledge Base",
     metaDescription:
       "Connect HubSpot and Notion with GAIA. Automatically sync deal data to Notion databases, create account research pages from HubSpot contacts, and keep your CRM and knowledge base aligned.",
     keywords: [
@@ -1467,7 +1480,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "asana",
     tagline:
       "Create onboarding and delivery tasks in Asana from new HubSpot deals",
-    metaTitle: "HubSpot + Asana Automation - Turn Closed Deals into Project Tasks",
+    metaTitle:
+      "HubSpot + Asana Automation - Turn Closed Deals into Project Tasks",
     metaDescription:
       "Bridge sales and delivery with GAIA. Automatically create Asana onboarding projects when HubSpot deals close, sync deal data to project tasks, and keep account managers and delivery teams aligned.",
     keywords: [
@@ -1554,7 +1568,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "linear",
     tagline:
       "Link customer feature requests in HubSpot to engineering issues in Linear",
-    metaTitle: "HubSpot + Linear Automation - Connect Customer Feedback to Engineering",
+    metaTitle:
+      "HubSpot + Linear Automation - Connect Customer Feedback to Engineering",
     metaDescription:
       "Bridge sales and engineering with GAIA. Automatically create Linear issues from HubSpot deal feature requests, track request status in CRM, and close the loop between customer feedback and product delivery.",
     keywords: [
@@ -1640,7 +1655,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "google-calendar",
     tagline:
       "Sync meeting invites with HubSpot contacts and log calls automatically",
-    metaTitle: "HubSpot + Google Calendar Automation - Sync Sales Meetings with CRM",
+    metaTitle:
+      "HubSpot + Google Calendar Automation - Sync Sales Meetings with CRM",
     metaDescription:
       "Connect HubSpot and Google Calendar with GAIA. Automatically log calendar meetings as HubSpot activities, create follow-up tasks from call outcomes, and keep your CRM timeline accurate without manual entry.",
     keywords: [
@@ -1726,7 +1742,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "google-drive",
     tagline:
       "Attach Drive proposals and contracts to HubSpot deals automatically",
-    metaTitle: "HubSpot + Google Drive Automation - Link Sales Documents to CRM Deals",
+    metaTitle:
+      "HubSpot + Google Drive Automation - Link Sales Documents to CRM Deals",
     metaDescription:
       "Connect HubSpot and Google Drive with GAIA. Automatically attach Drive proposals, contracts, and case studies to HubSpot deals, organize sales assets by account, and keep documents accessible from your CRM.",
     keywords: [
@@ -1812,7 +1829,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "zoom",
     tagline:
       "Log Zoom calls to HubSpot and create follow-up tasks from call notes",
-    metaTitle: "HubSpot + Zoom Automation - Log Sales Calls and Create Follow-Ups",
+    metaTitle:
+      "HubSpot + Zoom Automation - Log Sales Calls and Create Follow-Ups",
     metaDescription:
       "Connect HubSpot and Zoom with GAIA. Automatically log Zoom calls as CRM activities, post call summaries to deal records, and create follow-up tasks from meeting transcripts so nothing falls through after a sales call.",
     keywords: [
@@ -1984,7 +2002,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "gmail",
     tagline:
       "Log emails to Salesforce automatically and create leads from Gmail replies",
-    metaTitle: "Salesforce + Gmail Automation - Log Every Email to CRM Automatically",
+    metaTitle:
+      "Salesforce + Gmail Automation - Log Every Email to CRM Automatically",
     metaDescription:
       "Connect Salesforce and Gmail with GAIA. Automatically log client emails to Salesforce deal and contact records, create leads from inbound email replies, and keep your CRM activity timeline complete without manual entry.",
     keywords: [
@@ -2071,7 +2090,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "notion",
     tagline:
       "Sync Salesforce deal data to Notion and document account strategies collaboratively",
-    metaTitle: "Salesforce + Notion Automation - Bring CRM Data into Your Notion Workspace",
+    metaTitle:
+      "Salesforce + Notion Automation - Bring CRM Data into Your Notion Workspace",
     metaDescription:
       "Connect Salesforce and Notion with GAIA. Automatically create Notion deal pages from Salesforce opportunities, sync pipeline data to Notion databases, and keep account strategies aligned with live CRM data.",
     keywords: [
@@ -2159,7 +2179,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "asana",
     tagline:
       "Create Asana projects from Salesforce opportunities and sync delivery back to CRM",
-    metaTitle: "Salesforce + Asana Automation - From Closed Deal to Delivery Project",
+    metaTitle:
+      "Salesforce + Asana Automation - From Closed Deal to Delivery Project",
     metaDescription:
       "Bridge sales and delivery with GAIA. Automatically create Asana projects when Salesforce deals close, sync project milestones back to CRM records, and keep account managers and delivery teams working from shared data.",
     keywords: [
@@ -2246,7 +2267,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "google-calendar",
     tagline:
       "Sync sales calls and meetings with Salesforce CRM activities automatically",
-    metaTitle: "Salesforce + Google Calendar Automation - Log Sales Meetings to CRM",
+    metaTitle:
+      "Salesforce + Google Calendar Automation - Log Sales Meetings to CRM",
     metaDescription:
       "Connect Salesforce and Google Calendar with GAIA. Automatically log client meetings as CRM activities, create follow-up tasks from calendar events, and keep your Salesforce activity timeline complete without manual entry.",
     keywords: [
@@ -2333,7 +2355,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolBSlug: "google-drive",
     tagline:
       "Attach Drive contracts and proposals to Salesforce deals automatically",
-    metaTitle: "Salesforce + Google Drive Automation - Link Sales Documents to CRM",
+    metaTitle:
+      "Salesforce + Google Drive Automation - Link Sales Documents to CRM",
     metaDescription:
       "Connect Salesforce and Google Drive with GAIA. Automatically create Drive folders for Salesforce opportunities, attach proposals and contracts to deal records, and keep all sales documents organized and accessible from your CRM.",
     keywords: [

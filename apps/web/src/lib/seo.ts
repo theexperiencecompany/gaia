@@ -128,17 +128,11 @@ export function generatePageMetadata({
   // (e.g. "Asana Alternative — GAIA vs Asana") renders as-is, otherwise the
   // layout template would double it ("… GAIA vs Asana | GAIA").
   const isHomepage = path === "/" || title === siteConfig.name;
-  const containsBrand = new RegExp(
-    `\\b${siteConfig.short_name}\\b`,
-  ).test(title);
-  const pageTitle =
-    isHomepage || containsBrand ? { absolute: title } : title;
-
+  const containsBrand = new RegExp(`\b${siteConfig.short_name}\b`).test(title);
+  const pageTitle = isHomepage || containsBrand ? { absolute: title } : title;
   // Full title for OpenGraph (suffix only when the title doesn't already carry the brand)
   const fullTitle =
-    isHomepage || containsBrand
-      ? title
-      : `${title} | ${siteConfig.short_name}`;
+    isHomepage || containsBrand ? title : `${title} | ${siteConfig.short_name}`;
 
   const allKeywords = [...commonKeywords, ...keywords];
 
