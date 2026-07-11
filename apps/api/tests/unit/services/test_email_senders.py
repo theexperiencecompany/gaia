@@ -165,6 +165,8 @@ class TestSendInactiveUserEmail:
     @patch(f"{SENDERS}.build_unsubscribe_url", return_value="https://unsub")
     @patch(f"{SENDERS}.send_email", side_effect=Exception("send failed"))
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>ok</h1>")
-    async def test_propagates_exception(self, mock_render, mock_send, mock_unsub_url, mock_unsub_headers):
+    async def test_propagates_exception(
+        self, mock_render, mock_send, mock_unsub_url, mock_unsub_headers
+    ):
         with pytest.raises(Exception, match="send failed"):
             await send_inactive_user_email("user@example.com", "user-123")
