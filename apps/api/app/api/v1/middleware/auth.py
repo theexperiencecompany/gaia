@@ -179,12 +179,17 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         (production refuses to boot with it — see ``get_settings``). A bypass
         email that doesn't resolve to a Mongo user is a config error and is
         logged on every request rather than silently degrading to 401s.
+
+        A ``dev_bypass_user`` cookie overrides the configured email per request,
+        so two browser profiles (e.g. normal + incognito) can act as different
+        users against one API instance — needed to test free vs pro side by side.
         """
         request.state.user = None
         request.state.authenticated = False
         request.state.new_session = None
 
-        user_data = await users_collection.find_one({"email": self.dev_bypass_email})
+        bypass_email = request.cookies.get("dev_bypass_user") or self.dev_bypass_email
+        user_data = await users_collection.find_one({"email": bypass_email})
         if user_data:
             request.state.user = build_user_context(
                 user_data, auth_provider="workos", dev_bypass=True
@@ -192,9 +197,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             request.state.authenticated = True
         else:
             log.error(
-                f"{LogTag.API} DEV_AUTH_BYPASS_EMAIL is set to "
-                f"{self.dev_bypass_email!r} but no such user exists in Mongo — "
-                "create the user (log in once normally) or fix the email."
+                f"{LogTag.API} dev auth bypass is set to {bypass_email!r} but no "
+                "such user exists in Mongo — create the user (log in once "
+                "normally) or fix the email."
             )
         return await call_next(request)
 
