@@ -193,7 +193,9 @@ function generateIntegrationTitle(name: string, category: string): string {
     notes: `${name} AI Notes Integration — Auto-Save Notes & Summaries`,
   };
   const key = category?.toLowerCase();
-  return categoryTitles[key] ?? `${name} AI Integration — Automate ${name} Workflows`;
+  return (
+    categoryTitles[key] ?? `${name} AI Integration — Automate ${name} Workflows`
+  );
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

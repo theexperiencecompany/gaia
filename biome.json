@@ -172,6 +172,16 @@
   ],
   "overrides": [
     {
+      "includes": ["apps/mobile/src/components/icons/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noReExportAll": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/web/**"],
       "linter": {
         "domains": {

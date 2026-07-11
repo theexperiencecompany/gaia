@@ -115,6 +115,7 @@ function DeepResearchRunningCard({ data }: { data: DeepResearchResults }) {
         <View className="mb-3 gap-1">
           {subSteps.slice(0, -1).map((step, index) => (
             <View
+              // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
               key={`step-${index}-${step.slice(0, 10)}`}
               className="flex-row items-center gap-1.5"
             >

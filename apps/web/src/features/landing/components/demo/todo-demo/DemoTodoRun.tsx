@@ -57,6 +57,7 @@ export default function DemoTodoRun({ phase }: DemoTodoRunProps) {
         <AnimatePresence>
           {calls.map((call, index) => (
             <m.div
+              // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
               key={`${call.category}-${index}`}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}

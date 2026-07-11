@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "AI writing assistant for grammar, style, and tone",
   description:
     "Grammarly is an AI-powered writing assistant that checks grammar, spelling, style, and tone across browsers, apps, and documents. GAIA is a proactive AI productivity assistant that manages email, tasks, calendar, and 50+ integrations — with AI-assisted writing built in.",
-  metaTitle: "Grammarly Alternative with Proactive AI Email & Workflow Management — GAIA vs Grammarly",
+  metaTitle:
+    "Grammarly Alternative with Proactive AI Email & Workflow Management — GAIA vs Grammarly",
   metaDescription:
     "Grammarly improves your writing but doesn't manage your workflow. GAIA is a free, open-source Grammarly alternative with AI email drafting, proactive task creation, and workflow automation across 50+ integrations.",
   keywords: [
