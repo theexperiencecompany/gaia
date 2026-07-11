@@ -71,6 +71,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/device/pair/poll",
             "/api/v1/device/token",
             "/api/v1/device/servers",
+            # One-click email unsubscribe — opened from mail clients with no
+            # session; the HMAC-signed token authenticates the user itself.
+            "/api/v1/notifications/unsubscribe",
         ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie.

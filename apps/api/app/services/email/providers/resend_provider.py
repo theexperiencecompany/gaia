@@ -21,6 +21,8 @@ class ResendEmailProvider:
         }
         if message.reply_to:
             params["reply_to"] = message.reply_to
+        if message.headers:
+            params["headers"] = message.headers
         # The Resend SDK is synchronous — run it in a thread to keep the event loop free.
         await asyncio.to_thread(resend.Emails.send, params)
 

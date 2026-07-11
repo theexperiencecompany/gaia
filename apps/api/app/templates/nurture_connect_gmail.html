@@ -1,0 +1,17 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+Quick one today.<br /><br />
+GAIA is built to be proactive, but right now it can't see your inbox or your
+calendar. So it's basically working blindfolded.<br /><br />
+Once you connect Gmail and Google Calendar, it starts doing things on its
+own. It sorts through your inbox so you only see what matters. It writes
+replies in your tone and shows them to you before anything goes out. It
+preps you before meetings and catches conflicts in your
+schedule.<br /><br />
+The setup takes about two minutes, and honestly it's the single biggest
+upgrade you can give GAIA. Nothing ever gets sent without your
+approval.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}

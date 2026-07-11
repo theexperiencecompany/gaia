@@ -9,11 +9,17 @@ from fastapi import (
     Path,
     Query,
     Request,
+    Response,
 )
+from fastapi.responses import HTMLResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
-from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
+from app.constants.notifications import (
+    CHANNEL_TYPE_EMAIL,
+    EXPO_TOKEN_PATTERN,
+    MAX_DEVICES_PER_USER,
+)
 from app.db.mongodb.collections import users_collection
 from app.models.device_token_models import (
     DeviceTokenRequest,
@@ -32,9 +38,55 @@ from app.models.notification.request_models import (
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
+from app.utils.notification.unsubscribe import verify_unsubscribe_token
 from shared.py.wide_events import NotificationContext, log
 
 router = APIRouter()
+
+_UNSUBSCRIBE_INVALID_HTML = (
+    "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
+    "text-align: center;'><p>This unsubscribe link is invalid or has expired.</p>"
+    "</body></html>"
+)
+_UNSUBSCRIBE_SUCCESS_HTML = (
+    "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
+    "text-align: center;'><p>You're unsubscribed from GAIA emails.</p></body></html>"
+)
+
+
+@router.get("/notifications/unsubscribe", response_class=HTMLResponse)
+async def unsubscribe_from_emails(token: str = Query(...)) -> HTMLResponse:
+    """One-click email unsubscribe — no login required. Flips the ``email``
+    channel preference off; other channels are unaffected."""
+    user_id = verify_unsubscribe_token(token)
+    if not user_id:
+        return HTMLResponse(content=_UNSUBSCRIBE_INVALID_HTML, status_code=400)
+
+    log.set(user={"id": user_id}, operation="unsubscribe_email")
+    await _disable_email_channel(user_id)
+    log.set(outcome="success")
+    return HTMLResponse(content=_UNSUBSCRIBE_SUCCESS_HTML)
+
+
+@router.post("/notifications/unsubscribe")
+async def unsubscribe_from_emails_one_click(token: str = Query(...)) -> Response:
+    """RFC 8058 one-click unsubscribe target (List-Unsubscribe-Post). Mail
+    clients POST here; the response must be a blank 200."""
+    user_id = verify_unsubscribe_token(token)
+    if not user_id:
+        return Response(status_code=400)
+
+    log.set(user={"id": user_id}, operation="unsubscribe_email_one_click")
+    await _disable_email_channel(user_id)
+    log.set(outcome="success")
+    return Response(status_code=200)
+
+
+async def _disable_email_channel(user_id: str) -> None:
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {f"notification_channel_prefs.{CHANNEL_TYPE_EMAIL}": False}},
+    )
 
 
 @router.get("/notifications", response_model=PaginatedNotificationsResponse)

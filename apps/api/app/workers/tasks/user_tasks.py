@@ -5,6 +5,8 @@ User-related ARQ tasks.
 from datetime import UTC, datetime, timedelta
 
 from app.constants.log_tags import LogTag
+from app.constants.notifications import CHANNEL_TYPE_EMAIL
+from app.utils.notification.channel_preferences import normalize_channel_preferences
 from shared.py.wide_events import log, wide_task
 
 
@@ -28,6 +30,11 @@ def _emails_sent_this_episode(user: dict) -> int:
 
 def _should_send_inactive_email(user: dict) -> bool:
     """Throttle policy: per inactivity episode, first email after 7 days, second 7+ days later, max 2."""
+    if not normalize_channel_preferences(user.get("notification_channel_prefs"))[
+        CHANNEL_TYPE_EMAIL
+    ]:
+        return False
+
     now = datetime.now(UTC)
     last_active = _as_utc(user.get("last_active_at"))
     last_email_sent = _as_utc(user.get("last_inactive_email_sent"))
@@ -86,7 +93,7 @@ async def check_inactive_users(ctx: dict) -> str:
             if not _should_send_inactive_email(user):
                 continue
             try:
-                await send_inactive_user_email(user["email"], user.get("name"))
+                await send_inactive_user_email(user["email"], str(user["_id"]), user.get("name"))
                 await users_collection.update_one(
                     {"_id": user["_id"]},
                     {

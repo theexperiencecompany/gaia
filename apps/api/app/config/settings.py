@@ -245,6 +245,7 @@ class ProductionSettings(CommonSettings):
     # Email & Communication
     RESEND_API_KEY: str
     RESEND_AUDIENCE_ID: str
+    EMAIL_UNSUBSCRIBE_SECRET: str
 
     # Media Storage
     CLOUDINARY_CLOUD_NAME: str
@@ -445,6 +446,7 @@ class DevelopmentSettings(CommonSettings):
     # Email & Communication
     RESEND_API_KEY: str | None = None
     RESEND_AUDIENCE_ID: str | None = None
+    EMAIL_UNSUBSCRIBE_SECRET: str | None = None
 
     # Media Storage
     CLOUDINARY_CLOUD_NAME: str | None = None

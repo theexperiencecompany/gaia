@@ -9,3 +9,4 @@ class EmailMessage(BaseModel):
     subject: str
     html: str
     reply_to: str | None = None
+    headers: dict[str, str] | None = None
