@@ -163,16 +163,17 @@ class TestCheckAndIncrement:
         "app.api.v1.middleware.tiered_rate_limiter.get_time_window_key",
         return_value="20260320",
     )
-    async def test_zero_limit_skipped(
+    async def test_zero_limit_counted_not_enforced(
         self,
         mock_twk: MagicMock,
         mock_limits: MagicMock,
         mock_reset: MagicMock,
     ) -> None:
-        """When one period limit is 0, only that period is skipped; the other is still enforced."""
+        """A zero-limit period is still COUNTED (plain INCR, so usage charts have
+        data) but never enforced — it must not appear in the returned usage info."""
         from app.config.rate_limits import RateLimitConfig
 
-        # day=0 should be skipped; month=1000 should be enforced.
+        # day=0 is counted-only; month=1000 is enforced.
         mock_limits.return_value = RateLimitConfig(day=0, month=1000)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         self.limiter.redis.get = AsyncMock(return_value="5")
@@ -187,6 +188,8 @@ class TestCheckAndIncrement:
         pipe_mock.__aexit__ = AsyncMock(return_value=False)
         redis_mock = MagicMock()
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
+        redis_mock.incr = AsyncMock()
+        redis_mock.expire = AsyncMock()
         self.limiter.redis.redis = redis_mock
 
         with patch(
@@ -195,9 +198,10 @@ class TestCheckAndIncrement:
         ):
             result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.PRO)
 
-        # day period (limit=0) must be absent; month (limit=1000) must appear.
+        # day period (limit=0) must be absent from enforcement info but still counted.
         assert "day" not in result
         assert "month" in result
+        redis_mock.incr.assert_awaited_once()
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")
@@ -259,6 +263,9 @@ class TestCheckAndIncrement:
 
         redis_mock = MagicMock()
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
+        # month=0 takes the counted-not-enforced plain INCR path.
+        redis_mock.incr = AsyncMock()
+        redis_mock.expire = AsyncMock()
         self.limiter.redis.redis = redis_mock
 
         with patch(
@@ -405,9 +412,13 @@ class TestCollectFeatureUsage:
         self.limiter.redis.get = AsyncMock(return_value="5")
 
         result = await self.limiter._collect_feature_usage("user1", PlanType.PRO)
-        assert len(result) == 1
-        assert result[0].feature_key == "test_feat"
-        assert result[0].used == 5
+        # Both periods are collected — the zero-limit month is counted too so
+        # usage charts have data where no cap applies (limit stays 0).
+        assert len(result) == 2
+        assert {r.period.value for r in result} == {"day", "month"}
+        assert all(r.feature_key == "test_feat" and r.used == 5 for r in result)
+        month_row = next(r for r in result if r.period.value == "month")
+        assert month_row.limit == 0
 
     @patch(
         "app.api.v1.middleware.tiered_rate_limiter.FEATURE_LIMITS",

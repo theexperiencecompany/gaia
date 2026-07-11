@@ -33,6 +33,7 @@ from app.models.usage_models import (
     UserUsageSnapshot,
 )
 from app.services.limit_upsell import schedule_limit_upsell
+from app.services.usage_activity import counts_as_activity, record_activity
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
 
@@ -160,18 +161,24 @@ class TieredRateLimiter:
                 plan_required = "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
                 raise RateLimitExceededException(feature_key, plan_required, reset_time)
 
-        # Increment usage atomically
+        # Increment usage atomically. Unlimited periods (limit 0) are still
+        # COUNTED — a plain INCR with no enforcement — so usage charts (e.g. a
+        # pro user's day-by-day messages) have data even where no cap applies.
         for period in [RateLimitPeriod.DAY, RateLimitPeriod.MONTH]:
             limit = getattr(current_limits, period.value)
-            if limit <= 0:
-                continue
 
             redis_key = self._get_redis_key(user_id, feature_key, period)
             ttl = self._get_ttl(period)
 
-            # Use Redis pipeline with WATCH for atomic check-and-increment
             if not self.redis.redis:
                 raise Exception("Redis connection not available")
+
+            if limit <= 0:
+                await self.redis.redis.incr(redis_key)
+                await self.redis.redis.expire(redis_key, ttl)
+                continue
+
+            # Use Redis pipeline with WATCH for atomic check-and-increment
             async with self.redis.redis.pipeline() as pipe:
                 while True:
                     try:
@@ -214,6 +221,10 @@ class TieredRateLimiter:
                 credits_used=credits_used,
             )
         )
+
+        # Durable daily rollup for the activity heatmap (meaningful actions only).
+        if counts_as_activity(feature_key):
+            asyncio.create_task(record_activity(user_id))
 
         return usage_info
 
@@ -274,9 +285,10 @@ class TieredRateLimiter:
             current_limits = get_limits_for_plan(check_feature_key, user_plan)
 
             for period in [RateLimitPeriod.DAY, RateLimitPeriod.MONTH]:
+                # Unlimited periods (limit 0) are included too — their counters
+                # are still incremented (see _check_and_increment) and feed the
+                # usage charts; zero-usage rows are dropped below either way.
                 limit = getattr(current_limits, period.value)
-                if limit <= 0:
-                    continue
 
                 redis_key = self._get_redis_key(user_id, check_feature_key, period)
                 redis_tasks.append(self.redis.get(redis_key))
