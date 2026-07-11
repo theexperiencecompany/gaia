@@ -258,6 +258,7 @@ export function ChatMessage({
                 if (emojiSize) {
                   return (
                     <Text
+                      // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
                       key={`${message.id}-${index}`}
                       style={{
                         fontSize: emojiSize,
@@ -271,6 +272,7 @@ export function ChatMessage({
               }
               return (
                 <MessageBubble
+                  // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
                   key={`${message.id}-${index}`}
                   message={part}
                   variant="sent"
