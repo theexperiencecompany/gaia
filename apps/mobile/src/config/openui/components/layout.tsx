@@ -308,7 +308,6 @@ export function DataCardView(props: z.infer<typeof dataCardSchema>) {
       <View className="gap-2">
         {props.fields.map((field, index) => (
           <View
-            // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
             key={`${field.label}-${index}`}
             className="rounded-2xl bg-zinc-900 p-3 flex-row items-center justify-between gap-4"
           >

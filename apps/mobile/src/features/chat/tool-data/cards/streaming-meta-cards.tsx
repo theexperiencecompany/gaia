@@ -810,7 +810,6 @@ export function ArtifactCard({ data }: { data: unknown }) {
 
           return (
             <View
-              // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
               key={`${artifact.path || artifact.filename || "artifact"}-${artifact.size_bytes || 0}-${index}`}
               className={`rounded-xl bg-white/5 border border-white/8 px-3 py-3 ${index > 0 ? "mt-2" : ""}`}
             >
