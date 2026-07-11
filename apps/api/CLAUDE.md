@@ -272,6 +272,8 @@ Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env` and every request is auth
 - The user must already exist (log in once normally to create it); a missing user logs an error on every request.
 - Development only: `get_settings()` raises at startup if the var is set with `ENV=production` — never weaken that check.
 - The bypass user context carries `dev_bypass=True` for anything that needs to tell.
+- WorkOS is never called under the bypass, but `DevelopmentSettings` still requires the `WORKOS_*` keys — dummy values are fine locally.
+- On Windows with a native Redis (Memurai), use `REDIS_URL=redis://127.0.0.1:6379` — Memurai binds IPv4 only and `localhost` resolves to `::1` first, which makes the ARQ/lifespan services time out and startup fail.
 
 ## Pre-commit Hooks & Security Scanners
 
