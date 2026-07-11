@@ -218,6 +218,7 @@ function StackedToolIcons({ calls }: { calls: ToolCallEntry[] }) {
       {displayIcons.map((call, index) => (
         // Web wrapper: relative flex min-w-8 items-center justify-center (32px col)
         <View
+          // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
           key={`${call.tool_name || "tool"}-${index}`}
           style={{
             minWidth: 32,
