@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Sales-focused CRM with visual pipeline management",
   description:
     "Pipedrive is a sales-centric CRM built around visual deal pipelines, helping sales teams track leads, log activities, and close deals. GAIA complements sales workflows by proactively managing email, follow-up tasks, meeting preparation, and cross-tool orchestration that Pipedrive cannot automate.",
-  metaTitle: "Pipedrive Alternative for AI-Powered Sales Productivity — GAIA vs Pipedrive",
+  metaTitle:
+    "Pipedrive Alternative for AI-Powered Sales Productivity — GAIA vs Pipedrive",
   metaDescription:
     "Pipedrive manages your pipeline but can't proactively handle your inbox or automate cross-tool workflows. GAIA is an open-source AI managing email, tasks, and 50+ integrations — free tier available.",
   keywords: [

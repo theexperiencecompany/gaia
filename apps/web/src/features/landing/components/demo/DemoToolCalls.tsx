@@ -36,6 +36,7 @@ export default function DemoToolCalls({
         <div className="flex items-center -space-x-2">
           {tools.map((t, i) => (
             <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
               key={`${t.name}-${i}`}
               className="relative flex h-7 w-7 items-center justify-center"
               style={{ rotate: i % 2 === 0 ? "8deg" : "-8deg", zIndex: i }}
@@ -72,6 +73,7 @@ export default function DemoToolCalls({
             <div className="py-1">
               {tools.map((t, i) => (
                 <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
                   key={`${t.name}-${i}-detail`}
                   className="flex items-stretch gap-2"
                 >

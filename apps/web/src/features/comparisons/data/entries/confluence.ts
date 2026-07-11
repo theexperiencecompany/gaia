@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Atlassian's team wiki and documentation platform",
   description:
     "Confluence is Atlassian's enterprise team wiki and knowledge management platform, widely used alongside Jira for software teams. GAIA is a proactive AI assistant that connects documentation to email, tasks, calendar, and 50+ integrations with autonomous action.",
-  metaTitle: "Confluence Alternative with AI Automation & Proactive Workflows — GAIA vs Confluence",
+  metaTitle:
+    "Confluence Alternative with AI Automation & Proactive Workflows — GAIA vs Confluence",
   metaDescription:
     "Confluence stores team knowledge but stays passive. GAIA is a free, open-source Confluence alternative with AI email management, Jira integration, proactive task creation, and workflow automation across 50+ tools.",
   keywords: [
