@@ -38,6 +38,7 @@ os.environ.setdefault(
     "MCP_ENCRYPTION_KEY",
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
+os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy

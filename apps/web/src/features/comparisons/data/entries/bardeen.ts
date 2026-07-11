@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Automate your browser with AI",
   description:
     "Bardeen is a Chrome extension that automates browser-based tasks through AI-generated playbooks and point-and-click web scraping. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows across 50+ apps via deep API integrations — no browser required.",
-  metaTitle: "Bardeen Alternative with Proactive AI | GAIA vs Bardeen",
+  metaTitle: "Bardeen Alternative with Proactive AI — GAIA vs Bardeen",
   metaDescription:
     "Bardeen automates browser tasks but relies on screen scraping and needs manual triggers. GAIA is an open-source Bardeen alternative with proactive AI that uses real API connections to manage email, calendar, and workflows across 50+ tools.",
   keywords: [

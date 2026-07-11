@@ -11,10 +11,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import pytest
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 
 from tests.factories import make_user
+from tests.helpers import MockAuthMiddleware, NoAuthMiddleware
 
 
 @asynccontextmanager
@@ -46,28 +45,6 @@ def _create_test_app() -> FastAPI:
     return app
 
 
-class _MockAuthMiddleware(BaseHTTPMiddleware):
-    """Injects a test user into request.state for auth bypass."""
-
-    def __init__(self, app, user: dict):
-        super().__init__(app)
-        self._user = user
-
-    async def dispatch(self, request: Request, call_next):
-        request.state.authenticated = True
-        request.state.user = self._user
-        return await call_next(request)
-
-
-class _NoAuthMiddleware(BaseHTTPMiddleware):
-    """Sets request.state to unauthenticated."""
-
-    async def dispatch(self, request: Request, call_next):
-        request.state.authenticated = False
-        request.state.user = None
-        return await call_next(request)
-
-
 @pytest.fixture
 def test_user() -> dict:
     return make_user(user_id="integration-test-user-1", email="test@test.com")
@@ -77,7 +54,7 @@ def test_user() -> dict:
 async def test_client(test_user):
     """Provide an httpx AsyncClient against the FastAPI app with auth mocked."""
     app = _create_test_app()
-    app.add_middleware(_MockAuthMiddleware, user=test_user)
+    app.add_middleware(MockAuthMiddleware, user=test_user)
 
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(
@@ -91,7 +68,7 @@ async def test_client(test_user):
 async def unauthenticated_client():
     """Provide an httpx AsyncClient without auth for testing 401 responses."""
     app = _create_test_app()
-    app.add_middleware(_NoAuthMiddleware)
+    app.add_middleware(NoAuthMiddleware)
 
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(

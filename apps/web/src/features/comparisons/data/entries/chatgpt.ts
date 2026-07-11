@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Conversational AI chatbot by OpenAI",
   description:
     "ChatGPT is a general-purpose conversational AI that answers questions, drafts text, and writes code on demand. GAIA is a proactive productivity OS that manages your email, calendar, tasks, and workflows without being asked.",
-  metaTitle: "ChatGPT Alternative That Manages Your Inbox | GAIA vs ChatGPT",
+  metaTitle: "ChatGPT Alternative That Manages Your Inbox — GAIA vs ChatGPT",
   metaDescription:
     "ChatGPT is great for conversation but won't proactively manage your inbox or automate workflows. GAIA is an open-source ChatGPT alternative that monitors your email, calendar, and tasks — acting before you ask, with a free tier available.",
   keywords: [

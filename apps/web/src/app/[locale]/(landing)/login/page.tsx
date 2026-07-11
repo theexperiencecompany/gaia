@@ -10,6 +10,7 @@ export const metadata: Metadata = generatePageMetadata({
     "Sign in to your GAIA account. Access your personal AI assistant to manage tasks, emails, calendar, goals, and boost your productivity.",
   path: "/login",
   keywords: ["GAIA Login", "Sign In", "Account Access", "User Login"],
+  noIndex: true,
 });
 
 export default async function LoginPage({

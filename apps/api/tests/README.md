@@ -6,6 +6,7 @@ Tests are organised into four layers that reflect how far they reach into the sy
 
 - **`unit/`** — Pure logic tests. No I/O, no network. External dependencies are mocked so each function or class is tested in isolation.
 - **`integration/`** — Wire-up tests. Real production code is imported and executed; only live infrastructure (databases, LLMs, external APIs) is mocked. These catch mis-wiring between components.
+- **`service/`** — Real-database tests. Production functions run unmodified against a real Redis/Postgres/MongoDB (see `service/README.md`), not mocks — see `service/test_device_bridge_real.py` for a template.
 - **`e2e/`** — End-to-end scenario tests. A real compiled LangGraph is driven from user input to final state, exercising the full agent loop without any live external services.
 - **`composio/`** and **`skills/`** — Live credential tests that hit real third-party APIs. These are skipped in CI unless the relevant secrets are present.
 

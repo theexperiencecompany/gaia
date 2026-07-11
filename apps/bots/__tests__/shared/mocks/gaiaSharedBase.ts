@@ -100,8 +100,12 @@ export function makeGaiaSharedMock(
       sendTyping: () => Promise<unknown>,
       _refreshMs: number,
     ): () => void {
-      void sendTyping().catch(() => {});
-      return () => {};
+      void sendTyping().catch(() => {
+        /* typing is fire-and-forget in tests */
+      });
+      return () => {
+        /* no-op stop function */
+      };
     }
 
     // Default: route media to a chat turn with no attachments. Tests that care

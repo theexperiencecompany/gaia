@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Toggl Track is a popular manual time tracker used by freelancers and teams to log billable hours and generate reports. GAIA replaces the need to track time manually by proactively managing your workflow from start to finish.",
   metaTitle:
-    "Toggl Track Alternative with AI Workflow Automation | GAIA vs Toggl",
+    "Toggl Track Alternative with AI Workflow Automation — GAIA vs Toggl",
   metaDescription:
     "Toggl requires manual time entry and won't manage your tasks. GAIA is an open-source alternative that automates your workflow, manages email and tasks, and syncs across 50+ tools — free tier included.",
   keywords: [

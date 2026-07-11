@@ -330,7 +330,7 @@ def _oauth_patches(coll, sched):
         patch(f"{OAUTH}.track_login", MagicMock()),
         patch(f"{OAUTH}.track_signup", MagicMock()),
         patch(f"{OAUTH}.send_welcome_email", new_callable=AsyncMock),
-        patch(f"{OAUTH}.add_contact_to_resend", new_callable=AsyncMock),
+        patch(f"{OAUTH}.add_marketing_contact", new_callable=AsyncMock),
     )
 
 

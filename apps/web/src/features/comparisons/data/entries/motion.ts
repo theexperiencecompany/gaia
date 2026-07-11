@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Motion uses AI to automatically schedule tasks into your calendar. GAIA goes beyond calendar management to orchestrate your entire digital workflow.",
   metaTitle:
-    "Motion Alternative with Email & Workflow Automation | GAIA vs Motion",
+    "Motion Alternative with Email & Workflow Automation — GAIA vs Motion",
   metaDescription:
     "Motion focuses on calendar scheduling, but lacks email management and workflow automation. GAIA is an open-source alternative that proactively manages your inbox, calendar, and tasks across 50+ integrations.",
   keywords: [

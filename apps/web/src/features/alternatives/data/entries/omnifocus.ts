@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
     "GTD setup requires significant manual configuration of Areas, Projects, Contexts, and Perspectives before the system becomes useful",
   ],
   metaTitle:
-    "OmniFocus Alternative | GAIA — AI Task Manager for Mac, Windows, Android & Web",
+    "OmniFocus Alternative — GAIA — AI Task Manager for Mac, Windows, Android & Web",
   metaDescription:
     "Looking for a cross-platform OmniFocus alternative with AI? GAIA works on web, desktop, mobile, and CLI — with automatic task capture from email and proactive prioritization. Open source and self-hostable.",
   keywords: [

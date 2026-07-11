@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
     "Mindful daily planner combining tasks, calendar, and intentional work rituals",
   description:
     "Sunsama is a mindful daily planning tool that guides you through a morning ritual to pull tasks from connected apps, estimate time, and time-block your day — with a philosophy centered on intentional, focused work rather than maximum throughput. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, actively reducing the volume of work reaching you rather than helping you plan through it more mindfully.",
-  metaTitle: "Sunsama Alternative with Proactive AI | GAIA vs Sunsama",
+  metaTitle: "Sunsama Alternative with Proactive AI — GAIA vs Sunsama",
   metaDescription:
     "Compare GAIA and Sunsama. Sunsama helps you plan your day mindfully, but GAIA manages email, calendar, tasks, and workflows proactively — reducing work volume, not just planning it better.",
   keywords: [

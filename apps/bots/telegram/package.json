@@ -11,13 +11,13 @@
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
-    "@grammyjs/types": "^3.23.0",
-    "grammy": "^1.30.0"
+    "@grammyjs/types": "^3.28.0",
+    "grammy": "^1.44.0"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0",
-    "tsup": "^8.4.0",
-    "tsx": "^4.21.0",
+    "@types/node": "^24.13.3",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.0",
     "typescript": "^5.9.3"
   }
 }

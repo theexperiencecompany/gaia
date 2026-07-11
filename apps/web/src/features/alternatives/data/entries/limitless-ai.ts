@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
     "Cloud-dependent with no self-hosted option — sensitive meeting recordings are stored on Limitless's infrastructure",
   ],
   metaTitle:
-    "Limitless AI Alternative | GAIA — AI Assistant That Remembers and Acts",
+    "Limitless AI Alternative — GAIA — AI Assistant That Remembers and Acts",
   metaDescription:
     "Want an AI that doesn't just capture your meetings but also manages your inbox, creates tasks, and updates your calendar? GAIA is an open-source Limitless AI alternative with proactive action across all your tools.",
   keywords: [
