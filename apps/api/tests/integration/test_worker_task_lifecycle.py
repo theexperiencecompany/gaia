@@ -562,6 +562,8 @@ class TestUserTasks:
 
             mock_send.assert_awaited_once_with("inactive@example.com", "Inactive User")
             mock_users.update_one.assert_awaited_once()
+            update = mock_users.update_one.call_args[0][1]
+            assert update["$inc"] == {"inactive_email_count": 1}
             assert "1 inactive users" in result
             assert "sent 1 emails" in result
 

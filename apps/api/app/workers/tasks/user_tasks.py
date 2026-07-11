@@ -9,10 +9,12 @@ from shared.py.wide_events import log, wide_task
 
 
 def _should_send_inactive_email(user: dict) -> bool:
-    """Throttle policy: first email after 7 inactive days, second after 14, then stop."""
+    """Throttle policy: first email after 7 inactive days, second 7+ days later, max 2."""
     now = datetime.now(UTC)
     last_active = user.get("last_active_at")
     last_email_sent = user.get("last_inactive_email_sent")
+    # Docs written before the counter existed recorded their one send via the timestamp only
+    email_count = user.get("inactive_email_count") or (1 if last_email_sent else 0)
 
     # Ensure datetimes are timezone-aware for comparison
     if last_active and last_active.tzinfo is None:
@@ -28,11 +30,7 @@ def _should_send_inactive_email(user: dict) -> bool:
     if last_email_sent and (now - last_email_sent).days < 7:
         return False
 
-    # Max 2 emails: first after 7 days, second after 14 days
-    if last_email_sent and (now - last_active).days >= 14:
-        return False
-
-    return True
+    return email_count < 2
 
 
 async def check_inactive_users(ctx: dict) -> str:
@@ -81,7 +79,10 @@ async def check_inactive_users(ctx: dict) -> str:
                 await send_inactive_user_email(user["email"], user.get("name"))
                 await users_collection.update_one(
                     {"_id": user["_id"]},
-                    {"$set": {"last_inactive_email_sent": datetime.now(UTC)}},
+                    {
+                        "$set": {"last_inactive_email_sent": datetime.now(UTC)},
+                        "$inc": {"inactive_email_count": 1},
+                    },
                 )
                 email_count += 1
                 log.info(f"{LogTag.WORKER} Sent inactive email to {user['email']}")

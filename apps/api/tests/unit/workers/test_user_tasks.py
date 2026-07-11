@@ -50,19 +50,39 @@ class TestShouldSendInactiveEmail:
         user = {"last_active_at": now - timedelta(days=10), "last_inactive_email_sent": None}
         assert _should_send_inactive_email(user) is True
 
-    def test_max_2_emails_stops_after_14_days(self):
+    def test_second_email_at_day_14(self):
+        """Real-world timing: first email at day 7, second due at day 14."""
+        now = datetime.now(UTC)
+        user = {
+            "last_active_at": now - timedelta(days=14),
+            "last_inactive_email_sent": now - timedelta(days=7),
+        }
+        assert _should_send_inactive_email(user) is True
+
+    def test_overdue_second_email_still_sent(self):
         now = datetime.now(UTC)
         user = {
             "last_active_at": now - timedelta(days=15),
             "last_inactive_email_sent": now - timedelta(days=8),
         }
-        assert _should_send_inactive_email(user) is False
+        assert _should_send_inactive_email(user) is True
 
-    def test_second_email_between_7_and_14_days(self):
+    def test_max_2_emails(self):
         now = datetime.now(UTC)
         user = {
-            "last_active_at": now - timedelta(days=12),
-            "last_inactive_email_sent": now - timedelta(days=8),
+            "last_active_at": now - timedelta(days=21),
+            "last_inactive_email_sent": now - timedelta(days=7),
+            "inactive_email_count": 2,
+        }
+        assert _should_send_inactive_email(user) is False
+
+    def test_legacy_doc_without_count_treated_as_one_send(self):
+        """Docs from before the counter existed recorded their send via the timestamp only."""
+        now = datetime.now(UTC)
+        user = {
+            "last_active_at": now - timedelta(days=14),
+            "last_inactive_email_sent": now - timedelta(days=7),
+            "inactive_email_count": 0,
         }
         assert _should_send_inactive_email(user) is True
 
@@ -165,6 +185,7 @@ class TestCheckInactiveUsers:
         query, update = mock_col.update_one.call_args[0]
         assert query == {"_id": user["_id"]}
         assert isinstance(update["$set"]["last_inactive_email_sent"], datetime)
+        assert update["$inc"] == {"inactive_email_count": 1}
 
     async def test_failed_email_does_not_count_in_total(self, ctx):
         users = [

@@ -153,13 +153,13 @@ async def add_marketing_contact(user_email: str, user_name: str | None = None) -
 
     Best-effort: never raises, so signup succeeds even when the provider call fails.
     """
-    provider = get_email_provider()
-    if not isinstance(provider, MarketingContactsProvider):
-        log.info(
-            f"{LogTag.MAIL} Email provider has no marketing audience; skipping contact {user_email}"
-        )
-        return
     try:
+        provider = get_email_provider()
+        if not isinstance(provider, MarketingContactsProvider):
+            log.info(
+                f"{LogTag.MAIL} Email provider has no marketing audience; skipping contact {user_email}"
+            )
+            return
         await provider.add_contact(user_email, user_name)
         log.info(f"{LogTag.MAIL} Contact added to marketing audience: {user_email}")
     except Exception as e:
