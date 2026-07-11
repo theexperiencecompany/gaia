@@ -265,6 +265,14 @@ Secrets in production are injected from **Infisical** before Pydantic validates 
 
 See `apps/api/.env.example` or the `ProductionSettings` class in `app/config/settings.py` for the full list of required keys. For local dev, `DevelopmentSettings` makes most keys optional — set at minimum `ENV=development`, MongoDB URL, Redis URL, and WorkOS credentials.
 
+### Dev auth bypass (`DEV_AUTH_BYPASS_EMAIL`)
+
+Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env` and every request is authenticated as that Mongo user with no WorkOS session — `WorkOSAuthMiddleware` short-circuits before any cookie handling. This is how agents (and you) drive the full app end to end locally without logging in: point `apps/web/.env.local` at `http://localhost:8000/api/v1/` and the web app just works.
+
+- The user must already exist (log in once normally to create it); a missing user logs an error on every request.
+- Development only: `get_settings()` raises at startup if the var is set with `ENV=production` — never weaken that check.
+- The bypass user context carries `dev_bypass=True` for anything that needs to tell.
+
 ## Pre-commit Hooks & Security Scanners
 
 The API pre-commit config (`.pre-commit-config.yaml`) runs: **ruff**, **ruff-format**, **bandit**, **pip-audit**, and **mypy**.
