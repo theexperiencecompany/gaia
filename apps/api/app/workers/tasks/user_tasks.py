@@ -8,6 +8,33 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log, wide_task
 
 
+def _should_send_inactive_email(user: dict) -> bool:
+    """Throttle policy: first email after 7 inactive days, second after 14, then stop."""
+    now = datetime.now(UTC)
+    last_active = user.get("last_active_at")
+    last_email_sent = user.get("last_inactive_email_sent")
+
+    # Ensure datetimes are timezone-aware for comparison
+    if last_active and last_active.tzinfo is None:
+        last_active = last_active.replace(tzinfo=UTC)
+    if last_email_sent and last_email_sent.tzinfo is None:
+        last_email_sent = last_email_sent.replace(tzinfo=UTC)
+
+    # Check if user is inactive long enough (7+ days)
+    if not last_active or (now - last_active).days < 7:
+        return False
+
+    # Skip if email sent in last 7 days
+    if last_email_sent and (now - last_email_sent).days < 7:
+        return False
+
+    # Max 2 emails: first after 7 days, second after 14 days
+    if last_email_sent and (now - last_active).days >= 14:
+        return False
+
+    return True
+
+
 async def check_inactive_users(ctx: dict) -> str:
     """
     Check for inactive users and send emails to those inactive for more than 7 days.
@@ -48,17 +75,16 @@ async def check_inactive_users(ctx: dict) -> str:
         email_count = 0
         email_failures = 0
         for user in inactive_users:
+            if not _should_send_inactive_email(user):
+                continue
             try:
-                sent = await send_inactive_user_email(
-                    user_email=user["email"],
-                    user_name=user.get("name"),
-                    user_id=str(user["_id"]),
+                await send_inactive_user_email(user["email"], user.get("name"))
+                await users_collection.update_one(
+                    {"_id": user["_id"]},
+                    {"$set": {"last_inactive_email_sent": datetime.now(UTC)}},
                 )
-
-                if sent:
-                    email_count += 1
-                    log.info(f"{LogTag.WORKER} Sent inactive email to {user['email']}")
-
+                email_count += 1
+                log.info(f"{LogTag.WORKER} Sent inactive email to {user['email']}")
             except Exception as e:
                 email_failures += 1
                 log.error(f"{LogTag.WORKER} Failed to send email to {user['email']}: {e!s}")

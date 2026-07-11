@@ -1,9 +1,5 @@
 """Domain senders for every platform email GAIA delivers."""
 
-from datetime import UTC, datetime
-
-from bson import ObjectId
-
 from app.config.settings import settings
 from app.constants.email import (
     CONTACT_EMAIL,
@@ -14,10 +10,10 @@ from app.constants.email import (
     WHATSAPP_URL,
 )
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.services.email.models import EmailMessage
-from app.services.email.providers.resend_provider import add_contact_to_audience
+from app.services.email.providers import get_email_provider
+from app.services.email.providers.base import MarketingContactsProvider
 from app.services.email.service import render_email_template, send_email
 from shared.py.wide_events import log
 
@@ -153,55 +149,29 @@ async def send_welcome_email(user_email: str, user_name: str | None = None) -> N
 
 
 async def add_marketing_contact(user_email: str, user_name: str | None = None) -> None:
-    """Add a new user to the marketing audience.
+    """Add a new user to the marketing audience, if the provider supports one.
 
     Best-effort: never raises, so signup succeeds even when the provider call fails.
     """
+    provider = get_email_provider()
+    if not isinstance(provider, MarketingContactsProvider):
+        log.info(
+            f"{LogTag.MAIL} Email provider has no marketing audience; skipping contact {user_email}"
+        )
+        return
     try:
-        await add_contact_to_audience(user_email, user_name)
+        await provider.add_contact(user_email, user_name)
         log.info(f"{LogTag.MAIL} Contact added to marketing audience: {user_email}")
     except Exception as e:
         log.error(f"{LogTag.MAIL} Failed to add marketing contact for {user_email}: {e!s}")
 
 
-async def send_inactive_user_email(
-    user_email: str, user_name: str | None = None, user_id: str | None = None
-) -> bool:
-    """Email an inactive user, tracking sends to avoid spam.
+async def send_inactive_user_email(user_email: str, user_name: str | None = None) -> None:
+    """Send the re-engagement email to an inactive user.
 
-    Returns True if sent, False if skipped.
+    Send/skip throttling is the caller's policy (see workers/tasks/user_tasks.py).
     """
     try:
-        # If user_id provided, check if we should send email
-        if user_id:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
-            if not user:
-                log.error(f"{LogTag.MAIL} User {user_id} not found")
-                return False
-
-            now = datetime.now(UTC)
-            last_active = user.get("last_active_at")
-            last_email_sent = user.get("last_inactive_email_sent")
-
-            # Ensure datetimes are timezone-aware for comparison
-            if last_active and last_active.tzinfo is None:
-                last_active = last_active.replace(tzinfo=UTC)
-            if last_email_sent and last_email_sent.tzinfo is None:
-                last_email_sent = last_email_sent.replace(tzinfo=UTC)
-
-            # Check if user is inactive long enough (7+ days)
-            if not last_active or (now - last_active).days < 7:
-                return False
-
-            # Skip if email sent in last 7 days
-            if last_email_sent and (now - last_email_sent).days < 7:
-                return False
-
-            # Max 2 emails: first after 7 days, second after 14 days
-            days_inactive = (now - last_active).days
-            if last_email_sent and days_inactive >= 14:
-                return False  # Already sent 2 emails, stop
-
         html_content = render_email_template(
             "inactive.html",
             user_name=user_name,
@@ -217,17 +187,7 @@ async def send_inactive_user_email(
                 reply_to=CONTACT_EMAIL,
             )
         )
-
-        # Update tracking if user_id provided
-        if user_id:
-            await users_collection.update_one(
-                {"_id": ObjectId(user_id)},
-                {"$set": {"last_inactive_email_sent": datetime.now(UTC)}},
-            )
-
         log.info(f"{LogTag.MAIL} Inactive user email sent to {user_email}")
-        return True
-
     except Exception as e:
         log.error(f"{LogTag.MAIL} Failed to send inactive user email to {user_email}: {e!s}")
         raise

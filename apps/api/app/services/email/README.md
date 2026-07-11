@@ -10,7 +10,7 @@ app/services/email/
 ├── service.py       send_email() + render_email_template() (Jinja2, app/templates/)
 ├── senders.py       Domain senders — one function per email GAIA sends
 └── providers/
-    ├── base.py              EmailProvider protocol (the adapter interface)
+    ├── base.py              EmailProvider protocol + optional MarketingContactsProvider capability
     ├── resend_provider.py   Resend adapter (current default)
     └── __init__.py          Registry + get_email_provider() factory
 ```
@@ -57,7 +57,8 @@ Sender identities (`FOUNDER_SENDER`, `SUPPORT_SENDER`) and brand URLs live in `a
 ## Error semantics
 
 - `send_email()` raises on failure. Each domain sender decides its own policy (e.g. signup emails are caught at the call site so signup never fails on email errors; support notifications are per-recipient best-effort).
-- `add_marketing_contact()` never raises — audience membership is best-effort and Resend-specific (`providers/resend_provider.py:add_contact_to_audience`, not part of the `EmailProvider` protocol).
+- `add_marketing_contact()` never raises — audience membership is best-effort. It only acts when the configured provider implements the optional `MarketingContactsProvider` protocol (Resend does); otherwise it logs and skips.
+- Senders contain no business policy beyond composing the email — e.g. the inactive-user throttle (7/14-day rules) lives with its caller in `app/workers/tasks/user_tasks.py`.
 
 ## Future extensions (designed for, not built)
 

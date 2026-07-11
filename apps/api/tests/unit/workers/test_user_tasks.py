@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.workers.tasks.user_tasks import check_inactive_users
+from app.workers.tasks.user_tasks import _should_send_inactive_email, check_inactive_users
 
 
 def _make_db_user(
@@ -23,6 +23,65 @@ def _make_db_user(
         "last_active_at": last_active.replace(tzinfo=None),
         "is_active": True,
     }
+
+
+@pytest.mark.unit
+class TestShouldSendInactiveEmail:
+    """Throttle policy: first email after 7 inactive days, second after 14, then stop."""
+
+    def test_less_than_7_days_inactive(self):
+        now = datetime.now(UTC)
+        user = {"last_active_at": now - timedelta(days=3), "last_inactive_email_sent": None}
+        assert _should_send_inactive_email(user) is False
+
+    def test_no_last_active(self):
+        assert _should_send_inactive_email({"last_inactive_email_sent": None}) is False
+
+    def test_email_sent_recently(self):
+        now = datetime.now(UTC)
+        user = {
+            "last_active_at": now - timedelta(days=10),
+            "last_inactive_email_sent": now - timedelta(days=2),
+        }
+        assert _should_send_inactive_email(user) is False
+
+    def test_eligible_first_email(self):
+        now = datetime.now(UTC)
+        user = {"last_active_at": now - timedelta(days=10), "last_inactive_email_sent": None}
+        assert _should_send_inactive_email(user) is True
+
+    def test_max_2_emails_stops_after_14_days(self):
+        now = datetime.now(UTC)
+        user = {
+            "last_active_at": now - timedelta(days=15),
+            "last_inactive_email_sent": now - timedelta(days=8),
+        }
+        assert _should_send_inactive_email(user) is False
+
+    def test_second_email_between_7_and_14_days(self):
+        now = datetime.now(UTC)
+        user = {
+            "last_active_at": now - timedelta(days=12),
+            "last_inactive_email_sent": now - timedelta(days=8),
+        }
+        assert _should_send_inactive_email(user) is True
+
+    def test_naive_last_active_handled(self):
+        """MongoDB may return naive datetimes; the policy should handle them."""
+        now = datetime.now(UTC)
+        user = {
+            "last_active_at": (now - timedelta(days=10)).replace(tzinfo=None),
+            "last_inactive_email_sent": None,
+        }
+        assert _should_send_inactive_email(user) is True
+
+    def test_naive_last_email_sent_handled(self):
+        now = datetime.now(UTC)
+        user = {
+            "last_active_at": now - timedelta(days=10),
+            "last_inactive_email_sent": (now - timedelta(days=2)).replace(tzinfo=None),
+        }
+        assert _should_send_inactive_email(user) is False
 
 
 @pytest.mark.unit
@@ -61,10 +120,10 @@ class TestCheckInactiveUsers:
             patch(
                 "app.services.email.send_inactive_user_email",
                 new_callable=AsyncMock,
-                return_value=True,
             ) as mock_email,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
+            mock_col.update_one = AsyncMock()
             result = await check_inactive_users(ctx)
 
         assert mock_email.await_count == 2
@@ -81,17 +140,31 @@ class TestCheckInactiveUsers:
             patch(
                 "app.services.email.send_inactive_user_email",
                 new_callable=AsyncMock,
-                return_value=True,
             ) as mock_email,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
+            mock_col.update_one = AsyncMock()
             await check_inactive_users(ctx)
 
-        mock_email.assert_awaited_once_with(
-            user_email="carol@example.com",
-            user_name="Carol",
-            user_id="id_carol",
-        )
+        mock_email.assert_awaited_once_with("carol@example.com", "Carol")
+
+    async def test_sent_email_updates_tracking(self, ctx):
+        user = _make_db_user("carol@example.com", "Carol", "id_carol")
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(return_value=[user])
+
+        with (
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
+            patch("app.services.email.send_inactive_user_email", new_callable=AsyncMock),
+        ):
+            mock_col.find = MagicMock(return_value=mock_cursor)
+            mock_col.update_one = AsyncMock()
+            await check_inactive_users(ctx)
+
+        mock_col.update_one.assert_awaited_once()
+        query, update = mock_col.update_one.call_args[0]
+        assert query == {"_id": user["_id"]}
+        assert isinstance(update["$set"]["last_inactive_email_sent"], datetime)
 
     async def test_failed_email_does_not_count_in_total(self, ctx):
         users = [
@@ -101,10 +174,9 @@ class TestCheckInactiveUsers:
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=users)
 
-        async def selective_send(**kwargs):
-            if kwargs["user_email"] == "ok@example.com":
-                return True
-            raise RuntimeError("SMTP error")
+        async def selective_send(user_email, user_name=None):
+            if user_email != "ok@example.com":
+                raise RuntimeError("SMTP error")
 
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
@@ -114,14 +186,19 @@ class TestCheckInactiveUsers:
             ),
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
+            mock_col.update_one = AsyncMock()
             result = await check_inactive_users(ctx)
 
         # Only 1 email successfully sent; 1 errored (swallowed per-user)
         assert "2 inactive users" in result
         assert "1 emails" in result
 
-    async def test_email_returning_false_not_counted(self, ctx):
+    async def test_recently_emailed_user_skipped(self, ctx):
+        """A user who got an inactive email 2 days ago is skipped by the throttle."""
         user = _make_db_user("ghost@example.com", "Ghost", "id_ghost")
+        user["last_inactive_email_sent"] = (datetime.now(UTC) - timedelta(days=2)).replace(
+            tzinfo=None
+        )
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[user])
 
@@ -130,12 +207,12 @@ class TestCheckInactiveUsers:
             patch(
                 "app.services.email.send_inactive_user_email",
                 new_callable=AsyncMock,
-                return_value=False,
-            ),
+            ) as mock_email,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             result = await check_inactive_users(ctx)
 
+        mock_email.assert_not_awaited()
         assert "0 emails" in result
 
     async def test_db_query_filters_seven_days_inactive(self, ctx):
@@ -249,10 +326,10 @@ class TestCheckInactiveUsers:
             patch(
                 "app.services.email.send_inactive_user_email",
                 new_callable=AsyncMock,
-                return_value=True,
             ) as mock_email,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
+            mock_col.update_one = AsyncMock()
             result = await check_inactive_users(ctx)
 
         assert mock_email.await_count == count
