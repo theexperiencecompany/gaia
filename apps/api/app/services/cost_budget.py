@@ -16,15 +16,19 @@ helpers warn and no-op (enforcement fails open; startup ``verify_connection``
 is what fails hard in production).
 """
 
+from typing import Any
+
 from app.config.rate_limits import (
     RateLimitPeriod,
     get_daily_cost_budget_usd,
     get_per_request_token_ceiling,
+    get_reset_time,
     get_time_window_key,
 )
 from app.constants.llm import (
     DAILY_BUDGET_TTL_SECONDS,
     MONTHLY_BUDGET_TTL_SECONDS,
+    PRO_MONTHLY_COST_BUDGET_USD,
     REQUEST_TOKEN_COUNTER_TTL_SECONDS,
 )
 from app.constants.log_tags import LogTag
@@ -154,3 +158,40 @@ async def get_budget_stop_reason(
         return REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
 
     return None
+
+
+def _allowance_used(spent: float, budget: float, period: RateLimitPeriod) -> dict[str, Any]:
+    """One window's allowance as a 0-100 percentage + when it resets. No dollars."""
+    pct = round(min(spent / budget * 100, 100.0), 1) if budget > 0 else 0.0
+    return {"percentage": pct, "reset_time": get_reset_time(period).isoformat()}
+
+
+async def get_budget_status(user_id: str, plan_type: PlanType) -> dict[str, Any]:
+    """Read-only cost-budget view for the Usage UI.
+
+    Returns only the *percentage* of each window's allowance consumed (plus its
+    reset time) and the per-request token ceiling — deliberately never the raw
+    USD spend or the dollar budget, so the user sees how close they are to the
+    wall without us leaking per-request COGS to the client. Reads the same Redis
+    windows the accounting middleware enforces, so the number shown is the number
+    that gates them. Free has no monthly cost budget, so ``monthly`` is null there.
+    """
+    daily = _allowance_used(
+        await get_cost(user_id, RateLimitPeriod.DAY),
+        get_daily_cost_budget_usd(plan_type),
+        RateLimitPeriod.DAY,
+    )
+    monthly = (
+        _allowance_used(
+            await get_cost(user_id, RateLimitPeriod.MONTH),
+            PRO_MONTHLY_COST_BUDGET_USD,
+            RateLimitPeriod.MONTH,
+        )
+        if plan_type == PlanType.PRO
+        else None
+    )
+    return {
+        "daily": daily,
+        "monthly": monthly,
+        "per_request_token_ceiling": get_per_request_token_ceiling(plan_type),
+    }

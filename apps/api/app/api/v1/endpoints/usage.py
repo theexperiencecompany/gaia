@@ -17,7 +17,9 @@ from app.config.rate_limits import (
 )
 from app.decorators.rate_limiting import tiered_limiter
 from app.models.payment_models import PlanType
+from app.services.cost_budget import get_budget_status
 from app.services.payments.payment_service import payment_service
+from app.services.usage_activity import get_activity
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
 
@@ -40,6 +42,7 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
 
         # Get real-time usage data directly from Redis
         features_formatted = await _get_realtime_usage(user_id, user_plan)
+        budget = await get_budget_status(user_id, user_plan)
 
         log.set(period="realtime", result_count=len(features_formatted))
         log.set(outcome="success")
@@ -47,6 +50,7 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
             "user_id": user_id,
             "plan_type": user_plan.value if hasattr(user_plan, "value") else str(user_plan),
             "features": features_formatted,
+            "budget": budget,
             "last_updated": datetime.now(UTC).isoformat(),
         }
     except Exception as e:
@@ -109,15 +113,37 @@ async def get_usage_history(
         raise HTTPException(status_code=500, detail="Failed to get usage history")
 
 
+@router.get("/activity")
+async def get_usage_activity(
+    days: int = Query(default=365, ge=1, le=366, description="Trailing window in days"),
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Daily activity for the heatmap: per-day action counts, streak, and standing."""
+    log.set(operation="get_usage_activity", period=f"{days}d")
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+    try:
+        result = await get_activity(user_id, days)
+        log.set(outcome="success")
+        return result
+    except Exception as e:
+        log.error(f"Error getting usage activity: {e!s}")
+        raise HTTPException(status_code=500, detail="Failed to get usage activity")
+
+
 async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Any]:
     """Get real-time usage data directly from Redis for all features."""
     features_formatted: dict[str, dict[str, Any]] = {}
 
     for feature_key in FEATURE_LIMITS:
         feature_info = get_feature_info(feature_key)
+        pro_limits = get_limits_for_plan(feature_key, PlanType.PRO)
         features_formatted[feature_key] = {
             "title": feature_info["title"],
             "description": feature_info["description"],
+            # Pro tier's limits, so a free user's UI can show the upgrade delta.
+            "upgrade": {"day": pro_limits.day, "month": pro_limits.month},
             "periods": {},
         }
 
