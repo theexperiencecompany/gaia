@@ -29,6 +29,7 @@ from app.constants.nurture import (
 from app.db.mongodb.collections import users_collection
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.email import EmailMessage, render_email_template, send_email
+from app.services.nurture.context_builders import CONTEXT_BUILDERS
 from app.services.nurture.predicates import SKIP_PREDICATES
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
@@ -102,6 +103,10 @@ async def _send_step(user: dict, step: NurtureStep) -> None:
         )
         context["cta_url"] = f"{settings.FRONTEND_URL}{step.cta_path}?{utm}"
         context["cta_label"] = step.cta_label
+
+    # Last so a builder can override base keys (e.g. cta_label).
+    if step.context_builder:
+        context.update(await CONTEXT_BUILDERS[step.context_builder](user))
 
     await send_email(
         EmailMessage(

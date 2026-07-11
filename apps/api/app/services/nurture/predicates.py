@@ -3,13 +3,13 @@ thing the email teaches, so the step is recorded as skipped and never sent."""
 
 from collections.abc import Awaitable, Callable
 
-from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
 from app.db.mongodb.collections import (
     conversations_collection,
     todos_collection,
     workflows_collection,
 )
-from app.services.oauth.oauth_service import check_integration_status
+from app.services.oauth.oauth_service import check_multiple_integrations_status
 
 _TODOS_IN_USE_THRESHOLD = 5
 
@@ -26,8 +26,11 @@ async def used_chat(user: dict) -> bool:
     return count > 0
 
 
-async def gmail_connected(user: dict) -> bool:
-    return await check_integration_status(GMAIL_INTEGRATION_ID, str(user["_id"]))
+async def google_suite_connected(user: dict) -> bool:
+    statuses = await check_multiple_integrations_status(
+        [GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID], str(user["_id"])
+    )
+    return all(statuses.values())
 
 
 async def uses_todos(user: dict) -> bool:
@@ -50,7 +53,7 @@ async def linked_platform(user: dict) -> bool:
 SKIP_PREDICATES: dict[str, Callable[[dict], Awaitable[bool]]] = {
     "onboarding_completed": onboarding_completed,
     "used_chat": used_chat,
-    "gmail_connected": gmail_connected,
+    "google_suite_connected": google_suite_connected,
     "uses_todos": uses_todos,
     "has_workflow": has_workflow,
     "linked_platform": linked_platform,

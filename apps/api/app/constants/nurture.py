@@ -14,6 +14,7 @@ class NurtureStep:
     template: str
     subject: str
     skip_predicate: str | None = None  # key into app/services/nurture/predicates.py
+    context_builder: str | None = None  # key into app/services/nurture/context_builders.py
     cta_path: str | None = None  # appended to FRONTEND_URL; None = no button (reply is the CTA)
     cta_label: str | None = None
     requires_onboarding: bool = True  # held (not skipped) until onboarding completes
@@ -41,12 +42,15 @@ NURTURE_STEPS: tuple[NurtureStep, ...] = (
         cta_label="Finish setup",
         requires_onboarding=False,
     ),
+    # Skips only when BOTH Gmail and Calendar are connected; the template
+    # adapts its pitch (and the builder its CTA label) to whichever is missing.
     NurtureStep(
         key="connect_gmail",
         day_offset=3,
         template="nurture_connect_gmail.html",
         subject="Two minutes of setup, and GAIA gets 10x more useful",
-        skip_predicate="gmail_connected",
+        skip_predicate="google_suite_connected",
+        context_builder="google_connection_status",
         cta_path="/integrations",
         cta_label="Connect Gmail & Calendar",
     ),
