@@ -63,3 +63,5 @@ Sender identities (`FOUNDER_SENDER`, `SUPPORT_SENDER`) and brand URLs live in `a
 ## Future extensions (designed for, not built)
 
 The single `send_email()` choke point is where cross-cutting concerns belong when they become needed: multi-provider failover/rotation, quota-aware routing, a shared suppression list, or queueing sends through ARQ for retry. None of these require touching senders or call sites.
+
+**Going multi-provider:** a router satisfies the same `EmailProvider` protocol as a real adapter, so the upgrade is a composite entirely inside this package — `EMAIL_PROVIDER` becomes a priority list (e.g. `resend,ses`), and `get_email_provider()` returns a router wrapping the listed adapters with the chosen policy (failover on error, quota spillover via Redis counters, or per-category routing — the router sees the full `EmailMessage`). Blast radius: the factory function only. Before enabling it, deal with the operational half: DKIM verification per provider, per-provider bounce/complaint webhooks feeding a shared suppression list, and a GAIA-owned unsubscribe endpoint — provider-hosted suppression state does not follow you across providers.
