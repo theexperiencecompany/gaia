@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
 
 import { slugifyHeading } from "../utils/parseHeadings";
+import { IPhoneFrame } from "./IPhoneFrame";
 
 function extractText(node: React.ReactNode): string {
   if (typeof node === "string") return node;
@@ -100,16 +101,31 @@ export default function MarkdownWrapper({ content }: { content: string }) {
             <p className="my-5 leading-[1.8] first:mt-0 last:mb-0" {...props} />
           ),
           li: ({ ...props }) => <li className="leading-[1.7]" {...props} />,
-          img: ({ ...props }) => (
-            <Image
-              width={500}
-              height={500}
-              alt="image"
-              className="mx-auto my-8 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
-              src={props.src as string}
-              onClick={() => openDialog(props.src as string)}
-            />
-          ),
+          img: ({ ...props }) => {
+            const alt = (props.alt as string) || "";
+            // Device-frame convention: "![iphone: caption](/img.png)" renders
+            // the screenshot inside an iPhone frame (see IPhoneFrame).
+            if (alt.startsWith("iphone:")) {
+              const caption = alt.slice("iphone:".length).trim();
+              return (
+                <IPhoneFrame
+                  src={props.src as string}
+                  alt={caption || "GAIA on mobile"}
+                  caption={caption}
+                />
+              );
+            }
+            return (
+              <Image
+                width={500}
+                height={500}
+                alt={alt || "image"}
+                className="mx-auto my-8 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
+                src={props.src as string}
+                onClick={() => openDialog(props.src as string)}
+              />
+            );
+          },
           pre: ({ ...props }) => (
             <pre className="my-8 font-serif! text-wrap" {...props} />
           ),
