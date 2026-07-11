@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timezone
+import math
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
@@ -91,6 +92,15 @@ class _FakeRedisCache:
         await self.redis.delete(key)
 
 
+def _effective_limit(config: RateLimitConfig, period: str) -> float:
+    """Allowance for a period under RateLimitConfig's 0-semantics: a tier with
+    both periods 0 has no access (0); otherwise 0 means unlimited (inf)."""
+    if config.day <= 0 and config.month <= 0:
+        return 0.0
+    value = getattr(config, period)
+    return math.inf if value <= 0 else float(value)
+
+
 # ---------------------------------------------------------------------------
 # 1. Rate limit configuration
 # ---------------------------------------------------------------------------
@@ -119,18 +129,17 @@ class TestRateLimitConfiguration:
             assert isinstance(limits.pro, RateLimitConfig), f"{key}.pro wrong type"
 
     def test_pro_limits_are_greater_than_or_equal_to_free(self) -> None:
+        """Pro is never more restrictive than Free (0 = unlimited when the tier has access)."""
         for key, limits in FEATURE_LIMITS.items():
-            assert limits.pro.day >= limits.free.day, (
-                f"{key}: pro daily ({limits.pro.day}) < free daily ({limits.free.day})"
-            )
-            assert limits.pro.month >= limits.free.month, (
-                f"{key}: pro monthly ({limits.pro.month}) < free monthly ({limits.free.month})"
-            )
+            for period in ("day", "month"):
+                free = _effective_limit(limits.free, period)
+                pro = _effective_limit(limits.pro, period)
+                assert pro >= free, f"{key}: pro {period} ({pro}) < free {period} ({free})"
 
     def test_get_feature_limits_returns_correct_config(self) -> None:
         result = get_feature_limits("chat_messages")
-        assert result.free.day == 200
-        assert result.pro.day == 3000
+        assert result.free.day == 15
+        assert result.pro.month == 60000
 
     def test_get_feature_limits_raises_for_unknown(self) -> None:
         with pytest.raises(ValueError, match="Unknown feature key"):
@@ -472,7 +481,7 @@ class TestRateLimitExceptionDetail:
     def test_exception_with_plan_required(self) -> None:
         exc = RateLimitExceededException(feature="generate_image", plan_required="pro")
         assert exc.detail["plan_required"] == "pro"
-        assert "Upgrade to PRO" in exc.detail["message"]
+        assert "Upgrade to Pro" in exc.detail["message"]
 
     def test_exception_with_reset_time(self) -> None:
         reset = datetime(2026, 4, 2, 0, 0, 0, tzinfo=UTC)
@@ -494,8 +503,10 @@ class TestConcurrentRequests:
         self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
 
     async def test_concurrent_increments_are_atomic(self) -> None:
-        """Fire many concurrent requests and verify the final counter is correct."""
-        num_requests = 20
+        """Fire exactly the daily allowance concurrently; every one succeeds and
+        the counter lands precisely on the limit (no lost increments)."""
+        # Derived from config so retuning the limit never makes this stale.
+        num_requests = get_limits_for_plan("chat_messages", PlanType.FREE).day
 
         with (
             frozen_time("2026-04-01T12:00:00"),
@@ -504,7 +515,7 @@ class TestConcurrentRequests:
             tasks = [
                 self.limiter.check_and_increment(
                     user_id="user1",
-                    feature_key="chat_messages",  # free = 200/day
+                    feature_key="chat_messages",
                     user_plan=PlanType.FREE,
                 )
                 for _ in range(num_requests)
@@ -521,9 +532,9 @@ class TestConcurrentRequests:
         Some should succeed and some should raise RateLimitExceededException.
         The total successful increments must not exceed the limit.
         """
-        # deep_research free = 5/day (current production value)
-        limit = 5
-        num_requests = 20
+        # Derived from config so retuning deep_research never makes this stale.
+        limit = get_limits_for_plan("deep_research", PlanType.FREE).day
+        num_requests = limit + 15
 
         with (
             frozen_time("2026-04-01T12:00:00"),

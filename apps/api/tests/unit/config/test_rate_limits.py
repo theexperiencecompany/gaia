@@ -14,6 +14,7 @@ Tests cover:
 """
 
 from datetime import UTC, datetime
+import math
 from unittest.mock import patch
 
 import pytest
@@ -31,6 +32,16 @@ from app.config.rate_limits import (
     get_time_window_key,
 )
 from app.models.payment_models import PlanType
+
+
+def _effective_limit(config: RateLimitConfig, period: str) -> float:
+    """Allowance for a period under RateLimitConfig's 0-semantics: a tier with
+    both periods 0 has no access (0); otherwise 0 means unlimited (inf)."""
+    if config.day <= 0 and config.month <= 0:
+        return 0.0
+    value = getattr(config, period)
+    return math.inf if value <= 0 else float(value)
+
 
 # ---------------------------------------------------------------------------
 # Tests: RateLimitPeriod
@@ -195,14 +206,12 @@ class TestFeatureLimits:
             assert isinstance(limits.info, FeatureInfo), f"{key}.info is not FeatureInfo"
 
     def test_pro_limits_gte_free_limits(self) -> None:
-        """Pro plan should always have limits >= free plan."""
+        """Pro is never more restrictive than Free (0 = unlimited when the tier has access)."""
         for key, limits in FEATURE_LIMITS.items():
-            assert limits.pro.day >= limits.free.day, (
-                f"{key}: pro day ({limits.pro.day}) < free day ({limits.free.day})"
-            )
-            assert limits.pro.month >= limits.free.month, (
-                f"{key}: pro month ({limits.pro.month}) < free month ({limits.free.month})"
-            )
+            for period in ("day", "month"):
+                free = _effective_limit(limits.free, period)
+                pro = _effective_limit(limits.pro, period)
+                assert pro >= free, f"{key}: pro {period} ({pro}) < free {period} ({free})"
 
     def test_monthly_limits_gte_daily_limits(self) -> None:
         """Monthly limits should be >= daily limits for both tiers."""
@@ -235,9 +244,10 @@ class TestFeatureLimits:
 
     def test_specific_chat_messages_limits(self) -> None:
         chat = FEATURE_LIMITS["chat_messages"]
-        assert chat.free.day == 200
-        assert chat.free.month == 5000
-        assert chat.pro.day == 3000
+        assert chat.free.day == 15
+        assert chat.free.month == 200
+        # Pro has no daily message count (0 = uncapped); only the monthly abuse backstop.
+        assert chat.pro.day == 0
         assert chat.pro.month == 60000
 
     def test_specific_generate_image_limits(self) -> None:
@@ -249,8 +259,8 @@ class TestFeatureLimits:
 
     def test_specific_deep_research_limits(self) -> None:
         dr = FEATURE_LIMITS["deep_research"]
-        assert dr.free.day == 5
-        assert dr.free.month == 30
+        assert dr.free.day == 1
+        assert dr.free.month == 5
         assert dr.pro.day == 100
         assert dr.pro.month == 2000
 

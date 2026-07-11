@@ -40,7 +40,7 @@ class TestRateLimitExceededException:
     def test_with_plan_required(self) -> None:
         exc = RateLimitExceededException("file_upload", plan_required="pro")
         assert exc.detail["plan_required"] == "pro"  # type: ignore[index]
-        assert "PRO" in exc.detail["message"]  # type: ignore[index]
+        assert "Upgrade to Pro" in exc.detail["message"]  # type: ignore[index]
 
     def test_with_reset_time(self) -> None:
         reset = datetime(2026, 4, 1, tzinfo=UTC)
