@@ -355,9 +355,21 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[dict] = onboarding.get("clarify_answers") or []
     selected_integrations: list[str] = onboarding.get("selected_integrations") or []
-    # Set once at submission time (defer_workflows) and never mutated, so a
-    # user confirming integrations while this job is queued can't flip the
-    # branch mid-run.
+    # Two pipeline shapes, chosen at submission time by whether Gmail is connected:
+    #
+    #   split  (Gmail path): the frontend submits the moment Gmail connects, BEFORE
+    #     the user has picked their other integrations. So this job runs only the
+    #     expensive inbox work (scan/triage/todos/writing style/social) now, and
+    #     defers workflow creation to a second job (process_onboarding_workflows_task)
+    #     triggered by POST /onboarding/integrations. The inbox scan thus overlaps
+    #     with the user's integration-picking time — that overlap is the whole point.
+    #
+    #   full  (no-Gmail path): the frontend waits for integration selection before
+    #     submitting, so everything is known up front and there is no inbox to scan
+    #     — nothing to overlap. Workflows run inline here, in this one job.
+    #
+    # Set once at submission time (defer_workflows) and never mutated, so a user
+    # confirming integrations while this job is queued can't flip the branch mid-run.
     split_mode: bool = (onboarding.get("pipeline_mode") or "full") == "split"
 
     t_gmail_check = time.monotonic()

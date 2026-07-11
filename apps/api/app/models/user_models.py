@@ -98,6 +98,10 @@ class OnboardingPreferences(BaseModel):
 
 
 def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
+    # Order-preserving dedupe: a user can select the same integration twice
+    # (e.g. via a chip and a mention). We keep the first occurrence so the
+    # selection order — which downstream workflow generation treats as priority
+    # — is stable, rather than using set() which would scramble it.
     if not v:
         return v
     seen: set[str] = set()

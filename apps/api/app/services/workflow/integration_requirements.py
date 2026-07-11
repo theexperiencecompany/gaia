@@ -12,9 +12,14 @@ def _category_to_integration() -> dict[str, str]:
 
     Covers both registry categories (via subagent_config.tool_space) and
     subagent integration IDs used directly as step categories.
+
+    Internal integrations (todos, reminders, …) are excluded — they are
+    always available and never require the user to connect anything.
     """
     result: dict[str, str] = {}
     for integration in OAUTH_INTEGRATIONS:
+        if integration.managed_by == "internal":
+            continue
         if integration.subagent_config and integration.subagent_config.tool_space:
             result[integration.subagent_config.tool_space.lower()] = integration.id
         # integration.id itself is also used as a category name in the LLM palette

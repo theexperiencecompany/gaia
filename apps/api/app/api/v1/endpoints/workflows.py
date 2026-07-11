@@ -79,7 +79,11 @@ async def create_workflow(
         # step generation is grounded in tools the user can actually use.
         if request.selected_integrations is None:
             status_map = await get_all_integrations_status(user["user_id"])
-            request.selected_integrations = [iid for iid, ok in status_map.items() if ok] or None
+            request.selected_integrations = [
+                integration_id
+                for integration_id, is_connected in status_map.items()
+                if is_connected
+            ] or None
         # Pass user timezone to the service for automatic population
         workflow = await WorkflowService.create_workflow(
             request, user["user_id"], user_timezone=user_timezone

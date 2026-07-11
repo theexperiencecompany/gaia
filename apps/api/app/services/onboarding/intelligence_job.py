@@ -25,7 +25,14 @@ _INTELLIGENCE_JOB_FIELD = "onboarding.intelligence_job_id"
 _WORKFLOWS_JOB_FIELD = "onboarding.workflows_job_id"
 
 
+# Each helper below is parameterized by `field` so the same logic serves both
+# job slots (intelligence and workflows). The public wrappers at the bottom bind
+# `field` to one of the two _*_JOB_FIELD constants — read those first for intent.
+
+
 async def _get_active_job_id(user_id: str, field: str) -> str | None:
+    # `field` is a dotted path ("onboarding.intelligence_job_id"); the projection
+    # returns the nested doc, so strip the prefix to index into it.
     doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {field: 1})
     if not doc:
         return None
@@ -47,6 +54,9 @@ async def _set_active_job_id(user_id: str, job_id: str, field: str) -> None:
 
 
 async def _clear_active_job_id_if_matches(user_id: str, job_id: str, field: str) -> None:
+    # Compare-and-clear: the `field: job_id` filter means we only unset when the
+    # stored id is still OUR job. If a concurrent reset already wrote a newer id,
+    # the filter misses and we leave that newer job's id untouched.
     await users_collection.update_one(
         {"_id": ObjectId(user_id), field: job_id},
         {"$unset": {field: ""}},
@@ -94,6 +104,8 @@ async def is_workflows_job_live(user_id: str) -> bool:
 
 
 async def _abort_active_job(user_id: str, field: str) -> bool:
+    # Signal ARQ to abort a still-running job before we enqueue a replacement,
+    # so a re-submit can't leave two pipelines emitting to the same WebSocket.
     job_id = await _get_active_job_id(user_id, field)
     if not job_id:
         return False
@@ -103,6 +115,7 @@ async def _abort_active_job(user_id: str, field: str) -> bool:
     status = await job.status()
     aborted = False
     if status in (JobStatus.queued, JobStatus.deferred, JobStatus.in_progress):
+        # ARQ watches this sorted set; adding the job id requests cooperative abort.
         await pool.zadd(abort_jobs_ss, {job_id: timestamp_ms()})
         aborted = True
         log.info(
