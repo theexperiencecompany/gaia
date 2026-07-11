@@ -1,9 +1,10 @@
 import { ImageResponse } from "next/og";
+
+import { OgScene, OgSceneLogo } from "../OgScene";
 import {
   colors,
   createErrorResponse,
   createFallbackResponse,
-  fonts,
   getBaseUrl,
   loadFonts,
   OG_HEIGHT,
@@ -30,7 +31,6 @@ export async function GET(request: Request) {
     }
 
     const siteBaseUrl = getBaseUrl(request.url);
-    const wallpaperUrl = `${siteBaseUrl}${wallpapers.pricing.png}`;
 
     let comparison: OgComparison | null = null;
     try {
@@ -55,76 +55,18 @@ export async function GET(request: Request) {
       comparison.tagline ?? "An honest, side-by-side comparison.",
       140,
     );
-    const allText = `${title}${tagline}Honest comparisonheygaia.io`;
-
-    const loadedFonts = await loadFonts(title, allText);
+    const loadedFonts = await loadFonts(title, `${title}${tagline}heygaia.io`);
 
     return new ImageResponse(
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          position: "relative",
-          fontFamily: fonts.sans,
-        }}
-      >
-        {/* biome-ignore lint/performance/noImgElement: og image */}
-        <img
-          src={wallpaperUrl}
-          alt="Background"
-          width={OG_WIDTH}
-          height={OG_HEIGHT}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "center",
-          }}
-        />
-
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background:
-              "linear-gradient(180deg, rgba(9,9,11,0.6) 0%, rgba(9,9,11,0.8) 60%, rgba(9,9,11,0.95) 100%)",
-          }}
-        />
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            flex: 1,
-            justifyContent: "flex-end",
-            gap: 24,
-            padding: "48px 64px",
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 24,
-            }}
-          >
-            {/* biome-ignore lint/performance/noImgElement: og image */}
-            <img
+      <OgScene
+        wallpaperUrl={`${siteBaseUrl}${wallpapers.pricing.png}`}
+        title={title}
+        subtitle={tagline}
+        header={
+          <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            <OgSceneLogo
               src={`${siteBaseUrl}/images/logos/logo.webp`}
               alt="GAIA"
-              width={88}
-              height={88}
-              style={{ borderRadius: 20, objectFit: "contain" }}
             />
             <div
               style={{
@@ -137,56 +79,14 @@ export async function GET(request: Request) {
               vs
             </div>
             {comparison.domain ? (
-              /* biome-ignore lint/performance/noImgElement: og image */
-              <img
+              <OgSceneLogo
                 src={`https://www.google.com/s2/favicons?domain=${comparison.domain}&sz=128`}
                 alt={comparison.name}
-                width={88}
-                height={88}
-                style={{ borderRadius: 20, objectFit: "contain" }}
               />
             ) : null}
           </div>
-
-          <div
-            style={{
-              display: "flex",
-              fontSize: 96,
-              fontWeight: 400,
-              color: colors.white,
-              fontFamily: fonts.serif,
-              lineHeight: 1.1,
-              textShadow: "0 4px 24px rgba(0,0,0,0.4)",
-            }}
-          >
-            {title}
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              fontSize: 30,
-              color: colors.mutedLight,
-              lineHeight: 1.45,
-              fontWeight: 100,
-              textShadow: "0 2px 8px rgba(0,0,0,0.4)",
-            }}
-          >
-            {tagline}
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              fontSize: 24,
-              color: colors.mutedLight,
-              textShadow: "0 2px 8px rgba(0,0,0,0.4)",
-            }}
-          >
-            heygaia.io
-          </div>
-        </div>
-      </div>,
+        }
+      />,
       {
         width: OG_WIDTH,
         height: OG_HEIGHT,
