@@ -97,8 +97,6 @@ const MainChat = React.memo(function MainChat() {
     chatRef,
     dummySectionRef,
     inputRef,
-    droppedFiles,
-    setDroppedFiles,
     fileUploadRef,
     appendToInputRef,
     convoIdParam,
@@ -159,11 +157,7 @@ const MainChat = React.memo(function MainChat() {
 
   const { isDragging, dragHandlers } = useDragAndDrop({
     onDrop: (files: File[]) => {
-      setDroppedFiles(files);
-      if (fileUploadRef.current) {
-        fileUploadRef.current.handleDroppedFiles(files);
-        fileUploadRef.current.openFileUploadModal();
-      }
+      fileUploadRef.current?.attachFiles(files);
     },
     multiple: true,
   });
@@ -195,8 +189,6 @@ const MainChat = React.memo(function MainChat() {
     scrollToBottom,
     fileUploadRef,
     appendToInputRef,
-    droppedFiles,
-    onDroppedFilesProcessed: () => setDroppedFiles([]),
     hasMessages,
     conversationId: convoIdParam,
     // Warm the session token on hover so clicking starts ~instantly. Gated

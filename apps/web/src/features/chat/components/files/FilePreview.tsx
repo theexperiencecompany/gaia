@@ -19,7 +19,6 @@ export interface UploadedFilePreview {
   description?: string; // Add description field from backend
   message?: string; // Add message field from backend
   isUploading?: boolean;
-  tempId?: string;
 }
 
 interface FilePreviewProps {

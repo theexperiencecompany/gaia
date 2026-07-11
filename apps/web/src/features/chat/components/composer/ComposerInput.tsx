@@ -447,7 +447,6 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
               input:
                 "font-light focus-visible:border-0! focus-visible:border-transparent!",
             }}
-            isInvalid={searchbarText.length > 10_000}
             maxRows={13}
             minRows={1}
             placeholder="What can I do for you today? (Type '/' for tools)"
