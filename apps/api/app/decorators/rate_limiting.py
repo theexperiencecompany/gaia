@@ -211,7 +211,7 @@ def with_rate_limiting(
     return rate_limit_decorator
 
 
-def tiered_rate_limit(feature_key: str, count_tokens: bool = False):
+def tiered_rate_limit(feature_key: str):
     """Rate limiting decorator for API endpoints."""
 
     def decorator(func: Callable) -> Callable:
@@ -248,26 +248,7 @@ def tiered_rate_limit(feature_key: str, count_tokens: bool = False):
 
             # Execute the original function
             result = await func(*args, **kwargs)
-
-            # Handle token counting post-execution
-            # if count_tokens and isinstance(result, dict):
-            #     tokens_used = result.get("tokens_used", 0)
-            #     if tokens_used > 0:
-            #         # Validate token limits
-            #         current_limits = get_limits_for_plan(feature_key, user_plan)
-            #         if (
-            #             current_limits.tokens_per_request > 0
-            #             and tokens_used > current_limits.tokens_per_request
-            #         ):
-            #             plan_required = "pro" if user_plan == PlanType.FREE else None
-            #             raise RateLimitExceededException(
-            #                 f"{feature_key} (token limit)", plan_required
-            #             )
-
             return result
-
-        # Store metadata for usage tracking
-        wrapper._rate_limit_metadata = {"feature_key": feature_key}  # type: ignore[attr-defined]
 
         return wrapper
 

@@ -15,12 +15,11 @@ from app.agents.prompts.workflow_prompts import (
 from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
     RateLimitExceededException,
-    tiered_rate_limit,
 )
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
 from app.db.mongodb.collections import todos_collection
-from app.decorators import enforce_daily_cost_budget
+from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
     MessageRequestWithHistory,

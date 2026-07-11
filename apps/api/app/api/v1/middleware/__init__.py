@@ -12,7 +12,6 @@ from .tiered_rate_limiter import (
     RateLimitExceededException,
     TieredRateLimiter,
     UsageInfo,
-    tiered_rate_limit,
 )
 
 __all__ = [
@@ -22,7 +21,6 @@ __all__ = [
     "ProfilingMiddleware",
     "limiter",
     "TieredRateLimiter",
-    "tiered_rate_limit",
     "RateLimitExceededException",
     "UsageInfo",
 ]

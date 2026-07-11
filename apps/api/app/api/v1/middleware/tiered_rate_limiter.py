@@ -1,20 +1,14 @@
 """
-Tiered rate limiting middleware for API endpoints.
+Tiered rate limiting engine.
 
-Enforces daily and monthly rate limits based on user subscription plans.
-Automatically checks both time periods and rejects requests that exceed any limit.
-
-Usage:
-    @tiered_rate_limit("file_analysis", count_tokens=True)
-    async def analyze_file(user: dict = Depends(get_current_user)):
-        # Also validates token usage limits per request
-        return await analyze()
+Provides the ``TieredRateLimiter`` (Redis-backed per-user, per-feature daily and
+monthly counters), the ``tiered_limiter`` singleton, and the 429 exception types.
+The ``@tiered_rate_limit`` endpoint decorator that wraps this engine lives in
+``app.decorators.rate_limiting`` (the canonical home for rate-limit decorators).
 """
 
 import asyncio
-from collections.abc import Callable
 from datetime import UTC, datetime
-from functools import wraps
 
 from fastapi import HTTPException
 import redis.asyncio as redis
@@ -39,7 +33,6 @@ from app.models.usage_models import (
     UserUsageSnapshot,
 )
 from app.services.limit_upsell import schedule_limit_upsell
-from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
 
@@ -325,50 +318,3 @@ class TieredRateLimiter:
 
 # Global rate limiter instance
 tiered_limiter = TieredRateLimiter()
-
-
-def tiered_rate_limit(feature_key: str):
-    """Rate limiting decorator for API endpoints."""
-
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            """Resolve the user, enforce the feature's limits, then run the endpoint."""
-            # Extract request and user from dependencies
-            user = None
-
-            for arg in args:
-                if isinstance(arg, dict) and "user_id" in arg:
-                    user = arg
-
-            if not user:
-                user = kwargs.get("user")
-                if not user:
-                    # If no user found, skip rate limiting (for public endpoints)
-                    return await func(*args, **kwargs)
-
-            user_id = user.get("user_id")
-            if not user_id:
-                raise HTTPException(status_code=401, detail="User ID not found")
-
-            # Get user subscription
-            subscription = await payment_service.get_user_subscription_status(user_id)
-            user_plan = subscription.plan_type or PlanType.FREE
-
-            # Check rate limits before executing function
-            await tiered_limiter.check_and_increment(
-                user_id=user_id,
-                feature_key=feature_key,
-                user_plan=user_plan,
-            )
-
-            # Execute the original function
-            result = await func(*args, **kwargs)
-            return result
-
-        # Store metadata for usage tracking
-        wrapper._rate_limit_metadata = {"feature_key": feature_key}  # type: ignore[attr-defined]
-
-        return wrapper
-
-    return decorator
