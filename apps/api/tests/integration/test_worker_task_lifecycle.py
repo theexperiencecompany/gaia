@@ -553,7 +553,7 @@ class TestUserTasks:
 
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_users,
-            patch("app.utils.email_utils.send_inactive_user_email") as mock_send,
+            patch("app.services.email.send_inactive_user_email") as mock_send,
         ):
             mock_users.find.return_value = mock_cursor
             mock_send.return_value = True
@@ -607,7 +607,7 @@ class TestUserTasks:
 
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_users,
-            patch("app.utils.email_utils.send_inactive_user_email") as mock_send,
+            patch("app.services.email.send_inactive_user_email") as mock_send,
         ):
             mock_users.find.return_value = mock_cursor
             # First call raises, second succeeds

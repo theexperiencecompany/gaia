@@ -14,6 +14,15 @@ MAX_RESULTS = 500
 BATCH_SIZE = 50
 ONBOARDING_EMAIL_SCAN_LIMIT = 200
 
+# Outbound platform email (transactional sends via app/services/email)
+CONTACT_EMAIL = "aryan@heygaia.io"
+SUPPORT_EMAIL = "support@heygaia.io"
+FOUNDER_SENDER = f"Aryan from GAIA <{CONTACT_EMAIL}>"
+SUPPORT_SENDER = f"GAIA Support <{SUPPORT_EMAIL}>"
+DISCORD_URL = "https://discord.heygaia.io"
+WHATSAPP_URL = "https://whatsapp.heygaia.io"
+TWITTER_URL = "https://twitter.com/trygaia"
+
 # Email profile previews (email links in chat markdown)
 MAILTO_PREFIX = "mailto:"
 EMAIL_PROFILE_CACHE_TTL_SECONDS = 24 * 60 * 60

@@ -39,7 +39,7 @@ class TestCheckInactiveUsers:
 
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
-            patch("app.utils.email_utils.send_inactive_user_email") as mock_email,
+            patch("app.services.email.send_inactive_user_email") as mock_email,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             result = await check_inactive_users(ctx)
@@ -59,7 +59,7 @@ class TestCheckInactiveUsers:
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
-                "app.utils.email_utils.send_inactive_user_email",
+                "app.services.email.send_inactive_user_email",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_email,
@@ -79,7 +79,7 @@ class TestCheckInactiveUsers:
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
-                "app.utils.email_utils.send_inactive_user_email",
+                "app.services.email.send_inactive_user_email",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_email,
@@ -109,7 +109,7 @@ class TestCheckInactiveUsers:
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
-                "app.utils.email_utils.send_inactive_user_email",
+                "app.services.email.send_inactive_user_email",
                 side_effect=selective_send,
             ),
         ):
@@ -128,7 +128,7 @@ class TestCheckInactiveUsers:
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
-                "app.utils.email_utils.send_inactive_user_email",
+                "app.services.email.send_inactive_user_email",
                 new_callable=AsyncMock,
                 return_value=False,
             ),
@@ -144,7 +144,7 @@ class TestCheckInactiveUsers:
 
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
-            patch("app.utils.email_utils.send_inactive_user_email"),
+            patch("app.services.email.send_inactive_user_email"),
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             before_call = datetime.now(UTC)
@@ -167,7 +167,7 @@ class TestCheckInactiveUsers:
 
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
-            patch("app.utils.email_utils.send_inactive_user_email"),
+            patch("app.services.email.send_inactive_user_email"),
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             await check_inactive_users(ctx)
@@ -181,7 +181,7 @@ class TestCheckInactiveUsers:
 
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
-            patch("app.utils.email_utils.send_inactive_user_email"),
+            patch("app.services.email.send_inactive_user_email"),
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             await check_inactive_users(ctx)
@@ -247,7 +247,7 @@ class TestCheckInactiveUsers:
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
-                "app.utils.email_utils.send_inactive_user_email",
+                "app.services.email.send_inactive_user_email",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_email,

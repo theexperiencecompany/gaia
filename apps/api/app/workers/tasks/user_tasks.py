@@ -21,7 +21,7 @@ async def check_inactive_users(ctx: dict) -> str:
     """
     async with wide_task("check_inactive_users"):
         from app.db.mongodb.collections import users_collection
-        from app.utils.email_utils import send_inactive_user_email
+        from app.services.email import send_inactive_user_email
 
         log.info(f"{LogTag.WORKER} Checking for inactive users")
 

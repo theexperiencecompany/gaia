@@ -19,11 +19,11 @@ from app.models.support_models import (
     SupportRequestStatus,
     SupportRequestSubmissionResponse,
 )
-from app.services.upload_service import upload_file_to_cloudinary
-from app.utils.email_utils import (
+from app.services.email import (
     send_support_team_notification,
     send_support_to_user_email,
 )
+from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
 
 # Support team emails
