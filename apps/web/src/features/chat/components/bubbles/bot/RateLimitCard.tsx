@@ -168,7 +168,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
               <Alert01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
               <p className="text-xs text-zinc-400">
                 Need more? Upgrade to{" "}
-                <span className="font-medium text-zinc-300">Pro</span> for 10×
+                <span className="font-medium text-zinc-300">Pro</span> for 10x
                 higher daily limits on {featureName} and all other features.
               </p>
             </div>

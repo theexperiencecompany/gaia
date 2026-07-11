@@ -321,6 +321,11 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
             return f"Workflow {workflow_id} executed successfully"
 
         except Exception as e:
+            # A spent daily cost budget is a clean skip, not a failure: it never
+            # created an execution record and the run resumes after the budget
+            # resets, so it must not be counted against the workflow's stats.
+            is_budget_skip = isinstance(e, CostBudgetExceededException)
+
             if isinstance(e, RateLimitExceededException):
                 # User hit their plan's workflow-execution quota — an expected,
                 # by-design outcome, not a worker failure. Log at WARNING so it
@@ -343,8 +348,8 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 except Exception as e2:
                     log.debug(f"{LogTag.WORKER} Failed to complete execution record: %s" % e2)
 
-            # Track failed execution
-            if workflow:
+            # Track failed execution (a budget skip is not a failure)
+            if workflow and not is_budget_skip:
                 try:
                     await WorkflowService.increment_execution_count(
                         workflow_id, workflow.user_id, is_successful=False
@@ -356,7 +361,11 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
             if workflow:
                 try:
                     if isinstance(e, RateLimitExceededException):
-                        title = f"Workflow Failed: {workflow.title}"
+                        title = (
+                            f"Workflow Paused: {workflow.title}"
+                            if is_budget_skip
+                            else f"Workflow Failed: {workflow.title}"
+                        )
                         detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
                         plan_required = detail.get("plan_required", "pro").capitalize()
                         reset_time_str = detail.get("reset_time", "")
