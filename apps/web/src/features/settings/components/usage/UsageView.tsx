@@ -175,19 +175,18 @@ function heroWindow(
 function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
   const [win, setWin] = useState<Period>("month");
   const { percent, resetIso } = heroWindow(summary, isPro, win);
-  const remaining = Math.max(0, Math.round(100 - percent));
+  const used = Math.min(100, Math.round(percent));
 
   const elapsed = resetIso ? elapsedFraction(resetIso, win) : 0;
   const pace = elapsed * 100;
   const projected = elapsed > 0.05 ? percent / elapsed : percent;
   const willExceed = !!resetIso && percent < 100 && projected >= 100;
   const showPace = !!resetIso && pace > 2 && pace < 98;
-  // The gauge shows what's LEFT (fuel-gauge style), so the pace tick marks the
-  // remaining allowance you'd have at an even burn rate: 100% - time elapsed.
-  const expectedRemaining = 100 - pace;
+  // The gauge shows what's USED, so the pace tick marks where usage "should"
+  // be at an even burn rate: the share of the window already elapsed.
   // Recharts maps value 0→startAngle(230°), 100→-50°; radii in the 100x100
   // viewBox match innerRadius 70% / outerRadius 100%.
-  const theta = ((230 - expectedRemaining * 2.8) * Math.PI) / 180;
+  const theta = ((230 - pace * 2.8) * Math.PI) / 180;
   const cos = Math.cos(theta);
   const sin = Math.sin(theta);
 
@@ -213,7 +212,7 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
       <div className="relative size-32 shrink-0">
         <ChartContainer config={{}} className="aspect-square size-32">
           <RadialBarChart
-            data={[{ value: remaining }]}
+            data={[{ value: used }]}
             innerRadius="76%"
             outerRadius="100%"
             startAngle={230}
@@ -233,7 +232,7 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
             />
           </RadialBarChart>
         </ChartContainer>
-        {/* Pace tick: the remaining you'd have at an even burn. Amber if behind it. */}
+        {/* Pace tick: where usage "should" be at an even burn. Amber if ahead of it. */}
         {showPace && (
           <svg
             viewBox="0 0 100 100"
@@ -252,14 +251,14 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
             />
           </svg>
         )}
-        {/* "left" lives INSIDE the gauge: a bare "99%" under a "Usage" heading
-            reads as 99% USED — the unit must be inseparable from the number. */}
+        {/* The unit lives INSIDE the gauge: a bare number is ambiguous between
+            used and left — "used" must be inseparable from the percentage. */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-2xl font-semibold leading-none tracking-tight text-white tabular-nums">
-            {remaining}%
+            {used}%
           </span>
           <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-            left
+            used
           </span>
         </div>
       </div>
@@ -268,12 +267,12 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
           <p className="text-sm font-medium text-zinc-400">
             {win === "day" ? "Today" : "This month"}
           </p>
-          <InfoTip text="What's left of your allowance this window, measured against whichever limit you're closest to — message caps or compute usage." />
+          <InfoTip text="How much of your allowance you've used this window, measured against whichever limit you're closest to — message caps or compute usage." />
         </div>
         <p className="mt-1 text-xl font-semibold text-white">
           {win === "day"
-            ? "of your daily allowance left"
-            : "of your monthly allowance left"}
+            ? "of your daily allowance used"
+            : "of your monthly allowance used"}
         </p>
         <p className="mt-2 text-[13px] text-zinc-500">
           {win === "day"
