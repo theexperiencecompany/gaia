@@ -2,7 +2,6 @@
 
 import { Pagination } from "@heroui/pagination";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
@@ -11,35 +10,66 @@ import {
   PublicIntegrationCardSkeletonGrid,
 } from "@/features/integrations/components/PublicIntegrationCard";
 import type { CommunityIntegration } from "@/features/integrations/types";
+import { MARKETPLACE_ITEMS_PER_PAGE } from "@/features/integrations/utils/normalizeNativeIntegrations";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 
-const ITEMS_PER_PAGE = 18;
+const ITEMS_PER_PAGE = MARKETPLACE_ITEMS_PER_PAGE;
 
-export function IntegrationsPageClient() {
-  const searchParams = useSearchParams();
-  const [integrations, setIntegrations] = useState<CommunityIntegration[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export interface MarketplaceInitialData {
+  integrations: CommunityIntegration[];
+  total: number;
+  native: CommunityIntegration[];
+}
+
+interface IntegrationsPageClientProps {
+  /** Server-fetched first page so cards render in the SSR HTML. */
+  initialData?: MarketplaceInitialData | null;
+}
+
+export function IntegrationsPageClient({
+  initialData,
+}: IntegrationsPageClientProps) {
+  const hasServerData = Boolean(initialData);
+  const [integrations, setIntegrations] = useState<CommunityIntegration[]>(
+    initialData ? initialData.integrations : [],
+  );
+  const [isLoading, setIsLoading] = useState(!hasServerData);
   const [isFiltering, setIsFiltering] = useState(false);
-  const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState(initialData ? initialData.total : 0);
   const [currentPage, setCurrentPage] = useState(1);
+  // Filters start at defaults matching the server-rendered page 1. URL
+  // filters (?search=, ?category=) are applied after hydration — reading
+  // them via useSearchParams at render time forces this whole tree into
+  // client-only rendering, which would drop the SSR'd cards from the HTML.
   const [filters, setFilters] = useState<{
     search: string;
     category: string;
     sort: "popular" | "recent" | "name";
   }>({
-    search: searchParams.get("search") || "",
-    category: searchParams.get("category") || "all",
+    search: "",
+    category: "all",
     sort: "popular",
   });
   const isInitialMount = useRef(true);
   const hasRefreshed = useRef(false);
 
-  // Native integrations state (fetched once, filtered client-side)
+  // Native integrations state (server-provided, or fetched once and
+  // filtered client-side)
   const [nativeIntegrations, setNativeIntegrations] = useState<
     CommunityIntegration[]
-  >([]);
+  >(hasServerData && initialData ? initialData.native : []);
   const [, setNativeLoading] = useState(false);
-  const nativeFetched = useRef(false);
+  const nativeFetched = useRef((initialData?.native.length ?? 0) > 0);
+
+  // Apply URL filters after hydration (see comment on the filters state).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const search = params.get("search") || "";
+    const category = params.get("category") || "all";
+    if (search || category !== "all") {
+      setFilters((prev) => ({ ...prev, search, category }));
+    }
+  }, []);
 
   const totalPages = useMemo(() => Math.ceil(total / ITEMS_PER_PAGE), [total]);
 
@@ -119,7 +149,8 @@ export function IntegrationsPageClient() {
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      loadIntegrations(1, false);
+      // Page 1 already rendered from server data — skip the duplicate fetch.
+      if (!hasServerData) loadIntegrations(1, false);
     } else {
       setCurrentPage(1);
       loadIntegrations(1, true);

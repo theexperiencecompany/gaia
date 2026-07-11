@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import ChatDemo from "@/features/landing/components/demo/founders-demo/ChatDemo";
 import {
@@ -161,6 +162,19 @@ export default function FoundersClient() {
           Everything you need to know about GAIA for founders.
         </p>
         <FAQAccordion faqs={FOUNDERS_FAQS} />
+      </section>
+
+      {/* Cross-link: the "AI chief of staff" head term belongs to its dedicated page */}
+      <section className="mx-auto w-full max-w-3xl px-6 pb-20 text-center">
+        <p className="text-sm text-zinc-500">
+          Want the full picture of GAIA as a proactive executive assistant?{" "}
+          <Link
+            href="/ai-chief-of-staff"
+            className="text-zinc-300 underline underline-offset-2 hover:text-white"
+          >
+            See GAIA as your AI chief of staff
+          </Link>
+        </p>
       </section>
 
       <FinalSection />

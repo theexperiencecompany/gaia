@@ -174,6 +174,24 @@ export const appConfig = {
         icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
         description: "Side-by-side with ChatGPT, Claude, and Poke",
       },
+      {
+        href: "/ai-chief-of-staff",
+        label: "AI Chief of Staff",
+        description: "Your proactive AI that runs your day",
+        hideNavbar: true,
+      },
+      {
+        href: "/inbox-zero-ai",
+        label: "Inbox Zero AI",
+        description: "Automated email triage, replies, and tasks",
+        hideNavbar: true,
+      },
+      {
+        href: "/open-source-ai-assistant",
+        label: "Open Source AI Assistant",
+        description: "Self-host your personal AI — your data, your servers",
+        hideNavbar: true,
+      },
     ] as AppLink[],
 
     resources: [
@@ -263,6 +281,12 @@ export const appConfig = {
         description: "Open source tools that power GAIA",
       },
       {
+        href: "/faq",
+        label: "FAQ",
+        icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
+        description: "Common questions about GAIA, answered",
+      },
+      {
         href: "/contact",
         label: "Contact",
         icon: <HeartHandIcon width={20} height={20} color={"currentColor"} />,
@@ -333,7 +357,7 @@ export const appConfig = {
       {
         href: "/for/startup-founders",
         label: "Startup Founders",
-        description: "AI chief of staff for founders",
+        description: "Run your company without drowning in ops",
         hideNavbar: true,
       },
       {

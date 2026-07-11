@@ -3,6 +3,7 @@ import Image from "next/image";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
 import { wallpapers } from "@/config/wallpapers";
+import { convertWorkflowToUseCase } from "@/features/use-cases/utils/convertWorkflowToUseCase";
 import {
   type CommunityWorkflow,
   workflowApi,
@@ -16,6 +17,7 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import type { UseCase } from "@/types/features/workflowTypes";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Use Cases & Workflows",
@@ -38,12 +40,23 @@ export const revalidate = 3600; // Revalidate every hour
 
 export default async function UseCasesPage() {
   let communityWorkflows: CommunityWorkflow[] = [];
+  let exploreUseCases: UseCase[] = [];
 
   try {
     const response = await workflowApi.getCommunityWorkflows(8, 0);
     communityWorkflows = response.workflows;
   } catch (error) {
     console.error("Error loading community workflows:", error);
+  }
+
+  // Server-fetch the explore/curated workflows so their cards — and the
+  // /use-cases/[slug] links they carry — are in the crawlable HTML instead
+  // of appearing only after a client-side fetch.
+  try {
+    const response = await workflowApi.getExploreWorkflows(25, 0);
+    exploreUseCases = response.workflows.map(convertWorkflowToUseCase);
+  } catch (error) {
+    console.error("Error loading explore workflows:", error);
   }
 
   const webPageSchema = generateWebPageSchema(
@@ -89,7 +102,10 @@ export default async function UseCasesPage() {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background to-transparent" />
       </div>
 
-      <UseCasesPageClient communityWorkflows={communityWorkflows} />
+      <UseCasesPageClient
+        communityWorkflows={communityWorkflows}
+        exploreUseCases={exploreUseCases}
+      />
     </div>
   );
 }

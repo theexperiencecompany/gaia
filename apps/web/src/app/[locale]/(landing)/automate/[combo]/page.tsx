@@ -92,7 +92,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
 
   const breadcrumbItems = [
     { name: "Home", url: siteConfig.url },
-    { name: "Marketplace", url: `${siteConfig.url}/marketplace` },
+    { name: "Automate", url: `${siteConfig.url}/automate` },
     {
       name: `${data.toolA} + ${data.toolB}`,
       url: pageUrl,
@@ -129,8 +129,8 @@ export default async function AutomateComboPage({ params }: PageProps) {
             {t("common.home")}
           </Link>
           <span className="mx-2">/</span>
-          <Link href="/marketplace" className="hover:text-zinc-300">
-            {t("marketplace.breadcrumb")}
+          <Link href="/automate" className="hover:text-zinc-300">
+            {t("automate.breadcrumb")}
           </Link>
           <span className="mx-2">/</span>
           <span className="text-zinc-300">
@@ -305,8 +305,8 @@ export default async function AutomateComboPage({ params }: PageProps) {
             <p className="mb-6 leading-relaxed text-zinc-400">
               {t("automate.gaia_supports_combos")}
             </p>
-            <Button as="a" href="/marketplace" color="primary" radius="full">
-              {t("common.browse_marketplace")}
+            <Button as="a" href="/automate" color="primary" radius="full">
+              {t("automate.browse_all_combos")}
             </Button>
           </div>
         </section>

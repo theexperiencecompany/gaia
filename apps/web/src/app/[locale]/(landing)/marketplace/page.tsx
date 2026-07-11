@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
+import type { IntegrationConfigResponse } from "@/features/integrations/api/integrationsApi";
+import type { CommunityIntegrationsResponse } from "@/features/integrations/types";
+import {
+  MARKETPLACE_ITEMS_PER_PAGE,
+  normalizeNativeIntegrations,
+} from "@/features/integrations/utils/normalizeNativeIntegrations";
 import { marketplaceFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
@@ -11,8 +16,48 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
-import { IntegrationsPageClient } from "./client";
+import { IntegrationsPageClient, type MarketplaceInitialData } from "./client";
+
+/**
+ * Server-fetch the first page of the marketplace so the integration cards —
+ * and the /marketplace/[slug] links they carry — are in the crawlable HTML.
+ * Without this the hub ships skeletons and Google sees no internal links to
+ * the integration detail pages.
+ */
+async function getInitialMarketplaceData(): Promise<MarketplaceInitialData | null> {
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return null;
+
+  try {
+    const [communityRes, configRes] = await Promise.all([
+      fetch(
+        `${baseUrl}/integrations/community?sort=popular&limit=${MARKETPLACE_ITEMS_PER_PAGE}&offset=0`,
+        { next: { revalidate: 3600 } },
+      ),
+      fetch(`${baseUrl}/integrations/config`, {
+        next: { revalidate: 3600 },
+      }),
+    ]);
+
+    if (!communityRes.ok) return null;
+    const community =
+      (await communityRes.json()) as CommunityIntegrationsResponse;
+    const config = configRes.ok
+      ? ((await configRes.json()) as IntegrationConfigResponse)
+      : null;
+
+    return {
+      integrations: community.integrations ?? [],
+      total: community.total ?? 0,
+      native: config ? normalizeNativeIntegrations(config.integrations) : [],
+    };
+  } catch (error) {
+    console.error("[marketplace] Failed to fetch initial listing:", error);
+    return null;
+  }
+}
 
 export const metadata: Metadata = generatePageMetadata({
   title: "AI Integration Marketplace - Connect Your Tools to GAIA",
@@ -39,7 +84,8 @@ export const metadata: Metadata = generatePageMetadata({
 
 export const revalidate = 3600;
 
-export default function MarketplacePage() {
+export default async function MarketplacePage() {
+  const initialData = await getInitialMarketplaceData();
   const webPageSchema = generateWebPageSchema(
     "AI Integration Marketplace - Connect Your Tools to AI",
     "Browse 50+ AI integrations for productivity, communication, and developer tools. Automate Gmail, Slack, Notion, GitHub and more with GAIA's AI-powered MCP integration marketplace.",
@@ -96,9 +142,7 @@ export default function MarketplacePage() {
       <JsonLd
         data={[webPageSchema, breadcrumbSchema, itemListSchema, faqSchema]}
       />
-      <Suspense>
-        <IntegrationsPageClient />
-      </Suspense>
+      <IntegrationsPageClient initialData={initialData} />
     </>
   );
 }

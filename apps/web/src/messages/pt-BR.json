@@ -55,7 +55,8 @@
     "hub_meta_description": "Explore mais de 240 combos de automação. Conecte Gmail + Slack, Notion + Todoist, GitHub + Linear e mais — o GAIA cuida dos fluxos de trabalho entre suas ferramentas automaticamente.",
     "combos_count": "{count} combos de automação",
     "dont_see_your_combo": "Não encontrou seu combo?",
-    "dont_see_your_combo_desc": "Explore o marketplace de integrações completo ou conecte qualquer ferramenta via MCP."
+    "dont_see_your_combo_desc": "Explore o marketplace de integrações completo ou conecte qualquer ferramenta via MCP.",
+    "browse_all_combos": "Ver todos os combos"
   },
   "glossary": {
     "breadcrumb": "Glossário",

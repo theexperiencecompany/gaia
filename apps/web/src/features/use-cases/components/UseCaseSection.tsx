@@ -6,6 +6,7 @@ import * as m from "motion/react-m";
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import { ChevronUp } from "@/components/shared/icons";
+import { convertWorkflowToUseCase } from "@/features/use-cases/utils/convertWorkflowToUseCase";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
@@ -60,21 +61,7 @@ export default function UseCaseSection({
 
   // Convert store workflows to UseCase format
   const convertedExploreWorkflows: UseCase[] = storeExploreWorkflows.map(
-    (w) => ({
-      title: w.title,
-      description: w.description,
-      action_type: "workflow" as const,
-      integrations:
-        w.steps
-          ?.map((s) => s.category)
-          .filter((v, i, a) => a.indexOf(v) === i) || [],
-      categories: w.categories || ["featured"],
-      published_id: w.id,
-      slug: w.slug ?? undefined,
-      steps: w.steps,
-      creator: w.creator,
-      total_executions: w.total_executions || 0,
-    }),
+    convertWorkflowToUseCase,
   );
 
   // Use provided explore workflows or converted store workflows

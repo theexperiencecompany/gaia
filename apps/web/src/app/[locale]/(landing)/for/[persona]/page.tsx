@@ -47,8 +47,10 @@ interface PersonaConfig {
 
 const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   "startup-founders": {
+    // "AI chief of staff" deliberately absent — that head term belongs to the
+    // dedicated /ai-chief-of-staff page; this page targets founder queries.
     metaTitle:
-      "GAIA for Startup Founders — AI Chief of Staff & Proactive Automation",
+      "GAIA for Startup Founders — Proactive AI That Runs Your Startup Ops",
     metaDescription:
       "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools — then handles the operational work so you can focus on building. Save 8-12 hours every week.",
     schemaDescription:
@@ -56,7 +58,6 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
     keywords: [
       "AI for founders",
       "startup AI assistant",
-      "AI chief of staff",
       "founder productivity",
       "investor update automation",
       "workflow automation for startups",

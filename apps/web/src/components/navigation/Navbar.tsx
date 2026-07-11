@@ -124,6 +124,21 @@ export default function Navbar() {
     <div
       className={`fixed top-0 left-0 z-50 w-full px-4 pt-4 transition-all duration-300`}
     >
+      {/* Crawlable copy of the mega-menu links: the interactive NavbarMenu is
+          ssr:false and mounts on hover only, so its links never reach the
+          server HTML. sr-only keeps them indexable and screen-reader
+          accessible without any visual or hydration cost. */}
+      <nav aria-label="Site sections" className="sr-only">
+        <ul>
+          {[...appConfig.links.product, ...appConfig.links.resources]
+            .filter((link) => !link.external && !link.hideNavbar)
+            .map((link) => (
+              <li key={link.href}>
+                <Link href={link.href}>{link.footerLabel ?? link.label}</Link>
+              </li>
+            ))}
+        </ul>
+      </nav>
       <div
         className={`relative mx-auto transition-all duration-300 w-full ${isScrolled ? "sm:w-6xl" : "sm:w-full"}`}
         onMouseLeave={handleNavbarMouseLeave}

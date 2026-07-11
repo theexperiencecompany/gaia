@@ -55,7 +55,8 @@
     "hub_meta_description": "240개 이상의 자동화 콤보를 탐색하세요. Gmail + Slack, Notion + Todoist, GitHub + Linear 등 연결 — GAIA가 도구 간 워크플로우를 자동으로 처리합니다.",
     "combos_count": "{count}개의 자동화 콤보",
     "dont_see_your_combo": "원하는 콤보가 없나요?",
-    "dont_see_your_combo_desc": "전체 통합 마켓플레이스를 탐색하거나 MCP를 통해 모든 도구를 연결하세요."
+    "dont_see_your_combo_desc": "전체 통합 마켓플레이스를 탐색하거나 MCP를 통해 모든 도구를 연결하세요.",
+    "browse_all_combos": "모든 콤보 보기"
   },
   "glossary": {
     "breadcrumb": "용어집",

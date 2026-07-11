@@ -7,13 +7,17 @@ import PublishWorkflowCTA from "@/features/use-cases/components/PublishWorkflowC
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import type { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
+import type { UseCase } from "@/types/features/workflowTypes";
 
 interface UseCasesPageClientProps {
   communityWorkflows: CommunityWorkflow[];
+  /** Server-fetched explore workflows so the cards render in the SSR HTML. */
+  exploreUseCases?: UseCase[];
 }
 
 export default function UseCasesPageClient({
   communityWorkflows,
+  exploreUseCases,
 }: UseCasesPageClientProps) {
   const contentRef = useRef(null);
 
@@ -28,7 +32,11 @@ export default function UseCasesPageClient({
             Practical use cases showing how GAIA works for you
           </p>
         </div>
-        <UseCaseSection dummySectionRef={contentRef} useBlurEffect={true} />
+        <UseCaseSection
+          dummySectionRef={contentRef}
+          useBlurEffect={true}
+          exploreWorkflows={exploreUseCases}
+        />
         <div id="community-section" className="mt-22 space-y-6">
           <div className="mb-14 text-center">
             <h1 className="mb-1 font-serif text-3xl sm:text-5xl md:text-6xl font-normal">

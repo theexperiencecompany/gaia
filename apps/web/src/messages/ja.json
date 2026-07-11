@@ -55,7 +55,8 @@
     "hub_meta_description": "240以上の自動化コンボを検索しましょう。Gmail + Slack、Notion + Todoist、GitHub + Linearなどを接続 — GAIAがツール間のワークフローを自動的に処理します。",
     "combos_count": "{count}件の自動化コンボ",
     "dont_see_your_combo": "コンボが見つかりませんか？",
-    "dont_see_your_combo_desc": "完全なインテグレーションマーケットプレイスを閲覧するか、MCPを通じて任意のツールを接続してください。"
+    "dont_see_your_combo_desc": "完全なインテグレーションマーケットプレイスを閲覧するか、MCPを通じて任意のツールを接続してください。",
+    "browse_all_combos": "すべてのコンボを見る"
   },
   "glossary": {
     "breadcrumb": "用語集",
