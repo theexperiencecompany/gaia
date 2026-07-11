@@ -104,7 +104,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
           img: ({ ...props }) => {
             const alt = (props.alt as string) || "";
             // Device-frame convention: "![iphone: caption](/img.png)" renders
-            // the screenshot inside an iPhone frame (see IPhoneFrame).
+            // a raw screenshot inside a CSS iPhone frame (see IPhoneFrame).
             if (alt.startsWith("iphone:")) {
               const caption = alt.slice("iphone:".length).trim();
               return (
@@ -113,6 +113,27 @@ export default function MarkdownWrapper({ content }: { content: string }) {
                   alt={caption || "GAIA on mobile"}
                   caption={caption}
                 />
+              );
+            }
+            // "![phone: caption](/img.webp)" — for renders that already carry
+            // their own device frame (Keyloom stills): centered narrow figure.
+            if (alt.startsWith("phone:")) {
+              const caption = alt.slice("phone:".length).trim();
+              return (
+                <figure className="mx-auto my-10 flex w-fit flex-col items-center gap-3">
+                  <Image
+                    src={props.src as string}
+                    alt={caption || "GAIA on mobile"}
+                    width={340}
+                    height={697}
+                    className="w-[340px] max-w-full"
+                  />
+                  {caption ? (
+                    <figcaption className="max-w-xs text-center text-sm text-zinc-500">
+                      {caption}
+                    </figcaption>
+                  ) : null}
+                </figure>
               );
             }
             return (

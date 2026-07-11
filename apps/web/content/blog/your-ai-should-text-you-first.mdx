@@ -1,0 +1,58 @@
+---
+title: "Your AI Should Text You First"
+date: "2026-07-11"
+authors:
+  - name: "Aryan Randeriya"
+    role: "Founder & CEO"
+    avatar: "https://github.com/aryanranderiya.png"
+    linkedin: "https://linkedin.com/in/aryanranderiya"
+    twitter: "https://twitter.com/aryanranderiya"
+    github: "https://github.com/aryanranderiya"
+category: "Product"
+image: "/images/blog/whatsapp-gaia.webp"
+slug: "your-ai-should-text-you-first"
+---
+
+Every AI assistant we've ever used has the same problem: it sits there waiting for you.
+
+You open a tab. You type a prompt. You get an answer. You close the tab. Tomorrow, you do it again — if you remember to. The assistant knows nothing about your day unless you paste it in, and the moment you stop typing, it stops existing.
+
+That never felt like an assistant to us. That's a search box with good manners.
+
+### The test we kept failing
+
+When we started GAIA, we gave ourselves a simple test: **would this thing be useful if you never opened it?**
+
+A real assistant — a human one — doesn't wait for you to walk into their office. They text you: "Your 3pm moved. The contract came back signed. You have twenty minutes before standup and you haven't eaten." The value isn't in how well they answer questions. It's that they're paying attention when you're not.
+
+Almost everything labeled "AI assistant" fails this test. So we built GAIA around passing it.
+
+### Why GAIA lives in your DMs
+
+This is why GAIA works over WhatsApp, Telegram, Slack, and Discord — not just in its own app. Not as a growth hack, but because the whole point of a proactive assistant collapses if reaching it requires a context switch.
+
+Here's what a normal morning with GAIA actually looks like:
+
+![phone: A real GAIA morning — briefing, signed contract, filing and drafting handled from one thread](/images/blog/whatsapp-gaia.webp)
+
+No tab. No prompt engineering. You ask "what's the rundown" the same way you'd ask a person, in the app you already had open — and the follow-up ("file the contract, draft the thank-you") just gets *done*, because GAIA is already connected to your Drive and your email.
+
+And when something changes mid-day, you don't open a calendar app:
+
+![phone: Rescheduling a meeting from Telegram — GAIA moves it, tells the attendee, updates the doc](/images/blog/telegram-gaia.webp)
+
+### Proactive is an architecture decision, not a feature
+
+Making an assistant text you first sounds like a feature you bolt on. It isn't. It changes everything underneath:
+
+- **It has to watch, not wait.** GAIA monitors your inbox, calendar, and connected tools continuously. Most "assistants" only compute when you ask; GAIA's default state is paying attention.
+- **It needs memory.** If it pinged you about the Acme deal yesterday, it has to know that today. GAIA keeps a graph of your projects, people, and decisions so its messages have context instead of amnesia.
+- **It needs judgment about interrupting you.** A proactive assistant that pings you about everything is just notifications with extra steps. Deciding what *deserves* a message is most of the work.
+
+We got these wrong more times than we got them right. The first version of proactive GAIA was, honestly, annoying. Teaching it the difference between "worth a text" and "worth a line in the morning briefing" took months of dogfooding on our own inboxes.
+
+### Where this goes
+
+We think in five years it will seem strange that we ever opened an app to ask an AI something — the same way it now seems strange to print out directions. Your assistant will just be a contact in your messages. One that happens to read everything, remember everything, and handle the busywork before you knew it existed.
+
+That's the product we're building. If you want it in your DMs too, [it takes about two minutes](/bots).
