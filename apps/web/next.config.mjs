@@ -279,6 +279,32 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    // /alternative-to was merged into /compare (one canonical page per
+    // competitor keyword) — 301 every old URL, including locale prefixes.
+    return [
+      {
+        source: "/alternative-to",
+        destination: "/compare",
+        permanent: true,
+      },
+      {
+        source: "/alternative-to/:slug",
+        destination: "/compare/:slug",
+        permanent: true,
+      },
+      {
+        source: "/:locale(de|es|fr|ja|ko|pt-BR)/alternative-to",
+        destination: "/:locale/compare",
+        permanent: true,
+      },
+      {
+        source: "/:locale(de|es|fr|ja|ko|pt-BR)/alternative-to/:slug",
+        destination: "/:locale/compare/:slug",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

@@ -221,15 +221,6 @@ export const appConfig = {
         hideNavbar: true,
       },
       {
-        href: "/alternative-to",
-        label: "Alternatives",
-        icon: (
-          <ArrowRight02Icon width={20} height={20} color={"currentColor"} />
-        ),
-        description: "See which tools GAIA replaces and how it compares",
-        hideNavbar: true,
-      },
-      {
         href: "/automate",
         label: "Automation Combos",
         icon: <ConnectIcon width={20} height={20} color={"currentColor"} />,

@@ -1,4 +1,3 @@
-import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
 import { blogApi } from "@/features/blog/api/blogApi";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
@@ -112,13 +111,6 @@ function getStaticPages(baseUrl: string): FeedItem[] {
       category: "Resources",
     },
     {
-      path: "/alternative-to",
-      title: "GAIA Alternatives",
-      description:
-        "Discover which tools GAIA replaces and how it compares as an alternative.",
-      category: "Resources",
-    },
-    {
       path: "/automate",
       title: "Automation Combos",
       description:
@@ -221,17 +213,6 @@ async function getComparisonPages(baseUrl: string): Promise<FeedItem[]> {
     description: item.metaDescription || item.description,
     pubDate: BUILD_DATE,
     category: "Comparisons",
-  }));
-}
-
-async function getAlternativePages(baseUrl: string): Promise<FeedItem[]> {
-  const all = await getAllAlternatives();
-  return all.map((item) => ({
-    title: item.metaTitle || `GAIA Alternative to ${item.name}`,
-    link: `${baseUrl}/alternative-to/${item.slug}`,
-    description: item.metaDescription || item.tagline,
-    pubDate: BUILD_DATE,
-    category: "Alternatives",
   }));
 }
 
@@ -389,7 +370,6 @@ export async function GET() {
       workflowItems,
       integrationItems,
       comparisonPages,
-      alternativePages,
       glossaryPages,
       comboPages,
       personaPages,
@@ -398,7 +378,6 @@ export async function GET() {
       getWorkflowItems(baseUrl),
       getIntegrationItems(baseUrl),
       getComparisonPages(baseUrl),
-      getAlternativePages(baseUrl),
       getGlossaryPages(baseUrl),
       getComboPages(baseUrl),
       getPersonaPages(baseUrl),
@@ -408,7 +387,6 @@ export async function GET() {
       ...getStaticPages(baseUrl),
       ...getFeaturePages(baseUrl),
       ...comparisonPages,
-      ...alternativePages,
       ...personaPages,
       ...glossaryPages,
       ...comboPages,

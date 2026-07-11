@@ -170,7 +170,9 @@ export async function generateMetadata({ params }) {
 // getLocalizedAlternates(`/learn/${term}`, locale, `/learn/${primarySlug}`)
 ```
 
-**Translated (needs hreflang):** `/compare`, `/alternative-to`, `/automate`, `/for`, `/learn`, `/use-cases`
+**Translated (needs hreflang):** `/compare`, `/automate`, `/for`, `/learn`, `/use-cases`
+
+(`/alternative-to` was merged into `/compare` — one canonical page per competitor keyword; old URLs 301 via `next.config.mjs` redirects.)
 
 **Untranslated (English only — no hreflang):** `/marketplace`, `/blog`, `/download`, `/login`, `/signup`, `/terms`, `/privacy`
 

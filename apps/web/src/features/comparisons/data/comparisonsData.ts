@@ -36,6 +36,17 @@ export interface ComparisonData {
   verdict: string;
   faqs: Array<{ question: string; answer: string }>;
   relatedPersonas?: string[];
+  /**
+   * Switching-intent content merged from the former /alternative-to/[slug]
+   * family — one canonical page per competitor keyword.
+   */
+  whyPeopleLook?: string;
+  painPoints?: string[];
+  gaiaFitScore?: number;
+  gaiaReplaces?: string[];
+  migrationSteps?: string[];
+  /** FAQs from the alternative page not already covered by `faqs` — rendered after them. */
+  alternativeFaqs?: Array<{ question: string; answer: string }>;
 }
 
 const FEATURE = "comparisons";

@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
 
-import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
@@ -23,7 +22,8 @@ const SITEMAP_IDS = {
   COMPARISONS: 5,
   PERSONAS: 6,
   GLOSSARY: 7,
-  ALTERNATIVES: 8,
+  // 8 was ALTERNATIVES — the family was merged into /compare and the
+  // /alternative-to URLs now 301 there. The ID is retired, not reused.
   INTEGRATION_COMBOS: 9,
   NATIVE_INTEGRATIONS: 10,
 } as const;
@@ -37,7 +37,6 @@ export const ALL_SITEMAP_IDS = [
   SITEMAP_IDS.COMPARISONS,
   SITEMAP_IDS.PERSONAS,
   SITEMAP_IDS.GLOSSARY,
-  SITEMAP_IDS.ALTERNATIVES,
   SITEMAP_IDS.INTEGRATION_COMBOS,
   SITEMAP_IDS.NATIVE_INTEGRATIONS,
 ] as const;
@@ -73,7 +72,6 @@ type StaticPage = { path: string; freq: ChangeFreq; priority: number };
 
 const TRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/compare", freq: "weekly", priority: 0.9 },
-  { path: "/alternative-to", freq: "weekly", priority: 0.9 },
   { path: "/automate", freq: "weekly", priority: 0.8 },
   { path: "/for", freq: "weekly", priority: 0.9 },
   { path: "/learn", freq: "weekly", priority: 0.8 },
@@ -399,20 +397,6 @@ async function getGlossaryPages(
 }
 
 /**
- * Alternative-to pages (GAIA as alternative to competitors)
- */
-async function getAlternativePages(
-  baseUrl: string,
-): Promise<MetadataRoute.Sitemap> {
-  const slugs = await getAllAlternativeSlugs();
-  return slugs.map((slug) => ({
-    url: `${baseUrl}/alternative-to/${slug}`,
-    changeFrequency: "monthly" as const,
-    priority: 0.8,
-  }));
-}
-
-/**
  * Integration combo pages ([toolA] + [toolB] automation)
  */
 async function getIntegrationComboPages(
@@ -512,8 +496,6 @@ export async function getSitemapEntries(
       return withLocaleUrls(await getPersonaPages(baseUrl), baseUrl);
     case SITEMAP_IDS.GLOSSARY:
       return withLocaleUrls(await getGlossaryPages(baseUrl), baseUrl);
-    case SITEMAP_IDS.ALTERNATIVES:
-      return withLocaleUrls(await getAlternativePages(baseUrl), baseUrl);
     case SITEMAP_IDS.INTEGRATION_COMBOS:
       return withLocaleUrls(await getIntegrationComboPages(baseUrl), baseUrl);
     case SITEMAP_IDS.NATIVE_INTEGRATIONS:

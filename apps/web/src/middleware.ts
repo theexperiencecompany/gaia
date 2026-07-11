@@ -17,13 +17,7 @@ import { routing } from "./i18n/routing";
 // breaks on edge. The /llms.txt URL is still served by the route handler at
 // `src/app/llms.txt/route.ts`.
 
-const translatedPrefixes = [
-  "/learn",
-  "/automate",
-  "/compare",
-  "/alternative-to",
-  "/for",
-];
+const translatedPrefixes = ["/learn", "/automate", "/compare", "/for"];
 
 function isTranslatedRoute(pathname: string): boolean {
   const stripped = pathname.replace(/^\/(de|es|fr|ja|ko|pt-BR)(\/|$)/, "/");

@@ -22,6 +22,11 @@ type TranslationOverrides = Partial<
     | "competitorAdvantages"
     | "verdict"
     | "faqs"
+    | "whyPeopleLook"
+    | "painPoints"
+    | "gaiaReplaces"
+    | "migrationSteps"
+    | "alternativeFaqs"
   >
 >;
 

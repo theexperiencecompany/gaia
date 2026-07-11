@@ -5,7 +5,6 @@
  *   cd apps/web && npx tsx scripts/extract-i18n.mjs
  *
  * Outputs:
- *   src/features/alternatives/i18n/en.json
  *   src/features/comparisons/i18n/en.json
  *   src/features/glossary/i18n/en.json
  *   src/features/integrations/i18n/en.json
@@ -46,28 +45,6 @@ function writeJson(relPath, data) {
 
 const features = [
   {
-    name: "alternatives",
-    modulePath: "../src/features/alternatives/data/alternativesData.ts",
-    outputPath: "src/features/alternatives/i18n/en.json",
-    exportName: "alternatives",
-    isArray: true,
-    slugKey: "slug",
-    fields: [
-      "name",
-      "tagline",
-      "metaTitle",
-      "metaDescription",
-      "keywords",
-      "painPoints",
-      "whyPeopleLook",
-      "gaiaReplaces",
-      "gaiaAdvantages",
-      "migrationSteps",
-      "faqs",
-      "comparisonRows",
-    ],
-  },
-  {
     name: "comparisons",
     modulePath: "../src/features/comparisons/data/comparisonsData.ts",
     outputPath: "src/features/comparisons/i18n/en.json",
@@ -86,6 +63,11 @@ const features = [
       "competitorAdvantages",
       "verdict",
       "faqs",
+      "whyPeopleLook",
+      "painPoints",
+      "gaiaReplaces",
+      "migrationSteps",
+      "alternativeFaqs",
     ],
   },
   {
@@ -166,7 +148,7 @@ async function main() {
     const output = {};
 
     if (feature.isArray) {
-      // alternatives is an array — key by slug
+      // Array-shaped exports — key by slug
       for (const entry of raw) {
         const slug = entry[feature.slugKey];
         output[slug] = pick(entry, feature.fields);
