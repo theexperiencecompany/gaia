@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
-import { InformationCircleIcon, SparklesIcon } from "@icons";
+import { Fire02Icon, InformationCircleIcon, SparklesIcon } from "@icons";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { useMemo, useState } from "react";
 import {
@@ -133,7 +133,7 @@ export function UsageView({
         />
       )}
       <Hero summary={summary} isPro={isPro} />
-      <Stats summary={summary} history={history} />
+      <Stats summary={summary} history={history} streak={activity?.streak} />
       <Trend history={history} summary={summary} />
       <div className="flex items-stretch gap-4">
         <DailyBars history={history} />
@@ -147,27 +147,34 @@ export function UsageView({
 
 // --- Hero: the one big number + the one big bar ----------------------------
 
-function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
-  const [win, setWin] = useState<Period>("month");
+// One percentage per window — whichever wall binds first (message cap or
+// compute allowance). Pro has no message caps, so only the budget applies.
+function heroWindow(
+  summary: UsageSummary,
+  isPro: boolean,
+  win: Period,
+): { percent: number; resetIso: string | undefined } {
   const chatDay = summary.features.chat_messages?.periods.day;
   const chatMonth = summary.features.chat_messages?.periods.month;
   const daily = summary.budget?.daily;
   const monthly = summary.budget?.monthly;
+  if (win === "day") {
+    return {
+      percent: Math.max(
+        isPro ? 0 : (chatDay?.percentage ?? 0),
+        daily?.percentage ?? 0,
+      ),
+      resetIso: chatDay?.reset_time ?? daily?.reset_time,
+    };
+  }
+  return isPro
+    ? { percent: monthly?.percentage ?? 0, resetIso: monthly?.reset_time }
+    : { percent: chatMonth?.percentage ?? 0, resetIso: chatMonth?.reset_time };
+}
 
-  // One percentage per window — whichever wall binds first (message cap or
-  // compute allowance). Pro has no message caps, so only the budget applies.
-  const percent =
-    win === "day"
-      ? Math.max(isPro ? 0 : (chatDay?.percentage ?? 0), daily?.percentage ?? 0)
-      : isPro
-        ? (monthly?.percentage ?? 0)
-        : (chatMonth?.percentage ?? 0);
-  const resetIso =
-    win === "day"
-      ? (chatDay?.reset_time ?? daily?.reset_time)
-      : isPro
-        ? monthly?.reset_time
-        : chatMonth?.reset_time;
+function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
+  const [win, setWin] = useState<Period>("month");
+  const { percent, resetIso } = heroWindow(summary, isPro, win);
   const remaining = Math.max(0, Math.round(100 - percent));
 
   const elapsed = resetIso ? elapsedFraction(resetIso, win) : 0;
@@ -301,21 +308,18 @@ function DailyTooltip({
           style={{ backgroundColor: severityColor(pct, HEALTHY) }}
         />
         <span className="font-medium text-zinc-100">
-          {messages} {messages === 1 ? "message" : "messages"}
+          {dayLimit > 0
+            ? `${pct}% of that day's limit`
+            : `${messages} ${messages === 1 ? "message" : "messages"}`}
         </span>
-        {dayLimit > 0 && (
-          <span className="text-zinc-500">
-            · {pct}% of that day&apos;s {dayLimit} limit
-          </span>
-        )}
       </div>
     </div>
   );
 }
 
 function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
-  const { data, daysHit, uniformLimit } = useMemo(() => {
-    if (!history.length) return { data: [], daysHit: 0, uniformLimit: 0 };
+  const { data, daysHit, asPct } = useMemo(() => {
+    if (!history.length) return { data: [], daysHit: 0, asPct: false };
     const dayKey = (d: Date) =>
       `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
     const byDay = new Map<string, { used: number; limit: number }>();
@@ -343,13 +347,20 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
     const daysHit = data.filter(
       (d) => d.dayLimit > 0 && d.messages >= d.dayLimit,
     ).length;
-    // The guide line only makes sense when ONE limit applied across the whole
-    // window — after a plan change there is no single line to draw honestly.
-    const limits = new Set(
-      data.filter((d) => d.dayLimit > 0).map((d) => d.dayLimit),
-    );
-    const uniformLimit = limits.size === 1 ? [...limits][0] : 0;
-    return { data, daysHit, uniformLimit };
+    // Percent mode: heights are % of THAT DAY's limit, so bars agree with
+    // their colors and the guide line is a fixed 100% that is always true.
+    // Only possible when every day with data had a cap — days without one
+    // (pro) have no denominator, so those windows fall back to raw counts.
+    const daysWithData = data.filter((d) => d.messages > 0);
+    const asPct =
+      daysWithData.length > 0 && daysWithData.every((d) => d.dayLimit > 0);
+    const rows = data.map((d) => ({
+      ...d,
+      value: asPct
+        ? Math.round((d.messages / d.dayLimit) * 1000) / 10
+        : d.messages,
+    }));
+    return { data: rows, daysHit, asPct };
   }, [history]);
 
   if (data.length < 2) return null;
@@ -359,7 +370,13 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
       <div className="mb-4 flex items-baseline justify-between">
         <div className="flex items-center gap-1.5">
           <p className="text-base font-semibold text-white">Day by day</p>
-          <InfoTip text="Messages sent each day over the last 30 days, colored against the daily limit that applied on that day — amber near it, red when hit." />
+          <InfoTip
+            text={
+              asPct
+                ? "Each bar is how much of that day's message limit you used — amber near it, red when hit."
+                : "Messages sent each day over the last 30 days."
+            }
+          />
         </div>
         {daysHit > 0 && (
           <p className="text-[13px] text-zinc-500">
@@ -371,7 +388,7 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
         )}
       </div>
       <ChartContainer
-        config={{ messages: { label: "Messages", color: HEALTHY } }}
+        config={{ value: { label: "Messages", color: HEALTHY } }}
         className="mt-2 aspect-auto min-h-0 w-full flex-1"
       >
         <BarChart
@@ -386,16 +403,14 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
             minTickGap={36}
             tick={{ fill: "#71717a", fontSize: 11 }}
           />
-          {uniformLimit > 0 && (
-            <YAxis hide domain={[0, Math.round(uniformLimit * 1.28)]} />
-          )}
-          {uniformLimit > 0 && (
+          {asPct && <YAxis hide domain={[0, 118]} />}
+          {asPct && (
             <ReferenceLine
-              y={uniformLimit}
+              y={100}
               stroke="#3f3f46"
               strokeDasharray="3 3"
               label={{
-                value: `${uniformLimit} limit`,
+                value: "daily limit",
                 position: "top",
                 fill: "#71717a",
                 fontSize: 10,
@@ -406,7 +421,7 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
             cursor={{ fill: "#ffffff08" }}
             content={<DailyTooltip />}
           />
-          <Bar dataKey="messages" radius={5} maxBarSize={9}>
+          <Bar dataKey="value" radius={5} maxBarSize={9}>
             {data.map((d) => (
               <Cell
                 key={d.key}
@@ -428,44 +443,59 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
 function Stats({
   summary,
   history,
+  streak = 0,
 }: {
   summary: UsageSummary;
   history: UsageHistoryEntry[];
+  /** Current consecutive-active-days streak (from the activity rollup). */
+  streak?: number;
 }) {
   const ceiling = summary.budget?.per_request_token_ceiling;
+  const isPro = summary.plan_type === "pro";
 
-  // Engagement metrics for the current month, derived from the daily history:
-  // average messages per elapsed day, and how many of those days saw any use.
-  const { dailyAvg, activeDays, elapsedDays } = useMemo(() => {
-    const empty = { dailyAvg: 0, activeDays: 0, elapsedDays: 0 };
+  // Engagement metrics for the current month, derived from the daily history.
+  // Free speaks percentages (average share of the daily allowance used); pro
+  // has no daily cap, so its average is a plain messages-per-day count.
+  const { dailyAvg, dailyAvgPct, activeDays, elapsedDays } = useMemo(() => {
+    const empty = {
+      dailyAvg: 0,
+      dailyAvgPct: 0,
+      activeDays: 0,
+      elapsedDays: 0,
+    };
     const resetIso = summary.features.chat_messages?.periods.month?.reset_time;
     if (!history.length || !resetIso) return empty;
     const end = new Date(resetIso); // first of next month, UTC
     const curMonth = (end.getUTCMonth() + 11) % 12;
     const curYear =
       curMonth === 11 ? end.getUTCFullYear() - 1 : end.getUTCFullYear();
-    const byDom = new Map<number, number>();
+    const byDom = new Map<number, { used: number; limit: number }>();
     for (const e of history) {
       const d = new Date(e.date);
       if (d.getUTCMonth() !== curMonth || d.getUTCFullYear() !== curYear)
         continue;
       // Only set when the snapshot actually carries a day period — an entry
       // without one must not clobber a real earlier value with 0.
-      const used = e.features.chat_messages?.periods.day?.used;
-      if (used !== undefined) byDom.set(d.getUTCDate(), used);
+      const day = e.features.chat_messages?.periods.day;
+      if (day?.used !== undefined) {
+        byDom.set(d.getUTCDate(), { used: day.used, limit: day.limit ?? 0 });
+      }
     }
     if (!byDom.size) return empty;
     // Denominator = calendar days elapsed (today included), NOT the last day
     // with activity — otherwise a quiet week inflates both metrics.
     const elapsedDays = new Date().getUTCDate();
     let total = 0;
+    let pctSum = 0;
     let activeDays = 0;
-    for (const used of byDom.values()) {
+    for (const { used, limit } of byDom.values()) {
       total += used;
+      if (limit > 0) pctSum += (used / limit) * 100;
       if (used > 0) activeDays += 1;
     }
     return {
       dailyAvg: Math.round(total / Math.max(1, elapsedDays)),
+      dailyAvgPct: Math.round(pctSum / Math.max(1, elapsedDays)),
       activeDays,
       elapsedDays,
     };
@@ -475,13 +505,21 @@ function Stats({
     <div className="grid grid-cols-3 gap-3">
       <StatCard
         label="Daily average"
-        value={dailyAvg.toLocaleString()}
-        sub="messages per day"
+        value={isPro ? dailyAvg.toLocaleString() : `${dailyAvgPct}%`}
+        sub={isPro ? "messages per day" : "of daily allowance used"}
       />
       <StatCard
         label="Active days"
         value={`${activeDays}`}
         sub={`of ${elapsedDays} days this month`}
+        accent={
+          streak > 0 ? (
+            <span className="flex items-center gap-0.5 text-xs font-medium text-orange-400">
+              <Fire02Icon size={13} />
+              {streak}
+            </span>
+          ) : undefined
+        }
       />
       <StatCard
         label="Max task"
@@ -497,15 +535,21 @@ function StatCard({
   value,
   sub,
   percent,
+  accent,
 }: {
   label: string;
   value: string;
   sub: string;
   percent?: number;
+  /** Small highlight rendered at the label row's right edge (e.g. streak). */
+  accent?: React.ReactNode;
 }) {
   return (
     <div className={cn(CARD, "flex flex-col p-4")}>
-      <p className="text-xs font-medium text-zinc-500">{label}</p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-zinc-500">{label}</p>
+        {accent}
+      </div>
       <p className="mt-2 text-2xl font-semibold tracking-tight text-white tabular-nums">
         {value}
       </p>

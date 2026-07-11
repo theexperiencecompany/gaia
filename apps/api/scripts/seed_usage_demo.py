@@ -37,6 +37,8 @@ uid = str(user["_id"])
 print(f"user: {EMAIL}  user_id={uid}  plan={PLAN}")
 
 # --- 2. a year of daily activity (deterministic, realistic) ----------------
+# Per-action LLM cost: free rides the cheap model; pro runs heavier agent loops.
+COST_PER_ACTION = 0.004 if PLAN == "free" else 0.010
 db["usage_daily"].delete_many({"user_id": uid})
 today = now.replace(hour=0, minute=0, second=0, microsecond=0)
 rows = []
@@ -55,11 +57,18 @@ for i in range(365):
     if i >= 354:
         count = max(count, 6)
     if count:
-        rows.append({"user_id": uid, "date": d.strftime("%Y-%m-%d"), "count": count})
+        rows.append(
+            {
+                "user_id": uid,
+                "date": d.strftime("%Y-%m-%d"),
+                "count": count,
+                "cost": round(count * COST_PER_ACTION * (1 + ((i * 31) % 7) / 10), 6),
+            }
+        )
         total += count
 if rows:
     db["usage_daily"].insert_many(rows)
-print(f"usage_daily: {len(rows)} active days, {total} total actions")
+print(f"usage_daily: {len(rows)} active days, {total} total actions (+cost)")
 
 # --- 2b. 30 days of usage_snapshots (drives Day-by-day + monthly trend) ----
 # Daily chat counts derived from the heatmap rows so the two charts agree.
@@ -125,13 +134,23 @@ if PLAN == "pro":
     )
 print(f"subscription: {'active (PRO)' if PLAN == 'pro' else 'none (FREE)'}")
 
-# --- 4. Redis usage + cost counters for the live panels --------------------
+# --- 4. Redis live counters — MUST agree with today's snapshot -------------
+# The hero gauge reads live Redis while the charts read snapshots; the page is
+# only coherent when today's live values equal today's snapshot values.
 day_win = now.strftime("%Y%m%d")
 month_win = now.strftime("%Y%m")
+today_key = today.strftime("%Y-%m-%d")
+month_prefix = today.strftime("%Y-%m")
+
+chat_today = next(
+    (s["features"][0]["used"] for s in snaps if s["created_at"].strftime("%Y-%m-%d") == today_key),
+    0,
+)
+chat_month_cum = month_cum.get(month_prefix, 0)
 
 # Per-feature counts (day, month) — drives Tools + the monthly stat.
 feature_day = {
-    "chat_messages": 9,
+    "chat_messages": chat_today,
     "web_search": 13,
     "webpage_fetch": 2,
     "file_analysis": 2,
@@ -148,14 +167,17 @@ feature_day = {
 # "day" — see tiered_rate_limiter._get_redis_key. Match it exactly.
 for feat, used in feature_day.items():
     r.set(f"rate_limit:{uid}:{feat}:RateLimitPeriod.DAY:{day_win}", used)
-    r.set(f"rate_limit:{uid}:{feat}:RateLimitPeriod.MONTH:{month_win}", used * 11 + 7)
+    month_used = chat_month_cum if feat == "chat_messages" else used * 11 + 7
+    r.set(f"rate_limit:{uid}:{feat}:RateLimitPeriod.MONTH:{month_win}", month_used)
 
-# Cost budget windows (USD spent). Pro: $5/day, $25/mo.
-if PLAN == "pro":
-    r.set(f"cost_budget:{uid}:day:{day_win}", "3.05")  # ~61% of $5
-    r.set(f"cost_budget:{uid}:month:{month_win}", "8.20")  # ~33% of $25
-else:
-    r.set(f"cost_budget:{uid}:day:{day_win}", "0.031")  # ~62% of $0.05
-print("redis: seeded feature counters + cost budget")
+# Cost budget windows: derived from the same per-day costs the rollup holds.
+cost_today = next((row["cost"] for row in rows if row["date"] == today_key), 0.0)
+cost_month = sum(row["cost"] for row in rows if row["date"].startswith(month_prefix))
+r.set(f"cost_budget:{uid}:day:{day_win}", f"{cost_today:.6f}")
+r.set(f"cost_budget:{uid}:month:{month_win}", f"{cost_month:.6f}")
+print(
+    f"redis: chat {chat_today}/day {chat_month_cum}/mo; "
+    f"cost ${cost_today:.3f}/day ${cost_month:.2f}/mo"
+)
 
 print("\nDONE. Set DEV_AUTH_BYPASS_EMAIL=%s and restart the API." % EMAIL)

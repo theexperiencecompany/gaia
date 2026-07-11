@@ -48,6 +48,25 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
         log.warning(f"{LogTag.MONGO} record_activity failed for {user_id}: {e}")
 
 
+async def record_cost(user_id: str, cost_usd: float) -> None:
+    """Add real LLM spend to today's durable rollup. Never raises.
+
+    Redis cost windows expire in ~26h, so this is the ONLY per-day cost
+    history — it's what lets usage charts show cost-based (nearest-wall)
+    percentages for past days instead of message counts alone.
+    """
+    if not user_id or cost_usd <= 0:
+        return
+    try:
+        await usage_daily_collection.update_one(
+            {"user_id": user_id, "date": _day(datetime.now(UTC))},
+            {"$inc": {"cost": cost_usd}},
+            upsert=True,
+        )
+    except Exception as e:
+        log.warning(f"{LogTag.MONGO} record_cost failed for {user_id}: {e}")
+
+
 def _current_streak(counts: dict[str, int], end: datetime) -> int:
     """Consecutive active days ending now. "Streak" reads as momentum, so a
     long run that ended months ago must show 0, not its historical length.
@@ -67,9 +86,14 @@ async def get_activity(user_id: str, days: int) -> dict[str, Any]:
     end = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     start = end - timedelta(days=days - 1)
 
+    # NOTE: usage_daily docs also carry a durable per-day `cost` (see
+    # record_cost) — deliberately NOT exposed here. Raw USD never goes to the
+    # client (see get_budget_status); the cost history exists so charts can be
+    # served as percentage-of-allowance once that representation lands.
     counts: dict[str, int] = {}
     async for doc in usage_daily_collection.find(
-        {"user_id": user_id, "date": {"$gte": _day(start)}}, {"date": 1, "count": 1}
+        {"user_id": user_id, "date": {"$gte": _day(start)}},
+        {"date": 1, "count": 1},
     ):
         counts[doc["date"]] = int(doc.get("count", 0))
 

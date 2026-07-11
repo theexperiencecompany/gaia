@@ -34,6 +34,7 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
+from app.services.usage_activity import record_cost
 from shared.py.wide_events import log
 
 _BUDGET_KEY = "cost_budget:{user_id}:{period}:{window}"
@@ -75,6 +76,9 @@ async def add_cost(user_id: str, cost_usd: float) -> None:
     """Add real LLM spend to the user's current day AND month windows."""
     if cost_usd <= 0:
         return
+    # Durable per-day rollup first — the Redis windows expire in ~26h, and this
+    # is the only cost history the usage charts can plot. Never raises.
+    await record_cost(user_id, cost_usd)
     client = redis_cache.redis
     if client is None:
         log.warning(f"{LogTag.STORAGE} Redis unavailable — cost budget not recorded.")
