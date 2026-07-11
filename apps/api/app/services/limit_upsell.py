@@ -12,7 +12,7 @@ import asyncio
 
 from app.models.payment_models import PlanType
 from app.services.analytics_service import capture_event
-from app.utils.email_utils import send_limit_reached_email
+from app.services.email.senders import send_limit_reached_email
 from shared.py.wide_events import log
 
 # asyncio.create_task only keeps a weakref; hold refs so sends aren't GC'd mid-flight.

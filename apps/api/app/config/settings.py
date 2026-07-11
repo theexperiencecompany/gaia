@@ -102,6 +102,12 @@ class CommonSettings(BaseAppSettings):
         return v.rstrip("/") if isinstance(v, str) else v
 
     # ----------------------------------------------
+    # Outbound Email
+    # ----------------------------------------------
+    # Key into the provider registry in app/services/email/providers.
+    EMAIL_PROVIDER: str = "resend"
+
+    # ----------------------------------------------
     # Observability
     # ----------------------------------------------
     # Secret token Prometheus sends as "Authorization: Bearer <token>" when

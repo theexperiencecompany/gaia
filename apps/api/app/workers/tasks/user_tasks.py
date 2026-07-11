@@ -8,6 +8,41 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log, wide_task
 
 
+def _as_utc(dt: datetime | None) -> datetime | None:
+    # MongoDB may return naive datetimes
+    return dt.replace(tzinfo=UTC) if dt and dt.tzinfo is None else dt
+
+
+def _emails_sent_this_episode(user: dict) -> int:
+    """Sends in the current inactivity episode; the counter resets when the user returns."""
+    last_active = _as_utc(user.get("last_active_at"))
+    last_email_sent = _as_utc(user.get("last_inactive_email_sent"))
+
+    # An email older than last_active_at belongs to a previous inactivity episode.
+    if not last_email_sent or (last_active and last_email_sent < last_active):
+        return 0
+    # Docs written before the counter existed recorded their one send via the timestamp only.
+    count: int = user.get("inactive_email_count") or 1
+    return count
+
+
+def _should_send_inactive_email(user: dict) -> bool:
+    """Throttle policy: per inactivity episode, first email after 7 days, second 7+ days later, max 2."""
+    now = datetime.now(UTC)
+    last_active = _as_utc(user.get("last_active_at"))
+    last_email_sent = _as_utc(user.get("last_inactive_email_sent"))
+
+    # Check if user is inactive long enough (7+ days)
+    if not last_active or (now - last_active).days < 7:
+        return False
+
+    # Skip if email sent in last 7 days
+    if last_email_sent and (now - last_email_sent).days < 7:
+        return False
+
+    return _emails_sent_this_episode(user) < 2
+
+
 async def check_inactive_users(ctx: dict) -> str:
     """
     Check for inactive users and send emails to those inactive for more than 7 days.
@@ -21,7 +56,7 @@ async def check_inactive_users(ctx: dict) -> str:
     """
     async with wide_task("check_inactive_users"):
         from app.db.mongodb.collections import users_collection
-        from app.utils.email_utils import send_inactive_user_email
+        from app.services.email import send_inactive_user_email
 
         log.info(f"{LogTag.WORKER} Checking for inactive users")
 
@@ -48,17 +83,24 @@ async def check_inactive_users(ctx: dict) -> str:
         email_count = 0
         email_failures = 0
         for user in inactive_users:
+            if not _should_send_inactive_email(user):
+                continue
             try:
-                sent = await send_inactive_user_email(
-                    user_email=user["email"],
-                    user_name=user.get("name"),
-                    user_id=str(user["_id"]),
+                await send_inactive_user_email(user["email"], user.get("name"))
+                await users_collection.update_one(
+                    {"_id": user["_id"]},
+                    {
+                        "$set": {
+                            "last_inactive_email_sent": datetime.now(UTC),
+                            # $set, not $inc: the counter restarts at 1 for a new episode
+                            # and absorbs pre-counter docs whose one send is recorded
+                            # only in the timestamp.
+                            "inactive_email_count": _emails_sent_this_episode(user) + 1,
+                        }
+                    },
                 )
-
-                if sent:
-                    email_count += 1
-                    log.info(f"{LogTag.WORKER} Sent inactive email to {user['email']}")
-
+                email_count += 1
+                log.info(f"{LogTag.WORKER} Sent inactive email to {user['email']}")
             except Exception as e:
                 email_failures += 1
                 log.error(f"{LogTag.WORKER} Failed to send email to {user['email']}: {e!s}")
