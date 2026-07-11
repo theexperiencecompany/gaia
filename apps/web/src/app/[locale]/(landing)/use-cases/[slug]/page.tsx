@@ -83,6 +83,7 @@ export async function generateMetadata({
         integrations: found.steps?.map((s) => s.category) || [],
         categories: found.categories || ["featured"],
         published_id: found.id,
+        steps: found.steps,
         creator: found.creator,
       };
 
@@ -114,6 +115,7 @@ export async function generateMetadata({
       integrations: workflow.steps?.map((s) => s.category) || [],
       categories: ["featured"],
       published_id: workflow.id,
+      steps: workflow.steps,
       creator: workflow.creator,
     };
 

@@ -7,6 +7,7 @@ import type {
   Person,
   WithContext,
 } from "schema-dts";
+import { isIndexableUseCase } from "@/features/use-cases/utils/useCaseIndexability";
 import type { BlogPost } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
@@ -153,7 +154,9 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
       creator: "@trygaia",
     },
     alternates: { canonical: canonicalUrl },
-    robots: { index: true, follow: true },
+    // Thin UGC workflows (one-line description, no real steps) stay out of
+    // the index — they're doorway-grade pages that hurt site-wide quality.
+    robots: { index: isIndexableUseCase(useCase), follow: true },
   };
 }
 
