@@ -251,14 +251,9 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
             />
           </svg>
         )}
-        {/* The unit lives INSIDE the gauge: a bare number is ambiguous between
-            used and left — "used" must be inseparable from the percentage. */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center">
           <span className="text-2xl font-semibold leading-none tracking-tight text-white tabular-nums">
             {used}%
-          </span>
-          <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-            used
           </span>
         </div>
       </div>
