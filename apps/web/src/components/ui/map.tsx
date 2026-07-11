@@ -2167,7 +2167,6 @@ function MapClusterLayer<
   return null;
 }
 
-
 export type { MapArcDatum, MapArcEvent, MapGeoJSONEvent, MapRef, MapViewport };
 export {
   MapArc,

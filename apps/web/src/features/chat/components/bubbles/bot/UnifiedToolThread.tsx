@@ -132,7 +132,6 @@ export default function UnifiedToolThread({
           }
           return (
             <div
-              // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
               key={`${d.category}-${i}`}
               className="relative flex min-w-8 items-center justify-center"
               style={{
