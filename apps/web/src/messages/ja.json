@@ -34,7 +34,10 @@
     "how_well_replace": "GAIAは{name}をどれだけ置き換えられるか？",
     "honest_fit_score": "機能の重複に基づく正直な適合スコア",
     "what_gaia_replaces": "GAIAが{name}から置き換えるもの",
-    "how_to_migrate": "{name}からGAIAへの移行方法"
+    "how_to_migrate": "{name}からGAIAへの移行方法",
+    "by_gaia_team": "GAIAチームによる",
+    "updated_on": "{date}更新",
+    "see_gaia_in_action": "GAIAの実際の画面"
   },
   "automate": {
     "breadcrumb": "自動化",

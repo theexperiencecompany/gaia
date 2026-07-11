@@ -34,7 +34,10 @@
     "how_well_replace": "Quão bem o GAIA substitui o {name}?",
     "honest_fit_score": "Pontuação honesta baseada na sobreposição de funcionalidades",
     "what_gaia_replaces": "O que o GAIA substitui do {name}",
-    "how_to_migrate": "Como migrar do {name} para o GAIA"
+    "how_to_migrate": "Como migrar do {name} para o GAIA",
+    "by_gaia_team": "Pela equipe GAIA",
+    "updated_on": "Atualizado em {date}",
+    "see_gaia_in_action": "Veja o GAIA em ação"
   },
   "automate": {
     "breadcrumb": "Automatizar",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -53,6 +54,7 @@ export async function generateMetadata({
     description: data.metaDescription,
     path: `/compare/${slug}`,
     keywords: data.keywords,
+    image: `/api/og/compare?slug=${slug}`,
   });
 
   return {
@@ -123,6 +125,8 @@ export default async function ComparisonPage({ params }: PageProps) {
         url: `${siteConfig.url}/compare/${slug}`,
       },
     ],
+    data.datePublished,
+    data.dateModified,
   );
 
   const breadcrumbSchema = generateBreadcrumbSchema([
@@ -180,6 +184,18 @@ export default async function ComparisonPage({ params }: PageProps) {
           <p className="text-xl leading-relaxed text-zinc-400">
             {data.description}
           </p>
+          {data.dateModified && (
+            <p className="mt-4 text-sm text-zinc-500">
+              {t("comparisons.by_gaia_team")} &middot;{" "}
+              {t("comparisons.updated_on", {
+                date: new Date(data.dateModified).toLocaleDateString(locale, {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                }),
+              })}
+            </p>
+          )}
         </header>
 
         {/* Introduction */}
@@ -240,6 +256,21 @@ export default async function ComparisonPage({ params }: PageProps) {
               },
             ]}
             rows={data.rows}
+          />
+        </section>
+
+        {/* Product proof — real screenshot, not just claims */}
+        <section className="mb-16">
+          <h2 className="mb-6 text-3xl font-semibold text-white">
+            {t("comparisons.see_gaia_in_action")}
+          </h2>
+          <Image
+            src="/images/screenshots/dashboard.png"
+            alt={`GAIA dashboard — the proactive AI assistant compared with ${data.name}`}
+            width={2538}
+            height={1536}
+            sizes="(max-width: 896px) 100vw, 896px"
+            className="rounded-2xl border border-zinc-800"
           />
         </section>
 

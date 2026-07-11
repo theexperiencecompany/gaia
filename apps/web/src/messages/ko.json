@@ -34,7 +34,10 @@
     "how_well_replace": "GAIA가 {name}을 얼마나 잘 대체하나요?",
     "honest_fit_score": "기능 겹침 기반의 정직한 적합도 점수",
     "what_gaia_replaces": "GAIA가 {name}에서 대체하는 것",
-    "how_to_migrate": "{name}에서 GAIA로 마이그레이션하는 방법"
+    "how_to_migrate": "{name}에서 GAIA로 마이그레이션하는 방법",
+    "by_gaia_team": "GAIA 팀 작성",
+    "updated_on": "{date} 업데이트",
+    "see_gaia_in_action": "GAIA 실제 화면 보기"
   },
   "automate": {
     "breadcrumb": "자동화",
