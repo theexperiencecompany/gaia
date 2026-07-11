@@ -63,7 +63,7 @@ export interface ActivityDay {
 export interface UsageActivity {
   days: ActivityDay[];
   total: number;
-  /** Longest run of consecutive active days in the window. */
+  /** Consecutive active days ending now (current streak, not historical best). */
   streak: number;
   /** Percentile of this user's activity vs all users (0-100), or null. */
   percentile: number | null;

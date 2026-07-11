@@ -48,17 +48,18 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
         log.warning(f"{LogTag.MONGO} record_activity failed for {user_id}: {e}")
 
 
-def _longest_streak(counts: dict[str, int], start: datetime, end: datetime) -> int:
-    longest = run = 0
-    cursor = start
-    while cursor <= end:
-        if counts.get(_day(cursor), 0) > 0:
-            run += 1
-            longest = max(longest, run)
-        else:
-            run = 0
-        cursor += timedelta(days=1)
-    return longest
+def _current_streak(counts: dict[str, int], end: datetime) -> int:
+    """Consecutive active days ending now. "Streak" reads as momentum, so a
+    long run that ended months ago must show 0, not its historical length.
+    Today not being active yet doesn't break the run — count from yesterday."""
+    cursor = end
+    if counts.get(_day(cursor), 0) <= 0:
+        cursor -= timedelta(days=1)
+    streak = 0
+    while counts.get(_day(cursor), 0) > 0:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return streak
 
 
 async def get_activity(user_id: str, days: int) -> dict[str, Any]:
@@ -85,7 +86,7 @@ async def get_activity(user_id: str, days: int) -> dict[str, Any]:
     return {
         "days": day_list,
         "total": total,
-        "streak": _longest_streak(counts, start, end),
+        "streak": _current_streak(counts, end),
         "percentile": percentile,
         "tier": tier,
     }

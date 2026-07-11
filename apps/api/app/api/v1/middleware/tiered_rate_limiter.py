@@ -8,7 +8,9 @@ The ``@tiered_rate_limit`` endpoint decorator that wraps this engine lives in
 """
 
 import asyncio
+from collections.abc import Coroutine
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import HTTPException
 import redis.asyncio as redis
@@ -36,6 +38,17 @@ from app.services.limit_upsell import schedule_limit_upsell
 from app.services.usage_activity import counts_as_activity, record_activity
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
+
+# Fire-and-forget tasks must be referenced until done: asyncio only keeps weak
+# refs to tasks, so an unreferenced task can be garbage-collected mid-flight.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro: Coroutine[Any, Any, Any]) -> None:
+    """Run a coroutine in the background, holding a ref until it completes."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 class RateLimitExceededException(HTTPException):
@@ -213,7 +226,7 @@ class TieredRateLimiter:
                         continue
 
         # Real-time usage sync after rate limit usage
-        asyncio.create_task(
+        _spawn_background(
             self._sync_usage_real_time(
                 user_id=user_id,
                 feature_key=feature_key,
@@ -224,7 +237,7 @@ class TieredRateLimiter:
 
         # Durable daily rollup for the activity heatmap (meaningful actions only).
         if counts_as_activity(feature_key):
-            asyncio.create_task(record_activity(user_id))
+            _spawn_background(record_activity(user_id))
 
         return usage_info
 

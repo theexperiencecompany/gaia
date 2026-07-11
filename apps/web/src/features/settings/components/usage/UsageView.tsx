@@ -24,7 +24,7 @@ import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
 import type { UsageHistoryEntry } from "../../api/usageApi";
-import { ActivityBadge, UsageHeatmap } from "./UsageHeatmap";
+import { ActivityBadge, compact, UsageHeatmap } from "./UsageHeatmap";
 
 const ACCENT = "#00bbff"; // brand blue — capacity meters
 const HEALTHY = "#30d158"; // apple green — the activity trend
@@ -70,16 +70,20 @@ function elapsedFraction(resetIso: string, period: Period): number {
 type Period = "day" | "month";
 type PeriodData = NonNullable<FeatureUsage["periods"]["day"]>;
 
+/** Render an instant as the LOCAL calendar date — reset moments are UTC
+ * boundaries, but the user should see them on their own calendar. */
 function fmtDate(iso: string): string {
   const d = new Date(iso);
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
-function fmtCompact(n: number): string {
-  if (n >= 1_000_000)
-    return `${(n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
-  return `${n}`;
+/** Local wall-clock time of an instant, e.g. "5:30 AM" — "midnight" would be
+ * a lie for every user outside UTC. */
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 const CARD = "rounded-2xl bg-zinc-900/60";
@@ -258,7 +262,9 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
         </p>
         <p className="mt-2 text-[13px] text-zinc-500">
           {win === "day"
-            ? "Resets at midnight"
+            ? resetIso
+              ? `Resets at ${fmtTime(resetIso)}`
+              : ""
             : resetIso
               ? `Resets ${fmtDate(resetIso)}`
               : ""}
@@ -273,16 +279,16 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
 function DailyTooltip({
   active,
   payload,
-  limit,
 }: {
   active?: boolean;
-  payload?: { payload: { label: string; messages: number } }[];
-  limit: number;
+  payload?: {
+    payload: { label: string; messages: number; dayLimit: number };
+  }[];
 }) {
   if (!active || !payload?.length) return null;
-  const { label, messages } = payload[0].payload;
+  const { label, messages, dayLimit } = payload[0].payload;
   const color = severityColor(
-    limit > 0 ? (messages / limit) * 100 : 0,
+    dayLimit > 0 ? (messages / dayLimit) * 100 : 0,
     HEALTHY,
   );
   return (
@@ -313,26 +319,36 @@ function DailyBars({
     if (!history.length) return [];
     const dayKey = (d: Date) =>
       `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
-    const used = new Map<string, number>();
+    // Each day keeps its OWN stored limit: coloring history against today's
+    // limit fabricates "limit hit" days for anyone whose plan ever changed
+    // (a past Pro day would render red against the free 15-cap).
+    const byDay = new Map<string, { used: number; limit: number }>();
     let end = 0;
     for (const e of history) {
       const d = new Date(e.date);
-      used.set(dayKey(d), e.features.chat_messages?.periods.day?.used ?? 0);
+      const day = e.features.chat_messages?.periods.day;
+      if (day?.used !== undefined) {
+        byDay.set(dayKey(d), { used: day.used, limit: day.limit ?? 0 });
+      }
       end = Math.max(end, d.getTime());
     }
     // Trailing 30 days ending on the latest day we have data for (= today).
     return Array.from({ length: 30 }, (_, i) => {
       const d = new Date(end - (29 - i) * 86_400_000);
       const key = dayKey(d);
+      const entry = byDay.get(key);
       return {
         key,
         label: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`,
-        messages: used.get(key) ?? 0,
+        messages: entry?.used ?? 0,
+        dayLimit: entry?.limit ?? 0,
       };
     });
   }, [history]);
 
-  const daysHit = data.filter((d) => limit > 0 && d.messages >= limit).length;
+  const daysHit = data.filter(
+    (d) => d.dayLimit > 0 && d.messages >= d.dayLimit,
+  ).length;
   if (data.length < 2) return null;
 
   return (
@@ -383,14 +399,14 @@ function DailyBars({
           )}
           <ChartTooltip
             cursor={{ fill: "#ffffff08" }}
-            content={<DailyTooltip limit={limit} />}
+            content={<DailyTooltip />}
           />
           <Bar dataKey="messages" radius={5} maxBarSize={9}>
             {data.map((d) => (
               <Cell
                 key={d.key}
                 fill={severityColor(
-                  limit > 0 ? (d.messages / limit) * 100 : 0,
+                  d.dayLimit > 0 ? (d.messages / d.dayLimit) * 100 : 0,
                   HEALTHY,
                 )}
               />
@@ -428,13 +444,15 @@ function Stats({
       const d = new Date(e.date);
       if (d.getUTCMonth() !== curMonth || d.getUTCFullYear() !== curYear)
         continue;
-      byDom.set(
-        d.getUTCDate(),
-        e.features.chat_messages?.periods.day?.used ?? 0,
-      );
+      // Only set when the snapshot actually carries a day period — an entry
+      // without one must not clobber a real earlier value with 0.
+      const used = e.features.chat_messages?.periods.day?.used;
+      if (used !== undefined) byDom.set(d.getUTCDate(), used);
     }
     if (!byDom.size) return empty;
-    const elapsedDays = Math.max(...byDom.keys());
+    // Denominator = calendar days elapsed (today included), NOT the last day
+    // with activity — otherwise a quiet week inflates both metrics.
+    const elapsedDays = new Date().getUTCDate();
     let total = 0;
     let activeDays = 0;
     for (const used of byDom.values()) {
@@ -462,7 +480,7 @@ function Stats({
       />
       <StatCard
         label="Max task"
-        value={ceiling ? fmtCompact(ceiling) : "—"}
+        value={ceiling ? compact(ceiling) : "—"}
         sub="tokens / run"
       />
     </div>
@@ -681,6 +699,7 @@ function Trend({
   const month = summary.features.chat_messages?.periods.month;
   const limit = month?.limit ?? 0;
   const resetIso = month?.reset_time;
+  const liveMonthUsed = month?.used;
   // Free plots percent-of-allowance (no raw counts anywhere on free); pro plots
   // real message counts since its monthly cap is an abuse backstop, not a budget.
   const asPct = summary.plan_type !== "pro" && limit > 0;
@@ -698,12 +717,18 @@ function Trend({
       if (history.length < 2 || !resetIso) return empty;
       const window = currentMonthWindow(resetIso);
       const byDom = cumulativeByDay(history, window);
+      // Today's point comes from the LIVE month counter — the same number the
+      // hero gauge shows — so the two widgets can never disagree about "now"
+      // (snapshots lag up to an hour behind the live Redis counter).
+      if (liveMonthUsed !== undefined) {
+        byDom.set(new Date().getUTCDate(), liveMonthUsed);
+      }
       if (byDom.size < 2) return { ...empty, monthName: window.name };
       return {
         ...buildTrendSeries(byDom, window.daysInMonth, limit, asPct),
         monthName: window.name,
       };
-    }, [history, resetIso, limit, asPct]);
+    }, [history, resetIso, limit, asPct, liveMonthUsed]);
 
   if (!rows.length) return null;
 
@@ -927,12 +952,14 @@ function FeatureRow({
       </Tooltip>
       <Meter percent={p.percentage} className="h-1.5 flex-1" />
       <span className="min-w-16 shrink-0 text-right text-xs tabular-nums text-zinc-500">
-        {p.used.toLocaleString()}/{p.limit.toLocaleString()}
+        {/* Over-limit is legitimate (plan change, automated triggers) — mark it
+            instead of letting "29/20" read like a rendering bug. */}
+        <span className={p.used > p.limit ? "text-[#ff453a]" : undefined}>
+          {p.used.toLocaleString()}
+        </span>
+        /{p.limit.toLocaleString()}
         {showPro && (
-          <span className="text-zinc-600">
-            {" "}
-            · {fmtCompact(proLimit)} on Pro
-          </span>
+          <span className="text-zinc-600"> · {compact(proLimit)} on Pro</span>
         )}
       </span>
     </div>
