@@ -352,6 +352,7 @@ export function ImageGalleryView(props: z.infer<typeof imageGallerySchema>) {
         style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}
       >
         {images.map((img, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
           <View key={`${img.src}-${i}`} style={{ width: "50%", padding: 4 }}>
             <GalleryThumb img={img} onPress={() => setSelected(i)} />
           </View>
@@ -980,6 +981,7 @@ export function CarouselView(props: z.infer<typeof carouselSchema>) {
         >
           {props.items.map((item, i) => (
             <View
+              // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
               key={`${item.title}-${i}`}
               style={{
                 width: 6,

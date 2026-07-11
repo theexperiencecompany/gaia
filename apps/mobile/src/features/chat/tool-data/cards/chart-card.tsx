@@ -149,6 +149,7 @@ function BarChartView({ data }: { data: ChartData }) {
         const color = BAR_COLORS[i % BAR_COLORS.length];
 
         return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
           <G key={`bar-${el.label}-${i}`}>
             <Rect
               x={x}
@@ -452,6 +453,7 @@ function DataTable({ data }: { data: ChartData }) {
       </View>
       {elements.map((el, i) => (
         <View
+          // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
           key={`row-${el.label}-${i}`}
           className="flex-row px-3 py-2"
           style={{
