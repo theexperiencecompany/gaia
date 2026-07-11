@@ -131,7 +131,7 @@ backend = [
   "markdown2>=2.5.3",
   "pillow==12.2.0",
   "pandas>=2.3.0",
-  "beautifulsoup4>=4.13.5",
+  "beautifulsoup4>=4.13.5,<5",
   "bs4==0.0.2",
   "lxml>=5.3",
   "html2text>=2024.2.26",

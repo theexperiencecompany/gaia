@@ -2123,7 +2123,7 @@ backend = [
     { name = "arq", specifier = ">=0.26.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "authlib", specifier = ">=1.6.9" },
-    { name = "beautifulsoup4", specifier = ">=4.13.5" },
+    { name = "beautifulsoup4", specifier = ">=4.13.5,<5" },
     { name = "bs4", specifier = "==0.0.2" },
     { name = "chromadb", specifier = ">=0.6.3" },
     { name = "cloudinary", specifier = "==1.41.0" },
