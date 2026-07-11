@@ -322,7 +322,6 @@ export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
     <div className="flex w-full max-w-md flex-col gap-0 overflow-hidden rounded-2xl bg-zinc-800">
       <div className="flex flex-col gap-3 p-4">
         {items.map((item, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
           <div key={`${item.action}-${i}`}>
             {i > 0 && <Divider className="mb-3 bg-zinc-700/50" />}
             {item.action === "add" && <AddSection item={item} />}

@@ -471,7 +471,6 @@ function ListBlock({
     <View style={{ marginVertical: 4, paddingLeft: 16 }}>
       {items.map((item, idx) => (
         <View
-          // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
           key={`li-${idx}-${item[0]?.text.slice(0, 12)}`}
           style={{ flexDirection: "row", marginBottom: 8, paddingRight: 8 }}
         >
