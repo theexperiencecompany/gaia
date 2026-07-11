@@ -336,8 +336,9 @@ function DailyBars({
   /** The plan's current chat day limit — the yardstick % mode needs. */
   currentDayLimit: number;
 }) {
-  const { data, daysHit, asPct } = useMemo(() => {
-    if (!history.length) return { data: [], daysHit: 0, asPct: false };
+  const { data, daysHit, asPct, isEmpty } = useMemo(() => {
+    if (!history.length)
+      return { data: [], daysHit: 0, asPct: false, isEmpty: true };
     const dayKey = (d: Date) =>
       `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
     const byDay = new Map<string, { used: number; limit: number }>();
@@ -383,7 +384,7 @@ function DailyBars({
         ? Math.round((d.messages / d.dayLimit) * 1000) / 10
         : d.messages,
     }));
-    return { data: rows, daysHit, asPct };
+    return { data: rows, daysHit, asPct, isEmpty: daysWithData.length === 0 };
   }, [history, currentDayLimit]);
 
   if (data.length < 2) return null;
@@ -410,53 +411,62 @@ function DailyBars({
           </p>
         )}
       </div>
-      <ChartContainer
-        config={{ value: { label: "Messages", color: HEALTHY } }}
-        className="mt-2 aspect-auto min-h-0 w-full flex-1"
-      >
-        <BarChart
-          data={data}
-          margin={{ left: 0, right: 0, top: 10, bottom: 0 }}
+      {/* A month of zero-height bars reads as broken — quiet empty state
+          instead (e.g. workflow-automation users who never chat). */}
+      {isEmpty && (
+        <div className="flex min-h-0 w-full flex-1 items-center justify-center text-sm text-zinc-600">
+          No messages in the last 30 days.
+        </div>
+      )}
+      {!isEmpty && (
+        <ChartContainer
+          config={{ value: { label: "Messages", color: HEALTHY } }}
+          className="mt-2 aspect-auto min-h-0 w-full flex-1"
         >
-          <XAxis
-            dataKey="label"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={12}
-            minTickGap={36}
-            tick={{ fill: "#71717a", fontSize: 11 }}
-          />
-          {asPct && <YAxis hide domain={[0, 118]} />}
-          {asPct && (
-            <ReferenceLine
-              y={100}
-              stroke="#3f3f46"
-              strokeDasharray="3 3"
-              label={{
-                value: "daily limit",
-                position: "top",
-                fill: "#71717a",
-                fontSize: 10,
-              }}
+          <BarChart
+            data={data}
+            margin={{ left: 0, right: 0, top: 10, bottom: 0 }}
+          >
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={12}
+              minTickGap={36}
+              tick={{ fill: "#71717a", fontSize: 11 }}
             />
-          )}
-          <ChartTooltip
-            cursor={{ fill: "#ffffff08" }}
-            content={<DailyTooltip asPct={asPct} />}
-          />
-          <Bar dataKey="value" radius={5} maxBarSize={9}>
-            {data.map((d) => (
-              <Cell
-                key={d.key}
-                fill={severityColor(
-                  d.dayLimit > 0 ? (d.messages / d.dayLimit) * 100 : 0,
-                  HEALTHY,
-                )}
+            {asPct && <YAxis hide domain={[0, 118]} />}
+            {asPct && (
+              <ReferenceLine
+                y={100}
+                stroke="#3f3f46"
+                strokeDasharray="3 3"
+                label={{
+                  value: "daily limit",
+                  position: "top",
+                  fill: "#71717a",
+                  fontSize: 10,
+                }}
               />
-            ))}
-          </Bar>
-        </BarChart>
-      </ChartContainer>
+            )}
+            <ChartTooltip
+              cursor={{ fill: "#ffffff08" }}
+              content={<DailyTooltip asPct={asPct} />}
+            />
+            <Bar dataKey="value" radius={5} maxBarSize={9}>
+              {data.map((d) => (
+                <Cell
+                  key={d.key}
+                  fill={severityColor(
+                    d.dayLimit > 0 ? (d.messages / d.dayLimit) * 100 : 0,
+                    HEALTHY,
+                  )}
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ChartContainer>
+      )}
     </section>
   );
 }
