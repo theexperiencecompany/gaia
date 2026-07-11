@@ -136,7 +136,12 @@ export function UsageView({
       <Stats summary={summary} history={history} streak={activity?.streak} />
       <Trend history={history} summary={summary} />
       <div className="flex items-stretch gap-4">
-        <DailyBars history={history} />
+        <DailyBars
+          history={history}
+          currentDayLimit={
+            summary.features.chat_messages?.periods.day?.limit ?? 0
+          }
+        />
         {activity && <ActivityBadge tier={activity.tier} activity={activity} />}
       </div>
       {activity && <UsageHeatmap activity={activity} />}
@@ -292,11 +297,15 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
 function DailyTooltip({
   active,
   payload,
+  asPct,
 }: {
   active?: boolean;
   payload?: {
     payload: { label: string; messages: number; dayLimit: number };
   }[];
+  /** Mirrors the chart's mode so every tooltip speaks ONE unit — per-day
+   * switching between "%" and "messages" reads as a glitch. */
+  asPct?: boolean;
 }) {
   if (!active || !payload?.length) return null;
   const { label, messages, dayLimit } = payload[0].payload;
@@ -310,7 +319,7 @@ function DailyTooltip({
           style={{ backgroundColor: severityColor(pct, HEALTHY) }}
         />
         <span className="font-medium text-zinc-100">
-          {dayLimit > 0
+          {asPct
             ? `${pct}% of that day's limit`
             : `${messages} ${messages === 1 ? "message" : "messages"}`}
         </span>
@@ -319,7 +328,14 @@ function DailyTooltip({
   );
 }
 
-function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
+function DailyBars({
+  history,
+  currentDayLimit,
+}: {
+  history: UsageHistoryEntry[];
+  /** The plan's current chat day limit — the yardstick % mode needs. */
+  currentDayLimit: number;
+}) {
   const { data, daysHit, asPct } = useMemo(() => {
     if (!history.length) return { data: [], daysHit: 0, asPct: false };
     const dayKey = (d: Date) =>
@@ -351,11 +367,15 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
     ).length;
     // Percent mode: heights are % of THAT DAY's limit, so bars agree with
     // their colors and the guide line is a fixed 100% that is always true.
-    // Only possible when every day with data had a cap — days without one
-    // (pro) have no denominator, so those windows fall back to raw counts.
+    // Only meaningful when every stored day limit matches the user's CURRENT
+    // allowance — after a plan change, "% of a 3,000-message pro cap" draws
+    // sub-pixel invisible bars for a now-free user. Mixed or foreign limits
+    // fall back to honest raw counts (auto-scaled, colored by per-day severity).
     const daysWithData = data.filter((d) => d.messages > 0);
     const asPct =
-      daysWithData.length > 0 && daysWithData.every((d) => d.dayLimit > 0);
+      daysWithData.length > 0 &&
+      currentDayLimit > 0 &&
+      daysWithData.every((d) => d.dayLimit === currentDayLimit);
     const rows = data.map((d) => ({
       ...d,
       value: asPct
@@ -363,7 +383,7 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
         : d.messages,
     }));
     return { data: rows, daysHit, asPct };
-  }, [history]);
+  }, [history, currentDayLimit]);
 
   if (data.length < 2) return null;
 
@@ -421,7 +441,7 @@ function DailyBars({ history }: { history: UsageHistoryEntry[] }) {
           )}
           <ChartTooltip
             cursor={{ fill: "#ffffff08" }}
-            content={<DailyTooltip />}
+            content={<DailyTooltip asPct={asPct} />}
           />
           <Bar dataKey="value" radius={5} maxBarSize={9}>
             {data.map((d) => (
@@ -775,7 +795,7 @@ function Trend({
         showLimit: false,
         yMax: 10,
       };
-      if (history.length < 2 || !resetIso) return empty;
+      if (!resetIso) return empty;
       const window = currentMonthWindow(resetIso);
       const byDom = cumulativeByDay(history, window);
       // Today's point comes from the LIVE month counter — the same number the
@@ -791,7 +811,9 @@ function Trend({
           Math.max(liveMonthUsed, historicalMax),
         );
       }
-      if (byDom.size < 2) return { ...empty, monthName: window.name };
+      // One point is enough: an inactive-this-month user gets an honest flat
+      // line at their live counter (usually 0) instead of a missing section.
+      if (byDom.size < 1) return { ...empty, monthName: window.name };
       return {
         ...buildTrendSeries(byDom, window.daysInMonth, limit, asPct),
         monthName: window.name,
