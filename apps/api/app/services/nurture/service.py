@@ -120,6 +120,37 @@ async def _send_step(user: dict, step: NurtureStep) -> None:
     )
 
 
+def _step_pending(
+    step: NurtureStep, days_since_signup: int, completed: set[str], onboarded: bool
+) -> bool:
+    """Whether a step is still eligible to send, before its skip predicate runs."""
+    if not step.enabled or step.key in completed:
+        return False
+    in_window = (
+        step.day_offset <= days_since_signup <= step.day_offset + NURTURE_BACKFILL_GRACE_DAYS
+    )
+    if not in_window:
+        return False
+    # Held, not skipped: the step stays pending and sends if onboarding
+    # completes while its window is still open.
+    return not (step.requires_onboarding and not onboarded)
+
+
+async def _select_step(
+    user: dict, days_since_signup: int, completed: set[str], now: datetime
+) -> NurtureStep | None:
+    """First pending step whose skip predicate doesn't fire; predicate hits are recorded as skipped."""
+    onboarded = bool(user.get("onboarding", {}).get("completed"))
+    for step in NURTURE_STEPS:
+        if not _step_pending(step, days_since_signup, completed, onboarded):
+            continue
+        if step.skip_predicate and await SKIP_PREDICATES[step.skip_predicate](user):
+            await _record_step(user["_id"], step.key, now, status="skipped")
+            continue
+        return step
+    return None
+
+
 async def _process_user(user: dict, now: datetime) -> bool:
     """Evaluate one user against the sequence; sends at most one email. Returns True on send."""
     if _local_hour(user.get("timezone"), now) != NURTURE_SEND_HOUR_LOCAL:
@@ -134,41 +165,25 @@ async def _process_user(user: dict, now: datetime) -> bool:
     created_at = _as_utc(user.get("created_at"))
     if not created_at:
         return False
-    days_since_signup = (now - created_at).days
 
     state = user.get("nurture") or {}
-    completed = set(state.get("completed_steps") or [])
     if not _within_frequency_caps(state.get("history") or [], now):
         return False
 
-    onboarded = bool(user.get("onboarding", {}).get("completed"))
+    completed = set(state.get("completed_steps") or [])
+    step = await _select_step(user, (now - created_at).days, completed, now)
+    if step is None:
+        return False
 
-    for step in NURTURE_STEPS:
-        if not step.enabled or step.key in completed:
-            continue
-        in_window = (
-            step.day_offset <= days_since_signup <= step.day_offset + NURTURE_BACKFILL_GRACE_DAYS
-        )
-        if not in_window:
-            continue
-        # Held, not skipped: the step stays pending and sends if onboarding
-        # completes while its window is still open.
-        if step.requires_onboarding and not onboarded:
-            continue
-        if step.skip_predicate and await SKIP_PREDICATES[step.skip_predicate](user):
-            await _record_step(user["_id"], step.key, now, status="skipped")
-            continue
-
-        await _send_step(user, step)
-        await _record_step(user["_id"], step.key, now, status="sent")
-        capture_event(
-            user["email"],
-            AnalyticsEvents.NURTURE_EMAIL_SENT,
-            {"step": step.key, "day_offset": step.day_offset},
-        )
-        log.info(f"{LogTag.MAIL} Nurture email '{step.key}' sent to {user['email']}")
-        return True
-    return False
+    await _send_step(user, step)
+    await _record_step(user["_id"], step.key, now, status="sent")
+    capture_event(
+        user["email"],
+        AnalyticsEvents.NURTURE_EMAIL_SENT,
+        {"step": step.key, "day_offset": step.day_offset},
+    )
+    log.info(f"{LogTag.MAIL} Nurture email '{step.key}' sent to {user['email']}")
+    return True
 
 
 async def run_nurture_sequence() -> str:

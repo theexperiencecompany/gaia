@@ -1,4 +1,5 @@
 import asyncio
+from typing import Annotated
 
 from bson import ObjectId
 from fastapi import (
@@ -55,7 +56,7 @@ _UNSUBSCRIBE_SUCCESS_HTML = (
 
 
 @router.get("/notifications/unsubscribe", response_class=HTMLResponse)
-async def unsubscribe_from_emails(token: str = Query(...)) -> HTMLResponse:
+async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> HTMLResponse:
     """One-click email unsubscribe — no login required. Flips the ``email``
     channel preference off; other channels are unaffected."""
     user_id = verify_unsubscribe_token(token)
@@ -69,7 +70,7 @@ async def unsubscribe_from_emails(token: str = Query(...)) -> HTMLResponse:
 
 
 @router.post("/notifications/unsubscribe")
-async def unsubscribe_from_emails_one_click(token: str = Query(...)) -> Response:
+async def unsubscribe_from_emails_one_click(token: Annotated[str, Query()]) -> Response:
     """RFC 8058 one-click unsubscribe target (List-Unsubscribe-Post). Mail
     clients POST here; the response must be a blank 200."""
     user_id = verify_unsubscribe_token(token)

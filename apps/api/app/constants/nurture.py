@@ -9,6 +9,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class NurtureStep:
+    """One email in the nurture sequence, evaluated by app/services/nurture."""
+
     key: str
     day_offset: int  # days since user signup
     template: str

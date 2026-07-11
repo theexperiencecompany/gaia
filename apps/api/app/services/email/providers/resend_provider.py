@@ -9,10 +9,13 @@ from app.services.email.models import EmailMessage
 
 
 class ResendEmailProvider:
+    """EmailProvider backed by the Resend HTTP API."""
+
     def __init__(self) -> None:
         resend.api_key = settings.RESEND_API_KEY
 
     async def send(self, message: EmailMessage) -> None:
+        """Deliver one message via Resend."""
         params: resend.Emails.SendParams = {
             "from": message.sender,
             "to": message.to,

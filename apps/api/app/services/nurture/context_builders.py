@@ -12,6 +12,7 @@ from app.services.oauth.oauth_service import check_multiple_integrations_status
 
 
 async def google_connection_status(user: dict) -> dict:
+    """Gmail/Calendar connection flags; overrides cta_label when only one is missing."""
     statuses = await check_multiple_integrations_status(
         [GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID], str(user["_id"])
     )
