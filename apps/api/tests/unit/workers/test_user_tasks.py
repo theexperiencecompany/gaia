@@ -86,6 +86,16 @@ class TestShouldSendInactiveEmail:
         }
         assert _should_send_inactive_email(user) is True
 
+    def test_new_inactivity_episode_resets_count(self):
+        """An email sent before the user's last activity belongs to a previous episode."""
+        now = datetime.now(UTC)
+        user = {
+            "last_active_at": now - timedelta(days=10),
+            "last_inactive_email_sent": now - timedelta(days=90),
+            "inactive_email_count": 2,
+        }
+        assert _should_send_inactive_email(user) is True
+
     def test_naive_last_active_handled(self):
         """MongoDB may return naive datetimes; the policy should handle them."""
         now = datetime.now(UTC)
@@ -185,7 +195,27 @@ class TestCheckInactiveUsers:
         query, update = mock_col.update_one.call_args[0]
         assert query == {"_id": user["_id"]}
         assert isinstance(update["$set"]["last_inactive_email_sent"], datetime)
-        assert update["$inc"] == {"inactive_email_count": 1}
+        assert update["$set"]["inactive_email_count"] == 1
+
+    async def test_legacy_user_second_send_sets_count_to_two(self, ctx):
+        """A pre-counter doc (timestamp only) counts as one send, so the next send stores 2."""
+        user = _make_db_user("legacy@example.com", "Legacy", "id_legacy", last_active_days_ago=14)
+        user["last_inactive_email_sent"] = (datetime.now(UTC) - timedelta(days=7)).replace(
+            tzinfo=None
+        )
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(return_value=[user])
+
+        with (
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
+            patch("app.services.email.send_inactive_user_email", new_callable=AsyncMock),
+        ):
+            mock_col.find = MagicMock(return_value=mock_cursor)
+            mock_col.update_one = AsyncMock()
+            await check_inactive_users(ctx)
+
+        update = mock_col.update_one.call_args[0][1]
+        assert update["$set"]["inactive_email_count"] == 2
 
     async def test_failed_email_does_not_count_in_total(self, ctx):
         users = [

@@ -8,19 +8,29 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log, wide_task
 
 
-def _should_send_inactive_email(user: dict) -> bool:
-    """Throttle policy: first email after 7 inactive days, second 7+ days later, max 2."""
-    now = datetime.now(UTC)
-    last_active = user.get("last_active_at")
-    last_email_sent = user.get("last_inactive_email_sent")
-    # Docs written before the counter existed recorded their one send via the timestamp only
-    email_count = user.get("inactive_email_count") or (1 if last_email_sent else 0)
+def _as_utc(dt: datetime | None) -> datetime | None:
+    # MongoDB may return naive datetimes
+    return dt.replace(tzinfo=UTC) if dt and dt.tzinfo is None else dt
 
-    # Ensure datetimes are timezone-aware for comparison
-    if last_active and last_active.tzinfo is None:
-        last_active = last_active.replace(tzinfo=UTC)
-    if last_email_sent and last_email_sent.tzinfo is None:
-        last_email_sent = last_email_sent.replace(tzinfo=UTC)
+
+def _emails_sent_this_episode(user: dict) -> int:
+    """Sends in the current inactivity episode; the counter resets when the user returns."""
+    last_active = _as_utc(user.get("last_active_at"))
+    last_email_sent = _as_utc(user.get("last_inactive_email_sent"))
+
+    # An email older than last_active_at belongs to a previous inactivity episode.
+    if not last_email_sent or (last_active and last_email_sent < last_active):
+        return 0
+    # Docs written before the counter existed recorded their one send via the timestamp only.
+    count: int = user.get("inactive_email_count") or 1
+    return count
+
+
+def _should_send_inactive_email(user: dict) -> bool:
+    """Throttle policy: per inactivity episode, first email after 7 days, second 7+ days later, max 2."""
+    now = datetime.now(UTC)
+    last_active = _as_utc(user.get("last_active_at"))
+    last_email_sent = _as_utc(user.get("last_inactive_email_sent"))
 
     # Check if user is inactive long enough (7+ days)
     if not last_active or (now - last_active).days < 7:
@@ -30,7 +40,7 @@ def _should_send_inactive_email(user: dict) -> bool:
     if last_email_sent and (now - last_email_sent).days < 7:
         return False
 
-    return email_count < 2
+    return _emails_sent_this_episode(user) < 2
 
 
 async def check_inactive_users(ctx: dict) -> str:
@@ -80,8 +90,13 @@ async def check_inactive_users(ctx: dict) -> str:
                 await users_collection.update_one(
                     {"_id": user["_id"]},
                     {
-                        "$set": {"last_inactive_email_sent": datetime.now(UTC)},
-                        "$inc": {"inactive_email_count": 1},
+                        "$set": {
+                            "last_inactive_email_sent": datetime.now(UTC),
+                            # $set, not $inc: the counter restarts at 1 for a new episode
+                            # and absorbs pre-counter docs whose one send is recorded
+                            # only in the timestamp.
+                            "inactive_email_count": _emails_sent_this_episode(user) + 1,
+                        }
                     },
                 )
                 email_count += 1
