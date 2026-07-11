@@ -190,7 +190,7 @@ export function UsageSection() {
         </Card.Body>
       </Card>
 
-      {Object.entries(summary.token_usage).length > 0 && (
+      {Object.entries(summary.token_usage ?? {}).length > 0 && (
         <View style={{ gap: spacing.sm }}>
           <Text
             style={{
@@ -204,7 +204,7 @@ export function UsageSection() {
           </Text>
           <Card variant="secondary" className="rounded-2xl bg-surface">
             <Card.Body className="gap-4 px-4 py-4">
-              {Object.entries(summary.token_usage).map(([key, tok]) => {
+              {Object.entries(summary.token_usage ?? {}).map(([key, tok]) => {
                 const period = tok.periods[periodKey];
                 if (!period) return null;
                 const pct = Math.min(period.percentage, 100);

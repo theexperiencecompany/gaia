@@ -711,11 +711,9 @@ function Trend({
     <section className={cn(CARD, "p-5")}>
       <div className="mb-4 flex items-baseline justify-between">
         <div className="flex items-center gap-1.5">
-          <p className="text-base font-semibold text-white">
-            Messages this month
-          </p>
+          <p className="text-base font-semibold text-white">Usage this month</p>
           <InfoTip
-            text={`Your cumulative messages this month${asPct ? ", as a share of your monthly allowance" : ""}. The dashed line projects where you'll land at your current pace.`}
+            text={`Your cumulative usage this month${asPct ? ", as a share of your monthly allowance" : " (messages sent)"}. The dashed line projects where you'll land at your current pace.`}
           />
         </div>
         {runOutDom && (

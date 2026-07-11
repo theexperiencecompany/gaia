@@ -152,10 +152,10 @@ for feat, used in feature_day.items():
 
 # Cost budget windows (USD spent). Pro: $5/day, $25/mo.
 if PLAN == "pro":
-    r.set(f"cost_budget:{uid}:day:{day_win}", "3.05")     # ~61% of $5
+    r.set(f"cost_budget:{uid}:day:{day_win}", "3.05")  # ~61% of $5
     r.set(f"cost_budget:{uid}:month:{month_win}", "8.20")  # ~33% of $25
 else:
-    r.set(f"cost_budget:{uid}:day:{day_win}", "0.031")     # ~62% of $0.05
+    r.set(f"cost_budget:{uid}:day:{day_win}", "0.031")  # ~62% of $0.05
 print("redis: seeded feature counters + cost budget")
 
 print("\nDONE. Set DEV_AUTH_BYPASS_EMAIL=%s and restart the API." % EMAIL)

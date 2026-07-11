@@ -120,10 +120,10 @@ function SummaryCard({ summary, period }: SummaryCardProps) {
     }
   }
 
-  // Token totals
+  // Token totals (token_usage is not populated by the current summary endpoint)
   let totalTokens = 0;
   let tokenLimit = 0;
-  for (const tok of Object.values(summary.token_usage)) {
+  for (const tok of Object.values(summary.token_usage ?? {})) {
     const p = tok.periods[period];
     if (p) {
       totalTokens += p.total_tokens;
@@ -362,7 +362,7 @@ interface ModelBreakdownProps {
 
 function ModelBreakdown({ summary, period }: ModelBreakdownProps) {
   const { spacing, fontSize } = useResponsive();
-  const entries = Object.entries(summary.token_usage).filter(
+  const entries = Object.entries(summary.token_usage ?? {}).filter(
     ([, t]) => t.periods[period],
   );
 
