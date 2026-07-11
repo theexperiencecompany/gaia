@@ -10,6 +10,7 @@ import type {
   CommunityIntegrationsResponse,
   PublicIntegrationResponse,
 } from "@/features/integrations/types";
+import { isIndexableIntegration } from "@/features/integrations/utils/integrationIndexability";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -223,6 +224,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description: seoDescription,
+    // Tool-less community integrations render only name-swapped template
+    // copy — keep those doorway-grade pages out of the index.
+    robots: {
+      index: isIndexableIntegration({
+        source: integration.source,
+        toolCount: integration.toolCount,
+        hasRichContent: Boolean(integration.content),
+      }),
+      follow: true,
+    },
     alternates: {
       canonical: url,
     },

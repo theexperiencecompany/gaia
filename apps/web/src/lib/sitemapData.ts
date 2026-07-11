@@ -3,6 +3,8 @@ import type { MetadataRoute } from "next";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import { isIndexableIntegration } from "@/features/integrations/utils/integrationIndexability";
+import { isIndexableWorkflowListing } from "@/features/use-cases/utils/useCaseIndexability";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
@@ -181,50 +183,65 @@ async function getCommunityWorkflowPages(
         clearTimeout(timeout);
       }
       if (!response.ok) return [];
-      type CommunityWorkflowEntry = { slug: string; created_at: string };
+      type CommunityWorkflowEntry = {
+        slug: string;
+        created_at: string;
+        description?: string;
+      };
       const data = (await response.json()) as {
         workflows?: CommunityWorkflowEntry[];
       };
-      return (data.workflows ?? []).map((workflow) => ({
+      return (data.workflows ?? [])
+        .filter((workflow) => isIndexableWorkflowListing(workflow.description))
+        .map((workflow) => ({
+          url: `${baseUrl}/use-cases/${workflow.slug}`,
+          lastModified: new Date(workflow.created_at),
+          changeFrequency: "weekly" as const,
+          priority: 0.6,
+        }));
+    }
+
+    const allWorkflows: Array<{
+      slug: string;
+      created_at: string;
+      description?: string;
+    }> = await fetchAllPaginated(async (limit, offset) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      let response: Response;
+      try {
+        response = await fetch(
+          `${apiBaseUrl}/workflows/community?limit=${limit}&offset=${offset}`,
+          { next: { revalidate: 3600 }, signal: controller.signal },
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!response.ok) return { items: [], total: 0, hasMore: false };
+      type CommunityWorkflowEntry = {
+        slug: string;
+        created_at: string;
+        description?: string;
+      };
+      const data = (await response.json()) as {
+        workflows?: CommunityWorkflowEntry[];
+        total?: number;
+      };
+      return {
+        items: data.workflows ?? [],
+        total: data.total ?? 0,
+        hasMore: (data.workflows?.length ?? 0) === limit,
+      };
+    }, 100);
+
+    return allWorkflows
+      .filter((workflow) => isIndexableWorkflowListing(workflow.description))
+      .map((workflow) => ({
         url: `${baseUrl}/use-cases/${workflow.slug}`,
         lastModified: new Date(workflow.created_at),
         changeFrequency: "weekly" as const,
         priority: 0.6,
       }));
-    }
-
-    const allWorkflows: Array<{ slug: string; created_at: string }> =
-      await fetchAllPaginated(async (limit, offset) => {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10_000);
-        let response: Response;
-        try {
-          response = await fetch(
-            `${apiBaseUrl}/workflows/community?limit=${limit}&offset=${offset}`,
-            { next: { revalidate: 3600 }, signal: controller.signal },
-          );
-        } finally {
-          clearTimeout(timeout);
-        }
-        if (!response.ok) return { items: [], total: 0, hasMore: false };
-        type CommunityWorkflowEntry = { slug: string; created_at: string };
-        const data = (await response.json()) as {
-          workflows?: CommunityWorkflowEntry[];
-          total?: number;
-        };
-        return {
-          items: data.workflows ?? [],
-          total: data.total ?? 0,
-          hasMore: (data.workflows?.length ?? 0) === limit,
-        };
-      }, 100);
-
-    return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.slug}`,
-      lastModified: new Date(workflow.created_at),
-      changeFrequency: "weekly" as const,
-      priority: 0.6,
-    }));
   } catch (error) {
     console.error("Error fetching community workflows for sitemap:", error);
     return [];
@@ -258,19 +275,24 @@ async function getIntegrationPages(
           slug: string;
           publishedAt?: string;
           createdAt?: string;
+          toolCount?: number;
         };
         const data = (await response.json()) as {
           integrations?: IntegrationEntry[];
         };
-        return (data.integrations ?? []).map((integration) => {
-          const date = integration.publishedAt || integration.createdAt;
-          return {
-            url: `${baseUrl}/marketplace/${integration.slug}`,
-            ...(date ? { lastModified: new Date(date) } : {}),
-            changeFrequency: "weekly" as const,
-            priority: 0.7,
-          };
-        });
+        return (data.integrations ?? [])
+          .filter((integration) =>
+            isIndexableIntegration({ toolCount: integration.toolCount }),
+          )
+          .map((integration) => {
+            const date = integration.publishedAt || integration.createdAt;
+            return {
+              url: `${baseUrl}/marketplace/${integration.slug}`,
+              ...(date ? { lastModified: new Date(date) } : {}),
+              changeFrequency: "weekly" as const,
+              priority: 0.7,
+            };
+          });
       }
       return [];
     }
@@ -279,6 +301,7 @@ async function getIntegrationPages(
       slug: string;
       publishedAt?: string;
       createdAt?: string;
+      toolCount?: number;
     };
     const allIntegrations: IntegrationEntry[] = await fetchAllPaginated(
       async (limit, offset) => {
@@ -309,12 +332,11 @@ async function getIntegrationPages(
       100,
     );
 
-    return allIntegrations.map(
-      (integration: {
-        slug: string;
-        publishedAt?: string;
-        createdAt?: string;
-      }) => {
+    return allIntegrations
+      .filter((integration) =>
+        isIndexableIntegration({ toolCount: integration.toolCount }),
+      )
+      .map((integration) => {
         const date = integration.publishedAt || integration.createdAt;
         return {
           url: `${baseUrl}/marketplace/${integration.slug}`,
@@ -322,8 +344,7 @@ async function getIntegrationPages(
           changeFrequency: "weekly" as const,
           priority: 0.7,
         };
-      },
-    );
+      });
   } catch (error) {
     console.error("Error fetching integrations for sitemap:", error);
     return [];
