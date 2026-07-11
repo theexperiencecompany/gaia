@@ -285,7 +285,6 @@ export default function FinalSection({
                   <Tooltip
                     content={label}
                     placement="bottom"
-                    // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
                     key={index + href}
                   >
                     <Link

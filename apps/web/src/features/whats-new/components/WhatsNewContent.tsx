@@ -108,7 +108,6 @@ export function WhatsNewContent({ html }: WhatsNewContentProps) {
   }, [html]);
 
   return (
-    // biome-ignore lint/security/noDangerouslySetInnerHtml: content is sanitized with DOMPurify above
     <div className="text-sm" dangerouslySetInnerHTML={{ __html: processed }} />
   );
 }
