@@ -1,10 +1,12 @@
-import type { FeatureUsage, UsageSummary } from "@shared/types";
+import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { apiauth } from "@/lib/api/client";
 
 export type {
+  ActivityDay,
   FeatureUsage,
   TokenUsage,
   TokenUsagePeriod,
+  UsageActivity,
   UsagePeriod,
   UsageSummary,
 } from "@shared/types";
@@ -31,6 +33,14 @@ class UsageApiService {
     }
 
     const response = await apiauth.get(`/usage/history?${params}`);
+    // Backend returns newest-first; charts consume chronological order.
+    return response.data.sort((a: UsageHistoryEntry, b: UsageHistoryEntry) =>
+      a.date.localeCompare(b.date),
+    );
+  }
+
+  async getUsageActivity(days: number = 365): Promise<UsageActivity> {
+    const response = await apiauth.get(`/usage/activity?days=${days}`);
     return response.data;
   }
 }
