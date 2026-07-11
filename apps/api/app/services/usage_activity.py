@@ -9,17 +9,48 @@ data, not the short-lived Redis rate-limit counters.
 from datetime import UTC, datetime, timedelta
 import json
 import math
-from typing import Any
+from typing import Any, NamedTuple
+
+from bson import ObjectId
+from bson.errors import InvalidId
+from pymongo import ReturnDocument
 
 from app.config.rate_limits import FEATURE_LIMITS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import usage_daily_collection
+from app.db.mongodb.collections import usage_daily_collection, users_collection
 from app.db.redis import redis_cache
+from app.services.email import send_badge_earned_email
 from shared.py.wide_events import log
 
 _THRESHOLDS_KEY = "usage:activity_pct_thresholds"
 _THRESHOLDS_TTL = 86_400  # recompute the cross-user distribution at most daily
 _PERCENTILE_WINDOW_DAYS = 30
+
+# Badge tiers, weakest → strongest. Order doubles as the promotion ranking:
+# a user is only ever "promoted" to a tier later in this tuple.
+TIER_KEYS: tuple[str, ...] = ("bronze", "silver", "gold", "diamond")
+
+
+class _TierMeta(NamedTuple):
+    threshold_key: str  # key into the cached thresholds dict
+    percentile: float  # value the API reports for the earned tier
+    top_label: str  # user-facing "top X%" wording
+
+
+_TIER_META: dict[str, _TierMeta] = {
+    "diamond": _TierMeta("p999", 99.9, "0.1%"),
+    "gold": _TierMeta("p99", 99.0, "1%"),
+    "silver": _TierMeta("p90", 90.0, "10%"),
+    "bronze": _TierMeta("p75", 75.0, "25%"),
+}
+
+
+def _tier_for_total(total: int, thresholds: dict[str, float]) -> str | None:
+    """The strongest tier a 30-day total qualifies for, or None."""
+    for tier in reversed(TIER_KEYS):
+        if total >= thresholds[_TIER_META[tier].threshold_key]:
+            return tier
+    return None
 
 
 def counts_as_activity(feature_key: str) -> bool:
@@ -135,15 +166,10 @@ async def _percentile_tier(user_id: str) -> tuple[float | None, str | None]:
     thresholds = await _percentile_thresholds(window_start)
     if not thresholds:
         return None, None
-    if mine >= thresholds["p999"]:
-        return 99.9, "diamond"
-    if mine >= thresholds["p99"]:
-        return 99.0, "gold"
-    if mine >= thresholds["p90"]:
-        return 90.0, "silver"
-    if mine >= thresholds["p75"]:
-        return 75.0, "bronze"
-    return None, None
+    tier = _tier_for_total(mine, thresholds)
+    if tier is None:
+        return None, None
+    return _TIER_META[tier].percentile, tier
 
 
 async def _percentile_thresholds(window_start: str) -> dict[str, float]:
@@ -209,3 +235,88 @@ async def _percentile_thresholds(window_start: str) -> dict[str, float]:
     if client is not None:
         await client.setex(_THRESHOLDS_KEY, _THRESHOLDS_TTL, json.dumps(thresholds))
     return thresholds
+
+
+async def _record_tier(user_id: str, tier: str) -> dict[str, Any] | None:
+    """Persist ``tier`` as the user's highest ever reached; return the user doc
+    only on a FIRST-TIME promotion, else None.
+
+    The guard is monotonic — a stored tier is only ever replaced by a stronger
+    one — so downgrades are silent and re-crossing a boundary can never re-fire.
+    The filtered ``find_one_and_update`` is also the idempotency lock: a retried
+    job matches zero documents the second time.
+    """
+    try:
+        oid = ObjectId(user_id)
+    except (InvalidId, TypeError):
+        log.warning(f"{LogTag.MONGO} tier sync skipped non-ObjectId user_id {user_id!r}")
+        return None
+    lower_tiers = list(TIER_KEYS[: TIER_KEYS.index(tier)])
+    return await users_collection.find_one_and_update(
+        {
+            "_id": oid,
+            "$or": [
+                {"highest_activity_tier": {"$exists": False}},
+                {"highest_activity_tier": {"$in": lower_tiers}},
+            ],
+        },
+        {
+            "$set": {
+                "highest_activity_tier": tier,
+                "highest_activity_tier_at": datetime.now(UTC),
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+
+
+async def sync_activity_tiers(send_emails: bool = True) -> dict[str, int]:
+    """Recompute every active user's badge tier and record first-time promotions.
+
+    One aggregation pass over the trailing-30-day rollups (the same data and
+    thresholds the usage page badge reads, so email and page always agree),
+    then a guarded update per qualifying user. With ``send_emails`` each
+    first-time promotion also gets the congratulations email — the promotion
+    is recorded BEFORE sending, so a failed send is at most a lost email,
+    never a duplicate one.
+
+    ``send_emails=False`` seeds tiers silently — used by the deploy-day
+    backfill so existing users' current standing doesn't trigger a mass blast;
+    only promotions earned after that are emailed.
+    """
+    window_start = _day(datetime.now(UTC) - timedelta(days=_PERCENTILE_WINDOW_DAYS))
+    thresholds = await _percentile_thresholds(window_start)
+    stats = {"scanned": 0, "promoted": 0, "emailed": 0}
+    if not thresholds:
+        return stats
+
+    async for doc in usage_daily_collection.aggregate(
+        [
+            {"$match": {"date": {"$gte": window_start}}},
+            {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
+        ]
+    ):
+        stats["scanned"] += 1
+        tier = _tier_for_total(int(doc["total"]), thresholds)
+        if tier is None:
+            continue
+        user = await _record_tier(doc["_id"], tier)
+        if user is None:
+            continue
+        stats["promoted"] += 1
+        if not send_emails or not user.get("email"):
+            continue
+        try:
+            await send_badge_earned_email(
+                user_email=user["email"],
+                user_name=user.get("name"),
+                tier=tier,
+                top_label=_TIER_META[tier].top_label,
+            )
+            stats["emailed"] += 1
+        except Exception as e:
+            # One bounced address must not abort the whole sweep; the tier is
+            # already recorded, so this user simply misses the (nice-to-have)
+            # email rather than risking a duplicate on retry.
+            log.error(f"{LogTag.MAIL} badge email failed for {user['email']}: {e!s}")
+    return stats

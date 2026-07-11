@@ -20,6 +20,7 @@ from app.workers.tasks import (
     process_onboarding_intelligence_task,
     process_reminder,
     process_workflow_generation_task,
+    promote_usage_badges,
     prune_checkpoint_versions,
     prune_inactive_sessions,
     regenerate_workflow_steps,
@@ -54,6 +55,7 @@ _execute_tracked_todo = instrument_task(execute_tracked_todo)
 _safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = instrument_task(rescan_pending_scheduled_tasks)
+_promote_usage_badges = instrument_task(promote_usage_badges)
 WorkerSettings.functions = [
     _process_reminder,
     _cleanup_expired_reminders,
@@ -71,6 +73,7 @@ WorkerSettings.functions = [
     _execute_tracked_todo,
     _backfill_active_users,
     _backfill_user_memories,
+    _promote_usage_badges,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -123,6 +126,14 @@ WorkerSettings.cron_jobs = [
     cron(
         _backfill_active_users,
         hour=4,  # Daily at 04:00 UTC (low traffic)
+        minute=0,
+        second=0,
+    ),
+    # First-time badge-tier promotions (monotonic + idempotent, so a missed or
+    # doubled run is harmless). After the day's rollups have settled.
+    cron(
+        _promote_usage_badges,
+        hour=5,  # Daily at 05:00 UTC
         minute=0,
         second=0,
     ),

@@ -199,6 +199,38 @@ async def send_inactive_user_email(user_email: str, user_name: str | None = None
         raise
 
 
+async def send_badge_earned_email(
+    user_email: str,
+    user_name: str | None,
+    tier: str,
+    top_label: str,
+) -> None:
+    """Congratulate a user the first time they reach an activity badge tier.
+
+    Send-once semantics live with the caller (``sync_activity_tiers`` promotes
+    monotonically), so this stays a dumb sender like the rest of this module.
+    """
+    html_content = render_email_template(
+        "badge_earned.html",
+        user_name=user_name,
+        tier_name=tier.capitalize(),
+        top_label=top_label,
+        usage_url=f"{settings.FRONTEND_URL}/settings/usage",
+        contact_email=CONTACT_EMAIL,
+    )
+
+    await send_email(
+        EmailMessage(
+            sender=FOUNDER_SENDER,
+            to=[user_email],
+            subject=f"You're in the top {top_label} of GAIA users",
+            html=html_content,
+            reply_to=CONTACT_EMAIL,
+        )
+    )
+    log.info(f"{LogTag.MAIL} Badge earned ({tier}) email sent to {user_email}")
+
+
 async def send_limit_reached_email(
     user_id: str,
     hit_feature: str,

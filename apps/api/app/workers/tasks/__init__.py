@@ -10,6 +10,7 @@ from .onboarding_tasks import process_onboarding_intelligence_task
 from .reminder_tasks import cleanup_expired_reminders, process_reminder
 from .sandbox_tasks import sweep_idle_sandboxes
 from .session_tasks import prune_inactive_sessions
+from .usage_badge_tasks import promote_usage_badges
 from .user_tasks import check_inactive_users
 from .workflow_tasks import (
     execute_workflow_as_chat,
@@ -36,4 +37,5 @@ __all__ = [
     "prune_inactive_sessions",
     "backfill_active_users",
     "backfill_user_memories",
+    "promote_usage_badges",
 ]

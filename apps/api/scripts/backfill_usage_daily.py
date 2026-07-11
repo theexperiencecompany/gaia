@@ -37,6 +37,7 @@ from app.db.mongodb.collections import (  # noqa: E402
     conversations_collection,
     usage_daily_collection,
 )
+from app.services.usage_activity import sync_activity_tiers  # noqa: E402
 
 _USER_ROLES = {"user", "human"}
 _BATCH = 1000
@@ -120,6 +121,13 @@ async def backfill(days: int, dry_run: bool) -> None:
         result = await usage_daily_collection.bulk_write(ops[i : i + _BATCH], ordered=False)
         written += (result.upserted_count or 0) + (result.modified_count or 0)
     print(f"bulk_write done: {len(ops)} ops, {written} inserted/updated")
+
+    # Seed every user's current badge tier SILENTLY. Without this, the first
+    # nightly promote_usage_badges run after deploy would read all existing
+    # standings as brand-new promotions and blast congratulation emails at
+    # ~25% of the user base in one night.
+    stats = await sync_activity_tiers(send_emails=False)
+    print(f"tiers seeded silently: {stats}")
 
 
 if __name__ == "__main__":
