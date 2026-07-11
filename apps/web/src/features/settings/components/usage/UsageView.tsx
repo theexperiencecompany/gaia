@@ -341,16 +341,17 @@ function DailyBars({
     const dayKey = (d: Date) =>
       `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
     const byDay = new Map<string, { used: number; limit: number }>();
-    let end = 0;
     for (const e of history) {
       const d = new Date(e.date);
       const day = e.features.chat_messages?.periods.day;
       if (day?.used !== undefined) {
         byDay.set(dayKey(d), { used: day.used, limit: day.limit ?? 0 });
       }
-      end = Math.max(end, d.getTime());
     }
-    // Trailing 30 days ending on the latest day we have data for (= today).
+    // Trailing 30 days ending TODAY — never on the last day with data, which
+    // would present a month-old window as if it were current. Quiet recent
+    // days render as honest zero bars.
+    const end = Date.now();
     const data = Array.from({ length: 30 }, (_, i) => {
       const d = new Date(end - (29 - i) * 86_400_000);
       const key = dayKey(d);
@@ -822,6 +823,11 @@ function Trend({
 
   if (!rows.length) return null;
 
+  // A month with zero usage has nothing to plot and nothing to project —
+  // "at this pace you'll land at 0" is noise. Keep the card (a vanishing
+  // section reads as a bug) with a quiet empty state instead.
+  const isEmpty = rows.every((r) => !r.actual && !r.projected);
+
   return (
     <section className={cn(CARD, "p-5")}>
       <div className="mb-4 flex items-baseline justify-between">
@@ -838,67 +844,76 @@ function Trend({
           </p>
         )}
       </div>
-      <ChartContainer
-        config={{ actual: { label: asPct ? "Used" : "Sent", color: HEALTHY } }}
-        className="aspect-[16/6] w-full"
-      >
-        <AreaChart
-          data={rows}
-          margin={{ left: 0, right: 0, top: 12, bottom: 0 }}
+      {isEmpty && (
+        <div className="flex aspect-[16/6] w-full items-center justify-center text-sm text-zinc-600">
+          Nothing used yet this {monthName} — your trend will appear here.
+        </div>
+      )}
+      {!isEmpty && (
+        <ChartContainer
+          config={{
+            actual: { label: asPct ? "Used" : "Sent", color: HEALTHY },
+          }}
+          className="aspect-[16/6] w-full"
         >
-          <defs>
-            <linearGradient id="trajFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={HEALTHY} stopOpacity={0.25} />
-              <stop offset="100%" stopColor={HEALTHY} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <XAxis
-            dataKey="dom"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={12}
-            minTickGap={40}
-            tickFormatter={(d) => `${monthName} ${d}`}
-            tick={{ fill: "#71717a", fontSize: 11 }}
-          />
-          <YAxis hide domain={[0, yMax]} />
-          {showLimit && (
-            <ReferenceLine
-              y={asPct ? 100 : limit}
-              stroke="#52525b"
-              strokeDasharray="4 4"
-              label={{
-                value: asPct ? "100%" : `${limit.toLocaleString()} limit`,
-                position: "insideTopRight",
-                fill: "#a1a1aa",
-                fontSize: 10,
-              }}
+          <AreaChart
+            data={rows}
+            margin={{ left: 0, right: 0, top: 12, bottom: 0 }}
+          >
+            <defs>
+              <linearGradient id="trajFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={HEALTHY} stopOpacity={0.25} />
+                <stop offset="100%" stopColor={HEALTHY} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis
+              dataKey="dom"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={12}
+              minTickGap={40}
+              tickFormatter={(d) => `${monthName} ${d}`}
+              tick={{ fill: "#71717a", fontSize: 11 }}
             />
-          )}
-          <ChartTooltip
-            content={<TrendTooltip monthName={monthName} asPct={asPct} />}
-          />
-          <Area
-            dataKey="actual"
-            type="monotone"
-            stroke={HEALTHY}
-            strokeWidth={2}
-            fill="url(#trajFill)"
-            connectNulls
-            dot={false}
-          />
-          <Area
-            dataKey="projected"
-            type="monotone"
-            stroke={NEAR}
-            strokeWidth={2}
-            strokeDasharray="4 4"
-            fill="none"
-            connectNulls
-            dot={false}
-          />
-        </AreaChart>
-      </ChartContainer>
+            <YAxis hide domain={[0, yMax]} />
+            {showLimit && (
+              <ReferenceLine
+                y={asPct ? 100 : limit}
+                stroke="#52525b"
+                strokeDasharray="4 4"
+                label={{
+                  value: asPct ? "100%" : `${limit.toLocaleString()} limit`,
+                  position: "insideTopRight",
+                  fill: "#a1a1aa",
+                  fontSize: 10,
+                }}
+              />
+            )}
+            <ChartTooltip
+              content={<TrendTooltip monthName={monthName} asPct={asPct} />}
+            />
+            <Area
+              dataKey="actual"
+              type="monotone"
+              stroke={HEALTHY}
+              strokeWidth={2}
+              fill="url(#trajFill)"
+              connectNulls
+              dot={false}
+            />
+            <Area
+              dataKey="projected"
+              type="monotone"
+              stroke={NEAR}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              fill="none"
+              connectNulls
+              dot={false}
+            />
+          </AreaChart>
+        </ChartContainer>
+      )}
     </section>
   );
 }
