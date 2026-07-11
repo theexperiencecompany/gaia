@@ -560,7 +560,9 @@ class TestUserTasks:
 
             result = await check_inactive_users(ARQ_CTX)
 
-            mock_send.assert_awaited_once_with("inactive@example.com", "Inactive User")
+            mock_send.assert_awaited_once_with(
+                "inactive@example.com", str(inactive_user["_id"]), "Inactive User"
+            )
             mock_users.update_one.assert_awaited_once()
             update = mock_users.update_one.call_args[0][1]
             assert update["$set"]["inactive_email_count"] == 1

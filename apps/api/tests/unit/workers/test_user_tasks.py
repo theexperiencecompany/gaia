@@ -176,7 +176,7 @@ class TestCheckInactiveUsers:
             mock_col.update_one = AsyncMock()
             await check_inactive_users(ctx)
 
-        mock_email.assert_awaited_once_with("carol@example.com", "Carol")
+        mock_email.assert_awaited_once_with("carol@example.com", "id_carol", "Carol")
 
     async def test_sent_email_updates_tracking(self, ctx):
         user = _make_db_user("carol@example.com", "Carol", "id_carol")
@@ -225,7 +225,7 @@ class TestCheckInactiveUsers:
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=users)
 
-        async def selective_send(user_email, user_name=None):
+        async def selective_send(user_email, user_id, user_name=None):
             if user_email != "ok@example.com":
                 raise RuntimeError("SMTP error")
 
