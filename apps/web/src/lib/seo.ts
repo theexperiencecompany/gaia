@@ -128,9 +128,9 @@ export function generatePageMetadata({
   // (e.g. "Asana Alternative — GAIA vs Asana") renders as-is, otherwise the
   // layout template would double it ("… GAIA vs Asana | GAIA").
   const isHomepage = path === "/" || title === siteConfig.name;
-  const containsBrand = new RegExp(
-    `\\b${siteConfig.short_name}\\b`,
-  ).test(title);
+  const containsBrand = new RegExp(`\\b${siteConfig.short_name}\\b`).test(
+    title,
+  );
   const pageTitle = isHomepage
     ? { absolute: siteConfig.name }
     : containsBrand

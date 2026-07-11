@@ -1736,7 +1736,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "salesforce",
     tagline:
       "Connect GitHub releases to Salesforce opportunities so sales always knows what engineering just shipped",
-    metaTitle: "GitHub + Salesforce Integration - Engineering to CRM Automation",
+    metaTitle:
+      "GitHub + Salesforce Integration - Engineering to CRM Automation",
     metaDescription:
       "Link GitHub and Salesforce with GAIA. Log releases to opportunities, alert account owners when features ship, and tie code milestones to pipeline activity.",
     keywords: [
@@ -1919,7 +1920,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "stripe",
     tagline:
       "Coordinate billing feature releases with Stripe configuration and catch payment-related code risks before they ship",
-    metaTitle: "GitHub + Stripe Integration - Deploy and Billing Change Automation",
+    metaTitle:
+      "GitHub + Stripe Integration - Deploy and Billing Change Automation",
     metaDescription:
       "Connect GitHub and Stripe with GAIA. Coordinate billing feature releases with Stripe changes, track payment-related PRs, and automate deployment notifications.",
     keywords: [
@@ -2009,7 +2011,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "airtable",
     tagline:
       "Sync GitHub issues and PRs to Airtable so your project database always reflects your code reality",
-    metaTitle: "GitHub + Airtable Integration - Sync Issues to Project Database",
+    metaTitle:
+      "GitHub + Airtable Integration - Sync Issues to Project Database",
     metaDescription:
       "Connect GitHub and Airtable with GAIA. Sync issues, PRs, and releases to Airtable bases automatically for custom reporting, roadmapping, and project tracking.",
     keywords: [
@@ -2098,7 +2101,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "loom",
     tagline:
       "Attach Loom walkthroughs to PRs and auto-request video reviews for complex code changes",
-    metaTitle: "GitHub + Loom Integration - Video Code Reviews and PR Walkthroughs",
+    metaTitle:
+      "GitHub + Loom Integration - Video Code Reviews and PR Walkthroughs",
     metaDescription:
       "Connect GitHub and Loom with GAIA. Attach Loom walkthroughs to PRs, request video reviews for complex changes, and make async code review more effective.",
     keywords: [

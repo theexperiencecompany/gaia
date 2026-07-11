@@ -477,6 +477,7 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
           const raw = String(row[props.xKey]);
           const label = rotateLabels ? truncate(raw, 6) : truncate(raw, 9);
           return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
             <G key={`group-${String(row[props.xKey])}-${i}`}>
               {keys.map((key, ki) => {
                 const val = toNumber(row[key]);
@@ -561,6 +562,7 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
             padTop + i * groupHeight + (groupHeight - usableGroupH) / 2;
           const groupCenter = padTop + i * groupHeight + groupHeight / 2;
           return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: static list rendered in a fixed order — the index-composited key is stable
             <G key={`group-${String(row[props.xKey])}-${i}`}>
               {keys.map((key, ki) => {
                 const val = toNumber(row[key]);
