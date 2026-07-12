@@ -7,6 +7,11 @@ from app.core.provider_registration import (
     unified_shutdown,
     unified_startup,
 )
+from app.services.device.revoke_listener import (
+    start_revoke_listener,
+    stop_revoke_listener,
+)
+from app.services.device.up_listener import start_up_listener, stop_up_listener
 from app.utils.browser_reaper import start_browser_reaper, stop_browser_reaper
 from app.utils.context_utils import _CONTEXT_EXECUTOR
 from shared.py.wide_events import log
@@ -22,6 +27,8 @@ async def lifespan(app: FastAPI):
         log.set(startup={"service": "gaia-api"})
         await unified_startup("main_app")
         start_browser_reaper()
+        start_revoke_listener()
+        start_up_listener()
         yield
 
     except Exception as e:
@@ -29,6 +36,8 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("Startup failed") from e
 
     finally:
+        await stop_up_listener()
+        await stop_revoke_listener()
         await stop_browser_reaper()
         await unified_shutdown("main_app")
         _CONTEXT_EXECUTOR.shutdown(wait=False)

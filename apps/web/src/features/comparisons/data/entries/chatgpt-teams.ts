@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "ChatGPT excels at conversation but waits for your prompts. GAIA proactively manages your workflow, automates tasks, and orchestrates 50+ tools autonomously.",
   metaTitle:
-    "ChatGPT Teams Alternative for Proactive Productivity | GAIA vs ChatGPT Teams",
+    "ChatGPT Teams Alternative for Proactive Productivity — GAIA vs ChatGPT Teams",
   metaDescription:
     "Compare GAIA and ChatGPT for productivity. ChatGPT answers questions, but GAIA proactively manages your email, calendar, tasks, and workflows across 50+ tools.",
   keywords: [

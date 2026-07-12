@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "iMessage-native proactive AI assistant",
   description:
     "Poke is a proactive AI assistant that monitors your email and calendar and nudges you through iMessage with one-tap actions. GAIA adds a full web and desktop app, deeper integrations, automated todos, and open-source self-hosting.",
-  metaTitle: "Poke Alternative with App & Open Source | GAIA vs Poke",
+  metaTitle: "Poke Alternative with App & Open Source — GAIA vs Poke",
   metaDescription:
     "Both GAIA and Poke are proactive AI assistants. GAIA adds a full web app, 50+ integrations, automated todo management, and open-source self-hosting that Poke doesn't offer.",
   keywords: [

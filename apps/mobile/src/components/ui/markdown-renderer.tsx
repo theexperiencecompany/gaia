@@ -707,5 +707,5 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
 
 const MarkdownRenderer = memo(MarkdownRendererInner);
 
-export { MarkdownRenderer };
 export type { MarkdownRendererProps };
+export { MarkdownRenderer };

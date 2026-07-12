@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Gemini deeply integrates with Google Workspace and is rolling out Proactive Assistance, but stays Google-centric. GAIA proactively manages your entire digital workflow across 50+ tools, not just Google products.",
   metaTitle:
-    "Google Gemini Alternative for Proactive Productivity | GAIA vs Gemini",
+    "Google Gemini Alternative for Proactive Productivity — GAIA vs Gemini",
   metaDescription:
     "Google Gemini enhances Workspace apps and is adding proactive features, but remains Google-only. GAIA is an open-source Gemini alternative that works across Gmail, Slack, Notion, GitHub, and 50+ tools — proactively managing your email, calendar, and tasks.",
   keywords: [

@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "To-do lists lack priority levels, due date intelligence, and AI sorting",
     "Minimal reporting and no proactive workflow assistance",
   ],
-  metaTitle: "Best Basecamp Alternative in 2026 | GAIA",
+  metaTitle: "Best Basecamp Alternative in 2026",
   metaDescription:
     "Looking for a smarter Basecamp alternative? GAIA is a proactive AI assistant with email, calendar, and task management built in. Free tier + self-hosting available.",
   keywords: [

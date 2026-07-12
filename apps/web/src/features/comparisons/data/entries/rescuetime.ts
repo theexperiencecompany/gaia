@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "RescueTime runs in the background to track how you spend your time on apps and websites, then surfaces productivity reports. GAIA goes further by acting on those insights to proactively manage your schedule and reduce distractions.",
   metaTitle:
-    "RescueTime Alternative with Proactive AI Assistance | GAIA vs RescueTime",
+    "RescueTime Alternative with Proactive AI Assistance — GAIA vs RescueTime",
   metaDescription:
     "RescueTime tracks time passively but can't act on what it finds. GAIA is an open-source alternative that monitors your workflow and proactively manages tasks, calendar, and focus — free tier available.",
   keywords: [

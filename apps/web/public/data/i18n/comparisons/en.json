@@ -3,7 +3,7 @@
     "name": "Activepieces",
     "tagline": "Open-source workflow automation with a visual flow builder",
     "description": "Activepieces is an open-source, no-code automation platform built as a Zapier alternative. It lets you connect 440+ apps through a visual flow builder and rule-based triggers. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously — acting on your behalf without you needing to define every rule.",
-    "metaTitle": "Activepieces Alternative with AI Email | GAIA vs Activepieces",
+    "metaTitle": "Activepieces Alternative with AI Email — GAIA vs Activepieces",
     "metaDescription": "Activepieces is a solid open-source automation platform but requires you to build every rule manually. GAIA is an open-source Activepieces alternative with AI email integration and autonomous decision-making — no flow builder needed to automate your workflows.",
     "keywords": [
       "GAIA vs Activepieces",
@@ -105,7 +105,7 @@
     "name": "Airtable",
     "tagline": "Flexible spreadsheet-database hybrid for building custom workflows",
     "description": "Airtable combines the flexibility of a spreadsheet with the power of a relational database, letting teams build custom project trackers, content calendars, and CRMs without code. GAIA adds proactive AI that autonomously manages the email, tasks, and workflows that feed those databases — eliminating the manual data entry Airtable requires.",
-    "metaTitle": "Airtable Alternative with Proactive AI Workflow Management | GAIA vs Airtable",
+    "metaTitle": "Airtable Alternative with Proactive AI Workflow Management — GAIA vs Airtable",
     "metaDescription": "Airtable organizes your data but won't proactively manage your tasks or inbox. GAIA is an open-source alternative with AI task management, email integration, and 50+ tool connections — free tier available.",
     "keywords": [
       "Airtable alternative",
@@ -265,7 +265,7 @@
     "name": "Akiflow",
     "tagline": "Unified task inbox and calendar time-blocking tool for power users",
     "description": "Akiflow is a keyboard-driven productivity app that aggregates tasks from 30+ tools (Asana, Todoist, Jira, Gmail, Slack) into a unified inbox and lets you time-block them directly onto a synced calendar — designed for power users who juggle multiple task systems and want a single planning hub. GAIA is a proactive AI productivity OS that creates tasks autonomously from your email and conversations, manages your calendar, and runs cross-tool workflows — reducing the administrative layer that Akiflow helps you organize.",
-    "metaTitle": "Akiflow Alternative with Proactive AI | GAIA vs Akiflow",
+    "metaTitle": "Akiflow Alternative with Proactive AI — GAIA vs Akiflow",
     "metaDescription": "Compare GAIA and Akiflow. Akiflow unifies tasks from 30+ apps for calendar time-blocking, but GAIA creates tasks autonomously from email, manages your calendar, and automates cross-tool workflows.",
     "keywords": [
       "GAIA vs Akiflow",
@@ -370,7 +370,7 @@
     "name": "Any.do",
     "tagline": "Simple to-do list for you and your team",
     "description": "Any.do is a polished task and list manager with calendar syncing, WhatsApp reminders, and a ChatGPT-powered assistant. GAIA goes far beyond list management to proactively orchestrate your entire digital workflow with a deeply contextual AI agent.",
-    "metaTitle": "Any.do Alternative with AI Email & Workflows | GAIA vs Any.do",
+    "metaTitle": "Any.do Alternative with AI Email & Workflows — GAIA vs Any.do",
     "metaDescription": "Any.do is a polished task manager but requires manual entry and lacks email automation. GAIA is an open-source Any.do alternative with AI email integration, multi-step workflow automation, and 50+ tool integrations — with a free tier.",
     "keywords": [
       "GAIA vs Any.do",
@@ -469,7 +469,7 @@
     "name": "Apple Reminders",
     "tagline": "Apple's built-in task and reminder app for iPhone, iPad, and Mac",
     "description": "Apple Reminders is the built-in, completely free task management app for iPhone, iPad, and Mac — with smart lists, location-based alerts, natural language input, and Siri integration across the Apple ecosystem. GAIA is a proactive, cross-platform AI assistant that manages tasks, email, and calendar intelligently across 50+ integrations, going far beyond what any single-ecosystem reminder app can reach.",
-    "metaTitle": "Apple Reminders Alternative: GAIA vs Apple Reminders | AI Task Manager | GAIA",
+    "metaTitle": "Apple Reminders Alternative: GAIA vs Apple Reminders | AI Task Manager",
     "metaDescription": "Compare GAIA and Apple Reminders. Apple Reminders is a great free task app for Apple users. GAIA adds proactive AI across email, calendar, and tasks — and works on Windows, Android, and any browser.",
     "keywords": [
       "Apple Reminders alternative",
@@ -570,7 +570,7 @@
     "name": "Asana",
     "tagline": "Team project and task management platform",
     "description": "Asana is a team collaboration and project management tool built for tracking work across teams. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across your entire digital life.",
-    "metaTitle": "Asana Alternative Without Per-Seat Pricing | GAIA vs Asana",
+    "metaTitle": "Asana Alternative Without Per-Seat Pricing — GAIA vs Asana",
     "metaDescription": "Asana charges per seat and still requires manual task management. GAIA is an open-source Asana alternative with AI that auto-creates tasks from email, automates workflows, and offers free self-hosting — no per-seat fees.",
     "keywords": [
       "GAIA vs Asana",
@@ -672,7 +672,7 @@
     "name": "Bardeen",
     "tagline": "Automate your browser with AI",
     "description": "Bardeen is a Chrome extension that automates browser-based tasks through AI-generated playbooks and point-and-click web scraping. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows across 50+ apps via deep API integrations — no browser required.",
-    "metaTitle": "Bardeen Alternative with Proactive AI | GAIA vs Bardeen",
+    "metaTitle": "Bardeen Alternative with Proactive AI — GAIA vs Bardeen",
     "metaDescription": "Bardeen automates browser tasks but relies on screen scraping and needs manual triggers. GAIA is an open-source Bardeen alternative with proactive AI that uses real API connections to manage email, calendar, and workflows across 50+ tools.",
     "keywords": [
       "GAIA vs Bardeen",
@@ -774,7 +774,7 @@
     "name": "Basecamp",
     "tagline": "All-in-one team project management and communication",
     "description": "Basecamp is an opinionated all-in-one platform for team project management, combining to-do lists, message boards, group chats, file storage, and schedules into a single calm workspace. GAIA is a proactive AI assistant that manages your email, calendar, and tasks across 50+ integrations — bringing intelligent automation to the coordination that Basecamp handles manually.",
-    "metaTitle": "GAIA vs Basecamp: Proactive AI Assistant vs Team Collaboration Platform | GAIA",
+    "metaTitle": "GAIA vs Basecamp: Proactive AI Assistant vs Team Collaboration Platform",
     "metaDescription": "Compare GAIA and Basecamp. Basecamp brings team projects into one calm workspace. GAIA reads your email, manages your calendar, and automates workflows proactively across 50+ tools.",
     "keywords": [
       "GAIA vs Basecamp",
@@ -875,7 +875,7 @@
     "name": "Bear",
     "tagline": "Beautiful markdown notes for Mac and iOS",
     "description": "Bear is a focused markdown note-taking app for Apple devices with a beautiful UI and tagging system. GAIA is a proactive AI assistant that manages your tasks, email, calendar, and notes across 50+ integrations — available on every platform.",
-    "metaTitle": "Bear App Alternative with AI & Cross-Platform Support | GAIA vs Bear",
+    "metaTitle": "Bear App Alternative with AI & Cross-Platform Support — GAIA vs Bear",
     "metaDescription": "Bear is a gorgeous notes app but lives only on Apple devices. GAIA is a free, open-source alternative with AI email management, task automation, and cross-platform support across 50+ integrations.",
     "keywords": [
       "bear app alternative",
@@ -993,7 +993,7 @@
     "name": "Cal.com",
     "tagline": "Open-source scheduling infrastructure for everyone",
     "description": "Cal.com is an open-source scheduling platform — the self-hostable alternative to Calendly — that lets people book meetings with you through shareable booking links with calendar sync and automated workflows. GAIA is a proactive AI assistant that manages your entire calendar, email, and tasks intelligently, going far beyond booking links to actively orchestrate your schedule and respond to incoming requests.",
-    "metaTitle": "GAIA vs Cal.com: AI Calendar Assistant vs Open-Source Scheduling Tool | GAIA",
+    "metaTitle": "GAIA vs Cal.com: AI Calendar Assistant vs Open-Source Scheduling Tool",
     "metaDescription": "Compare GAIA and Cal.com. Cal.com handles booking links and scheduling automation. GAIA proactively manages your full calendar, reads your email, and orchestrates your entire schedule with AI.",
     "keywords": [
       "GAIA vs Cal.com",
@@ -1099,7 +1099,7 @@
     "name": "Calendly",
     "tagline": "Scheduling automation for external booking links",
     "description": "Calendly lets people book time with you by sharing a link to your availability. GAIA manages your entire calendar from the inside — scheduling meetings, finding free slots, preparing briefings, and automating follow-ups — without generating public booking pages.",
-    "metaTitle": "Calendly Alternative with Full AI Productivity OS | GAIA vs Calendly",
+    "metaTitle": "Calendly Alternative with Full AI Productivity OS — GAIA vs Calendly",
     "metaDescription": "Calendly handles scheduling links but stops there. GAIA is an open-source Calendly alternative that is a full AI productivity OS — managing your calendar, email, tasks, and workflows across 50+ tools proactively, with a free tier.",
     "keywords": [
       "GAIA vs Calendly",
@@ -1201,7 +1201,7 @@
     "name": "Capacities",
     "tagline": "Object-based personal knowledge management studio for your mind",
     "description": "Capacities is a personal knowledge management tool built around an object-oriented philosophy — every note is a typed object (person, book, project, daily note) that can be linked, queried, and organized relationally. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, connecting your entire work context in a graph-based memory rather than a manually-curated knowledge studio.",
-    "metaTitle": "Capacities Alternative with AI Email & Automation | GAIA vs Capacities",
+    "metaTitle": "Capacities Alternative with AI Email & Automation — GAIA vs Capacities",
     "metaDescription": "Compare GAIA and Capacities. Capacities builds a rich personal knowledge studio, but GAIA manages email, calendar, tasks, and workflows proactively with AI-driven graph memory.",
     "keywords": [
       "GAIA vs Capacities",
@@ -1302,7 +1302,7 @@
     "name": "ChatGPT Enterprise",
     "tagline": "OpenAI's enterprise AI platform with SSO, admin controls, and GPT-4",
     "description": "ChatGPT Enterprise gives organisations a secure, managed version of ChatGPT with admin controls, SSO, higher usage limits, and data privacy guarantees. GAIA goes beyond conversational AI to proactively manage workflows, email, calendar, and 50+ tool integrations with autonomous action — and is fully open source with self-hosting available.",
-    "metaTitle": "ChatGPT Enterprise Alternative with Proactive AI Workflows | GAIA vs ChatGPT Enterprise",
+    "metaTitle": "ChatGPT Enterprise Alternative with Proactive AI Workflows — GAIA vs ChatGPT Enterprise",
     "metaDescription": "ChatGPT Enterprise answers questions but won't proactively manage your workflow. GAIA is an open-source alternative that autonomously manages email, tasks, and 50+ integrations — self-hostable and free tier available.",
     "keywords": [
       "ChatGPT Enterprise alternative",
@@ -1462,7 +1462,7 @@
     "name": "ChatGPT",
     "tagline": "OpenAI's conversational AI",
     "description": "ChatGPT excels at conversation but waits for your prompts. GAIA proactively manages your workflow, automates tasks, and orchestrates 50+ tools autonomously.",
-    "metaTitle": "ChatGPT Teams Alternative for Proactive Productivity | GAIA vs ChatGPT Teams",
+    "metaTitle": "ChatGPT Teams Alternative for Proactive Productivity — GAIA vs ChatGPT Teams",
     "metaDescription": "Compare GAIA and ChatGPT for productivity. ChatGPT answers questions, but GAIA proactively manages your email, calendar, tasks, and workflows across 50+ tools.",
     "keywords": [
       "GAIA vs ChatGPT",
@@ -1554,7 +1554,7 @@
     "name": "ChatGPT",
     "tagline": "Conversational AI chatbot by OpenAI",
     "description": "ChatGPT is a general-purpose conversational AI that answers questions, drafts text, and writes code on demand. GAIA is a proactive productivity OS that manages your email, calendar, tasks, and workflows without being asked.",
-    "metaTitle": "ChatGPT Alternative That Manages Your Inbox | GAIA vs ChatGPT",
+    "metaTitle": "ChatGPT Alternative That Manages Your Inbox — GAIA vs ChatGPT",
     "metaDescription": "ChatGPT is great for conversation but won't proactively manage your inbox or automate workflows. GAIA is an open-source ChatGPT alternative that monitors your email, calendar, and tasks — acting before you ask, with a free tier available.",
     "keywords": [
       "GAIA vs ChatGPT",
@@ -1658,7 +1658,7 @@
     "name": "Claude",
     "tagline": "AI conversational assistant by Anthropic",
     "description": "Claude excels at reasoning and conversation. GAIA goes beyond conversation to proactively manage your work, integrations, and daily workflows.",
-    "metaTitle": "Claude Alternative with Email & Calendar Management | GAIA vs Claude",
+    "metaTitle": "Claude Alternative with Email & Calendar Management — GAIA vs Claude",
     "metaDescription": "Claude is a powerful conversational AI but doesn't manage your inbox or automate workflows. GAIA is an open-source Claude alternative with email triage, calendar management, and proactive task automation across 50+ tools.",
     "keywords": [
       "GAIA vs Claude",
@@ -1745,7 +1745,7 @@
     "name": "ClickUp",
     "tagline": "All-in-one project management platform",
     "description": "ClickUp is a feature-rich project management tool. GAIA adds AI intelligence to automate work proactively rather than requiring manual project management.",
-    "metaTitle": "ClickUp Alternative with Proactive AI | GAIA vs ClickUp",
+    "metaTitle": "ClickUp Alternative with Proactive AI — GAIA vs ClickUp",
     "metaDescription": "ClickUp is powerful but still requires manual management. GAIA is an open-source ClickUp alternative with proactive AI that auto-creates tasks from email, manages your calendar, and automates workflows across 50+ tools — with a free tier.",
     "keywords": [
       "GAIA vs ClickUp",
@@ -1837,7 +1837,7 @@
     "name": "Clockify",
     "tagline": "Free time tracker for teams and project billing",
     "description": "Clockify is a free time tracking tool for teams, offering timesheets, project tracking, and billing reports. GAIA goes beyond time logging to proactively manage your tasks, email, and workflows with AI.",
-    "metaTitle": "Clockify Alternative with AI Task & Workflow Management | GAIA vs Clockify",
+    "metaTitle": "Clockify Alternative with AI Task & Workflow Management — GAIA vs Clockify",
     "metaDescription": "Clockify tracks time but won't manage your tasks or automate your workflow. GAIA is a free, open-source alternative that proactively handles your inbox, calendar, and tasks across 50+ integrations.",
     "keywords": [
       "clockify alternative",
@@ -1945,7 +1945,7 @@
     "name": "Clockwise",
     "tagline": "AI-powered calendar optimizer for teams",
     "description": "Clockwise optimizes team calendars by auto-scheduling focus time and finding the best meeting slots. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across your entire digital life.",
-    "metaTitle": "Clockwise Alternative with AI Email Management | GAIA vs Clockwise",
+    "metaTitle": "Clockwise Alternative with AI Email Management — GAIA vs Clockwise",
     "metaDescription": "Clockwise optimizes team calendars but doesn't touch your inbox or automate cross-tool workflows. GAIA is an open-source Clockwise alternative with AI email management, calendar intelligence, and workflow automation across 50+ tools.",
     "keywords": [
       "GAIA vs Clockwise",
@@ -2038,7 +2038,7 @@
     "name": "Coda",
     "tagline": "The doc that thinks like an app",
     "description": "Coda.io is a powerful all-in-one platform that blends documents, spreadsheets, and app builder functionality into a single workspace. GAIA is a proactive AI assistant that connects your entire digital workflow — email, calendar, tasks, and 50+ integrations — with autonomous action.",
-    "metaTitle": "Coda.io Alternative with Proactive AI & Workflow Automation | GAIA vs Coda",
+    "metaTitle": "Coda.io Alternative with Proactive AI & Workflow Automation — GAIA vs Coda",
     "metaDescription": "Coda is powerful but complex. GAIA is a free, open-source Coda alternative with proactive AI email management, calendar automation, and cross-tool workflows across 50+ integrations — no formula expertise required.",
     "keywords": [
       "coda alternative",
@@ -2156,7 +2156,7 @@
     "name": "Confluence",
     "tagline": "Atlassian's team wiki and documentation platform",
     "description": "Confluence is Atlassian's enterprise team wiki and knowledge management platform, widely used alongside Jira for software teams. GAIA is a proactive AI assistant that connects documentation to email, tasks, calendar, and 50+ integrations with autonomous action.",
-    "metaTitle": "Confluence Alternative with AI Automation & Proactive Workflows | GAIA vs Confluence",
+    "metaTitle": "Confluence Alternative with AI Automation & Proactive Workflows — GAIA vs Confluence",
     "metaDescription": "Confluence stores team knowledge but stays passive. GAIA is a free, open-source Confluence alternative with AI email management, Jira integration, proactive task creation, and workflow automation across 50+ tools.",
     "keywords": [
       "confluence alternative",
@@ -2274,7 +2274,7 @@
     "name": "Microsoft Copilot",
     "tagline": "AI embedded in the Microsoft 365 suite",
     "description": "Microsoft Copilot is an AI assistant deeply embedded in the Microsoft 365 ecosystem — Word, Excel, PowerPoint, Outlook, and Teams. GAIA takes a cross-platform, open-source approach that works across Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools regardless of your existing stack.",
-    "metaTitle": "Microsoft Copilot Alternative with Proactive AI | GAIA vs Copilot",
+    "metaTitle": "Microsoft Copilot Alternative with Proactive AI — GAIA vs Copilot",
     "metaDescription": "Microsoft Copilot is locked to Microsoft 365 and stays reactive. GAIA is an open-source Copilot alternative that works across Gmail, Slack, Notion, and 50+ tools — proactively managing email, calendar, and tasks with a free tier.",
     "keywords": [
       "GAIA vs Copilot",
@@ -2378,7 +2378,7 @@
     "name": "Craft",
     "tagline": "Beautiful documents, notes, and tasks built for Apple devices",
     "description": "Craft is a beautifully designed document and note-taking app with deep Apple platform integration, rich formatting, and an AI writing assistant built into the editor. GAIA is a proactive AI assistant that manages your email, calendar, and tasks across 50+ integrations — orchestrating your digital work beyond what any single note-taking app can reach.",
-    "metaTitle": "GAIA vs Craft: AI Productivity Assistant vs Document and Notes App | GAIA",
+    "metaTitle": "GAIA vs Craft: AI Productivity Assistant vs Document and Notes App",
     "metaDescription": "Compare GAIA and Craft. Craft creates beautiful documents with AI writing assistance on Apple devices. GAIA reads your email, manages your calendar, and automates workflows across 50+ tools.",
     "keywords": [
       "GAIA vs Craft",
@@ -2479,7 +2479,7 @@
     "name": "Cursor",
     "tagline": "The best way to code with AI",
     "description": "Cursor is an AI-first code editor built on VS Code that brings inline completions, multi-file edits, and background agents directly into the coding environment. GAIA complements the editor by managing everything outside it — email, calendar, GitHub notifications, Linear tickets, standup summaries, and 50+ integrations — so developers can stay in flow without context-switching.",
-    "metaTitle": "Cursor AI Alternative for Full Productivity OS | GAIA vs Cursor AI",
+    "metaTitle": "Cursor AI Alternative for Full Productivity OS — GAIA vs Cursor AI",
     "metaDescription": "Cursor is excellent inside the editor but won't manage your inbox, calendar, or cross-tool workflows. GAIA is an open-source Cursor AI companion for full productivity — handling email, GitHub notifications, Linear tickets, and 50+ integrations outside the editor.",
     "keywords": [
       "GAIA vs Cursor",
@@ -2579,7 +2579,7 @@
     "name": "DeepSeek",
     "tagline": "Open-weight LLM with strong coding and free API access",
     "description": "DeepSeek is a powerful open-weight large language model from China with strong coding capabilities and a free API tier. GAIA is a proactive AI productivity assistant that connects AI intelligence to real workflow automation across email, calendar, tasks, and 50+ integrations.",
-    "metaTitle": "DeepSeek Alternative for Productivity Automation | GAIA vs DeepSeek",
+    "metaTitle": "DeepSeek Alternative for Productivity Automation — GAIA vs DeepSeek",
     "metaDescription": "DeepSeek is a powerful open LLM but it won't manage your inbox or automate workflows. GAIA is an open-source alternative that proactively manages tasks, email, and workflows across 50+ integrations.",
     "keywords": [
       "deepseek alternative",
@@ -2692,7 +2692,7 @@
     "name": "Discord",
     "tagline": "Community chat with voice channels and Clyde AI",
     "description": "Discord is a community and team communication platform with voice channels, bots, and the Clyde AI assistant. GAIA is a proactive AI productivity assistant that manages tasks, email, calendar, and workflows — connecting your team's communication to real execution.",
-    "metaTitle": "Discord Alternative for Team Productivity Automation | GAIA vs Discord",
+    "metaTitle": "Discord Alternative for Team Productivity Automation — GAIA vs Discord",
     "metaDescription": "Discord is great for community chat but not task management or workflow automation. GAIA is an open-source alternative that connects team communications to tasks, email, and workflows across 50+ integrations.",
     "keywords": [
       "discord alternative",
@@ -2805,7 +2805,7 @@
     "name": "Evernote",
     "tagline": "Classic note-taking and personal organization tool with web clipping",
     "description": "Evernote is one of the original digital note-taking platforms — a place to capture notes, clip web pages, scan documents, and organize information across notebooks with powerful search. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, building a connected knowledge graph from your live digital activity rather than manually captured notes.",
-    "metaTitle": "Evernote Alternative with Proactive AI | GAIA vs Evernote",
+    "metaTitle": "Evernote Alternative with Proactive AI — GAIA vs Evernote",
     "metaDescription": "Compare GAIA and Evernote. Evernote organizes your notes and clippings, but GAIA manages email, calendar, tasks, and workflows proactively — with AI that acts on your context, not just stores it.",
     "keywords": [
       "GAIA vs Evernote",
@@ -2910,7 +2910,7 @@
     "name": "Fantastical",
     "tagline": "The best calendar app you've ever seen",
     "description": "Fantastical is a premium Apple-ecosystem calendar and tasks app known for its natural language event creation and polished design. GAIA goes far beyond calendar management to orchestrate your entire digital workflow across email, tasks, integrations, and more.",
-    "metaTitle": "Fantastical Alternative with AI Automation | GAIA vs Fantastical",
+    "metaTitle": "Fantastical Alternative with AI Automation — GAIA vs Fantastical",
     "metaDescription": "Fantastical is a premium Apple calendar but doesn't manage your inbox or automate workflows. GAIA is an open-source Fantastical alternative with AI automation across email, calendar, and 50+ tools — on every platform, with a free tier.",
     "keywords": [
       "GAIA vs Fantastical",
@@ -3008,7 +3008,7 @@
     "name": "Fathom",
     "tagline": "Free AI meeting notetaker with CRM sync",
     "description": "Fathom is a free AI meeting notetaker that records, transcribes, and summarizes calls with CRM sync for Salesforce and HubSpot. GAIA is a proactive AI assistant that manages your complete workflow across tasks, email, calendar, and meetings.",
-    "metaTitle": "Fathom Alternative for Full Productivity Automation | GAIA vs Fathom",
+    "metaTitle": "Fathom Alternative for Full Productivity Automation — GAIA vs Fathom",
     "metaDescription": "Fathom's free notetaker is excellent but limited to meetings. GAIA is an open-source alternative that connects meeting outcomes to tasks, email follow-ups, and 50+ integrations automatically.",
     "keywords": [
       "fathom alternative",
@@ -3121,7 +3121,7 @@
     "name": "Figma",
     "tagline": "Collaborative design tool with Figma AI for UI generation",
     "description": "Figma is the industry-standard collaborative design tool featuring Figma AI for UI generation and design suggestions. GAIA is a proactive AI productivity assistant that manages the project workflows, tasks, and communications surrounding design work.",
-    "metaTitle": "Figma Alternative for Design Workflow Automation | GAIA vs Figma",
+    "metaTitle": "Figma Alternative for Design Workflow Automation — GAIA vs Figma",
     "metaDescription": "Figma AI handles UI design but not the project management around it. GAIA is an open-source alternative that automates tasks, emails, and workflows across design and engineering teams with 50+ integrations.",
     "keywords": [
       "figma alternative",
@@ -3234,7 +3234,7 @@
     "name": "Fireflies.ai",
     "tagline": "AI meeting recorder with search and CRM sync",
     "description": "Fireflies.ai automatically records, transcribes, and indexes meetings with AI-powered search and CRM integrations. GAIA is a proactive AI assistant that manages your full productivity workflow — not just what happened in calls.",
-    "metaTitle": "Fireflies.ai Alternative for Full Workflow Automation | GAIA vs Fireflies",
+    "metaTitle": "Fireflies.ai Alternative for Full Workflow Automation — GAIA vs Fireflies",
     "metaDescription": "Fireflies records and searches meetings but stops at the transcript. GAIA is an open-source alternative that automates task creation, follow-up emails, and workflows across 50+ tools after every meeting.",
     "keywords": [
       "fireflies ai alternative",
@@ -3347,7 +3347,7 @@
     "name": "Focusmate",
     "tagline": "Virtual co-working and body-doubling for accountability-driven focus",
     "description": "Focusmate pairs you with an accountability partner for 25, 50, or 75-minute virtual co-working sessions using body-doubling psychology to help you follow through on work. GAIA takes a different approach by proactively managing your workflow to create the conditions for deep focus without requiring a scheduled partner.",
-    "metaTitle": "Focusmate Alternative with AI Focus and Workflow Management | GAIA vs Focusmate",
+    "metaTitle": "Focusmate Alternative with AI Focus and Workflow Management — GAIA vs Focusmate",
     "metaDescription": "Focusmate needs a partner and a scheduled session. GAIA is an open-source alternative that proactively schedules focus time, manages your inbox, and automates your workflow across 50+ tools — free tier available.",
     "keywords": [
       "Focusmate alternative",
@@ -3507,7 +3507,7 @@
     "name": "Forest",
     "tagline": "Gamified Pomodoro focus app that grows virtual trees while you work",
     "description": "Forest is a focus app that helps you stay off your phone by growing a virtual tree during focus sessions. GAIA takes a proactive approach to focus — scheduling protected work blocks, managing distracting email, and automating routine tasks so you can focus on the work that actually matters.",
-    "metaTitle": "Forest App Alternative with AI-Powered Focus Management | GAIA vs Forest",
+    "metaTitle": "Forest App Alternative with AI-Powered Focus Management — GAIA vs Forest",
     "metaDescription": "Forest helps you avoid your phone but can't manage your workflow. GAIA is an open-source alternative that proactively schedules focus time, manages your inbox, and automates tasks across 50+ tools — free tier available.",
     "keywords": [
       "Forest app alternative",
@@ -3667,7 +3667,7 @@
     "name": "Gemini",
     "tagline": "Google's AI assistant",
     "description": "Gemini integrates with Google Workspace but remains reactive. GAIA proactively manages your entire digital workflow across 50+ tools, not just Google products.",
-    "metaTitle": "Google Gemini Alternative for Proactive Productivity | GAIA vs Gemini",
+    "metaTitle": "Google Gemini Alternative for Proactive Productivity — GAIA vs Gemini",
     "metaDescription": "Google Gemini enhances Workspace apps but stays reactive and Google-only. GAIA is an open-source Gemini alternative that works across Gmail, Slack, Notion, GitHub, and 50+ tools — proactively managing your email, calendar, and tasks.",
     "keywords": [
       "GAIA vs Gemini",
@@ -3844,7 +3844,7 @@
     "name": "Google Calendar",
     "tagline": "Google's free calendar for scheduling and time management",
     "description": "Google Calendar is the world's most widely used digital calendar — free, reliable, and deeply integrated with Gmail and Google Workspace for scheduling events, managing reminders, and sharing availability. GAIA is a proactive AI assistant that wraps around Google Calendar with intelligent automation: preparing meeting briefings, detecting scheduling conflicts, creating events from email, and orchestrating your time across 50+ connected tools.",
-    "metaTitle": "Google Calendar AI: GAIA vs Google Calendar Standalone | Smart Calendar Assistant | GAIA",
+    "metaTitle": "Google Calendar AI: GAIA vs Google Calendar Standalone | Smart Calendar Assistant",
     "metaDescription": "Compare GAIA and Google Calendar standalone. Google Calendar is a reliable free scheduling tool. GAIA adds proactive AI to your calendar: briefings, email-to-event, conflict detection, and 50+ integrations.",
     "keywords": [
       "Google Calendar AI",
@@ -3949,7 +3949,7 @@
     "name": "Grammarly",
     "tagline": "AI writing assistant for grammar, style, and tone",
     "description": "Grammarly is an AI-powered writing assistant that checks grammar, spelling, style, and tone across browsers, apps, and documents. GAIA is a proactive AI productivity assistant that manages email, tasks, calendar, and 50+ integrations — with AI-assisted writing built in.",
-    "metaTitle": "Grammarly Alternative with Proactive AI Email & Workflow Management | GAIA vs Grammarly",
+    "metaTitle": "Grammarly Alternative with Proactive AI Email & Workflow Management — GAIA vs Grammarly",
     "metaDescription": "Grammarly improves your writing but doesn't manage your workflow. GAIA is a free, open-source Grammarly alternative with AI email drafting, proactive task creation, and workflow automation across 50+ integrations.",
     "keywords": [
       "grammarly alternative",
@@ -4067,7 +4067,7 @@
     "name": "Granola",
     "tagline": "AI notepad for meetings that runs locally on Mac",
     "description": "Granola is a local-first Mac app that enhances your own meeting notes with AI, running on-device for privacy. GAIA is a proactive AI assistant that manages your full workflow — tasks, email, calendar, and cross-tool automation beyond meetings.",
-    "metaTitle": "Granola Alternative with Full Workflow Automation | GAIA vs Granola",
+    "metaTitle": "Granola Alternative with Full Workflow Automation — GAIA vs Granola",
     "metaDescription": "Granola is a private local Mac meeting notepad. GAIA is an open-source alternative that goes beyond notes to automate tasks, emails, and workflows across 50+ integrations — with self-hosting for the same privacy.",
     "keywords": [
       "granola alternative",
@@ -4185,7 +4185,7 @@
     "name": "Grok",
     "tagline": "xAI's real-time AI assistant integrated with X/Twitter",
     "description": "Grok is xAI's AI assistant with real-time access to X/Twitter data and the latest world events. GAIA is a proactive productivity AI that manages your email, calendar, tasks, and workflows — turning AI into a system that works for you, not just answers questions.",
-    "metaTitle": "Grok Alternative for Productivity Automation | GAIA vs Grok",
+    "metaTitle": "Grok Alternative for Productivity Automation — GAIA vs Grok",
     "metaDescription": "Grok answers questions in real time but won't manage your inbox or automate tasks. GAIA is an open-source alternative that proactively manages your workflow across Gmail, calendar, and 50+ integrations.",
     "keywords": [
       "grok alternative",
@@ -4298,7 +4298,7 @@
     "name": "Harvest",
     "tagline": "Time tracking and invoicing for freelancers and teams",
     "description": "Harvest combines time tracking with invoicing, expense tracking, and project budgeting for freelancers and agencies. GAIA complements billing workflows by proactively managing the email, tasks, calendar, and cross-tool coordination that happens around billable work — reducing the non-billable overhead that Harvest tracks but cannot prevent.",
-    "metaTitle": "Harvest Alternative with AI Task and Workflow Management | GAIA vs Harvest",
+    "metaTitle": "Harvest Alternative with AI Task and Workflow Management — GAIA vs Harvest",
     "metaDescription": "Harvest tracks time and invoices clients, but it won't manage your tasks or automate your workflow. GAIA is an open-source AI alternative with email integration, task management, and 50+ tool connections — free tier available.",
     "keywords": [
       "Harvest alternative",
@@ -4458,7 +4458,7 @@
     "name": "Height",
     "tagline": "The autonomous project management tool",
     "description": "Height was an AI-powered project management tool for product teams that focused on autonomous task automation like bug triage and backlog pruning. GAIA takes a broader approach as a proactive personal AI assistant that manages email, calendar, tasks, and workflows across your entire digital life.",
-    "metaTitle": "Height App Alternative with AI Productivity | GAIA vs Height",
+    "metaTitle": "Height App Alternative with AI Productivity — GAIA vs Height",
     "metaDescription": "Height focused on AI project management for teams but didn't manage your inbox or calendar. GAIA is an open-source Height alternative with full AI productivity — email, calendar, tasks, and workflow automation across 50+ tools — free to self-host.",
     "keywords": [
       "GAIA vs Height",
@@ -4550,7 +4550,7 @@
     "name": "HEY Email",
     "tagline": "A delightfully opinionated take on email",
     "description": "HEY is an opinionated email service from 37signals that reimagines the inbox with a unique three-section model — the Imbox, The Feed, and Paper Trail. GAIA is a proactive AI productivity OS that manages your email alongside calendar, tasks, workflows, and 50+ integrations — without requiring you to abandon Gmail or adopt a proprietary email address.",
-    "metaTitle": "HEY Email Alternative with AI Automation | GAIA vs HEY",
+    "metaTitle": "HEY Email Alternative with AI Automation — GAIA vs HEY",
     "metaDescription": "HEY Email reimagines the inbox with an opinionated structure but still requires manual work. GAIA is an open-source HEY Email alternative with AI automation that triages your Gmail, drafts replies, creates tasks, and runs workflows — with a free tier.",
     "keywords": [
       "GAIA vs HEY",
@@ -4664,7 +4664,7 @@
     "name": "HubSpot",
     "tagline": "CRM, marketing automation, sales, and customer service platform",
     "description": "HubSpot is a comprehensive CRM platform covering marketing automation, sales pipeline management, and customer service. GAIA focuses on the personal productivity layer — proactively managing your inbox, calendar, and task workflow with AI that acts across 50+ integrations including HubSpot itself.",
-    "metaTitle": "HubSpot Alternative for Personal AI Productivity | GAIA vs HubSpot",
+    "metaTitle": "HubSpot Alternative for Personal AI Productivity — GAIA vs HubSpot",
     "metaDescription": "HubSpot excels at CRM and marketing, but it won't manage your inbox or automate your personal workflow. GAIA is an open-source AI alternative that proactively handles email, tasks, and 50+ integrations — free tier available.",
     "keywords": [
       "HubSpot alternative",
@@ -4824,7 +4824,7 @@
     "name": "iA Writer",
     "tagline": "Minimalist markdown writing with focus mode",
     "description": "iA Writer is a minimalist markdown writing app focused on pure distraction-free writing with a distinctive Focus Mode that highlights only the sentence or paragraph you're currently writing. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and 50+ integrations.",
-    "metaTitle": "iA Writer Alternative with AI Automation & Workflow Integration | GAIA vs iA Writer",
+    "metaTitle": "iA Writer Alternative with AI Automation & Workflow Integration — GAIA vs iA Writer",
     "metaDescription": "iA Writer is minimalist but isolated from your workflow. GAIA is a free, open-source iA Writer alternative with AI email management, calendar automation, and cross-platform workflow orchestration across 50+ integrations.",
     "keywords": [
       "ia writer alternative",
@@ -4942,7 +4942,7 @@
     "name": "Jira",
     "tagline": "Enterprise project and issue tracking for software teams",
     "description": "Jira is Atlassian's enterprise-grade issue tracker built for software engineering teams. GAIA is a proactive AI personal assistant that manages your entire digital workflow across email, calendar, tasks, and 50+ integrations.",
-    "metaTitle": "Jira Alternative for Personal Productivity | GAIA vs Jira",
+    "metaTitle": "Jira Alternative for Personal Productivity — GAIA vs Jira",
     "metaDescription": "Jira is built for engineering teams — not personal productivity. GAIA is an open-source Jira alternative that manages your email, calendar, and tasks as a proactive AI assistant, with native Jira integration and a free tier.",
     "keywords": [
       "GAIA vs Jira",
@@ -5041,7 +5041,7 @@
     "name": "Lark",
     "tagline": "All-in-one collaboration suite by ByteDance",
     "description": "Lark (by ByteDance) is a unified team collaboration suite combining instant messaging, docs, spreadsheets, calendar, and video meetings. GAIA is a proactive AI assistant that layers autonomous intelligence on top of similar productivity capabilities — with open-source flexibility and 50+ integrations.",
-    "metaTitle": "Lark Alternative with Proactive AI Automation & Open-Source Flexibility | GAIA vs Lark",
+    "metaTitle": "Lark Alternative with Proactive AI Automation & Open-Source Flexibility — GAIA vs Lark",
     "metaDescription": "Lark combines chat, docs, and calendar but relies on manual workflows. GAIA is a free, open-source Lark alternative with proactive AI email management, task automation, and workflow orchestration across 50+ integrations.",
     "keywords": [
       "lark alternative",
@@ -5159,7 +5159,7 @@
     "name": "Limitless",
     "tagline": "Personalized AI memory via wearable and desktop",
     "description": "Limitless AI is a memory-capture platform built around a wearable pendant and desktop app that transcribes and summarizes conversations and meetings. GAIA is a proactive productivity OS that manages your email, calendar, tasks, and workflows across 50+ integrations — no hardware required.",
-    "metaTitle": "Limitless Alternative with Full Productivity AI | GAIA vs Limitless",
+    "metaTitle": "Limitless Alternative with Full Productivity AI — GAIA vs Limitless",
     "metaDescription": "Limitless captures conversations via a wearable but doesn't manage your inbox or automate workflows. GAIA is an open-source Limitless alternative with full productivity AI — managing email, calendar, tasks, and 50+ tool workflows entirely in software.",
     "keywords": [
       "GAIA vs Limitless",
@@ -5342,7 +5342,7 @@
     "name": "Linear",
     "tagline": "The system for product development",
     "description": "Linear is a fast, opinionated issue tracker built for engineering teams. GAIA integrates with Linear while also managing your email, calendar, and entire personal workflow as a proactive AI assistant.",
-    "metaTitle": "Linear Alternative with AI Email & Calendar | GAIA vs Linear",
+    "metaTitle": "Linear Alternative with AI Email & Calendar — GAIA vs Linear",
     "metaDescription": "Linear is a great issue tracker but doesn't manage your inbox or calendar. GAIA is an open-source Linear alternative that integrates with Linear while proactively managing email, calendar, and tasks across 50+ tools — with a free tier.",
     "keywords": [
       "GAIA vs Linear",
@@ -5441,7 +5441,7 @@
     "name": "Logseq",
     "tagline": "A privacy-first, open-source platform for knowledge management and collaboration",
     "description": "Logseq is an open-source outliner and personal knowledge management tool with local-first storage and a bidirectional graph view. GAIA goes further by proactively managing your email, calendar, tasks, and workflows — turning notes into actions automatically.",
-    "metaTitle": "Logseq Alternative with Proactive AI | GAIA vs Logseq",
+    "metaTitle": "Logseq Alternative with Proactive AI — GAIA vs Logseq",
     "metaDescription": "Logseq is a great open-source PKM but stays passive and note-focused. GAIA is an open-source Logseq alternative with proactive AI that manages your inbox, calendar, tasks, and automations across 50+ integrations — turning notes into action.",
     "keywords": [
       "GAIA vs Logseq",
@@ -5540,7 +5540,7 @@
     "name": "Loom",
     "tagline": "Async video messaging that replaces meetings",
     "description": "Loom is an async video messaging tool that lets teams share screen recordings to replace unnecessary meetings. GAIA is a proactive AI productivity assistant that manages the tasks, workflows, and communications that surround your work — with or without video.",
-    "metaTitle": "Loom Alternative for Async Workflow Automation | GAIA vs Loom",
+    "metaTitle": "Loom Alternative for Async Workflow Automation — GAIA vs Loom",
     "metaDescription": "Loom replaces meetings with video but won't manage your tasks or workflows. GAIA is an open-source alternative that automates your inbox, calendar, and cross-tool workflows across 50+ integrations.",
     "keywords": [
       "loom alternative",
@@ -5653,7 +5653,7 @@
     "name": "Make",
     "tagline": "Visual no-code automation platform connecting 2,000+ apps",
     "description": "Make (formerly Integromat) is a powerful visual automation platform where you build workflows by dragging and connecting modules on a canvas — with routers, iterators, aggregators, and error handlers for complex data pipelines. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and integrations through natural language and autonomous action, requiring no scenario-building or technical configuration to get started.",
-    "metaTitle": "Make.com Alternative with AI Reasoning | GAIA vs Make",
+    "metaTitle": "Make.com Alternative with AI Reasoning — GAIA vs Make",
     "metaDescription": "Compare GAIA and Make.com. Make is powerful for custom no-code automation, but GAIA manages email, calendar, tasks, and workflows through natural language — no scenario-building required.",
     "keywords": [
       "GAIA vs Make",
@@ -5758,7 +5758,7 @@
     "name": "Martin AI",
     "tagline": "AI productivity assistant",
     "description": "Martin AI offers AI-powered productivity features. GAIA provides a more comprehensive approach with 50+ integrations, proactive automation, and complete open-source transparency.",
-    "metaTitle": "Martin AI Alternative — Self-Hosted with Email & Calendar | GAIA vs Martin AI",
+    "metaTitle": "Martin AI Alternative — Self-Hosted with Email & Calendar — GAIA vs Martin AI",
     "metaDescription": "Compare GAIA and Martin AI for AI productivity. GAIA offers open-source code, 50+ integrations, proactive automation, and graph-based memory for comprehensive workflow management.",
     "keywords": [
       "GAIA vs Martin AI",
@@ -5827,7 +5827,7 @@
     "name": "Mem.ai",
     "tagline": "AI-powered note-taking and personal knowledge management",
     "description": "Mem.ai is an AI-powered note-taking app that automatically organizes your notes, surfaces related content, and lets you chat with your knowledge base. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and 50+ tools into a single intelligent assistant that acts before you ask.",
-    "metaTitle": "Mem.ai Alternative with Proactive Email AI | GAIA vs Mem.ai",
+    "metaTitle": "Mem.ai Alternative with Proactive Email AI — GAIA vs Mem.ai",
     "metaDescription": "Mem.ai organizes notes with AI but stays passive and note-only. GAIA is an open-source Mem.ai alternative with proactive email AI that reads your inbox, manages tasks, and automates workflows — with graph-based memory spanning all your tools.",
     "keywords": [
       "GAIA vs Mem",
@@ -5931,7 +5931,7 @@
     "name": "Miro",
     "tagline": "Online collaborative whiteboard for visual brainstorming and planning",
     "description": "Miro is a leading online collaborative whiteboard platform used by teams for brainstorming, sprint planning, journey mapping, and workshop facilitation. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations — turning plans into automated action.",
-    "metaTitle": "Miro Alternative with AI Task Management & Workflow Automation | GAIA vs Miro",
+    "metaTitle": "Miro Alternative with AI Task Management & Workflow Automation — GAIA vs Miro",
     "metaDescription": "Miro is the gold standard for visual collaboration but doesn't manage your workflow. GAIA is a free, open-source Miro alternative with proactive AI email management, calendar automation, and task orchestration across 50+ integrations.",
     "keywords": [
       "miro alternative",
@@ -6049,7 +6049,7 @@
     "name": "Missive",
     "tagline": "Team inbox and collaborative email client for shared communication",
     "description": "Missive is a collaborative email client that turns your inbox into a shared workspace — with shared inboxes, in-thread team chat, assignment rules, and integrations with CRMs and project tools. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and 50+ integrations autonomously, built for individuals and teams who want an AI to handle the administrative layer, not just a better place to read email together.",
-    "metaTitle": "Missive Alternative for Personal Productivity | GAIA vs Missive",
+    "metaTitle": "Missive Alternative for Personal Productivity — GAIA vs Missive",
     "metaDescription": "Compare GAIA and Missive. Missive excels at team inbox collaboration, but GAIA manages email, calendar, tasks, and cross-tool workflows proactively — acting before you ask.",
     "keywords": [
       "GAIA vs Missive",
@@ -6155,7 +6155,7 @@
     "name": "Monday.com",
     "tagline": "The work OS for project management and team collaboration",
     "description": "Monday.com is a visual work management platform that helps teams plan projects, track progress, and collaborate across boards, timelines, and dashboards. GAIA is a proactive AI assistant that manages your email, calendar, and tasks autonomously across 50+ integrations — automating the busywork that Monday.com requires you to enter and update manually.",
-    "metaTitle": "GAIA vs Monday.com: AI Productivity Assistant vs Work Management Platform | GAIA",
+    "metaTitle": "GAIA vs Monday.com: AI Productivity Assistant vs Work Management Platform",
     "metaDescription": "Compare GAIA and Monday.com. Monday.com organises team projects visually across boards and timelines, but GAIA reads your email, manages your calendar, and automates cross-tool workflows proactively.",
     "keywords": [
       "GAIA vs Monday.com",
@@ -6261,7 +6261,7 @@
     "name": "Motion",
     "tagline": "AI-powered calendar scheduling",
     "description": "Motion uses AI to automatically schedule tasks into your calendar. GAIA goes beyond calendar management to orchestrate your entire digital workflow.",
-    "metaTitle": "Motion Alternative with Email & Workflow Automation | GAIA vs Motion",
+    "metaTitle": "Motion Alternative with Email & Workflow Automation — GAIA vs Motion",
     "metaDescription": "Motion focuses on calendar scheduling, but lacks email management and workflow automation. GAIA is an open-source alternative that proactively manages your inbox, calendar, and tasks across 50+ integrations.",
     "keywords": [
       "GAIA vs Motion",
@@ -6351,7 +6351,7 @@
     "name": "n8n",
     "tagline": "Open-source workflow automation platform",
     "description": "n8n provides powerful no-code workflow automation. GAIA adds AI intelligence to understand context and make decisions, not just execute rules.",
-    "metaTitle": "n8n Alternative with AI-Native Automation | GAIA vs n8n",
+    "metaTitle": "n8n Alternative with AI-Native Automation — GAIA vs n8n",
     "metaDescription": "n8n requires you to define every rule manually. GAIA is an open-source n8n alternative with AI-native automation that reads context, drafts emails, and acts proactively without predefined triggers.",
     "keywords": [
       "GAIA vs n8n",
@@ -6444,7 +6444,7 @@
     "name": "Notion AI",
     "tagline": "AI built into your Notion workspace",
     "description": "Notion AI is an in-workspace AI assistant embedded inside the Notion editor — it writes, summarises, and autofills databases on demand. GAIA is a proactive AI assistant that operates across your email, calendar, tasks, and 50+ tools, acting on your behalf before you ask — and integrates with Notion directly so your workspace stays current without manual effort.",
-    "metaTitle": "GAIA vs Notion AI: Proactive AI Assistant vs In-Workspace Writing Tool | GAIA",
+    "metaTitle": "GAIA vs Notion AI: Proactive AI Assistant vs In-Workspace Writing Tool",
     "metaDescription": "Compare GAIA and Notion AI. Notion AI enhances your Notion workspace with writing and summarisation. GAIA reads your email, manages your calendar, and acts proactively across 50+ tools.",
     "keywords": [
       "GAIA vs Notion AI",
@@ -6550,7 +6550,7 @@
     "name": "Notion Calendar",
     "tagline": "Your calendar, connected to your Notion workspace",
     "description": "Notion Calendar (formerly Cron) is a polished, keyboard-driven calendar app that connects Google Calendar events to Notion pages and databases. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across 50+ connected tools.",
-    "metaTitle": "Notion Calendar Alternative with AI Email | GAIA vs Notion Calendar",
+    "metaTitle": "Notion Calendar Alternative with AI Email — GAIA vs Notion Calendar",
     "metaDescription": "Notion Calendar is a beautiful calendar app but doesn't read your email or automate workflows. GAIA is an open-source Notion Calendar alternative with AI email management, task creation, and workflow automation across 50+ tools — free to self-host.",
     "keywords": [
       "GAIA vs Notion Calendar",
@@ -6649,7 +6649,7 @@
     "name": "Notion",
     "tagline": "The connected workspace for notes, docs, and projects",
     "description": "Notion is an all-in-one workspace for docs, wikis, databases, and project tracking. GAIA is a proactive AI assistant that orchestrates your email, calendar, tasks, and 50+ tools — and integrates directly with Notion to read and write your pages and databases.",
-    "metaTitle": "Open Source Notion Alternative with AI Email | GAIA vs Notion",
+    "metaTitle": "Open Source Notion Alternative with AI Email — GAIA vs Notion",
     "metaDescription": "Notion organizes docs and projects beautifully but waits for you to open it. GAIA is a free, open-source Notion alternative with AI email management, calendar automation, and workflow orchestration across 50+ tools — with native Notion integration.",
     "keywords": [
       "GAIA vs Notion",
@@ -6762,7 +6762,7 @@
     "name": "Nuclino",
     "tagline": "Lightweight team wiki and knowledge base",
     "description": "Nuclino is a clean, fast team wiki and knowledge base tool that organizes shared documentation in a graph, list, or board view. GAIA is a proactive AI assistant that connects knowledge management to email, calendar, tasks, and 50+ integrations — automating the capture and application of knowledge across your workflow.",
-    "metaTitle": "Nuclino Alternative with AI-Powered Knowledge Management & Workflow Automation | GAIA vs Nuclino",
+    "metaTitle": "Nuclino Alternative with AI-Powered Knowledge Management & Workflow Automation — GAIA vs Nuclino",
     "metaDescription": "Nuclino is a great wiki but passive and isolated from your workflow. GAIA is a free, open-source Nuclino alternative with AI email management, proactive task creation, and knowledge automation across 50+ integrations.",
     "keywords": [
       "nuclino alternative",
@@ -6880,7 +6880,7 @@
     "name": "Obsidian",
     "tagline": "Sharpen your thinking",
     "description": "Obsidian is a local-first Markdown note-taking app with a graph view for building a personal knowledge base. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and workflows — acting on your behalf before you ask.",
-    "metaTitle": "Obsidian Alternative with AI Email & Calendar | GAIA vs Obsidian",
+    "metaTitle": "Obsidian Alternative with AI Email & Calendar — GAIA vs Obsidian",
     "metaDescription": "Obsidian is a powerful local-first PKM but stays passive and note-only. GAIA is an open-source Obsidian alternative with AI email management, calendar integration, and workflow automation across 50+ tools — acting proactively before you ask.",
     "keywords": [
       "GAIA vs Obsidian",
@@ -6977,7 +6977,7 @@
     "name": "OmniFocus",
     "tagline": "Powerful task management for Apple users who mean business",
     "description": "OmniFocus is a feature-rich GTD task manager built exclusively for Apple devices. GAIA goes further by layering proactive AI intelligence on top of tasks, email, and calendar — and running on every platform your team actually uses.",
-    "metaTitle": "OmniFocus Alternative with AI Email | GAIA vs OmniFocus",
+    "metaTitle": "OmniFocus Alternative with AI Email — GAIA vs OmniFocus",
     "metaDescription": "OmniFocus is a powerful GTD system but is Apple-only and requires manual task entry. GAIA is an open-source OmniFocus alternative with AI email integration, cross-platform support, and workflow automation across 50+ tools — free to self-host.",
     "keywords": [
       "GAIA vs OmniFocus",
@@ -7069,7 +7069,7 @@
     "name": "Microsoft OneNote",
     "tagline": "Free digital notebook, part of Microsoft 365",
     "description": "Microsoft OneNote is a free hierarchical notebook app bundled with Microsoft 365, offering flexible freeform notes across Windows, Mac, iOS, and Android. GAIA is a proactive AI assistant that connects your notes to email, calendar, tasks, and 50+ tools.",
-    "metaTitle": "OneNote Alternative with AI Automation & 50+ Integrations | GAIA vs OneNote",
+    "metaTitle": "OneNote Alternative with AI Automation & 50+ Integrations — GAIA vs OneNote",
     "metaDescription": "OneNote captures notes but doesn't connect them to your workflow. GAIA is a free, open-source OneNote alternative with AI email management, calendar automation, and proactive task creation across 50+ integrations.",
     "keywords": [
       "onenote alternative",
@@ -7187,7 +7187,7 @@
     "name": "OpenClaw",
     "tagline": "AI automation framework",
     "description": "OpenClaw provides AI-driven automation capabilities. GAIA offers a complete productivity OS with proactive assistance, deep integrations, and persistent memory.",
-    "metaTitle": "OpenClaw Alternative with Full AI Productivity OS | GAIA vs OpenClaw",
+    "metaTitle": "OpenClaw Alternative with Full AI Productivity OS — GAIA vs OpenClaw",
     "metaDescription": "Compare GAIA and OpenClaw for AI-powered productivity. GAIA offers a full productivity OS with proactive assistance, 50+ integrations, and graph-based memory.",
     "keywords": [
       "GAIA vs OpenClaw",
@@ -7260,7 +7260,7 @@
     "name": "Otter.ai",
     "tagline": "AI meeting transcription and notes",
     "description": "Otter.ai automatically transcribes meetings, generates summaries, and identifies action items from calls. GAIA is a proactive AI assistant that goes further by connecting meeting outcomes to your tasks, calendar, and entire tool stack.",
-    "metaTitle": "Otter.ai Alternative That Acts on Meeting Outcomes | GAIA vs Otter.ai",
+    "metaTitle": "Otter.ai Alternative That Acts on Meeting Outcomes — GAIA vs Otter.ai",
     "metaDescription": "Otter.ai transcribes meetings but won't create tasks or update your tools. GAIA is an open-source alternative that manages your full workflow — prep, transcription, follow-ups, and task automation across 50+ integrations.",
     "keywords": [
       "otter.ai alternative",
@@ -7373,7 +7373,7 @@
     "name": "Perplexity",
     "tagline": "AI-powered search and research",
     "description": "Perplexity excels at AI-powered research and search. GAIA goes beyond research to proactively manage your entire digital workflow with 50+ tool integrations.",
-    "metaTitle": "Perplexity Alternative with Task & Email Management | GAIA vs Perplexity",
+    "metaTitle": "Perplexity Alternative with Task & Email Management — GAIA vs Perplexity",
     "metaDescription": "Perplexity excels at AI search but stops at information — it won't manage your inbox or automate tasks. GAIA is an open-source Perplexity alternative that turns research into action across email, calendar, and 50+ tools.",
     "keywords": [
       "GAIA vs Perplexity",
@@ -7451,7 +7451,7 @@
     "name": "Pi",
     "tagline": "Inflection AI's empathetic personal conversational AI",
     "description": "Pi is Inflection AI's conversational AI designed to be an empathetic personal companion — thoughtful, supportive, and focused on dialogue. GAIA is a proactive AI productivity assistant that manages your email, calendar, tasks, and workflows while also being conversational.",
-    "metaTitle": "Pi AI Alternative for Productivity Management | GAIA vs Pi",
+    "metaTitle": "Pi AI Alternative for Productivity Management — GAIA vs Pi",
     "metaDescription": "Pi is great for conversation but won't manage your inbox or automate tasks. GAIA is an open-source alternative that proactively handles your workflow across email, calendar, and 50+ integrations.",
     "keywords": [
       "pi ai alternative",
@@ -7564,7 +7564,7 @@
     "name": "Pipedream",
     "tagline": "Developer-focused workflow automation with serverless code execution",
     "description": "Pipedream is a developer-centric automation platform that combines a 2,800+ app integration library with full Node.js code execution in serverless workflow steps — ideal for engineers building production-grade integrations. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations through natural language and autonomous action, built for knowledge workers who want AI to handle their digital life rather than an iPaaS platform to program.",
-    "metaTitle": "Pipedream Alternative with AI-Native Automation | GAIA vs Pipedream",
+    "metaTitle": "Pipedream Alternative with AI-Native Automation — GAIA vs Pipedream",
     "metaDescription": "Compare GAIA and Pipedream. Pipedream gives developers code-level automation power, but GAIA manages email, calendar, tasks, and workflows through natural language — no code required.",
     "keywords": [
       "GAIA vs Pipedream",
@@ -7665,7 +7665,7 @@
     "name": "Pipedrive",
     "tagline": "Sales-focused CRM with visual pipeline management",
     "description": "Pipedrive is a sales-centric CRM built around visual deal pipelines, helping sales teams track leads, log activities, and close deals. GAIA complements sales workflows by proactively managing email, follow-up tasks, meeting preparation, and cross-tool orchestration that Pipedrive cannot automate.",
-    "metaTitle": "Pipedrive Alternative for AI-Powered Sales Productivity | GAIA vs Pipedrive",
+    "metaTitle": "Pipedrive Alternative for AI-Powered Sales Productivity — GAIA vs Pipedrive",
     "metaDescription": "Pipedrive manages your pipeline but can't proactively handle your inbox or automate cross-tool workflows. GAIA is an open-source AI managing email, tasks, and 50+ integrations — free tier available.",
     "keywords": [
       "Pipedrive alternative",
@@ -7825,7 +7825,7 @@
     "name": "Poke",
     "tagline": "AI-powered productivity assistant",
     "description": "Poke offers AI-driven productivity features. GAIA provides a comprehensive open-source productivity OS with 50+ integrations and proactive automation.",
-    "metaTitle": "Poke Alternative with Proactive AI | GAIA vs Poke",
+    "metaTitle": "Poke Alternative with Proactive AI — GAIA vs Poke",
     "metaDescription": "Compare GAIA and Poke for AI productivity. GAIA is open-source with 50+ integrations, proactive automation, and graph-based memory for comprehensive workflow management.",
     "keywords": [
       "GAIA vs Poke",
@@ -7895,7 +7895,7 @@
     "name": "Quip",
     "tagline": "Salesforce's collaborative docs and spreadsheets platform",
     "description": "Quip is Salesforce's collaborative documents and spreadsheets platform, designed to bring live CRM data into team documents. GAIA is a proactive AI assistant that connects email, calendar, tasks, and 50+ integrations with autonomous action — beyond the Salesforce ecosystem.",
-    "metaTitle": "Quip Alternative with AI Automation Beyond Salesforce | GAIA vs Quip",
+    "metaTitle": "Quip Alternative with AI Automation Beyond Salesforce — GAIA vs Quip",
     "metaDescription": "Quip is powerful within Salesforce but limited outside it. GAIA is a free, open-source Quip alternative with proactive AI email management, calendar automation, and workflow orchestration across 50+ integrations.",
     "keywords": [
       "quip alternative",
@@ -8013,7 +8013,7 @@
     "name": "Reclaim.ai",
     "tagline": "AI time management for busy teams",
     "description": "Reclaim optimizes your calendar with smart scheduling. GAIA orchestrates your entire digital workflow beyond just time management.",
-    "metaTitle": "Reclaim.ai Alternative with Proactive Email AI | GAIA vs Reclaim",
+    "metaTitle": "Reclaim.ai Alternative with Proactive Email AI — GAIA vs Reclaim",
     "metaDescription": "Reclaim.ai optimizes your calendar but doesn't touch your inbox or automate cross-tool workflows. GAIA is a free-tier, open-source alternative with proactive email AI and workflow automation across 50+ tools.",
     "keywords": [
       "GAIA vs Reclaim",
@@ -8100,7 +8100,7 @@
     "name": "Reflect",
     "tagline": "AI-powered networked note-taking with backlinks and daily notes",
     "description": "Reflect is a networked note-taking app that mirrors the way your brain works, with backlinks, daily notes, calendar integration, and AI writing assistance. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and 50+ tools into a single intelligent assistant that acts before you ask.",
-    "metaTitle": "Reflect Alternative with AI Email & Workflows | GAIA vs Reflect",
+    "metaTitle": "Reflect Alternative with AI Email & Workflows — GAIA vs Reflect",
     "metaDescription": "Reflect helps you think through networked notes but won't manage your inbox or automate workflows. GAIA is an open-source Reflect alternative with AI email management, workflow automation, and graph-based memory spanning your entire work context.",
     "keywords": [
       "GAIA vs Reflect",
@@ -8194,7 +8194,7 @@
     "name": "Relay.app",
     "tagline": "Human-in-the-loop workflow automation combining AI and human judgment",
     "description": "Relay.app is a workflow automation platform distinguished by its human-in-the-loop architecture — workflows can pause and wait for human approval, review, or input at any step, blending AI actions with human judgment. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and 50+ integrations autonomously through natural language, built for individuals who want AI to handle the operational layer of their work rather than build and maintain approval-gated workflow chains.",
-    "metaTitle": "Relay App Alternative with Proactive AI | GAIA vs Relay",
+    "metaTitle": "Relay App Alternative with Proactive AI — GAIA vs Relay",
     "metaDescription": "Compare GAIA and Relay.app. Relay blends automation with human approval steps, but GAIA manages email, calendar, tasks, and cross-tool workflows proactively through natural language.",
     "keywords": [
       "GAIA vs Relay",
@@ -8295,7 +8295,7 @@
     "name": "RescueTime",
     "tagline": "Automatic time tracking and productivity analytics",
     "description": "RescueTime runs in the background to track how you spend your time on apps and websites, then surfaces productivity reports. GAIA goes further by acting on those insights to proactively manage your schedule and reduce distractions.",
-    "metaTitle": "RescueTime Alternative with Proactive AI Assistance | GAIA vs RescueTime",
+    "metaTitle": "RescueTime Alternative with Proactive AI Assistance — GAIA vs RescueTime",
     "metaDescription": "RescueTime tracks time passively but can't act on what it finds. GAIA is an open-source alternative that monitors your workflow and proactively manages tasks, calendar, and focus — free tier available.",
     "keywords": [
       "rescuetime alternative",
@@ -8403,7 +8403,7 @@
     "name": "Rewind",
     "tagline": "Record, transcribe, and search everything on your Mac",
     "description": "Rewind records and transcribes everything you see and hear on your Mac, creating a searchable archive of your digital activity. GAIA takes a fundamentally different approach — building structured, graph-based memory from real integrations across email, calendar, and tasks, then acting on that context proactively.",
-    "metaTitle": "Rewind AI Alternative with Active Task Management | GAIA vs Rewind",
+    "metaTitle": "Rewind AI Alternative with Active Task Management — GAIA vs Rewind",
     "metaDescription": "Rewind records and searches your screen passively but doesn't take action. GAIA is an open-source Rewind alternative with active task management — it reads live integrations, acts on email, manages your calendar, and automates workflows.",
     "keywords": [
       "GAIA vs Rewind",
@@ -8500,7 +8500,7 @@
     "name": "Roam Research",
     "tagline": "A note-taking tool for networked thought",
     "description": "Roam Research is a networked outliner and personal knowledge management tool built around bidirectional links, block references, and daily notes. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and workflows — acting on your behalf before you ask.",
-    "metaTitle": "Roam Research Alternative with Proactive AI | GAIA vs Roam",
+    "metaTitle": "Roam Research Alternative with Proactive AI — GAIA vs Roam",
     "metaDescription": "Roam Research is a powerful networked outliner but stays passive and note-focused. GAIA is an open-source Roam Research alternative with proactive AI that manages your inbox, calendar, tasks, and automations across 50+ integrations — turning knowledge into action.",
     "keywords": [
       "GAIA vs Roam Research",
@@ -8596,7 +8596,7 @@
     "name": "SaneBox",
     "tagline": "Email management for any inbox",
     "description": "SaneBox is an email filtering service that moves non-urgent messages out of your inbox into smart folders so you focus on what matters. GAIA goes further by reading, triaging, drafting replies, creating tasks, and automating cross-tool workflows — replacing a passive filter with an active AI assistant.",
-    "metaTitle": "SaneBox Alternative with Proactive AI | GAIA vs SaneBox",
+    "metaTitle": "SaneBox Alternative with Proactive AI — GAIA vs SaneBox",
     "metaDescription": "SaneBox filters email passively but can't draft replies or create tasks. GAIA is an open-source SaneBox alternative with proactive AI that reads, triages, and acts on email — while automating workflows across 50+ tools with a free tier.",
     "keywords": [
       "GAIA vs SaneBox",
@@ -8687,7 +8687,7 @@
     "name": "SavvyCal",
     "tagline": "Scheduling software with recipient calendar overlay",
     "description": "SavvyCal lets people book time with you through shareable scheduling links, with a unique twist: recipients can overlay their own calendar on yours to find a mutual free slot. GAIA manages your calendar from the inside — scheduling meetings, finding free slots, preparing briefings, and automating follow-ups — without requiring a public booking page.",
-    "metaTitle": "SavvyCal Alternative with Proactive AI Management | GAIA vs SavvyCal",
+    "metaTitle": "SavvyCal Alternative with Proactive AI Management — GAIA vs SavvyCal",
     "metaDescription": "SavvyCal is a smart scheduling tool but is only for booking links. GAIA is an open-source SavvyCal alternative with proactive AI management — handling your full calendar, inbox, tasks, and workflows automatically, with a free tier.",
     "keywords": [
       "GAIA vs SavvyCal",
@@ -8779,7 +8779,7 @@
     "name": "Shortwave",
     "tagline": "AI-powered email client built on Gmail",
     "description": "Shortwave is an AI email client that layers intelligent writing assistance, thread summarization, and inbox automation on top of Gmail. GAIA is a proactive productivity OS that manages your email alongside your calendar, tasks, workflows, and 50+ integrations — all from a single assistant.",
-    "metaTitle": "Shortwave Alternative with AI Task Management | GAIA vs Shortwave",
+    "metaTitle": "Shortwave Alternative with AI Task Management — GAIA vs Shortwave",
     "metaDescription": "Shortwave enhances Gmail but is still email-only. GAIA is an open-source Shortwave alternative that manages email alongside calendar, tasks, and 50+ tool workflows — proactively acting before you ask, with a free tier.",
     "keywords": [
       "GAIA vs Shortwave",
@@ -8891,7 +8891,7 @@
     "name": "Smartsheet",
     "tagline": "Spreadsheet-based project management for enterprise teams",
     "description": "Smartsheet is an enterprise-grade work management platform that blends the familiarity of spreadsheets with project management features like Gantt charts, resource management, and automated workflows. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across 50+ integrations — acting on your behalf rather than waiting for you to update a grid.",
-    "metaTitle": "Smartsheet Alternative with AI Automation | GAIA vs Smartsheet",
+    "metaTitle": "Smartsheet Alternative with AI Automation — GAIA vs Smartsheet",
     "metaDescription": "Smartsheet requires manual grid updates and per-seat pricing. GAIA is an open-source Smartsheet alternative with AI email triage, autonomous task creation, and free self-hosting.",
     "keywords": [
       "Smartsheet alternative",
@@ -9048,7 +9048,7 @@
     "name": "Spark Email",
     "tagline": "Smart email client with AI compose and team collaboration features",
     "description": "Spark Email is a cross-platform email client with AI-powered composition, Smart Inbox categorization, and team collaboration features like shared drafts and private comments. GAIA is a proactive AI productivity OS that goes far beyond a better inbox — it monitors your email, calendar, tasks, and 50+ connected tools and acts autonomously on your behalf before you even open the app.",
-    "metaTitle": "Spark Email Alternative with AI Workflows | GAIA vs Spark",
+    "metaTitle": "Spark Email Alternative with AI Workflows — GAIA vs Spark",
     "metaDescription": "Compare GAIA and Spark Email. Spark makes your inbox smarter, but GAIA manages your entire digital life — triaging email, running calendar, tasks, and cross-tool workflows proactively.",
     "keywords": [
       "GAIA vs Spark Email",
@@ -9153,7 +9153,7 @@
     "name": "Sunsama",
     "tagline": "Mindful daily planner combining tasks, calendar, and intentional work rituals",
     "description": "Sunsama is a mindful daily planning tool that guides you through a morning ritual to pull tasks from connected apps, estimate time, and time-block your day — with a philosophy centered on intentional, focused work rather than maximum throughput. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, actively reducing the volume of work reaching you rather than helping you plan through it more mindfully.",
-    "metaTitle": "Sunsama Alternative with Proactive AI | GAIA vs Sunsama",
+    "metaTitle": "Sunsama Alternative with Proactive AI — GAIA vs Sunsama",
     "metaDescription": "Compare GAIA and Sunsama. Sunsama helps you plan your day mindfully, but GAIA manages email, calendar, tasks, and workflows proactively — reducing work volume, not just planning it better.",
     "keywords": [
       "GAIA vs Sunsama",
@@ -9258,7 +9258,7 @@
     "name": "Superhuman",
     "tagline": "The fastest email client in the world",
     "description": "Superhuman is a premium, keyboard-driven email client that helps power users move through Gmail and Outlook faster. GAIA is a proactive AI productivity OS that actually manages your email — triaging urgency, drafting replies, creating tasks, and automating workflows — rather than just displaying it more quickly.",
-    "metaTitle": "Free Superhuman Alternative with AI | GAIA vs Superhuman",
+    "metaTitle": "Free Superhuman Alternative with AI — GAIA vs Superhuman",
     "metaDescription": "Superhuman costs $30/month and speeds up reading — but still requires you to do the work. GAIA is a free-tier, open-source Superhuman alternative that uses AI to triage, draft replies, and automate your inbox autonomously.",
     "keywords": [
       "GAIA vs Superhuman",
@@ -9369,7 +9369,7 @@
     "name": "Tana",
     "tagline": "Connected notes and superpowers for thought with AI and Supertags",
     "description": "Tana is an advanced knowledge management tool that combines a powerful outliner with Supertags, AI automation, daily notes, and a connected knowledge graph — giving power users one place to capture, organize, and act on everything. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and 50+ integrations through autonomous action and natural language, building its knowledge graph automatically from your live digital activity rather than requiring manual Supertag curation.",
-    "metaTitle": "Tana Alternative with AI Email & Calendar | GAIA vs Tana",
+    "metaTitle": "Tana Alternative with AI Email & Calendar — GAIA vs Tana",
     "metaDescription": "Compare GAIA and Tana. Tana builds a powerful connected knowledge graph with Supertags and AI, but GAIA manages email, calendar, tasks, and workflows proactively and autonomously.",
     "keywords": [
       "GAIA vs Tana",
@@ -9470,7 +9470,7 @@
     "name": "Microsoft Teams",
     "tagline": "Team chat and meetings with Microsoft 365 Copilot",
     "description": "Microsoft Teams is a unified communication platform bundled with Office 365, now featuring Copilot AI for meeting summaries and chat drafts. GAIA is an open-source proactive AI assistant that works across your entire tool stack, not just the Microsoft ecosystem.",
-    "metaTitle": "Microsoft Teams Alternative with Open Integrations | GAIA vs Teams",
+    "metaTitle": "Microsoft Teams Alternative with Open Integrations — GAIA vs Teams",
     "metaDescription": "Microsoft Teams locks your AI into the Office 365 ecosystem. GAIA is an open-source alternative connecting Gmail, Slack, Notion, GitHub, and 50+ tools with proactive AI that manages tasks and workflows.",
     "keywords": [
       "microsoft teams alternative",
@@ -9583,7 +9583,7 @@
     "name": "Things 3",
     "tagline": "The award-winning personal task manager for Mac, iPad, and iPhone",
     "description": "Things 3 is a beautifully crafted GTD task manager exclusive to the Apple ecosystem. GAIA goes further by adding proactive AI intelligence, cross-platform access, and deep integration across your entire digital workflow.",
-    "metaTitle": "Things 3 Alternative with AI Email Integration | GAIA vs Things 3",
+    "metaTitle": "Things 3 Alternative with AI Email Integration — GAIA vs Things 3",
     "metaDescription": "Things 3 is beautifully designed but Apple-only and can't read your email. GAIA is an open-source Things 3 alternative with AI email integration, cross-platform support, and workflow automation across 50+ tools — free to self-host.",
     "keywords": [
       "GAIA vs Things 3",
@@ -9677,7 +9677,7 @@
     "name": "TickTick",
     "tagline": "Capture anything, accomplish everything",
     "description": "TickTick is a polished to-do and habit tracking app with natural language input, a built-in Pomodoro timer, and calendar views. GAIA goes beyond task capture to proactively manage your email, calendar, and entire digital workflow.",
-    "metaTitle": "TickTick Alternative with Proactive AI | GAIA vs TickTick",
+    "metaTitle": "TickTick Alternative with Proactive AI — GAIA vs TickTick",
     "metaDescription": "TickTick is a solid to-do app but requires manual task entry and lacks email automation. GAIA is an open-source TickTick alternative with proactive AI that creates tasks from email, manages your calendar, and automates workflows — with a free tier.",
     "keywords": [
       "GAIA vs TickTick",
@@ -9774,7 +9774,7 @@
     "name": "Todoist",
     "tagline": "Popular task management app",
     "description": "Todoist is a well-designed task manager for organizing to-dos. GAIA goes beyond task lists by using AI to create, prioritize, and execute tasks across your entire workflow.",
-    "metaTitle": "Todoist Alternative with AI Email Integration | GAIA vs Todoist",
+    "metaTitle": "Todoist Alternative with AI Email Integration — GAIA vs Todoist",
     "metaDescription": "Todoist requires you to add tasks manually. GAIA is an open-source Todoist alternative that automatically creates tasks from your emails, prioritizes by context, and automates follow-through across 50+ tools — with a free tier.",
     "keywords": [
       "GAIA vs Todoist",
@@ -9866,7 +9866,7 @@
     "name": "Toggl Track",
     "tagline": "Manual time tracking and reporting for teams",
     "description": "Toggl Track is a popular manual time tracker used by freelancers and teams to log billable hours and generate reports. GAIA replaces the need to track time manually by proactively managing your workflow from start to finish.",
-    "metaTitle": "Toggl Track Alternative with AI Workflow Automation | GAIA vs Toggl",
+    "metaTitle": "Toggl Track Alternative with AI Workflow Automation — GAIA vs Toggl",
     "metaDescription": "Toggl requires manual time entry and won't manage your tasks. GAIA is an open-source alternative that automates your workflow, manages email and tasks, and syncs across 50+ tools — free tier included.",
     "keywords": [
       "toggl alternative",
@@ -9974,7 +9974,7 @@
     "name": "Trello",
     "tagline": "Visual project boards, lists, and cards",
     "description": "Trello is a kanban-style project management tool owned by Atlassian. GAIA goes far beyond visual boards to proactively manage your entire digital workflow with AI.",
-    "metaTitle": "Trello Alternative with AI Automation | GAIA vs Trello",
+    "metaTitle": "Trello Alternative with AI Automation — GAIA vs Trello",
     "metaDescription": "Trello's kanban boards still require manual work. GAIA is an open-source Trello alternative with AI automation that creates tasks from email, automates workflows, and manages your calendar across 50+ tools — with a free tier.",
     "keywords": [
       "GAIA vs Trello",
@@ -10083,7 +10083,7 @@
     "name": "Ulysses",
     "tagline": "Premium distraction-free writing app for Mac and iOS",
     "description": "Ulysses is a premium writing app for macOS and iOS built for long-form writers, offering a distraction-free editor, manuscript management, and direct publishing to WordPress and Medium. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and 50+ integrations.",
-    "metaTitle": "Ulysses Alternative with AI Workflow Automation & Cross-Platform Support | GAIA vs Ulysses",
+    "metaTitle": "Ulysses Alternative with AI Workflow Automation & Cross-Platform Support — GAIA vs Ulysses",
     "metaDescription": "Ulysses is a premium writing app but Apple-only and focused on writing alone. GAIA is a free, open-source Ulysses alternative with AI automation, email management, and cross-platform support across 50+ integrations.",
     "keywords": [
       "ulysses alternative",
@@ -10201,7 +10201,7 @@
     "name": "Whimsical",
     "tagline": "Visual workspace for wireframes, flowcharts, and mind maps",
     "description": "Whimsical is a visual collaboration tool for creating wireframes, flowcharts, mind maps, and sticky-note boards. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations — connecting the planning phase to the execution layer of your work.",
-    "metaTitle": "Whimsical Alternative with AI Workflow Automation & Task Management | GAIA vs Whimsical",
+    "metaTitle": "Whimsical Alternative with AI Workflow Automation & Task Management — GAIA vs Whimsical",
     "metaDescription": "Whimsical is great for visual thinking but stays in the design phase. GAIA is a free, open-source Whimsical alternative with proactive AI email management, task automation, and workflow orchestration across 50+ integrations.",
     "keywords": [
       "whimsical alternative",
@@ -10319,7 +10319,7 @@
     "name": "Wrike",
     "tagline": "Enterprise work management and project collaboration platform",
     "description": "Wrike is a powerful enterprise project management platform with advanced workflow customization, resource management, and reporting. GAIA complements structured project management with proactive AI that manages email, automates workflows, and surfaces what matters most.",
-    "metaTitle": "Wrike Alternative with Proactive AI Assistance | GAIA vs Wrike",
+    "metaTitle": "Wrike Alternative with Proactive AI Assistance — GAIA vs Wrike",
     "metaDescription": "Wrike is built for enterprise PM, but it won't proactively manage your inbox or automate cross-tool workflows. GAIA is an open-source alternative with AI-driven task management and 50+ integrations — free tier available.",
     "keywords": [
       "wrike alternative",
@@ -10427,7 +10427,7 @@
     "name": "Zapier",
     "tagline": "No-code automation platform connecting 6,000+ apps",
     "description": "Zapier connects thousands of apps with rule-based automations. GAIA adds AI intelligence to understand context and act proactively, not just follow predefined rules.",
-    "metaTitle": "Zapier Alternative with AI Reasoning | GAIA vs Zapier",
+    "metaTitle": "Zapier Alternative with AI Reasoning — GAIA vs Zapier",
     "metaDescription": "Zapier automates rules but can't read context or make decisions. GAIA is an open-source Zapier alternative with AI reasoning that understands your emails, prioritizes work, and triggers smart multi-step workflows without manual rule-building.",
     "keywords": [
       "GAIA vs Zapier",
@@ -10520,7 +10520,7 @@
     "name": "Zoho One",
     "tagline": "All-in-one business suite covering CRM, email, projects, and more",
     "description": "Zoho One bundles 50+ business applications into a single subscription covering CRM, project management, email, HR, and finance. GAIA is a proactive AI assistant that augments the tools you already use — including Zoho apps — rather than requiring a full platform migration.",
-    "metaTitle": "Zoho Alternative with Proactive AI Assistance | GAIA vs Zoho",
+    "metaTitle": "Zoho Alternative with Proactive AI Assistance — GAIA vs Zoho",
     "metaDescription": "Zoho One bundles 50+ apps but requires learning a new ecosystem. GAIA is an open-source alternative that adds proactive AI to your existing tools — Gmail, Slack, Notion, and 50+ more — free tier available.",
     "keywords": [
       "Zoho alternative",
@@ -10680,7 +10680,7 @@
     "name": "Zoom",
     "tagline": "Video conferencing with AI meeting summaries",
     "description": "Zoom is the leading video conferencing platform with AI Companion for meeting transcription and summaries. GAIA is a proactive AI assistant that manages your entire workflow before, during, and after meetings.",
-    "metaTitle": "Zoom Alternative for Meeting Productivity | GAIA vs Zoom",
+    "metaTitle": "Zoom Alternative for Meeting Productivity — GAIA vs Zoom",
     "metaDescription": "Zoom records meetings but won't prepare briefings or follow up on action items. GAIA is an open-source alternative that manages your calendar, preps you for every meeting, and automates post-meeting tasks.",
     "keywords": [
       "zoom alternative",

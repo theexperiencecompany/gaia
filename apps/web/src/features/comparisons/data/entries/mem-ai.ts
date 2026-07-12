@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "AI-powered note-taking and personal knowledge management",
   description:
     "Mem.ai is an AI-powered note-taking app that automatically organizes your notes, surfaces related content, and lets you chat with your knowledge base. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and 50+ tools into a single intelligent assistant that acts before you ask.",
-  metaTitle: "Mem.ai Alternative with Proactive Email AI | GAIA vs Mem.ai",
+  metaTitle: "Mem.ai Alternative with Proactive Email AI — GAIA vs Mem.ai",
   metaDescription:
     "Mem.ai organizes notes with AI but stays passive and note-only. GAIA is an open-source Mem.ai alternative with proactive email AI that reads your inbox, manages tasks, and automates workflows — with graph-based memory spanning all your tools.",
   keywords: [

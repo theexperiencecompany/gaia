@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Limited to calendar and tasks; does not manage the rest of your workflow",
     "Scheduling conflicts require manual intervention to resolve",
   ],
-  metaTitle: "Best Motion Alternative in 2026 | GAIA",
+  metaTitle: "Best Motion Alternative in 2026",
   metaDescription:
     "Motion is expensive and doesn't read your email. GAIA is a proactive AI assistant that manages email, calendar, and tasks together. Free tier + open-source self-hosting.",
   keywords: [

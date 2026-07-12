@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
-import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
+import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAllBlogPosts } from "@/lib/blog";
@@ -68,8 +68,6 @@ function withLocaleUrls(
   });
 }
 
-const BUILD_DATE = new Date().toISOString();
-
 type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 type StaticPage = { path: string; freq: ChangeFreq; priority: number };
 
@@ -91,10 +89,9 @@ const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/faq", freq: "monthly", priority: 0.8 },
   { path: "/manifesto", freq: "monthly", priority: 0.8 },
   { path: "/about", freq: "monthly", priority: 0.8 },
+  { path: "/features", freq: "weekly", priority: 0.8 },
   { path: "/contact", freq: "monthly", priority: 0.7 },
   { path: "/brand", freq: "monthly", priority: 0.7 },
-  { path: "/login", freq: "monthly", priority: 0.6 },
-  { path: "/signup", freq: "monthly", priority: 0.6 },
   { path: "/terms", freq: "monthly", priority: 0.5 },
   { path: "/privacy", freq: "monthly", priority: 0.5 },
   { path: "/thanks", freq: "monthly", priority: 0.4 },
@@ -112,8 +109,8 @@ async function getBlogPages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
     return blogs.map((blog) => ({
       url: `${baseUrl}/blog/${blog.slug}`,
       lastModified: new Date(blog.date),
-      changeFrequency: "monthly" as const,
-      priority: 0.7,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
     }));
   } catch (error) {
     console.error("Error fetching blogs for sitemap:", error);
@@ -267,14 +264,15 @@ async function getIntegrationPages(
         const data = (await response.json()) as {
           integrations?: IntegrationEntry[];
         };
-        return (data.integrations ?? []).map((integration) => ({
-          url: `${baseUrl}/marketplace/${integration.slug}`,
-          lastModified: new Date(
-            integration.publishedAt || integration.createdAt || Date.now(),
-          ),
-          changeFrequency: "weekly" as const,
-          priority: 0.7,
-        }));
+        return (data.integrations ?? []).map((integration) => {
+          const date = integration.publishedAt || integration.createdAt;
+          return {
+            url: `${baseUrl}/marketplace/${integration.slug}`,
+            ...(date ? { lastModified: new Date(date) } : {}),
+            changeFrequency: "weekly" as const,
+            priority: 0.7,
+          };
+        });
       }
       return [];
     }
@@ -318,14 +316,15 @@ async function getIntegrationPages(
         slug: string;
         publishedAt?: string;
         createdAt?: string;
-      }) => ({
-        url: `${baseUrl}/marketplace/${integration.slug}`,
-        lastModified: new Date(
-          integration.publishedAt || integration.createdAt || Date.now(),
-        ),
-        changeFrequency: "weekly" as const,
-        priority: 0.7,
-      }),
+      }) => {
+        const date = integration.publishedAt || integration.createdAt;
+        return {
+          url: `${baseUrl}/marketplace/${integration.slug}`,
+          ...(date ? { lastModified: new Date(date) } : {}),
+          changeFrequency: "weekly" as const,
+          priority: 0.7,
+        };
+      },
     );
   } catch (error) {
     console.error("Error fetching integrations for sitemap:", error);
@@ -342,7 +341,6 @@ async function getComparisonPages(
   const slugs = await getAllComparisonSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/compare/${slug}`,
-    lastModified: BUILD_DATE,
     changeFrequency: "monthly" as const,
     priority: 0.8,
   }));
@@ -375,7 +373,6 @@ async function getPersonaPages(
     const slugs = await getAllPersonaSlugs();
     return slugs.map((slug) => ({
       url: `${baseUrl}/for/${slug}`,
-      lastModified: BUILD_DATE,
       changeFrequency: "monthly" as const,
       priority: FEATURED_PERSONA_SLUGS.has(slug) ? 0.9 : 0.7,
     }));
@@ -391,13 +388,14 @@ async function getPersonaPages(
 async function getGlossaryPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
-  const slugs = await getAllGlossaryTermSlugs();
-  return slugs.map((slug) => ({
-    url: `${baseUrl}/learn/${slug}`,
-    lastModified: BUILD_DATE,
-    changeFrequency: "monthly" as const,
-    priority: 0.7,
-  }));
+  const terms = await getAllGlossaryTerms();
+  return terms
+    .filter((term) => !term.canonicalSlug)
+    .map((term) => ({
+      url: `${baseUrl}/learn/${term.slug}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+    }));
 }
 
 /**
@@ -409,7 +407,6 @@ async function getAlternativePages(
   const slugs = await getAllAlternativeSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/alternative-to/${slug}`,
-    lastModified: BUILD_DATE,
     changeFrequency: "monthly" as const,
     priority: 0.8,
   }));
@@ -426,7 +423,6 @@ async function getIntegrationComboPages(
     .filter((c) => !c.canonicalSlug)
     .map((combo) => ({
       url: `${baseUrl}/automate/${combo.slug}`,
-      lastModified: BUILD_DATE,
       changeFrequency: "monthly" as const,
       priority: 0.7,
     }));
@@ -468,7 +464,6 @@ async function getNativeIntegrationPages(
       .filter((i) => i.source === "platform" && i.available !== false)
       .map((i) => ({
         url: `${baseUrl}/marketplace/${i.slug}`,
-        lastModified: BUILD_DATE,
         changeFrequency: "weekly" as const,
         priority: 0.8,
       }));

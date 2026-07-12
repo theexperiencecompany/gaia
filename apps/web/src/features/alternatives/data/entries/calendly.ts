@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Cannot manage your inbox, tasks, or workflows beyond scheduling links",
     "Branded Calendly links can feel impersonal to high-value contacts",
   ],
-  metaTitle: "Best Calendly Alternative in 2026 | GAIA",
+  metaTitle: "Best Calendly Alternative in 2026",
   metaDescription:
     "Calendly only handles inbound scheduling. GAIA is a proactive AI assistant that manages your entire calendar, email, and tasks. Free tier + open-source self-hosting.",
   keywords: [

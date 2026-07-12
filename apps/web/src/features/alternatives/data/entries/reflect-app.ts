@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No mobile offline support in early versions",
     "Smaller ecosystem and fewer integrations than Obsidian or Notion",
   ],
-  metaTitle: "Best Reflect Alternative in 2026 | GAIA",
+  metaTitle: "Best Reflect Alternative in 2026",
   metaDescription:
     "Reflect only takes notes. GAIA is a proactive AI assistant that manages email, tasks, calendar, and builds knowledge automatically. Free tier + self-hosting.",
   keywords: [

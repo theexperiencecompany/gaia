@@ -123,14 +123,26 @@ export function generatePageMetadata({
   const url = getCanonicalUrl(canonicalPath ?? path);
 
   // For homepage, use absolute title to prevent template from adding suffix
-  // For other pages, use simple title string to let template add "| GAIA"
+  // For other pages, use simple title string to let template add "| GAIA".
+  // The brand must appear exactly once: a title that already names GAIA
+  // (e.g. "Asana Alternative — GAIA vs Asana") renders as-is, otherwise the
+  // layout template would double it ("… GAIA vs Asana | GAIA").
   const isHomepage = path === "/" || title === siteConfig.name;
-  const pageTitle = isHomepage ? { absolute: siteConfig.name } : title;
+  const containsBrand = new RegExp(`\\b${siteConfig.short_name}\\b`).test(
+    title,
+  );
+  const pageTitle = isHomepage
+    ? { absolute: siteConfig.name }
+    : containsBrand
+      ? { absolute: title }
+      : title;
 
-  // Full title for OpenGraph (always includes suffix for non-homepage)
+  // Full title for OpenGraph (suffix only when the title doesn't already carry the brand)
   const fullTitle = isHomepage
     ? siteConfig.fullName
-    : `${title} | ${siteConfig.short_name}`;
+    : containsBrand
+      ? title
+      : `${title} | ${siteConfig.short_name}`;
 
   const allKeywords = [...commonKeywords, ...keywords];
 

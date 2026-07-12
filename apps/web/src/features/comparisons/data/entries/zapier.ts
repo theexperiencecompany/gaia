@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "No-code automation platform connecting 6,000+ apps",
   description:
     "Zapier connects thousands of apps with rule-based automations. GAIA adds AI intelligence to understand context and act proactively, not just follow predefined rules.",
-  metaTitle: "Zapier Alternative with AI Reasoning | GAIA vs Zapier",
+  metaTitle: "Zapier Alternative with AI Reasoning — GAIA vs Zapier",
   metaDescription:
     "Zapier automates rules but can't read context or make decisions. GAIA is an open-source Zapier alternative with AI reasoning that understands your emails, prioritizes work, and triggers smart multi-step workflows without manual rule-building.",
   keywords: [
