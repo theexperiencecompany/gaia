@@ -20,14 +20,23 @@ from mcp_use.client.connectors.base import BaseConnector
 from mcp_use.errors.error_formatting import format_error
 from pydantic import BaseModel
 
-from app.constants.mcp import EMPTY_TOOL_RESULT, MCP_MEDIA_DROPPED_NOTICE
+from app.constants.mcp import (
+    EMPTY_TOOL_RESULT,
+    MCP_MEDIA_DROPPED_NOTICE,
+    MCP_UNSUPPORTED_CONTENT_NOTICE,
+)
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
 from app.utils.image_codec import ImageCodec, InvalidImage
-from mcp.types import CallToolResult, ImageContent, TextContent, Tool as MCPTool
-
-
-def _text_block(text: str) -> dict[str, Any]:
-    return {"type": "text", "text": text}
+from app.utils.multimodal import text_content_block
+from mcp.types import (
+    CallToolResult,
+    ContentBlock,
+    EmbeddedResource,
+    ImageContent,
+    TextContent,
+    TextResourceContents,
+    Tool as MCPTool,
+)
 
 
 async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str, Any]]:
@@ -46,16 +55,20 @@ async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str
     """
     blocks: list[dict[str, Any]] = []
     images = 0
+    dropped = 0
     for item in result.content:
         if isinstance(item, TextContent):
-            blocks.append(_text_block(item.text))
+            blocks.append(text_content_block(item.text))
         elif isinstance(item, ImageContent):
             images += 1
-            blocks.append(
-                await _image_block(item, dropped=images > MAX_MEDIA_BLOCKS_PER_TOOL_RESULT)
-            )
+            if images > MAX_MEDIA_BLOCKS_PER_TOOL_RESULT:
+                dropped += 1
+                continue
+            blocks.append(await _image_block(item))
         else:
-            blocks.append(_text_block(str(item)))
+            blocks.append(text_content_block(_non_media_text(item)))
+    if dropped:
+        blocks.append(text_content_block(MCP_MEDIA_DROPPED_NOTICE.format(count=dropped)))
 
     if not blocks:
         return EMPTY_TOOL_RESULT
@@ -64,13 +77,23 @@ async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str
     return "\n".join(block["text"] for block in blocks)
 
 
-async def _image_block(item: ImageContent, *, dropped: bool) -> dict[str, Any]:
-    if dropped:
-        return _text_block(MCP_MEDIA_DROPPED_NOTICE)
+def _non_media_text(item: ContentBlock) -> str:
+    """Text for a content item that is neither plain text nor an inline image.
+
+    Never ``str(item)`` — that is the pydantic repr this adapter exists to keep
+    out of the model's context. An embedded text resource (what filesystem and
+    database servers return) carries real text; anything else has none.
+    """
+    if isinstance(item, EmbeddedResource) and isinstance(item.resource, TextResourceContents):
+        return item.resource.text
+    return MCP_UNSUPPORTED_CONTENT_NOTICE.format(kind=type(item).__name__)
+
+
+async def _image_block(item: ImageContent) -> dict[str, Any]:
     try:
-        image = await ImageCodec.from_base64(item.data, item.mimeType)
+        image = await ImageCodec.from_base64(item.data)
     except InvalidImage as exc:
-        return _text_block(f"[Image from this result could not be read: {exc}]")
+        return text_content_block(f"[Image from this result could not be read: {exc}]")
     return image.to_block()
 
 

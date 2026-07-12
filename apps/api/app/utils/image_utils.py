@@ -22,12 +22,12 @@ async def convert_image_to_text(image: UploadFile, message: str) -> str:
     """Answer ``message`` about an uploaded image.
 
     Runs on the same codec and vision model as the agent's `read` tool, so there
-    is one way to turn an image into words rather than two that drift apart.
-    ``content_type`` is only a hint — the codec sniffs the real format from the
-    bytes and transcodes anything a provider won't take.
+    is one way to turn an image into words rather than two that drift apart. The
+    upload's declared ``content_type`` is ignored — the codec sniffs the real
+    format from the bytes and transcodes anything a provider won't take.
     """
     try:
-        inline = await ImageCodec.from_bytes(await image.read(), image.content_type or "")
+        inline = await ImageCodec.from_bytes(await image.read())
     except InvalidImage as exc:
         raise HTTPException(status_code=400, detail=f"Unreadable image: {exc}") from exc
 

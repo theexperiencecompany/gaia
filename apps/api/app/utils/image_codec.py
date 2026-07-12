@@ -24,6 +24,7 @@ from app.constants.media import (
     DOWNSCALE_LONGEST_EDGE,
     IMAGE_MIME_BY_EXTENSION,
     MAX_IMAGE_FILE_BYTES,
+    MIME_BY_PILLOW_FORMAT,
     PROVIDER_SAFE_IMAGE_MIMES,
     TARGET_INLINE_IMAGE_BYTES,
     TRANSCODE_FORMAT,
@@ -62,12 +63,12 @@ class ImageCodec:
         return IMAGE_MIME_BY_EXTENSION.get(PurePosixPath(path).suffix.lower())
 
     @classmethod
-    async def from_bytes(cls, data: bytes, mime_type: str) -> InlineImage:
+    async def from_bytes(cls, data: bytes) -> InlineImage:
         """Fit raw image bytes to the inline budget. Raises ``InvalidImage``."""
-        return await asyncio.to_thread(cls._fit, data, mime_type)
+        return await asyncio.to_thread(cls._fit, data)
 
     @classmethod
-    async def from_base64(cls, data_b64: str, mime_type: str) -> InlineImage:
+    async def from_base64(cls, data_b64: str) -> InlineImage:
         """Fit already-base64-encoded image data (MCP tool results, the bridge).
 
         The encoded length is checked before decoding, so a hostile or buggy MCP
@@ -79,16 +80,16 @@ class ImageCodec:
             data = base64.b64decode(data_b64, validate=True)
         except (ValueError, TypeError) as exc:
             raise InvalidImage(f"image data is not valid base64: {exc}") from exc
-        return await cls.from_bytes(data, mime_type)
+        return await cls.from_bytes(data)
 
     @classmethod
-    def _fit(cls, data: bytes, mime_type: str) -> InlineImage:
+    def _fit(cls, data: bytes) -> InlineImage:
         """Validate and, when needed, re-encode. CPU-bound — runs in a thread."""
         if len(data) > MAX_IMAGE_FILE_BYTES:
             raise InvalidImage(
                 f"image is {len(data)} bytes; exceeds the {MAX_IMAGE_FILE_BYTES}-byte inline limit"
             )
-        width, height = cls._probe(data)
+        mime_type, (width, height) = cls._probe(data)
 
         # Bytes and pixels are separate budgets, and either one alone can blow up
         # a request: providers bill images by pixel area, so a flat 8000x8000 PNG
@@ -98,28 +99,43 @@ class ImageCodec:
             and len(data) <= TARGET_INLINE_IMAGE_BYTES
             and max(width, height) <= DOWNSCALE_LONGEST_EDGE
         )
-        if fits:
+        if fits and mime_type is not None:
             return cls._encode(data, mime_type)
         return cls._encode(cls._transcode(data), TRANSCODE_MIME)
 
     @staticmethod
-    def _probe(data: bytes) -> tuple[int, int]:
-        """Dimensions of a real image, from its header. Raises ``InvalidImage``."""
+    def _probe(data: bytes) -> tuple[str | None, tuple[int, int]]:
+        """The sniffed MIME and dimensions of a real image. Raises ``InvalidImage``.
+
+        The MIME is read off the decoded header, never from the caller — a file
+        extension and an MCP server's declared ``mimeType`` can both lie, and a
+        block whose mime_type contradicts its payload is rejected outright by the
+        provider (Gemini 400s on `inline_data`), which kills the whole turn.
+        ``None`` means a format we have no safe MIME for, so it transcodes.
+        """
         try:
             with Image.open(BytesIO(data)) as image:
+                sniffed = MIME_BY_PILLOW_FORMAT.get(image.format or "")
                 size = image.size
                 image.verify()  # invalidates `image` — read anything else first
         except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
             raise InvalidImage(f"not a decodable image: {exc}") from exc
-        return size
+        return sniffed, size
 
     @staticmethod
     def _transcode(data: bytes) -> bytes:
         """Downscale and re-encode as JPEG (animated formats keep frame one)."""
-        image = Image.open(BytesIO(data)).convert("RGB")
-        image.thumbnail((DOWNSCALE_LONGEST_EDGE, DOWNSCALE_LONGEST_EDGE), Image.Resampling.LANCZOS)
-        output = BytesIO()
-        image.save(output, format=TRANSCODE_FORMAT, optimize=True, quality=TRANSCODE_QUALITY)
+        try:
+            image = Image.open(BytesIO(data)).convert("RGB")
+            image.thumbnail(
+                (DOWNSCALE_LONGEST_EDGE, DOWNSCALE_LONGEST_EDGE), Image.Resampling.LANCZOS
+            )
+            output = BytesIO()
+            image.save(output, format=TRANSCODE_FORMAT, optimize=True, quality=TRANSCODE_QUALITY)
+        except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+            # `verify()` in `_probe` only reads the header — a truncated or
+            # corrupt file gets past it and blows up here, on the full decode.
+            raise InvalidImage(f"image could not be re-encoded: {exc}") from exc
         return output.getvalue()
 
     @staticmethod

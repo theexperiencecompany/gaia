@@ -32,7 +32,7 @@ from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.storage import JuiceFSUnavailable, write_session_file
-from app.utils.multimodal import approx_content_chars, has_media_blocks
+from app.utils.multimodal import approx_content_chars, extract_text_content, has_media_blocks
 from shared.py.wide_events import log
 
 
@@ -187,7 +187,9 @@ async def compact_tool_output(
     # boundary (MediaAdapter), so there is nothing for compaction to do here.
     if has_media_blocks(content):
         return None
-    content_str = str(content)
+    # Text-extract rather than str(): a media-free block list would otherwise be
+    # sized and previewed as its Python repr ("[{'type': 'text', ...}]").
+    content_str = extract_text_content(content)
     should, reason = should_compact_output(
         content_str,
         tool_name,

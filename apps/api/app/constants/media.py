@@ -29,6 +29,18 @@ IMAGE_MIME_BY_EXTENSION: dict[str, str] = {
     ".gif": GIF_MIME,
 }
 
+# Pillow's sniffed format name → MIME. The decoded bytes are authoritative: a
+# file extension and an MCP server's declared `mimeType` can both lie, and a
+# block whose mime_type contradicts its payload is rejected by the provider.
+# A format Pillow decodes but that isn't listed here (BMP, TIFF, HEIC) has no
+# safe MIME, so it transcodes to JPEG like any other unsupported input.
+MIME_BY_PILLOW_FORMAT: dict[str, str] = {
+    "PNG": PNG_MIME,
+    "JPEG": JPEG_MIME,
+    "WEBP": WEBP_MIME,
+    "GIF": GIF_MIME,
+}
+
 # MIME types every lane we route media to actually accepts. Gemini's image
 # understanding covers PNG/JPEG/WEBP (plus HEIC/HEIF) and rejects `image/gif`
 # outright with a 400, so a GIF that reached the provider untouched would kill

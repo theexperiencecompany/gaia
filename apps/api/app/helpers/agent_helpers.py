@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import json
 import re
-from typing import cast
+from typing import Any, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
@@ -41,6 +41,7 @@ from app.utils.agent_utils import (
     parse_subagent_id,
     process_custom_event_for_tools,
 )
+from app.utils.multimodal import extract_text_content, has_media_blocks
 from shared.py.wide_events import log
 
 
@@ -503,6 +504,27 @@ async def execute_graph_silent(
     return complete_message, tool_data
 
 
+def _json_safe_tool_result(content: Any) -> Any:
+    """The raw tool result handed to an MCP-UI iframe, as JSON-serializable data.
+
+    Inline media is text-extracted out: media blocks are plain dicts, so they
+    would sail through the serializability check below and ship a megabyte of
+    base64 into the SSE event.
+    """
+    if has_media_blocks(content):
+        return extract_text_content(content)
+    try:
+        json.dumps(content)
+    except TypeError:
+        model_dump = getattr(content, "model_dump", None)
+        if callable(model_dump):
+            return model_dump()
+        if hasattr(content, "__dict__"):
+            return dict(content.__dict__)
+        return str(content)
+    return content
+
+
 @traceable(run_type="llm", name="Call Agent")
 async def execute_graph_streaming(
     graph,
@@ -654,20 +676,11 @@ async def execute_graph_streaming(
                     "update_tasks",
                 } or chunk.additional_kwargs.get("todo_tool", False):
                     continue
-                tool_result_payload = chunk.content
-                try:
-                    json.dumps(tool_result_payload)
-                except TypeError:
-                    model_dump = getattr(tool_result_payload, "model_dump", None)
-                    if callable(model_dump):
-                        tool_result_payload = model_dump()
-                    elif hasattr(tool_result_payload, "__dict__"):
-                        tool_result_payload = dict(tool_result_payload.__dict__)
-                    else:
-                        tool_result_payload = str(tool_result_payload)
-                output = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+                # Text-extract block content so inline media (base64 image blocks)
+                # never streams to the frontend or lands in the persisted message.
                 tool_output_payload = ToolOutputPayload(
-                    tool_call_id=chunk.tool_call_id, output=output
+                    tool_call_id=chunk.tool_call_id,
+                    output=extract_text_content(chunk.content),
                 )
                 yield format_sse_data(
                     {"tool_output": tool_output_payload.model_dump(exclude_none=True)}
@@ -676,6 +689,7 @@ async def execute_graph_streaming(
                 # Emit deferred mcp_app event now that tool result is available
                 app_meta = pending_mcp_apps.pop(chunk.tool_call_id, None)
                 if app_meta:
+                    tool_result_payload = _json_safe_tool_result(chunk.content)
                     try:
                         ui_resource = await fetch_mcp_ui_resource(
                             server_url=app_meta["server_url"],

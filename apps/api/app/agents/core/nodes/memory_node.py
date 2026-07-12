@@ -103,7 +103,9 @@ def _format_messages_for_user_memory(
                     tool_content = f"[TOOL CALL: {call['name']}({call.get('args', {})})]"
                     formatted.append({"role": "assistant", "content": tool_content})
             elif msg.content:
-                formatted.append({"role": "assistant", "content": str(msg.content)})
+                formatted.append(
+                    {"role": "assistant", "content": extract_text_content(msg.content)}
+                )
 
         elif isinstance(msg, ToolMessage):
             # Truncate tool OUTPUTS only - they're usually large API responses.

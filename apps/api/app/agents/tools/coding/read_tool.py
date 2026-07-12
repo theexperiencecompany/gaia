@@ -77,13 +77,11 @@ async def read(
     # re-checks containment so a model-supplied path can't escape it.
     rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
 
-    image_mime = ImageCodec.mime_for_path(abs_path)
-    if image_mime is not None:
+    if ImageCodec.mime_for_path(abs_path) is not None:
         return await _read_image(
             user_id=user_id,
             rel=rel,
             abs_path=abs_path,
-            mime_type=image_mime,
             config=config,
             session_id=session_id,
         )
@@ -127,7 +125,6 @@ async def _read_image(
     user_id: str,
     rel: str,
     abs_path: str,
-    mime_type: str,
     config: RunnableConfig,
     session_id: str | None,
 ) -> str | list[dict[str, Any]]:
@@ -158,7 +155,7 @@ async def _read_image(
 
     file_size = len(data)
     try:
-        image = await ImageCodec.from_bytes(data, mime_type)
+        image = await ImageCodec.from_bytes(data)
     except InvalidImage as e:
         return f"Error: cannot read {abs_path} as an image — {e}"
 

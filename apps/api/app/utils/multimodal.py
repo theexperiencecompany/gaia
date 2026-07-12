@@ -19,6 +19,10 @@ from app.constants.media import MEDIA_BLOCK_TOKEN_ESTIMATE
 _MEDIA_BLOCK_CHARS = MEDIA_BLOCK_TOKEN_ESTIMATE * 4
 
 
+def text_content_block(text: str) -> dict[str, Any]:
+    return {"type": "text", "text": text}
+
+
 def image_content_block(base64_data: str, mime_type: str) -> dict[str, Any]:
     """The canonical inline-image block, from already-base64-encoded data."""
     return {"type": "image", "base64": base64_data, "mime_type": mime_type}

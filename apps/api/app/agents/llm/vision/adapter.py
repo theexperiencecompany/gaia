@@ -14,7 +14,12 @@ from app.constants.media import (
     MEDIA_REPACKED_NOTICE,
     REPACKED_MEDIA_HEADER,
 )
-from app.utils.multimodal import extract_text_content, has_media_blocks, is_media_block
+from app.utils.multimodal import (
+    extract_text_content,
+    has_media_blocks,
+    is_media_block,
+    text_content_block,
+)
 
 # Where one media block sits in a message list: (message index, block index).
 BlockRef = tuple[int, int]
@@ -108,7 +113,7 @@ class MediaAdapter:
                 if not is_media_block(block) or (m_idx, b_idx) in admitted
             ]
             if len(kept) < len(blocks):
-                kept.append(_text_block(MEDIA_EVICTED_NOTICE))
+                kept.append(text_content_block(MEDIA_EVICTED_NOTICE))
             adapted.append(msg.model_copy(update={"content": kept}))
         return adapted
 
@@ -129,7 +134,7 @@ class MediaAdapter:
 
         def flush() -> None:
             if pending:
-                adapted.append(HumanMessage(content=[_text_block(REPACKED_MEDIA_HEADER), *pending]))
+                adapted.append(HumanMessage(content=[text_content_block(REPACKED_MEDIA_HEADER), *pending]))
                 pending.clear()
 
         for m_idx, msg in enumerate(messages):
@@ -140,7 +145,7 @@ class MediaAdapter:
                 )
                 if carried:
                     label = f"[Media from the '{msg.name or 'tool'}' result:]"
-                    pending.append(_text_block(label))
+                    pending.append(text_content_block(label))
                     pending.extend(carried)
                 continue
             if not isinstance(msg, ToolMessage):
@@ -176,10 +181,6 @@ def _admitted_blocks(
         for b_idx, block in enumerate(_blocks(msg))
         if is_media_block(block) and (m_idx, b_idx) in admitted
     ]
-
-
-def _text_block(text: str) -> dict[str, Any]:
-    return {"type": "text", "text": text}
 
 
 def _as_text(msg: ToolMessage, notice: str) -> ToolMessage:

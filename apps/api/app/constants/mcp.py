@@ -30,4 +30,10 @@ GAIA_OAUTH_PRIVACY_PATH = "/privacy"
 # tells the model nothing and some providers reject it outright.
 EMPTY_TOOL_RESULT = "(tool succeeded with no content)"
 # Beyond MAX_MEDIA_BLOCKS_PER_TOOL_RESULT images, further ones are not decoded.
-MCP_MEDIA_DROPPED_NOTICE = "[Image omitted: this result returned more images than can be inlined.]"
+# Emitted once per result, not once per dropped image.
+MCP_MEDIA_DROPPED_NOTICE = (
+    "[{count} more image(s) omitted: this result returned more images than can be inlined.]"
+)
+# A content item that is neither text nor an inlinable image (audio, a binary
+# resource). Its pydantic repr must never be what the model sees.
+MCP_UNSUPPORTED_CONTENT_NOTICE = "[{kind} omitted: this result type cannot be shown as text.]"
