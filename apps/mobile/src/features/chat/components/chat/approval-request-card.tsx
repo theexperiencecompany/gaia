@@ -4,6 +4,7 @@ import type {
   ApprovalScope,
   ApprovalStatus,
 } from "@gaia/shared/chat";
+import { approvalOutcomeLabel } from "@gaia/shared/chat";
 import * as Haptics from "expo-haptics";
 import { Button, Chip } from "heroui-native";
 import { useState } from "react";
@@ -26,6 +27,11 @@ const RESOLVED: Record<
   Exclude<ApprovalStatus, "pending">,
   { icon: typeof Cancel01Icon; label: string; color: string }
 > = {
+  auto_approved: {
+    icon: CheckmarkCircle02Icon,
+    label: "Ran automatically",
+    color: "#34d399",
+  },
   approved: {
     icon: CheckmarkCircle02Icon,
     label: "Approved",
@@ -33,6 +39,7 @@ const RESOLVED: Record<
   },
   denied: { icon: Cancel01Icon, label: "Declined", color: "#f87171" },
   timeout: { icon: Clock01Icon, label: "Timed out", color: "#fbbf24" },
+  abandoned: { icon: Cancel01Icon, label: "Dropped", color: "#a1a1aa" },
 };
 
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
@@ -100,6 +107,8 @@ export function ApprovalRequestCard({ data }: ApprovalRequestCardProps) {
     }
   };
 
+  const isAuto = data.status === "auto_approved";
+
   const shell = (children: React.ReactNode) => (
     <View
       style={{
@@ -111,13 +120,17 @@ export function ApprovalRequestCard({ data }: ApprovalRequestCardProps) {
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
-        <AppIcon icon={AlertCircleIcon} size={18} color="#fbbf24" />
+        <AppIcon
+          icon={isAuto ? CheckmarkCircle02Icon : AlertCircleIcon}
+          size={18}
+          color={isAuto ? "#34d399" : "#fbbf24"}
+        />
         <View style={{ flex: 1 }}>
           <Text style={{ color: "#f4f4f5", fontSize: 14 }} numberOfLines={2}>
             {data.summary}
           </Text>
           <Text style={{ color: "#71717a", fontSize: 12 }}>
-            Approval required
+            {isAuto ? "Ran without asking" : "Approval required"}
           </Text>
         </View>
       </View>
@@ -129,26 +142,16 @@ export function ApprovalRequestCard({ data }: ApprovalRequestCardProps) {
   if (data.status !== "pending") {
     const meta = RESOLVED[data.status];
     return shell(
-      <View
-        style={{
-          marginTop: 12,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 8,
-        }}
-      >
-        <AppIcon icon={meta.icon} size={18} color={meta.color} />
-        <Chip size="sm" variant="soft">
-          <Chip.Label>{meta.label}</Chip.Label>
-        </Chip>
-        {data.feedback ? (
-          <Text
-            style={{ flex: 1, fontSize: 12, color: "#a1a1aa" }}
-            numberOfLines={1}
-          >
-            {data.feedback}
-          </Text>
-        ) : null}
+      <View style={{ marginTop: 12, gap: 6 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <AppIcon icon={meta.icon} size={18} color={meta.color} />
+          <Chip size="sm" variant="soft">
+            <Chip.Label>{meta.label}</Chip.Label>
+          </Chip>
+        </View>
+        <Text style={{ fontSize: 12, color: "#a1a1aa" }} numberOfLines={2}>
+          {approvalOutcomeLabel(data)}
+        </Text>
       </View>,
     );
   }

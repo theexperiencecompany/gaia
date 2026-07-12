@@ -32,7 +32,7 @@ from app.constants.hil import (
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.hil_models import HILApprovalStatus
-from app.services.hil.approvals_store import upsert_pending_approval
+from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
 from shared.py.wide_events import log
 
@@ -109,6 +109,48 @@ async def publish_approval_outcome(
     )
 
 
+async def publish_auto_approval(
+    *,
+    approval_id: str,
+    stream_id: str,
+    user_id: str,
+    conversation_id: str,
+    tool_call: dict[str, Any],
+    summary: str,
+    integration_name: str | None,
+    reason: str,
+) -> None:
+    """Record and surface an action auto mode ran without asking.
+
+    The card is published already settled, so it needs no decision and wakes nobody — it
+    is a receipt, not a request. Auto mode should never mean the user cannot see what was
+    done in their name.
+    """
+    await record_auto_approval(
+        approval_id=approval_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+        tool_name=tool_call.get("name", ""),
+        tool_call_id=tool_call.get("id", ""),
+        args=tool_call.get("args", {}) or {},
+        summary=summary,
+        integration_name=integration_name,
+        reason=reason,
+    )
+    await _publish_entry(
+        stream_id,
+        _approval_entry(
+            approval_id,
+            tool_call,
+            "auto_approved",
+            summary,
+            integration_name,
+            auto_reason=reason,
+        ),
+    )
+
+
 async def remember_declined_call(
     stream_id: str, tool_name: str, args: dict[str, Any], feedback: str | None
 ) -> None:
@@ -178,6 +220,7 @@ def _approval_entry(
     summary: str,
     integration_name: str | None,
     feedback: str | None = None,
+    auto_reason: str | None = None,
 ) -> dict[str, Any]:
     return {
         "tool_name": APPROVAL_REQUEST_TOOL_NAME,
@@ -191,6 +234,7 @@ def _approval_entry(
             "args_preview": tool_call.get("args", {}),
             "status": status,
             "feedback": feedback,
+            "auto_reason": auto_reason,
             "timeout_seconds": int(HIL_APPROVAL_TIMEOUT_SECONDS),
         },
         "timestamp": datetime.now(UTC).isoformat(),

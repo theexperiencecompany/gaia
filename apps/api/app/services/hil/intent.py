@@ -37,6 +37,7 @@ absent: any mention that a denial blocks a real action — telling a judge the s
 verdict makes it more lenient on exactly the borderline cases (arXiv 2604.15224).
 """
 
+from dataclasses import dataclass
 from enum import StrEnum
 import json
 import re
@@ -52,6 +53,14 @@ from shared.py.wide_events import log
 _MAX_ARGS_LEN = 1500
 _MAX_PRIOR_CALLS = 8
 _MAX_PRIOR_ARGS_LEN = 200
+
+
+@dataclass(frozen=True)
+class IntentDecision:
+    """The judge's call, plus the why — shown to the user on the auto-approval receipt."""
+
+    aligned: bool
+    reason: str
 
 
 class RiskFactor(StrEnum):
@@ -215,20 +224,23 @@ async def judge_intent(
     args: dict[str, Any],
     summary: str,
     prior_calls: list[tuple[str, dict[str, Any]]],
-) -> bool:
-    """Whether the user's own words authorize this call. Fails toward asking (``False``).
+) -> IntentDecision:
+    """Whether the user's own words authorize this call. Fails toward asking.
 
     ``user_messages`` are the user's verbatim turns, oldest first, live request last —
     never a delegated task (see the module docstring). Intent regularly spans turns, so
     the authorizing words may come from any of them. No user turns means there is nothing
     to verify against, so it asks without spending a call.
+
+    The reason travels with the decision: an auto-approved action is shown to the user
+    afterwards as a receipt, and a receipt with no "why" is not accountability.
     """
     turns = [text for text in user_messages if text.strip()]
     if not turns:
         log.info(
             f"{LogTag.HIL} intent judge {tool_name}: no user messages to verify against; asking"
         )
-        return False
+        return IntentDecision(False, "Could not check this against anything you asked for.")
 
     try:
         verdict = await ainvoke_structured(
@@ -247,7 +259,7 @@ async def judge_intent(
         )
     except Exception as e:  # noqa: BLE001 — a judge failure must fall back to asking
         log.warning(f"{LogTag.HIL} intent judge failed for {tool_name}; asking: {e}")
-        return False
+        return IntentDecision(False, "The approval check could not run.")
 
     # Grounded against EVERY user turn, not just the latest: "looks good, send it" is
     # authorized by the earlier "draft an email to Bob about the deck".
@@ -261,7 +273,7 @@ async def judge_intent(
             "injected": verdict.injected_instructions,
         },
     )
-    return aligned
+    return IntentDecision(aligned, verdict.reason)
 
 
 def _accept(verdict: _IntentVerdict, user_text: str, tool_name: str) -> bool:

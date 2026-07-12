@@ -27,24 +27,26 @@ from typing import Any, Literal
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
+from langchain_core.tools import BaseTool
 from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command, interrupt
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
-from app.models.hil_models import HIL_DEFAULT_MODE
+from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     ApprovalOutcome,
     build_summary,
     publish_approval_outcome,
     publish_approval_request,
+    publish_auto_approval,
     recall_declined_call,
     remember_declined_call,
 )
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
-from app.services.hil.intent import judge_intent, prior_tool_calls
+from app.services.hil.intent import IntentDecision, judge_intent, prior_tool_calls
 from app.services.hil.preferences import get_hil_preferences, set_tool_override
 from shared.py.wide_events import log
 
@@ -137,19 +139,67 @@ async def _gating_policy(
 
     if prefs.mode == "always_allow":
         return "allow"
-
-    # A user's explicit per-tool choice wins over the classifier in both directions —
-    # even over an MCP destructiveHint — since it's a deliberate account setting.
-    gated = prefs.tool_overrides.get(tool_name)
-    if gated is None:
-        tool = getattr(request, "tool", None)
-        description = getattr(tool, "description", "") or ""
-        gated = await is_tool_destructive(
-            tool_name, description, destructive_hint=mcp_destructive_hint(tool)
-        )
-    if not gated:
+    if not await _is_gated(prefs, tool_name, getattr(request, "tool", None)):
         return "allow"
     return "auto" if prefs.mode == "auto" else "ask"
+
+
+async def _is_gated(prefs: HILPreferences, tool_name: str, tool: BaseTool | None) -> bool:
+    """Whether this tool needs approval — the set both gating modes act on.
+
+    A user's explicit per-tool choice wins over the classifier in both directions — even
+    over an MCP destructiveHint — since it's a deliberate account setting.
+    """
+    override = prefs.tool_overrides.get(tool_name)
+    if override is not None:
+        return override
+    return await is_tool_destructive(
+        tool_name,
+        getattr(tool, "description", "") or "",
+        destructive_hint=mcp_destructive_hint(tool),
+    )
+
+
+async def _other_gated_call_in_turn(
+    request: ToolCallRequest, user_id: str, tool_call_id: str
+) -> bool:
+    """Whether the model asked for another gated tool in this same AI message.
+
+    If it did, this call must not auto-run: the sibling will ``interrupt()``, and
+    LangGraph re-runs the *whole node* on resume, so a handler that ran before the pause
+    runs a second time (verified — a send became two sends). Auto-approval therefore
+    applies only when it is the turn's only gated action; several destructive actions in
+    one turn are confirmed together, which is also the behaviour worth having.
+
+    A sibling whose tool object isn't to hand classifies from the registry alone and
+    fails closed to gated, so an unknown sibling suppresses auto-approval rather than
+    risking the double-run.
+    """
+    prefs = await get_hil_preferences(user_id)
+    for call in _current_tool_calls(request.state):
+        if call.get("id") == tool_call_id:
+            continue
+        name = call.get("name", "")
+        if name and name not in HIL_EXEMPT_TOOLS and await _is_gated(prefs, name, None):
+            return True
+    return False
+
+
+def _current_tool_calls(state: Any) -> list[dict[str, Any]]:
+    """The tool calls of the AI message this node is executing (its last one)."""
+    messages = _state_get(state, "messages")
+    for message in reversed(messages if isinstance(messages, list) else []):
+        calls = getattr(message, "tool_calls", None)
+        if calls:
+            return list(calls)
+    return []
+
+
+def _state_get(state: Any, key: str) -> Any:
+    if isinstance(state, dict):
+        return state.get(key)
+    getter = getattr(state, "get", None)
+    return getter(key) if callable(getter) else getattr(state, key, None)
 
 
 async def _ask_or_auto_run(
@@ -164,7 +214,7 @@ async def _ask_or_auto_run(
     """Auto-judge (auto mode), then either run the tool or pause for approval."""
     approval_id = approval_id_for(context.conversation_id, tool_call_id)
     tool_call = {"id": tool_call_id, "name": tool_name, "args": args}
-    auto_approved = False
+    decision: IntentDecision | None = None
 
     try:
         # The user already declined this exact call earlier in the turn. Re-asking
@@ -179,22 +229,38 @@ async def _ask_or_auto_run(
         summary = build_summary(tool_name, args, integration_name)
 
         if policy == "auto":
-            # Replay guard: this node re-runs top-to-bottom on every interrupt()
-            # resume, and the judge is a non-deterministic LLM call. A pre-existing
-            # record means a prior run already chose "ask" and published the card —
-            # skip the judge and go straight to the (idempotent) pause below, so the
-            # resume value lands on the interrupt() it expects. The aligned-and-run
-            # path writes no record and never interrupts, so it never replays here.
-            auto_approved = await get_approval(approval_id) is None and await judge_intent(
-                user_messages=context.user_messages,
-                tool_name=tool_name,
-                description=getattr(getattr(request, "tool", None), "description", "") or "",
-                args=args,
+            # Replay guard: this node re-runs top-to-bottom on every interrupt() resume,
+            # and the judge is a non-deterministic LLM call. A pre-existing record means a
+            # prior run already published a card — skip the judge and go straight to the
+            # (idempotent) pause below, so the resume value lands on the interrupt() it
+            # expects. Paired with the sibling check, an auto-approved call never replays.
+            if await get_approval(approval_id) is None and not await _other_gated_call_in_turn(
+                request, context.user_id, tool_call_id
+            ):
+                decision = await judge_intent(
+                    user_messages=context.user_messages,
+                    tool_name=tool_name,
+                    description=getattr(getattr(request, "tool", None), "description", "") or "",
+                    args=args,
+                    summary=summary,
+                    # Actions only — the agent's prose is never handed to its own gate.
+                    prior_calls=prior_tool_calls(request.state, tool_call_id),
+                )
+
+        if decision is not None and decision.aligned:
+            # A receipt, published before the handler runs: if the tool then fails, the
+            # user still sees that GAIA decided to act and why.
+            await publish_auto_approval(
+                approval_id=approval_id,
+                stream_id=context.stream_id,
+                user_id=context.user_id,
+                conversation_id=context.conversation_id,
+                tool_call=tool_call,
                 summary=summary,
-                # Actions only — the agent's prose is never handed to its own gate.
-                prior_calls=prior_tool_calls(request.state, tool_call_id),
+                integration_name=integration_name,
+                reason=decision.reason,
             )
-        if not auto_approved:
+        else:
             # Idempotent: a resume replay re-enters here, finds the record already
             # present, and re-publishes nothing.
             await publish_approval_request(
@@ -215,8 +281,8 @@ async def _ask_or_auto_run(
     # Run outside the fail-closed try so the tool's own failure surfaces as a tool
     # error, not a spurious gate denial (same reason the post-approval run below
     # sits outside it).
-    if auto_approved:
-        log.info(f"{LogTag.HIL} auto-approved {tool_name}: intent aligned")
+    if decision is not None and decision.aligned:
+        log.info(f"{LogTag.HIL} auto-approved {tool_name}: {decision.reason}")
         return await handler(request)
 
     # The run checkpoints and exits here. Everything below executes only once a

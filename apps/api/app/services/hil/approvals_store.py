@@ -71,6 +71,49 @@ async def upsert_pending_approval(
     return result.upserted_id is not None
 
 
+async def record_auto_approval(
+    *,
+    approval_id: str,
+    user_id: str,
+    conversation_id: str,
+    stream_id: str,
+    tool_name: str,
+    tool_call_id: str,
+    args: dict[str, Any],
+    summary: str,
+    integration_name: str | None,
+    reason: str,
+) -> None:
+    """Log an action auto mode ran without asking — the receipt behind its card.
+
+    Written already-decided (never ``pending``), so it is a record, not a request: no
+    sweep expires it and no decision endpoint can resolve it. ``$setOnInsert`` keeps it
+    idempotent for the same reason the pending upsert is.
+    """
+    now = datetime.now(UTC)
+    record = HILApprovalRecord(
+        approval_id=approval_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+        tool_name=tool_name,
+        tool_call_id=tool_call_id,
+        args=args,
+        summary=summary,
+        integration_name=integration_name,
+        status="auto_approved",
+        auto_reason=reason,
+        decided_at=now,
+        created_at=now,
+        expires_at=now,
+    )
+    doc = record.model_dump()
+    doc["_id"] = approval_id
+    await hil_approvals_collection.update_one(
+        {"_id": approval_id}, {"$setOnInsert": doc}, upsert=True
+    )
+
+
 def _hydrate(doc: dict[str, Any]) -> HILApprovalRecord:
     doc.pop("_id", None)
     return HILApprovalRecord(**doc)
@@ -113,9 +156,7 @@ async def mark_decided(
 
 async def set_resume_item(approval_id: str, item: dict[str, Any]) -> None:
     """Attach the paused run's re-dispatch context to its approval record."""
-    await hil_approvals_collection.update_one(
-        {"_id": approval_id}, {"$set": {"resume_item": item}}
-    )
+    await hil_approvals_collection.update_one({"_id": approval_id}, {"$set": {"resume_item": item}})
 
 
 async def mark_resumed(approval_id: str) -> None:

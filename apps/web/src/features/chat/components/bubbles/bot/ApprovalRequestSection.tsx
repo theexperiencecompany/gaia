@@ -11,6 +11,7 @@ import type {
   ApprovalDecision,
   ApprovalRequestData,
   ApprovalScope,
+  ApprovalStatus,
 } from "@shared/chat";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
@@ -18,6 +19,7 @@ import { toast } from "@/lib/toast";
 
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
+  onDecided: (status: ApprovalStatus, feedback: string | null) => void;
 }
 
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
@@ -44,9 +46,9 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
 
 export default function ApprovalRequestSection({
   data,
+  onDecided,
 }: ApprovalRequestSectionProps) {
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
-  const [settled, setSettled] = useState(false);
   const [feedback, setFeedback] = useState("");
 
   const decide = async (
@@ -64,17 +66,18 @@ export default function ApprovalRequestSection({
       // stream (a different message), so it never replaces this card. A 410
       // (already resolved elsewhere) is swallowed by postApprovalDecision and
       // settles here too; reaching the catch means the submit genuinely failed.
-      setSettled(true);
+      // The group moves it into the receipts list — it is not thrown away.
+      onDecided(
+        decision === "approve" ? "approved" : "denied",
+        feedback.trim() || null,
+      );
     } catch {
       toast.error("Couldn't submit your decision — please try again");
       setSubmitting(null);
     }
   };
 
-  // A settled approval is removed entirely — nobody acts on a decided card, and
-  // the assistant's own reply already reflects the outcome. Only pending cards
-  // render (the group also filters, this keeps the component self-consistent).
-  if (settled || data.status !== "pending") return null;
+  if (data.status !== "pending") return null;
 
   return (
     <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">

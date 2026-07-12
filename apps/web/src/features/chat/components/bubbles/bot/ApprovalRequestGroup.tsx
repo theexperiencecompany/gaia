@@ -1,28 +1,67 @@
-import type { ApprovalRequestData } from "@shared/chat";
+"use client";
+
+import {
+  type ApprovalRequestData,
+  type ApprovalStatus,
+  isSettled,
+} from "@shared/chat";
+import { useState } from "react";
+import { ApprovalReceipts } from "./ApprovalReceipts";
 import ApprovalRequestSection from "./ApprovalRequestSection";
 
 interface ApprovalRequestGroupProps {
   items: ApprovalRequestData[];
 }
 
+interface LocalDecision {
+  status: ApprovalStatus;
+  feedback: string | null;
+}
+
 /**
- * Only pending approvals are shown — a settled one is removed entirely (nobody
- * acts on a decided card, and the assistant's reply already reflects it). A
- * single pending card renders on its own; several sit side by side so a run
- * needing many decisions stays compact.
+ * Pending approvals render as actionable cards; a decided one moves into the collapsed
+ * receipts list rather than disappearing. That list is also where auto mode's actions
+ * show up — an action taken without asking still has to be visible after the fact.
+ *
+ * A decision is settled locally because the resolved frame is published on the RESUMED
+ * run's stream (a different message), so it never arrives to replace this card.
  */
 export default function ApprovalRequestGroup({
   items,
 }: ApprovalRequestGroupProps) {
-  const pending = items.filter((i) => i.status === "pending");
-  if (pending.length === 0) return null;
-  if (pending.length === 1) return <ApprovalRequestSection data={pending[0]} />;
+  const [decided, setDecided] = useState<Record<string, LocalDecision>>({});
+
+  const resolved = items.map((item) => {
+    const local = decided[item.approval_id];
+    return local ? { ...item, ...local } : item;
+  });
+
+  const pending = resolved.filter((item) => item.status === "pending");
+  const settled = resolved.filter((item) => isSettled(item.status));
 
   return (
-    <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
-      {pending.map((item) => (
-        <ApprovalRequestSection key={item.approval_id} data={item} />
-      ))}
+    <div className="flex w-full max-w-2xl flex-col gap-3">
+      {pending.length > 0 && (
+        <div
+          className={
+            pending.length === 1 ? "" : "grid grid-cols-1 gap-3 sm:grid-cols-2"
+          }
+        >
+          {pending.map((item) => (
+            <ApprovalRequestSection
+              key={item.approval_id}
+              data={item}
+              onDecided={(status, feedback) =>
+                setDecided((prev) => ({
+                  ...prev,
+                  [item.approval_id]: { status, feedback },
+                }))
+              }
+            />
+          ))}
+        </div>
+      )}
+      <ApprovalReceipts items={settled} />
     </div>
   );
 }

@@ -5,7 +5,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-HILApprovalStatus = Literal["pending", "approved", "denied", "timeout", "abandoned"]
+HILApprovalStatus = Literal[
+    "pending", "approved", "denied", "timeout", "abandoned", "auto_approved"
+]
 
 # The three global approval modes. Launch switch: the default stays
 # ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
@@ -61,6 +63,9 @@ class HILApprovalRecord(BaseModel):
     status: HILApprovalStatus = "pending"
     scope: str = "once"
     feedback: str | None = None
+    # Why auto mode ran this without asking (the intent judge's own words). Empty for
+    # anything the user decided — there the decision, not a rationale, is the record.
+    auto_reason: str | None = None
     decided_by: str | None = None
     decided_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

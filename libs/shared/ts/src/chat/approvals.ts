@@ -24,7 +24,18 @@ export interface HilPreferences {
   tool_overrides: Record<string, boolean>;
 }
 
-export type ApprovalStatus = "pending" | "approved" | "denied" | "timeout";
+export type ApprovalStatus =
+  | "pending"
+  | "approved"
+  | "denied"
+  | "timeout"
+  | "abandoned"
+  | "auto_approved";
+
+/** A decided approval — no longer actionable, kept as a receipt. */
+export function isSettled(status: ApprovalStatus): boolean {
+  return status !== "pending";
+}
 
 export type ApprovalDecision = "approve" | "deny";
 export type ApprovalScope = "once" | "always_tool";
@@ -65,7 +76,27 @@ export interface ApprovalRequestData {
   args_preview: Record<string, unknown>;
   status: ApprovalStatus;
   feedback: string | null;
+  /** Why auto mode ran this without asking. Only set on `auto_approved`. */
+  auto_reason?: string | null;
   timeout_seconds: number;
+}
+
+/** One line explaining how a settled approval was decided. */
+export function approvalOutcomeLabel(data: ApprovalRequestData): string {
+  switch (data.status) {
+    case "auto_approved":
+      return data.auto_reason?.trim() || "Matched what you asked for";
+    case "approved":
+      return "You approved this";
+    case "denied":
+      return data.feedback?.trim() || "You declined this";
+    case "timeout":
+      return "Expired without a response";
+    case "abandoned":
+      return "Dropped when you moved on";
+    default:
+      return "";
+  }
 }
 
 const approvalId = (entry: StreamToolDataEntry): string | null => {
