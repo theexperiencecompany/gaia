@@ -43,6 +43,7 @@ from app.utils.agent_utils import (
     parse_subagent_id,
     process_custom_event_for_tools,
 )
+from app.utils.general_utils import clip_text
 from shared.py.wide_events import log
 
 
@@ -241,11 +242,7 @@ def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
     # guarantee it ends the list either way — the judge treats the last as the live request.
     if current and (not turns or turns[-1] != current):
         turns.append(current)
-    return [_clip(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
-
-
-def _clip(text: str, limit: int) -> str:
-    return text if len(text) <= limit else f"{text[:limit]}…"
+    return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
 
 
 # NOSONAR python:S107 — these parameters form one cohesive LangGraph execution

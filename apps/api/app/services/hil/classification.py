@@ -27,17 +27,9 @@ from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import hil_tool_risk_collection
 from app.models.hil_models import HILToolRiskRecord
+from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from shared.py.wide_events import log
-
-_CLASSIFY_PROMPT = (
-    "An AI assistant may call the tool below autonomously on the user's behalf.\n"
-    "Mark it destructive if executing it is irreversible or produces an effect "
-    "visible to other people — sending, posting, deleting, or paying. Reading, "
-    "searching, or fetching data is NOT destructive.\n\n"
-    "Tool name: {name}\n"
-    "Description: {description}"
-)
 
 
 class _ClassifyResult(BaseModel):
@@ -117,7 +109,7 @@ async def _cached_classification(tool_name: str, description_hash: str) -> bool 
 async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResult:
     return await ainvoke_structured(
         _ClassifyResult,
-        _CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
+        TOOL_CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
         label="hil_tool_classification",
     )
 

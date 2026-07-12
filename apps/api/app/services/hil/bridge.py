@@ -28,16 +28,16 @@ from app.constants.hil import (
     APPROVAL_TOOL_CATEGORY,
     HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_DECLINE_MEMORY_TTL_SECONDS,
+    HIL_SUMMARY_MAX_ARG_CHARS,
+    HIL_SUMMARY_MAX_ARGS,
 )
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.hil_models import HILApprovalStatus
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
+from app.utils.general_utils import clip_text
 from shared.py.wide_events import log
-
-_MAX_SUMMARY_ARGS = 2
-_MAX_ARG_VALUE_LEN = 60
 
 # Keep-alive set so fire-and-forget notify tasks aren't GC'd mid-flight
 # (asyncio.create_task holds only a weak reference).
@@ -242,16 +242,13 @@ def _approval_entry(
 
 
 def _summary_arg_parts(args: dict[str, Any]) -> list[str]:
-    """Up to ``_MAX_SUMMARY_ARGS`` short ``key: value`` scalars for the summary."""
+    """A few short ``key: value`` scalars for the card's one-line summary."""
     parts: list[str] = []
     for key, value in (args or {}).items():
-        if len(parts) >= _MAX_SUMMARY_ARGS:
+        if len(parts) >= HIL_SUMMARY_MAX_ARGS:
             break
         if isinstance(value, (str, int, float, bool)):
-            text = str(value)
-            if len(text) > _MAX_ARG_VALUE_LEN:
-                text = f"{text[:_MAX_ARG_VALUE_LEN]}…"
-            parts.append(f"{key}: {text}")
+            parts.append(f"{key}: {clip_text(str(value), HIL_SUMMARY_MAX_ARG_CHARS)}")
     return parts
 
 

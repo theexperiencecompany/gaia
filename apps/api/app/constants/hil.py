@@ -1,23 +1,54 @@
-"""HIL (human-in-the-loop) approval constants: policy, timings, frame names.
+"""HIL (human-in-the-loop) approval constants: policy, timings, limits, frame names.
 
-The destructive classification is NOT here — it lives on each tool in the tool
-registry (app/agents/tools/core/registry.py), the single source of truth for
-every tool in the app. See the ``destructive`` flag on ``Tool`` and the
-classifier in ``app/services/hil/classification.py``.
+Every tunable number the HIL services use lives here. The LLM-facing *text* lives in
+``app/services/hil/prompts.py``; the destructive classification lives on each tool in
+the tool registry (``app/agents/tools/core/registry.py``), the single source of truth
+for every tool in the app.
 """
+
+from typing import Literal
 
 from app.constants.general import FINISH_TASK_NAME
 
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
 # default mode is a HILPreferences field default, so it lives with the model).
 
-# How many of the user's own turns the auto-mode intent judge sees, and how much of
-# each. Intent routinely spans turns ("draft an email to Bob" … "looks good, send it"),
-# so the latest message alone cannot be grounded against. Bounded because these ride in
-# ``configurable`` — into checkpoints and queued run items. Only USER turns are carried:
-# assistant text is deliberately withheld from the judge (see services/hil/intent.py).
+# --- auto mode: what the intent judge is shown ---------------------------------------
+#
+# How many of the user's own turns the judge sees, and how much of each. Intent routinely
+# spans turns ("draft an email to Bob" … "looks good, send it"), so the latest message
+# alone cannot be grounded against. Bounded because these ride in ``configurable`` — into
+# checkpoints and queued run items. Only USER turns are carried: assistant text is
+# deliberately withheld from the judge (see services/hil/intent.py).
 HIL_JUDGE_MAX_USER_TURNS = 6
 HIL_JUDGE_MAX_TURN_CHARS = 800
+
+# The pending call's arguments, and the run's earlier tool calls (the provenance for
+# arguments the agent derived rather than the user dictating).
+HIL_JUDGE_MAX_ARGS_CHARS = 1500
+HIL_JUDGE_MAX_PRIOR_CALLS = 8
+HIL_JUDGE_MAX_PRIOR_ARGS_CHARS = 200
+
+# Bytes of randomness in the fence around untrusted content in the judge prompt. Fixed
+# tags are guessable from a leaked prompt and can simply be closed by an attacker.
+HIL_JUDGE_NONCE_BYTES = 6
+
+# --- resume ---------------------------------------------------------------------------
+#
+# The only statuses a ``Command(resume=...)`` payload may carry. Anything else is treated
+# as a denial — an approval must never be inferred from a malformed payload. "abandoned"
+# is absent by design: resolution.py maps it to a deny before sending.
+HIL_RESUMABLE_STATUSES: frozenset[str] = frozenset({"approved", "denied", "timeout"})
+
+# --- approval card summary -------------------------------------------------------------
+#
+# How much of a call's arguments the deterministic one-line summary shows.
+HIL_SUMMARY_MAX_ARGS = 2
+HIL_SUMMARY_MAX_ARG_CHARS = 60
+
+# Marks a synthetic ToolMessage the gate produced (rather than a real tool result).
+HIL_STATUS_KWARG = "hil_status"
+HILToolMessageStatus = Literal["denied", "timeout", "error"]
 
 # How long an approval may sit unanswered before the sweep resolves it as a
 # timeout. Nothing waits in-process for this — the paused run is checkpointed.
