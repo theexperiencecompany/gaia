@@ -40,6 +40,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import ainvoke_structured
+from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS
 from app.constants.log_tags import LogTag
 from app.services.hil.prompts import INTENT_JUDGE_PROMPT
 from app.services.hil.utils import (
@@ -211,13 +212,20 @@ def _accept(verdict: _Verdict, user_text: str, tool_name: str) -> bool:
 
 
 def _is_grounded(quote: str, user_text: str) -> bool:
-    """Whether ``quote`` really appears in something the user actually wrote.
+    """Whether ``quote`` is a substantive thing the user actually wrote.
 
-    Compared on collapsed case, punctuation and whitespace so ordinary reformatting still
-    matches, while a paraphrased or fabricated quote does not.
+    Compared on collapsed case, punctuation and whitespace, so ordinary reformatting still
+    matches while a paraphrased or fabricated quote does not.
+
+    The length floor is not cosmetic. Grounding is the check that stops a lenient judge
+    approving on words the user never wrote — but "yes", "ok" or "it" occurs somewhere in
+    almost any conversation, so accepting any non-empty substring would let the judge
+    satisfy grounding without quoting anything that authorizes anything.
     """
     normalized = _normalize(quote)
-    return bool(normalized) and normalized in _normalize(user_text)
+    if len(normalized.split()) < HIL_JUDGE_MIN_QUOTE_WORDS:
+        return False
+    return normalized in _normalize(user_text)
 
 
 def _normalize(text: str) -> str:

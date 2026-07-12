@@ -45,6 +45,7 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
 )
 from app.constants.executor import (
+    EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
     MESSAGE_ID_KEY,
@@ -91,17 +92,13 @@ async def run_executor_background(
     try:
         result = await _execute_executor(task, configurable, run.stream_id, resume)
         result_text, result_type = result.text, result.type
-        if result.paused_on:
-            await set_resume_item(
-                result.paused_on,
-                build_run_item(
-                    task=task,
-                    task_id=run.task_id,
-                    configurable=configurable,
-                    conversation_id=run.conversation_id,
-                    user_message_id=run.user_message_id,
-                ),
-            )
+        if result.paused_on and not await _record_pause(run, task, configurable, result.paused_on):
+            # The pause is checkpointed but we could not record how to restart it, so no
+            # decision can ever resume this thread. Finalizing it as paused would hold the
+            # conversation's busy lock for its full TTL waiting for a resume that cannot
+            # come. Fail the run instead: the lock is released, queued work drains, and the
+            # sweep closes the orphaned approval.
+            result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
         log.info(
             f"{LogTag.AGENT} Background executor {result_type}",
             task_id=run.task_id,
@@ -109,6 +106,38 @@ async def run_executor_background(
         )
     finally:
         await _finalize_executor_run(run, task, result_text, result_type)
+
+
+async def _record_pause(
+    run: ExecutorRun, task: str, configurable: dict[str, Any], approval_id: str
+) -> bool:
+    """Attach this run's re-dispatch context to the approval it paused on.
+
+    Returns whether the write landed. It is the only thing that makes the pause
+    resumable, so a failure here is not something the run can carry on through — the
+    caller fails the run rather than parking it forever. Loud, never swallowed.
+    """
+    try:
+        await set_resume_item(
+            approval_id,
+            build_run_item(
+                task=task,
+                task_id=run.task_id,
+                configurable=configurable,
+                conversation_id=run.conversation_id,
+                user_message_id=run.user_message_id,
+            ),
+        )
+        return True
+    except Exception as e:  # noqa: BLE001 — a lost pause must fail the run, not the process
+        log.error(
+            f"{LogTag.HIL} Could not record resume context; failing the paused run",
+            approval_id=approval_id,
+            stream_id=run.stream_id,
+            task_id=run.task_id,
+            error=str(e),
+        )
+        return False
 
 
 class _ExecutorResult(NamedTuple):

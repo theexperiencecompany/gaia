@@ -29,3 +29,10 @@ EXECUTOR_STEP_LIMIT_MESSAGE = "This task hit its step limit — try breaking it 
 # a run has nothing to deliver and KEEPS the busy lock: its thread is checkpointed
 # with pending work, so no queued task may run on it until the approval resolves.
 EXECUTOR_PAUSED = "paused"
+
+# User-facing text when a run paused for approval but its resume context could not be
+# recorded, so no decision could ever restart it. Handed to comms as the error result
+# rather than parking the conversation behind a lock nothing will ever release.
+EXECUTOR_APPROVAL_LOST_MESSAGE = (
+    "I couldn't set up the approval for that action, so I've stopped. Please try again."
+)

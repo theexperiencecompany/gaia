@@ -114,11 +114,44 @@ async def abandon_conversation_approvals(
     abandoned: list[str] = []
     for record in await list_pending_for_conversation(conversation_id):
         try:
-            await _resolve_record(record, user_id=user_id, kind="abandon", feedback=feedback)
+            await _resolve_or_close(record, user_id=user_id, kind="abandon", feedback=feedback)
             abandoned.append(record.approval_id)
         except (ApprovalRequestNotFound, ApprovalRequestForbidden):
+            # Already decided, or not this user's to decide. Keep going: one record must
+            # never strand the conversation's other paused runs, which is the whole point.
             continue
     return abandoned
+
+
+async def _resolve_or_close(
+    record: HILApprovalRecord,
+    *,
+    user_id: str,
+    kind: DecisionKind,
+    feedback: str | None,
+) -> None:
+    """Resolve a record, or close it in place when no run can be resumed.
+
+    A record with no ``resume_item`` never had its pause registered — the executor died
+    between publishing the card and recording how to restart it. There is nothing to
+    resume, so resolving it would only raise. Closing it is what matters: a record left
+    pending goes on hijacking every later message in the conversation via the
+    conversational resolver.
+    """
+    if record.resume_item is None:
+        log.warning(
+            f"{LogTag.HIL} Closing approval with no resume context",
+            approval_id=record.approval_id,
+        )
+        await mark_decided(
+            record.approval_id,
+            _TERMINAL_STATUS[kind],
+            feedback=feedback,
+            scope="once",
+            decided_by=None,
+        )
+        return
+    await _resolve_record(record, user_id=user_id, kind=kind, feedback=feedback)
 
 
 async def _resolve_record(
@@ -203,16 +236,9 @@ async def sweep_approvals() -> dict[str, int]:
     expired = 0
     for record in await list_expired_pending():
         try:
-            if record.resume_item is None:
-                await mark_decided(
-                    record.approval_id, "timeout", feedback=None, scope="once", decided_by=None
-                )
-            else:
-                await _resolve_record(
-                    record, user_id=record.user_id, kind="timeout", feedback=None
-                )
+            await _resolve_or_close(record, user_id=record.user_id, kind="timeout", feedback=None)
             expired += 1
-        except (ApprovalRequestNotFound, ApprovalNotResumable):
+        except ApprovalRequestNotFound:
             continue
 
     redispatched = 0

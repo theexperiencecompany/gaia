@@ -33,6 +33,16 @@ HIL_JUDGE_MAX_PRIOR_ARGS_CHARS = 200
 # tags are guessable from a leaked prompt and can simply be closed by an attacker.
 HIL_JUDGE_NONCE_BYTES = 6
 
+# The floor on an authorizing quote. Grounding is what stops a lenient judge approving on
+# words the user never wrote — but a one-word quote ("yes", "ok", "it") appears somewhere
+# in almost any conversation, so requiring only a non-empty substring is close to
+# requiring nothing. A quote must carry enough of the request to identify the action.
+#
+# This deliberately errs toward asking: a terse "email bob" no longer grounds on its own.
+# That is the safe direction, and it matches the prompt's own instruction — for "send it",
+# the authorizing words live in the earlier turn that said what "it" is.
+HIL_JUDGE_MIN_QUOTE_WORDS = 3
+
 # --- resume ---------------------------------------------------------------------------
 #
 # The only statuses a ``Command(resume=...)`` payload may carry. Anything else is treated
