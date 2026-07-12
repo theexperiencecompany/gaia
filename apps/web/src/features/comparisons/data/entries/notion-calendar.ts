@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Notion Calendar (formerly Cron) is a polished, keyboard-driven calendar app that connects Google Calendar events to Notion pages and databases. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across 50+ connected tools.",
   metaTitle:
-    "Notion Calendar Alternative with AI Email | GAIA vs Notion Calendar",
+    "Notion Calendar Alternative with AI Email — GAIA vs Notion Calendar",
   metaDescription:
     "Notion Calendar is a beautiful calendar app but doesn't read your email or automate workflows. GAIA is an open-source Notion Calendar alternative with AI email management, task creation, and workflow automation across 50+ tools — free to self-host.",
   keywords: [

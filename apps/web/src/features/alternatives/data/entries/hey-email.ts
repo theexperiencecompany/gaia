@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
     "HEY's opinionated structure makes it hard to use alongside existing Gmail or Outlook workflows; it's all-or-nothing",
   ],
   metaTitle:
-    "HEY Email Alternative | GAIA — AI Email Assistant That Automates What HEY Asks You to Do Manually",
+    "HEY Email Alternative — GAIA — AI Email Assistant That Automates What HEY Asks You to Do Manually",
   metaDescription:
     "Tired of HEY Email's manual triage rituals? GAIA is an open-source AI assistant that automatically sorts email, creates tasks, and connects your inbox to your calendar — no Screener required. Free tier available.",
   keywords: [

@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
     "A privacy-first, open-source platform for knowledge management and collaboration",
   description:
     "Logseq is an open-source outliner and personal knowledge management tool with local-first storage and a bidirectional graph view. GAIA goes further by proactively managing your email, calendar, tasks, and workflows — turning notes into actions automatically.",
-  metaTitle: "Logseq Alternative with Proactive AI | GAIA vs Logseq",
+  metaTitle: "Logseq Alternative with Proactive AI — GAIA vs Logseq",
   metaDescription:
     "Logseq is a great open-source PKM but stays passive and note-focused. GAIA is an open-source Logseq alternative with proactive AI that manages your inbox, calendar, tasks, and automations across 50+ integrations — turning notes into action.",
   keywords: [

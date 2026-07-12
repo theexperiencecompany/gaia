@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
   description:
     "Focusmate pairs you with an accountability partner for 25, 50, or 75-minute virtual co-working sessions using body-doubling psychology to help you follow through on work. GAIA takes a different approach by proactively managing your workflow to create the conditions for deep focus without requiring a scheduled partner.",
   metaTitle:
-    "Focusmate Alternative with AI Focus and Workflow Management | GAIA vs Focusmate",
+    "Focusmate Alternative with AI Focus and Workflow Management — GAIA vs Focusmate",
   metaDescription:
     "Focusmate needs a partner and a scheduled session. GAIA is an open-source alternative that proactively schedules focus time, manages your inbox, and automates your workflow across 50+ tools — free tier available.",
   keywords: [

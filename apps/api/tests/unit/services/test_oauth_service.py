@@ -99,9 +99,9 @@ def mock_send_welcome_email():
 
 
 @pytest.fixture
-def mock_add_contact_to_resend():
+def mock_add_marketing_contact():
     with patch(
-        "app.services.oauth.oauth_service.add_contact_to_resend",
+        "app.services.oauth.oauth_service.add_marketing_contact",
         new_callable=AsyncMock,
     ) as mock_acr:
         yield mock_acr
@@ -246,7 +246,7 @@ class TestStoreUserInfo:
         mock_users_collection,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
         mock_users_collection.find_one = AsyncMock(return_value=None)
         inserted_id = ObjectId()
@@ -270,7 +270,7 @@ class TestStoreUserInfo:
         mock_users_collection,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
         mock_users_collection.find_one = AsyncMock(return_value=None)
         inserted_id = ObjectId()
@@ -290,7 +290,7 @@ class TestStoreUserInfo:
         mock_users_collection,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
         mock_users_collection.find_one = AsyncMock(return_value=None)
         mock_result = MagicMock()
@@ -311,7 +311,7 @@ class TestStoreUserInfo:
         mock_users_collection,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
         mock_users_collection.find_one = AsyncMock(return_value=None)
         mock_result = MagicMock()
@@ -327,7 +327,7 @@ class TestStoreUserInfo:
         mock_users_collection,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
         mock_users_collection.find_one = AsyncMock(return_value=None)
         mock_result = MagicMock()
@@ -336,14 +336,14 @@ class TestStoreUserInfo:
 
         await store_user_info("Bob", "bob@test.com", None)
 
-        mock_add_contact_to_resend.assert_awaited_once_with("bob@test.com", "Bob")
+        mock_add_marketing_contact.assert_awaited_once_with("bob@test.com", "Bob")
 
     async def test_new_user_signup_tracking_failure_does_not_raise(
         self,
         mock_users_collection,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
         mock_users_collection.find_one = AsyncMock(return_value=None)
         mock_result = MagicMock()
@@ -360,7 +360,7 @@ class TestStoreUserInfo:
         mock_users_collection,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
         mock_users_collection.find_one = AsyncMock(return_value=None)
         mock_result = MagicMock()
@@ -376,13 +376,13 @@ class TestStoreUserInfo:
         mock_users_collection,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
         mock_users_collection.find_one = AsyncMock(return_value=None)
         mock_result = MagicMock()
         mock_result.inserted_id = ObjectId()
         mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
-        mock_add_contact_to_resend.side_effect = Exception("Resend API error")
+        mock_add_marketing_contact.side_effect = Exception("Resend API error")
 
         result = await store_user_info("Bob", "bob@test.com", None)
         assert result == (mock_result.inserted_id, True)

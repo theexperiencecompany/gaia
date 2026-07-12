@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Open-source proactive AI assistant via messaging channels",
   description:
     "OpenClaw is a fully proactive, MIT-licensed AI assistant with 50+ integrations and a 100+ skill community ecosystem. GAIA adds a full-featured web and desktop app, automated todo management, and a unified inbox/calendar/task view.",
-  metaTitle: "OpenClaw Alternative with App & Unified Inbox | GAIA vs OpenClaw",
+  metaTitle: "OpenClaw Alternative with App & Unified Inbox — GAIA vs OpenClaw",
   metaDescription:
     "Both GAIA and OpenClaw are open-source proactive AI assistants. GAIA adds a web app, desktop app, automated todo list, and a unified view of your email, calendar, and tasks — without requiring CLI setup.",
   keywords: [

@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
     "Classic note-taking and personal organization tool with web clipping",
   description:
     "Evernote is one of the original digital note-taking platforms — a place to capture notes, clip web pages, scan documents, and organize information across notebooks with powerful search. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, building a connected knowledge graph from your live digital activity rather than manually captured notes.",
-  metaTitle: "Evernote Alternative with Proactive AI | GAIA vs Evernote",
+  metaTitle: "Evernote Alternative with Proactive AI — GAIA vs Evernote",
   metaDescription:
     "Compare GAIA and Evernote. Evernote organizes your notes and clippings, but GAIA manages email, calendar, tasks, and workflows proactively — with AI that acts on your context, not just stores it.",
   keywords: [

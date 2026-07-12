@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Google Calendar is the world's most widely used digital calendar — free, reliable, and deeply integrated with Gmail and Google Workspace for scheduling events, managing reminders, and sharing availability. GAIA is a proactive AI assistant that wraps around Google Calendar with intelligent automation: preparing meeting briefings, detecting scheduling conflicts, creating events from email, and orchestrating your time across 50+ connected tools.",
   metaTitle:
-    "Google Calendar AI: GAIA vs Google Calendar Standalone | Smart Calendar Assistant | GAIA",
+    "Google Calendar AI: GAIA vs Google Calendar Standalone | Smart Calendar Assistant",
   metaDescription:
     "Compare GAIA and Google Calendar standalone. Google Calendar is a reliable free scheduling tool. GAIA adds proactive AI to your calendar: briefings, email-to-event, conflict detection, and 50+ integrations.",
   keywords: [

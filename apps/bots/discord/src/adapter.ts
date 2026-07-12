@@ -688,7 +688,9 @@ export class DiscordAdapter extends BaseBotAdapter {
               ).sendTyping(),
             TYPING_REFRESH_INTERVAL_MS,
           )
-        : () => {};
+        : () => {
+            /* channel has no typing indicator */
+          };
 
       let currentMsg: Message | null = null;
 
@@ -889,7 +891,10 @@ export class DiscordAdapter extends BaseBotAdapter {
    * stop function (a no-op when typing is unavailable).
    */
   private startMentionTyping(message: Message): () => void {
-    if (!("sendTyping" in message.channel)) return () => {};
+    if (!("sendTyping" in message.channel))
+      return () => {
+        /* channel has no typing indicator */
+      };
     return this.startTypingIndicator(
       () =>
         (message.channel as { sendTyping: () => Promise<void> }).sendTyping(),
@@ -1074,7 +1079,9 @@ export class DiscordAdapter extends BaseBotAdapter {
       },
 
       startTyping: async () => {
-        return () => {};
+        return () => {
+          /* slash-command replies need no typing indicator */
+        };
       },
     };
   }

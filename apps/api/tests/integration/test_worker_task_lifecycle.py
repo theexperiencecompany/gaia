@@ -553,18 +553,17 @@ class TestUserTasks:
 
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_users,
-            patch("app.utils.email_utils.send_inactive_user_email") as mock_send,
+            patch("app.services.email.send_inactive_user_email") as mock_send,
         ):
             mock_users.find.return_value = mock_cursor
-            mock_send.return_value = True
+            mock_users.update_one = AsyncMock()
 
             result = await check_inactive_users(ARQ_CTX)
 
-            mock_send.assert_awaited_once_with(
-                user_email="inactive@example.com",
-                user_name="Inactive User",
-                user_id=str(inactive_user["_id"]),
-            )
+            mock_send.assert_awaited_once_with("inactive@example.com", "Inactive User")
+            mock_users.update_one.assert_awaited_once()
+            update = mock_users.update_one.call_args[0][1]
+            assert update["$set"]["inactive_email_count"] == 1
             assert "1 inactive users" in result
             assert "sent 1 emails" in result
 
@@ -607,13 +606,14 @@ class TestUserTasks:
 
         with (
             patch("app.db.mongodb.collections.users_collection") as mock_users,
-            patch("app.utils.email_utils.send_inactive_user_email") as mock_send,
+            patch("app.services.email.send_inactive_user_email") as mock_send,
         ):
             mock_users.find.return_value = mock_cursor
+            mock_users.update_one = AsyncMock()
             # First call raises, second succeeds
             mock_send.side_effect = [
                 ConnectionError("SMTP down"),
-                True,
+                None,
             ]
 
             result = await check_inactive_users(ARQ_CTX)

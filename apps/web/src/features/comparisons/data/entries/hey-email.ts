@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "A delightfully opinionated take on email",
   description:
     "HEY is an opinionated email service from 37signals that reimagines the inbox with a unique three-section model — the Imbox, The Feed, and Paper Trail. GAIA is a proactive AI productivity OS that manages your email alongside calendar, tasks, workflows, and 50+ integrations — without requiring you to abandon Gmail or adopt a proprietary email address.",
-  metaTitle: "HEY Email Alternative with AI Automation | GAIA vs HEY",
+  metaTitle: "HEY Email Alternative with AI Automation — GAIA vs HEY",
   metaDescription:
     "HEY Email reimagines the inbox with an opinionated structure but still requires manual work. GAIA is an open-source HEY Email alternative with AI automation that triages your Gmail, drafts replies, creates tasks, and runs workflows — with a free tier.",
   keywords: [

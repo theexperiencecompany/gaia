@@ -8,7 +8,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolB: "Todoist",
     toolBSlug: "todoist",
     tagline: "Turn GitHub issues and PRs into Todoist tasks automatically",
-    metaTitle: "GitHub + Todoist Automation - Sync Dev Work with Tasks | GAIA",
+    metaTitle: "GitHub + Todoist Automation - Sync Dev Work with Tasks",
     metaDescription:
       "Connect GitHub and Todoist with GAIA. Auto-create Todoist tasks from GitHub issues and PRs, track dev work alongside personal tasks, and never lose sight of coding to-dos.",
     keywords: [
@@ -93,8 +93,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolB: "ClickUp",
     toolBSlug: "clickup",
     tagline: "Link GitHub PRs to ClickUp tasks and auto-update status on merge",
-    metaTitle:
-      "GitHub + ClickUp Automation - Sync Code with Project Tasks | GAIA",
+    metaTitle: "GitHub + ClickUp Automation - Sync Code with Project Tasks",
     metaDescription:
       "Automate GitHub and ClickUp with GAIA. Link pull requests to ClickUp tasks, move tasks through statuses as PRs progress, and keep engineering and project teams aligned without manual updates.",
     keywords: [
@@ -180,8 +179,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "figma",
     tagline:
       "Link design specs to code PRs and notify designers when code ships",
-    metaTitle:
-      "GitHub + Figma Automation - Bridge Design and Engineering | GAIA",
+    metaTitle: "GitHub + Figma Automation - Bridge Design and Engineering",
     metaDescription:
       "Connect GitHub and Figma with GAIA. Link Figma design specs to GitHub pull requests, notify designers when related code merges, and keep design and engineering aligned throughout the build cycle.",
     keywords: [
@@ -266,8 +264,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "discord",
     tagline:
       "Post GitHub PR and issue notifications to Discord developer communities",
-    metaTitle:
-      "GitHub + Discord Automation - Dev Notifications in Discord | GAIA",
+    metaTitle: "GitHub + Discord Automation - Dev Notifications in Discord",
     metaDescription:
       "Connect GitHub and Discord with GAIA. Send pull request and issue notifications to Discord channels, engage your developer community with code activity, and keep contributors informed automatically.",
     keywords: [
@@ -353,8 +350,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "google-calendar",
     tagline:
       "Schedule sprint reviews from milestones and track PR deadlines in Calendar",
-    metaTitle:
-      "GitHub + Google Calendar - Schedule Dev Work Automatically | GAIA",
+    metaTitle: "GitHub + Google Calendar - Schedule Dev Work Automatically",
     metaDescription:
       "Connect GitHub and Google Calendar with GAIA. Auto-schedule sprint reviews from GitHub milestones, add PR review deadlines as calendar events, and keep your engineering schedule and codebase in sync.",
     keywords: [
@@ -441,8 +437,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "trello",
     tagline:
       "Move Trello cards automatically when GitHub PRs merge or issues close",
-    metaTitle:
-      "GitHub + Trello Automation - Sync Code with Trello Boards | GAIA",
+    metaTitle: "GitHub + Trello Automation - Sync Code with Trello Boards",
     metaDescription:
       "Connect GitHub and Trello with GAIA. Auto-move Trello cards when pull requests merge, create cards from GitHub issues, and keep your Trello board in sync with actual development progress.",
     keywords: [
@@ -527,8 +522,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "google-drive",
     tagline:
       "Backup repo docs to Drive and link design assets from Drive to repos",
-    metaTitle:
-      "GitHub + Google Drive Automation - Sync Code Docs with Drive | GAIA",
+    metaTitle: "GitHub + Google Drive Automation - Sync Code Docs with Drive",
     metaDescription:
       "Connect GitHub and Google Drive with GAIA. Auto-backup repository documentation to Drive, link design assets from Drive to pull requests, and keep your code and file storage in sync.",
     keywords: [
@@ -614,8 +608,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "zoom",
     tagline:
       "Schedule code review meetings from PRs and post summaries back to issues",
-    metaTitle:
-      "GitHub + Zoom Automation - Code Review Meetings from PRs | GAIA",
+    metaTitle: "GitHub + Zoom Automation - Code Review Meetings from PRs",
     metaDescription:
       "Connect GitHub and Zoom with GAIA. Schedule code review meetings directly from pull request comments, post Zoom meeting summaries back to GitHub issues, and keep your dev discussions documented.",
     keywords: [
@@ -703,7 +696,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "clickup",
     tagline:
       "Sync project documentation with task management across Notion and ClickUp",
-    metaTitle: "Notion + ClickUp Automation - Connect Docs and Tasks | GAIA",
+    metaTitle: "Notion + ClickUp Automation - Connect Docs and Tasks",
     metaDescription:
       "Connect Notion and ClickUp with GAIA. Sync project docs with ClickUp tasks, auto-update Notion pages from task progress, and eliminate the documentation lag that plagues project teams.",
     keywords: [
@@ -790,8 +783,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "trello",
     tagline:
       "Sync Trello cards with Notion databases and embed boards in project docs",
-    metaTitle:
-      "Notion + Trello Automation - Sync Cards with Notion Databases | GAIA",
+    metaTitle: "Notion + Trello Automation - Sync Cards with Notion Databases",
     metaDescription:
       "Connect Notion and Trello with GAIA. Sync Trello cards with Notion database entries, embed board views in project docs, and keep your kanban boards and project wiki in perfect alignment.",
     keywords: [
@@ -878,8 +870,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "figma",
     tagline:
       "Embed Figma designs in Notion and sync design status with project pages",
-    metaTitle:
-      "Notion + Figma Automation - Link Design Specs to Project Docs | GAIA",
+    metaTitle: "Notion + Figma Automation - Link Design Specs to Project Docs",
     metaDescription:
       "Connect Notion and Figma with GAIA. Embed Figma frames in Notion project pages, auto-update design status in Notion databases, and keep your design workflow and project documentation in perfect sync.",
     keywords: [
@@ -965,8 +956,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "discord",
     tagline:
       "Share Notion pages to Discord communities and capture decisions in Notion",
-    metaTitle:
-      "Notion + Discord Automation - Connect Your Wiki and Community | GAIA",
+    metaTitle: "Notion + Discord Automation - Connect Your Wiki and Community",
     metaDescription:
       "Connect Notion and Discord with GAIA. Share Notion pages to Discord channels automatically, capture important Discord discussions in Notion, and keep your community and documentation in sync.",
     keywords: [
@@ -1052,8 +1042,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "teams",
     tagline:
       "Share Notion content in Teams and capture meeting notes back to Notion",
-    metaTitle:
-      "Notion + Microsoft Teams Automation - Connect Wiki and Chat | GAIA",
+    metaTitle: "Notion + Microsoft Teams Automation - Connect Wiki and Chat",
     metaDescription:
       "Connect Notion and Microsoft Teams with GAIA. Share Notion pages in Teams channels, capture Teams meeting notes in Notion automatically, and keep your knowledge base and team chat aligned.",
     keywords: [
@@ -1139,7 +1128,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "stripe",
     tagline:
       "Track Stripe revenue in Notion databases and route payment alerts to pages",
-    metaTitle: "Notion + Stripe Automation - Revenue Tracking in Notion | GAIA",
+    metaTitle: "Notion + Stripe Automation - Revenue Tracking in Notion",
     metaDescription:
       "Connect Notion and Stripe with GAIA. Auto-track Stripe revenue metrics in Notion databases, get payment and subscription alerts in Notion, and keep your business metrics alongside your project docs.",
     keywords: [
@@ -1224,7 +1213,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "airtable",
     tagline:
       "Sync databases between Notion and Airtable and migrate data bidirectionally",
-    metaTitle: "Notion + Airtable Automation - Sync and Migrate Data | GAIA",
+    metaTitle: "Notion + Airtable Automation - Sync and Migrate Data",
     metaDescription:
       "Connect Notion and Airtable with GAIA. Sync databases between Notion and Airtable, migrate data without manual exports, and keep both platforms updated as your data workflow evolves.",
     keywords: [
@@ -1310,7 +1299,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "google-drive",
     tagline:
       "Attach Drive files to Notion pages and organize Drive by your Notion structure",
-    metaTitle: "Notion + Google Drive Automation - Link Files and Docs | GAIA",
+    metaTitle: "Notion + Google Drive Automation - Link Files and Docs",
     metaDescription:
       "Connect Notion and Google Drive with GAIA. Automatically attach Drive files to Notion pages, mirror your Notion workspace structure in Drive folders, and keep file storage and documentation aligned.",
     keywords: [
@@ -1396,7 +1385,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "zoom",
     canonicalSlug: "zoom-notion",
     tagline: "Post Zoom meeting summaries to Notion pages automatically",
-    metaTitle: "Notion + Zoom Automation - Meeting Notes to Notion | GAIA",
+    metaTitle: "Notion + Zoom Automation - Meeting Notes to Notion",
     metaDescription:
       "Connect Notion and Zoom with GAIA. Automatically post Zoom meeting summaries and transcripts to Notion pages, capture action items, and build a searchable meeting archive in your Notion workspace.",
     keywords: [
@@ -1480,8 +1469,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "hubspot",
     tagline:
       "Sync HubSpot CRM data to Notion and document customer context alongside deals",
-    metaTitle:
-      "Notion + HubSpot Automation - CRM Data in Your Notion Wiki | GAIA",
+    metaTitle: "Notion + HubSpot Automation - CRM Data in Your Notion Wiki",
     metaDescription:
       "Connect Notion and HubSpot with GAIA. Sync CRM contacts, deals, and company data to Notion databases, document customer context alongside HubSpot records, and keep sales and operations aligned.",
     keywords: [
@@ -1567,7 +1555,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "jira",
     tagline:
       "Keep GitHub PRs and Jira tickets in sync so your sprint board always reflects the true state of your code",
-    metaTitle: "GitHub + Jira Integration - Sync Code and Sprint Board | GAIA",
+    metaTitle: "GitHub + Jira Integration - Sync Code and Sprint Board",
     metaDescription:
       "Automate GitHub and Jira with GAIA. Sync PR status to Jira tickets, auto-transition issues on merge, and keep your sprint board accurate without manual updates.",
     keywords: [
@@ -1657,8 +1645,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "hubspot",
     tagline:
       "Log deployment activity to HubSpot deals and notify sales when customer-facing features ship",
-    metaTitle:
-      "GitHub + HubSpot Integration - Link Code Releases to CRM | GAIA",
+    metaTitle: "GitHub + HubSpot Integration - Link Code Releases to CRM",
     metaDescription:
       "Connect GitHub and HubSpot with GAIA. Auto-log releases to deals, alert sales when requested features ship, and tie engineering output to customer revenue.",
     keywords: [
@@ -1750,7 +1737,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     tagline:
       "Connect GitHub releases to Salesforce opportunities so sales always knows what engineering just shipped",
     metaTitle:
-      "GitHub + Salesforce Integration - Engineering to CRM Automation | GAIA",
+      "GitHub + Salesforce Integration - Engineering to CRM Automation",
     metaDescription:
       "Link GitHub and Salesforce with GAIA. Log releases to opportunities, alert account owners when features ship, and tie code milestones to pipeline activity.",
     keywords: [
@@ -1841,8 +1828,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "teams",
     tagline:
       "Post GitHub PR updates and release notifications directly into Microsoft Teams channels",
-    metaTitle:
-      "GitHub + Microsoft Teams Integration - Code Alerts in Teams | GAIA",
+    metaTitle: "GitHub + Microsoft Teams Integration - Code Alerts in Teams",
     metaDescription:
       "Connect GitHub and Microsoft Teams with GAIA. Stream PR reviews, issue alerts, and release announcements to Teams channels and keep your dev team informed.",
     keywords: [
@@ -1935,7 +1921,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     tagline:
       "Coordinate billing feature releases with Stripe configuration and catch payment-related code risks before they ship",
     metaTitle:
-      "GitHub + Stripe Integration - Deploy and Billing Change Automation | GAIA",
+      "GitHub + Stripe Integration - Deploy and Billing Change Automation",
     metaDescription:
       "Connect GitHub and Stripe with GAIA. Coordinate billing feature releases with Stripe changes, track payment-related PRs, and automate deployment notifications.",
     keywords: [
@@ -2026,7 +2012,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     tagline:
       "Sync GitHub issues and PRs to Airtable so your project database always reflects your code reality",
     metaTitle:
-      "GitHub + Airtable Integration - Sync Issues to Project Database | GAIA",
+      "GitHub + Airtable Integration - Sync Issues to Project Database",
     metaDescription:
       "Connect GitHub and Airtable with GAIA. Sync issues, PRs, and releases to Airtable bases automatically for custom reporting, roadmapping, and project tracking.",
     keywords: [
@@ -2116,7 +2102,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     tagline:
       "Attach Loom walkthroughs to PRs and auto-request video reviews for complex code changes",
     metaTitle:
-      "GitHub + Loom Integration - Video Code Reviews and PR Walkthroughs | GAIA",
+      "GitHub + Loom Integration - Video Code Reviews and PR Walkthroughs",
     metaDescription:
       "Connect GitHub and Loom with GAIA. Attach Loom walkthroughs to PRs, request video reviews for complex changes, and make async code review more effective.",
     keywords: [
@@ -2209,8 +2195,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "jira",
     tagline:
       "Sync Notion project docs with Jira issues so your specs and sprint tickets always match",
-    metaTitle:
-      "Notion + Jira Integration - Sync Specs and Sprint Tickets | GAIA",
+    metaTitle: "Notion + Jira Integration - Sync Specs and Sprint Tickets",
     metaDescription:
       "Connect Notion and Jira with GAIA. Sync spec pages to Jira epics, create tickets from Notion requirements, and keep your docs aligned with your sprint board.",
     keywords: [
@@ -2302,8 +2287,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "salesforce",
     tagline:
       "Sync Salesforce account data to Notion wikis so your team always has current customer context",
-    metaTitle:
-      "Notion + Salesforce Integration - CRM Data to Knowledge Base | GAIA",
+    metaTitle: "Notion + Salesforce Integration - CRM Data to Knowledge Base",
     metaDescription:
       "Connect Notion and Salesforce with GAIA. Sync account data and deal notes to Notion, auto-generate customer wikis, and keep CRM knowledge accessible to your whole team.",
     keywords: [
@@ -2394,8 +2378,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "loom",
     tagline:
       "Embed Loom videos into Notion pages automatically and create docs from video transcripts",
-    metaTitle:
-      "Notion + Loom Integration - Video Knowledge Base Automation | GAIA",
+    metaTitle: "Notion + Loom Integration - Video Knowledge Base Automation",
     metaDescription:
       "Connect Notion and Loom with GAIA. Auto-embed Loom videos in Notion pages, generate docs from transcripts, and build a searchable video knowledge base.",
     keywords: [
