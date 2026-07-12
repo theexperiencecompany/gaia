@@ -79,25 +79,18 @@ DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
 PAID_MODEL_NAME = "z-ai/glm-5.2"
 
-# How each lane receives inline media (see app/agents/llm/vision.py):
-#   - Direct Gemini carries image blocks inside tool results natively
-#     (langchain_google_genai converts them to real media Parts).
-#   - OpenRouter serializes ToolMessage content raw (langchain_openrouter
-#     forwards it without block conversion), so tool-result images can never
-#     work there; multimodal OpenRouter models instead get the images repacked
-#     into an ephemeral user message at model-call time. Whether a model is
-#     multimodal comes from the OpenRouter catalog below (input_modalities),
-#     so no per-model curation is needed.
-#   - Text-only models fall back to a text description of the image.
+# Which OpenRouter models accept image input, straight from the live catalog's
+# `architecture.input_modalities` — so vision support needs no per-model
+# curation here. See app/agents/llm/model_catalog.py for the cache, and
+# app/agents/llm/vision/ for how each lane then receives the media.
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 OPENROUTER_MODEL_CATALOG_TTL_SECONDS = 3600
 OPENROUTER_MODEL_CATALOG_TIMEOUT_SECONDS = 10
-
-# Context-estimation cost of one inline media block, mirroring
-# count_tokens_approximately's fixed per-image penalty. Without this, char-based
-# heuristics would count a 1 MB base64 payload as ~350k tokens and prematurely
-# trigger compaction/summarization.
-MEDIA_BLOCK_TOKEN_ESTIMATE = 1000
+# How long a failed catalog refresh is remembered. The catalog is consulted on
+# the pre-model hook, so without a backoff an OpenRouter outage would cost every
+# model call a full fetch timeout — turning a degraded dependency into an
+# unusable product.
+OPENROUTER_MODEL_CATALOG_RETRY_SECONDS = 300
 
 # GLM 5.2's first-party (z-ai) lane exposes a 1M-token context window and a 131k
 # output ceiling. Cap output well under that; the summarization / compaction

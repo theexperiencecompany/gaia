@@ -30,7 +30,7 @@ from langgraph.types import Command
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm, is_default_model_config
 from app.agents.llm.exceptions import LLMNotConfiguredError
-from app.agents.llm.vision import adapt_media_blocks_for_model
+from app.agents.llm.vision import adapt_media_for_model
 from app.agents.middleware.compaction import compact_tool_output, estimate_context_usage
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
@@ -357,7 +357,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     # Fit inline media to the active lane at the request
                     # boundary only, so the loop state keeps the original
                     # messages (canonical blocks in tool results).
-                    await adapt_media_blocks_for_model(messages, config),
+                    await adapt_media_for_model(messages, config),
                     fallback=_fallback,
                     config=config,
                     label="subagent",

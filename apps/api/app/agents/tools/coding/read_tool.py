@@ -9,7 +9,6 @@ falls back to reading through the sandbox so file reads still work.
 
 from __future__ import annotations
 
-import base64
 from typing import Annotated, Any
 
 from e2b import NotFoundException
@@ -26,6 +25,7 @@ from app.agents.tools.coding._context import (
 from app.agents.workspace.paths import WORKSPACE_ROOT
 from app.agents.workspace.system_files import system_file_body
 from app.constants.log_tags import LogTag
+from app.constants.media import MAX_IMAGE_FILE_BYTES
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
@@ -35,12 +35,7 @@ from app.services.storage.juicefs import (
     user_owns_regular_file,
 )
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
-from app.utils.multimodal import (
-    MAX_IMAGE_FILE_BYTES,
-    fit_image_to_inline_budget,
-    image_content_block,
-    image_mime_from_path,
-)
+from app.utils.image_codec import ImageCodec, InvalidImage
 from shared.py.wide_events import log
 
 DEFAULT_LIMIT = 2000
@@ -82,7 +77,7 @@ async def read(
     # re-checks containment so a model-supplied path can't escape it.
     rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
 
-    image_mime = image_mime_from_path(abs_path)
+    image_mime = ImageCodec.mime_for_path(abs_path)
     if image_mime is not None:
         return await _read_image(
             user_id=user_id,
@@ -138,8 +133,8 @@ async def _read_image(
 ) -> str | list[dict[str, Any]]:
     """Read an image file and return it as inline content blocks.
 
-    On vision-capable lanes the model receives the actual pixels (the block
-    list is wrapped into the ToolMessage unchanged); other lanes get a text
+    On vision-capable lanes the model receives the actual pixels (the block list
+    is wrapped into the ToolMessage unchanged); other lanes get a text
     description via the canonical vision fallback.
     """
     try:
@@ -161,38 +156,34 @@ async def _read_image(
         log.error(f"{LogTag.SANDBOX} read tool failed: {e}", exc_info=True)
         return f"Error reading file: {e}"
 
-    original_size = len(data)
+    file_size = len(data)
     try:
-        data, mime_type = fit_image_to_inline_budget(data, mime_type)
-    except Exception as e:
-        return f"Error: {abs_path} is not a readable image: {e}"
+        image = await ImageCodec.from_bytes(data, mime_type)
+    except InvalidImage as e:
+        return f"Error: cannot read {abs_path} as an image — {e}"
 
     safe_emit(
         {
             "file_data": {
                 "operation": "read",
                 "path": abs_path,
-                "bytes": original_size,
-                "mime_type": mime_type,
+                "bytes": file_size,
+                "mime_type": image.mime_type,
             }
         },
         session_id=session_id,
     )
 
-    image_b64 = base64.b64encode(data).decode("ascii")
-    header = f"Image file {abs_path} ({mime_type}, {original_size} bytes)"
+    header = f"Image file {abs_path} ({image.mime_type}, {file_size} bytes)"
 
     if await model_can_view_images(config):
         log.set(read_media="inline")
-        return [
-            {"type": "text", "text": f"{header} — shown below."},
-            image_content_block(image_b64, mime_type),
-        ]
+        return [{"type": "text", "text": f"{header} — shown below."}, image.to_block()]
 
     log.set(read_media="described")
     description = await describe_image(
-        image_b64,
-        mime_type,
+        image.base64,
+        image.mime_type,
         prompt=_IMAGE_DESCRIBE_PROMPT.format(path=abs_path),
         label="read_image_vision",
     )

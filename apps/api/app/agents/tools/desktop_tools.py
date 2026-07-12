@@ -14,6 +14,7 @@ from langgraph.config import get_stream_writer
 
 from app.agents.llm.vision import describe_image
 from app.constants.log_tags import LogTag
+from app.constants.media import PNG_MIME
 from app.decorators import with_doc
 from app.models.chat_models import ConversationSource
 from app.services.desktop.bridge import DesktopToolOutcome, request_desktop_action
@@ -85,18 +86,6 @@ def _emit_tool_data(tool_name: str, data: dict[str, Any]) -> None:
     )
 
 
-async def _describe_screenshot(image_b64: str, query: str) -> str | None:
-    """Describe the screen via the canonical vision fallback so any provider
-    can 'see' it — screenshots are returned as text, not image blocks, because
-    tool-result image blocks only work on vision-capable lanes."""
-    return await describe_image(
-        image_b64,
-        "image/png",
-        prompt=_SCREENSHOT_VISION_PROMPT.format(query=query),
-        label="desktop_vision",
-    )
-
-
 @tool
 @with_doc(TAKE_SCREENSHOT)
 async def take_screenshot(
@@ -127,7 +116,14 @@ async def take_screenshot(
             },
         )
 
-    description = await _describe_screenshot(image_b64, query)
+    # Screenshots go to the model as text, not as image blocks: the description
+    # is the one delivery that works on every lane, vision-capable or not.
+    description = await describe_image(
+        image_b64,
+        PNG_MIME,
+        prompt=_SCREENSHOT_VISION_PROMPT.format(query=query),
+        label="desktop_vision",
+    )
     if description is None:
         return (
             "Captured the user's screen (already shown to them), but it could not "

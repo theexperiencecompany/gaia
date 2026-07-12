@@ -18,7 +18,7 @@ import { z } from "zod";
 import type { FilesystemServer } from "./config.types.js";
 import { MAX_IMAGE_READ_BYTES, MAX_READ_BYTES } from "./constants.js";
 
-// Mirrors IMAGE_MIME_BY_EXTENSION in apps/api/app/utils/multimodal.py — the
+// Mirrors IMAGE_MIME_BY_EXTENSION in apps/api/app/constants/media.py — the
 // backend only inlines these formats into model context.
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",

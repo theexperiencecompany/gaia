@@ -8,8 +8,6 @@ content list (leaking ``TextContent(...)`` pydantic reprs to the model and
 destroying image content entirely).
 """
 
-import asyncio
-import base64
 from typing import Any, NoReturn
 
 from langchain_core.tools import BaseTool
@@ -22,41 +20,58 @@ from mcp_use.client.connectors.base import BaseConnector
 from mcp_use.errors.error_formatting import format_error
 from pydantic import BaseModel
 
-from app.utils.multimodal import fit_image_to_inline_budget, image_content_block
+from app.constants.mcp import EMPTY_TOOL_RESULT, MCP_MEDIA_DROPPED_NOTICE
+from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
+from app.utils.image_codec import ImageCodec, InvalidImage
 from mcp.types import CallToolResult, ImageContent, TextContent, Tool as MCPTool
 
 
-def _image_item_to_block(data_b64: str, mime_type: str) -> dict[str, Any]:
-    """Decode, validate, and budget-fit an MCP image item into a content block.
-
-    CPU-bound (Pillow) — callers run it off the event loop.
-    """
-    data = base64.b64decode(data_b64)
-    data, mime_type = fit_image_to_inline_budget(data, mime_type)
-    return image_content_block(base64.b64encode(data).decode("ascii"), mime_type)
+def _text_block(text: str) -> dict[str, Any]:
+    return {"type": "text", "text": text}
 
 
 async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str, Any]]:
     """Map MCP content items to LangChain message content.
 
     Text-only results collapse to a plain string (the common case). Image items
-    become standard image content blocks — validated and downsized to the
-    inline budget — so multimodal models see the actual pixels; per-lane
-    delivery happens downstream (adapt_media_node / compaction skip).
+    become inline media blocks so multimodal models see the actual pixels;
+    per-lane delivery is decided later, at the request boundary (see
+    `app/agents/llm/vision/`).
+
+    MCP servers are third-party code we do not control, so images are held to
+    the same budget as any other producer: `ImageCodec` bounds and validates
+    each one, and `MAX_MEDIA_BLOCKS_PER_TOOL_RESULT` bounds how many a single
+    result may contribute. A rejected image degrades to a note rather than
+    failing the tool call — the text half of the result is usually the point.
     """
     blocks: list[dict[str, Any]] = []
-    has_media = False
+    images = 0
     for item in result.content:
         if isinstance(item, TextContent):
-            blocks.append({"type": "text", "text": item.text})
+            blocks.append(_text_block(item.text))
         elif isinstance(item, ImageContent):
-            has_media = True
-            blocks.append(await asyncio.to_thread(_image_item_to_block, item.data, item.mimeType))
+            images += 1
+            blocks.append(
+                await _image_block(item, dropped=images > MAX_MEDIA_BLOCKS_PER_TOOL_RESULT)
+            )
         else:
-            blocks.append({"type": "text", "text": str(item)})
-    if has_media:
+            blocks.append(_text_block(str(item)))
+
+    if not blocks:
+        return EMPTY_TOOL_RESULT
+    if any(block["type"] != "text" for block in blocks):
         return blocks
     return "\n".join(block["text"] for block in blocks)
+
+
+async def _image_block(item: ImageContent, *, dropped: bool) -> dict[str, Any]:
+    if dropped:
+        return _text_block(MCP_MEDIA_DROPPED_NOTICE)
+    try:
+        image = await ImageCodec.from_base64(item.data, item.mimeType)
+    except InvalidImage as exc:
+        return _text_block(f"[Image from this result could not be read: {exc}]")
+    return image.to_block()
 
 
 class SanitizingLangChainAdapter(LangChainAdapter):

@@ -1,76 +1,48 @@
-"""Inline-media (image) content-block helpers shared by tools, middleware, and nodes.
+"""Message-content block helpers — pure, synchronous, no I/O.
 
-The canonical block shape is the LangChain v1 data content block
-(``{"type": "image", "base64": ..., "mime_type": ...}``) — the form
-``langchain_core.messages.is_data_content_block`` recognizes and
-``langchain_google_genai`` converts to real media Parts inside tool results.
+Message content is either a plain string or a list of blocks, and once inline
+media is in play the list form carries base64 payloads that must never reach a
+logger, a stream, a memory ingest, or a char-based token estimate. These helpers
+are the single place that knows how to look inside that list.
+
+Image encoding and transcoding live in ``app/utils/image_codec.py``; per-lane
+delivery lives in ``app/agents/llm/vision/``.
 """
 
-from io import BytesIO
-from pathlib import PurePosixPath
 from typing import Any
 
 from langchain_core.messages import is_data_content_block
-from PIL import Image
 
-IMAGE_MIME_BY_EXTENSION: dict[str, str] = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".gif": "image/gif",
-}
+from app.constants.media import MEDIA_BLOCK_TOKEN_ESTIMATE
 
-# Refuse image files larger than this outright (pre-compression).
-MAX_IMAGE_FILE_BYTES = 10 * 1024 * 1024
-# Re-encode images above this size so the inline base64 payload stays small in
-# the provider request and the Postgres checkpointer (which persists the full
-# ToolMessage on every checkpoint).
-TARGET_INLINE_IMAGE_BYTES = 1 * 1024 * 1024
-_DOWNSCALE_LONGEST_EDGE = 1568
-_DOWNSCALE_JPEG_QUALITY = 80
-
-
-def image_mime_from_path(path: str) -> str | None:
-    """MIME type for a supported image extension, or None for non-images."""
-    return IMAGE_MIME_BY_EXTENSION.get(PurePosixPath(path).suffix.lower())
-
-
-def fit_image_to_inline_budget(data: bytes, mime_type: str) -> tuple[bytes, str]:
-    """Validate ``data`` is a real image and shrink it under the inline budget.
-
-    Small images pass through untouched; oversized ones are downscaled and
-    re-encoded as JPEG (animated formats keep only their first frame). Raises
-    ``PIL.UnidentifiedImageError``/``OSError`` for corrupt or mislabeled files —
-    callers surface that instead of sending junk to the provider.
-    """
-    Image.open(BytesIO(data)).verify()
-    if len(data) <= TARGET_INLINE_IMAGE_BYTES:
-        return data, mime_type
-
-    image = Image.open(BytesIO(data)).convert("RGB")
-    image.thumbnail((_DOWNSCALE_LONGEST_EDGE, _DOWNSCALE_LONGEST_EDGE), Image.Resampling.LANCZOS)
-    output = BytesIO()
-    image.save(output, format="JPEG", optimize=True, quality=_DOWNSCALE_JPEG_QUALITY)
-    return output.getvalue(), "image/jpeg"
+# Chars a media block stands in for when estimating context from string length.
+_MEDIA_BLOCK_CHARS = MEDIA_BLOCK_TOKEN_ESTIMATE * 4
 
 
 def image_content_block(base64_data: str, mime_type: str) -> dict[str, Any]:
-    """Standard v1 image content block from already-base64-encoded data."""
+    """The canonical inline-image block, from already-base64-encoded data."""
     return {"type": "image", "base64": base64_data, "mime_type": mime_type}
 
 
-def has_data_content_blocks(content: Any) -> bool:
-    """True when message content is a block list carrying inline media/data."""
-    return isinstance(content, list) and any(
-        isinstance(block, dict) and is_data_content_block(block) for block in content
-    )
+def is_media_block(block: Any) -> bool:
+    return isinstance(block, dict) and is_data_content_block(block)
+
+
+def media_blocks(content: Any) -> list[dict[str, Any]]:
+    """The inline-media blocks in ``content``, in order; empty for text content."""
+    if not isinstance(content, list):
+        return []
+    return [block for block in content if is_media_block(block)]
+
+
+def has_media_blocks(content: Any) -> bool:
+    return bool(media_blocks(content))
 
 
 def extract_text_content(content: Any) -> str:
-    """Extract the text from message content that may be a list of blocks.
+    """The text of message content that may be a list of blocks.
 
-    Non-text blocks (inline media, base64 payloads) are dropped so callers that
+    Non-text blocks (inline media, base64 payloads) are dropped, so callers that
     log, stream, or ingest text never see megabytes of base64.
     """
     if isinstance(content, str):
@@ -86,3 +58,19 @@ def extract_text_content(content: Any) -> str:
         return " ".join(text_parts)
 
     return str(content)
+
+
+def approx_content_chars(content: Any) -> int:
+    """Char length of message content for context estimation.
+
+    Media blocks are charged a flat cost rather than their base64 length (~350k
+    chars for a 1 MB image), which would otherwise read as a near-full context
+    window and trigger compaction on the first screenshot.
+    """
+    if isinstance(content, str):
+        return len(content)
+    if not isinstance(content, list):
+        return len(str(content))
+    return sum(
+        _MEDIA_BLOCK_CHARS if is_media_block(block) else len(str(block)) for block in content
+    )

@@ -25,33 +25,15 @@ from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.messages import ToolMessage, is_data_content_block
+from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from app.constants.llm import DEFAULT_MAX_TOKENS, MEDIA_BLOCK_TOKEN_ESTIMATE
+from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.storage import JuiceFSUnavailable, write_session_file
-from app.utils.multimodal import has_data_content_blocks
+from app.utils.multimodal import approx_content_chars, has_media_blocks
 from shared.py.wide_events import log
-
-_MEDIA_BLOCK_CHAR_ESTIMATE = MEDIA_BLOCK_TOKEN_ESTIMATE * 4
-
-
-def _approx_content_chars(content: Any) -> int:
-    """Char length of message content, counting inline media blocks at a fixed
-    cost instead of their base64 length (~350k chars for a 1 MB image)."""
-    if isinstance(content, str):
-        return len(content)
-    if isinstance(content, list):
-        total = 0
-        for block in content:
-            if isinstance(block, dict) and is_data_content_block(block):
-                total += _MEDIA_BLOCK_CHAR_ESTIMATE
-            else:
-                total += len(str(block))
-        return total
-    return len(str(content))
 
 
 def estimate_context_usage(messages: Sequence[Any], context_window: int) -> float:
@@ -61,7 +43,7 @@ def estimate_context_usage(messages: Sequence[Any], context_window: int) -> floa
     """
     if not messages:
         return 0.0
-    total_chars = sum(_approx_content_chars(getattr(m, "content", "")) for m in messages)
+    total_chars = sum(approx_content_chars(getattr(m, "content", "")) for m in messages)
     estimated_tokens = total_chars // 4
     return min(estimated_tokens / context_window, 1.0)
 
@@ -200,9 +182,10 @@ async def compact_tool_output(
     the middleware's prior behavior).
     """
     # Inline media can't be spilled to a text file and re-read — the block IS
-    # the payload the model needs. Media size is bounded by its producers
-    # (read tool / MCP adapter caps), so keep it as-is.
-    if has_data_content_blocks(content):
+    # the payload the model needs. Each block is bounded at its producer
+    # (ImageCodec), and how many reach a request is bounded at the request
+    # boundary (MediaAdapter), so there is nothing for compaction to do here.
+    if has_media_blocks(content):
         return None
     content_str = str(content)
     should, reason = should_compact_output(
