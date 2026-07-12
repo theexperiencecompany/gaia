@@ -14,6 +14,7 @@ from typing import Any, cast
 from langchain_core.messages import AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
+from langgraph.errors import GraphBubbleUp
 from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt.tool_node import ToolCallRequest, _get_all_injected_args
 from langgraph.runtime import Runtime
@@ -304,6 +305,13 @@ class DynamicToolNode(ToolNode):
                 else:
                     async with asyncio.timeout(TOOL_EXECUTION_TIMEOUT_SECONDS):
                         result = await resolved_tool.ainvoke(tool_input, config=config)
+            except GraphBubbleUp:
+                # Control flow, not a failure: a GraphInterrupt raised by a gated
+                # tool — or bubbled up by ``handoff`` when its subagent graph
+                # interrupts — must reach the runtime so the run checkpoints and
+                # pauses. Converting it to an error ToolMessage would silently
+                # drop the approval request. Mirrors upstream ToolNode.
+                raise
             except TimeoutError:
                 return ToolMessage(
                     content=_timeout_error_text(tool_name),

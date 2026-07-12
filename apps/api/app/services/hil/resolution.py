@@ -1,0 +1,228 @@
+"""Apply a HIL decision and resume the executor run it paused.
+
+The single entry point for every decision source — approval buttons, a bot's
+interactive component, the conversational resolver, and the timeout sweep. Each
+supplies a ``DecisionKind``; everything else is identical.
+
+Two guarantees:
+
+* **Exactly once.** The ``pending -> decided`` transition is a conditional Mongo
+  update. A double click, a racing bot callback, and a sweep firing against an
+  approval the user just answered all lose the race and resolve nothing.
+* **The run always continues.** Whatever the decision, the paused thread is
+  re-dispatched so it either performs the action or tells the model it was
+  refused. A resolved approval that never resumed would strand the conversation's
+  executor lock until its TTL.
+"""
+
+import asyncio
+from http import HTTPStatus
+from typing import Any, Literal
+
+from langgraph.types import Command
+
+from app.agents.core.background.executor_queue import prepare_run_from_item
+from app.agents.core.background.executor_runner import run_executor_background
+from app.constants.hil import HIL_DECIDED_UNRESUMED_GRACE_SECONDS
+from app.constants.log_tags import LogTag
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.services.hil.approvals_store import (
+    get_approval,
+    list_decided_unresumed,
+    list_expired_pending,
+    list_pending_for_conversation,
+    mark_decided,
+    mark_resumed,
+)
+from app.utils.errors import AppError
+from shared.py.wide_events import log
+
+DecisionKind = Literal["approve", "deny", "timeout", "abandon"]
+
+# What the record audits. The paused gate receives the same status, except
+# "abandoned" resumes as a denial — the user moved on, the agent must not act.
+_TERMINAL_STATUS: dict[str, HILApprovalStatus] = {
+    "approve": "approved",
+    "deny": "denied",
+    "timeout": "timeout",
+    "abandon": "abandoned",
+}
+
+# Prevent GC of resume tasks spawned here (create_task keeps only a weak ref).
+_resume_tasks: set[asyncio.Task[None]] = set()
+
+
+class ApprovalRequestNotFound(AppError):
+    """Raised (410) when an approval request has expired or was already resolved."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Approval request expired or already resolved",
+            status_code=HTTPStatus.GONE,
+        )
+
+
+class ApprovalRequestForbidden(AppError):
+    """Raised (403) when an approval request belongs to a different user."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Approval request belongs to another user",
+            status_code=HTTPStatus.FORBIDDEN,
+        )
+
+
+class ApprovalNotResumable(AppError):
+    """Raised (503) when the paused run's re-dispatch context is missing.
+
+    The record stays ``pending`` — committing the decision without a resumable
+    run would tell the user "approved" about an action that can never execute.
+    The sweep expires the record instead.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="The paused task cannot be resumed; it may have failed to pause cleanly",
+            status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+
+async def resolve_approval(
+    *,
+    approval_id: str,
+    user_id: str,
+    kind: DecisionKind,
+    feedback: str | None = None,
+    scope: str = "once",
+) -> HILApprovalRecord:
+    """Record the decision, then resume the run waiting on it."""
+    record = await get_approval(approval_id)
+    if record is None:
+        raise ApprovalRequestNotFound()
+    return await _resolve_record(record, user_id=user_id, kind=kind, feedback=feedback, scope=scope)
+
+
+async def abandon_conversation_approvals(
+    conversation_id: str, user_id: str, feedback: str
+) -> list[str]:
+    """Resolve every pending approval in a conversation as abandoned.
+
+    Used when the user moves on to an unrelated request: each paused run resumes,
+    sees a refusal, wraps up, and releases the conversation's executor lock so the
+    new turn's work can proceed.
+    """
+    abandoned: list[str] = []
+    for record in await list_pending_for_conversation(conversation_id):
+        try:
+            await _resolve_record(record, user_id=user_id, kind="abandon", feedback=feedback)
+            abandoned.append(record.approval_id)
+        except (ApprovalRequestNotFound, ApprovalRequestForbidden):
+            continue
+    return abandoned
+
+
+async def _resolve_record(
+    record: HILApprovalRecord,
+    *,
+    user_id: str,
+    kind: DecisionKind,
+    feedback: str | None,
+    scope: str = "once",
+) -> HILApprovalRecord:
+    """Authorize, transition exactly once, and resume — from an already-loaded record."""
+    if record.user_id != user_id:
+        raise ApprovalRequestForbidden()
+    # Checked BEFORE the decided-transition: a decision we cannot act on must
+    # fail the request (record stays pending; the sweep expires it), never
+    # report success for an action that will silently not run.
+    if record.resume_item is None:
+        log.error(f"{LogTag.HIL} No resume context on record", approval_id=record.approval_id)
+        raise ApprovalNotResumable()
+
+    decided_by = None if kind == "timeout" else user_id
+    transitioned = await mark_decided(
+        record.approval_id,
+        _TERMINAL_STATUS[kind],
+        feedback=feedback,
+        scope=scope,
+        decided_by=decided_by,
+    )
+    if not transitioned:
+        # Someone (or the sweep) already decided this one. Do not resume twice.
+        raise ApprovalRequestNotFound()
+
+    log.set(hil={"approval_id": record.approval_id, "decision": kind, "tool": record.tool_name})
+    resume_status = "denied" if kind == "abandon" else _TERMINAL_STATUS[kind]
+    await _dispatch_resume(record, resume_status=resume_status, feedback=feedback, scope=scope)
+    return record
+
+
+async def _dispatch_resume(
+    record: HILApprovalRecord, *, resume_status: str, feedback: str | None, scope: str
+) -> None:
+    """Re-dispatch the executor thread this approval paused.
+
+    ``prepare_run_from_item`` seizes the conversation's busy lock (the original
+    owner's process is long gone) and gives the resumed run its own stream, so the
+    frontend can watch it finish. ``mark_resumed`` stamps the record so the sweep
+    knows this decision made it to a run; a crash before the stamp is re-dispatched
+    by the sweep from ``resume_item``.
+    """
+    prepared = await prepare_run_from_item(record.conversation_id, record.resume_item or {})
+    if prepared is None:
+        log.error(f"{LogTag.HIL} Could not prepare resume run", approval_id=record.approval_id)
+        return
+
+    resume: Command[Any] = Command(
+        resume={"status": resume_status, "feedback": feedback, "scope": scope}
+    )
+    task = asyncio.create_task(
+        run_executor_background(
+            run=prepared.run,
+            task=prepared.task,
+            configurable=prepared.configurable,
+            resume=resume,
+        )
+    )
+    _resume_tasks.add(task)
+    task.add_done_callback(_resume_tasks.discard)
+    await mark_resumed(record.approval_id)
+    log.info(f"{LogTag.HIL} Resumed paused executor run", approval_id=record.approval_id)
+
+
+async def sweep_approvals() -> dict[str, int]:
+    """Resolve expired approvals and re-dispatch crashed resumes. Cron-driven.
+
+    Two passes:
+    - pending past ``expires_at`` → resolved as timeout (the run resumes and is
+      told the request expired). Records that never got resume context — the
+      executor died before registering the pause — are closed directly.
+    - decided but never resumed (crash between the decided-transition and the
+      run spawn) → re-dispatched from the record's ``resume_item``.
+    """
+    expired = 0
+    for record in await list_expired_pending():
+        try:
+            if record.resume_item is None:
+                await mark_decided(
+                    record.approval_id, "timeout", feedback=None, scope="once", decided_by=None
+                )
+            else:
+                await _resolve_record(
+                    record, user_id=record.user_id, kind="timeout", feedback=None
+                )
+            expired += 1
+        except (ApprovalRequestNotFound, ApprovalNotResumable):
+            continue
+
+    redispatched = 0
+    for record in await list_decided_unresumed(HIL_DECIDED_UNRESUMED_GRACE_SECONDS):
+        resume_status = "denied" if record.status == "abandoned" else record.status
+        await _dispatch_resume(
+            record, resume_status=resume_status, feedback=record.feedback, scope=record.scope
+        )
+        redispatched += 1
+
+    if expired or redispatched:
+        log.info(f"{LogTag.HIL} Approval sweep", expired=expired, redispatched=redispatched)
+    return {"expired": expired, "redispatched": redispatched}

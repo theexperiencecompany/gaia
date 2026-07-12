@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Divider } from "@heroui/divider";
 import { Input, Textarea } from "@heroui/input";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
@@ -89,6 +90,14 @@ interface EmailComposeCardProps {
  * suggestion exists; Cc/Bcc default to the agent-provided values. Shared by the
  * initial state and the re-seed effect so the first paint matches steady state.
  */
+function seedSuggestions(emailData: EmailData): RecipientMap {
+  return {
+    to: emailData.to || [],
+    cc: emailData.cc || [],
+    bcc: emailData.bcc || [],
+  };
+}
+
 function seedRecipients(data: EmailData): RecipientMap {
   const to = data.to || [];
   return {
@@ -293,7 +302,7 @@ function RecipientSelectionModal({
             </div>
           )}
 
-          {suggestions.length > 0 && <hr className="my-2 border-zinc-700" />}
+          {suggestions.length > 0 && <Divider className="my-2 bg-zinc-700" />}
 
           <div className="flex gap-2">
             <Input
@@ -357,11 +366,7 @@ export default function EmailComposeCard({
 
   // Suggestion chips per field (agent-resolved addresses + any custom ones).
   const [recipientSuggestions, setRecipientSuggestions] =
-    useState<RecipientMap>({
-      to: emailData.to || [],
-      cc: emailData.cc || [],
-      bcc: emailData.bcc || [],
-    });
+    useState<RecipientMap>(() => seedSuggestions(emailData));
 
   // Custom email input state
   const [customEmailInput, setCustomEmailInput] = useState("");
@@ -370,11 +375,7 @@ export default function EmailComposeCard({
   // Re-seed recipients whenever the agent supplies new email data, following
   // the same rule as the initial state (see seedRecipients).
   useEffect(() => {
-    setRecipientSuggestions({
-      to: emailData.to || [],
-      cc: emailData.cc || [],
-      bcc: emailData.bcc || [],
-    });
+    setRecipientSuggestions(seedSuggestions(emailData));
     setRecipients(seedRecipients(emailData));
   }, [emailData.to, emailData.cc, emailData.bcc]);
 

@@ -8,6 +8,7 @@ isn't actively watching the stream):
 - Expo push (backgrounded mobile app), with interactive approve/deny actions.
 """
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -30,8 +31,10 @@ async def notify_approval_pending(
     summary: str,
 ) -> None:
     """Wake a not-actively-watching client over every channel. Never raises."""
-    await _broadcast_in_app(user_id, conversation_id, approval_id, summary)
-    await _push_to_devices(user_id, conversation_id, approval_id, summary)
+    await asyncio.gather(
+        _broadcast_in_app(user_id, conversation_id, approval_id, summary),
+        _push_to_devices(user_id, conversation_id, approval_id, summary),
+    )
 
 
 async def _broadcast_in_app(

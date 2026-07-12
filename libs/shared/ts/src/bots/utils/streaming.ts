@@ -29,6 +29,15 @@ import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
 import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
 
+import {
+  createBotLogger,
+  hashLogIdentifier,
+  sanitizeErrorForLog,
+} from "./logger";
+import { chunkResponse, truncateResponse } from "./text";
+
+const logger = createBotLogger("shared", "streaming");
+
 /** Render a HIL approval frame as a text prompt/status for a bot message. */
 function formatApprovalPrompt(data: ApprovalRequestData): string {
   if (data.status === "pending") {
@@ -42,15 +51,6 @@ function formatApprovalPrompt(data: ApprovalRequestData): string {
   if (data.status === "denied") return "Declined.";
   return "Approval timed out.";
 }
-
-import {
-  createBotLogger,
-  hashLogIdentifier,
-  sanitizeErrorForLog,
-} from "./logger";
-import { chunkResponse, truncateResponse } from "./text";
-
-const logger = createBotLogger("shared", "streaming");
 
 export interface StreamingOptions {
   editIntervalMs: number;

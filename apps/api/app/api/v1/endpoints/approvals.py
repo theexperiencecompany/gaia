@@ -12,12 +12,12 @@ from app.schemas.hil_schemas import (
     SetToolOverrideRequest,
     UpdateHILPreferencesRequest,
 )
-from app.services.hil.bridge import relay_approval_decision
 from app.services.hil.preferences import (
     get_hil_preferences,
     set_tool_override,
     update_hil_preferences,
 )
+from app.services.hil.resolution import resolve_approval
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -29,9 +29,9 @@ async def post_approval_decision(
     payload: ApprovalDecisionRequest,
     user: Annotated[dict, Depends(get_current_user)],
 ) -> ApprovalDecisionResponse:
-    """Relay a button decision to the awaiting HIL gate.
+    """Apply a button decision and resume the paused run.
 
-    ``relay_approval_decision`` raises :class:`ApprovalRequestNotFound` (410) or
+    ``resolve_approval`` raises :class:`ApprovalRequestNotFound` (410) or
     :class:`ApprovalRequestForbidden` (403) — both ``AppError`` subclasses — so
     late/duplicate or cross-user deliveries can't double-resolve a request.
     """
@@ -39,14 +39,14 @@ async def post_approval_decision(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
     log.set(user={"id": user_id}, hil={"approval_id": approval_id, "decision": payload.decision})
-    await relay_approval_decision(
+    await resolve_approval(
         approval_id=approval_id,
         user_id=user_id,
-        decision=payload.decision,
+        kind=payload.decision,
         feedback=payload.feedback,
         scope=payload.scope,
     )
-    log.set(hil={"relayed": True})
+    log.set(hil={"resolved": True})
     return ApprovalDecisionResponse(success=True)
 
 
@@ -69,7 +69,7 @@ async def put_preferences(
     log.set(user={"id": user["user_id"]}, hil={"operation": "update_preferences"})
     prefs = await update_hil_preferences(
         user["user_id"],
-        enabled=payload.enabled,
+        mode=payload.mode,
         tool_overrides=payload.tool_overrides,
     )
     return HILPreferencesResponse(**prefs.model_dump())
@@ -86,6 +86,5 @@ async def set_tool_approval(
         user={"id": user["user_id"]},
         hil={"operation": "set_tool_override", "tool": tool_name, "ask": payload.ask},
     )
-    await set_tool_override(user["user_id"], tool_name, payload.ask)
-    prefs = await get_hil_preferences(user["user_id"])
+    prefs = await set_tool_override(user["user_id"], tool_name, payload.ask)
     return HILPreferencesResponse(**prefs.model_dump())

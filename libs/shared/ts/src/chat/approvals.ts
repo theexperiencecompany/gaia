@@ -3,16 +3,58 @@ import type { StreamToolDataEntry } from "./streaming";
 export const APPROVAL_REQUEST_TOOL_NAME = "approval_request";
 
 /**
- * Per-user HIL preferences. `tool_overrides` maps a tool name to whether it
- * should ask before running, holding only the user's diffs from the default
- * (curated) gating — a tool absent from the map uses its default classification.
+ * The three global approval modes:
+ * - `always_allow` — run every action without asking.
+ * - `always_ask` — pause for approval on every destructive action.
+ * - `auto` — an intent judge runs actions that match what the user asked for,
+ *   and pauses for approval on anything that deviates or is unclear.
+ */
+export type HilMode = "always_allow" | "always_ask" | "auto";
+export const DEFAULT_HIL_MODE: HilMode = "always_allow";
+
+/**
+ * Per-user HIL preferences. `tool_overrides` defines which tools need approval
+ * (tool name -> needs-approval), overriding the default destructive
+ * classification; a tool absent from the map uses that default. The same gated
+ * set applies in both `always_ask` and `auto` — the mode only decides whether
+ * the user is asked or the intent judge decides.
  */
 export interface HilPreferences {
-  enabled: boolean;
+  mode: HilMode;
   tool_overrides: Record<string, boolean>;
 }
 
 export type ApprovalStatus = "pending" | "approved" | "denied" | "timeout";
+
+export type ApprovalDecision = "approve" | "deny";
+export type ApprovalScope = "once" | "always_tool";
+
+/** Body of POST /approvals/{id}/decision — one shape for every client. */
+export interface ApprovalDecisionPayload {
+  decision: ApprovalDecision;
+  feedback?: string;
+  scope?: ApprovalScope;
+}
+
+/** Whether a tool needs approval — i.e. is in the gated set the mode acts on. */
+export function toolAsks(
+  prefs: HilPreferences | undefined,
+  name: string,
+  destructive: boolean,
+): boolean {
+  return prefs?.tool_overrides?.[name] ?? destructive;
+}
+
+/**
+ * Override to store for a user's choice: only diffs from the tool's default
+ * classification are kept, so matching the default clears the override (null).
+ */
+export function toolOverrideValue(
+  ask: boolean,
+  destructive: boolean,
+): boolean | null {
+  return ask === destructive ? null : ask;
+}
 
 export interface ApprovalRequestData {
   approval_id: string;

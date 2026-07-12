@@ -59,9 +59,8 @@ async def is_tool_destructive(
     """
     if tool_name in HIL_EXEMPT_TOOLS:
         return False
-    # A server-declared destructive hint escalates even over a reviewed-safe
-    # registry flag: gating a safe tool is only friction, letting a destructive
-    # one through is the failure we're guarding against.
+    # Escalation-only (see module docstring): a true hint gates even over a
+    # reviewed-safe registry flag.
     if destructive_hint is True:
         return True
     try:
@@ -80,10 +79,9 @@ async def is_tool_destructive(
 def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
     """Return ``True`` only when an MCP tool declares itself destructive.
 
-    Honors the MCP ``destructiveHint`` annotation that
-    ``SanitizingLangChainAdapter`` stashes on the tool's metadata. Escalation-
-    only — a server may flag danger but never clear it — so a falsey or missing
-    hint yields ``None`` (defer to the other resolution steps), never ``False``.
+    Honors the ``destructiveHint`` annotation ``SanitizingLangChainAdapter``
+    stashes on tool metadata. Escalation-only (see module docstring): a falsey
+    or missing hint yields ``None`` (defer), never ``False``.
     """
     metadata = getattr(tool, "metadata", None)
     if not isinstance(metadata, dict):

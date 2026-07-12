@@ -117,12 +117,6 @@ DESKTOP_RELEASE_CACHE_TTL = THIRTY_MINUTES_TTL
 # late result). The tool deletes the key as soon as it resolves, so this TTL
 # only bounds the orphaned-on-crash case.
 DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
-# HIL approval bridge (see app/services/hil/bridge.py) — modeled on the desktop
-# bridge above: a per-request ownership key + per-request result channel, plus a
-# per-conversation set of pending approval_ids for the conversational resolver.
-HIL_REQUEST_PREFIX = "hil:request:"
-HIL_RESULT_CHANNEL_PREFIX = "hil:result:"
-HIL_PENDING_CONVERSATION_PREFIX = "hil:pending:"
 # Remembers a declined call for the rest of the turn (keyed by stream_id) so a
 # retrying agent is auto-denied instead of re-prompting the user for the same
 # action.

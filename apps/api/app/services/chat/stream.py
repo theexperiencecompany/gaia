@@ -57,7 +57,7 @@ from app.services.chat.workspace import (
 )
 from app.services.hil.conversational import resolve_pending_from_message
 from app.services.storage import flush_fs_metrics
-from app.utils.agent_utils import format_sse_response
+from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, log, wide_task
@@ -261,7 +261,7 @@ async def _resolve_pending_approval_turn(
     await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
     await stream_manager.publish_chunk(
         stream_id,
-        f"data: {json.dumps(MainResponseCompleteFrame(main_response_complete=True).model_dump())}\n\n",
+        format_sse_data(MainResponseCompleteFrame(main_response_complete=True).model_dump()),
     )
     await _persist_turn(stream_id, body, user, conversation_id, state)
     await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")

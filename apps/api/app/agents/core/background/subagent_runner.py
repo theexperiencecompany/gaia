@@ -64,12 +64,22 @@ async def run_subagent_background(
             )
 
         start_time = time.monotonic()
-        result = await execute_subagent_stream(
+        outcome = await execute_subagent_stream(
             ctx=ctx,
             stream_writer=writer,
             integration_metadata=integration_metadata,
             subagent_id=subagent_id,
         )
+        if outcome.paused:
+            # Unreachable by construction: the HIL gate refuses to gate a run whose
+            # execution_mode is "background" — no live client could approve it. If
+            # that ever changes, this run has no resume path, so fail loudly rather
+            # than silently return an empty result.
+            raise RuntimeError(
+                f"Background subagent {ctx.agent_name} paused on a HIL approval, "
+                "but background runs have no resume path"
+            )
+        result = outcome.text
         duration_ms = int((time.monotonic() - start_time) * 1000)
 
         if subagent_id:

@@ -1,11 +1,9 @@
+import { toolAsks } from "@gaia/shared/chat";
 import { useMemo } from "react";
 import { Alert, Pressable, Switch, View } from "react-native";
 import { AppIcon, ShieldUserIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  toolAsks,
-  useHilPreferences,
-} from "@/features/settings/hooks/use-hil-preferences";
+import { useHilPreferences } from "@/features/settings/hooks/use-hil-preferences";
 import { useResponsive } from "@/lib/responsive";
 
 export interface ToolEntry {
@@ -19,21 +17,21 @@ interface IntegrationToolApprovalsProps {
 }
 
 /**
- * Connected-integration tool list as a per-tool approval checklist. Each switch
- * reflects `override ?? tool.destructive`; order is fixed on the default gating
- * so toggling never reorders. When HIL is off the same rows render read-only
- * with an enable prompt — the view never changes shape.
+ * Connected-integration tool list as a per-tool approval checklist. A switch on
+ * puts the tool in the gated set — the set that `always_ask` prompts on and
+ * `auto` runs the intent judge over. When approvals are off the same rows render
+ * read-only with a turn-on prompt, so the view never changes shape.
  */
 export function IntegrationToolApprovals({
   entries,
 }: IntegrationToolApprovalsProps) {
   const { fontSize, spacing } = useResponsive();
-  const { prefs, setEnabled, setToolApproval } = useHilPreferences();
-  const disabled = !prefs.enabled;
+  const { prefs, setMode, setToolApproval } = useHilPreferences();
+  const disabled = prefs.mode === "always_allow";
 
   const handleEnable = async () => {
-    const ok = await setEnabled(true);
-    if (!ok) Alert.alert("Error", "Failed to enable approvals.");
+    const ok = await setMode("always_ask");
+    if (!ok) Alert.alert("Error", "Failed to turn on approvals.");
   };
 
   const ordered = useMemo(
@@ -74,7 +72,7 @@ export function IntegrationToolApprovals({
           </Text>
           <Pressable onPress={handleEnable} hitSlop={8}>
             <Text style={{ fontSize: fontSize.xs, color: "#16c1ff" }}>
-              Enable
+              Turn on
             </Text>
           </Pressable>
         </View>
@@ -83,7 +81,7 @@ export function IntegrationToolApprovals({
           className="text-zinc-500"
           style={{ fontSize: fontSize.xs - 1, marginTop: -2 }}
         >
-          Toggle which tools ask before running.
+          Choose which tools need approval before running.
         </Text>
       )}
 

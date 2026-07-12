@@ -197,19 +197,14 @@ async def enqueue_task(
     user_message_id: str | None,
 ) -> None:
     """Push a task to the executor queue for deferred execution."""
-    safe_configurable = {
-        k: v
-        for k, v in configurable.items()
-        if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, str | int | float | bool | None)
-    }
     queue_item = json.dumps(
-        {
-            "task": task,
-            "task_id": task_id,
-            "configurable": safe_configurable,
-            "conversation_id": conversation_id,
-            "user_message_id": user_message_id,
-        }
+        build_run_item(
+            task=task,
+            task_id=task_id,
+            configurable=configurable,
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+        )
     )
     if redis_cache.client:
         await redis_cache.client.rpush(queue_key, queue_item)
@@ -257,6 +252,49 @@ async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None
             conversation_id=conversation_id,
             error=str(e),
         )
+        return None
+
+    return await prepare_run_from_item(conversation_id, item)
+
+
+def build_run_item(
+    *,
+    task: str,
+    task_id: str | None,
+    configurable: dict,
+    conversation_id: str,
+    user_message_id: str | None,
+) -> dict[str, Any]:
+    """The one serialized run-context shape: written by the queue and the HIL
+    resume store, read back by ``prepare_run_from_item``. Add fields here, not
+    at the write sites, or a resumed run silently drops what a queued run keeps."""
+    return {
+        "task": task,
+        "task_id": task_id,
+        "configurable": safe_configurable(configurable),
+        "conversation_id": conversation_id,
+        "user_message_id": user_message_id,
+    }
+
+
+def safe_configurable(configurable: dict) -> dict[str, Any]:
+    """The serializable subset of a ``configurable``, safe to persist and rebuild
+    a run from. Filters out non-serializable LangGraph internals (Runtime objects)."""
+    return {
+        k: v
+        for k, v in configurable.items()
+        if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, str | int | float | bool | None)
+    }
+
+
+async def prepare_run_from_item(conversation_id: str, item: dict) -> PreparedQueuedTask | None:
+    """Take over the busy lock and prepare a fresh run+stream from a stored item.
+
+    Shared by the queue pop and the HIL approval resume: both re-dispatch a run
+    whose original owner is gone, so both must seize the lock rather than acquire
+    it, and both need their own stream for the frontend to subscribe to.
+    """
+    if not redis_cache.client:
         return None
 
     task = item.get("task", "")

@@ -17,9 +17,10 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, NamedTuple
 
 from langgraph.errors import GraphRecursionError
+from langgraph.types import Command
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import record_executor_cancellation
@@ -30,6 +31,7 @@ from app.agents.core.background.executor_capture import (
 from app.agents.core.background.executor_queue import (
     LockState,
     PreparedQueuedTask,
+    build_run_item,
     get_lock_state,
     pop_next_queued_run,
     reclaim_stranded_task,
@@ -42,9 +44,16 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE, MESSAGE_ID_KEY, VOICE_TTS_KEY
+from app.constants.executor import (
+    EXECUTOR_PAUSED,
+    EXECUTOR_STEP_LIMIT_MESSAGE,
+    MESSAGE_ID_KEY,
+    VOICE_TTS_KEY,
+)
+from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
+from app.services.hil.approvals_store import set_resume_item
 from app.utils.agent_utils import format_sse_data
 from shared.py.wide_events import log
 
@@ -57,8 +66,9 @@ async def run_executor_background(
     run: ExecutorRun,
     task: str,
     configurable: dict[str, Any],
+    resume: Command | None = None,
 ) -> None:
-    """Run the executor agent in background and hand its result to delivery.
+    """Run (or resume) the executor agent in background and hand its result to delivery.
 
     Designed for asyncio.create_task(). Never raises — all exceptions
     caught and routed through comms as an [EXECUTOR_ERROR] message.
@@ -67,6 +77,11 @@ async def run_executor_background(
     execution finishes, _finalize_executor_run signals completion, delivers
     the result, and hands off the queue lock.
 
+    ``resume`` continues a thread paused on a HIL approval. A run that pauses
+    ends with ``result_type == "paused"``: it has no result to deliver and it
+    keeps the busy lock, because the thread has pending work and no other task
+    may run on it until the approval resolves.
+
     Inherits `langfuse_trace_id` from the parent's `configurable` so this run's
     LLM/tool spans land on the same Langfuse trace as comms.
     """
@@ -74,9 +89,21 @@ async def run_executor_background(
     result_type = "final"
 
     try:
-        result_text, result_type = await _execute_executor(task, configurable, run.stream_id)
+        result = await _execute_executor(task, configurable, run.stream_id, resume)
+        result_text, result_type = result.text, result.type
+        if result.paused_on:
+            await set_resume_item(
+                result.paused_on,
+                build_run_item(
+                    task=task,
+                    task_id=run.task_id,
+                    configurable=configurable,
+                    conversation_id=run.conversation_id,
+                    user_message_id=run.user_message_id,
+                ),
+            )
         log.info(
-            f"{LogTag.AGENT} Background executor completed",
+            f"{LogTag.AGENT} Background executor {result_type}",
             task_id=run.task_id,
             stream_id=run.stream_id,
         )
@@ -84,16 +111,26 @@ async def run_executor_background(
         await _finalize_executor_run(run, task, result_text, result_type)
 
 
+class _ExecutorResult(NamedTuple):
+    """One executor run's terminal shape; ``paused_on`` is the approval id when
+    the run stopped on a HIL interrupt instead of finishing."""
+
+    text: str
+    type: str
+    paused_on: str = ""
+
+
 async def _execute_executor(
     task: str,
     configurable: dict[str, Any],
     stream_id: str,
-) -> tuple[str, str]:
-    """Run the executor agent graph once. Returns (result_text, result_type).
+    resume: Command | None = None,
+) -> _ExecutorResult:
+    """Run the executor agent graph once. Never raises — errors come back as
+    ``_ExecutorResult(text, "error")``.
 
     Tool events stream to the session's collector via make_redis_stream_writer
-    so the terminal path can persist the executor's tool_data. Never raises —
-    errors come back as ("...", "error").
+    so the terminal path can persist the executor's tool_data.
 
     The executor inherits the comms agent's model/provider/reasoning from
     ``configurable`` (free -> Gemini, paid -> MiniMax M3), so no override here.
@@ -106,10 +143,24 @@ async def _execute_executor(
         )
         if error or ctx is None:
             log.error(f"{LogTag.AGENT} Executor prep failed", error=error)
-            return (error or "Executor agent not available"), "error"
+            return _ExecutorResult(error or "Executor agent not available", "error")
+        if resume is not None:
+            # Tells the handoff tool to probe its subagent thread for a parked
+            # interrupt — only a resume replay can encounter one, so fresh runs
+            # skip that per-handoff checkpoint read.
+            ctx.configurable[HIL_RESUME_CONFIG_KEY] = True
+            ctx.config.setdefault("configurable", {})[HIL_RESUME_CONFIG_KEY] = True
         writer = make_redis_stream_writer(stream_id)
-        result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
-        return result_text, "final"
+        outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer, resume=resume)
+        if outcome.paused:
+            approval_id = str((outcome.interrupt or {}).get("approval_id", ""))
+            if not approval_id:
+                # Unresumable: nothing can ever re-dispatch this thread. Fail the
+                # run loudly rather than leave the conversation's lock held.
+                log.error(f"{LogTag.HIL} Executor paused with no approval_id", stream_id=stream_id)
+                return _ExecutorResult("Approval request was malformed", "error")
+            return _ExecutorResult("", EXECUTOR_PAUSED, approval_id)
+        return _ExecutorResult(outcome.text, "final")
     except GraphRecursionError as e:
         # The executor exhausted its recursion budget. Log the real cause loudly,
         # but hand comms a friendly message instead of the raw traceback string so
@@ -119,10 +170,10 @@ async def _execute_executor(
             stream_id=stream_id,
             error=str(e),
         )
-        return EXECUTOR_STEP_LIMIT_MESSAGE, "error"
+        return _ExecutorResult(EXECUTOR_STEP_LIMIT_MESSAGE, "error")
     except Exception as e:
         log.error(f"{LogTag.AGENT} Executor run failed", stream_id=stream_id, error=str(e))
-        return str(e), "error"
+        return _ExecutorResult(str(e), "error")
 
 
 async def _finalize_executor_run(
@@ -132,6 +183,10 @@ async def _finalize_executor_run(
     result_type: str,
 ) -> None:
     """Post-run cleanup, in order: signal done → deliver → close stream → hand off lock."""
+    if result_type == EXECUTOR_PAUSED:
+        await _finalize_paused_run(run)
+        return
+
     was_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(run.stream_id)
 
     # Snapshot which native cards were returned to the frontend BEFORE signalling
@@ -162,6 +217,28 @@ async def _finalize_executor_run(
     prepared = await _hand_off_queue(run)
     if prepared is not None:
         _spawn_queued_run(run, prepared)
+
+
+async def _finalize_paused_run(run: ExecutorRun) -> None:
+    """Close out a run parked on a HIL approval without ending its turn.
+
+    Deliberately does NOT deliver a result, drain the queue, or release the busy
+    lock. The executor thread is checkpointed with pending work, so no other task
+    may run on it — the lock stays held until ``resolve_approval`` resumes this
+    thread and that run's normal finalize drains the queue. Redis outlives the
+    process, so the lock survives a restart exactly as the checkpoint does.
+
+    The SSE consumer is still signalled: the turn's stream must close so the user
+    sees the approval card instead of a spinner that never resolves.
+    """
+    signal_executor_done(run.stream_id)
+    await _close_queued_stream(run, was_cancelled=False)
+    log.info(
+        f"{LogTag.HIL} Executor paused on approval; busy lock retained",
+        task_id=run.task_id,
+        conversation_id=run.conversation_id,
+        stream_id=run.stream_id,
+    )
 
 
 async def _deliver_terminal_outcome(

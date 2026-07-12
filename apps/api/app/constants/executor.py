@@ -24,3 +24,8 @@ EXECUTOR_ERROR_MARKER = "[EXECUTOR_ERROR]"
 # (GraphRecursionError). Handed to comms as the error result so it's re-voiced in
 # GAIA's persona instead of leaking the raw LangGraph traceback string.
 EXECUTOR_STEP_LIMIT_MESSAGE = "This task hit its step limit — try breaking it into smaller pieces."
+
+# result_type for a run that stopped on a HIL approval instead of finishing. Such
+# a run has nothing to deliver and KEEPS the busy lock: its thread is checkpointed
+# with pending work, so no queued task may run on it until the approval resolves.
+EXECUTOR_PAUSED = "paused"

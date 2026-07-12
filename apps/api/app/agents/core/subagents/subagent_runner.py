@@ -5,12 +5,16 @@ Lives here (rather than in handoff_tools.py) so those modules import from it,
 avoiding a cyclic dependency.
 """
 
+from dataclasses import dataclass
+from typing import Any
+
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
+from langgraph.types import Command
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.core.subagents.registry import get_subagent_by_id
@@ -23,6 +27,7 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -76,6 +81,23 @@ def _extract_reasoning_delta(chunk: AIMessageChunk) -> str:
         if fallback:
             parts.append(fallback if isinstance(fallback, str) else str(fallback))
     return "".join(parts)
+
+
+@dataclass(frozen=True)
+class SubagentOutcome:
+    """One graph run's result: its text, or the HIL approval it paused on.
+
+    ``interrupt`` carries the payload the gate passed to ``interrupt()``. When it
+    is set the graph is checkpointed mid-run and ``text`` is meaningless — the
+    caller must bubble the pause up rather than treat it as an answer.
+    """
+
+    text: str
+    interrupt: dict[str, Any] | None = None
+
+    @property
+    def paused(self) -> bool:
+        return self.interrupt is not None
 
 
 class SubagentExecutionContext:
@@ -228,19 +250,24 @@ async def execute_subagent_stream(
     stream_writer: StreamWriterCallable | None = None,
     integration_metadata: IntegrationMetadata | None = None,
     subagent_id: str | None = None,
-) -> str:
-    """Execute a subagent with streaming and tool tracking, returning the
-    complete message.
+    resume: Command | None = None,
+) -> SubagentOutcome:
+    """Execute (or resume) a subagent with streaming and tool tracking.
 
     Stream event flow:
         - "updates": emit tool_data with complete args when a tool is called
         - "messages": stream content, emit tool_output when a ToolMessage arrives
         - "custom": forward custom events (progress, etc.) to the parent
+
+    ``resume`` continues a thread already paused on a HIL ``interrupt()`` instead
+    of starting from ``ctx.initial_state``. When the run pauses, the returned
+    outcome carries the approval payload and the caller must bubble it up.
     """
     log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
     complete_message = ""
     emitted_tool_calls: set[str] = set()
     tool_ran = False
+    pending_interrupt: dict[str, Any] | None = None
 
     # Inject the UUID subagent_id into configurable so nested spawn_subagent
     # tool calls can read the correct parent_subagent_id via
@@ -254,7 +281,7 @@ async def execute_subagent_stream(
         }
 
     async for event in ctx.subagent_graph.astream(
-        ctx.initial_state,
+        resume if resume is not None else ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
         config=run_config,
         # Persist checkpoints only when this executor/subagent run exits, not
@@ -278,6 +305,12 @@ async def execute_subagent_stream(
         stream_mode, payload = event
 
         if stream_mode == "updates":
+            # The HIL gate paused this run. LangGraph has already checkpointed
+            # it; capture the approval payload and stop consuming the stream.
+            if LANGGRAPH_INTERRUPT_KEY in payload:
+                pending_interrupt = interrupt_payload(payload[LANGGRAPH_INTERRUPT_KEY])
+                log.info(f"{LogTag.HIL} Subagent paused on approval", agent=ctx.agent_name)
+                break
             for node_name, state_update in payload.items():
                 # Only emit tool_data from the LLM ("agent") node.
                 # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
@@ -312,6 +345,11 @@ async def execute_subagent_stream(
             if stream_writer:
                 stream_writer(normalize_custom_event(payload))
 
+    # A pause is not a result: the narration-only heuristic below would misread a
+    # half-finished run as "planning text" and tell the parent to re-issue it.
+    if pending_interrupt is not None:
+        return SubagentOutcome(text=complete_message, interrupt=pending_interrupt)
+
     # A subagent that only narrated and never ran a tool didn't do the work — return
     # an actionable signal so the parent re-issues the handoff instead of treating the
     # planning text as the result.
@@ -332,7 +370,19 @@ async def execute_subagent_stream(
             "messages_count": len(ctx.initial_state.get("messages", [])),
         }
     )
-    return final_message
+    return SubagentOutcome(text=final_message)
+
+
+def interrupt_payload(raw: Any) -> dict[str, Any]:
+    """The HIL payload inside LangGraph Interrupt object(s) — from a stream event's
+    ``__interrupt__`` tuple or a state snapshot's ``interrupts``. ``{}`` when the
+    objects carry no dict value (downstream treats that as malformed → deny)."""
+    items = raw if isinstance(raw, (list, tuple)) else (raw,)
+    for item in items:
+        value = getattr(item, "value", item)
+        if isinstance(value, dict):
+            return value
+    return {}
 
 
 async def prepare_executor_execution(

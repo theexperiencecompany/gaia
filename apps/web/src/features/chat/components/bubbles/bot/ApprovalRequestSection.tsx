@@ -7,7 +7,11 @@ import {
 } from "@heroui/dropdown";
 import { Input } from "@heroui/input";
 import { MoreHorizontalIcon, ShieldIcon } from "@icons";
-import type { ApprovalRequestData } from "@shared/chat";
+import type {
+  ApprovalDecision,
+  ApprovalRequestData,
+  ApprovalScope,
+} from "@shared/chat";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { toast } from "@/lib/toast";
@@ -41,12 +45,13 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
 export default function ApprovalRequestSection({
   data,
 }: ApprovalRequestSectionProps) {
-  const [submitting, setSubmitting] = useState<"approve" | "deny" | null>(null);
+  const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
+  const [settled, setSettled] = useState(false);
   const [feedback, setFeedback] = useState("");
 
   const decide = async (
-    decision: "approve" | "deny",
-    scope: "once" | "always_tool" = "once",
+    decision: ApprovalDecision,
+    scope: ApprovalScope = "once",
   ) => {
     setSubmitting(decision);
     try {
@@ -55,9 +60,11 @@ export default function ApprovalRequestSection({
         feedback: feedback.trim() || undefined,
         scope,
       });
-      // The resolved frame arrives over the stream and replaces this card; a 410
-      // (already resolved elsewhere) is swallowed by postApprovalDecision, so
-      // reaching this catch means the decision genuinely failed to submit.
+      // Settle locally: the resolved frame is published on the RESUMED run's
+      // stream (a different message), so it never replaces this card. A 410
+      // (already resolved elsewhere) is swallowed by postApprovalDecision and
+      // settles here too; reaching the catch means the submit genuinely failed.
+      setSettled(true);
     } catch {
       toast.error("Couldn't submit your decision — please try again");
       setSubmitting(null);
@@ -67,7 +74,7 @@ export default function ApprovalRequestSection({
   // A settled approval is removed entirely — nobody acts on a decided card, and
   // the assistant's own reply already reflects the outcome. Only pending cards
   // render (the group also filters, this keeps the component self-consistent).
-  if (data.status !== "pending") return null;
+  if (settled || data.status !== "pending") return null;
 
   return (
     <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">

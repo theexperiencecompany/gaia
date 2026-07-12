@@ -192,6 +192,11 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._categories: dict[str, ToolCategory] = {}
+        # name -> (category_name, Tool) index. Tool names are globally unique
+        # (the executor's tool dict is keyed by name), so a flat map is safe;
+        # it serves the per-tool-call lookups on the HIL gate path without
+        # scanning every category.
+        self._tools_by_name: dict[str, tuple[str, Tool]] = {}
 
     async def setup(self):
         self._initialize_categories()
@@ -231,6 +236,13 @@ class ToolRegistry:
         if tools:
             category.add_tools(tools, destructive_tools=destructive_tools)
         self._categories[name] = category
+        if replacing:
+            # Drop the replaced category's entries so removed tools don't linger.
+            self._tools_by_name = {
+                k: v for k, v in self._tools_by_name.items() if v[0] != name
+            }
+        for registered in category.tools:
+            self._tools_by_name[registered.name] = (name, registered)
         log.set(
             tool_category={
                 "name": name,
@@ -604,19 +616,17 @@ class ToolRegistry:
 
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""
-        for category in self._categories.values():
-            for tool in category.tools:
-                if tool.name == tool_name:
-                    return category.name
-        return "unknown"
+        entry = self._tools_by_name.get(tool_name)
+        return entry[0] if entry else "unknown"
 
     def get_tool_meta(self, tool_name: str) -> Tool | None:
-        """Return the registry ``Tool`` wrapper for a tool name, or None."""
-        for category in self._categories.values():
-            for tool in category.tools:
-                if tool.name == tool_name:
-                    return tool
-        return None
+        """Return the registry ``Tool`` wrapper for a tool name, or None.
+
+        Served from the name index — this sits on the HIL gate's per-tool-call
+        path, where a scan over every category × tool is measurable waste.
+        """
+        entry = self._tools_by_name.get(tool_name)
+        return entry[1] if entry else None
 
     def is_tool_destructive(self, tool_name: str) -> bool | None:
         """HIL risk flag for a tool: True/False if reviewed, None if unclassified

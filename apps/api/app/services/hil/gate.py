@@ -6,31 +6,54 @@ ToolNode) via thin adapters — the middleware class in
 ``app/agents/middleware/hil_approval.py`` and the composed ToolNode wrapper in
 ``dynamic_tool_node.py``. Living in the service layer keeps it importable from
 the override package without a middleware↔override cycle.
+
+The pause is LangGraph's native ``interrupt()``: the run checkpoints to Postgres
+and exits, so an approval survives a restart/deploy. It resumes when
+``resolve_approval`` re-dispatches the thread with ``Command(resume=...)``.
+
+Two invariants hold this together:
+
+* ``interrupt()`` raises ``GraphInterrupt``. It is control flow, never an error —
+  it must never be caught here (or by the wrappers above; see the
+  ``GraphBubbleUp`` guards in ``executor.py`` / ``dynamic_tool_node.py``).
+* On resume the node re-runs from the top, so every statement *before*
+  ``interrupt()`` executes twice. All of it must be idempotent, and the real tool
+  must only ever run *after* the decision comes back.
 """
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
-from langgraph.types import Command
+from langgraph.errors import GraphBubbleUp
+from langgraph.types import Command, interrupt
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
+from app.models.hil_models import HIL_DEFAULT_MODE
+from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     ApprovalOutcome,
     build_summary,
+    publish_approval_outcome,
+    publish_approval_request,
     recall_declined_call,
     remember_declined_call,
-    request_approval,
 )
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
+from app.services.hil.intent import judge_intent, prior_tool_calls
 from app.services.hil.preferences import get_hil_preferences, set_tool_override
 from shared.py.wide_events import log
 
 Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
+
+# The gate's decision for one destructive-eligible call:
+#   allow — run without asking; ask — pause for approval; auto — let the intent
+#   judge decide between the two.
+GatingPolicy = Literal["allow", "ask", "auto"]
 
 _DENIED_TEMPLATE = (
     "The user declined to run `{tool}`. The action was NOT performed.{feedback} "
@@ -42,6 +65,17 @@ _TIMEOUT_TEMPLATE = (
     "was NOT performed. Tell the user you were waiting for their approval and "
     "that they can ask again when ready."
 )
+# An approval gate that cannot determine whether a call is safe must not run it —
+# but the refusal must read as a system failure, never as a decision the user made.
+_GATE_ERROR_TEMPLATE = (
+    "The approval system could not verify `{tool}` due to an internal error. The "
+    "action was NOT performed and the user was NOT asked. Tell the user a system "
+    "error prevented the action and they can retry."
+)
+
+# The only statuses a resume payload may carry; anything else is treated as a
+# denial ("abandoned" resumes as a deny — resolution.py maps it before sending).
+_RESUMABLE_STATUSES: frozenset[str] = frozenset({"approved", "denied", "timeout"})
 
 
 @dataclass
@@ -51,6 +85,9 @@ class _GateContext:
     stream_id: str
     user_id: str
     conversation_id: str
+    # The user's own recent turns, oldest first, the live request last. May be empty on
+    # entry paths with no user message; the intent judge treats that as unverifiable.
+    user_messages: list[str]
 
 
 async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMessage | Command[Any]:
@@ -63,53 +100,148 @@ async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMess
     if context is None:
         return await handler(request)
 
-    prefs = await get_hil_preferences(context.user_id)
-    if not prefs.enabled:
-        return await handler(request)
+    # Scoped to the gate's own decision I/O — never wraps ``handler``, so a tool's
+    # own failure still surfaces as a tool error rather than a spurious denial.
+    try:
+        policy = await _gating_policy(request, context, tool_name)
+    except GraphBubbleUp:
+        raise
+    except Exception as e:  # noqa: BLE001 — an approval gate must fail closed
+        log.error(f"{LogTag.HIL} Gate check failed for {tool_name}; denying: {e}")
+        return _gate_error_message(tool_name, tool_call_id)
 
-    tool = getattr(request, "tool", None)
-    # A user's explicit per-tool choice wins in both directions — even over an MCP
-    # destructiveHint — since it's a deliberate setting on their own account. Only
-    # tools with no override fall back to the default classifier.
-    override = prefs.tool_overrides.get(tool_name)
-    if override is None:
+    if policy == "allow":
+        return await handler(request)
+    return await _ask_or_auto_run(request, handler, context, policy, tool_name, tool_call_id, args)
+
+
+async def _gating_policy(
+    request: ToolCallRequest, context: _GateContext, tool_name: str
+) -> GatingPolicy:
+    """Resolve mode + the gated tool set into one decision.
+
+    The gated set is the same in both gating modes: a tool is gated when the user's
+    per-tool override says so, else when it classifies as destructive. ``mode`` only
+    decides what happens to that set — ask the user, or let the intent judge decide.
+    """
+    try:
+        prefs = await get_hil_preferences(context.user_id)
+    except Exception:
+        if HIL_DEFAULT_MODE != "always_allow":
+            raise  # a gating default → the outer guard fails closed
+        # HIL is opt-in and unlaunched: a Redis/Mongo blip here must not gate
+        # every tool call for the overwhelmingly common HIL-off user. Loud log,
+        # then behave as the default mode.
+        log.error(f"{LogTag.HIL} Preferences unavailable; treating HIL as {HIL_DEFAULT_MODE}")
+        return "allow"
+
+    if prefs.mode == "always_allow":
+        return "allow"
+
+    # A user's explicit per-tool choice wins over the classifier in both directions —
+    # even over an MCP destructiveHint — since it's a deliberate account setting.
+    gated = prefs.tool_overrides.get(tool_name)
+    if gated is None:
+        tool = getattr(request, "tool", None)
         description = getattr(tool, "description", "") or ""
-        override = await is_tool_destructive(
+        gated = await is_tool_destructive(
             tool_name, description, destructive_hint=mcp_destructive_hint(tool)
         )
-    if not override:
-        return await handler(request)
-
-    # The user already declined this exact call earlier in the turn. Re-asking
-    # is the loop we want to kill (the executor doesn't learn the subagent was
-    # declined, so it retries) — auto-deny with their original feedback instead.
-    prior = await recall_declined_call(context.stream_id, tool_name, args)
-    if prior is not None:
-        log.info(f"{LogTag.HIL} auto-denying {tool_name}: declined earlier this turn")
-        return _refusal_message(tool_name, tool_call_id, prior)
-
-    return await _await_decision_then_run(request, handler, context, tool_name, tool_call_id, args)
+    if not gated:
+        return "allow"
+    return "auto" if prefs.mode == "auto" else "ask"
 
 
-async def _await_decision_then_run(
+async def _ask_or_auto_run(
     request: ToolCallRequest,
     handler: Handler,
     context: _GateContext,
+    policy: GatingPolicy,
     tool_name: str,
     tool_call_id: str,
     args: dict[str, Any],
 ) -> ToolMessage | Command[Any]:
-    """Block on the user's decision, then run the tool or report the refusal."""
-    integration_name = await _integration_name_for(tool_name)
-    outcome = await request_approval(
-        stream_id=context.stream_id,
-        user_id=context.user_id,
-        conversation_id=context.conversation_id,
-        tool_call={"id": tool_call_id, "name": tool_name, "args": args},
-        summary=build_summary(tool_name, args, integration_name),
-        integration_name=integration_name,
+    """Auto-judge (auto mode), then either run the tool or pause for approval."""
+    approval_id = approval_id_for(context.conversation_id, tool_call_id)
+    tool_call = {"id": tool_call_id, "name": tool_name, "args": args}
+    auto_approved = False
+
+    try:
+        # The user already declined this exact call earlier in the turn. Re-asking
+        # is the loop we want to kill (the executor doesn't learn the subagent was
+        # declined, so it retries) — auto-deny with their original feedback instead.
+        prior = await recall_declined_call(context.stream_id, tool_name, args)
+        if prior is not None:
+            log.info(f"{LogTag.HIL} auto-denying {tool_name}: declined earlier this turn")
+            return _refusal_message(tool_name, tool_call_id, prior)
+
+        integration_name = await _integration_name_for(tool_name)
+        summary = build_summary(tool_name, args, integration_name)
+
+        if policy == "auto":
+            # Replay guard: this node re-runs top-to-bottom on every interrupt()
+            # resume, and the judge is a non-deterministic LLM call. A pre-existing
+            # record means a prior run already chose "ask" and published the card —
+            # skip the judge and go straight to the (idempotent) pause below, so the
+            # resume value lands on the interrupt() it expects. The aligned-and-run
+            # path writes no record and never interrupts, so it never replays here.
+            auto_approved = await get_approval(approval_id) is None and await judge_intent(
+                user_messages=context.user_messages,
+                tool_name=tool_name,
+                description=getattr(getattr(request, "tool", None), "description", "") or "",
+                args=args,
+                summary=summary,
+                # Actions only — the agent's prose is never handed to its own gate.
+                prior_calls=prior_tool_calls(request.state, tool_call_id),
+            )
+        if not auto_approved:
+            # Idempotent: a resume replay re-enters here, finds the record already
+            # present, and re-publishes nothing.
+            await publish_approval_request(
+                approval_id=approval_id,
+                stream_id=context.stream_id,
+                user_id=context.user_id,
+                conversation_id=context.conversation_id,
+                tool_call=tool_call,
+                summary=summary,
+                integration_name=integration_name,
+            )
+    except GraphBubbleUp:
+        raise
+    except Exception as e:  # noqa: BLE001 — an approval gate must fail closed
+        log.error(f"{LogTag.HIL} Could not publish approval for {tool_name}; denying: {e}")
+        return _gate_error_message(tool_name, tool_call_id)
+
+    # Run outside the fail-closed try so the tool's own failure surfaces as a tool
+    # error, not a spurious gate denial (same reason the post-approval run below
+    # sits outside it).
+    if auto_approved:
+        log.info(f"{LogTag.HIL} auto-approved {tool_name}: intent aligned")
+        return await handler(request)
+
+    # The run checkpoints and exits here. Everything below executes only once a
+    # decision resumes the thread — never in the same process invocation.
+    outcome = _outcome_from_resume(
+        interrupt(
+            {
+                "type": "hil_approval",
+                "approval_id": approval_id,
+                "tool_name": tool_name,
+                "summary": summary,
+                "integration_name": integration_name,
+                "args_preview": args,
+            }
+        )
     )
     log.info(f"{LogTag.HIL} HIL decision for {tool_name}: {outcome.status}")
+    await publish_approval_outcome(
+        stream_id=context.stream_id,
+        approval_id=approval_id,
+        tool_call=tool_call,
+        summary=summary,
+        integration_name=integration_name,
+        outcome=outcome,
+    )
 
     if outcome.status == "approved":
         if outcome.scope == "always_tool":
@@ -124,6 +256,31 @@ async def _await_decision_then_run(
     return _refusal_message(tool_name, tool_call_id, outcome)
 
 
+def _outcome_from_resume(raw: Any) -> ApprovalOutcome:
+    """Interpret the value handed back by ``Command(resume=...)``.
+
+    ``resolution.py`` sends the already-resolved status; anything unrecognised is
+    a denial — an approval must never be inferred from a malformed payload.
+    """
+    if not isinstance(raw, dict) or raw.get("status") not in _RESUMABLE_STATUSES:
+        log.warning(f"{LogTag.HIL} Malformed HIL resume payload; denying")
+        return ApprovalOutcome(status="denied", feedback=None)
+    return ApprovalOutcome(
+        status=raw["status"],
+        feedback=raw.get("feedback"),
+        scope=str(raw.get("scope", "once")),
+    )
+
+
+def _gate_error_message(tool_name: str, tool_call_id: str) -> ToolMessage:
+    return ToolMessage(
+        content=_GATE_ERROR_TEMPLATE.format(tool=tool_name),
+        tool_call_id=tool_call_id,
+        name=tool_name,
+        additional_kwargs={"hil_status": "error"},
+    )
+
+
 def _read_gate_context(request: ToolCallRequest) -> _GateContext | None:
     """The run's approval identity, or ``None`` when it can't be gated.
 
@@ -134,12 +291,19 @@ def _read_gate_context(request: ToolCallRequest) -> _GateContext | None:
     configurable = _configurable_of(request)
     stream_id = configurable.get("stream_id")
     user_id = configurable.get("user_id")
-    conversation_id = configurable.get("thread_id")
+    # Never ``thread_id`` — inside the executor/subagent that is the
+    # ``executor_<conv>`` wrapper, so the approval would be filed against a
+    # conversation the client never asks about.
+    conversation_id = configurable.get("conversation_id")
     if not stream_id or not user_id or not conversation_id:
         return None
     if configurable.get("execution_mode") == "background":
         return None
-    return _GateContext(stream_id, user_id, conversation_id)
+    # Inherited unchanged from comms (see build_agent_config) — inside the executor or
+    # a subagent the local task is an agent-authored paraphrase, never the user's words.
+    raw = configurable.get("user_messages")
+    user_messages = [text for text in raw if isinstance(text, str)] if isinstance(raw, list) else []
+    return _GateContext(stream_id, user_id, conversation_id, user_messages)
 
 
 def _refusal_message(tool_name: str, tool_call_id: str, outcome: ApprovalOutcome) -> ToolMessage:

@@ -1,5 +1,3 @@
-"use client";
-
 import type { ApprovalRequestData } from "@shared/chat";
 import ApprovalRequestSection from "./ApprovalRequestSection";
 

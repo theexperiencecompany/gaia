@@ -122,6 +122,7 @@ _COLLECTION_MAPPINGS = {
     "integration_instructions_collection": "integration_instructions",
     "device_tokens_collection": "device_tokens",
     "hil_tool_risk_collection": "hil_tool_risk",
+    "hil_approvals_collection": "hil_approvals",
     "skills_collection": "skills",
     "workflow_executions_collection": "workflow_executions",
     "processed_webhooks_collection": "processed_webhooks",

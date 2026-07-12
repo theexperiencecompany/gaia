@@ -230,7 +230,10 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
             IntegrationTool(
                 name=tool.name,
                 description=tool.tool.description,
-                destructive=tool.name in destructive,
+                # The registry stamped this from the same curated set at add time
+                # and is the single source of truth — it also carries LLM
+                # classifications written back via mark_tool_destructive.
+                destructive=bool(tool.destructive),
             )
             for tool in category_obj.tools
         ]

@@ -2,10 +2,10 @@
 
 When a conversation has a single approval waiting and the user simply replies in
 chat (instead of clicking a button), one fast LLM call classifies the reply as
-approving, declining, or an unrelated new request. Approve/deny relays the
-decision to the awaiting gate; an unrelated message abandons the parked run (so
-the gate never hangs and the run never races the new turn) and lets the new turn
-run normally.
+approving, declining, or an unrelated new request. Approve/deny resolves the
+approval and resumes the paused run; an unrelated message abandons it (resumed
+as a refusal, so the run wraps up instead of racing the new turn) and lets the
+new turn run normally.
 
 Chat resolution only fires when exactly one approval is pending: a single
 "yes"/"no" cannot say which of several concurrent approvals it means, so with
@@ -18,12 +18,12 @@ from pydantic import BaseModel
 
 from app.agents.llm.client import ainvoke_structured
 from app.constants.log_tags import LogTag
-from app.services.hil.bridge import (
+from app.services.hil.approvals_store import list_pending_for_conversation
+from app.services.hil.resolution import (
     ApprovalRequestForbidden,
     ApprovalRequestNotFound,
-    abandon_pending_run,
-    pending_approvals_for_conversation,
-    relay_approval_decision,
+    abandon_conversation_approvals,
+    resolve_approval,
 )
 from shared.py.wide_events import log
 
@@ -49,21 +49,19 @@ async def resolve_pending_from_message(
     approvals are pending. With several in flight a single reply can't say which
     it means, so those are left for the per-card buttons rather than guessed at.
     """
-    pending = await pending_approvals_for_conversation(conversation_id)
+    pending = await list_pending_for_conversation(conversation_id)
     if len(pending) != 1:
         return None
 
-    item = pending[0]
-    result = await interpret_decision_message(message, [item.get("summary", "")])
+    record = pending[0]
+    result = await interpret_decision_message(message, [record.summary])
     if result.action == "unrelated":
-        # The user moved on. Abandon the parked run (cancel it, don't deny-and-
-        # resume) so it can't race the new turn about to run for this message.
-        await abandon_pending_run(
-            item["approval_id"], user_id, item.get("stream_id", ""), UNRELATED_FEEDBACK
-        )
+        # The user moved on. Abandon the paused run so it resumes, sees a refusal,
+        # wraps up, and frees the conversation's executor lock for the new turn.
+        await abandon_conversation_approvals(conversation_id, user_id, UNRELATED_FEEDBACK)
         return "unrelated"
 
-    await _safe_relay(item["approval_id"], user_id, result.action, result.feedback)
+    await _safe_resolve(record.approval_id, user_id, result.action, result.feedback)
     return result.action
 
 
@@ -84,13 +82,15 @@ async def interpret_decision_message(message: str, pending_summaries: list[str])
 # --- internals -----------------------------------------------------------------
 
 
-async def _safe_relay(approval_id: str, user_id: str, decision: str, feedback: str | None) -> None:
-    """Relay one decision, tolerating an already-resolved/expired approval."""
+async def _safe_resolve(
+    approval_id: str, user_id: str, decision: Literal["approve", "deny"], feedback: str | None
+) -> None:
+    """Apply one decision, tolerating an already-resolved/expired approval."""
     try:
-        await relay_approval_decision(
+        await resolve_approval(
             approval_id=approval_id,
             user_id=user_id,
-            decision=decision,
+            kind=decision,
             feedback=feedback,
             scope="once",
         )

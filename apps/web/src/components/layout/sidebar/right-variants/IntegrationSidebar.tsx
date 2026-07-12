@@ -52,11 +52,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   } = useIntegrationTools(integration, category);
   const { isOwnIntegration, isForkedIntegration } =
     useIntegrationOwnership(integration);
-  const { prefs: hilPrefs } = useHilPreferences();
-  const hilEnabled = !!hilPrefs?.enabled;
-  // A connected integration's tool list is always the per-tool approval view
-  // (same shape whether HIL is on or off — off just renders it read-only with an
-  // enable prompt). Not-connected integrations show a plain browse view.
+  const { mode: hilMode } = useHilPreferences();
+  // Approvals off: the same list renders read-only with a turn-on prompt, so the
+  // view never changes shape. Not-connected integrations show a plain browse view.
+  const hilOff = hilMode === "always_allow";
 
   // Show the tool skeleton both on the initial on-demand fetch and while a
   // just-connected integration is still discovering tools in the background —
@@ -120,9 +119,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               {isConnected ? "Tool approvals" : "Available tools"} (
               {integrationTools.length})
             </h2>
-            {isConnected && hilEnabled && (
+            {isConnected && !hilOff && (
               <p className="mt-0.5 text-xs text-zinc-500">
-                Toggle which tools ask before running.
+                Choose which tools need approval before running.
               </p>
             )}
           </div>
@@ -140,7 +139,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             {isConnected ? (
               <IntegrationToolApprovals
                 tools={integrationTools}
-                disabled={!hilEnabled}
+                disabled={hilOff}
               />
             ) : (
               <div className="flex flex-wrap gap-2 content-start">

@@ -235,13 +235,27 @@ export function useNotifications(): UseNotificationsReturn {
             typeof data.approval_id === "string" ? data.approval_id : null;
 
           // Approve/Deny action button: relay the decision without opening the
-          // app. A 410 (already resolved) is swallowed by postApprovalDecision.
+          // app. A 410 (already resolved) is swallowed by postApprovalDecision;
+          // false means the submit genuinely failed — tell the user, or they'll
+          // believe they approved an action that never ran.
           if (
             data.type === "hil_approval" &&
             approvalId &&
             (action === "approve" || action === "deny")
           ) {
-            void chatApi.postApprovalDecision(approvalId, { decision: action });
+            void chatApi
+              .postApprovalDecision(approvalId, { decision: action })
+              .then((ok) => {
+                if (!ok) {
+                  void Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: "Approval not sent",
+                      body: "Your decision didn't go through — open GAIA to retry.",
+                    },
+                    trigger: null,
+                  });
+                }
+              });
             return;
           }
 

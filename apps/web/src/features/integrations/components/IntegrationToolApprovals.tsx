@@ -3,39 +3,35 @@
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
 import { ShieldIcon } from "@icons";
+import { toolAsks } from "@shared/chat";
 import { useMemo } from "react";
 import type { IntegrationToolEntry } from "@/features/integrations/hooks/useIntegrationTools";
-import {
-  toolAsks,
-  useHilPreferences,
-} from "@/features/settings/hooks/useHilPreferences";
+import { useHilPreferences } from "@/features/settings/hooks/useHilPreferences";
 import { toast } from "@/lib/toast";
 
 interface IntegrationToolApprovalsProps {
   tools: IntegrationToolEntry[];
-  /** HIL is off globally: show the same list, but read-only with an enable prompt. */
+  /** Mode is `always_allow`: same list, read-only, with a prompt to turn approvals on. */
   disabled?: boolean;
 }
 
 /**
- * Per-tool approval switches for a connected integration. Each switch reflects
- * `override ?? tool.destructive`; flipping it stores a diff via HIL prefs. Order
- * is fixed on the default gating (gated-first) so toggling never reorders rows.
- * The layout is identical whether HIL is on or off — off just disables the
- * switches and shows an enable prompt — so the view never changes shape.
+ * Which tools of a connected integration need approval. A switch on puts the tool
+ * in the gated set — the set that `always_ask` prompts on and `auto` runs the
+ * intent judge over. Order is fixed on the default classification (gated-first)
+ * so toggling never reorders rows.
  */
 export const IntegrationToolApprovals = ({
   tools,
   disabled = false,
 }: IntegrationToolApprovalsProps) => {
-  const { prefs, setToolApproval, setEnabled, isSavingEnabled } =
-    useHilPreferences();
+  const { prefs, setToolApproval, setMode, isSavingMode } = useHilPreferences();
 
   const handleEnable = async () => {
     try {
-      await setEnabled(true);
+      await setMode("always_ask");
     } catch {
-      toast.error("Failed to enable approvals");
+      toast.error("Failed to turn on approvals");
     }
   };
 
@@ -55,10 +51,10 @@ export const IntegrationToolApprovals = ({
           <Button
             size="sm"
             variant="flat"
-            isLoading={isSavingEnabled}
+            isLoading={isSavingMode}
             onPress={handleEnable}
           >
-            Enable
+            Turn on
           </Button>
         </div>
       )}
@@ -86,7 +82,7 @@ export const IntegrationToolApprovals = ({
                 onValueChange={(v) =>
                   setToolApproval(tool.name, v, tool.destructive)
                 }
-                aria-label={`Ask before ${tool.label}`}
+                aria-label={`Require approval for ${tool.label}`}
               />
             </div>
           );

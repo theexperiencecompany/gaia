@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.hil_models import HILPreferences
+from app.models.hil_models import HILMode, HILPreferences
 
 
 class ApprovalDecisionRequest(BaseModel):
@@ -29,7 +29,7 @@ class HILPreferencesResponse(HILPreferences):
 class UpdateHILPreferencesRequest(BaseModel):
     """Partial update to a user's HIL preferences; omitted fields are left unchanged."""
 
-    enabled: bool | None = None
+    mode: HILMode | None = None
     tool_overrides: dict[str, bool] | None = None
 
 

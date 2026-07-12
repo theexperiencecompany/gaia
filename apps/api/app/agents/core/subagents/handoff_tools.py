@@ -13,13 +13,15 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 import asyncio
 import re
 import time
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
+from langgraph.errors import GraphBubbleUp
 from langgraph.store.base import BaseStore, PutOp
+from langgraph.types import Command, interrupt
 
 from app.agents.core.background.session import increment_pending_subagents
 from app.agents.core.background.subagent_runner import run_subagent_background
@@ -33,10 +35,13 @@ from app.agents.core.subagents.subagent_helpers import (
 )
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
+    SubagentOutcome,
     build_initial_messages,
     execute_subagent_stream,
+    interrupt_payload,
 )
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
+from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
@@ -429,6 +434,7 @@ async def _run_blocking_handoff(
     metadata: IntegrationMetadata | None,
     agent_name: str,
     integration_id: str,
+    probe_parked: bool = False,
 ) -> str:
     """Run a handoff subagent synchronously, emitting lifecycle SSE events."""
     writer = get_stream_writer()
@@ -454,12 +460,39 @@ async def _run_blocking_handoff(
         }
     )
     start_time = time.monotonic()
-    result = await execute_subagent_stream(
-        ctx=ctx,
-        stream_writer=writer,
-        integration_metadata=metadata,
-        subagent_id=sa_id,
-    )
+
+    # When the executor resumes, THIS node re-runs from the top while the subagent's
+    # own thread is still parked on its interrupt. Re-invoking it fresh would redo
+    # everything it already did, so a parked checkpoint means "recover, don't rerun".
+    # A parked subagent can only exist on a resume replay, so fresh runs skip the
+    # checkpoint probe (a per-handoff Postgres read) entirely.
+    parked = await _parked_interrupt(ctx) if probe_parked else None
+    if parked is None:
+        outcome = await execute_subagent_stream(
+            ctx=ctx,
+            stream_writer=writer,
+            integration_metadata=metadata,
+            subagent_id=sa_id,
+        )
+    else:
+        outcome = SubagentOutcome(text="", interrupt=parked)
+
+    # The subagent was invoked imperatively, so its GraphInterrupt never reaches
+    # the executor's runtime — bubble each pause up explicitly. A LOOP, not an if:
+    # one task can gate several destructive calls in sequence ("send both emails"),
+    # and each pause must suspend the executor again. interrupt() raises on the
+    # first pass (pausing the executor) and returns that pause's decision on the
+    # replay; earlier iterations replay instantly from LangGraph's resume list.
+    while outcome.paused:
+        decision = interrupt(outcome.interrupt)
+        outcome = await execute_subagent_stream(
+            ctx=ctx,
+            stream_writer=writer,
+            integration_metadata=metadata,
+            subagent_id=sa_id,
+            resume=Command(resume=decision),
+        )
+
     writer(
         {
             "subagent_end": format_subagent_end_event(
@@ -468,7 +501,19 @@ async def _run_blocking_handoff(
             )
         }
     )
-    return result
+    return outcome.text
+
+
+async def _parked_interrupt(ctx: SubagentExecutionContext) -> dict[str, Any] | None:
+    """The approval payload this subagent's thread is parked on.
+
+    ``None`` = not parked; ``{}`` = parked but the payload is unreadable, which
+    downstream treats as a malformed approval and fails the run rather than act.
+    """
+    snapshot = await ctx.subagent_graph.aget_state(ctx.config)
+    if not snapshot.next:
+        return None
+    return interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
 
 
 @tool
@@ -545,6 +590,7 @@ async def handoff(
 
         # Build config
         thread_id = configurable.get("thread_id", "")
+        probe_parked = bool(configurable.get(HIL_RESUME_CONFIG_KEY))
         subagent_thread_id = f"{integration_id}_{thread_id}"
 
         user = {
@@ -633,7 +679,7 @@ async def handoff(
                     "falling back to blocking execution"
                 )
                 blocking_result = await _run_blocking_handoff(
-                    ctx, integration_metadata, agent_name, integration_id
+                    ctx, integration_metadata, agent_name, integration_id, probe_parked
                 )
                 return (
                     "[WARNING: background handoff fell back to blocking — "
@@ -641,6 +687,12 @@ async def handoff(
                     f"{blocking_result}"
                 )
             sid: str = str(stream_id)
+            # A detached subagent has no pause path: nothing awaits its outcome,
+            # so a HIL interrupt could never be resumed. Mark it background so
+            # the gate skips it (same rule as workflow runs) instead of stranding
+            # an unanswerable approval card.
+            ctx.configurable["execution_mode"] = "background"
+            ctx.config.setdefault("configurable", {})["execution_mode"] = "background"
             bg_sa_id = str(uuid4())
             bg_display, bg_icon, bg_cat = _resolve_display_metadata(
                 integration_metadata, agent_name, integration_id
@@ -668,8 +720,15 @@ async def handoff(
             )
 
         # Blocking (default): execute synchronously and return result.
-        return await _run_blocking_handoff(ctx, integration_metadata, agent_name, integration_id)
+        return await _run_blocking_handoff(
+            ctx, integration_metadata, agent_name, integration_id, probe_parked
+        )
 
+    except GraphBubbleUp:
+        # The HIL gate's interrupt bubbling up from _run_blocking_handoff. Control
+        # flow, not a failure — swallowing it here would convert the approval pause
+        # into a tool error and run the executor on without ever pausing.
+        raise
     except Exception as e:
         log.error(
             f"{LogTag.AGENT} handoff_failed",

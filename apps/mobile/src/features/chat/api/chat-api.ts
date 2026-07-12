@@ -1,7 +1,10 @@
-import type { ToolDataEntry } from "@gaia/shared/chat";
+import type { ApprovalDecisionPayload, ToolDataEntry } from "@gaia/shared/chat";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { ApiError, apiService } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/constants";
+
+// 410 Gone: the approval was already resolved elsewhere.
+const HTTP_GONE = 410;
 
 export interface FileUploadResponse {
   fileId: string;
@@ -256,11 +259,7 @@ export async function cancelStream(streamId: string): Promise<boolean> {
 
 export async function postApprovalDecision(
   approvalId: string,
-  decision: {
-    decision: "approve" | "deny";
-    feedback?: string;
-    scope?: "once" | "always_tool";
-  },
+  decision: ApprovalDecisionPayload,
 ): Promise<boolean> {
   try {
     await apiService.post(`/approvals/${approvalId}/decision`, decision);
@@ -269,7 +268,7 @@ export async function postApprovalDecision(
     // A 410 means the approval was already resolved elsewhere — the resolved
     // card arrives over the stream regardless, so treat it as success. Only a
     // genuine submission failure returns false.
-    if (error instanceof ApiError && error.status === 410) return true;
+    if (error instanceof ApiError && error.status === HTTP_GONE) return true;
     console.warn("Error submitting approval decision:", error);
     return false;
   }

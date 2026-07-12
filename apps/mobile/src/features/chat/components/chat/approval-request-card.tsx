@@ -1,4 +1,9 @@
-import type { ApprovalRequestData, ApprovalStatus } from "@gaia/shared/chat";
+import type {
+  ApprovalDecision,
+  ApprovalRequestData,
+  ApprovalScope,
+  ApprovalStatus,
+} from "@gaia/shared/chat";
 import * as Haptics from "expo-haptics";
 import { Button, Chip } from "heroui-native";
 import { useState } from "react";
@@ -67,13 +72,13 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
 }
 
 export function ApprovalRequestCard({ data }: ApprovalRequestCardProps) {
-  const [submitting, setSubmitting] = useState<"approve" | "deny" | null>(null);
+  const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
   const [denyOpen, setDenyOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
 
   const decide = async (
-    decision: "approve" | "deny",
-    scope: "once" | "always_tool" = "once",
+    decision: ApprovalDecision,
+    scope: ApprovalScope = "once",
   ) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSubmitting(decision);

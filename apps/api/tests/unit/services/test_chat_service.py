@@ -595,7 +595,7 @@ class TestRunChatStreamBackground:
     def _no_pending_approval(self) -> Iterator[None]:
         """Stub conversational HIL resolution to "nothing pending".
 
-        ``run_chat_stream_background`` now checks Redis for a pending approval at
+        ``run_chat_stream_background`` now checks Mongo for a pending approval at
         the top of each turn. These tests exercise the normal turn and don't stub
         Redis, so without this the real ``redis_cache`` singleton is reached and
         raises "Event loop is closed" under xdist's per-test event loops.

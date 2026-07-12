@@ -1,14 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  approvalsApi,
-  type HilPreferences,
-} from "@/features/settings/api/approvalsApi";
+  DEFAULT_HIL_MODE,
+  type HilMode,
+  toolOverrideValue,
+} from "@shared/chat";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { approvalsApi } from "@/features/settings/api/approvalsApi";
 import { toast } from "@/lib/toast";
 
 const HIL_PREFS_KEY = ["hil", "preferences"] as const;
 
 /**
- * Shared HIL preferences: the global enable toggle plus per-tool overrides.
+ * Shared HIL preferences: the global approval mode plus per-tool overrides.
  * Backed by one react-query cache so the settings page and the integration
  * tool list stay in sync.
  */
@@ -20,9 +22,8 @@ export function useHilPreferences() {
     queryFn: approvalsApi.getHilPreferences,
   });
 
-  const enabledMutation = useMutation({
-    mutationFn: (enabled: boolean) =>
-      approvalsApi.putHilPreferences({ enabled }),
+  const modeMutation = useMutation({
+    mutationFn: (mode: HilMode) => approvalsApi.putHilPreferences({ mode }),
     onSuccess: (data) => qc.setQueryData(HIL_PREFS_KEY, data),
   });
 
@@ -38,21 +39,14 @@ export function useHilPreferences() {
   return {
     prefs,
     isLoading,
-    isSavingEnabled: enabledMutation.isPending,
-    setEnabled: (enabled: boolean) => enabledMutation.mutateAsync(enabled),
-    /** Set a tool's approval, storing only diffs from its default. */
+    mode: prefs?.mode ?? DEFAULT_HIL_MODE,
+    isSavingMode: modeMutation.isPending,
+    setMode: (mode: HilMode) => modeMutation.mutateAsync(mode),
+    /** Set whether a tool needs approval, storing only diffs from its default. */
     setToolApproval: (name: string, ask: boolean, destructive: boolean) =>
-      overrideMutation.mutate({ name, ask: ask === destructive ? null : ask }),
-    /** Drop a tool's override so it reverts to its default. */
-    resetTool: (name: string) => overrideMutation.mutate({ name, ask: null }),
+      overrideMutation.mutate({
+        name,
+        ask: toolOverrideValue(ask, destructive),
+      }),
   };
-}
-
-/** Effective "ask before running" state for a tool. */
-export function toolAsks(
-  prefs: HilPreferences | undefined,
-  name: string,
-  destructive: boolean,
-): boolean {
-  return prefs?.tool_overrides?.[name] ?? destructive;
 }

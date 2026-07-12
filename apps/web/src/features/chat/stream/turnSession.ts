@@ -727,10 +727,15 @@ export class TurnSession {
       turnKey: this.key,
       conversationId: this.conversationId,
     });
-    useStreamStore.getState().updateSession(key, {
+    const store = useStreamStore.getState();
+    // A paused-on-approval turn also closes its stream and lands here; clearing
+    // the flag would swap "Waiting for your approval" for a generic executor
+    // spinner for the whole (user-blocked) wait. Preserve it.
+    const wasAwaitingApproval = store.sessions[key]?.awaitingApproval ?? false;
+    store.updateSession(key, {
       phase: "awaiting_executor",
       spinnerActive: false,
-      awaitingApproval: false,
+      awaitingApproval: wasAwaitingApproval,
       composerLocked: false,
     });
     // The session's transport work is over — release it so new sends in this

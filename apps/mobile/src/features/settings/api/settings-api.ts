@@ -2,8 +2,6 @@ import type { HilPreferences } from "@gaia/shared/chat";
 import type { FeatureUsage, UsageSummary } from "@gaia/shared/types";
 import { apiService } from "@/lib/api";
 
-export type { HilPreferences };
-
 export type {
   FeatureUsage,
   TokenUsage,

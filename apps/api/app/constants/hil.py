@@ -8,13 +8,38 @@ classifier in ``app/services/hil/classification.py``.
 
 from app.constants.general import FINISH_TASK_NAME
 
-# Launch switch: HIL is opt-in until this flips.
-HIL_DEFAULT_ENABLED = False
+# The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
+# default mode is a HILPreferences field default, so it lives with the model).
 
-# How long an approval waits before resolving as timeout. Well below typical
-# stream lifetimes; the pending Redis key outlives the wait by the grace below.
-HIL_APPROVAL_TIMEOUT_SECONDS = 900.0
-HIL_REQUEST_TTL_GRACE_SECONDS = 60
+# How many of the user's own turns the auto-mode intent judge sees, and how much of
+# each. Intent routinely spans turns ("draft an email to Bob" … "looks good, send it"),
+# so the latest message alone cannot be grounded against. Bounded because these ride in
+# ``configurable`` — into checkpoints and queued run items. Only USER turns are carried:
+# assistant text is deliberately withheld from the judge (see services/hil/intent.py).
+HIL_JUDGE_MAX_USER_TURNS = 6
+HIL_JUDGE_MAX_TURN_CHARS = 800
+
+# How long an approval may sit unanswered before the sweep resolves it as a
+# timeout. Nothing waits in-process for this — the paused run is checkpointed.
+# Must stay well under the executor busy-lock TTL (30 min): expiring the
+# approval is what releases the paused run's claim before the lock can lapse
+# under a still-pending record.
+HIL_APPROVAL_TIMEOUT_SECONDS = 900
+
+# A decided record with no resumed_at stamp older than this is a crashed
+# resume dispatch; the sweep re-dispatches it from the record's resume_item.
+HIL_DECIDED_UNRESUMED_GRACE_SECONDS = 120
+
+# The key LangGraph puts a paused run's Interrupt objects under in an "updates"
+# stream event. Mirrored here because langgraph.constants.INTERRUPT went private
+# in v1 (deprecated, slated for removal in v2).
+LANGGRAPH_INTERRUPT_KEY = "__interrupt__"
+
+# configurable flag set only on a resume re-dispatch. The handoff tool probes the
+# subagent thread's checkpoint for a parked interrupt ONLY when this is set — a
+# parked subagent can only exist on a resume replay, so fresh runs (the ~100%
+# case) skip that per-handoff Postgres read entirely.
+HIL_RESUME_CONFIG_KEY = "hil_resume_replay"
 
 # How long a declined call is remembered so a retrying agent is auto-denied
 # without re-prompting. Keyed by stream_id (unique per turn), so this only

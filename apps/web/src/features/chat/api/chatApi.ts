@@ -2,6 +2,7 @@ import {
   type EventSourceMessage,
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
+import type { ApprovalDecisionPayload } from "@shared/chat";
 
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { apiService } from "@/lib/api/service";
@@ -483,11 +484,7 @@ export const chatApi = {
    */
   postApprovalDecision: async (
     approvalId: string,
-    decision: {
-      decision: "approve" | "deny";
-      feedback?: string;
-      scope?: "once" | "always_tool";
-    },
+    decision: ApprovalDecisionPayload,
   ): Promise<void> => {
     try {
       await apiService.post(`/approvals/${approvalId}/decision`, decision, {

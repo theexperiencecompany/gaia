@@ -37,6 +37,10 @@ function formatToolName(toolName: string): string {
     .trim();
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * A connected integration's tool list is the per-tool approval checklist; a
  * not-connected one shows a plain "Available Tools (N)" flex-wrap of pills.
@@ -50,7 +54,7 @@ export function IntegrationToolsPanel({
 
   const entries = useMemo<ToolEntry[]>(() => {
     const prefixRegex = categoryPrefix
-      ? new RegExp(`^${categoryPrefix}\\s*`, "i")
+      ? new RegExp(`^${escapeRegExp(categoryPrefix)}\\s*`, "i")
       : null;
     return tools.map((tool) => {
       const formatted = formatToolName(tool.name);

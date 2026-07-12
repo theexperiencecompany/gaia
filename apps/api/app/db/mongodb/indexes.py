@@ -25,6 +25,7 @@ from app.db.mongodb.collections import (
     e2b_sandboxes_collection,
     e2b_warm_pool_collection,
     files_collection,
+    hil_approvals_collection,
     integration_instructions_collection,
     integrations_collection,
     mail_collection,
@@ -80,6 +81,7 @@ async def create_all_indexes():
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
+            create_hil_approvals_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -110,6 +112,7 @@ async def create_all_indexes():
             "workflow_executions",
             "bot_sessions",
             "e2b_sandboxes",
+            "hil_approvals",
         ]
 
         index_results = {}
@@ -934,6 +937,24 @@ async def create_installed_skills_indexes() -> None:
 
     except Exception as e:
         log.error(f"{LogTag.MONGO} Error creating installed_skills indexes: {e!s}")
+        raise
+
+
+async def create_hil_approvals_indexes() -> None:
+    """Create indexes for the hil_approvals collection.
+
+    (conversation_id, status) serves the pending-approval lookup that runs on
+    every chat message while an approval is open; (status, expires_at) serves
+    the timeout sweep. The collection is a permanent audit trail, so these
+    queries must never fall back to a collection scan.
+    """
+    try:
+        await asyncio.gather(
+            hil_approvals_collection.create_index([("conversation_id", 1), ("status", 1)]),
+            hil_approvals_collection.create_index([("status", 1), ("expires_at", 1)]),
+        )
+    except Exception as e:
+        log.error(f"{LogTag.MONGO} Error creating hil_approvals indexes: {e!s}")
         raise
 
 
