@@ -1,6 +1,10 @@
 """User prompts for image-related functionality."""
 
-IMAGE_CAPTION_FORMATTER = """Convert this sentence to proper formatting, proper formal grammer for a prompt sent with an image: '{message}'. Only give me the sentence without any additional headers or information. Be concise, but descriptive."""
+IMAGE_TO_TEXT_PROMPT = """Look at this image and answer the user's request about it.
+
+The user's request: '{message}'
+
+Lead with the answer to what they actually asked. Then describe what you see: layout, subjects, colours, and any text or UI elements, transcribing important text exactly. Write plainly, like a person explaining what is in front of them. Vary your sentence length, skip the throat-clearing, and do not overcorrect into forced quirkiness."""
 
 
 IMAGE_PROMPT_REFINER = """
