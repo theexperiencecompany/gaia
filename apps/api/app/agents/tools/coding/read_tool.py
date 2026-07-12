@@ -16,7 +16,7 @@ from e2b import NotFoundException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.llm.vision import describe_image, model_supports_vision
+from app.agents.llm.vision import describe_image, model_can_view_images
 from app.agents.tools.coding._context import (
     canonical_path,
     get_session_id,
@@ -182,7 +182,7 @@ async def _read_image(
     image_b64 = base64.b64encode(data).decode("ascii")
     header = f"Image file {abs_path} ({mime_type}, {original_size} bytes)"
 
-    if model_supports_vision(config):
+    if await model_can_view_images(config):
         log.set(read_media="inline")
         return [
             {"type": "text", "text": f"{header} — shown below."},

@@ -18,8 +18,8 @@ from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
 )
+from app.agents.core.nodes.adapt_media import adapt_media_node
 from app.agents.core.nodes.filter_messages import filter_messages_node
-from app.agents.core.nodes.sanitize_media import sanitize_media_node
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.coding import bash, read
 from app.agents.tools.core.registry import get_tool_registry
@@ -185,7 +185,7 @@ class SubAgentFactory:
             "middleware": middleware,
             "pre_model_hooks": [
                 cast(HookType, filter_messages_node),
-                cast(HookType, sanitize_media_node),
+                cast(HookType, adapt_media_node),
                 manage_system_prompts_node,
                 todo_hook,
             ],

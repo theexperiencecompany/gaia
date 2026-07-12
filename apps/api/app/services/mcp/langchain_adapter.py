@@ -41,8 +41,8 @@ async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str
 
     Text-only results collapse to a plain string (the common case). Image items
     become standard image content blocks — validated and downsized to the
-    inline budget — so multimodal models see the actual pixels; non-vision
-    lanes are protected downstream (sanitize_media_node / compaction skip).
+    inline budget — so multimodal models see the actual pixels; per-lane
+    delivery happens downstream (adapt_media_node / compaction skip).
     """
     blocks: list[dict[str, Any]] = []
     has_media = False

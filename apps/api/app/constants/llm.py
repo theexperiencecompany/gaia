@@ -1,4 +1,7 @@
-DEFAULT_LLM_PROVIDER = "gemini"
+GEMINI_PROVIDER = "gemini"
+OPENROUTER_PROVIDER = "openrouter"
+
+DEFAULT_LLM_PROVIDER = GEMINI_PROVIDER
 
 # How often the messages DeltaChannel writes a full snapshot blob (every Nth
 # update). Between snapshots only per-step deltas are persisted, so checkpoint
@@ -73,19 +76,22 @@ DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 # Per-plan model policy (hardcoded; not user-selectable). Free accounts run the
 # default Gemini model above; every paid (non-free) plan runs a more capable
 # model via OpenRouter.
-PAID_MODEL_PROVIDER = "openrouter"
+PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
 PAID_MODEL_NAME = "z-ai/glm-5.2"
 
-# (provider, model) lanes verified to accept inline image content blocks inside
-# tool results (ToolMessage). langchain_google_genai converts data content blocks
-# in tool messages into real media Parts, so the direct-Gemini lane works. The
-# OpenRouter (OpenAI-format) lane is UNVERIFIED — several upstream providers
-# reject image parts in tool-role messages — so OpenRouter models stay off this
-# list until a real call proves acceptance. Models not listed here fall back to
-# a text description of the image (see app/agents/llm/vision.py).
-VISION_TOOL_RESULT_MODELS: frozenset[tuple[str, str]] = frozenset(
-    {(DEFAULT_LLM_PROVIDER, DEFAULT_GEMINI_MODEL_NAME)}
-)
+# How each lane receives inline media (see app/agents/llm/vision.py):
+#   - Direct Gemini carries image blocks inside tool results natively
+#     (langchain_google_genai converts them to real media Parts).
+#   - OpenRouter serializes ToolMessage content raw (langchain_openrouter
+#     forwards it without block conversion), so tool-result images can never
+#     work there; multimodal OpenRouter models instead get the images repacked
+#     into an ephemeral user message at model-call time. Whether a model is
+#     multimodal comes from the OpenRouter catalog below (input_modalities),
+#     so no per-model curation is needed.
+#   - Text-only models fall back to a text description of the image.
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_MODEL_CATALOG_TTL_SECONDS = 3600
+OPENROUTER_MODEL_CATALOG_TIMEOUT_SECONDS = 10
 
 # Context-estimation cost of one inline media block, mirroring
 # count_tokens_approximately's fixed per-image penalty. Without this, char-based
