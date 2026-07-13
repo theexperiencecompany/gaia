@@ -9,6 +9,7 @@ from langchain_core.runnables import RunnableConfig
 from app.agents.llm.vision.capability import VisionCapability, resolve_vision_capability
 from app.constants.media import (
     MAX_INLINE_MEDIA_BLOCKS,
+    MEDIA_DESCRIPTIONS_KEY,
     MEDIA_EVICTED_NOTICE,
     MEDIA_OMITTED_NOTICE,
     MEDIA_REPACKED_NOTICE,
@@ -134,7 +135,9 @@ class MediaAdapter:
 
         def flush() -> None:
             if pending:
-                adapted.append(HumanMessage(content=[text_content_block(REPACKED_MEDIA_HEADER), *pending]))
+                adapted.append(
+                    HumanMessage(content=[text_content_block(REPACKED_MEDIA_HEADER), *pending])
+                )
                 pending.clear()
 
         for m_idx, msg in enumerate(messages):
@@ -156,10 +159,8 @@ class MediaAdapter:
         return adapted
 
     def _strip(self, messages: Sequence[AnyMessage]) -> list[AnyMessage]:
-        """Text-only lane: every image becomes a notice."""
-        return [
-            _as_text(msg, MEDIA_OMITTED_NOTICE) if _carries_media(msg) else msg for msg in messages
-        ]
+        """Text-only lane: every image becomes its description, or a notice."""
+        return [_as_described_text(msg) if _carries_media(msg) else msg for msg in messages]
 
 
 def _carries_media(msg: AnyMessage) -> TypeGuard[ToolMessage]:
@@ -187,3 +188,23 @@ def _as_text(msg: ToolMessage, notice: str) -> ToolMessage:
     """The tool result with its media dropped and ``notice`` appended, as plain text."""
     text = extract_text_content(msg.content)
     return msg.model_copy(update={"content": f"{text}\n{notice}" if text else notice})
+
+
+def _as_described_text(msg: ToolMessage) -> ToolMessage:
+    """The tool result with its media replaced by the descriptions cached on it.
+
+    The descriptions are written at tool-execution time (``describe_tool_media``).
+    A message that predates that — produced on a vision lane, now replayed on a
+    text-only one — carries none, and falls back to the bare notice.
+    """
+    descriptions = msg.additional_kwargs.get(MEDIA_DESCRIPTIONS_KEY)
+    if not descriptions:
+        return _as_text(msg, MEDIA_OMITTED_NOTICE)
+    total = len(descriptions)
+    return _as_text(
+        msg,
+        "\n\n".join(
+            f"[Image {i} of {total}, described because this model cannot view images:]\n{text}"
+            for i, text in enumerate(descriptions, start=1)
+        ),
+    )
