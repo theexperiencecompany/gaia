@@ -244,7 +244,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "Hello world"
+        assert not result.paused
+        assert result.text == "Hello world"
 
     @pytest.mark.asyncio
     async def test_silent_messages_skipped(self):
@@ -260,7 +261,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "Task completed"  # default when no content
+        assert not result.paused
+        assert result.text == "Task completed"  # default when no content
 
     @pytest.mark.asyncio
     async def test_empty_message_returns_default(self):
@@ -275,7 +277,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "Task completed"
+        assert not result.paused
+        assert result.text == "Task completed"
 
     @pytest.mark.asyncio
     async def test_tool_message_emits_tool_output(self):
@@ -424,7 +427,8 @@ class TestExecuteSubagentStream:
             result = await execute_subagent_stream(ctx, stream_writer=None)
 
         # Should not raise
-        assert result == "Task completed"
+        assert not result.paused
+        assert result.text == "Task completed"
 
     @pytest.mark.asyncio
     async def test_cancellation_breaks_stream(self):
@@ -455,8 +459,8 @@ class TestExecuteSubagentStream:
         # Only first chunk was accumulated before cancellation broke the loop.
         # When no tool ran the runner wraps the content in a diagnostic message;
         # verify "First " appears and "Second" does not (cancellation succeeded).
-        assert "First " in result
-        assert "Second" not in result
+        assert "First " in result.text
+        assert "Second" not in result.text
 
     @pytest.mark.asyncio
     async def test_non_tuple_events_skipped(self):
@@ -474,7 +478,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "ok"
+        assert not result.paused
+        assert result.text == "ok"
 
     @pytest.mark.asyncio
     async def test_integration_metadata_passed_to_extract(self):

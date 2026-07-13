@@ -238,9 +238,7 @@ class ToolRegistry:
         self._categories[name] = category
         if replacing:
             # Drop the replaced category's entries so removed tools don't linger.
-            self._tools_by_name = {
-                k: v for k, v in self._tools_by_name.items() if v[0] != name
-            }
+            self._tools_by_name = {k: v for k, v in self._tools_by_name.items() if v[0] != name}
         for registered in category.tools:
             self._tools_by_name[registered.name] = (name, registered)
         log.set(

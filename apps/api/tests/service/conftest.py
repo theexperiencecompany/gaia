@@ -30,7 +30,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
-from tests.helpers import HeaderDrivenAuthMiddleware, pick_free_port, worker_redis_url
+from tests.helpers import (
+    HeaderDrivenAuthMiddleware,
+    pick_free_port,
+    worker_mongo_db_name,
+    worker_redis_url,
+)
 
 # ---------------------------------------------------------------------------
 # Session-scoped connections (one per test run)
@@ -73,7 +78,7 @@ async def mongo_db(mongodb_url: str):
     than 'conversations' (e.g., 'todos', 'reminders').
     """
     client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
-    db = client["gaia_test"]
+    db = client[worker_mongo_db_name()]
     yield db
     client.close()
 
@@ -89,12 +94,35 @@ async def conversations_collection(mongodb_url: str, monkeypatch):
     asyncio_default_fixture_loop_scope is "function").
     """
     client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
-    coll = client["gaia_test"]["conversations"]
+    coll = client[worker_mongo_db_name()]["conversations"]
     await coll.delete_many({})
 
     import app.services.conversation_service as conv_svc
 
     monkeypatch.setattr(conv_svc, "conversations_collection", coll)
+
+    yield coll
+
+    await coll.delete_many({})
+    client.close()
+
+
+@pytest.fixture(autouse=True)
+async def hil_approvals_collection(mongodb_url: str, monkeypatch):
+    """Real MongoDB hil_approvals collection, patched into the app singleton.
+
+    Autouse because the chat stream reads it on *every* turn — it checks whether the
+    user's message answers a pending approval before running the agent. Any service test
+    that streams a message touches it, so without the rebind it stays bound to the
+    session loop and raises "Event loop is closed" (see ``conversations_collection``).
+    """
+    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
+    coll = client[worker_mongo_db_name()]["hil_approvals"]
+    await coll.delete_many({})
+
+    from app.services.hil import approvals_store
+
+    monkeypatch.setattr(approvals_store, "hil_approvals_collection", coll)
 
     yield coll
 
