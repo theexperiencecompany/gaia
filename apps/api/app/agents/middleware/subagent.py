@@ -30,7 +30,7 @@ from langgraph.types import Command
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm, is_default_model_config
 from app.agents.llm.exceptions import LLMNotConfiguredError
-from app.agents.llm.vision import adapt_media_for_model
+from app.agents.llm.vision import adapt_media_for_model, describe_tool_media
 from app.agents.middleware.compaction import compact_tool_output, estimate_context_usage
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
@@ -477,6 +477,11 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                             status=tool_status,
                         )
                     )
+                    # This loop runs outside the middleware stack, so it calls the
+                    # description helper directly — same split as compaction above.
+                    described = await describe_tool_media(tool_message, config)
+                    if described is not None:
+                        tool_message = described
                     if stream_writer and subagent_id:
                         stream_writer(
                             {

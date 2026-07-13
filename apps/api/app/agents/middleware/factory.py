@@ -12,6 +12,7 @@ from app.agents.llm.client import get_default_llm
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
+from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
@@ -186,6 +187,13 @@ def create_middleware_stack(
         )
         middleware.append(compaction)
         log.debug(f"{LogTag.AGENT} Compaction middleware enabled: threshold={compaction_threshold}")
+
+    # Media description — a lane that can't see pixels gets prose for any tool
+    # result carrying images. Inner to compaction, so the description is attached
+    # before compaction inspects the result; compaction never spills media anyway.
+    # No enable flag: it no-ops on every result without media, i.e. nearly all.
+    middleware.append(MediaDescriptionMiddleware())
+    log.debug(f"{LogTag.AGENT} Media description middleware enabled for {agent_name}")
 
     # Loop-guard middleware — added LAST so it sits innermost and observes the
     # raw tool result before compaction/summarization transform it, counting the
