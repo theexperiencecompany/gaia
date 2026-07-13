@@ -89,3 +89,21 @@ MEDIA_REPACKED_NOTICE = (
     "[Inline media from this result is attached in the user message following these tool results.]"
 )
 REPACKED_MEDIA_HEADER = "[Media attached from the preceding tool results:]"
+
+# Key under which a ToolMessage carries the descriptions of its media blocks, one
+# per block, in block order. Written at tool-execution time (the lane is known
+# there and the resulting message is persisted); read at the request boundary by
+# MediaAdapter. Pre-model hooks cannot cache — their output feeds one model call
+# and is discarded — so without this the same image would be re-described on
+# every model call for the rest of the thread.
+MEDIA_DESCRIPTIONS_KEY = "media_descriptions"
+
+MEDIA_DESCRIBE_FAILED = "[Image could not be described: the vision model was unavailable.]"
+
+TOOL_MEDIA_DESCRIBE_PROMPT = (
+    "An image was returned by the '{tool_name}' tool. Context from the tool result:\n"
+    "{context}\n\n"
+    "Describe the image in detail: layout, subjects, colors, and any text or UI "
+    "elements (transcribe important text exactly). The description substitutes "
+    "for the image for a model that cannot view it."
+)
