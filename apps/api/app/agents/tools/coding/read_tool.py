@@ -15,7 +15,6 @@ from e2b import NotFoundException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.llm.vision import describe_image, model_can_view_images
 from app.agents.tools.coding._context import (
     canonical_path,
     get_session_id,
@@ -36,6 +35,7 @@ from app.services.storage.juicefs import (
 )
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
 from app.utils.image_codec import ImageCodec, InvalidImage
+from app.utils.multimodal import text_content_block
 from shared.py.wide_events import log
 
 DEFAULT_LIMIT = 2000
@@ -43,13 +43,6 @@ MAX_LIMIT = 10_000
 # Native-dev sandbox-read fallback slurps the whole file into memory (no
 # server-side range read), so cap it to avoid OOMing the worker on a huge file.
 MAX_SANDBOX_READ_BYTES = 10 * 1024 * 1024  # 10 MB
-
-_IMAGE_DESCRIBE_PROMPT = (
-    "This is the image file at {path} from the user's workspace. Describe it in "
-    "detail: layout, subjects, colors, and any text or UI elements (transcribe "
-    "important text exactly). The description substitutes for the image for a "
-    "model that cannot view it."
-)
 
 
 @tool
@@ -82,7 +75,6 @@ async def read(
             user_id=user_id,
             rel=rel,
             abs_path=abs_path,
-            config=config,
             session_id=session_id,
         )
 
@@ -125,14 +117,14 @@ async def _read_image(
     user_id: str,
     rel: str,
     abs_path: str,
-    config: RunnableConfig,
     session_id: str | None,
 ) -> str | list[dict[str, Any]]:
     """Read an image file and return it as inline content blocks.
 
-    On vision-capable lanes the model receives the actual pixels (the block list
-    is wrapped into the ToolMessage unchanged); other lanes get a text
-    description via the canonical vision fallback.
+    Always returns the pixels. Fitting them to the active lane — actual image, or
+    a text description on a lane that can't see — happens at tool-execution time
+    in `MediaDescriptionMiddleware` / `describe_tool_media`, for every media
+    producer, not here.
     """
     try:
         async with fs_timer(FsOps.TOOL_READ):
@@ -172,25 +164,7 @@ async def _read_image(
     )
 
     header = f"Image file {abs_path} ({image.mime_type}, {file_size} bytes)"
-
-    if await model_can_view_images(config):
-        log.set(read_media="inline")
-        return [{"type": "text", "text": f"{header} — shown below."}, image.to_block()]
-
-    log.set(read_media="described")
-    description = await describe_image(
-        image.base64,
-        image.mime_type,
-        prompt=_IMAGE_DESCRIBE_PROMPT.format(path=abs_path),
-        label="read_image_vision",
-    )
-    if description is None:
-        return (
-            f"Error: {abs_path} is an image, but it could not be analyzed because "
-            "no vision-capable model was available. Try again, or ask the user "
-            "what it shows."
-        )
-    return f"{header}, described by a vision model:\n\n{description}"
+    return [text_content_block(f"{header} — shown below."), image.to_block()]
 
 
 def _format_text_read(
