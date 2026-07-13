@@ -111,6 +111,7 @@ async def build_executor_graph(
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
+        require_finish_to_end=True,
     )
 
     checkpointer_manager = await get_checkpointer_manager()

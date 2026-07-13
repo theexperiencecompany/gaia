@@ -52,7 +52,11 @@ from app.agents.llm.client import (
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
-from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
+from app.constants.llm import (
+    COMPLETION_NUDGE_MESSAGE,
+    MAX_COMPLETION_NUDGES,
+    RECURSION_WRAPUP_THRESHOLD_STEPS,
+)
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     DynamicToolNode,
     format_tool_error,
@@ -91,6 +95,20 @@ def _prepare_fallback(
     return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
 
 
+def _work_looks_unfinished(state: State) -> bool:
+    """Evidence-based prematurity check for the executor's plain-text stop.
+
+    True only on a concrete "not done" signal — a tracked todo still pending, or
+    not a single tool was ever executed on a delegated task — so a normal
+    completed run is never taxed with an extra nudge.
+    """
+    todos = state.get("todos") or []
+    if any(isinstance(t, dict) and t.get("status") in ("pending", "in_progress") for t in todos):
+        return True
+    used_a_tool = any(isinstance(m, ToolMessage) for m in state.get("messages", []))
+    return not used_a_tool
+
+
 def create_agent(
     llm: LanguageModelLike,
     tool_registry: Mapping[str, BaseTool],
@@ -107,6 +125,7 @@ def create_agent(
     middleware: Sequence["AgentMiddleware"] | None = None,
     pre_model_hooks: list[HookType] | None = None,
     end_graph_hooks: list[HookType] | None = None,
+    require_finish_to_end: bool = False,
 ) -> StateGraph:
     """Create an agent with a registry of tools.
 
@@ -473,6 +492,17 @@ def create_agent(
         messages = state["messages"]
         last_message = messages[-1]
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
+            # The model is trying to end by replying in plain text. For the
+            # executor (require_finish_to_end), don't take that at face value
+            # when work is demonstrably unfinished — nudge once and loop instead
+            # of ending early. Bounded by MAX_COMPLETION_NUDGES so a genuinely
+            # tool-free answer can't loop. Comms never opts in and ends normally.
+            if (
+                require_finish_to_end
+                and state.get("completion_nudges", 0) < MAX_COMPLETION_NUDGES
+                and _work_looks_unfinished(state)
+            ):
+                return "nudge_continue"
             return "end_graph_hooks" if end_graph_hooks else END
         bound_names = _get_bound_tool_names(state)
         canonical_to_bound = canonical_tool_name_map(bound_names)
@@ -534,6 +564,14 @@ def create_agent(
     async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
         return finish_task_node(tool_calls, store=store)
 
+    def nudge_continue_node(state: State) -> State:
+        n = state.get("completion_nudges", 0)
+        notice = HumanMessage(content=COMPLETION_NUDGE_MESSAGE)
+        return {"messages": [notice], "completion_nudges": n + 1}  # type: ignore[return-value]
+
+    async def anudge_continue_node(state: State) -> State:
+        return nudge_continue_node(state)
+
     builder = StateGraph(State, context_schema=context_schema)
 
     if not disable_retrieve_tools:
@@ -589,6 +627,13 @@ def create_agent(
     path_map = ["tools", FINISH_TASK_NAME, "reject_unbound_tools", END]
     if not disable_retrieve_tools:
         path_map.insert(0, "select_tools")
+    if require_finish_to_end:
+        builder.add_node(
+            "nudge_continue",
+            RunnableCallable(nudge_continue_node, anudge_continue_node),
+        )
+        builder.add_edge("nudge_continue", "agent")
+        path_map.append("nudge_continue")
     if end_graph_hooks:
         builder.add_node(
             "end_graph_hooks",

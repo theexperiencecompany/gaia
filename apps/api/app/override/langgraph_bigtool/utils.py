@@ -47,6 +47,11 @@ class State(_BigtoolState):
     # limit. acall_model reads it to warn the model to wrap up before the
     # hard GraphRecursionError.
     remaining_steps: RemainingSteps
+    # Count of harness "you're not done" nudges injected this run (see
+    # create_agent.should_continue). Plain LastValue channel: the nudge node
+    # overwrites it with prev+1, bounded by MAX_COMPLETION_NUDGES. Absent until
+    # first written; readers use state.get("completion_nudges", 0).
+    completion_nudges: int
 
 
 class RetrieveToolsResult(TypedDict):

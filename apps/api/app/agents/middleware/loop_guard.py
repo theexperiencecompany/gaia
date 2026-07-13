@@ -41,8 +41,10 @@ from langgraph.types import Command
 from app.constants.llm import (
     LOOP_GUARD_MAX_TRACKED_RUNS,
     LOOP_GUARD_STOP_IDENTICAL,
+    LOOP_GUARD_STOP_REPEAT,
     LOOP_GUARD_STOP_SAME_TOOL,
     LOOP_GUARD_WARN_IDENTICAL,
+    LOOP_GUARD_WARN_REPEAT,
     LOOP_GUARD_WARN_SAME_TOOL,
 )
 from app.constants.log_tags import LogTag
@@ -54,7 +56,7 @@ _UNKNOWN_RUN = "unknown"
 class _RunCounters:
     """Failure tallies for a single run (one ``thread_id``)."""
 
-    __slots__ = ("identical", "last_failure_key", "per_tool")
+    __slots__ = ("identical", "last_call_key", "last_failure_key", "per_tool", "repeat")
 
     def __init__(self) -> None:
         # (tool_name, args_hash) -> consecutive identical-argument failures
@@ -65,6 +67,12 @@ class _RunCounters:
         self.last_failure_key: tuple[str, str] | None = None
         # tool_name -> total failures for this tool this run
         self.per_tool: dict[str, int] = {}
+        # The most recent call's (tool_name, args_hash), regardless of outcome,
+        # and how many times in a row it has been made. Counts redundant duplicate
+        # calls (a re-issued handoff, the exact same search) that a weak model
+        # loops on even when they *succeed* — the failure counters never see those.
+        self.last_call_key: tuple[str, str] | None = None
+        self.repeat: int = 0
 
 
 class LoopGuardMiddleware(AgentMiddleware):
@@ -108,6 +116,32 @@ class LoopGuardMiddleware(AgentMiddleware):
         )
         same_tool_before = counters.per_tool.get(tool_name, 0)
 
+        # Consecutive identical calls, regardless of outcome (redundant duplicates).
+        if counters.last_call_key == failure_key:
+            counters.repeat += 1
+        else:
+            counters.last_call_key = failure_key
+            counters.repeat = 1
+        repeat = counters.repeat
+
+        if self.hard_stop and repeat >= LOOP_GUARD_STOP_REPEAT:
+            log.warning(
+                f"{LogTag.AGENT} Loop guard hard-stopped {tool_name} "
+                f"(repeat={repeat}) — redundant duplicate call not executed"
+            )
+            return ToolMessage(
+                content=(
+                    f"[Loop guard] Blocked without executing: `{tool_name}` has already been "
+                    f"called {repeat} times in a row with identical arguments (limit "
+                    f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result — reuse "
+                    "the earlier result, or if the task is done, stop and report it."
+                ),
+                tool_call_id=tool_call_id,
+                name=tool_name,
+                status="error",
+                additional_kwargs={"loop_guard_stopped": True},
+            )
+
         if self.hard_stop:
             stopped = self._hard_stop_message(
                 tool_name, tool_call_id, identical_before, same_tool_before
@@ -125,6 +159,20 @@ class LoopGuardMiddleware(AgentMiddleware):
         # never trips the identical guard.
         if not isinstance(result, ToolMessage) or getattr(result, "status", None) != "error":
             counters.last_failure_key = None
+            # A successful call that repeats identical arguments is still a loop —
+            # warn in-band so the model reuses the earlier result instead of
+            # re-issuing the same handoff/search.
+            if isinstance(result, ToolMessage) and repeat >= LOOP_GUARD_WARN_REPEAT:
+                log.warning(
+                    f"{LogTag.AGENT} Loop guard repeat-warning appended for {tool_name} "
+                    f"(repeat={repeat})"
+                )
+                self._append_note(
+                    result,
+                    f"\n\n[Loop guard: `{tool_name}` has now been called {repeat} times in a row "
+                    "with identical arguments. The result won't change — reuse the earlier result "
+                    "and move on instead of repeating this call.]",
+                )
             return result
 
         identical = identical_before + 1

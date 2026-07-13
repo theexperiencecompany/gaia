@@ -26,6 +26,20 @@ RECURSION_HWM_FRACTION = 0.80
 # dying mid-exploration on GraphRecursionError.
 RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 
+# Harness-owned completion: when the executor tries to end with a plain-text
+# message while work is demonstrably unfinished (tracked todos still pending, or
+# not a single tool was ever called on a delegated task), the loop injects up to
+# this many "verify or continue" nudges instead of ending. Bounded so a genuinely
+# tool-free answer costs at most this many extra steps. Only the executor path
+# opts in (require_finish_to_end); comms may always end in plain text.
+MAX_COMPLETION_NUDGES = 1
+COMPLETION_NUDGE_MESSAGE = (
+    "[System: before you finish — every part of the task must actually be done "
+    "and confirmed with tools, not assumed. If anything is still pending, not yet "
+    "verified, or an action you described but did not take, do it now. If you are "
+    "genuinely finished, reply with your complete final result.]"
+)
+
 # Per-tool-call execution timeout. A hung integration call previously hung the
 # entire run forever (no timeout existed at any dispatch layer). Orchestration
 # tools that legitimately run for minutes are exempt — they have their own
@@ -156,6 +170,14 @@ LOOP_GUARD_WARN_IDENTICAL = 2
 LOOP_GUARD_WARN_SAME_TOOL = 3
 LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
+# "Repeat" counts CONSECUTIVE identical calls (same tool + same args) regardless
+# of success or failure — the signature of a redundant duplicate handoff or a
+# wasteful re-run of the exact same search. A successful call whose result won't
+# change is as much a loop as a failing one; the failure counters above only see
+# status="error". Warn appends an in-band note; stop (hard_stop runs only) blocks
+# the redundant call before it executes.
+LOOP_GUARD_WARN_REPEAT = 3
+LOOP_GUARD_STOP_REPEAT = 6
 # The middleware is a per-process singleton, so failure counters are keyed by the
 # run's thread_id and bounded to the most recent N runs (LRU) to keep memory flat.
 LOOP_GUARD_MAX_TRACKED_RUNS = 512
