@@ -3,6 +3,7 @@
 from functools import lru_cache
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.integrations import MANAGED_BY_INTERNAL
 from app.models.workflow_models import (
     IntegrationRef,
     TriggerConfig,
@@ -24,7 +25,7 @@ def _category_to_integration() -> dict[str, str]:
     """
     result: dict[str, str] = {}
     for integration in OAUTH_INTEGRATIONS:
-        if integration.managed_by == "internal":
+        if integration.managed_by == MANAGED_BY_INTERNAL:
             continue
         if integration.subagent_config and integration.subagent_config.tool_space:
             result[integration.subagent_config.tool_space.lower()] = integration.id

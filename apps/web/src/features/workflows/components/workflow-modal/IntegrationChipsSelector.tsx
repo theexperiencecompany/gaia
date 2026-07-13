@@ -1,6 +1,5 @@
 "use client";
 
-import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
@@ -40,28 +39,16 @@ interface IntegrationChipsSelectorProps {
   readonly selectedSlugs: string[];
   readonly onChange: (slugs: string[]) => void;
   /**
-   * "connected" (default) — only show integrations the user has connected.
-   * "catalog" — show the full integration catalog (used during onboarding).
-   */
-  readonly source?: "connected" | "catalog";
-  /**
-   * Presentation. "autocomplete" (default) — compact dropdown used in the
-   * workflow modal. "pills" — clickable pill-cloud picker used during onboarding.
-   */
-  readonly variant?: "autocomplete" | "pills";
-  /**
    * Integration display names (matched case-insensitively) surfaced first in
-   * the "pills" picker, in order. Falls back to a general popular set.
+   * the picker, in order. Falls back to a general popular set.
    */
   readonly priorityNames?: string[];
   /**
-   * Extra classes for the "pills" search + cloud wrapper (e.g. a left inset to
-   * align with surrounding chat messages). The "Show more" button stays
-   * centered on the full width regardless.
+   * Extra classes for the search + cloud wrapper (e.g. a left inset to align
+   * with surrounding chat messages). The "Show more" button stays centered on
+   * the full width regardless.
    */
   readonly pillContentClassName?: string;
-  /** Override the Autocomplete input width class (default: "max-w-sm"). */
-  readonly autocompleteClassName?: string;
 }
 
 function IntegrationIcon({
@@ -81,199 +68,42 @@ function IntegrationIcon({
 function IntegrationChipsSelector({
   selectedSlugs,
   onChange,
-  source = "connected",
-  variant = "autocomplete",
   priorityNames,
   pillContentClassName,
-  autocompleteClassName = "max-w-sm",
 }: IntegrationChipsSelectorProps) {
   const { integrations, isLoading } = useIntegrations();
-
-  const sourceIntegrations = useMemo(
-    () =>
-      source === "catalog"
-        ? integrations
-        : integrations.filter(
-            (i) => i.status === "connected" || i.status === "created",
-          ),
-    [integrations, source],
-  );
 
   const selectedSlugSet = useMemo(
     () => new Set(selectedSlugs),
     [selectedSlugs],
   );
 
-  const addIntegration = useCallback(
+  const toggleIntegration = useCallback(
     (slug: string) => {
-      if (!selectedSlugSet.has(slug)) onChange([...selectedSlugs, slug]);
+      onChange(
+        selectedSlugSet.has(slug)
+          ? selectedSlugs.filter((s) => s !== slug)
+          : [...selectedSlugs, slug],
+      );
     },
     [onChange, selectedSlugs, selectedSlugSet],
   );
 
-  const removeIntegration = useCallback(
-    (slug: string) => {
-      onChange(selectedSlugs.filter((s) => s !== slug));
-    },
-    [onChange, selectedSlugs],
-  );
-
-  const toggleIntegration = useCallback(
-    (slug: string) => {
-      if (selectedSlugSet.has(slug)) removeIntegration(slug);
-      else addIntegration(slug);
-    },
-    [selectedSlugSet, addIntegration, removeIntegration],
-  );
-
-  // Hide only when not loading, no source integrations, and no selected slugs.
-  // If selected slugs exist for now-disconnected integrations, keep rendering so
+  // Hide only when not loading, the catalog is empty, and nothing is selected.
+  // If selected slugs exist for now-removed integrations, keep rendering so
   // users can see and remove them.
-  if (
-    !isLoading &&
-    sourceIntegrations.length === 0 &&
-    selectedSlugs.length === 0
-  )
+  if (!isLoading && integrations.length === 0 && selectedSlugs.length === 0)
     return null;
 
-  if (variant === "pills") {
-    return (
-      <IntegrationPillCloud
-        integrations={sourceIntegrations}
-        isLoading={isLoading}
-        selectedSlugSet={selectedSlugSet}
-        onToggle={toggleIntegration}
-        priorityNames={priorityNames ?? DEFAULT_PRIORITY_NAMES}
-        contentClassName={pillContentClassName}
-      />
-    );
-  }
-
   return (
-    <IntegrationAutocomplete
+    <IntegrationPillCloud
       integrations={integrations}
-      sourceIntegrations={sourceIntegrations}
-      selectedSlugs={selectedSlugs}
-      selectedSlugSet={selectedSlugSet}
       isLoading={isLoading}
-      onAdd={addIntegration}
-      onRemove={removeIntegration}
-      autocompleteClassName={autocompleteClassName}
+      selectedSlugSet={selectedSlugSet}
+      onToggle={toggleIntegration}
+      priorityNames={priorityNames ?? DEFAULT_PRIORITY_NAMES}
+      contentClassName={pillContentClassName}
     />
-  );
-}
-
-interface IntegrationAutocompleteProps {
-  readonly integrations: Integration[];
-  readonly sourceIntegrations: Integration[];
-  readonly selectedSlugs: string[];
-  readonly selectedSlugSet: Set<string>;
-  readonly isLoading: boolean;
-  readonly onAdd: (slug: string) => void;
-  readonly onRemove: (slug: string) => void;
-  readonly autocompleteClassName: string;
-}
-
-function IntegrationAutocomplete({
-  integrations,
-  sourceIntegrations,
-  selectedSlugs,
-  selectedSlugSet,
-  isLoading,
-  onAdd,
-  onRemove,
-  autocompleteClassName,
-}: IntegrationAutocompleteProps) {
-  const [inputValue, setInputValue] = useState("");
-
-  const allIntegrationsBySlug = useMemo(
-    () => new Map(integrations.map((i) => [i.slug, i])),
-    [integrations],
-  );
-
-  const availableIntegrations = useMemo(() => {
-    const query = inputValue.trim().toLowerCase();
-    return sourceIntegrations.filter(
-      (i) =>
-        !selectedSlugSet.has(i.slug) &&
-        (query === "" || i.name.toLowerCase().includes(query)),
-    );
-  }, [sourceIntegrations, selectedSlugSet, inputValue]);
-
-  const handleSelectionChange = useCallback(
-    (key: React.Key | null) => {
-      if (key == null) return;
-      onAdd(String(key));
-      setInputValue("");
-    },
-    [onAdd],
-  );
-
-  return (
-    <div className="flex flex-col gap-2">
-      {sourceIntegrations.length > 0 && (
-        <Autocomplete
-          aria-label="Add integration to this workflow"
-          placeholder={
-            selectedSlugs.length === 0
-              ? "Select integrations"
-              : "Add integration"
-          }
-          description="Suggest Apps GAIA should use in this workflow"
-          size="sm"
-          variant="flat"
-          isLoading={isLoading}
-          items={availableIntegrations}
-          selectedKey={null}
-          inputValue={inputValue}
-          onInputChange={setInputValue}
-          onSelectionChange={handleSelectionChange}
-          menuTrigger="focus"
-          className={autocompleteClassName}
-        >
-          {(integration) => (
-            <AutocompleteItem
-              key={integration.slug}
-              textValue={integration.name}
-              startContent={<IntegrationIcon integration={integration} />}
-            >
-              {integration.name}
-            </AutocompleteItem>
-          )}
-        </Autocomplete>
-      )}
-
-      {selectedSlugs.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {selectedSlugs.map((slug) => {
-            const integration = allIntegrationsBySlug.get(slug);
-            return (
-              <Chip
-                key={slug}
-                size="sm"
-                variant="flat"
-                color="primary"
-                as="button"
-                type="button"
-                onClick={() => onRemove(slug)}
-                onClose={() => onRemove(slug)}
-                aria-label={`Remove ${integration?.name ?? slug}`}
-                startContent={
-                  integration ? (
-                    <span className="ml-1 flex items-center">
-                      <IntegrationIcon integration={integration} />
-                    </span>
-                  ) : undefined
-                }
-                className="cursor-pointer transition-colors hover:bg-primary/30"
-              >
-                {integration?.name ?? slug}
-              </Chip>
-            );
-          })}
-        </div>
-      )}
-    </div>
   );
 }
 

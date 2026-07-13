@@ -107,8 +107,17 @@ async def submit_integrations(
         user={"id": user["user_id"]},
         onboarding={"operation": "submit_integrations"},
     )
-    result = await submit_onboarding_integrations(user["user_id"], request.selected_integrations)
-    return {"success": True, **result}
+    try:
+        result = await submit_onboarding_integrations(
+            user["user_id"], request.selected_integrations
+        )
+        log.set(onboarding={"result_status": result.get("status")})
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"{LogTag.ONBOARDING} Error submitting integrations: {e!s}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to submit integrations")
 
 
 class ClarifyQuestionsRequest(BaseModel):

@@ -18,12 +18,12 @@ Holo card runs fully independently.
 """
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 import time
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from bson import ObjectId
 from pydantic import BaseModel, Field, ValidationError
@@ -139,6 +139,8 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
 # Module-level set prevents GC of fire-and-forget tasks
 _background_tasks: set[asyncio.Task] = set()
 
+
+_ONBOARDING_DEFAULT_FIRST_MESSAGE = "Welcome to GAIA. I'm here to help — what's on your mind?"
 
 _TRIAGE_EARLY_THRESHOLD = 100
 
@@ -266,6 +268,74 @@ async def _persist_completion(
     if provision_future is not None and not provision_future.done():
         _background_tasks.add(provision_future)
         provision_future.add_done_callback(_background_tasks.discard)
+
+
+async def _finalize_onboarding(
+    user_id: str,
+    *,
+    name: str,
+    profession: str,
+    triage: InboxTriage | None,
+    todos: list[dict],
+    workflows: list[dict],
+    writing_style: WritingStyleProfile | None,
+    has_gmail: bool,
+    focus: str,
+    clarify_answers: list[dict],
+    provision_future: asyncio.Task[None] | None,
+    concurrent_tasks: Sequence[Awaitable[Any]] = (),
+) -> str | None:
+    """Shared pipeline tail for both onboarding shapes: generate the first
+    message, persist it, seed the first conversation, persist completion, and
+    emit COMPLETE. Returns the seeded conversation id (or None).
+
+    `concurrent_tasks` run alongside conversation seeding — the full pipeline
+    passes its profile/social/holo work here; the split path already ran that
+    in its early phase and passes none.
+    """
+    t_msg = time.monotonic()
+    first_message = await _safe_run(
+        "first_message",
+        generate_first_message(
+            user_id=user_id,
+            name=name,
+            profession=profession,
+            triage=triage,
+            created_todos=todos,
+            created_workflows=workflows,
+            writing_style=writing_style,
+            has_gmail=has_gmail,
+            focus=focus,
+            clarify_answers=clarify_answers,
+        ),
+        default=_ONBOARDING_DEFAULT_FIRST_MESSAGE,
+    )
+    log.info(
+        f"{LogTag.ONBOARDING} first_message generated",
+        user_id=user_id,
+        message_chars=len(first_message),
+        duration_s=round(time.monotonic() - t_msg, 2),
+    )
+
+    # Persist first_message before COMPLETE / the holo gather: the event triggers
+    # a frontend fetch of /onboarding/personalization, which must not see null.
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"onboarding.first_message": first_message}},
+    )
+
+    seed_result, *_ = await asyncio.gather(_seed_conversation(user_id), *concurrent_tasks)
+    conversation_id: str | None = seed_result
+
+    # Unconditional end-of-pipeline transition: guarantees the user advances even
+    # if the holo leg (which also writes this) failed.
+    await _persist_completion(user_id, conversation_id, provision_future)
+    await _emit_stage(
+        user_id,
+        OnboardingStage.COMPLETE,
+        {"conversation_id": conversation_id},
+    )
+    return conversation_id
 
 
 async def _finish_early_phase(
@@ -481,68 +551,32 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         )
         return
 
-    t_msg = time.monotonic()
-    first_message = await _safe_run(
-        "first_message",
-        generate_first_message(
-            user_id=user_id,
-            name=name,
-            profession=profession,
-            triage=triage,
-            created_todos=todos,
-            created_workflows=workflows,
-            writing_style=writing_style,
-            has_gmail=has_gmail,
-            focus=focus,
-            clarify_answers=clarify_answers,
-        ),
-        default="Welcome to GAIA. I'm here to help — what's on your mind?",
-    )
-    log.info(
-        f"{LogTag.ONBOARDING} first_message generated",
-        user_id=user_id,
-        message_chars=len(first_message),
-        duration_s=round(time.monotonic() - t_msg, 2),
-    )
-
-    # Persist first_message before the holo gather: holo_ready triggers a
-    # frontend fetch of /onboarding/personalization, which must not see null.
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.first_message": first_message}},
-    )
-
-    t_final = time.monotonic()
-    conversation_id, _, _ = await asyncio.gather(
-        _seed_conversation(user_id),
-        _persist_profiles(user_id, writing_style, triage),
-        _social_then_holo(
-            user_id=user_id,
-            name=name,
-            user_email=user_email,
-            user_doc=user_doc,
-            focus=focus,
-            triage=triage,
-            writing_style=writing_style,
-            clarify_answers=clarify_answers,
-            has_gmail=has_gmail,
-        ),
-    )
-    log.info(
-        f"{LogTag.ONBOARDING} finalize gathered",
-        user_id=user_id,
-        phase="finalize_gather",
-        duration_s=round(time.monotonic() - t_final, 2),
-    )
-
-    # Unconditional end-of-pipeline phase transition: guarantees the user
-    # advances even if the holo leg (which also writes this) failed.
-    await _persist_completion(user_id, conversation_id, provision_future)
-
-    await _emit_stage(
+    conversation_id = await _finalize_onboarding(
         user_id,
-        OnboardingStage.COMPLETE,
-        {"conversation_id": conversation_id},
+        name=name,
+        profession=profession,
+        triage=triage,
+        todos=todos,
+        workflows=workflows,
+        writing_style=writing_style,
+        has_gmail=has_gmail,
+        focus=focus,
+        clarify_answers=clarify_answers,
+        provision_future=provision_future,
+        concurrent_tasks=(
+            _persist_profiles(user_id, writing_style, triage),
+            _social_then_holo(
+                user_id=user_id,
+                name=name,
+                user_email=user_email,
+                user_doc=user_doc,
+                focus=focus,
+                triage=triage,
+                writing_style=writing_style,
+                clarify_answers=clarify_answers,
+                has_gmail=has_gmail,
+            ),
+        ),
     )
 
     log.info(
@@ -1340,36 +1374,18 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
     )
 
     todos = await _fetch_onboarding_todos(user_id)
-    first_message = await _safe_run(
-        "first_message",
-        generate_first_message(
-            user_id=user_id,
-            name=name,
-            profession=profession,
-            triage=triage,
-            created_todos=todos,
-            created_workflows=workflows,
-            writing_style=writing_style,
-            has_gmail=has_gmail,
-            focus=focus,
-            clarify_answers=clarify_answers,
-        ),
-        default="Welcome to GAIA. I'm here to help — what's on your mind?",
-    )
-
-    # Persist first_message before COMPLETE: the event triggers a frontend
-    # fetch of /onboarding/personalization, which must not see null.
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.first_message": first_message}},
-    )
-
-    conversation_id = await _seed_conversation(user_id)
-    await _persist_completion(user_id, conversation_id, None)
-    await _emit_stage(
+    conversation_id = await _finalize_onboarding(
         user_id,
-        OnboardingStage.COMPLETE,
-        {"conversation_id": conversation_id},
+        name=name,
+        profession=profession,
+        triage=triage,
+        todos=todos,
+        workflows=workflows,
+        writing_style=writing_style,
+        has_gmail=has_gmail,
+        focus=focus,
+        clarify_answers=clarify_answers,
+        provision_future=None,
     )
 
     log.info(

@@ -15,6 +15,7 @@ from app.agents.prompts.workflow_prompts import (
 from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.integrations import MANAGED_BY_INTERNAL
 from app.constants.log_tags import LogTag
 from app.models.workflow_models import (
     GeneratedPromptOutput,
@@ -189,10 +190,14 @@ class WorkflowGenerationService:
             ]
             tools_with_categories.append(f"{category}: {', '.join(tool_names)}")
 
-        # Add subagent capabilities: include if integration id is in active_set.
+        # Add subagent capabilities. Internal subagents (todos/reminders/skills)
+        # are always-available core capabilities — include them unconditionally,
+        # mirroring the always-on core categories above. Provider subagents are
+        # gated by the active set, so unconnected/unnamed ones stay out.
         for integration in OAUTH_INTEGRATIONS:
             if integration.subagent_config and integration.subagent_config.has_subagent:
-                if integration.id.lower() not in active_set:
+                is_internal = integration.managed_by == MANAGED_BY_INTERNAL
+                if not is_internal and integration.id.lower() not in active_set:
                     continue
                 cfg = integration.subagent_config
                 category_names.append(integration.id)

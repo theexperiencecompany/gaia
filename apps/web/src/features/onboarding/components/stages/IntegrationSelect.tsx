@@ -40,8 +40,6 @@ export function IntegrationSelect({ state, dispatch }: IntegrationSelectProps) {
         text="Which apps do you use most? Pick at least 3 so I can build your first workflows around them.<NEW_MESSAGE_BREAK>You're not connecting anything yet, that happens later. This just helps me learn what you actually use."
       />
       <IntegrationChipsSelector
-        source="catalog"
-        variant="pills"
         priorityNames={priorityNames}
         pillContentClassName="pl-10.75"
         selectedSlugs={state.selectedIntegrations}
