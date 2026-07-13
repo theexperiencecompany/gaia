@@ -113,3 +113,47 @@ class FetchMessagesInput(BaseModel):
         ),
     )
     per_page: int = Field(default=100, ge=1, le=500, description="Gmail page size (max 500).")
+
+
+class FetchThreadInput(BaseModel):
+    """Input for the GMAIL_FETCH_THREAD custom tool."""
+
+    thread_ids: list[str] = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Gmail thread IDs to reconstruct, as a batch. Get them from the "
+            "`threadId` on GMAIL_FETCH_MESSAGES results. Each thread is returned "
+            "with its full message list in conversation order."
+        ),
+    )
+    fields: list[MessageFieldLiteral] = Field(
+        default_factory=lambda: list(DEFAULT_SUMMARY_FIELDS),
+        description=(
+            "Which fields per message. Defaults to metadata + snippet. "
+            "Add 'body' for the processed body. Empty list = all fields."
+        ),
+    )
+
+    @field_validator("fields", mode="before")
+    @classmethod
+    def _coerce_none_fields(
+        cls, value: list[MessageFieldLiteral] | None
+    ) -> list[MessageFieldLiteral]:
+        if value is None:
+            return list(DEFAULT_SUMMARY_FIELDS)
+        return value
+
+    body_processing: BodyProcessingLiteral = Field(
+        default="normalize",
+        description=(
+            "'normalize' (default): strip signatures, disclaimers, unsubscribe "
+            "footers, and utm tracking chains; quoted replies are KEPT. 'raw': "
+            "untouched Gmail body. 'none': omit body regardless of fields[]."
+        ),
+    )
+    max_messages: int | None = Field(
+        default=None,
+        ge=1,
+        description="Cap on total messages across all requested threads.",
+    )

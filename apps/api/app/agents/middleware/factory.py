@@ -42,7 +42,7 @@ SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 # digest + write a clean file the agent mines). The generic compaction
 # middleware must leave their output alone — re-handling it would clobber the
 # tool's own file format with the generic wrapper.
-SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES"}
+SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES", "GMAIL_FETCH_THREAD"}
 
 # Loop-guard hard-stop is OFF by default: it must never silently abandon a tool
 # call in an interactive run where the user is watching and can intervene. It is

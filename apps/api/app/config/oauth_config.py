@@ -471,16 +471,20 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             auto_bind_tools=[
                 "GMAIL_CUSTOM_GATHER_CONTEXT",
                 "GMAIL_FETCH_MESSAGES",
+                "GMAIL_FETCH_THREAD",
                 "GMAIL_CREATE_EMAIL_DRAFT",
                 "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
                 "GMAIL_GET_CONTACT_LIST",
             ],
-            # GMAIL_FETCH_MESSAGES (custom, paginating, renders the card) fully
-            # supersedes the stock GMAIL_FETCH_EMAILS, whose fixed page size
-            # silently capped inbox reads. Exclude it so it is neither bound nor
-            # retrievable; the agent has one canonical read tool.
-            exclude_tools=["GMAIL_FETCH_EMAILS"],
+            # Custom read tools supersede the stock ones and are the agent's
+            # single canonical path: GMAIL_FETCH_MESSAGES (paginating, renders
+            # the card) replaces GMAIL_FETCH_EMAILS, whose fixed page size
+            # silently capped inbox reads; GMAIL_FETCH_THREAD (normalized,
+            # offloading) replaces GMAIL_FETCH_MESSAGE_BY_THREAD_ID's raw,
+            # unshaped thread view. Exclude the stock tools so they are neither
+            # bound nor retrievable by the agent. (The REST mail layer still
+            # invokes them by name — exclude_tools gates agent retrieval only.)
+            exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(

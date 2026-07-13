@@ -11,6 +11,10 @@ GMAIL_TOOLKIT = "GMAIL"
 # Per-page cap Gmail actually accepts for ``users.me.messages``.
 GMAIL_MAX_PAGE_SIZE = 500
 
+# Hard cap Gmail enforces on ``users.me.messages.batchModify`` ids per request.
+# Larger mutations must be split into chunks or the whole call is rejected.
+GMAIL_BATCH_MODIFY_CAP = 1000
+
 # ``users.me.messages.get`` format values: "full" includes the MIME payload
 # (needed only when the body will be returned); "metadata" returns headers +
 # labels + snippet only.

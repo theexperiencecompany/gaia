@@ -308,6 +308,36 @@ def _get_text_from_html(html_content):
     return soup.get_text()
 
 
+def _attachment_metadata(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract attachment metadata (no bytes) from a full-format Gmail payload.
+
+    Walks the (possibly nested) MIME ``parts`` tree, returning one entry per
+    part that has a filename and an ``attachmentId`` — the id the caller later
+    passes to fetch the attachment content. Returns ``[]`` for a metadata-format
+    message (no ``parts``), so the fetch requests ``format=full`` when the
+    ``attachments`` field is selected.
+    """
+    out: list[dict[str, Any]] = []
+
+    def walk(part: dict[str, Any]) -> None:
+        body = part.get("body") or {}
+        filename = part.get("filename")
+        if filename and body.get("attachmentId"):
+            out.append(
+                {
+                    "filename": filename,
+                    "mimeType": part.get("mimeType"),
+                    "size": body.get("size"),
+                    "attachmentId": body.get("attachmentId"),
+                }
+            )
+        for sub in part.get("parts") or []:
+            walk(sub)
+
+    walk(raw.get("payload") or {})
+    return out
+
+
 # Template for minimal message representation
 def minimal_message_template(
     email_data: dict[str, Any], short_body=True, include_both_formats=False
@@ -377,6 +407,7 @@ def detailed_message_template(
         "time": parser.date,
         "isRead": "UNREAD" not in labels,
         "hasAttachment": "HAS_ATTACHMENT" in labels,
+        "attachments": _attachment_metadata(email_data),
         "labels": labels,
         "cc": parser.cc,
     }

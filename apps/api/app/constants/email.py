@@ -20,6 +20,7 @@ MessageFieldLiteral = Literal[
     "time",
     "isRead",
     "hasAttachment",
+    "attachments",
     "labels",
 ]
 

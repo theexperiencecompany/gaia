@@ -104,6 +104,7 @@ class TestRegistration:
             "GMAIL_GET_CONTACT_LIST",
             "GMAIL_CUSTOM_GATHER_CONTEXT",
             "GMAIL_FETCH_MESSAGES",
+            "GMAIL_FETCH_THREAD",
         ]
 
 
@@ -175,7 +176,7 @@ class TestStar:
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
-        assert result == {"action": "starred"}
+        assert result == {"action": "starred", "modified_count": 1, "failed_count": 0}
         assert mock_proxy.call_args.kwargs["body"]["addLabelIds"] == ["STARRED"]
 
     def test_unstar_removes_starred_label(self, mock_proxy):
@@ -185,7 +186,7 @@ class TestStar:
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
-        assert result == {"action": "unstarred"}
+        assert result == {"action": "unstarred", "modified_count": 1, "failed_count": 0}
         assert mock_proxy.call_args.kwargs["body"]["removeLabelIds"] == ["STARRED"]
 
 

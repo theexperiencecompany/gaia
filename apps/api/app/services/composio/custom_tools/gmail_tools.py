@@ -27,13 +27,14 @@ from app.agents.workspace.offload import OffloadInfo
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_RESULT_KEY
 from app.models.common_models import GatherContextInput
-from app.models.composio_schemas.gmail import FetchMessagesInput
+from app.models.composio_schemas.gmail import FetchMessagesInput, FetchThreadInput
 from app.services.composio.custom_tools.gmail_constants import (
     _DAYS_PER_UNIT,
     CHUNK_TARGET_BYTES,
     CHUNK_TARGET_MESSAGES,
     FETCH_CONCURRENCY,
     GMAIL_API_BASE,
+    GMAIL_BATCH_MODIFY_CAP,
     GMAIL_FORMAT_FULL,
     GMAIL_FORMAT_METADATA,
     GMAIL_TOOLKIT,
@@ -248,6 +249,7 @@ def _fetch_message_view(
     *,
     fields: Any,
     body_processing: str,
+    force_body: bool = False,
 ) -> dict[str, Any] | None:
     """Fetch one message and build its full (unprojected) view.
 
@@ -258,17 +260,28 @@ def _fetch_message_view(
     in ``_summarize`` so the email card keeps id/threadId/time regardless of
     the selection.
 
+    ``force_body`` overrides the metadata skip to fetch and normalize the body
+    even when ``fields`` omits it — used on the offload path so the JSONL the
+    agent mines with ``query_json``/``grep`` actually carries the body
+    (``body_processing="none"`` still wins: an explicit no-body request is
+    honored).
+
     Returns None if the proxy returned something that isn't a dict (we
     don't fail the whole tool call on a single weird response). Lets
     proxy exceptions propagate; the aggregator attaches the partial-
     state context before re-raising.
     """
-    needs_body = message_view_needs_body(fields, body_processing)
+    needs_body = force_body or message_view_needs_body(fields, body_processing)
+    # The attachment list lives in the MIME ``parts`` tree, which only
+    # ``format=full`` returns — request it when ``attachments`` is selected,
+    # even if no body is wanted.
+    wants_attachments = bool(fields) and "attachments" in fields
+    needs_full = needs_body or wants_attachments
     full = _gmail_proxy(
         user_id,
         endpoint=f"{GMAIL_API_BASE}/users/me/messages/{message_id}",
         method="GET",
-        query={"format": GMAIL_FORMAT_FULL if needs_body else GMAIL_FORMAT_METADATA},
+        query={"format": GMAIL_FORMAT_FULL if needs_full else GMAIL_FORMAT_METADATA},
     )
     if not isinstance(full, dict):
         return None
@@ -293,6 +306,10 @@ def _aggregate_pages(
     all_messages: list[dict[str, Any]] = []
     page_token: str | None = None
     truncated = False
+    # Resolved from the first list page's resultSizeEstimate: when the scan is
+    # headed for offload, we fetch the body up front (one pass, no extra calls)
+    # so the offloaded JSONL is minable. Off for an explicit no-body request.
+    force_body = False
 
     def fetch_view(message_id: str) -> dict[str, Any] | None:
         return _fetch_message_view(
@@ -300,10 +317,12 @@ def _aggregate_pages(
             message_id,
             fields=request.fields,
             body_processing=request.body_processing,
+            force_body=force_body,
         )
 
     try:
         with ThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
+            first_page = True
             while True:
                 data = _fetch_list_page(
                     user_id,
@@ -311,6 +330,13 @@ def _aggregate_pages(
                     per_page=request.per_page,
                     page_token=page_token,
                 )
+                if first_page:
+                    first_page = False
+                    estimate = (data or {}).get("resultSizeEstimate", 0)
+                    expected = min(estimate, effective_max) if isinstance(estimate, int) else 0
+                    force_body = (
+                        expected > OFFLOAD_MIN_MESSAGES and request.body_processing != "none"
+                    )
                 page_ids = [m["id"] for m in (data or {}).get("messages", []) if m.get("id")]
                 if not page_ids:
                     break
@@ -404,17 +430,27 @@ def _build_read_plan(total_messages: int, file_size_bytes: int) -> dict[str, Any
 
 
 def _format_offload_result(
-    messages: list[dict[str, Any]],
+    views: list[dict[str, Any]],
     *,
     truncated: bool,
     user_id: str,
     conversation_id: str,
-    field_count: int,
+    fields: Any,
+    producer: str = "GMAIL_FETCH_MESSAGES",
 ) -> dict[str, Any]:
-    """Write the messages to a session JSONL file and return a digest plus a
-    read-plan the subagent can fan out across parallel readers."""
+    """Write the full (unprojected) message views to a session JSONL file and
+    return a digest plus a read-plan the subagent can fan out across parallel
+    readers.
+
+    The file carries every field — id, all headers, labels, and the normalized
+    body — regardless of the caller's inline ``fields`` projection, because the
+    offload exists precisely to be mined downstream (``query_json``/``grep``);
+    a body query against a body-less file would silently find nothing. The
+    inline ``preview`` is projected to ``fields`` to keep the in-context peek
+    small.
+    """
     rel_path = _offload_path()
-    body = "\n".join(json.dumps(m, default=str) for m in messages)
+    body = "\n".join(json.dumps(v, default=str) for v in views)
     file_size_bytes = len(body.encode("utf-8"))
     _, sandbox_path = write_session_file_sync(
         user_id=user_id,
@@ -422,32 +458,36 @@ def _format_offload_result(
         relative_path=rel_path,
         content=body,
     )
-    read_plan = _build_read_plan(len(messages), file_size_bytes)
+    read_plan = _build_read_plan(len(views), file_size_bytes)
+    preview = [project_message_view(v, fields) for v in views[:OFFLOAD_PREVIEW_SIZE]]
+    field_count = len(views[0]) if views else 0
     offload: OffloadInfo = {
         "path": sandbox_path,
         "bytes": file_size_bytes,
         "fmt": "jsonl",
-        "producer": "GMAIL_FETCH_MESSAGES",
-        "records": len(messages),
+        "producer": producer,
+        "records": len(views),
     }
     return {
-        "total_messages": len(messages),
+        "total_messages": len(views),
         "truncated": truncated,
         "offloaded_to": sandbox_path,
         "file_size_bytes": file_size_bytes,
         "file_size_human": _human_size(file_size_bytes),
         "field_count": field_count,
-        "inline_preview": messages[:OFFLOAD_PREVIEW_SIZE],
+        "inline_preview": preview,
         "read_plan": read_plan,
         "hint": (
-            f"{len(messages)} messages ({_human_size(file_size_bytes)}) written to "
-            f"{sandbox_path} (JSONL, one message per line). Too large to read inline. "
-            f"Spawn {read_plan['recommended_subagents']} subagent(s) to read the line "
+            f"{len(views)} messages ({_human_size(file_size_bytes)}) written to "
+            f"{sandbox_path} (JSONL, one message per line, every field incl. the "
+            f"normalized body). Too large to read inline. Spawn "
+            f"{read_plan['recommended_subagents']} subagent(s) to read the line "
             f"ranges in read_plan.chunks in parallel (read offset/limit), each "
             f"triaging its slice, then merge. Or mine the file directly with the "
             f"`query_json` tool, e.g. query_json(path='{sandbox_path}', "
             f'where=[{{"field":"from","op":"contains","value":"github"}}], '
-            f"fields=['subject','from'])."
+            f"fields=['subject','from']); the body is searchable too, e.g. "
+            f'where=[{{"field":"body","op":"contains","value":"invoice"}}].'
         ),
         # Lifted into the structured offload marker by the tool node (this tool
         # returns a dict and cannot set additional_kwargs itself); stripped from
@@ -548,36 +588,241 @@ def _summarize(
 
     conversation_id = _conversation_id(config)
     if conversation_id is None:
-        # GMAIL_FETCH_MESSAGES is excluded from the compaction middleware
-        # (SELF_OFFLOADING_TOOL_NAMES in factory.py), so nothing downstream
-        # shrinks an oversized inline result — cap it here to whole messages
-        # that fit.
-        shown_count = _count_inline_fit(messages)
-        log.warning(
-            f"GMAIL_FETCH_MESSAGES: no conversation_id for offload; returning "
-            f"{shown_count}/{len(messages)} messages inline"
-        )
-        _emit_email_card(full_views[:shown_count])
-        result = _format_inline_result(
-            messages[:shown_count], truncated=truncated or shown_count < len(messages)
-        )
-        if shown_count < len(messages):
-            result["total_matched"] = len(messages)
-            result["hint"] = (
-                f"Showing {shown_count} of {len(messages)} matched messages; the "
-                f"result was too large to return inline and no session was "
-                f"available to offload it. Narrow the query or timeframe (or "
-                f"reduce fields) to see the rest."
-            )
-        return result
+        return _no_session_inline_fallback(full_views, messages, truncated=truncated)
 
     return _format_offload_result(
-        messages,
+        full_views,
         truncated=truncated,
         user_id=user_id,
         conversation_id=conversation_id,
-        field_count=len(request.fields),
+        fields=request.fields,
     )
+
+
+def _no_session_inline_fallback(
+    full_views: list[dict[str, Any]],
+    projected: list[dict[str, Any]],
+    *,
+    truncated: bool,
+) -> dict[str, Any]:
+    """Oversized result but no session to offload into: cap to whole messages
+    that fit inline and surface that the rest was dropped.
+
+    The self-offloading Gmail read tools are excluded from the compaction
+    middleware (``SELF_OFFLOADING_TOOL_NAMES`` in factory.py), so nothing
+    downstream shrinks an oversized inline result — the cap has to happen here.
+    """
+    shown = _count_inline_fit(projected)
+    log.warning(
+        f"GMAIL read: no conversation_id for offload; returning {shown}/{len(projected)} inline"
+    )
+    _emit_email_card(full_views[:shown])
+    result = _format_inline_result(projected[:shown], truncated=truncated or shown < len(projected))
+    if shown < len(projected):
+        result["total_matched"] = len(projected)
+        result["hint"] = (
+            f"Showing {shown} of {len(projected)} matched messages; the result was too "
+            f"large to return inline and no session was available to offload it. Narrow "
+            f"the request (or reduce fields) to see the rest."
+        )
+    return result
+
+
+# =============================================================================
+# FETCH_THREAD — full-conversation reconstruction by id
+# =============================================================================
+
+
+def _thread_needs_full(request: FetchThreadInput) -> bool:
+    """Whether the thread fetch must request ``format=full``.
+
+    The thread endpoint returns every message inline, so unlike the per-message
+    read there is no N+1 cost to full — one call per thread regardless. Full is
+    needed for the body (any non-``none`` processing) or the attachment list.
+    """
+    wants_attachments = bool(request.fields) and "attachments" in request.fields
+    return request.body_processing != "none" or wants_attachments
+
+
+def _fetch_one_thread(
+    user_id: str, thread_id: str, *, needs_full: bool, body_processing: str
+) -> list[dict[str, Any]]:
+    """Fetch one thread and return its messages as full views, in thread order.
+
+    Reuses ``build_message_view`` so a thread message is shaped identically to a
+    ``GMAIL_FETCH_MESSAGES`` result (normalized body, attachment metadata, same
+    field contract) — one read path, not a divergent raw thread view. Lets proxy
+    exceptions propagate so the aggregator attaches partial state.
+    """
+    data = _gmail_proxy(
+        user_id,
+        endpoint=f"{GMAIL_API_BASE}/users/me/threads/{thread_id}",
+        method="GET",
+        query={"format": GMAIL_FORMAT_FULL if needs_full else GMAIL_FORMAT_METADATA},
+    )
+    if not isinstance(data, dict):
+        return []
+    return [
+        build_message_view(msg, body_processing=body_processing)
+        for msg in data.get("messages", [])
+        if isinstance(msg, dict)
+    ]
+
+
+def _aggregate_threads(
+    user_id: str, request: FetchThreadInput
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
+    """Fetch every requested thread over the bounded pool, honoring the total
+    message cap. Returns ``(threads, flat_views, truncated)`` where ``threads``
+    keeps the per-thread grouping and ``flat_views`` is every message view.
+    Raises ``_PartialResult`` on a mid-fetch error once anything succeeded.
+    """
+    needs_full = _thread_needs_full(request)
+    cap = min(request.max_messages or MAX_ABSOLUTE_MESSAGES, MAX_ABSOLUTE_MESSAGES)
+    threads: list[dict[str, Any]] = []
+    flat_views: list[dict[str, Any]] = []
+    truncated = False
+
+    def fetch(thread_id: str) -> tuple[str, list[dict[str, Any]]]:
+        return thread_id, _fetch_one_thread(
+            user_id, thread_id, needs_full=needs_full, body_processing=request.body_processing
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=FETCH_CONCURRENCY) as executor:
+            for thread_id, views in executor.map(fetch, request.thread_ids):
+                remaining = cap - len(flat_views)
+                if remaining <= 0:
+                    truncated = True
+                    break
+                if len(views) > remaining:
+                    views = views[:remaining]
+                    truncated = True
+                threads.append({"id": thread_id, "message_count": len(views), "messages": views})
+                flat_views.extend(views)
+    except Exception as exc:
+        if not flat_views:
+            raise
+        log.warning(f"GMAIL_FETCH_THREAD: aborted mid-fetch: {exc}")
+        raise _PartialResult(reason=str(exc), partial_messages=flat_views) from exc
+
+    return threads, flat_views, truncated
+
+
+def _summarize_threads(user_id: str, request: FetchThreadInput) -> dict[str, Any]:
+    """Top-level FETCH_THREAD orchestrator: fetch → offload-or-inline, mirroring
+    ``_summarize`` (same thresholds, card, offload file, no-session fallback)."""
+    config = _current_config()
+    try:
+        threads, flat_views, truncated = _aggregate_threads(user_id, request)
+    except _PartialResult as exc:
+        return _format_partial_result(
+            [project_message_view(view, request.fields) for view in exc.partial_messages],
+            reason=exc.reason,
+        )
+
+    grouped = [
+        {
+            "id": thread["id"],
+            "message_count": thread["message_count"],
+            "messages": [project_message_view(view, request.fields) for view in thread["messages"]],
+        }
+        for thread in threads
+    ]
+    projected_flat = [project_message_view(view, request.fields) for view in flat_views]
+    serialized = json.dumps({"threads": grouped}, default=str)
+    over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
+    over_message_limit = len(flat_views) > OFFLOAD_MIN_MESSAGES
+    if not over_char_limit and not over_message_limit:
+        _emit_email_card(flat_views)
+        return {
+            "fetched_threads": len(threads),
+            "total_messages": len(flat_views),
+            "truncated": truncated,
+            "threads": grouped,
+        }
+
+    conversation_id = _conversation_id(config)
+    if conversation_id is None:
+        return _no_session_inline_fallback(flat_views, projected_flat, truncated=truncated)
+
+    result = _format_offload_result(
+        flat_views,
+        truncated=truncated,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        fields=request.fields,
+        producer="GMAIL_FETCH_THREAD",
+    )
+    result["total_threads"] = len(threads)
+    return result
+
+
+# =============================================================================
+# Batch label mutation — chunked + fail-loud
+# =============================================================================
+
+
+def _batch_modify(
+    user_id: str,
+    message_ids: list[str],
+    *,
+    add_label_ids: list[str] | None = None,
+    remove_label_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Apply label add/removes across ``message_ids`` via ``batchModify``,
+    chunked at the Gmail 1000-id cap.
+
+    Fail-loud + partial, mirroring ``_aggregate_pages``: if the first chunk
+    fails with nothing yet modified it is a total failure and propagates (the
+    tool reports ``successful: false`` rather than masking it); if some chunks
+    already succeeded, the error is surfaced as a partial result carrying the
+    modified/failed counts. Returns ``{modified_count, failed_count[, partial,
+    error]}``.
+    """
+    if not message_ids:
+        return {"modified_count": 0, "failed_count": 0}
+
+    labels: dict[str, list[str]] = {}
+    if add_label_ids:
+        labels["addLabelIds"] = add_label_ids
+    if remove_label_ids:
+        labels["removeLabelIds"] = remove_label_ids
+
+    modified = 0
+    for start in range(0, len(message_ids), GMAIL_BATCH_MODIFY_CAP):
+        chunk = message_ids[start : start + GMAIL_BATCH_MODIFY_CAP]
+        try:
+            _gmail_proxy(
+                user_id,
+                endpoint=f"{GMAIL_API_BASE}/users/me/messages/batchModify",
+                method="POST",
+                body={"ids": chunk, **labels},
+            )
+        except Exception as exc:
+            if modified == 0:
+                raise
+            failed = len(message_ids) - modified
+            log.set(
+                gmail_batch_modify={
+                    "requested": len(message_ids),
+                    "modified": modified,
+                    "failed": failed,
+                }
+            )
+            log.warning(
+                f"GMAIL batchModify aborted after {modified}/{len(message_ids)} modified: {exc}"
+            )
+            return {
+                "modified_count": modified,
+                "failed_count": failed,
+                "partial": True,
+                "error": str(exc),
+            }
+        modified += len(chunk)
+
+    log.set(gmail_batch_modify={"requested": len(message_ids), "modified": modified, "failed": 0})
+    return {"modified_count": modified, "failed_count": 0}
 
 
 # =============================================================================
@@ -766,13 +1011,11 @@ def register_gmail_custom_tools(composio: Composio):
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Mark Gmail messages as read (removes the UNREAD label)."""
-        _gmail_proxy(
+        return _batch_modify(
             _user_id(auth_credentials),
-            endpoint=f"{GMAIL_API_BASE}/users/me/messages/batchModify",
-            method="POST",
-            body={"ids": request.message_ids, "removeLabelIds": ["UNREAD"]},
+            request.message_ids,
+            remove_label_ids=["UNREAD"],
         )
-        return {}
 
     @composio.tools.custom_tool(toolkit="gmail")
     def MARK_AS_UNREAD(
@@ -781,13 +1024,11 @@ def register_gmail_custom_tools(composio: Composio):
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Mark Gmail messages as unread (adds the UNREAD label)."""
-        _gmail_proxy(
+        return _batch_modify(
             _user_id(auth_credentials),
-            endpoint=f"{GMAIL_API_BASE}/users/me/messages/batchModify",
-            method="POST",
-            body={"ids": request.message_ids, "addLabelIds": ["UNREAD"]},
+            request.message_ids,
+            add_label_ids=["UNREAD"],
         )
-        return {}
 
     @composio.tools.custom_tool(toolkit="gmail")
     def ARCHIVE_EMAIL(
@@ -796,13 +1037,11 @@ def register_gmail_custom_tools(composio: Composio):
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Archive Gmail messages (removes the INBOX label, moving to All Mail)."""
-        _gmail_proxy(
+        return _batch_modify(
             _user_id(auth_credentials),
-            endpoint=f"{GMAIL_API_BASE}/users/me/messages/batchModify",
-            method="POST",
-            body={"ids": request.message_ids, "removeLabelIds": ["INBOX"]},
+            request.message_ids,
+            remove_label_ids=["INBOX"],
         )
-        return {}
 
     @composio.tools.custom_tool(toolkit="gmail")
     def STAR_EMAIL(
@@ -811,19 +1050,14 @@ def register_gmail_custom_tools(composio: Composio):
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Star or unstar Gmail messages (adds/removes the STARRED label)."""
+        user_id = _user_id(auth_credentials)
         if request.unstar:
-            payload = {"ids": request.message_ids, "removeLabelIds": ["STARRED"]}
+            result = _batch_modify(user_id, request.message_ids, remove_label_ids=["STARRED"])
             action = "unstarred"
         else:
-            payload = {"ids": request.message_ids, "addLabelIds": ["STARRED"]}
+            result = _batch_modify(user_id, request.message_ids, add_label_ids=["STARRED"])
             action = "starred"
-        _gmail_proxy(
-            _user_id(auth_credentials),
-            endpoint=f"{GMAIL_API_BASE}/users/me/messages/batchModify",
-            method="POST",
-            body=payload,
-        )
-        return {"action": action}
+        return {"action": action, **result}
 
     @composio.tools.custom_tool(toolkit="gmail")
     def GET_UNREAD_COUNT(
@@ -946,6 +1180,27 @@ def register_gmail_custom_tools(composio: Composio):
         """
         return _summarize(_user_id(auth_credentials), request)
 
+    @composio.tools.custom_tool(toolkit="gmail")
+    def FETCH_THREAD(
+        request: FetchThreadInput,
+        execute_request: Any,
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Reconstruct one or more Gmail conversation threads by id.
+
+        The canonical thread-read tool. Fetches each ``thread_id`` (batched,
+        concurrently) and returns its messages in conversation order, shaped
+        exactly like ``GMAIL_FETCH_MESSAGES`` results — normalized body,
+        attachment metadata, same ``fields``/``body_processing`` contract — so
+        there is one read path, not a divergent raw thread view.
+
+        Get thread ids from the ``threadId`` on ``GMAIL_FETCH_MESSAGES``
+        results. Small results render the email-list card inline; large ones
+        offload to a JSONL file (each line a message, carrying ``threadId`` to
+        regroup) with a read_plan the agent mines with ``query_json``/``grep``.
+        """
+        return _summarize_threads(_user_id(auth_credentials), request)
+
     return [
         "GMAIL_MARK_AS_READ",
         "GMAIL_MARK_AS_UNREAD",
@@ -955,6 +1210,7 @@ def register_gmail_custom_tools(composio: Composio):
         "GMAIL_GET_CONTACT_LIST",
         "GMAIL_CUSTOM_GATHER_CONTEXT",
         "GMAIL_FETCH_MESSAGES",
+        "GMAIL_FETCH_THREAD",
     ]
 
 

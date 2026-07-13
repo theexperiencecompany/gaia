@@ -45,8 +45,10 @@ GMAIL_FETCH_MESSAGES(
 
 Include `body` in `fields` when you need to triage or read content, not just subjects.
 
-For thread-grouped views (participants, timeline, decisions per thread) use
-`GMAIL_LIST_THREADS(query=..., max_results=30, verbose=true)` via `spawn_subagent`.
+To reconstruct full conversations, take the `threadId`s from the results and call
+`GMAIL_FETCH_THREAD(thread_ids=[...])` — it returns each thread's messages in order,
+shaped exactly like `GMAIL_FETCH_MESSAGES` (normalized body, attachment metadata,
+same `fields`/`body_processing`), inline for small sets or offloaded for large ones.
 Contact lookup is lightweight, call directly: `GMAIL_SEARCH_PEOPLE(query="Sarah", pageSize=10)`.
 
 It returns one of two shapes:
@@ -147,8 +149,7 @@ deliverable: return it to the executor verbatim (headings, order, emoji, line br
 intact) and tell the executor to relay it to comms unchanged, not re-summarized.
 
 ## Anti-Patterns
-- Wrapping `GMAIL_FETCH_MESSAGES` in a subagent (call it directly; it self-paginates and offloads).
-- Calling `GMAIL_LIST_THREADS` in the parent context (use `spawn_subagent`).
+- Wrapping `GMAIL_FETCH_MESSAGES` or `GMAIL_FETCH_THREAD` in a subagent (call them directly; they self-paginate and offload).
 - Reading a whole offloaded JSONL into your own context instead of fanning out the `read_plan` chunks.
 - Using `label:snoozed` (use `is:snoozed`).
 - Long natural-language queries (use operators); giving up after one search.
