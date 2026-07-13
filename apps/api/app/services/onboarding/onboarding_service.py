@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -90,10 +91,12 @@ async def complete_onboarding(
             if kept:
                 update_fields["onboarding.clarify_answers"] = kept
 
+        # Already lowercased, stripped, and deduped by the IntegrationSlug type on
+        # OnboardingRequest.selected_integrations — store as-is.
         if onboarding_data.selected_integrations:
-            slugs = [s.strip().lower() for s in onboarding_data.selected_integrations if s.strip()]
-            if slugs:
-                update_fields["onboarding.selected_integrations"] = slugs
+            update_fields["onboarding.selected_integrations"] = (
+                onboarding_data.selected_integrations
+            )
 
         # Atomic gate: only the request that creates the `onboarding` subdoc
         # wins; concurrent POSTs and replays get None and fall through.
@@ -319,12 +322,21 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Abort any in-flight pipeline first so it can't emit stage events
-    # after the doc is wiped.
-    try:
-        await abort_active_intelligence_job(user_id)
-        await abort_active_workflows_job(user_id)
-    except Exception as e:
-        log.warning(f"{LogTag.ONBOARDING} reset_onboarding failed to abort onboarding jobs: {e}")
+    # after the doc is wiped. Run both aborts independently — a failure in one
+    # must not leave the other job live and still writing onboarding state.
+    intelligence_result, workflows_result = await asyncio.gather(
+        abort_active_intelligence_job(user_id),
+        abort_active_workflows_job(user_id),
+        return_exceptions=True,
+    )
+    if isinstance(intelligence_result, Exception):
+        log.warning(
+            f"{LogTag.ONBOARDING} reset_onboarding failed to abort intelligence job: {intelligence_result}"
+        )
+    if isinstance(workflows_result, Exception):
+        log.warning(
+            f"{LogTag.ONBOARDING} reset_onboarding failed to abort workflows job: {workflows_result}"
+        )
 
     onboarding = user_doc.get("onboarding", {}) or {}
     workflow_ids: list[Any] = onboarding.get("suggested_workflows", []) or []

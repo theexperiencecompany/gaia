@@ -1,9 +1,15 @@
-"""Compute which integrations a workflow's steps require and which are missing."""
+"""Compute which integrations a workflow requires and which are missing."""
 
 from functools import lru_cache
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
-from app.models.workflow_models import IntegrationRef, WorkflowStep
+from app.models.workflow_models import (
+    IntegrationRef,
+    TriggerConfig,
+    TriggerType,
+    WorkflowStep,
+)
+from app.utils.trigger_utils import get_integration_for_trigger
 
 
 @lru_cache(maxsize=1)
@@ -32,12 +38,16 @@ def _integration_name_map() -> dict[str, str]:
     return {i.id: i.name for i in OAUTH_INTEGRATIONS}
 
 
-def compute_required_integrations(steps: list[WorkflowStep]) -> set[str]:
-    """Return integration IDs required by the workflow's steps.
+def compute_required_integrations(
+    steps: list[WorkflowStep],
+    trigger_config: TriggerConfig | None = None,
+) -> set[str]:
+    """Return integration IDs a workflow requires.
 
     A step requires an integration when its category maps to a provider-specific
-    entry in the OAUTH catalog. Core categories (search, todos, gaia, etc.) are
-    not in the catalog and are therefore not required.
+    entry in the OAUTH catalog; an integration-trigger workflow additionally
+    requires the integration that owns its trigger. Core categories (search,
+    todos, gaia, etc.) are not in the catalog and are therefore not required.
     """
     cat_map = _category_to_integration()
     required: set[str] = set()
@@ -45,7 +55,30 @@ def compute_required_integrations(steps: list[WorkflowStep]) -> set[str]:
         integration_id = cat_map.get(step.category.lower())
         if integration_id:
             required.add(integration_id)
+    if (
+        trigger_config is not None
+        and trigger_config.type == TriggerType.INTEGRATION
+        and trigger_config.trigger_name
+    ):
+        trigger_integration = get_integration_for_trigger(trigger_config.trigger_name)
+        if trigger_integration:
+            required.add(trigger_integration)
     return required
+
+
+def build_integration_refs(
+    required: set[str],
+    status_map: dict[str, bool],
+) -> tuple[list[IntegrationRef], list[IntegrationRef]]:
+    """Split `required` into (all required refs, missing refs) against a connection
+    status map. Pure — the caller owns the (cached) status fetch, so a workflow list
+    resolves every row from a single `get_all_integrations_status` call."""
+    name_map = _integration_name_map()
+    required_refs = [
+        IntegrationRef(id=iid, name=name_map.get(iid, iid)) for iid in sorted(required)
+    ]
+    missing_refs = [ref for ref in required_refs if not status_map.get(ref.id, False)]
+    return required_refs, missing_refs
 
 
 async def compute_missing_integrations(
@@ -58,12 +91,22 @@ async def compute_missing_integrations(
     # Deferred to avoid circular import: oauth_service → provisioner → service → here
     from app.services.oauth.oauth_service import get_all_integrations_status
 
-    name_map = _integration_name_map()
     status_map = await get_all_integrations_status(user_id)
-    missing: list[IntegrationRef] = []
-    for integration_id in sorted(required):
-        if not status_map.get(integration_id, False):
-            missing.append(
-                IntegrationRef(id=integration_id, name=name_map.get(integration_id, integration_id))
-            )
-    return missing
+    return build_integration_refs(required, status_map)[1]
+
+
+async def compute_integration_refs(
+    steps: list[WorkflowStep],
+    trigger_config: TriggerConfig | None,
+    user_id: str,
+) -> tuple[list[IntegrationRef], list[IntegrationRef]]:
+    """Resolve (required, missing) refs for one workflow in a single status fetch —
+    the read-path helper for enriching a workflow response."""
+    required = compute_required_integrations(steps, trigger_config)
+    if not required:
+        return [], []
+    # Deferred to avoid circular import: oauth_service → provisioner → service → here
+    from app.services.oauth.oauth_service import get_all_integrations_status
+
+    status_map = await get_all_integrations_status(user_id)
+    return build_integration_refs(required, status_map)

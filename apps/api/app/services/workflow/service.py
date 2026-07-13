@@ -17,7 +17,6 @@ from app.decorators.caching import Cacheable
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     CreateWorkflowRequest,
-    IntegrationRef,
     PublicWorkflowsResponse,
     TriggerConfig,
     TriggerType,
@@ -29,6 +28,8 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.services.workflow.integration_requirements import (
+    build_integration_refs,
+    compute_integration_refs,
     compute_missing_integrations,
     compute_required_integrations,
 )
@@ -482,30 +483,16 @@ class WorkflowService:
                     continue
 
             # Enrich all workflows with integration fields in one status call.
+            # Deferred import: oauth_service → provisioner → service is circular.
             from app.services.oauth.oauth_service import get_all_integrations_status
 
             status_map = await get_all_integrations_status(user_id)
-            from app.services.workflow.integration_requirements import (
-                _integration_name_map,
-                compute_required_integrations,
-            )
-
-            name_map = _integration_name_map()
             for workflow in workflows:
-                if workflow.steps:
-                    required = compute_required_integrations(workflow.steps)
-                    workflow.required_integrations = [
-                        IntegrationRef(id=iid, name=name_map.get(iid, iid))
-                        for iid in sorted(required)
-                    ]
-                    workflow.missing_integrations = [
-                        IntegrationRef(id=iid, name=name_map.get(iid, iid))
-                        for iid in sorted(required)
-                        if not status_map.get(iid, False)
-                    ]
-                else:
-                    workflow.required_integrations = []
-                    workflow.missing_integrations = []
+                required = compute_required_integrations(workflow.steps, workflow.trigger_config)
+                (
+                    workflow.required_integrations,
+                    workflow.missing_integrations,
+                ) = build_integration_refs(required, status_map)
 
             log.debug(f"{LogTag.WORKFLOW} Retrieved {len(workflows)} workflows for user {user_id}")
             return workflows
@@ -517,19 +504,10 @@ class WorkflowService:
     @staticmethod
     async def _enrich_integration_fields(workflow: Workflow, user_id: str) -> None:
         """Populate required_integrations and missing_integrations in-place."""
-        if not workflow.steps:
-            workflow.required_integrations = []
-            workflow.missing_integrations = []
-            return
-        required = compute_required_integrations(workflow.steps)
-        missing = await compute_missing_integrations(required, user_id)
-        from app.services.workflow.integration_requirements import _integration_name_map
-
-        name_map = _integration_name_map()
-        workflow.required_integrations = [
-            IntegrationRef(id=iid, name=name_map.get(iid, iid)) for iid in sorted(required)
-        ]
-        workflow.missing_integrations = missing
+        (
+            workflow.required_integrations,
+            workflow.missing_integrations,
+        ) = await compute_integration_refs(workflow.steps, workflow.trigger_config, user_id)
 
     @staticmethod
     async def update_workflow(
@@ -1006,12 +984,26 @@ class WorkflowService:
                 user_id=user_id,
             )
 
+            # Same gating as _generate_workflow_steps: if the regenerated steps
+            # need an integration the user hasn't connected, force the workflow
+            # inactive so an enabled-but-unrunnable workflow can't keep firing.
+            steps_as_models = [WorkflowStep(**s) for s in steps_data]
+            required = compute_required_integrations(steps_as_models)
+            missing = await compute_missing_integrations(required, user_id)
+
             update_set: dict[str, Any] = {
                 "steps": steps_data,
                 "updated_at": datetime.now(UTC),
             }
             if selected_integrations is not None:
                 update_set["selected_integrations"] = selected_integrations
+            if missing:
+                update_set["activated"] = False
+                update_set[TRIGGER_CONFIG_ENABLED_FIELD] = False
+                log.info(
+                    f"{LogTag.WORKFLOW} Workflow {workflow_id} kept inactive — "
+                    f"missing step integrations: {[m.id for m in missing]}"
+                )
 
             result = await workflows_collection.find_one_and_update(
                 {"_id": workflow_id, "user_id": user_id},

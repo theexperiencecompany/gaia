@@ -40,7 +40,11 @@ from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import todos_collection, users_collection
+from app.db.mongodb.collections import (
+    todos_collection,
+    users_collection,
+    workflows_collection,
+)
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriage,
@@ -1307,6 +1311,22 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
     triage = _triage_from_doc(onboarding.get("triage_summary"))
     writing_style = _writing_style_from_doc(onboarding.get("writing_style"))
 
+    # Idempotency: if a prior run of this phase was killed after creating some
+    # workflows (leaving phase=PENDING so the stuck cron re-enqueues it), drop
+    # those stale suggestions before regenerating so the retry replaces them
+    # instead of doubling up. Onboarding workflows are created deactivated —
+    # no Composio triggers or scheduled jobs to unwind — so a direct delete is safe.
+    prior_workflow_ids = onboarding.get("suggested_workflows") or []
+    if prior_workflow_ids:
+        deleted = await workflows_collection.delete_many(
+            {"_id": {"$in": prior_workflow_ids}, "user_id": user_id}
+        )
+        log.info(
+            f"{LogTag.ONBOARDING} workflows phase retry — purged {deleted.deleted_count} "
+            f"stale suggested workflows before regenerating",
+            user_id=user_id,
+        )
+
     workflows = await _run_workflows(
         user_id,
         profession,
@@ -1719,9 +1739,9 @@ async def _build_one_workflow(
             create_duration_s=create_duration_s,
             duration_s=round(time.monotonic() - t_spec, 2),
         )
-        # Surface step integrations the user hasn't connected so the onboarding
-        # cards can show the same missing-integration warning as the app.
-        required = compute_required_integrations(workflow.steps)
+        # Surface step + trigger integrations the user hasn't connected so the
+        # onboarding cards show the same missing-integration warning as the app.
+        required = compute_required_integrations(workflow.steps, workflow.trigger_config)
         missing = await compute_missing_integrations(required, user_id)
         return {
             "id": str(workflow.id),

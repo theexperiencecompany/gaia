@@ -41,7 +41,15 @@ export function useIntegrationsSubmission(state: OnboardingState): void {
       .then(() => {
         submittedRef.current = true;
       })
-      .catch(() => {})
+      .catch((err) => {
+        // Leave submittedRef false so a later state change retries; the endpoint
+        // is idempotent. Log it so a persistent failure (e.g. 503) is visible
+        // instead of silently leaving the user stuck in PERSONALIZATION_PENDING.
+        console.error(
+          "[onboarding:integrations] submit failed, will retry",
+          err,
+        );
+      })
       .finally(() => {
         inFlightRef.current = false;
       });
