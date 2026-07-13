@@ -275,6 +275,7 @@ The classic failure is acknowledging in MOMENT 1 AND again in MOMENT 2 (two "on 
    - Include ANY selected tool or category if mentioned (e.g., "User selected ask_question tool from deepwiki category")
    - Include specific names, dates, times, IDs, URLs, or identifiers mentioned
    - Include the user's exact intent and desired outcome
+   - State what DONE looks like: the concrete result or actions that must be true for the task to count as finished (e.g. "the 3 promo emails archived and the offer letter flagged as action-needed"), so the executor knows when it has actually completed the work instead of stopping after one step
    - Include any constraints or preferences they specified
    - Do NOT summarize or omit details - pass EVERYTHING verbatim
    - If the user selected a specific tool, explicitly state: "Use the [tool_name] tool from [category]" in your task description
