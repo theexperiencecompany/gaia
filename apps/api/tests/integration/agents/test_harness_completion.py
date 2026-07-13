@@ -83,25 +83,43 @@ class TestHarnessCompletion:
         assert isinstance(final, AIMessage)
         assert "Final result" in final.content
 
-    async def test_no_nudge_when_tool_used_and_no_pending_todos(self):
-        """Tool used + no pending todos → normal completion, no nudge tax."""
-        tool_call = {
-            "name": "lookup",
-            "args": {"query": "x"},
-            "id": "call_1",
-            "type": "tool_call",
-        }
-        llm = create_fake_llm_with_tool_calls([tool_call, "Done."])
+    async def test_no_nudge_when_enough_tools_used(self):
+        """Enough tool calls (>= COMPLETION_MIN_TOOL_CALLS) + no pending todos →
+        normal completion, no nudge tax."""
+        c1 = {"name": "lookup", "args": {"query": "a"}, "id": "c1", "type": "tool_call"}
+        c2 = {"name": "lookup", "args": {"query": "b"}, "id": "c2", "type": "tool_call"}
+        llm = create_fake_llm_with_tool_calls([c1, c2, "Done."])
         graph = _compile(llm, require_finish_to_end=True)
 
         result = await graph.ainvoke(
-            {"messages": [HumanMessage(content="look up x")]},
+            {"messages": [HumanMessage(content="look up a and b")]},
             config={"configurable": {"thread_id": str(uuid4())}},
         )
 
-        assert _nudges(result["messages"]) == [], "a finished run must not be nudged"
-        assert any(isinstance(m, ToolMessage) for m in result["messages"])
+        assert _nudges(result["messages"]) == [], "a thorough run must not be nudged"
         assert result["messages"][-1].content == "Done."
+
+    async def test_single_lookup_then_stop_is_nudged(self):
+        """The headline 'one lookup then assert a conclusion' failure: a single
+        tool call then a plain-text stop is treated as too shallow and nudged."""
+        c1 = {"name": "lookup", "args": {"query": "x"}, "id": "c1", "type": "tool_call"}
+        # After one lookup the model quits; after the nudge it does two more calls
+        # and finishes.
+        c2 = {"name": "lookup", "args": {"query": "y"}, "id": "c2", "type": "tool_call"}
+        c3 = {"name": "lookup", "args": {"query": "z"}, "id": "c3", "type": "tool_call"}
+        llm = create_fake_llm_with_tool_calls([c1, "All set.", c2, c3, "Done thoroughly."])
+        graph = _compile(llm, require_finish_to_end=True)
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="dig into x")]},
+            config={"configurable": {"thread_id": str(uuid4())}},
+        )
+
+        assert len(_nudges(result["messages"])) == MAX_COMPLETION_NUDGES
+        assert result["messages"][-1].content == "Done thoroughly."
+        assert sum(1 for m in result["messages"] if isinstance(m, ToolMessage)) >= 2, (
+            "after the nudge the model should have dug further"
+        )
 
     async def test_comms_style_agent_ends_on_plain_text(self):
         """require_finish_to_end=False (comms) ends on plain text even with a

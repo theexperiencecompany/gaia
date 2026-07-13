@@ -27,12 +27,15 @@ RECURSION_HWM_FRACTION = 0.80
 RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 
 # Harness-owned completion: when the executor tries to end with a plain-text
-# message while work is demonstrably unfinished (tracked todos still pending, or
-# not a single tool was ever called on a delegated task), the loop injects up to
-# this many "verify or continue" nudges instead of ending. Bounded so a genuinely
-# tool-free answer costs at most this many extra steps. Only the executor path
-# opts in (require_finish_to_end); comms may always end in plain text.
+# message while work is demonstrably unfinished, the loop injects up to this many
+# "verify or continue" nudges instead of ending. "Unfinished" means a tracked todo
+# is still pending, or fewer than COMPLETION_MIN_TOOL_CALLS tools were executed on
+# a delegated task — the "one lookup then assert a conclusion" failure a good model
+# would keep digging past. Bounded so a genuinely quick task costs at most this
+# many extra steps. Only the executor opts in (require_finish_to_end); comms may
+# always end in plain text.
 MAX_COMPLETION_NUDGES = 1
+COMPLETION_MIN_TOOL_CALLS = 2
 COMPLETION_NUDGE_MESSAGE = (
     "[System: before you finish — every part of the task must actually be done "
     "and confirmed with tools, not assumed. If anything is still pending, not yet "
