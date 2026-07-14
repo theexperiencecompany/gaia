@@ -238,7 +238,7 @@ async def read_user_file(
 
 
 async def user_owns_regular_file(user_id: str, workspace_rel_path: str) -> bool:
-    """True iff the user has a real (non-symlink) regular file at this path.
+    """True if the user has a real (non-symlink) regular file at this path.
 
     The ``read`` tool serves system-owned files (INDEX.md, the GUIDE.md docs,
     builtin skill bodies) from process memory. This lets it skip that fast-path
