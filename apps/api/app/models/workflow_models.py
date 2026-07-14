@@ -2,6 +2,7 @@
 Clean and lean workflow models for GAIA workflow system.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -436,9 +437,10 @@ class WorkflowResponse(BaseModel):
 class WorkflowListResponse(BaseModel):
     """Response model for listing workflows."""
 
-    # The list path always enriches, so this is the concrete read model — typing
-    # it as list[Workflow] would break on invariance (list is not covariant).
-    workflows: list[WorkflowWithIntegrations]
+    # Sequence (not list) because list is invariant: the read path hands us
+    # list[WorkflowWithIntegrations]. SerializeAsAny keeps the subclass's extra
+    # integration fields in the payload while still accepting a plain Workflow.
+    workflows: Sequence[SerializeAsAny[Workflow]]
 
 
 class WorkflowExecutionRequest(BaseModel):
