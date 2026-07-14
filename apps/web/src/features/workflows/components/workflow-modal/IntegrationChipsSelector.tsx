@@ -6,7 +6,15 @@ import { Input } from "@heroui/input";
 import { Skeleton } from "@heroui/skeleton";
 import { PlusSignIcon, Search01Icon } from "@icons";
 import * as m from "motion/react-m";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
@@ -308,6 +316,49 @@ function IntegrationPillCloud({
     rowByPosition.findIndex((row) => row >= batchStart),
   );
 
+  let pillCloud: ReactNode;
+  if (isLoading) {
+    pillCloud = (
+      <div className="flex flex-wrap gap-2">
+        {SKELETON_KEYS.map((key) => (
+          <Skeleton key={key} className="h-9 w-28 rounded-full" />
+        ))}
+      </div>
+    );
+  } else if (filtered.length === 0) {
+    pillCloud = (
+      <p className="py-6 text-center text-xs text-zinc-500">
+        No apps match “{query}”.
+      </p>
+    );
+  } else {
+    pillCloud = (
+      <div
+        ref={wrapRef}
+        className="flex flex-wrap gap-2 overflow-hidden transition-[max-height] duration-200"
+        style={clampHeight != null ? { maxHeight: clampHeight } : undefined}
+      >
+        {filtered.map((integration, index) => {
+          const row = rowByPosition[index] ?? 0;
+          const shown = isSearching || row < visibleRows;
+          // Stagger relative to the first pill of the current reveal batch,
+          // so each "Show more" cascades from its start (not the list start).
+          const order = Math.max(0, index - batchStartIndex);
+          return (
+            <PillChip
+              key={integration.slug}
+              integration={integration}
+              isSelected={selectedSlugSet.has(integration.slug)}
+              shown={shown}
+              delay={shown ? Math.min(order, 18) * 0.025 : 0}
+              onToggle={onToggle}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       {/* Search + pills are inset (via contentClassName) to align with the
@@ -330,45 +381,7 @@ function IntegrationPillCloud({
 
         {/* Fixed min-height so filtering swaps pills in place without resizing
             the page (which would shift scroll position). */}
-        <div className="min-h-[7.5rem]">
-          {isLoading ? (
-            <div className="flex flex-wrap gap-2">
-              {SKELETON_KEYS.map((key) => (
-                <Skeleton key={key} className="h-9 w-28 rounded-full" />
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="py-6 text-center text-xs text-zinc-500">
-              No apps match “{query}”.
-            </p>
-          ) : (
-            <div
-              ref={wrapRef}
-              className="flex flex-wrap gap-2 overflow-hidden transition-[max-height] duration-200"
-              style={
-                clampHeight != null ? { maxHeight: clampHeight } : undefined
-              }
-            >
-              {filtered.map((integration, index) => {
-                const row = rowByPosition[index] ?? 0;
-                const shown = isSearching || row < visibleRows;
-                // Stagger relative to the first pill of the current reveal batch,
-                // so each "Show more" cascades from its start (not the list start).
-                const order = Math.max(0, index - batchStartIndex);
-                return (
-                  <PillChip
-                    key={integration.slug}
-                    integration={integration}
-                    isSelected={selectedSlugSet.has(integration.slug)}
-                    shown={shown}
-                    delay={shown ? Math.min(order, 18) * 0.025 : 0}
-                    onToggle={onToggle}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <div className="min-h-[7.5rem]">{pillCloud}</div>
       </div>
 
       {/* Fixed-height slot so the cloud doesn't shrink (shifting layout) when

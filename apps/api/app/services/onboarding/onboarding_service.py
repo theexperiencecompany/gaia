@@ -16,6 +16,8 @@ from app.db.mongodb.collections import (
 from app.memory.engine import memory_engine
 from app.models.user_models import (
     BioStatus,
+    IntegrationSlug,
+    OnboardingIntegrationsStatus,
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
@@ -158,8 +160,8 @@ async def complete_onboarding(
 
 async def submit_onboarding_integrations(
     user_id: str,
-    selected_integrations: list[str],
-) -> dict[str, str]:
+    selected_integrations: list[IntegrationSlug],
+) -> OnboardingIntegrationsStatus:
     """Persist the user's selected integrations and enqueue the workflows-phase
     job. Only valid for split-mode onboarding; idempotent under retries."""
     log.set(auth={"user_id": user_id})
@@ -178,10 +180,10 @@ async def submit_onboarding_integrations(
 
     if onboarding.get("first_message_conversation_id"):
         log.info(f"{LogTag.ONBOARDING} integrations replay — onboarding already complete")
-        return {"status": "already_complete"}
+        return OnboardingIntegrationsStatus.ALREADY_COMPLETE
     if onboarding.get("workflows_job_id") and await is_workflows_job_live(user_id):
         log.info(f"{LogTag.ONBOARDING} integrations replay — workflows job already running")
-        return {"status": "already_running"}
+        return OnboardingIntegrationsStatus.ALREADY_RUNNING
 
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},
@@ -205,7 +207,7 @@ async def submit_onboarding_integrations(
         selected_count=len(selected_integrations),
         job_id=job_id,
     )
-    return {"status": "queued"}
+    return OnboardingIntegrationsStatus.QUEUED
 
 
 async def get_user_onboarding_status(user_id: str) -> dict[str, Any]:

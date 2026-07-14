@@ -283,7 +283,7 @@ export function missingIntegrationsMessage(
 
 export function MissingIntegrationsWarning({
   missingIntegrations,
-}: MissingIntegrationsWarningProps) {
+}: Readonly<MissingIntegrationsWarningProps>) {
   if (!missingIntegrations.length) return null;
 
   return (
@@ -316,7 +316,7 @@ export function MissingIntegrationsAlert({
   missingIntegrations,
   connectingId,
   onConnect,
-}: MissingIntegrationsAlertProps) {
+}: Readonly<MissingIntegrationsAlertProps>) {
   const { getIntegrationIconUrl } = useIntegrationLookup();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 

@@ -26,7 +26,10 @@ interface IntegrationSelectProps {
   dispatch: Dispatch<Action>;
 }
 
-export function IntegrationSelect({ state, dispatch }: IntegrationSelectProps) {
+export function IntegrationSelect({
+  state,
+  dispatch,
+}: Readonly<IntegrationSelectProps>) {
   const priorityNames = useMemo(
     () =>
       getOnboardingIntegrationPriority(state.responses[FIELD_NAMES.PROFESSION]),
@@ -54,7 +57,7 @@ export function IntegrationSelect({ state, dispatch }: IntegrationSelectProps) {
 export function IntegrationSelectComposer({
   state,
   dispatch,
-}: IntegrationSelectProps) {
+}: Readonly<IntegrationSelectProps>) {
   const { integrations, isLoading } = useIntegrations();
   const remaining = MIN_SELECTIONS - state.selectedIntegrations.length;
   // When the catalog is empty/unavailable there's nothing to pick — don't trap

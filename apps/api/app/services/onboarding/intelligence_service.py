@@ -38,6 +38,14 @@ from app.agents.prompts.onboarding_prompts import (
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.log_tags import LogTag
+from app.constants.onboarding import (
+    EARLY_PHASE_POLL_INTERVAL_S,
+    EARLY_PHASE_WAIT_TIMEOUT_S,
+    NOT_SPECIFIED,
+    OAUTH_INTEGRATION_NAME_BY_ID,
+    ONBOARDING_DEFAULT_FIRST_MESSAGE,
+    TRIAGE_EARLY_THRESHOLD,
+)
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import (
@@ -138,20 +146,6 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
 
 # Module-level set prevents GC of fire-and-forget tasks
 _background_tasks: set[asyncio.Task] = set()
-
-
-_ONBOARDING_DEFAULT_FIRST_MESSAGE = "Welcome to GAIA. I'm here to help — what's on your mind?"
-
-_TRIAGE_EARLY_THRESHOLD = 100
-
-_EARLY_PHASE_WAIT_TIMEOUT_S = 300
-_EARLY_PHASE_POLL_INTERVAL_S = 2.0
-
-_NOT_SPECIFIED = "not specified"
-
-# Known integration ids -> display name, used to validate request-backed
-# `selected_integrations` before they reach prompts or workflow generation.
-OAUTH_INTEGRATION_NAME_BY_ID = {i.id: i.name for i in OAUTH_INTEGRATIONS}
 
 
 @dataclass
@@ -308,7 +302,7 @@ async def _finalize_onboarding(
             focus=focus,
             clarify_answers=clarify_answers,
         ),
-        default=_ONBOARDING_DEFAULT_FIRST_MESSAGE,
+        default=ONBOARDING_DEFAULT_FIRST_MESSAGE,
     )
     log.info(
         f"{LogTag.ONBOARDING} first_message generated",
@@ -522,6 +516,8 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         duration_s=round(time.monotonic() - t_gather, 2),
     )
 
+    triage_important_count = len(triage.important_emails) if triage else 0
+
     if split_mode:
         await asyncio.gather(
             _persist_profiles(user_id, writing_style, triage),
@@ -544,7 +540,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             phase="early_done",
             has_gmail=has_gmail,
             writing_style_learned=writing_style is not None,
-            triage_important_count=len(triage.important_emails) if triage else 0,
+            triage_important_count=triage_important_count,
             todos_count=len(todos),
             outcome="ok",
             duration_s=round(time.monotonic() - pipeline_start, 2),
@@ -585,7 +581,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         phase="done",
         has_gmail=has_gmail,
         writing_style_learned=writing_style is not None,
-        triage_important_count=len(triage.important_emails) if triage else 0,
+        triage_important_count=triage_important_count,
         todos_count=len(todos),
         workflows_count=len(workflows),
         conversation_seeded=conversation_id is not None,
@@ -627,7 +623,7 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
     )
 
     async def _on_batch(current: int, latest_sender: str | None) -> None:
-        if not ctx.first_batch_ready.is_set() and current >= _TRIAGE_EARLY_THRESHOLD:
+        if not ctx.first_batch_ready.is_set() and current >= TRIAGE_EARLY_THRESHOLD:
             ctx.first_batch_ready.set()
         status_text = (
             f"Fetched {current} emails — {latest_sender}"
@@ -1253,7 +1249,7 @@ def _triage_from_doc(raw: object) -> InboxTriage | None:
                 EmailSummary(**e) for e in raw.get("important_emails") or [] if isinstance(e, dict)
             ],
         )
-    except (ValidationError, TypeError, ValueError) as e:
+    except (TypeError, ValueError) as e:
         log.error(f"{LogTag.ONBOARDING} triage reconstruction failed: {e}", exc_info=True)
         return None
 
@@ -1293,7 +1289,7 @@ async def _wait_for_early_phase(user_id: str) -> bool:
     """Poll for the early-phase marker. Returns False on timeout — the caller
     proceeds with whatever is persisted (degraded workflow context, same
     fail-soft semantics as the full pipeline's None triage/style)."""
-    deadline = time.monotonic() + _EARLY_PHASE_WAIT_TIMEOUT_S
+    deadline = time.monotonic() + EARLY_PHASE_WAIT_TIMEOUT_S
     while time.monotonic() < deadline:
         doc = await users_collection.find_one(
             {"_id": ObjectId(user_id)},
@@ -1301,11 +1297,11 @@ async def _wait_for_early_phase(user_id: str) -> bool:
         )
         if doc and (doc.get("onboarding") or {}).get("early_intelligence_done_at"):
             return True
-        await asyncio.sleep(_EARLY_PHASE_POLL_INTERVAL_S)
+        await asyncio.sleep(EARLY_PHASE_POLL_INTERVAL_S)
     log.warning(
         f"{LogTag.ONBOARDING} early phase marker timeout — proceeding with persisted data",
         user_id=user_id,
-        timeout_s=_EARLY_PHASE_WAIT_TIMEOUT_S,
+        timeout_s=EARLY_PHASE_WAIT_TIMEOUT_S,
     )
     return False
 
@@ -1496,8 +1492,8 @@ async def _create_todos_from_triage(
 
     prompt = TRIAGE_TODOS_PROMPT.format(
         emails_context=emails_context,
-        profession=profession or _NOT_SPECIFIED,
-        focus=focus or _NOT_SPECIFIED,
+        profession=profession or NOT_SPECIFIED,
+        focus=focus or NOT_SPECIFIED,
         format_instructions="Return a JSON object with a 'todos' key containing a list of todo objects, each with 'title', 'description', 'source_sender', and 'source_subject'.",
     )
 
@@ -1660,7 +1656,7 @@ def _build_workflow_prompt_context(
 
     return WORKFLOW_CREATION_PROMPT.format(
         profession=profession or "professional",
-        focus=focus or _NOT_SPECIFIED,
+        focus=focus or NOT_SPECIFIED,
         clarify_context=format_clarify_context(clarify_answers),
         selected_integrations_section=selected_integrations_section,
         has_gmail=has_gmail,

@@ -26,6 +26,7 @@ from app.models.workflow_models import (
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
     WorkflowStep,
+    WorkflowWithIntegrations,
 )
 from app.services.workflow.integration_requirements import (
     build_integration_refs,
@@ -249,11 +250,9 @@ class WorkflowService:
             )
 
             # Python mode keeps datetimes native (BSON dates) so the scheduler's
-            # `scheduled_at: {"$lte": now}` scan can match. creator,
-            # required_integrations, missing_integrations are response-only.
-            workflow_dict = workflow.model_dump(
-                exclude={"creator", "required_integrations", "missing_integrations"}
-            )
+            # `scheduled_at: {"$lte": now}` scan can match. `creator` is a
+            # response-only computed field, excluded from the persisted document.
+            workflow_dict = workflow.model_dump(exclude={"creator"})
             workflow_dict["_id"] = workflow_dict["id"]
 
             if workflow_dict.get("is_public") and not workflow_dict.get("slug"):
@@ -446,7 +445,7 @@ class WorkflowService:
             await ensure_public_workflow_slug(workflow_doc)
 
             transformed_doc = transform_workflow_document(workflow_doc)
-            workflow = Workflow(**transformed_doc)
+            workflow = WorkflowWithIntegrations(**transformed_doc)
             await WorkflowService._enrich_integration_fields(workflow, user_id)
             return workflow
 
@@ -455,7 +454,9 @@ class WorkflowService:
             raise
 
     @staticmethod
-    async def list_workflows(user_id: str, exclude_todo_workflows: bool = True) -> list[Workflow]:
+    async def list_workflows(
+        user_id: str, exclude_todo_workflows: bool = True
+    ) -> list[WorkflowWithIntegrations]:
         """List all workflows for a user, excluding auto-generated todo workflows by default."""
         try:
             # Build query - filter out todo workflows by default
@@ -471,11 +472,11 @@ class WorkflowService:
                 await workflows_collection.find(query).sort("created_at", -1).to_list(length=None)
             )
 
-            workflows: list[Workflow] = []
+            workflows: list[WorkflowWithIntegrations] = []
             for doc in docs:
                 try:
                     transformed_doc = transform_workflow_document(doc)
-                    workflows.append(Workflow(**transformed_doc))
+                    workflows.append(WorkflowWithIntegrations(**transformed_doc))
                 except Exception as e:
                     log.warning(
                         f"{LogTag.WORKFLOW} Skipping malformed workflow document {doc.get('_id')}: {e}"
@@ -502,7 +503,7 @@ class WorkflowService:
             raise
 
     @staticmethod
-    async def _enrich_integration_fields(workflow: Workflow, user_id: str) -> None:
+    async def _enrich_integration_fields(workflow: WorkflowWithIntegrations, user_id: str) -> None:
         """Populate required_integrations and missing_integrations in-place."""
         (
             workflow.required_integrations,
@@ -1013,7 +1014,7 @@ class WorkflowService:
 
             if result:
                 transformed_doc = transform_workflow_document(result)
-                workflow = Workflow(**transformed_doc)
+                workflow = WorkflowWithIntegrations(**transformed_doc)
                 # Match get_workflow/list_workflows so the regenerated steps'
                 # required/missing integrations surface in the UI.
                 await WorkflowService._enrich_integration_fields(workflow, user_id)

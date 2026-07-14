@@ -15,19 +15,19 @@ from arq.utils import timestamp_ms
 from bson import ObjectId
 
 from app.constants.log_tags import LogTag
+from app.constants.onboarding import (
+    INTELLIGENCE_JOB_FIELD,
+    INTELLIGENCE_TASK,
+    WORKFLOWS_JOB_FIELD,
+    WORKFLOWS_TASK,
+)
 from app.db.mongodb.collections import todos_collection, users_collection
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
 
-_INTELLIGENCE_TASK = "process_onboarding_intelligence_task"
-_WORKFLOWS_TASK = "process_onboarding_workflows_task"
-_INTELLIGENCE_JOB_FIELD = "onboarding.intelligence_job_id"
-_WORKFLOWS_JOB_FIELD = "onboarding.workflows_job_id"
-
-
 # Each helper below is parameterized by `field` so the same logic serves both
 # job slots (intelligence and workflows). The public wrappers at the bottom bind
-# `field` to one of the two _*_JOB_FIELD constants — read those first for intent.
+# `field` to INTELLIGENCE_JOB_FIELD / WORKFLOWS_JOB_FIELD (app/constants/onboarding.py).
 
 
 async def _get_active_job_id(user_id: str, field: str) -> str | None:
@@ -65,12 +65,12 @@ async def _clear_active_job_id_if_matches(user_id: str, job_id: str, field: str)
 
 async def clear_active_intelligence_job(user_id: str, job_id: str) -> None:
     """Compare-and-clear so a concurrent reset's newer job id is not orphaned."""
-    await _clear_active_job_id_if_matches(user_id, job_id, _INTELLIGENCE_JOB_FIELD)
+    await _clear_active_job_id_if_matches(user_id, job_id, INTELLIGENCE_JOB_FIELD)
 
 
 async def clear_active_workflows_job(user_id: str, job_id: str) -> None:
     """Compare-and-clear the workflows-phase job id."""
-    await _clear_active_job_id_if_matches(user_id, job_id, _WORKFLOWS_JOB_FIELD)
+    await _clear_active_job_id_if_matches(user_id, job_id, WORKFLOWS_JOB_FIELD)
 
 
 async def _is_job_live(user_id: str, field: str) -> bool:
@@ -94,13 +94,13 @@ async def _is_job_live(user_id: str, field: str) -> bool:
 
 
 async def is_intelligence_job_live(user_id: str) -> bool:
-    """Return True iff the user has an intelligence ARQ job queued, deferred, or in_progress."""
-    return await _is_job_live(user_id, _INTELLIGENCE_JOB_FIELD)
+    """Return whether the user has an intelligence ARQ job queued, deferred, or in_progress."""
+    return await _is_job_live(user_id, INTELLIGENCE_JOB_FIELD)
 
 
 async def is_workflows_job_live(user_id: str) -> bool:
-    """Return True iff the user has a workflows-phase ARQ job queued, deferred, or in_progress."""
-    return await _is_job_live(user_id, _WORKFLOWS_JOB_FIELD)
+    """Return whether the user has a workflows-phase ARQ job queued, deferred, or in_progress."""
+    return await _is_job_live(user_id, WORKFLOWS_JOB_FIELD)
 
 
 async def _abort_active_job(user_id: str, field: str) -> bool:
@@ -132,14 +132,14 @@ async def _abort_active_job(user_id: str, field: str) -> bool:
 
 async def abort_active_intelligence_job(user_id: str) -> bool:
     """Abort the user's in-flight intelligence job, if one exists. Returns True
-    iff a job was aborted. Always clears the stored job id."""
-    return await _abort_active_job(user_id, _INTELLIGENCE_JOB_FIELD)
+    if a job was aborted. Always clears the stored job id."""
+    return await _abort_active_job(user_id, INTELLIGENCE_JOB_FIELD)
 
 
 async def abort_active_workflows_job(user_id: str) -> bool:
     """Abort the user's in-flight workflows-phase job, if one exists. Returns
-    True iff a job was aborted. Always clears the stored job id."""
-    return await _abort_active_job(user_id, _WORKFLOWS_JOB_FIELD)
+    True if a job was aborted. Always clears the stored job id."""
+    return await _abort_active_job(user_id, WORKFLOWS_JOB_FIELD)
 
 
 async def _purge_stale_onboarding_todos(user_id: str) -> int:
@@ -168,12 +168,12 @@ async def enqueue_intelligence_job(user_id: str) -> str | None:
         )
 
     pool = await RedisPoolManager.get_pool()
-    job = await pool.enqueue_job(_INTELLIGENCE_TASK, user_id)
+    job = await pool.enqueue_job(INTELLIGENCE_TASK, user_id)
     if job is None:
         log.error(f"{LogTag.ONBOARDING} intelligence_job enqueue returned no job", user_id=user_id)
         return None
 
-    await _set_active_job_id(user_id, job.job_id, _INTELLIGENCE_JOB_FIELD)
+    await _set_active_job_id(user_id, job.job_id, INTELLIGENCE_JOB_FIELD)
     log.info(
         f"{LogTag.ONBOARDING} intelligence_job enqueued",
         user_id=user_id,
@@ -188,12 +188,12 @@ async def enqueue_workflows_job(user_id: str) -> str | None:
     await abort_active_workflows_job(user_id)
 
     pool = await RedisPoolManager.get_pool()
-    job = await pool.enqueue_job(_WORKFLOWS_TASK, user_id)
+    job = await pool.enqueue_job(WORKFLOWS_TASK, user_id)
     if job is None:
         log.error(f"{LogTag.ONBOARDING} workflows_job enqueue returned no job", user_id=user_id)
         return None
 
-    await _set_active_job_id(user_id, job.job_id, _WORKFLOWS_JOB_FIELD)
+    await _set_active_job_id(user_id, job.job_id, WORKFLOWS_JOB_FIELD)
     log.info(
         f"{LogTag.ONBOARDING} workflows_job enqueued",
         user_id=user_id,

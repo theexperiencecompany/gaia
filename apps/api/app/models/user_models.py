@@ -97,22 +97,6 @@ class OnboardingPreferences(BaseModel):
         return None if v == "" else v
 
 
-def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
-    # Order-preserving dedupe: a user can select the same integration twice
-    # (e.g. via a chip and a mention). We keep the first occurrence so the
-    # selection order — which downstream workflow generation treats as priority
-    # — is stable, rather than using set() which would scramble it.
-    if not v:
-        return v
-    seen: set[str] = set()
-    out: list[str] = []
-    for slug in v:
-        if slug not in seen:
-            seen.add(slug)
-            out.append(slug)
-    return out
-
-
 class ClarifyAnswer(BaseModel):
     """One answered no-Gmail clarify question, persisted on onboarding.clarify_answers."""
 
@@ -212,6 +196,21 @@ class OnboardingIntegrationsRequest(BaseModel):
         return _dedupe_slugs(v) or []
 
 
+class OnboardingIntegrationsStatus(str, Enum):
+    """Outcome of submitting onboarding integration selections."""
+
+    QUEUED = "queued"  # Selections saved; workflows-phase job enqueued.
+    ALREADY_COMPLETE = "already_complete"  # Onboarding already finished (replay).
+    ALREADY_RUNNING = "already_running"  # Workflows job already in flight (replay).
+
+
+class OnboardingIntegrationsResponse(BaseModel):
+    success: bool = Field(..., description="Whether the submission was accepted")
+    status: OnboardingIntegrationsStatus = Field(
+        ..., description="Outcome of persisting the selected integrations"
+    )
+
+
 class OnboardingPhaseUpdateRequest(BaseModel):
     phase: OnboardingPhase = Field(..., description="The onboarding phase to transition to")
 
@@ -222,3 +221,19 @@ class OnboardingPhaseUpdateRequest(BaseModel):
         # Phase validation is handled by the enum type
         # Additional business logic validation should be in the service layer
         return v
+
+
+def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
+    # Order-preserving dedupe: a user can select the same integration twice
+    # (e.g. via a chip and a mention). We keep the first occurrence so the
+    # selection order — which downstream workflow generation treats as priority
+    # — is stable, rather than using set() which would scramble it.
+    if not v:
+        return v
+    seen: set[str] = set()
+    out: list[str] = []
+    for slug in v:
+        if slug not in seen:
+            seen.add(slug)
+            out.append(slug)
+    return out

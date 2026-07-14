@@ -11,6 +11,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SerializeAsAny,
     field_serializer,
     field_validator,
     model_validator,
@@ -255,16 +256,6 @@ class Workflow(BaseScheduledTask):
         description="Creator info hydrated for public workflow lookups.",
     )
 
-    # Computed at read time (not stored in DB). Mirrors the `creator` pattern.
-    required_integrations: list[IntegrationRef] | None = Field(
-        default=None,
-        description="Integration IDs required by the workflow's steps.",
-    )
-    missing_integrations: list[IntegrationRef] | None = Field(
-        default=None,
-        description="Required integrations the user has not connected yet.",
-    )
-
     def __init__(self, **data):
         """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields."""
         # Ensure user_id is provided (it's required by BaseScheduledTask)
@@ -326,6 +317,21 @@ class Workflow(BaseScheduledTask):
 
 
 # Request/Response models for API
+
+
+class WorkflowWithIntegrations(Workflow):
+    """Read-time view of a workflow: the persisted `Workflow` plus its computed
+    integration requirements. Never persisted — the storage model is `Workflow`;
+    these fields are populated by the service on read paths only."""
+
+    required_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Integration IDs required by the workflow's steps.",
+    )
+    missing_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Required integrations the user has not connected yet.",
+    )
 
 
 class CreateWorkflowRequest(BaseModel):
@@ -421,14 +427,16 @@ class UpdateWorkflowRequest(BaseModel):
 class WorkflowResponse(BaseModel):
     """Response model for workflow operations."""
 
-    workflow: Workflow
+    # SerializeAsAny so a WorkflowWithIntegrations (from read paths) serializes
+    # its extra integration fields; plain Workflow instances still validate.
+    workflow: SerializeAsAny[Workflow]
     message: str = Field(description="Success or status message")
 
 
 class WorkflowListResponse(BaseModel):
     """Response model for listing workflows."""
 
-    workflows: list[Workflow]
+    workflows: list[SerializeAsAny[Workflow]]
 
 
 class WorkflowExecutionRequest(BaseModel):
