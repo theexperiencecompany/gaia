@@ -436,7 +436,9 @@ class WorkflowResponse(BaseModel):
 class WorkflowListResponse(BaseModel):
     """Response model for listing workflows."""
 
-    workflows: list[SerializeAsAny[Workflow]]
+    # The list path always enriches, so this is the concrete read model — typing
+    # it as list[Workflow] would break on invariance (list is not covariant).
+    workflows: list[WorkflowWithIntegrations]
 
 
 class WorkflowExecutionRequest(BaseModel):
