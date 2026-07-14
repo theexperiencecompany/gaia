@@ -22,6 +22,7 @@ from PIL import Image, UnidentifiedImageError
 
 from app.constants.media import (
     DOWNSCALE_LONGEST_EDGE,
+    IMAGE_EXTENSION_BY_MIME,
     IMAGE_MIME_BY_EXTENSION,
     MAX_IMAGE_FILE_BYTES,
     MIME_BY_PILLOW_FORMAT,
@@ -46,9 +47,15 @@ class InvalidImage(ValueError):
 class InlineImage:
     """An image that has been validated and fitted to the inline budget."""
 
+    data: bytes
     base64: str
     mime_type: str
-    byte_size: int
+
+    @property
+    def extension(self) -> str:
+        """Filename suffix for ``data``. Always resolves — ``_fit`` only ever
+        emits a provider-safe MIME."""
+        return IMAGE_EXTENSION_BY_MIME[self.mime_type]
 
     def to_block(self) -> dict[str, Any]:
         return image_content_block(self.base64, self.mime_type)
@@ -141,7 +148,7 @@ class ImageCodec:
     @staticmethod
     def _encode(data: bytes, mime_type: str) -> InlineImage:
         return InlineImage(
+            data=data,
             base64=base64.b64encode(data).decode("ascii"),
             mime_type=mime_type,
-            byte_size=len(data),
         )

@@ -29,6 +29,16 @@ IMAGE_MIME_BY_EXTENSION: dict[str, str] = {
     ".gif": GIF_MIME,
 }
 
+# Filename suffix for the MIMEs `ImageCodec` can emit — always provider-safe,
+# since anything else is transcoded to JPEG. A producer that persists an image
+# names the file with this, so a later `read` of that path resolves the same MIME
+# back through IMAGE_MIME_BY_EXTENSION above.
+IMAGE_EXTENSION_BY_MIME: dict[str, str] = {
+    PNG_MIME: ".png",
+    JPEG_MIME: ".jpg",
+    WEBP_MIME: ".webp",
+}
+
 # Pillow's sniffed format name → MIME. The decoded bytes are authoritative: a
 # file extension and an MCP server's declared `mimeType` can both lie, and a
 # block whose mime_type contradicts its payload is rejected by the provider.
@@ -83,7 +93,8 @@ MEDIA_OMITTED_NOTICE = (
 )
 MEDIA_EVICTED_NOTICE = (
     "[Inline media omitted: only the most recent images are kept in context. "
-    "Read the file again if you need to look at it now.]"
+    "To look at it now, `read` it back from the path named in this result, or "
+    "re-run the tool that produced it if it named none.]"
 )
 MEDIA_REPACKED_NOTICE = (
     "[Inline media from this result is attached in the user message following these tool results.]"

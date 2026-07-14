@@ -144,6 +144,13 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
         info=FeatureInfo(title="Webpage Fetch", description="Fetch and analyze web pages"),
     ),
+    "download": TieredRateLimits(
+        free=RateLimitConfig(day=20, month=200),
+        pro=RateLimitConfig(day=300, month=9000),
+        info=FeatureInfo(
+            title="File Download", description="Download a file from a URL into the workspace"
+        ),
+    ),
     # AUTOMATION (High Value)
     "workflow_operations": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),  # Keep restrictive

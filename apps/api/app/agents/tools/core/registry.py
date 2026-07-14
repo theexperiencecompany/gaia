@@ -225,6 +225,7 @@ class ToolRegistry:
         from app.agents.tools import (
             context_tool,
             desktop_tools,
+            download_tool,
             file_tools,
             finish_task_tool,
             flowchart_tool,
@@ -251,6 +252,7 @@ class ToolRegistry:
                 webpage_tool.web_search_tool,
                 webpage_tool.fetch_webpages,
                 research_tool.deep_research,
+                *download_tool.tools,
             ],
         )
 

@@ -268,6 +268,13 @@ Everything below is reachable via relative paths once you're there.
     archives/        SYSTEM-written. Before older turns are summarized away, the
                      full history is snapshotted to `pre_summary_<ts>.json`.
                      Read it to recover a detail the summary dropped.
+    screenshots/     SYSTEM-written. Every `take_screenshot` capture is saved
+                     here. Only the most recent images stay in your context, so
+                     `read` one of these paths to look at an older capture again
+                     rather than asking the user to re-share their screen.
+    downloads/       SYSTEM-written. Files the `download` tool pulled from a URL
+                     land here; it returns the path, which you then `read` (or
+                     open with bash) to work with the file.
 
 ## Rules
 

@@ -192,8 +192,8 @@ class TestBudgets:
         inline = await ImageCodec.from_bytes(data)
 
         assert inline.mime_type == JPEG_MIME
-        assert inline.byte_size <= TARGET_INLINE_IMAGE_BYTES
-        assert inline.byte_size == len(base64.b64decode(inline.base64))
+        assert len(inline.data) <= TARGET_INLINE_IMAGE_BYTES
+        assert inline.data == base64.b64decode(inline.base64)
 
 
 # ---------------------------------------------------------------------------

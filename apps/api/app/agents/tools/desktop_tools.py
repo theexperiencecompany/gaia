@@ -12,12 +12,13 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-from app.agents.llm.vision import describe_image
+from app.agents.tools.coding._context import get_session_id, get_user_id
+from app.agents.workspace.paths import session_screenshot_relpath
 from app.constants.log_tags import LogTag
-from app.constants.media import PNG_MIME
 from app.decorators import with_doc
 from app.models.chat_models import ConversationSource
 from app.services.desktop.bridge import DesktopToolOutcome, request_desktop_action
+from app.services.storage import write_session_file
 from app.templates.docstrings.desktop_tool_docs import (
     LIST_WINDOWS,
     OPEN_APP,
@@ -26,6 +27,8 @@ from app.templates.docstrings.desktop_tool_docs import (
     TAKE_SCREENSHOT,
     WRITE_CLIPBOARD,
 )
+from app.utils.image_codec import ImageCodec, InlineImage, InvalidImage
+from app.utils.multimodal import text_content_block
 from shared.py.wide_events import log
 
 _NOT_DESKTOP_ERROR = (
@@ -33,13 +36,6 @@ _NOT_DESKTOP_ERROR = (
     "This conversation did not originate there, so this action cannot run."
 )
 _MISSING_CONTEXT_ERROR = "Desktop tool failed: no active stream context."
-
-_SCREENSHOT_VISION_PROMPT = (
-    "This is a screenshot of the user's computer screen. Describe what is visible "
-    "in detail: the focused application, window titles, and any text, errors, or "
-    "UI elements relevant to the request. Transcribe important text exactly.\n\n"
-    "Focus on: {query}"
-)
 
 
 async def _run_desktop_action(
@@ -86,12 +82,34 @@ def _emit_tool_data(tool_name: str, data: dict[str, Any]) -> None:
     )
 
 
+async def _save_screenshot(config: RunnableConfig, image: InlineImage) -> str:
+    """Persist a capture to the session workspace; return its `/workspace` path.
+
+    A screenshot is inline media like any other, so it is evicted from context
+    once newer images push past MAX_INLINE_MEDIA_BLOCKS. Writing it to the
+    workspace is what makes that eviction recoverable — the agent `read`s the
+    path back. The bytes stored are the ones the model was shown (post-ImageCodec),
+    so a re-read round-trips instead of re-transcoding.
+    """
+    session_id = get_session_id(config)
+    if not session_id:
+        raise ValueError("take_screenshot requires a conversation-scoped run")
+    filename = f"screenshot-{datetime.now(UTC):%Y%m%dT%H%M%S%f}{image.extension}"
+    _, sandbox_path = await write_session_file(
+        user_id=get_user_id(config),
+        conversation_id=session_id,
+        relative_path=session_screenshot_relpath(filename),
+        content=image.data,
+    )
+    return sandbox_path
+
+
 @tool
 @with_doc(TAKE_SCREENSHOT)
 async def take_screenshot(
     config: RunnableConfig,
     query: Annotated[str, "What to look for or describe on the screen"],
-) -> str:
+) -> str | list[dict[str, Any]]:
     writer = get_stream_writer()
     writer({"progress": "Looking at your screen..."})
 
@@ -116,25 +134,29 @@ async def take_screenshot(
             },
         )
 
-    # Screenshots go to the model as text, not as image blocks: the description
-    # is the one delivery that works on every lane, vision-capable or not.
-    description = await describe_image(
-        image_b64,
-        PNG_MIME,
-        prompt=_SCREENSHOT_VISION_PROMPT.format(query=query),
-        label="desktop_vision",
-    )
-    if description is None:
-        return (
-            "Captured the user's screen (already shown to them), but it could not "
-            "be analyzed because no vision-capable model was available. Ask the "
-            "user to describe what they see, or try again."
-        )
-    return (
-        f"Screenshot of the user's screen (described for: {query}):\n\n{description}\n\n"
-        "The screenshot itself is already shown to the user — do not describe it "
-        "back verbatim; answer their request using this context."
-    )
+    try:
+        image = await ImageCodec.from_base64(image_b64)
+    except InvalidImage as e:
+        return f"Could not read the captured screen: {e}"
+
+    try:
+        path = await _save_screenshot(config, image)
+    except ValueError as e:
+        return f"Could not save the captured screen: {e}"
+
+    # The pixels go to the model as-is. A lane that cannot see them gets a text
+    # description attached at execution time (MediaDescriptionMiddleware), which
+    # reads the query below as its context — same treatment as every other tool
+    # that returns media.
+    return [
+        text_content_block(
+            f"Screenshot of the user's screen, saved to {path} — read that path to "
+            f"look at it again later. Looking for: {query}\n\n"
+            "The screenshot is already shown to the user; answer their request from "
+            "it rather than describing it back to them verbatim."
+        ),
+        image.to_block(),
+    ]
 
 
 @tool
