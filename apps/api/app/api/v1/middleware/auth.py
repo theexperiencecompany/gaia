@@ -61,6 +61,16 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             # Login-free connect link — self-authenticates via a single-use,
             # server-bound connect code (see connect_link_service).
             "/api/v1/integrations/connect-link",
+            # Device bridge: the daemon isn't logged in. Pairing start/poll
+            # self-authenticate via the pairing code, token exchange via the
+            # refresh credential, and server registration via the device connect
+            # JWT (checked in-handler). /device/pair/approve is NOT here — it
+            # requires a user session (matched by startswith, so the pair
+            # subroutes are listed explicitly rather than the /device/pair prefix).
+            "/api/v1/device/pair/start",
+            "/api/v1/device/pair/poll",
+            "/api/v1/device/token",
+            "/api/v1/device/servers",
         ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie.
