@@ -9,8 +9,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "jira",
     tagline:
       "Sync personal Todoist tasks with Jira tickets without leaving your flow",
-    metaTitle:
-      "Todoist + Jira Integration - Personal Tasks Meet Team Tickets | GAIA",
+    metaTitle: "Todoist + Jira Integration - Personal Tasks Meet Team Tickets",
     metaDescription:
       "Connect Todoist and Jira with GAIA. Automatically create Jira issues from Todoist tasks, sync your assigned Jira tickets into Todoist, and keep your personal and team workflows aligned.",
     keywords: [
@@ -98,7 +97,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Bridge personal Todoist task capture with ClickUp team project management",
     metaTitle:
-      "Todoist + ClickUp Integration - Personal Tasks Meet Team Projects | GAIA",
+      "Todoist + ClickUp Integration - Personal Tasks Meet Team Projects",
     metaDescription:
       "Connect Todoist and ClickUp with GAIA. Sync your personal Todoist tasks into ClickUp spaces, create ClickUp tasks from Todoist captures, and keep individual and team workflows aligned.",
     keywords: [
@@ -184,7 +183,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Sync personal Todoist tasks to team Trello boards without manual copying",
     metaTitle:
-      "Todoist + Trello Integration - From Personal Inbox to Team Board | GAIA",
+      "Todoist + Trello Integration - From Personal Inbox to Team Board",
     metaDescription:
       "Connect Todoist and Trello with GAIA. Automatically create Trello cards from Todoist tasks, sync card updates back to Todoist, and keep your personal and team Kanban views in step.",
     keywords: [
@@ -270,7 +269,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Keep personal Todoist tasks and Linear engineering issues in perfect sync",
     metaTitle:
-      "Todoist + Linear Integration - Personal Tasks and Engineering Issues Unified | GAIA",
+      "Todoist + Linear Integration - Personal Tasks and Engineering Issues Unified",
     metaDescription:
       "Connect Todoist and Linear with GAIA. Sync assigned Linear issues into your Todoist inbox, escalate Todoist tasks to Linear, and maintain a single view of your engineering and personal workload.",
     keywords: [
@@ -357,7 +356,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Turn GitHub issues assigned to you into Todoist tasks automatically",
     metaTitle:
-      "Todoist + GitHub Integration - Code Issues in Your Personal Task Manager | GAIA",
+      "Todoist + GitHub Integration - Code Issues in Your Personal Task Manager",
     metaDescription:
       "Connect Todoist and GitHub with GAIA. Sync GitHub issues and pull request reviews assigned to you into Todoist, create GitHub issues from Todoist tasks, and manage your dev workload in one place.",
     keywords: [
@@ -443,7 +442,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Create Todoist tasks from Slack messages and share completions back to your team",
     metaTitle:
-      "Todoist + Slack Integration - Tasks from Messages, Updates to Channels | GAIA",
+      "Todoist + Slack Integration - Tasks from Messages, Updates to Channels",
     metaDescription:
       "Connect Todoist and Slack with GAIA. Turn Slack messages into Todoist tasks instantly, receive task reminders in Slack, and share completed work back to your team's channels automatically.",
     keywords: [
@@ -532,7 +531,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Attach Drive files to Todoist tasks and create tasks from Drive activity automatically",
     metaTitle:
-      "Todoist + Google Drive Integration - Tasks Linked to Docs and Files | GAIA",
+      "Todoist + Google Drive Integration - Tasks Linked to Docs and Files",
     metaDescription:
       "Connect Todoist and Google Drive with GAIA. Attach Drive documents to Todoist tasks, create tasks when Drive files need review, and keep your document-related work organized in your personal task manager.",
     keywords: [
@@ -618,7 +617,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Share task progress in Discord and create Todoist tasks from Discord messages",
     metaTitle:
-      "Todoist + Discord Integration - Task Management for Discord Communities | GAIA",
+      "Todoist + Discord Integration - Task Management for Discord Communities",
     metaDescription:
       "Connect Todoist and Discord with GAIA. Create Todoist tasks from Discord messages, share task completions to Discord channels, and keep community or team action items organized in your personal task manager.",
     keywords: [
@@ -705,7 +704,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Create Todoist follow-up tasks from HubSpot CRM activities and sync deal tasks automatically",
     metaTitle:
-      "Todoist + HubSpot Integration - CRM Activities Into Personal Tasks | GAIA",
+      "Todoist + HubSpot Integration - CRM Activities Into Personal Tasks",
     metaDescription:
       "Connect Todoist and HubSpot with GAIA. Automatically create Todoist follow-up tasks from HubSpot deal stages and contact activities, and push completed tasks back to HubSpot as logged activities.",
     keywords: [
@@ -792,7 +791,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Schedule sprint ceremonies from Jira milestones and add events from Jira directly to your calendar",
     metaTitle:
-      "Google Calendar + Jira Integration - Jira Milestones on Your Calendar | GAIA",
+      "Google Calendar + Jira Integration - Jira Milestones on Your Calendar",
     metaDescription:
       "Connect Google Calendar and Jira with GAIA. Automatically schedule sprint events from Jira, add milestone due dates to your calendar, and ensure your engineering schedule reflects your Jira project timeline.",
     keywords: [
@@ -880,7 +879,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Sync ClickUp task deadlines to Google Calendar and create tasks from calendar events",
     metaTitle:
-      "Google Calendar + ClickUp Integration - Deadlines on Your Calendar | GAIA",
+      "Google Calendar + ClickUp Integration - Deadlines on Your Calendar",
     metaDescription:
       "Connect Google Calendar and ClickUp with GAIA. Automatically sync ClickUp task due dates to Google Calendar, create ClickUp tasks from calendar events, and keep your schedule and project management aligned.",
     keywords: [
@@ -968,7 +967,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Add Trello card due dates to Google Calendar and create cards from calendar events",
     metaTitle:
-      "Google Calendar + Trello Integration - Trello Deadlines on Your Calendar | GAIA",
+      "Google Calendar + Trello Integration - Trello Deadlines on Your Calendar",
     metaDescription:
       "Connect Google Calendar and Trello with GAIA. Automatically create Google Calendar events from Trello card due dates, generate Trello cards from calendar events, and keep your board and schedule in sync.",
     keywords: [
@@ -1055,8 +1054,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "hubspot",
     tagline:
       "Sync meeting invites with HubSpot contacts and log calls to your CRM automatically",
-    metaTitle:
-      "Google Calendar + HubSpot Integration - CRM-Connected Meetings | GAIA",
+    metaTitle: "Google Calendar + HubSpot Integration - CRM-Connected Meetings",
     metaDescription:
       "Connect Google Calendar and HubSpot with GAIA. Automatically log Google Calendar meetings to HubSpot, sync contact details to calendar invites, and ensure every client interaction is captured in your CRM.",
     keywords: [
@@ -1142,7 +1140,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Schedule billing cycle events and payment reminder deadlines directly from Stripe",
     metaTitle:
-      "Google Calendar + Stripe Integration - Billing Cycles on Your Calendar | GAIA",
+      "Google Calendar + Stripe Integration - Billing Cycles on Your Calendar",
     metaDescription:
       "Connect Google Calendar and Stripe with GAIA. Automatically create calendar events for Stripe subscription renewals, failed payment follow-ups, and invoice due dates so your billing schedule is always visible.",
     keywords: [
@@ -1229,7 +1227,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Sync Microsoft Teams meetings to Google Calendar so your schedule is always complete",
     metaTitle:
-      "Google Calendar + Microsoft Teams Integration - One Complete Schedule | GAIA",
+      "Google Calendar + Microsoft Teams Integration - One Complete Schedule",
     metaDescription:
       "Connect Google Calendar and Microsoft Teams with GAIA. Automatically sync Teams meeting invites to Google Calendar, create Teams meetings from Google Calendar events, and maintain a single unified schedule.",
     keywords: [
@@ -1317,7 +1315,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Post Google Calendar event reminders to Discord channels automatically",
     metaTitle:
-      "Google Calendar + Discord Integration - Event Reminders in Discord | GAIA",
+      "Google Calendar + Discord Integration - Event Reminders in Discord",
     metaDescription:
       "Connect Google Calendar and Discord with GAIA. Automatically post event reminders and schedule announcements to Discord channels, and create calendar events from Discord community discussions.",
     keywords: [
@@ -1405,7 +1403,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Attach Drive docs to calendar events and create event notes in Drive automatically",
     metaTitle:
-      "Google Calendar + Google Drive Integration - Meetings Linked to Documents | GAIA",
+      "Google Calendar + Google Drive Integration - Meetings Linked to Documents",
     metaDescription:
       "Connect Google Calendar and Google Drive with GAIA. Automatically attach relevant Drive documents to calendar events, create meeting notes docs for upcoming meetings, and organize Drive files by meeting context.",
     keywords: [
@@ -1493,7 +1491,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Schedule design reviews from Figma milestones and create calendar events from Figma project timelines",
     metaTitle:
-      "Google Calendar + Figma Integration - Design Reviews on Your Calendar | GAIA",
+      "Google Calendar + Figma Integration - Design Reviews on Your Calendar",
     metaDescription:
       "Connect Google Calendar and Figma with GAIA. Automatically schedule design review meetings from Figma project milestones, link Figma files to calendar events, and keep your design timeline visible on your calendar.",
     keywords: [
@@ -1579,8 +1577,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
     tagline: "Turn tasks into calendar events and deadlines into time blocks",
-    metaTitle:
-      "Todoist + Google Calendar Automation - Sync Tasks and Events | GAIA",
+    metaTitle: "Todoist + Google Calendar Automation - Sync Tasks and Events",
     metaDescription:
       "Automate Todoist and Google Calendar with GAIA. Convert tasks with due dates into calendar events, block time for high-priority work, and keep your schedule aligned with your to-do list automatically.",
     keywords: [
@@ -1673,7 +1670,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Surface Salesforce action items in Todoist and log work back automatically",
     metaTitle:
-      "Todoist + Salesforce Automation - Bridge CRM Tasks and Personal Planning | GAIA",
+      "Todoist + Salesforce Automation - Bridge CRM Tasks and Personal Planning",
     metaDescription:
       "Connect Todoist and Salesforce with GAIA. Create Todoist tasks from Salesforce opportunities, log activity back to CRM records, and keep your sales workflow on track without switching tools.",
     keywords: [
@@ -1763,7 +1760,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "zoom",
     tagline: "Turn Zoom meeting outcomes into Todoist tasks automatically",
     metaTitle:
-      "Todoist + Zoom Automation - Capture Meeting Action Items as Tasks | GAIA",
+      "Todoist + Zoom Automation - Capture Meeting Action Items as Tasks",
     metaDescription:
       "Connect Todoist and Zoom with GAIA. Automatically create Todoist tasks from Zoom meeting action items, get pre-meeting task reminders, and ensure every meeting leads to tracked follow-ups.",
     keywords: [
@@ -1854,8 +1851,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "teams",
     tagline:
       "Surface Todoist tasks in Teams and capture action items from chats",
-    metaTitle:
-      "Todoist + Microsoft Teams Automation - Tasks and Chat in Sync | GAIA",
+    metaTitle: "Todoist + Microsoft Teams Automation - Tasks and Chat in Sync",
     metaDescription:
       "Connect Todoist and Microsoft Teams with GAIA. Get task reminders in Teams channels, capture action items from Teams conversations, and keep your personal task list visible where your team collaborates.",
     keywords: [
@@ -1943,8 +1939,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolB: "Figma",
     toolBSlug: "figma",
     tagline: "Connect design work in Figma with task tracking in Todoist",
-    metaTitle:
-      "Todoist + Figma Automation - Link Design Tasks and Figma Files | GAIA",
+    metaTitle: "Todoist + Figma Automation - Link Design Tasks and Figma Files",
     metaDescription:
       "Connect Todoist and Figma with GAIA. Create Todoist tasks from Figma comments and feedback, link design files to tasks, and track design work progress without leaving your task manager.",
     keywords: [
@@ -2034,7 +2029,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolB: "Stripe",
     toolBSlug: "stripe",
     tagline: "Turn Stripe payment events into actionable tasks automatically",
-    metaTitle: "Todoist + Stripe Automation - Payment Events to Tasks | GAIA",
+    metaTitle: "Todoist + Stripe Automation - Payment Events to Tasks",
     metaDescription:
       "Connect Todoist and Stripe with GAIA. Create Todoist tasks from Stripe payment failures, subscription events, and churn signals so your team acts on revenue-critical moments immediately.",
     keywords: [
@@ -2123,8 +2118,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "airtable",
     tagline:
       "Sync Airtable records with Todoist tasks for structured project tracking",
-    metaTitle:
-      "Todoist + Airtable Automation - Connect Records and Tasks | GAIA",
+    metaTitle: "Todoist + Airtable Automation - Connect Records and Tasks",
     metaDescription:
       "Connect Todoist and Airtable with GAIA. Create Todoist tasks from Airtable records, sync task status back to your database, and keep your project database and personal task list aligned automatically.",
     keywords: [
@@ -2214,7 +2208,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "loom",
     tagline:
       "Turn Loom video feedback into Todoist tasks and attach videos to work items",
-    metaTitle: "Todoist + Loom Automation - Video Feedback to Tasks | GAIA",
+    metaTitle: "Todoist + Loom Automation - Video Feedback to Tasks",
     metaDescription:
       "Connect Todoist and Loom with GAIA. Convert Loom video feedback and comments into Todoist tasks, attach Loom videos to tasks for context, and keep async video reviews tracked and actionable.",
     keywords: [
@@ -2308,7 +2302,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Sync sales meetings with Salesforce and auto-log CRM activity from your calendar",
     metaTitle:
-      "Google Calendar + Salesforce Automation - Sync Meetings and CRM | GAIA",
+      "Google Calendar + Salesforce Automation - Sync Meetings and CRM",
     metaDescription:
       "Connect Google Calendar and Salesforce with GAIA. Automatically log calendar meetings as Salesforce activities, create follow-up tasks from sales calls, and keep your CRM timeline accurate without manual entry.",
     keywords: [
@@ -2401,7 +2395,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Keep your Airtable project database in sync with Google Calendar events",
     metaTitle:
-      "Google Calendar + Airtable Automation - Sync Events and Records | GAIA",
+      "Google Calendar + Airtable Automation - Sync Events and Records",
     metaDescription:
       "Connect Google Calendar and Airtable with GAIA. Create Airtable records from calendar events, update event dates when database records change, and keep your project database and schedule aligned.",
     keywords: [
@@ -2495,7 +2489,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Record Loom video briefs for upcoming meetings and share recaps automatically",
     metaTitle:
-      "Google Calendar + Loom Automation - Meeting Briefs and Video Recaps | GAIA",
+      "Google Calendar + Loom Automation - Meeting Briefs and Video Recaps",
     metaDescription:
       "Connect Google Calendar and Loom with GAIA. Get reminded to record Loom pre-meeting briefs, automatically share post-meeting Loom recaps with attendees, and reduce synchronous meeting load.",
     keywords: [

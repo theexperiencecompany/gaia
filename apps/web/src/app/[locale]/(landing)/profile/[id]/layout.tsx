@@ -16,9 +16,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id: cardId } = await params;
   const profileUrl = `${siteConfig.url}/profile/${cardId}`;
+  // User-generated share cards: keep OG tags for social sharing, but stay
+  // out of the search index — thousands of near-identical thin pages.
+  const noIndexRobots: Metadata["robots"] = { index: false, follow: true };
   const fallbackMetadata: Metadata = {
     title: "GAIA Profile Card",
     description: "View this personalized GAIA profile card",
+    robots: noIndexRobots,
     alternates: {
       canonical: profileUrl,
     },
@@ -61,6 +65,7 @@ export async function generateMetadata({
     return {
       title,
       description,
+      robots: noIndexRobots,
       alternates: {
         canonical: profileUrl,
       },

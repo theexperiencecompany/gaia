@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Team project and task management platform",
   description:
     "Asana is a team collaboration and project management tool built for tracking work across teams. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across your entire digital life.",
-  metaTitle: "Asana Alternative Without Per-Seat Pricing | GAIA vs Asana",
+  metaTitle: "Asana Alternative Without Per-Seat Pricing — GAIA vs Asana",
   metaDescription:
     "Asana charges per seat and still requires manual task management. GAIA is an open-source Asana alternative with AI that auto-creates tasks from email, automates workflows, and offers free self-hosting — no per-seat fees.",
   keywords: [

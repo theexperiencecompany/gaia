@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Video conferencing with AI meeting summaries",
   description:
     "Zoom is the leading video conferencing platform with AI Companion for meeting transcription and summaries. GAIA is a proactive AI assistant that manages your entire workflow before, during, and after meetings.",
-  metaTitle: "Zoom Alternative for Meeting Productivity | GAIA vs Zoom",
+  metaTitle: "Zoom Alternative for Meeting Productivity — GAIA vs Zoom",
   metaDescription:
     "Zoom records meetings but won't prepare briefings or follow up on action items. GAIA is an open-source alternative that manages your calendar, preps you for every meeting, and automates post-meeting tasks.",
   keywords: [

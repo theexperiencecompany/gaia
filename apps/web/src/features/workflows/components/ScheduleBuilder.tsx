@@ -223,8 +223,7 @@ export const ScheduleBuilder = ({
 
   return (
     <div className="w-full">
-      {/* Natural Language Schedule Builder */}
-      <div className="flex w-full flex-row items-center gap-x-2 gap-y-2 text-sm">
+      <div className="flex w-full flex-row items-center gap-x-2 text-sm">
         <span className="shrink-0 text-zinc-400">Run</span>
 
         <Select
@@ -236,7 +235,7 @@ export const ScheduleBuilder = ({
               frequency: Array.from(keys)[0] as SimpleSchedule["frequency"],
             })
           }
-          className="w-28 shrink-0"
+          className="w-20 shrink-0"
           classNames={SELECT_CLASSNAMES}
         >
           <SelectItem key="every" textValue="Every">
@@ -261,7 +260,7 @@ export const ScheduleBuilder = ({
                   interval: Array.from(keys)[0] as SimpleSchedule["interval"],
                 })
               }
-              className="w-[4.5rem] shrink-0"
+              className="w-20 shrink-0"
               classNames={SELECT_CLASSNAMES}
             >
               <SelectItem key="day" textValue="Day">
@@ -286,7 +285,7 @@ export const ScheduleBuilder = ({
                       dayOfWeek: Array.from(keys)[0] as string,
                     })
                   }
-                  className="w-28 shrink-0"
+                  className="w-22 shrink-0"
                   classNames={SELECT_CLASSNAMES}
                 >
                   <SelectItem key="1" textValue="Monday">
@@ -376,7 +375,7 @@ export const ScheduleBuilder = ({
                 onSelectionChange={(keys) =>
                   handleAmpmChange(Array.from(keys)[0] as "AM" | "PM")
                 }
-                className="w-[4.25rem]"
+                className="w-17"
                 classNames={SELECT_CLASSNAMES}
               >
                 <SelectItem key="AM" textValue="AM">
@@ -387,13 +386,15 @@ export const ScheduleBuilder = ({
                 </SelectItem>
               </Select>
             </div>
-            <span className="shrink-0 text-nowrap text-zinc-500">in</span>
-            <TimezoneAutocomplete
-              timezone={normalizedTimezone}
-              options={timezoneOptions}
-              onChange={onTimezoneChange}
-              className="w-56 shrink-0"
-            />
+            <span className="shrink-0 text-zinc-500">in</span>
+            <div className="flex-1 min-w-18">
+              <TimezoneAutocomplete
+                timezone={normalizedTimezone}
+                options={timezoneOptions}
+                onChange={onTimezoneChange}
+                className="w-full"
+              />
+            </div>
           </>
         )}
 
@@ -406,15 +407,17 @@ export const ScheduleBuilder = ({
               size="sm"
               isInvalid={showCronError}
               onChange={(e) => handleCustomCronChange(e.target.value)}
-              className="flex-1"
+              className="w-40 shrink-0"
             />
             <span className="shrink-0 text-nowrap text-zinc-500">in</span>
-            <TimezoneAutocomplete
-              timezone={normalizedTimezone}
-              options={timezoneOptions}
-              onChange={onTimezoneChange}
-              className="w-56 shrink-0"
-            />
+            <div className="flex-1 min-w-18">
+              <TimezoneAutocomplete
+                timezone={normalizedTimezone}
+                options={timezoneOptions}
+                onChange={onTimezoneChange}
+                className="w-full"
+              />
+            </div>
           </>
         )}
       </div>

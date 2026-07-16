@@ -171,7 +171,8 @@ function callHandle(
 
 function lastSentBody(): string {
   const call = mockSendText.mock.calls.at(-1);
-  return (call?.[0] as { body: string }).body;
+  if (!call) throw new Error("sendText was never called");
+  return (call[0] as { body: string }).body;
 }
 
 function getChatRequest(): {

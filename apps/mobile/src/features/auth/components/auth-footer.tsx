@@ -1,14 +1,18 @@
 import { PressableFeedback } from "heroui-native";
-import { Text, View } from "react-native";
+import { Linking, Text, View } from "react-native";
 
 interface AuthFooterProps {
   showSignUpDisclaimer?: boolean;
 }
 
 export function AuthFooter({ showSignUpDisclaimer = false }: AuthFooterProps) {
-  const handleTermsPress = () => {};
+  const handleTermsPress = () => {
+    void Linking.openURL("https://heygaia.io/terms");
+  };
 
-  const handlePrivacyPress = () => {};
+  const handlePrivacyPress = () => {
+    void Linking.openURL("https://heygaia.io/privacy");
+  };
 
   return (
     <View className="items-center justify-center mt-6">

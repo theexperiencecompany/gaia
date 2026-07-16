@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Expensive at scale, especially for teams needing advanced permissions",
     "Mobile experience is sluggish and hard to navigate on smaller screens",
   ],
-  metaTitle: "Best Notion Alternative in 2026 | GAIA",
+  metaTitle: "Best Notion Alternative in 2026",
   metaDescription:
     "Looking for a Notion alternative that actually works for you? GAIA is a proactive AI assistant that manages tasks, email, and calendar automatically — no templates required.",
   keywords: [

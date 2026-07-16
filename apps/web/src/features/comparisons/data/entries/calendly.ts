@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Calendly lets people book time with you by sharing a link to your availability. GAIA manages your entire calendar from the inside — scheduling meetings, finding free slots, preparing briefings, and automating follow-ups — without generating public booking pages.",
   metaTitle:
-    "Calendly Alternative with Full AI Productivity OS | GAIA vs Calendly",
+    "Calendly Alternative with Full AI Productivity OS — GAIA vs Calendly",
   metaDescription:
     "Calendly handles scheduling links but stops there. GAIA is an open-source Calendly alternative that is a full AI productivity OS — managing your calendar, email, tasks, and workflows across 50+ tools proactively, with a free tier.",
   keywords: [

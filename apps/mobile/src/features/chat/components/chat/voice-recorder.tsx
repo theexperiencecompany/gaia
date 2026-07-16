@@ -7,7 +7,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { Surface } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Easing } from "react-native";
+import { Animated } from "react-native";
 
 export interface VoiceRecorderState {
   isRecording: boolean;
@@ -31,44 +31,6 @@ interface VoiceRecorderProps {
 }
 
 const CANCEL_THRESHOLD = -80;
-
-function _WaveformBar({ delay }: { delay: number }) {
-  const heightAnim = useRef(new Animated.Value(4)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(heightAnim, {
-          toValue: 8 + Math.random() * 16,
-          duration: 250 + Math.random() * 200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: false,
-          delay,
-        }),
-        Animated.timing(heightAnim, {
-          toValue: 4,
-          duration: 250 + Math.random() * 200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: false,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [heightAnim, delay]);
-
-  return (
-    <Animated.View
-      style={{
-        width: 3,
-        borderRadius: 2,
-        backgroundColor: "#ef4444",
-        height: heightAnim,
-        alignSelf: "center",
-      }}
-    />
-  );
-}
 
 export function RecordingWaveform({ isCancelling }: { isCancelling: boolean }) {
   return (

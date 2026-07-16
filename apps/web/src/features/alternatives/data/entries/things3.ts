@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No email or calendar integration beyond basic system calendar sync",
     "Beautiful but entirely manual — you manage your tasks, not an AI",
   ],
-  metaTitle: "Best Things 3 Alternative in 2026 | GAIA",
+  metaTitle: "Best Things 3 Alternative in 2026",
   metaDescription:
     "Things 3 is Apple-only with no AI. GAIA is a cross-platform proactive AI assistant that manages tasks, email, and calendar automatically. Free tier + self-hosting.",
   keywords: [

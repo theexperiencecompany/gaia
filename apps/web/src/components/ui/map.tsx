@@ -2167,20 +2167,19 @@ function MapClusterLayer<
   return null;
 }
 
+export type { MapArcDatum, MapArcEvent, MapGeoJSONEvent, MapRef, MapViewport };
 export {
-  MapView,
-  useMap,
+  MapArc,
+  MapClusterLayer,
+  MapControls,
+  MapGeoJSON,
   MapMarker,
+  MapPopup,
+  MapRoute,
+  MapView,
   MarkerContent,
+  MarkerLabel,
   MarkerPopup,
   MarkerTooltip,
-  MarkerLabel,
-  MapPopup,
-  MapControls,
-  MapRoute,
-  MapArc,
-  MapGeoJSON,
-  MapClusterLayer,
+  useMap,
 };
-
-export type { MapRef, MapViewport, MapArcDatum, MapArcEvent, MapGeoJSONEvent };
