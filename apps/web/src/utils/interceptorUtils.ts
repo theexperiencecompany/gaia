@@ -173,9 +173,13 @@ export const handleRateLimitError = (errorData: unknown): boolean => {
     plan_required?: string;
     reset_time?: string;
     message?: string;
+    current_plan?: string;
   };
 
-  const { feature, plan_required, reset_time, message } = rateLimit;
+  const { feature, plan_required, reset_time, message, current_plan } =
+    rateLimit;
+  // A user already on the top tier has nothing to upgrade to — never pitch it.
+  const isPro = current_plan === "pro";
 
   if (plan_required) {
     // Prefer the backend's message (it distinguishes a usage/cost wall from a
@@ -203,7 +207,7 @@ export const handleRateLimitError = (errorData: unknown): boolean => {
       message: message || undefined,
       resetTime: reset_time,
       feature,
-      showUpgradeButton: true,
+      showUpgradeButton: !isPro,
     });
   }
 

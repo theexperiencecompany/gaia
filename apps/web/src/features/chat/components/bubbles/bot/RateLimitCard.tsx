@@ -7,6 +7,7 @@ import {
   Clock01Icon,
   UploadCircle01Icon,
 } from "@icons";
+import { formatPlanName } from "@shared/utils";
 import type { RateLimitData } from "@/config/registries/toolRegistry";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 
@@ -48,19 +49,17 @@ function formatFeatureName(feature?: string): string {
 }
 
 const PRO_BENEFITS = [
-  "10x higher daily limits on all features",
+  "Much higher limits on every feature",
+  "Unlimited chat messages",
   "Priority responses and faster processing",
 ];
 
-function formatPlanName(plan?: string): string {
-  if (!plan) return "Pro";
-  return plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase();
-}
-
 export default function RateLimitCard({ data }: RateLimitCardProps) {
-  const { feature, plan_required, reset_time, message } = data;
+  const { feature, plan_required, reset_time, message, current_plan } = data;
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const isUpgradeRequired = !!plan_required;
+  // A user already on the top tier has nothing to upgrade to — hide the pitch.
+  const isPro = current_plan === "pro";
   const resetInfo = getResetInfo(reset_time);
   const featureName = formatFeatureName(feature);
   const planName = formatPlanName(plan_required);
@@ -163,15 +162,17 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
               </div>
             )}
 
-            {/* Upgrade nudge */}
-            <div className="flex items-start gap-2 px-3">
-              <Alert01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
-              <p className="text-xs text-zinc-400">
-                Need more? Upgrade to{" "}
-                <span className="font-medium text-zinc-300">Pro</span> for 10x
-                higher daily limits on {featureName} and all other features.
-              </p>
-            </div>
+            {/* Upgrade nudge — hidden for users already on the top tier */}
+            {!isPro && (
+              <div className="flex items-start gap-2 px-3">
+                <Alert01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
+                <p className="text-xs text-zinc-400">
+                  Need more? Upgrade to{" "}
+                  <span className="font-medium text-zinc-300">Pro</span> for
+                  much higher limits on {featureName} and every other feature.
+                </p>
+              </div>
+            )}
           </>
         )}
       </div>

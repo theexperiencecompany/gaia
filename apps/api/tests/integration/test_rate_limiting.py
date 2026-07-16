@@ -13,7 +13,6 @@ import asyncio
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timezone
-import math
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
@@ -28,6 +27,7 @@ from app.config.rate_limits import (
     RateLimitConfig,
     RateLimitPeriod,
     TieredRateLimits,
+    effective_limit,
     get_feature_limits,
     get_limits_for_plan,
     get_reset_time,
@@ -92,15 +92,6 @@ class _FakeRedisCache:
         await self.redis.delete(key)
 
 
-def _effective_limit(config: RateLimitConfig, period: str) -> float:
-    """Allowance for a period under RateLimitConfig's 0-semantics: a tier with
-    both periods 0 has no access (0); otherwise 0 means unlimited (inf)."""
-    if config.day <= 0 and config.month <= 0:
-        return 0.0
-    value = getattr(config, period)
-    return math.inf if value <= 0 else float(value)
-
-
 # ---------------------------------------------------------------------------
 # 1. Rate limit configuration
 # ---------------------------------------------------------------------------
@@ -132,8 +123,8 @@ class TestRateLimitConfiguration:
         """Pro is never more restrictive than Free (0 = unlimited when the tier has access)."""
         for key, limits in FEATURE_LIMITS.items():
             for period in ("day", "month"):
-                free = _effective_limit(limits.free, period)
-                pro = _effective_limit(limits.pro, period)
+                free = effective_limit(limits.free, period)
+                pro = effective_limit(limits.pro, period)
                 assert pro >= free, f"{key}: pro {period} ({pro}) < free {period} ({free})"
 
     def test_get_feature_limits_returns_correct_config(self) -> None:

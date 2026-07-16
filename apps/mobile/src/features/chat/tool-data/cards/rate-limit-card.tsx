@@ -1,4 +1,4 @@
-import type { RateLimitData } from "@gaia/shared";
+import { formatPlanName, type RateLimitData } from "@gaia/shared";
 import { Button, Chip } from "heroui-native";
 import { View } from "react-native";
 import {
@@ -53,7 +53,8 @@ function formatFeatureName(feature?: string): string {
 }
 
 const PRO_BENEFITS = [
-  "10x higher daily limits on all features",
+  "Much higher limits on every feature",
+  "Unlimited chat messages",
   "Priority responses and faster processing",
 ];
 
@@ -65,11 +66,13 @@ interface RateLimitCardProps {
 }
 
 export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
-  const { feature, plan_required, reset_time } = data;
+  const { feature, plan_required, reset_time, current_plan } = data;
   const isUpgradeRequired = !!plan_required;
+  // A user already on the top tier has nothing to upgrade to — hide the pitch.
+  const isPro = current_plan === "pro";
   const resetInfo = getResetInfo(reset_time);
   const featureName = formatFeatureName(feature);
-  const planName = plan_required?.toUpperCase() ?? "PRO";
+  const planName = formatPlanName(plan_required);
 
   return (
     <View className="mx-4 my-1 overflow-hidden rounded-2xl bg-zinc-800">
@@ -172,17 +175,19 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
               </View>
             )}
 
-            {/* Upgrade nudge */}
-            <View className="flex-row items-start gap-2 px-3">
-              <View className="mt-0.5">
-                <AppIcon icon={Alert01Icon} size={14} color="#a1a1aa" />
+            {/* Upgrade nudge — hidden for users already on the top tier */}
+            {!isPro && (
+              <View className="flex-row items-start gap-2 px-3">
+                <View className="mt-0.5">
+                  <AppIcon icon={Alert01Icon} size={14} color="#a1a1aa" />
+                </View>
+                <Text className="text-xs text-zinc-400 flex-1">
+                  Need more? Upgrade to{" "}
+                  <Text className="font-medium text-zinc-300">Pro</Text> for
+                  much higher limits on {featureName} and every other feature.
+                </Text>
               </View>
-              <Text className="text-xs text-zinc-400 flex-1">
-                Need more? Upgrade to{" "}
-                <Text className="font-medium text-zinc-300">PRO</Text> for 10x
-                higher daily limits on {featureName} and all other features.
-              </Text>
-            </View>
+            )}
           </>
         )}
       </View>

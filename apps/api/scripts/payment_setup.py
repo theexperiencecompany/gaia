@@ -74,6 +74,7 @@ sys.path.insert(0, str(backend_dir))
 from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 
 from app.config.settings import settings  # noqa: E402
+from app.constants.memory import FREE_MEMORY_FACT_LIMIT  # noqa: E402
 from app.models.payment_models import PlanDB  # noqa: E402
 
 
@@ -127,8 +128,8 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "features": [
                 "All tools & 100s of integrations",
                 "Standard models",
-                "15 chat messages/day",
-                "50 saved memories",
+                "Daily AI usage allowance",
+                f"{FREE_MEMORY_FACT_LIMIT} saved memories",
                 "Community support",
             ],
             "is_active": True,

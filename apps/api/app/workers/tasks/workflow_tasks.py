@@ -36,6 +36,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.payment_models import PlanType
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -366,8 +367,16 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                             else f"Workflow Failed: {workflow.title}"
                         )
                         detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
-                        plan_required = detail.get("plan_required", "pro").capitalize()
                         reset_time_str = detail.get("reset_time", "")
+                        # A user already on the top tier has nothing to upgrade
+                        # to — drop the pitch and the upgrade action for them.
+                        is_pro = detail.get("current_plan") == PlanType.PRO.value
+                        # Only two tiers exist, so the upgrade target is always Pro
+                        # even when plan_required is absent (a count wall on a
+                        # feature the free tier can still use).
+                        upgrade_plan = (
+                            detail.get("plan_required") or PlanType.PRO.value
+                        ).capitalize()
 
                         if isinstance(e, CostBudgetExceededException):
                             # Budget (cost) wall, not the execution-count quota —
@@ -376,11 +385,13 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                             body = (
                                 f"'{workflow.title}' couldn't run — you're out of "
                                 f"AI usage for today. It will run again after your "
-                                f"usage resets. Upgrade to {plan_required} for "
-                                f"much higher limits."
+                                f"usage resets."
                             )
+                            if not is_pro:
+                                body += f" Upgrade to {upgrade_plan} for much higher limits."
                         elif reset_time_str:
                             # Quota exhausted — show when the limit resets
+                            formatted_reset = None
                             try:
                                 reset_dt = datetime.fromisoformat(reset_time_str)
                                 if reset_dt.tzinfo is None:
@@ -393,37 +404,40 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                                 formatted_reset = format_local_time(
                                     reset_dt, reset_tz, fmt="%b %d at %I:%M %p %Z"
                                 )
-                                body = (
-                                    f"'{workflow.title}' couldn't run — "
-                                    f"you've used all your workflow executions for today. "
-                                    f"Resets {formatted_reset}. "
-                                    f"Upgrade to {plan_required} for higher daily limits."
-                                )
                             except Exception:
-                                body = (
-                                    f"'{workflow.title}' couldn't run — "
-                                    f"you've used all your workflow executions for today. "
-                                    f"Upgrade to {plan_required} for higher daily limits."
-                                )
+                                formatted_reset = None
+                            body = (
+                                f"'{workflow.title}' couldn't run — "
+                                f"you've used all your workflow executions for today."
+                            )
+                            if formatted_reset:
+                                body += f" Resets {formatted_reset}."
+                            if not is_pro:
+                                body += f" Upgrade to {upgrade_plan} for higher daily limits."
                         else:
-                            # Plan-gated — feature isn't available on their plan at all
+                            # Plan-gated — feature isn't available on their plan at
+                            # all. Only a free user can reach here (Pro has access).
                             body = (
                                 f"'{workflow.title}' couldn't run — "
                                 f"automated workflow execution is not available on your current plan. "
-                                f"Upgrade to {plan_required} to unlock this feature."
+                                f"Upgrade to {upgrade_plan} to unlock this feature."
                             )
 
-                        upgrade_action = NotificationAction(
-                            type=ActionType.REDIRECT,
-                            label=f"Upgrade to {plan_required}",
-                            style=ActionStyle.PRIMARY,
-                            config=ActionConfig(
-                                redirect=RedirectConfig(
-                                    url="/settings?section=subscription",
-                                    open_in_new_tab=False,
-                                    close_notification=True,
-                                )
-                            ),
+                        upgrade_action = (
+                            None
+                            if is_pro
+                            else NotificationAction(
+                                type=ActionType.REDIRECT,
+                                label=f"Upgrade to {upgrade_plan}",
+                                style=ActionStyle.PRIMARY,
+                                config=ActionConfig(
+                                    redirect=RedirectConfig(
+                                        url="/settings?section=subscription",
+                                        open_in_new_tab=False,
+                                        close_notification=True,
+                                    )
+                                ),
+                            )
                         )
                     else:
                         title = f"Workflow Failed: {workflow.title}"

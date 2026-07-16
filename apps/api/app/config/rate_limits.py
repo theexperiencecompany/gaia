@@ -19,6 +19,7 @@ Usage:
 
 from datetime import UTC, datetime, timedelta
 from enum import Enum
+import math
 
 from pydantic import BaseModel
 
@@ -376,6 +377,20 @@ def get_feature_info(feature_key: str) -> dict[str, str]:
     }
 
 
+def effective_limit(config: RateLimitConfig, period: str) -> float:
+    """Comparable allowance for a period under RateLimitConfig's 0-semantics.
+
+    ``0`` is overloaded: a tier with BOTH periods 0 has no access at all
+    (returns ``0.0``); otherwise a period of 0 means that period is uncapped
+    (returns ``math.inf``). Lets free and pro allowances be ordered directly
+    despite 0 meaning either "no access" or "unlimited" by context.
+    """
+    if config.day <= 0 and config.month <= 0:
+        return 0.0
+    value = getattr(config, period)
+    return math.inf if value <= 0 else float(value)
+
+
 def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
     """One upsell bullet comparing free vs pro for a feature, or None.
 
@@ -387,7 +402,11 @@ def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
         if limits.pro.day > 0:
             detail = f"{limits.pro.day:,} per day instead of {limits.free.day:,}"
         else:
-            detail = f"unlimited daily use instead of {limits.free.day:,} per day"
+            # Unlimited-on-Pro: stay qualitative and never name the free daily
+            # count. The rolling cost budget can wall a free feature (chat)
+            # before its count limit, so "instead of N per day" would overstate
+            # the free allowance. Bounded deltas above keep their real numbers.
+            detail = "unlimited daily use"
         return {"title": limits.info.title, "detail": detail}
     if limits.free.month > 0 and limits.pro.month > 0:
         return {
@@ -402,7 +421,9 @@ def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, 
     the limits, so the promised benefits can never drift from reality.
 
     Order: (1) the feature the user just hit, (2) Pro-only features (no free
-    access at all), (3) the largest free->pro daily multipliers.
+    access at all), (3) features that become unlimited on Pro (free-capped
+    daily, no pro cap — e.g. chat messages), (4) the largest free->pro daily
+    multipliers.
     """
     benefits: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -421,6 +442,19 @@ def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, 
         if free_gated and pro_has_access:
             benefits.append({"title": limits.info.title, "detail": "included with Pro"})
             seen.add(key)
+
+    # Unlimited-on-Pro features (free-capped daily, no pro daily cap) are the
+    # strongest non-gated pitch, but the multiplier section below can't reach
+    # them (pro.day == 0). Surface them explicitly so a wall on any feature
+    # still advertises e.g. unlimited chat messages.
+    for key, limits in FEATURE_LIMITS.items():
+        if key in seen:
+            continue
+        if limits.free.day > 0 and limits.pro.day <= 0:
+            delta = _free_pro_delta(key)
+            if delta:
+                benefits.append(delta)
+                seen.add(key)
 
     multipliers = sorted(
         (

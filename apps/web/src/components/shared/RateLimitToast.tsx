@@ -1,6 +1,7 @@
 "use client";
 
 import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
+import { formatPlanName } from "@shared/utils";
 import type { ReactNode } from "react";
 import { toast } from "@/lib/toast";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
@@ -39,9 +40,7 @@ export const showRateLimitToast = ({
       ? Timer02Icon
       : Alert01Icon;
 
-  const planName = planRequired
-    ? planRequired.charAt(0).toUpperCase() + planRequired.slice(1).toLowerCase()
-    : undefined;
+  const planName = planRequired ? formatPlanName(planRequired) : undefined;
 
   // Auto-generate message if not provided
   if (!message) {
@@ -106,7 +105,7 @@ export const showTokenLimitToast = (feature: string, planRequired?: string) => {
   showRateLimitToast({
     title: "Token Limit Exceeded",
     message: planRequired
-      ? `${feature} token limit exceeded. Upgrade to ${planRequired.charAt(0).toUpperCase() + planRequired.slice(1).toLowerCase()} for higher token limits.`
+      ? `${feature} token limit exceeded. Upgrade to ${formatPlanName(planRequired)} for higher token limits.`
       : `${feature} token limit exceeded. Please wait or upgrade for higher limits.`,
     planRequired,
     showUpgradeButton: !!planRequired,

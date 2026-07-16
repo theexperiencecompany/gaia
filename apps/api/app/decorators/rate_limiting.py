@@ -317,6 +317,7 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
             feature=feature_key,
             plan_required="pro" if plan_type == PlanType.FREE else None,
             reset_time=get_reset_time(RateLimitPeriod.DAY),
+            current_plan=plan_type.value,
         )
 
 

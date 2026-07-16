@@ -60,6 +60,7 @@ class RateLimitExceededException(HTTPException):
         plan_required: str | None = None,
         reset_time: datetime | None = None,
         message: str | None = None,
+        current_plan: str | None = None,
     ):
         detail = {
             "error": "rate_limit_exceeded",
@@ -75,6 +76,11 @@ class RateLimitExceededException(HTTPException):
             detail["reset_time"] = reset_time.isoformat()
         if message:
             detail["message"] = message
+        # The user's actual plan travels with the 429 so every surface (chat
+        # toast, workflow-pause notification, bot notice) can suppress the
+        # upgrade pitch for a user who is already on the top tier.
+        if current_plan:
+            detail["current_plan"] = current_plan
 
         super().__init__(status_code=429, detail=detail)
 
@@ -92,11 +98,14 @@ class CostBudgetExceededException(RateLimitExceededException):
         feature: str,
         plan_required: str | None = None,
         reset_time: datetime | None = None,
+        current_plan: str | None = None,
     ):
         budget_message = "You've used today's AI usage allowance."
         if plan_required:
             budget_message += f" Upgrade to {plan_required.capitalize()} for higher limits."
-        super().__init__(feature, plan_required, reset_time, message=budget_message)
+        super().__init__(
+            feature, plan_required, reset_time, message=budget_message, current_plan=current_plan
+        )
 
 
 class TieredRateLimiter:
@@ -152,7 +161,9 @@ class TieredRateLimiter:
             paid_limits = get_feature_limits(feature_key).pro
             paid_has_access = paid_limits.day > 0 or paid_limits.month > 0
             plan_required = "pro" if (user_plan == PlanType.FREE and paid_has_access) else None
-            raise RateLimitExceededException(feature_key, plan_required)
+            raise RateLimitExceededException(
+                feature_key, plan_required, current_plan=user_plan.value
+            )
 
         for period in [RateLimitPeriod.DAY, RateLimitPeriod.MONTH]:
             limit = getattr(current_limits, period.value)
@@ -172,7 +183,9 @@ class TieredRateLimiter:
                 free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
                 is_plan_gated = getattr(free_limits, period.value) == 0
                 plan_required = "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
-                raise RateLimitExceededException(feature_key, plan_required, reset_time)
+                raise RateLimitExceededException(
+                    feature_key, plan_required, reset_time, current_plan=user_plan.value
+                )
 
         # Increment usage atomically. Unlimited periods (limit 0) are still
         # COUNTED — a plain INCR with no enforcement — so usage charts (e.g. a
@@ -211,7 +224,10 @@ class TieredRateLimiter:
                                 "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
                             )
                             raise RateLimitExceededException(
-                                feature_key, plan_required, get_reset_time(period)
+                                feature_key,
+                                plan_required,
+                                get_reset_time(period),
+                                current_plan=user_plan.value,
                             )
 
                         # Execute atomic increment
