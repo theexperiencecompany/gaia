@@ -162,8 +162,8 @@ MIN_USER_CONTENT_CHARS = 8
 # accumulate. At the cap, NEW fact inserts are skipped (passive ingestion
 # silently, the explicit add_memory tool with an upsell card); UPDATES to
 # existing facts still apply and reads are never gated. Pro is uncapped.
-# NOTE: the pricing-card copy ("50 saved memories" / "Unlimited memories" in
-# the plans collection) must be updated if this changes.
+# The free pricing-card copy ("N saved memories") is derived from this constant
+# in scripts/payment_setup.py, so it stays in sync automatically when it changes.
 FREE_MEMORY_FACT_LIMIT = 50  # TUNE
 
 # Max length of an agent/user-supplied forget reason (matches the DB column).

@@ -63,23 +63,50 @@ class MemoryLimitReachedError(Exception):
         )
 
 
-async def _free_cap_reached(user_id: str) -> bool:
-    """True when a FREE user's live-fact count is at/over the plan cap.
+async def _free_cap_remaining(user_id: str) -> int | None:
+    """How many more live facts a FREE user may add, or ``None`` when uncapped.
+
+    ``None`` means no cap applies — a paid plan, or an infra error during the
+    plan lookup (fail open: memory must not stop working because the plan
+    lookup hiccuped). For a free user it is ``max(0, limit - live count)``, so
+    a batch that would cross the cap can be trimmed to land exactly at it.
 
     Uses the cached plan lookup (Redis-backed) — retain() runs from many
     callers (chat turns, subagents, email ingestion, API endpoints), so
     resolving here keeps one canonical check instead of threading plan_type
-    through every path. Fails open on infra errors: memory should not stop
-    working because the plan lookup hiccuped.
+    through every path.
     """
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:
         log.warning(f"Memory cap plan lookup failed (failing open): {e}")
-        return False
+        return None
     if plan != PlanType.FREE:
-        return False
-    return await pg_store.count_live_memories(user_id) >= FREE_MEMORY_FACT_LIMIT
+        return None
+    live = await pg_store.count_live_memories(user_id)
+    return max(0, FREE_MEMORY_FACT_LIMIT - live)
+
+
+def _enforce_free_cap(
+    reconciled: list[ReconciledFact], remaining: int
+) -> tuple[list[ReconciledFact], int]:
+    """Trim growth facts to ``remaining`` free slots, preserving order.
+
+    Admits at most ``remaining`` NEW/EXTENDS facts (the ones that grow the
+    live set) in reconciliation order and drops the surplus; UPDATES and
+    DUPLICATEs pass through untouched since they never grow the count.
+    Returns the kept facts and how many were dropped.
+    """
+    kept: list[ReconciledFact] = []
+    admitted = dropped = 0
+    for item in reconciled:
+        if item.outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS):
+            if admitted >= remaining:
+                dropped += 1
+                continue
+            admitted += 1
+        kept.append(item)
+    return kept, dropped
 
 
 @dataclass
@@ -196,24 +223,25 @@ async def retain(
     reconciled = await reconcile(user_id, batch.facts, embeddings)
     timings["reconcile_ms"] = _elapsed_ms(stage)
 
-    # Free-plan cap: at the live-fact limit, passive ingestion silently drops
-    # facts that would GROW the set (NEW/EXTENDS). UPDATES still supersede
-    # (net count unchanged) so what GAIA knows stays current, and reads are
-    # never gated — the cap blocks growth, it does not lobotomize.
-    grows_set = [
-        item
-        for item in reconciled
-        if item.outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
-    ]
-    if grows_set and await _free_cap_reached(user_id):
-        reconciled = [item for item in reconciled if item not in grows_set]
-        log.info(
-            "memory_cap_reached",
-            event_name="memory_cap_reached",
-            user_id=user_id,
-            dropped=len(grows_set),
-            limit=FREE_MEMORY_FACT_LIMIT,
-        )
+    # Free-plan cap (50 is a HARD maximum): passive ingestion admits only as
+    # many growth facts (NEW/EXTENDS) as fit under the cap and silently drops
+    # the rest, so a batch that crosses the cap lands EXACTLY at it rather than
+    # overshooting (48 live + 10 new must not become 58). UPDATES still
+    # supersede (net count unchanged) so what GAIA knows stays current, and
+    # reads are never gated — the cap blocks growth, it does not lobotomize.
+    # Facts keep reconciliation order (input order), so earlier facts in the
+    # transcript win the remaining slots deterministically.
+    remaining = await _free_cap_remaining(user_id)
+    if remaining is not None:
+        reconciled, dropped = _enforce_free_cap(reconciled, remaining)
+        if dropped:
+            log.info(
+                "memory_cap_reached",
+                event_name="memory_cap_reached",
+                user_id=user_id,
+                dropped=dropped,
+                limit=FREE_MEMORY_FACT_LIMIT,
+            )
 
     stage = time.perf_counter()
     applied = await _apply_reconciled(
@@ -284,7 +312,8 @@ async def retain_single(
     cap — explicit adds fail LOUD so the tool/endpoint can upsell, unlike
     passive ingestion which drops silently.
     """
-    if await _free_cap_reached(user_id):
+    remaining = await _free_cap_remaining(user_id)
+    if remaining is not None and remaining <= 0:
         raise MemoryLimitReachedError(FREE_MEMORY_FACT_LIMIT)
 
     now = datetime.now(UTC)
