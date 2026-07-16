@@ -1,5 +1,6 @@
 """Shared test utilities for GAIA API tests."""
 
+import math
 import os
 import re
 import socket
@@ -11,6 +12,22 @@ from langchain_core.language_models.fake_chat_models import (
 from langchain_core.messages import AIMessage, BaseMessage
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+
+from app.config.rate_limits import RateLimitConfig
+
+
+def effective_limit(config: RateLimitConfig, period: str) -> float:
+    """Comparable allowance for a period under RateLimitConfig's 0-semantics.
+
+    ``0`` is overloaded: a tier with BOTH periods 0 has no access at all
+    (returns ``0.0``); otherwise a period of 0 means that period is uncapped
+    (returns ``math.inf``). Lets free and pro allowances be ordered directly
+    despite 0 meaning either "no access" or "unlimited" by context.
+    """
+    if config.day <= 0 and config.month <= 0:
+        return 0.0
+    value = getattr(config, period)
+    return math.inf if value <= 0 else float(value)
 
 
 def pick_free_port() -> int:

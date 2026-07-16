@@ -19,7 +19,6 @@ Usage:
 
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-import math
 
 from pydantic import BaseModel
 
@@ -375,20 +374,6 @@ def get_feature_info(feature_key: str) -> dict[str, str]:
         "title": feature_key.replace("_", " ").title(),
         "description": f"Usage for {feature_key}",
     }
-
-
-def effective_limit(config: RateLimitConfig, period: str) -> float:
-    """Comparable allowance for a period under RateLimitConfig's 0-semantics.
-
-    ``0`` is overloaded: a tier with BOTH periods 0 has no access at all
-    (returns ``0.0``); otherwise a period of 0 means that period is uncapped
-    (returns ``math.inf``). Lets free and pro allowances be ordered directly
-    despite 0 meaning either "no access" or "unlimited" by context.
-    """
-    if config.day <= 0 and config.month <= 0:
-        return 0.0
-    value = getattr(config, period)
-    return math.inf if value <= 0 else float(value)
 
 
 def _free_pro_delta(feature_key: str) -> dict[str, str] | None:

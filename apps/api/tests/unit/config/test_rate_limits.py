@@ -24,7 +24,6 @@ from app.config.rate_limits import (
     RateLimitConfig,
     RateLimitPeriod,
     TieredRateLimits,
-    effective_limit,
     get_feature_info,
     get_feature_limits,
     get_limits_for_plan,
@@ -32,6 +31,7 @@ from app.config.rate_limits import (
     get_time_window_key,
 )
 from app.models.payment_models import PlanType
+from tests.helpers import effective_limit
 
 # ---------------------------------------------------------------------------
 # Tests: RateLimitPeriod
