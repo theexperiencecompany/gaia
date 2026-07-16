@@ -1,3 +1,7 @@
+import {
+  USAGE_DANGER_THRESHOLD,
+  USAGE_WARN_THRESHOLD,
+} from "@gaia/shared/constants/usage";
 import { Button, Card, Chip, Spinner } from "heroui-native";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
@@ -7,9 +11,21 @@ import type {
   UsageSummary,
 } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
+import { colors } from "@/lib/design-tokens";
 import { useResponsive } from "@/lib/responsive";
 
 type PeriodKey = "day" | "month";
+
+/** Mobile usage-bar accent — its own blue, distinct from web's meter accent. */
+const USAGE_BAR_ACCENT = "#16c1ff";
+
+/** Fill color by percentage: shared warn/danger thresholds, mobile status hues. */
+function barColor(percentage: number): string {
+  const pct = Math.min(percentage, 100);
+  if (pct >= USAGE_DANGER_THRESHOLD) return colors.error;
+  if (pct >= USAGE_WARN_THRESHOLD) return colors.warning;
+  return USAGE_BAR_ACCENT;
+}
 
 interface UsageBarProps {
   title: string;
@@ -21,7 +37,6 @@ function UsageBar({ title, period }: UsageBarProps) {
   if (!period) return null;
 
   const pct = Math.min(period.percentage, 100);
-  const barColor = pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#16c1ff";
 
   return (
     <View style={{ gap: spacing.xs }}>
@@ -46,7 +61,7 @@ function UsageBar({ title, period }: UsageBarProps) {
             height: "100%",
             width: `${pct}%`,
             borderRadius: 3,
-            backgroundColor: barColor,
+            backgroundColor: barColor(period.percentage),
           }}
         />
       </View>
@@ -235,12 +250,7 @@ export function UsageSection() {
                           height: "100%",
                           width: `${pct}%`,
                           borderRadius: 3,
-                          backgroundColor:
-                            pct >= 90
-                              ? "#ef4444"
-                              : pct >= 70
-                                ? "#f59e0b"
-                                : "#16c1ff",
+                          backgroundColor: barColor(period.percentage),
                         }}
                       />
                     </View>

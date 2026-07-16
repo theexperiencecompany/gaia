@@ -2,31 +2,34 @@
 
 import { Button } from "@heroui/button";
 import { Modal, ModalBody, ModalContent, useDisclosure } from "@heroui/modal";
-import { Tooltip } from "@heroui/tooltip";
 import { Share08Icon } from "@icons";
 import type { UsageActivity } from "@shared/types";
+import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import confetti from "canvas-confetti";
-import { useEffect, useMemo } from "react";
+import {
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "@/lib/utils";
 import { shareActivityCard } from "./shareActivityCard";
+import { buildTweetText, openTweetIntent } from "./shareTweet";
 
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ACCENT = "#00bbff";
 const EMPTY = "#27272a";
+
+/** Five-step activity ramp (empty → full accent). Cell coloring and the
+ *  Less/More legend both read this so they can never disagree. */
+const INTENSITY_RAMP = [
+  EMPTY,
+  "rgba(0,187,255,0.3)",
+  "rgba(0,187,255,0.52)",
+  "rgba(0,187,255,0.78)",
+  ACCENT,
+] as const;
 
 // Rendered medal art (transparent PNGs). Gold + diamond ship as assets; silver, bronze
 // and locked are the gold medal recolored at render time via CSS filters.
@@ -67,36 +70,23 @@ const TIERS = {
 interface Cell {
   date: string;
   count: number | null;
-}
-
-export function compact(n: number): string {
-  if (n >= 1_000_000)
-    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
-  return `${n}`;
+  /** Prebuilt hover/aria label ("N actions · Mon, Jul 5"); empty for padding cells. */
+  label: string;
 }
 
 function intensity(count: number | null, max: number): string {
   if (count === null) return "transparent";
-  if (count === 0) return EMPTY;
+  if (count === 0) return INTENSITY_RAMP[0];
   const r = count / max;
-  if (r < 0.25) return "rgba(0,187,255,0.3)";
-  if (r < 0.5) return "rgba(0,187,255,0.52)";
-  if (r < 0.75) return "rgba(0,187,255,0.78)";
-  return ACCENT;
-}
-
-function niceDate(d: string): string {
-  const dt = new Date(`${d}T00:00:00Z`);
-  return `${WEEKDAYS[dt.getUTCDay()]}, ${MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}`;
+  if (r < 0.25) return INTENSITY_RAMP[1];
+  if (r < 0.5) return INTENSITY_RAMP[2];
+  if (r < 0.75) return INTENSITY_RAMP[3];
+  return INTENSITY_RAMP[4];
 }
 
 function shareToX(activity: UsageActivity) {
   const label = activity.tier ? TIERS[activity.tier].label : "an active";
-  const text = `I'm in the ${label} of GAIA users by activity — a ${activity.streak}-day streak. Meet your proactive AI assistant.`;
-  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent("https://heygaia.io")}`;
-  if (typeof window !== "undefined")
-    window.open(url, "_blank", "noopener,noreferrer");
+  openTweetIntent(buildTweetText(label, activity.streak));
 }
 
 /** Ranked users share a rendered image card; unranked fall back to plain text. */
@@ -105,7 +95,7 @@ async function shareActivity(activity: UsageActivity) {
     shareToX(activity);
     return;
   }
-  await shareActivityCard(activity, TIERS[activity.tier], intensity, compact);
+  await shareActivityCard(activity, TIERS[activity.tier], intensity);
 }
 
 function Medal({
@@ -190,17 +180,17 @@ export function ActivityBadge({
   const t = TIERS[tier];
   return (
     <>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-44 shrink-0 cursor-pointer flex-col items-center justify-start gap-1 rounded-2xl bg-zinc-900/60 p-4 text-center transition-colors hover:bg-zinc-800/70"
+      <Button
+        onPress={onOpen}
+        disableRipple
+        className="flex h-auto w-44 shrink-0 flex-col items-center justify-start gap-1 rounded-2xl bg-zinc-900/60 p-4 text-center transition-colors data-[hover=true]:bg-zinc-800/70"
       >
         <Medal tier={tier} className="size-28" />
         <p className="mt-1 text-lg font-semibold text-white">{t.label}</p>
         <p className="text-[11px] leading-tight text-zinc-500">
           of GAIA users by activity
         </p>
-      </button>
+      </Button>
 
       <Modal
         isOpen={isOpen}
@@ -222,7 +212,7 @@ export function ActivityBadge({
             <div className="mt-5 flex items-center gap-5 text-sm text-zinc-500">
               <span>
                 <span className="font-semibold text-zinc-200">
-                  {compact(activity.total)}
+                  {formatCompactNumber(activity.total)}
                 </span>{" "}
                 actions
               </span>
@@ -250,6 +240,13 @@ export function ActivityBadge({
 }
 
 export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState<{
+    label: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
   const { columns, max, activeDays } = useMemo(() => {
     const days = activity.days;
     if (days.length < 14)
@@ -265,7 +262,15 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
       for (let wd = 0; wd < 7; wd++) {
         const key = cursor.toISOString().slice(0, 10);
         const inRange = cursor >= first && cursor <= last;
-        col.push({ date: key, count: inRange ? (byDate.get(key) ?? 0) : null });
+        const count = inRange ? (byDate.get(key) ?? 0) : null;
+        col.push({
+          date: key,
+          count,
+          label:
+            count === null
+              ? ""
+              : `${count} ${count === 1 ? "action" : "actions"} · ${formatDateUTC(key, "weekday")}`,
+        });
         cursor.setUTCDate(cursor.getUTCDate() + 1);
       }
       columns.push(col);
@@ -277,6 +282,22 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
     };
   }, [activity]);
 
+  // One shared hover label positioned over the hovered cell — a grid of ~365
+  // per-cell Tooltips is needlessly heavy for a single floating label.
+  const showTip = useCallback((e: MouseEvent<HTMLDivElement>, cell: Cell) => {
+    const grid = gridRef.current;
+    if (!grid || !cell.label) return;
+    const cr = e.currentTarget.getBoundingClientRect();
+    const gr = grid.getBoundingClientRect();
+    setTip({
+      label: cell.label,
+      x: cr.left - gr.left + cr.width / 2,
+      y: cr.top - gr.top - 4,
+    });
+  }, []);
+
+  const hideTip = useCallback(() => setTip(null), []);
+
   if (!columns.length) return null;
 
   return (
@@ -286,7 +307,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
           <p className="text-base font-semibold text-white">Activity</p>
           <p className="text-[13px] text-zinc-500">
             <span className="font-medium tabular-nums text-zinc-300">
-              {compact(activity.total)}
+              {formatCompactNumber(activity.total)}
             </span>{" "}
             actions &middot; {activeDays} days &middot; {activity.streak}-day
             streak
@@ -317,45 +338,45 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
               className="flex-1 text-[9px] leading-none text-zinc-500"
             >
               <span className="whitespace-nowrap">
-                {m !== prev ? MONTHS[m] : ""}
+                {m !== prev ? formatDateUTC(col[0].date, "month") : ""}
               </span>
             </div>
           );
         })}
       </div>
-      <div className="mt-1 flex gap-[3px]">
+      <div ref={gridRef} className="relative mt-1 flex gap-[3px]">
         {columns.map((col) => (
           <div key={col[0].date} className="flex flex-1 flex-col gap-[3px]">
-            {col.map((cell) => (
-              <Tooltip
-                key={cell.date}
-                isDisabled={cell.count === null}
-                content={`${cell.count} ${cell.count === 1 ? "action" : "actions"} · ${niceDate(cell.date)}`}
-                placement="top"
-                delay={60}
-                closeDelay={0}
-                classNames={{
-                  content: "bg-zinc-800 text-xs font-medium text-zinc-100",
-                }}
-              >
+            {col.map((cell) =>
+              cell.count === null ? (
+                // Padding day outside the range — no data, no hover label.
+                <div key={cell.date} className="aspect-square rounded-[2px]" />
+              ) : (
                 <div
+                  key={cell.date}
+                  role="img"
+                  aria-label={cell.label}
                   className="aspect-square rounded-[2px]"
                   style={{ backgroundColor: intensity(cell.count, max) }}
+                  onMouseEnter={(e) => showTip(e, cell)}
+                  onMouseLeave={hideTip}
                 />
-              </Tooltip>
-            ))}
+              ),
+            )}
           </div>
         ))}
+        {tip && (
+          <div
+            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-100 shadow-xl"
+            style={{ left: tip.x, top: tip.y }}
+          >
+            {tip.label}
+          </div>
+        )}
       </div>
       <div className="mt-3 flex items-center justify-end gap-1.5 text-[11px] text-zinc-500">
         <span>Less</span>
-        {[
-          EMPTY,
-          "rgba(0,187,255,0.3)",
-          "rgba(0,187,255,0.52)",
-          "rgba(0,187,255,0.78)",
-          ACCENT,
-        ].map((c) => (
+        {INTENSITY_RAMP.map((c) => (
           <div
             key={c}
             className="size-2.5 rounded-[2px]"

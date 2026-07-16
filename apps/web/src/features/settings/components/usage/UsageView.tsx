@@ -5,7 +5,12 @@ import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { Fire02Icon, InformationCircleIcon, SparklesIcon } from "@icons";
+import {
+  USAGE_DANGER_THRESHOLD,
+  USAGE_WARN_THRESHOLD,
+} from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
+import { formatCompactNumber, formatDate, formatDateUTC } from "@shared/utils";
 import { useMemo, useState } from "react";
 import {
   Area,
@@ -24,32 +29,20 @@ import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
 import type { UsageHistoryEntry } from "../../api/usageApi";
-import { ActivityBadge, compact, UsageHeatmap } from "./UsageHeatmap";
+import { PRIMARY_USAGE_FEATURE } from "./constants";
+import { ActivityBadge, UsageHeatmap } from "./UsageHeatmap";
 
 const ACCENT = "#00bbff"; // brand blue — capacity meters
 const HEALTHY = "#30d158"; // apple green — the activity trend
 const NEAR = "#fbbf24"; // amber — approaching the limit
 const HIT = "#ff453a"; // vibrant red — limit reached
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
 
 /** Only the warning states borrow status hues; the "fine" state is the caller's
- * base color, so a glance separates fine / watch-out / maxed without a rainbow. */
+ * base color, so a glance separates fine / watch-out / maxed without a rainbow.
+ * Thresholds are shared with mobile (see @shared/constants/usage). */
 function severityColor(percentage: number, base: string = ACCENT): string {
-  if (percentage >= 100) return HIT;
-  if (percentage >= 75) return NEAR;
+  if (percentage >= USAGE_DANGER_THRESHOLD) return HIT;
+  if (percentage >= USAGE_WARN_THRESHOLD) return NEAR;
   return base;
 }
 
@@ -69,13 +62,6 @@ function elapsedFraction(resetIso: string, period: Period): number {
 
 type Period = "day" | "month";
 type PeriodData = NonNullable<FeatureUsage["periods"]["day"]>;
-
-/** Render an instant as the LOCAL calendar date — reset moments are UTC
- * boundaries, but the user should see them on their own calendar. */
-function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
-}
 
 /** Local wall-clock time of an instant, e.g. "5:30 AM" — "midnight" would be
  * a lie for every user outside UTC. */
@@ -139,7 +125,7 @@ export function UsageView({
         <DailyBars
           history={history}
           currentDayLimit={
-            summary.features.chat_messages?.periods.day?.limit ?? 0
+            summary.features[PRIMARY_USAGE_FEATURE]?.periods.day?.limit ?? 0
           }
         />
         {activity && <ActivityBadge tier={activity.tier} activity={activity} />}
@@ -159,8 +145,8 @@ function heroWindow(
   isPro: boolean,
   win: Period,
 ): { percent: number; resetIso: string | undefined } {
-  const chatDay = summary.features.chat_messages?.periods.day;
-  const chatMonth = summary.features.chat_messages?.periods.month;
+  const chatDay = summary.features[PRIMARY_USAGE_FEATURE]?.periods.day;
+  const chatMonth = summary.features[PRIMARY_USAGE_FEATURE]?.periods.month;
   const daily = summary.budget?.daily;
   const monthly = summary.budget?.monthly;
   if (win === "day") {
@@ -280,7 +266,7 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
               ? `Resets at ${fmtTime(resetIso)}`
               : ""
             : resetIso
-              ? `Resets ${fmtDate(resetIso)}`
+              ? `Resets ${formatDate(resetIso, "short")}`
               : ""}
         </p>
       </div>
@@ -344,7 +330,7 @@ function DailyBars({
     const byDay = new Map<string, { used: number; limit: number }>();
     for (const e of history) {
       const d = new Date(e.date);
-      const day = e.features.chat_messages?.periods.day;
+      const day = e.features[PRIMARY_USAGE_FEATURE]?.periods.day;
       if (day?.used !== undefined) {
         byDay.set(dayKey(d), { used: day.used, limit: day.limit ?? 0 });
       }
@@ -359,7 +345,7 @@ function DailyBars({
       const entry = byDay.get(key);
       return {
         key,
-        label: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`,
+        label: formatDateUTC(d, "short"),
         messages: entry?.used ?? 0,
         dayLimit: entry?.limit ?? 0,
       };
@@ -496,20 +482,17 @@ function Stats({
       activeDays: 0,
       elapsedDays: 0,
     };
-    const resetIso = summary.features.chat_messages?.periods.month?.reset_time;
+    const resetIso =
+      summary.features[PRIMARY_USAGE_FEATURE]?.periods.month?.reset_time;
     if (!history.length || !resetIso) return empty;
-    const end = new Date(resetIso); // first of next month, UTC
-    const curMonth = (end.getUTCMonth() + 11) % 12;
-    const curYear =
-      curMonth === 11 ? end.getUTCFullYear() - 1 : end.getUTCFullYear();
+    const window = currentMonthWindow(resetIso);
     const byDom = new Map<number, { used: number; limit: number }>();
     for (const e of history) {
       const d = new Date(e.date);
-      if (d.getUTCMonth() !== curMonth || d.getUTCFullYear() !== curYear)
-        continue;
+      if (!isInWindow(d, window)) continue;
       // Only set when the snapshot actually carries a day period — an entry
       // without one must not clobber a real earlier value with 0.
-      const day = e.features.chat_messages?.periods.day;
+      const day = e.features[PRIMARY_USAGE_FEATURE]?.periods.day;
       if (day?.used !== undefined) {
         byDom.set(d.getUTCDate(), { used: day.used, limit: day.limit ?? 0 });
       }
@@ -566,7 +549,7 @@ function Stats({
       />
       <StatCard
         label="Max task"
-        value={ceiling ? compact(ceiling) : "—"}
+        value={ceiling ? formatCompactNumber(ceiling) : "—"}
         sub="tokens / run"
       />
     </div>
@@ -577,13 +560,11 @@ function StatCard({
   label,
   value,
   sub,
-  percent,
   accent,
 }: {
   label: string;
   value: string;
   sub: string;
-  percent?: number;
   /** Small highlight rendered at the label row's right edge (e.g. streak). */
   accent?: React.ReactNode;
 }) {
@@ -597,9 +578,6 @@ function StatCard({
         {value}
       </p>
       <p className="mt-0.5 text-xs text-zinc-500">{sub}</p>
-      {percent !== undefined && (
-        <Meter percent={percent} className="mt-3 h-1" />
-      )}
     </div>
   );
 }
@@ -609,15 +587,9 @@ function StatCard({
 function Meter({
   percent,
   className,
-  pace,
-  paceWarn,
 }: {
   percent: number;
   className?: string;
-  /** 0-100 tick marking where usage "should" be by now (time elapsed). */
-  pace?: number;
-  /** Amber tick when usage is running ahead of that pace. */
-  paceWarn?: boolean;
 }) {
   const pct = Math.min(100, Math.max(0, percent));
   return (
@@ -631,15 +603,6 @@ function Meter({
         className="h-full rounded-full transition-[width] duration-500 ease-out"
         style={{ width: `${pct}%`, backgroundColor: severityColor(percent) }}
       />
-      {pace !== undefined && pace > 1 && pace < 99 && (
-        <div
-          className="absolute top-0 h-full w-0.5 -translate-x-1/2"
-          style={{
-            left: `${pace}%`,
-            backgroundColor: paceWarn ? NEAR : "rgba(255,255,255,0.65)",
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -662,7 +625,20 @@ function currentMonthWindow(resetIso: string): MonthWindow {
   const daysInMonth = new Date(
     Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 0),
   ).getUTCDate();
-  return { curMonth, curYear, daysInMonth, name: MONTHS[curMonth] };
+  return {
+    curMonth,
+    curYear,
+    daysInMonth,
+    name: formatDateUTC(new Date(Date.UTC(curYear, curMonth, 1)), "month"),
+  };
+}
+
+/** True when a snapshot instant falls inside the resolved month window. */
+function isInWindow(date: Date, window: MonthWindow): boolean {
+  return (
+    date.getUTCMonth() === window.curMonth &&
+    date.getUTCFullYear() === window.curYear
+  );
 }
 
 /** Latest cumulative month counter per calendar day. Snapshots are HOURLY, so
@@ -675,12 +651,8 @@ function cumulativeByDay(
   const byDom = new Map<number, number>();
   for (const e of history) {
     const d = new Date(e.date);
-    if (
-      d.getUTCMonth() !== window.curMonth ||
-      d.getUTCFullYear() !== window.curYear
-    )
-      continue;
-    const used = e.features.chat_messages?.periods.month?.used;
+    if (!isInWindow(d, window)) continue;
+    const used = e.features[PRIMARY_USAGE_FEATURE]?.periods.month?.used;
     if (used !== undefined) byDom.set(d.getUTCDate(), used);
   }
   return byDom;
@@ -788,7 +760,7 @@ function Trend({
   history: UsageHistoryEntry[];
   summary: UsageSummary;
 }) {
-  const month = summary.features.chat_messages?.periods.month;
+  const month = summary.features[PRIMARY_USAGE_FEATURE]?.periods.month;
   const limit = month?.limit ?? 0;
   const resetIso = month?.reset_time;
   const liveMonthUsed = month?.used;
@@ -949,7 +921,7 @@ function Tools({
         f.periods.month?.percentage ?? 0,
       );
     return Object.entries(summary.features)
-      .filter(([key]) => key !== "chat_messages")
+      .filter(([key]) => key !== PRIMARY_USAGE_FEATURE)
       .map(([key, f]) => ({ key, f, p: f.periods[period] }))
       .filter(
         (r): r is { key: string; f: FeatureUsage; p: PeriodData } =>
@@ -1074,7 +1046,10 @@ function FeatureRow({
         </span>
         /{p.limit.toLocaleString()}
         {showPro && (
-          <span className="text-zinc-600"> · {compact(proLimit)} on Pro</span>
+          <span className="text-zinc-600">
+            {" "}
+            · {formatCompactNumber(proLimit)} on Pro
+          </span>
         )}
       </span>
     </div>
@@ -1090,7 +1065,7 @@ function upgradeReason(
   history: UsageHistoryEntry[],
 ): string {
   const daysHit = history.filter((e) => {
-    const d = e.features.chat_messages?.periods.day;
+    const d = e.features[PRIMARY_USAGE_FEATURE]?.periods.day;
     return !!d && d.limit > 0 && d.used >= d.limit;
   }).length;
   if (daysHit > 0) {
@@ -1103,7 +1078,7 @@ function upgradeReason(
   if (near > 0) {
     return `You're close to your limit on ${near} ${near === 1 ? "tool" : "tools"} — Pro gives you far more room.`;
   }
-  return "10x higher limits on every tool, and room for much larger tasks.";
+  return "Unlimited chat messages, much higher limits on every feature, and room for far larger tasks.";
 }
 
 function UpgradeBanner({

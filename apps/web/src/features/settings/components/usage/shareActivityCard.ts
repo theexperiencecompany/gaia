@@ -1,4 +1,6 @@
 import type { UsageActivity } from "@shared/types";
+import { formatCompactNumber } from "@shared/utils";
+import { buildTweetText, openTweetIntent } from "./shareTweet";
 
 /** Everything the card needs from the badge tier (see TIERS in UsageHeatmap). */
 export interface ShareTierArt {
@@ -19,7 +21,6 @@ export async function shareActivityCard(
   activity: UsageActivity,
   tier: ShareTierArt,
   cellColor: (count: number | null, max: number) => string,
-  compact: (n: number) => string,
 ): Promise<void> {
   const canvas = document.createElement("canvas");
   canvas.width = WIDTH;
@@ -54,7 +55,7 @@ export async function shareActivityCard(
   ctx.fillStyle = "#71717a";
   ctx.font = "400 26px Inter, system-ui, sans-serif";
   ctx.fillText(
-    `${compact(activity.total)} actions · ${activity.streak}-day streak`,
+    `${formatCompactNumber(activity.total)} actions · ${activity.streak}-day streak`,
     textX,
     308,
   );
@@ -91,7 +92,7 @@ export async function shareActivityCard(
       "image/png",
     ),
   );
-  const text = `I'm in the ${tier.label} of GAIA users by activity — a ${activity.streak}-day streak. Meet your proactive AI assistant.`;
+  const text = buildTweetText(tier.label, activity.streak);
   const file = new File([blob], "gaia-activity.png", { type: "image/png" });
 
   if (navigator.canShare?.({ files: [file] })) {
@@ -107,9 +108,5 @@ export async function shareActivityCard(
   anchor.download = "gaia-activity.png";
   anchor.click();
   URL.revokeObjectURL(url);
-  window.open(
-    `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent("https://heygaia.io")}`,
-    "_blank",
-    "noopener,noreferrer",
-  );
+  openTweetIntent(text);
 }

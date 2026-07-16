@@ -150,6 +150,10 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 
 **`DropdownTrigger` rule** — always pass a HeroUI `<Button>` (or a component using `useButton`) as the child, never a raw `<button>` or `<div>`. HeroUI propagates `onPress`, `ref`, and ARIA attributes to its own Button; raw elements miss the keyboard/accessibility wiring.
 
+**Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where HeroUI `<Button>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
+
+- _(none currently — all interactive buttons use HeroUI `<Button>`.)_
+
 **Do not override HeroUI default styling.** Use variant/color props (`variant="flat"`, `color="primary"`, etc.) first. Custom `classNames` / `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
 
 **OpenUI components** must render **outside** the `imessage-bubble` wrapper, never inside it. Both use `bg-zinc-800`, so rendering inside makes them invisible against the bubble. See `apps/web/src/config/openui/CLAUDE.md` for the full OpenUI lifecycle and component checklist.
