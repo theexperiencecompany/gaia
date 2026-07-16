@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, WINBACK_THRESHOLD
 from app.constants.todos import (
+    ASSIGNEE_GAIA,
     FACET_NOTES,
     facet_from_doc,
     gaia_assigned_filter,
@@ -26,6 +27,7 @@ from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.briefing_models import BriefingMood
 from app.models.todo_models import ExecutionStatus
+from app.services.briefing import dormancy
 from shared.py.wide_events import log
 
 # GAIA todos that are live work (shown in the plan block).
@@ -98,11 +100,20 @@ async def get_yesterday_payload(
     return doc.get("payload") if doc else None
 
 
+# Users type junk into onboarding ("nothing", "n/a"); junk is not a goal.
+_JUNK_FOCUS_VALUES = {"nothing", "none", "n/a", "na", "-", "idk", "no"}
+
+
+def has_meaningful_focus(focus: str | None) -> bool:
+    """Whether the onboarding focus is a real stated goal (not blank or junk)."""
+    cleaned = (focus or "").strip()
+    return bool(cleaned) and cleaned.lower() not in _JUNK_FOCUS_VALUES
+
+
 async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
     """Return (formatted goal block, has_goal). ``has_goal`` gates cold-start."""
     focus = ((user.get("onboarding") or {}).get("focus") or "").strip()
-    # Users type junk into onboarding ("nothing", "n/a"); junk is not a goal.
-    if focus.lower() in {"nothing", "none", "n/a", "na", "-", "idk", "no"}:
+    if not has_meaningful_focus(focus):
         focus = ""
     lines: list[str] = []
     if focus:
@@ -222,6 +233,7 @@ async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
                 "notes_content": 1,
                 "canvas_content": 1,
                 "completed_at": 1,
+                "created_at": 1,
                 "error_message": 1,
             },
         ):
@@ -298,7 +310,7 @@ async def gather_completed_since(
         {"user_id": user_id, "completed_at": {"$gte": since}}, projection
     )
     async for doc in cursor:
-        is_gaia = doc.get("assignee") == "gaia" or "gaia-tracked" in doc.get("labels", [])
+        is_gaia = doc.get("assignee") == ASSIGNEE_GAIA
         (work.gaia if is_gaia else work.user).append(doc)
     return work
 
@@ -383,8 +395,14 @@ async def format_lookback_block(
 async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
     """Count consecutive most-recent daily briefings the user never acknowledged.
 
-    Acknowledgement is honest and channel-agnostic: the briefing was opened, OR a
-    real todo completed after it went out (the user acted on the loop).
+    Acknowledgement is honest and channel-agnostic: the briefing was opened, OR the
+    user was active since it went out (a reactivation signal — goal created, session
+    active, or any message). A todo completing is deliberately NOT an ack: GAIA's
+    night shift completes its own todos autonomously, so counting completions would
+    let GAIA acknowledge its own briefings and winback would never fire.
+
+    The loop breaks at the first acknowledged briefing, so the reactivation-signal
+    lookup runs only for the unacknowledged tail (at most one extra call past it).
     """
     briefings = (
         await briefings_collection.find(
@@ -398,17 +416,13 @@ async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
     if not briefings:
         return WinbackState(unacknowledged=0, last_was_winback=False)
 
-    latest_completion = await todos_collection.find_one(
-        {"user_id": user_id, "completed_at": {"$ne": None}},
-        {"completed_at": 1},
-        sort=[("completed_at", -1)],
-    )
-    last_completed_at = latest_completion.get("completed_at") if latest_completion else None
-
     unacknowledged = 0
     for doc in briefings:
-        acknowledged = doc.get("opened_at") is not None or (
-            last_completed_at is not None and last_completed_at > doc["created_at"]
+        created_at = doc["created_at"]
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        acknowledged = doc.get("opened_at") is not None or await dormancy.reactivation_signal_since(
+            user_id, created_at
         )
         if acknowledged:
             break

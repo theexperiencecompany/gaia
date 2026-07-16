@@ -14,4 +14,13 @@ export const firstStepsApi = {
   markFirstStep: async (step: string): Promise<void> => {
     await apiService.patch("/users/me/first-steps", { step }, { silent: true });
   },
+
+  // Hides a single checklist row server-side (persists across browsers).
+  hideFirstStep: async (step: string): Promise<void> => {
+    await apiService.patch(
+      "/users/me/first-steps/hide",
+      { step },
+      { silent: true },
+    );
+  },
 };

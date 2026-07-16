@@ -33,39 +33,46 @@ MAX_REPLY_LINES = 10
 MAX_REPLY_CHARS = 200
 
 
+async def persist_bot_message(user_id: str, user: dict, platform: str, parts: list[str]) -> None:
+    """Append one assistant turn (``parts``, joined) to a platform's bot conversation.
+
+    The bot never sees GAIA's outbound in its own history (platform delivery is
+    fire-and-forget), so this writes it in so the user's next reply lands with
+    context. Best-effort: the message is already delivered, so a history-sync
+    failure must not fail (and re-send) the caller's flow — log it.
+    """
+    if not parts:
+        return
+    linked = await PlatformLinkService.get_linked_platforms(user_id)
+    platform_user_id = (linked.get(platform) or {}).get("platformUserId")
+    if not platform_user_id:
+        return
+    date_iso = datetime.now(UTC).isoformat()
+    try:
+        # Resolve through bot_sessions (never cache): /new re-mints the id.
+        conversation_id = await BotService.get_or_create_session(
+            platform, str(platform_user_id), None, user
+        )
+        await update_messages(
+            UpdateMessagesRequest(
+                conversation_id=conversation_id,
+                messages=[MessageModel(type="bot", response="\n\n".join(parts), date=date_iso)],
+            ),
+            {"user_id": user_id},
+        )
+    except Exception as e:
+        log.warning("briefing.chat_sync_failed", user_id=user_id, platform=platform, error=str(e))
+
+
 async def persist_delivered_brief(
     user_id: str, user: dict, parts: list[str], channels: list[str]
 ) -> None:
-    """Append the delivered brief to each bot platform's conversation history.
-
-    Best-effort by design: the brief is already persisted and delivered, so a
-    history-sync failure must not fail (and re-send) the whole run — log it.
-    """
+    """Append the delivered brief to each bot platform's conversation history."""
     platforms = [c for c in channels if ConversationSource.coerce(c) in BOT_CONVERSATION_SOURCES]
     if not platforms or not parts:
         return
-    linked = await PlatformLinkService.get_linked_platforms(user_id)
-    date_iso = datetime.now(UTC).isoformat()
     for platform in platforms:
-        platform_user_id = (linked.get(platform) or {}).get("platformUserId")
-        if not platform_user_id:
-            continue
-        try:
-            # Resolve through bot_sessions (never cache): /new re-mints the id.
-            conversation_id = await BotService.get_or_create_session(
-                platform, str(platform_user_id), None, user
-            )
-            await update_messages(
-                UpdateMessagesRequest(
-                    conversation_id=conversation_id,
-                    messages=[MessageModel(type="bot", response="\n\n".join(parts), date=date_iso)],
-                ),
-                {"user_id": user_id},
-            )
-        except Exception as e:
-            log.warning(
-                "briefing.chat_sync_failed", user_id=user_id, platform=platform, error=str(e)
-            )
+        await persist_bot_message(user_id, user, platform, parts)
 
 
 async def format_replies_block(user_id: str, since: datetime) -> str:

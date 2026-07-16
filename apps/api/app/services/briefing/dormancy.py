@@ -64,7 +64,14 @@ def wind_down_stage(idle_days: int) -> str | None:
 
 
 async def reactivation_signal_since(user_id: str, since: datetime) -> bool:
-    """True when the user did anything since ``since`` that should wake the loop."""
+    """True when the user did anything since ``since`` that should wake the loop.
+
+    This is the canonical "the user was active since T" predicate: a goal created,
+    authenticated activity (``last_active_at``), or any user message in any
+    conversation. Shared by the dormancy ladder (wake a paused loop) and winback
+    acknowledgement (``context.compute_winback_state``) so the two never diverge on
+    what counts as the user showing up. ``since`` must be timezone-aware.
+    """
     goal = await todos_collection.find_one(
         {"user_id": user_id, "kind": "goal", "created_at": {"$gte": since}}, {"_id": 1}
     )

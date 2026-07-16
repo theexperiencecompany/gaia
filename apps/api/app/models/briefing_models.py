@@ -10,9 +10,10 @@ from datetime import UTC, datetime
 from typing import Literal
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, HUE_MAX
+from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY
 
 BriefingKind = Literal["daily", "weekly"]
 
@@ -103,3 +104,25 @@ class BriefingListResponse(BaseModel):
     """Archive response shape (frontend is coded against this)."""
 
     briefings: list[BriefingModel]
+
+
+class ChannelPriorityResponse(BaseModel):
+    """The user's briefing chat-channel priority order (settings UI reads this)."""
+
+    chat_channel_priority: list[str]
+
+
+class ChannelPriorityUpdate(BaseModel):
+    """A non-empty, duplicate-free ordered subset of the four chat platforms."""
+
+    chat_channel_priority: list[str] = Field(min_length=1)
+
+    @field_validator("chat_channel_priority")
+    @classmethod
+    def _validate_platforms(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("chat_channel_priority must not contain duplicates")
+        unknown = [p for p in value if p not in DEFAULT_CHAT_CHANNEL_PRIORITY]
+        if unknown:
+            raise ValueError(f"unknown chat platform(s): {', '.join(unknown)}")
+        return value

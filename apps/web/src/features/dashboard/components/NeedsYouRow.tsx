@@ -2,11 +2,13 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
+import { useDisclosure } from "@heroui/modal";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { useState } from "react";
 import { StatusGlyph } from "@/components/shared/StatusGlyph";
+import { ApproveConfirmModal } from "@/features/todo/components/shared/ApproveConfirmModal";
 import { useAnswerTodo } from "@/features/todo/hooks/useAnswerTodo";
 import { useApproveTodo } from "@/features/todo/hooks/useApproveTodo";
 import { useDismissTodo } from "@/features/todo/hooks/useDismissTodo";
@@ -29,9 +31,18 @@ export const NeedsYouRow: React.FC<NeedsYouRowProps> = ({ item }) => {
   const answerTodo = useAnswerTodo();
   const [answerOpen, setAnswerOpen] = useState(false);
   const [answer, setAnswer] = useState("");
+  const approveModal = useDisclosure();
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: TODAY_QUERY_KEY });
+
+  const confirmApprove = () =>
+    approveTodo.mutate(item.todo_id, {
+      onSuccess: () => {
+        refresh();
+        approveModal.onClose();
+      },
+    });
 
   const submitAnswer = () => {
     const trimmed = answer.trim();
@@ -91,12 +102,17 @@ export const NeedsYouRow: React.FC<NeedsYouRowProps> = ({ item }) => {
               color="primary"
               radius="lg"
               isLoading={approveTodo.isPending}
-              onPress={() =>
-                approveTodo.mutate(item.todo_id, { onSuccess: refresh })
-              }
+              onPress={approveModal.onOpen}
             >
               Approve & send
             </Button>
+            <ApproveConfirmModal
+              isOpen={approveModal.isOpen}
+              onOpenChange={approveModal.onOpenChange}
+              todoId={item.todo_id}
+              onConfirm={confirmApprove}
+              isConfirming={approveTodo.isPending}
+            />
           </div>
         )}
         {isBlocked && !answerOpen && (

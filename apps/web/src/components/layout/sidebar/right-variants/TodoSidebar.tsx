@@ -179,6 +179,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                       ? todo.error_message
                       : null
                   }
+                  todoId={todo.id}
                 />
               )}
             </div>
@@ -186,7 +187,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
           {/* Full-width, out of the checkbox column — same rule as the
               decision cards: offers act at page width, not title width. */}
-          {!isGaiaTodo && todo.gaia_offer && (
+          {!isGaiaTodo && todo.gaia_offer && !todo.gaia_offer_dismissed && (
             <GaiaOfferBanner todoId={todo.id} offer={todo.gaia_offer} />
           )}
 

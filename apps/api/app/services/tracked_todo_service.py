@@ -23,7 +23,6 @@ from app.constants.todos import (
     FACET_DELIVERABLE,
     FACET_LOG,
     FACET_NOTES,
-    GAIA_TRACKED_LABEL,
     NOTES_TEMPLATE,
     facet_from_doc,
     gaia_assigned_filter,
@@ -94,7 +93,7 @@ async def _extract_canvas_key_details(doc: dict, user_id: str) -> str:
 
 def _format_signal_entry(doc: dict, key_details: str) -> str:
     """Render one tracked todo as a signal-matching context bullet (+ indented key details)."""
-    labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
+    labels = doc.get("labels", [])
     labels_str = f" [{', '.join(labels)}]" if labels else ""
     entry = (
         f'- "{doc.get("title", "")}"{labels_str} '
@@ -115,7 +114,7 @@ def _format_tracked_todo_line(doc: dict, now: datetime, active_todo_id: str | No
     """
     age_days = (now - doc.get("created_at", now)).days
     last_update = (now - doc.get("updated_at", now)).days
-    labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
+    labels = doc.get("labels", [])
     labels_str = f" [{', '.join(labels)}]" if labels else ""
     todo_id = str(doc["_id"])
     prefix = "⭐ ACTIVE " if todo_id == active_todo_id else ""

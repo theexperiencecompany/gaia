@@ -3,12 +3,14 @@
 import { Switch } from "@heroui/switch";
 import { MailIcon } from "@icons";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChannelPriorityList } from "@/features/briefing/components/ChannelPriorityList";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
   NOTIFICATION_PLATFORMS,
   type NotificationChannelPreference,
+  type NotificationPlatform,
 } from "@/features/notification/constants";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -34,6 +36,17 @@ export default function NotificationSettings() {
   });
   const [loading, setLoading] = useState(true);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
+
+  const linkedMap = useMemo(
+    () =>
+      Object.fromEntries(
+        NOTIFICATION_PLATFORMS.map((platform) => [
+          platform,
+          !!platformLinks[platform]?.platformUserId,
+        ]),
+      ) as Record<NotificationPlatform, boolean>,
+    [platformLinks],
+  );
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -131,6 +144,16 @@ export default function NotificationSettings() {
           />
         </SettingsRow>
       </SettingsSection>
+
+      <div>
+        <p className="mb-2 text-sm font-medium text-zinc-300">
+          Where your briefing lands
+        </p>
+        <p className="mb-3 text-sm text-zinc-500">
+          Your daily brief goes to the first connected channel in this order.
+        </p>
+        <ChannelPriorityList linkedMap={linkedMap} />
+      </div>
     </SettingsPage>
   );
 }

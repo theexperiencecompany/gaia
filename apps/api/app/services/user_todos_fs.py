@@ -1,6 +1,6 @@
 """Mongo → VFS glue for ``/workspace/todos/`` (the USER's todo list).
 
-The Mongo side: ``todos`` collection, NOT carrying ``gaia-tracked``,
+The Mongo side: ``todos`` collection, ``assignee != "gaia"``,
 7-day completion window.
 
 The VFS side: :mod:`app.services.storage.user_todos_vfs`.
@@ -53,10 +53,10 @@ schedule_user_todos_sync = make_scheduler(sync_user_todos, log_name="user_todos_
 
 
 async def _fetch_active_projections(user_id: str) -> list[UserTodoProjection]:
-    """Pull the user's active non-gaia-tracked todos from Mongo.
+    """Pull the user's active non-GAIA todos from Mongo.
 
-    Filter: ``labels`` does NOT contain ``gaia-tracked`` AND (open OR
-    completed within the last 7 days).
+    Filter: ``assignee != "gaia"`` AND (open OR completed within the last
+    7 days).
     """
     cutoff = datetime.now(UTC) - timedelta(days=ACTIVE_WINDOW_DAYS)
     cursor = todos_collection.find(

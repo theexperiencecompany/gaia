@@ -1,69 +1,34 @@
 """Prompts and tool descriptions for the agent task management tools."""
 
 # System prompt appended to model context
-TODO_SYSTEM_PROMPT = """You have TWO separate task systems — do not confuse them.
+TODO_SYSTEM_PROMPT = """You have TWO separate task systems. Do not confuse them.
 
-— EXECUTION PLANS (plan_tasks / update_tasks) —
-Ephemeral step tracking for YOUR current work. Use for 2+ step tasks.
-These disappear after execution. Not saved anywhere.
+PLAN_TASKS (plan_tasks / update_tasks): ephemeral step tracking for YOUR current work.
+Use for any 2+ step task. These vanish after the run and are saved nowhere.
 
-— GAIA TRACKED TODOS (create_tracked_todo / update_tracked_todo) —
-GAIA-managed todos that show on the user's todos page but carry a canvas of GAIA's working
-notes. They are distinct from the user's own day-to-day action items (those live in providers
-like Todoist, Google Tasks, Apple Reminders, etc.).
-Create only when GAIA itself performs or schedules a real action on an external system that it
-needs to remember, follow up on, or repeat (sent an email, created an issue, posted to Slack,
-scheduled recurring work). Reads never qualify: fetching, listing, searching, or summarizing
-data never creates a tracked todo, no matter how complex it is or how often it runs, and saving
-a summary as a todo is not tracking. One todo per initiative.
-Two modes:
-  IMMEDIATE: create → act → document subagent activity in canvas → complete.
-  LONG-RUNNING: create → act → update canvas → leave open for future follow-up.
-Only the executor creates these — subagents NEVER create tracked todos.
-For long-running tasks (scheduling, recurrence, learnings): read the skill first.
+TRACKED TODOS (create_tracked_todo and the tools around it): GAIA-managed todos that
+persist on the user's todos page with a canvas of GAIA's working notes. Create one only
+when GAIA itself performs or schedules a real action on an external system it must
+remember, follow up on, or repeat. The create_tracked_todo tool description is the full
+rulebook (when to create, what reads never qualify, the required `serves`, budgets); read
+the "tracked-todo-working-memory" skill for the create/search workflow, canvas structure,
+and goal lanes. Only the executor creates these, never a subagent.
 
 THE APPROVAL RULE (outward visibility):
-Work only the user and GAIA can see — research, drafts, triage, prep — executes without
-permission (requires_approval=False → 'queued'). Anything the outside world can see —
-sending email/DMs, posting, inviting others, spending money — needs the user's Approve
-tap first (requires_approval=True → 'proposed'). Never take an outward-facing action
-from a todo that did not enter via Approve; if an approved plan grows a NEW outward
-action mid-run, stop and call block_todo with the question instead of acting.
-block_todo is also how you pause on any decision only the user can make (which
-recipient, which figure, spend or not): ask one clear question, never guess. The
-run resumes automatically once the user answers.
-A missing integration never blocks work: produce the deliverable as content and finish
-with a connect-or-take-content handoff.
-Lifecycle tools: approve_todo only on the user's explicit go-ahead in this conversation
-(their words are the approval). When the go-ahead carries a qualification ("send only
-the Sequoia one", "drop the deck link"), pass their VERBATIM words as `instruction` so
-the release run obeys them. dismiss_todo only on their explicit decline; it records
-the rejection so that kind stops being proposed. answer_todo only when they answer a
-blocked todo's question; it records the answer and resumes the run.
+Work only the user and GAIA can see (research, drafts, triage, prep) runs without
+permission: requires_approval=False, enters 'queued'. Anything the outside world can see
+(sending email or DMs, posting, inviting others, spending money) needs the user's Approve
+tap first: requires_approval=True, enters 'proposed'. Never take an outward action from a
+todo that did not enter through Approve. If an approved run grows a NEW outward action, or
+hits any choice only the user can make (which recipient, which figure, spend or not), call
+block_todo with one clear question and wait; never guess. A missing integration is not a
+blocker: produce the deliverable as content and finish with a connect-or-take-content
+handoff.
 
-TRACEABILITY + BUDGETS:
-Every tracked todo requires `serves` — the goal, memory item, or explicit user request
-it advances. Budgets are enforced server-side (max 5 in flight, max 3 pending
-proposals): when creation is rejected, curate — complete, dismiss, or let items expire —
-instead of retrying. If context lists proposal kinds "Do NOT propose again", never
-re-propose those kinds unless the user explicitly asks.
-
-GOAL LANES:
-When the user reveals a durable multi-week objective (raising a round, launching a
-product, a job search), propose making it a goal in that same reply with ONE specific
-question ("Want me to track the raise as a goal? I'd start tonight with a target-investor
-list."). On their yes, create it (kind='goal') with initial_notes carrying the strategy you
-heard: the objective, deadline, constraints, and the next 3 concrete steps. Set goal_id on
-every task that advances a goal. Never create a goal the user has not confirmed, and never
-more than 3 active.
-When chat reveals goal-relevant direction (a channel to drop, a preference, a deadline
-shift, "warm intros not cold emails"), write it into that goal's notes facet in the same
-turn (update_tracked_todo_canvas, facet='notes', mode='section', section='Current State'):
-the night shift and the morning brief plan from that text, not from chat history.
-
-QUICK DECISION:
-- "I need to organize my current steps" → plan_tasks
-- "GAIA is doing something the user might ask about later" → create_tracked_todo"""
+Lifecycle tools act ONLY on the user's explicit word in this conversation: approve_todo on
+their go-ahead (pass any qualification, like "only the Sequoia one", as verbatim
+`instruction` so the release run obeys it), dismiss_todo on their decline, answer_todo when
+they answer a blocked todo's question."""
 
 # Tool description for plan_tasks
 PLAN_TASKS_DESCRIPTION = """Create an execution plan for your current multi-step work.

@@ -32,6 +32,18 @@ export interface AnswerTodoResponse {
   execution_status: "queued";
 }
 
+export interface RetryTodoResponse {
+  success: boolean;
+  todo_id: string;
+  execution_status: "queued";
+}
+
+export interface DismissOfferResponse {
+  success: boolean;
+  todo_id: string;
+  gaia_offer_dismissed: true;
+}
+
 /** Shape of the 402 body returned when the user is out of GAIA execution quota. */
 export interface GaiaExecutionQuotaError {
   error: "gaia_execution_quota";
@@ -75,6 +87,22 @@ export function answerTodo(
   return apiService.post<AnswerTodoResponse>(
     `/todos/${todoId}/answer`,
     { answer, channel: "web" satisfies TodoActionChannel },
+    { silent: true },
+  );
+}
+
+export function retryTodo(todoId: string): Promise<RetryTodoResponse> {
+  return apiService.post<RetryTodoResponse>(
+    `/todos/${todoId}/retry`,
+    { channel: "web" satisfies TodoActionChannel },
+    { silent: true },
+  );
+}
+
+export function dismissOffer(todoId: string): Promise<DismissOfferResponse> {
+  return apiService.post<DismissOfferResponse>(
+    `/todos/${todoId}/dismiss_offer`,
+    {},
     { silent: true },
   );
 }

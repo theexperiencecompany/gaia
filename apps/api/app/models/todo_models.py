@@ -139,6 +139,10 @@ class TodoBase(BaseModel):
         default=0,
         description="Number of failed execution attempts (managed by system)",
     )
+    gaia_user_retry_count: int = Field(
+        default=0,
+        description="Number of times the user has manually retried this todo after failure (capped by MAX_GAIA_USER_RETRIES)",
+    )
     expires_at: datetime | None = Field(
         default=None,
         description="When this todo becomes irrelevant regardless of completion (LLM-set relevance window)",
@@ -193,6 +197,10 @@ class TodoBase(BaseModel):
     gaia_offer: str | None = Field(
         default=None,
         description="Silent-classification offer to hand a user todo to GAIA (non-blocking affordance, no notification).",
+    )
+    gaia_offer_dismissed: bool = Field(
+        default=False,
+        description="Set when the user dismisses the gaia_offer affordance; suppresses it on every surface.",
     )
     pitch_expires_at: datetime | None = Field(
         default=None,

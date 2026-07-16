@@ -15,6 +15,24 @@ from bson import ObjectId
 
 from app.db.mongodb.collections import users_collection
 from app.services import first_steps_service
+from app.utils.redis_utils import RedisPoolManager
+from shared.py.wide_events import log
+
+
+async def _enqueue_day_zero_hello(user_id: str, platform: str) -> None:
+    """Best-effort: enqueue GAIA's first-hello job for a freshly linked chat
+    platform. The task guards itself to fire once per user, so a duplicate enqueue
+    is harmless; a Redis hiccup must not fail the link."""
+    try:
+        pool = await RedisPoolManager.get_pool()
+        await pool.enqueue_job("send_day_zero_hello", user_id, platform)
+    except Exception as e:
+        log.warning(
+            "platform_link.day_zero_enqueue_failed",
+            user_id=user_id,
+            platform=platform,
+            error=str(e),
+        )
 
 
 class Platform(str, Enum):
@@ -132,8 +150,15 @@ class PlatformLinkService:
             and user["platform_links"][platform].get("id") == platform_user_id
         )
 
-        if platform == Platform.TELEGRAM.value or platform == "telegram":
-            await first_steps_service.mark_step(user_id, first_steps_service.STEP_LINK_TELEGRAM)
+        # Any chat platform link satisfies the "link a platform" activation step.
+        await first_steps_service.mark_step(user_id, first_steps_service.STEP_LINK_PLATFORM)
+
+        # A brand-new chat link is the day-zero moment: greet the user once. The
+        # task guards itself (once ever, young account, still linked), so a
+        # same-id relink never re-greets.
+        if not previously_linked_same:
+            await _enqueue_day_zero_hello(user_id, platform)
+
         return {
             "status": "linked",
             "platform": platform,

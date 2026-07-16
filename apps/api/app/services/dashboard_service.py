@@ -94,6 +94,7 @@ async def _suggested(user_id: str, start: datetime, end: datetime) -> list[dict[
         "user_id": user_id,
         "completed": False,
         "gaia_offer": {"$nin": [None, ""]},
+        "gaia_offer_dismissed": {"$ne": True},
         "$nor": [
             {"due_date": {"$gte": start, "$lt": end}},
             {"scheduled_at": {"$gte": start, "$lt": end}},
@@ -118,7 +119,8 @@ async def _your_tasks(user_id: str, start: datetime, end: datetime) -> list[dict
         {
             **_base_item(doc),
             "due_at": _iso(doc.get("due_date") or doc.get("scheduled_at")),
-            "gaia_offer": doc.get("gaia_offer"),
+            # A dismissed offer keeps the task but drops its handoff tag.
+            "gaia_offer": None if doc.get("gaia_offer_dismissed") else doc.get("gaia_offer"),
         }
         async for doc in cursor
     ]

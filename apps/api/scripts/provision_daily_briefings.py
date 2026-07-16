@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """One-time, idempotent existing-user briefing rollout.
 
-For every user: provision the daily-briefing + weekly-digest system workflows and
-send a one-time all-channel announcement. Users we can derive a goal for get the
-standard announcement (real first briefing next morning); sparse users with no
-derivable goal get a short bootstrap interview and their briefings are held until
-they answer or the grace window elapses. Safe to re-run — provisioning is
-idempotent by ``system_workflow_key`` and the announcement path is logged.
+For every user: provision the daily-briefing + weekly-digest system workflows.
+Users we can derive a goal for get a real first briefing next morning; sparse
+users with no derivable goal have their briefings held (bootstrap marker) until a
+goal arrives or the grace window elapses. The user-facing announcement is sent
+manually by email, not from here. Safe to re-run — provisioning is idempotent by
+``system_workflow_key`` and the path taken is logged.
 
 Run: uv run python scripts/provision_daily_briefings.py [--dry-run]
 """
@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.mongodb.collections import users_collection  # noqa: E402
-from app.services.briefing.rollout import announce_and_provision  # noqa: E402
+from app.services.briefing.rollout import provision_existing_user  # noqa: E402
 
 
 async def rollout(dry_run: bool) -> None:
@@ -33,7 +33,7 @@ async def rollout(dry_run: bool) -> None:
     async for doc in cursor:
         user_id = str(doc["_id"])
         try:
-            path = await announce_and_provision(user_id)
+            path = await provision_existing_user(user_id)
         except Exception as e:  # one bad user must not abort the whole rollout
             print(f"  user {user_id}: FAILED ({e})")
             paths["failed"] = paths.get("failed", 0) + 1

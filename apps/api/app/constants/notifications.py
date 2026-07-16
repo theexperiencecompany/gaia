@@ -48,10 +48,24 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_EMAIL: True,
 }
 
+# Default order in which a briefing picks its ONE chat platform. The daily brief
+# lands on the first platform in this list that the user has linked and enabled,
+# not on every linked platform (users.briefing_channel_priority overrides it).
+DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
+    CHANNEL_TYPE_TELEGRAM,
+    CHANNEL_TYPE_WHATSAPP,
+    CHANNEL_TYPE_SLACK,
+    CHANNEL_TYPE_DISCORD,
+)
+
 # Notification metadata "kind" values that select an email template. Anything
 # else (including unset) falls back to the plain-notification template.
 NOTIFICATION_KIND_BRIEFING_DAILY = "briefing_daily"
 NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"
+
+# Todo-lifecycle notification kinds (plain template; used for filtering/analytics).
+NOTIFICATION_KIND_TODO_NEEDS_YOU = "todo_needs_you"
+NOTIFICATION_KIND_TODO_DONE = "todo_done"
 
 # Workflow-completion notification copy. GAIA texts like a friend (first person,
 # casual), not a status bar. Each entry is (title, body); {title} is the workflow

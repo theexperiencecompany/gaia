@@ -15,7 +15,6 @@ import React, {
   useState,
 } from "react";
 import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
-import { useTrackRouteVisit } from "@/features/first-steps/hooks/useTrackRouteVisit";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { useHeader } from "@/hooks/layout/useHeader";
@@ -32,7 +31,6 @@ import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
 
 export default function WorkflowPage() {
-  useTrackRouteVisit("explore_workflows");
   const pageRef = useRef(null);
   const clearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();

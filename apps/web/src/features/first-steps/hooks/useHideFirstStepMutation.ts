@@ -5,16 +5,15 @@ import { firstStepsApi } from "../api/firstStepsApi";
 import { FIRST_STEPS_QUERY_KEY } from "./useFirstStepsQuery";
 
 /**
- * Marks a first-steps checklist item complete, optimistically stamping the
- * cache immediately so the widget updates without waiting on the round trip.
- * Mirrors the optimistic-update + invalidate-on-settle pattern used in
- * useEmailActions.
+ * Hides a single checklist row server-side, optimistically adding it to
+ * `hidden_steps` so the widget drops it immediately. Mirrors the optimistic
+ * update + invalidate-on-settle pattern in useMarkFirstStepMutation.
  */
-export const useMarkFirstStepMutation = () => {
+export const useHideFirstStepMutation = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (step: string) => firstStepsApi.markFirstStep(step),
+    mutationFn: (step: string) => firstStepsApi.hideFirstStep(step),
     onMutate: async (step: string) => {
       await queryClient.cancelQueries({ queryKey: FIRST_STEPS_QUERY_KEY });
 
@@ -28,7 +27,9 @@ export const useMarkFirstStepMutation = () => {
           old
             ? {
                 ...old,
-                steps: { ...old.steps, [step]: new Date().toISOString() },
+                hidden_steps: old.hidden_steps.includes(step)
+                  ? old.hidden_steps
+                  : [...old.hidden_steps, step],
               }
             : old,
       );

@@ -296,7 +296,7 @@ only. Produce ONE structured payload.
 {week_summary_block}
 
 Estimated time saved this week: about {hours_saved} hours.
-Current streak: {streak_days} day(s) of at least one completed todo.
+Current streak: {streak_days} day(s) you completed at least one todo yourself.
 {awards_block}
 {_ITEM_QUALITY}
 
@@ -431,3 +431,51 @@ No user-facing message and no payload: the user is asleep and the morning
 briefing does the talking. End with one terse line listing the todos you
 created (consumed by logs only).
 """  # nosec B608 - natural-language prompt; bandit's SQL heuristic matches the words "update ... set" in prose, there is no SQL here
+
+
+def build_day_zero_hello_prompt(*, first_name: str, goal_block: str, has_goal: bool) -> str:
+    """The first text GAIA sends a user right after they link a chat platform."""
+
+    if has_goal:
+        task = f"""Say hi to {first_name} by name, warm and quick. Then, from what you know
+about their goal below, name that goal in plain words and offer ONE specific
+thing you'll have ready by their first brief tomorrow morning. Make the offer
+concrete and grounded in their actual goal ("I'll pull together a shortlist of
+seed funds that back API startups so you can start reaching out"), never a vague
+"I'll help you get started". One clear offer, not a menu."""
+    else:
+        task = f"""Say hi to {first_name} by name, warm and quick. You don't know their goal
+yet, so ask ONE specific question that gets you there, grounded in anything you
+do know from the context below. Not "what are your goals?" but a real, pointed
+question a sharp friend would ask. One question, not three."""
+
+    return f"""You are GAIA, texting {first_name} for the first time. They just connected a
+chat platform to you, so this message lands in that chat like a text from a
+friend, not an onboarding email.
+
+## WHAT YOU KNOW ABOUT THEM
+{goal_block}
+
+## YOUR MESSAGE
+{task}
+
+Close by letting them know their first brief lands tomorrow morning around 8.
+Keep it light, one short line for that, not a sales pitch.
+
+## VOICE
+Text like a real person who is genuinely glad they showed up. Contractions
+always. Vary your sentence length. Open on the actual point, no "Welcome to
+GAIA!" throat-clearing. Warm, specific, a little bit of personality, never
+corporate and never a bulleted list. Do not use em dashes or en dashes anywhere;
+use commas, periods, or parentheses. Do not overdo it into fake slang or forced
+quirkiness. No emoji unless it truly fits, and at most one.
+
+## OUTPUT
+Your ENTIRE final message is a JSON array of 1 to 2 short strings inside one
+```json code fence, each string one chat bubble in the order they should send.
+No prose before or after the fence. Example shape (not the content):
+
+```json
+["first bubble here", "second bubble here"]
+```
+"""

@@ -23,15 +23,17 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_limiter,
 )
 from app.constants.memory import MemorySourceType
+from app.constants.notifications import NOTIFICATION_KIND_TODO_NEEDS_YOU
 from app.constants.todos import (
     ASSIGNEE_GAIA,
     DELIVERABLE_TEMPLATE,
     FACET_LOG,
     FACET_NOTES,
+    FAILED_LABEL,
     GAIA_TODO_EXECUTIONS_FEATURE,
-    GAIA_TRACKED_LABEL,
     MAX_ACTIVE_GOALS,
     MAX_GAIA_TODOS_IN_FLIGHT,
+    MAX_GAIA_USER_RETRIES,
     MAX_PENDING_PROPOSALS,
     NOTES_TEMPLATE,
     PITCH_TTL_DAYS,
@@ -43,10 +45,22 @@ from app.constants.todos import (
 from app.core.websocket_manager import WebSocketManager
 from app.db.mongodb.collections import todos_collection
 from app.memory.engine import memory_engine
+from app.models.notification.notification_models import (
+    ActionConfig,
+    ActionStyle,
+    ActionType,
+    NotificationAction,
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+    NotificationType,
+    RedirectConfig,
+)
 from app.models.payment_models import PlanType
 from app.models.todo_models import ExecutionStatus
 from app.services import first_steps_service
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
+from app.services.notification_service import notification_service
 from app.services.todo_canvas_storage import append_facet, build_vfs_label
 from app.utils.analytics import track
 from app.utils.redis_utils import RedisPoolManager
@@ -59,7 +73,7 @@ IN_FLIGHT_STATUSES: tuple[str, ...] = (
     ExecutionStatus.NEEDS_YOU.value,
 )
 # Labels that are system bookkeeping, never a proposal "kind".
-_RESERVED_KIND_LABELS: frozenset[str] = frozenset({GAIA_TRACKED_LABEL, "failed"})
+_RESERVED_KIND_LABELS: frozenset[str] = frozenset({FAILED_LABEL})
 
 
 class GaiaTodoError(Exception):
@@ -122,8 +136,7 @@ def _build_upgrade_pitch(doc: dict) -> str:
 
 
 def _is_gaia_assigned(doc: dict) -> bool:
-    # Dual-read during the migration window (legacy label OR assignee field).
-    return doc.get("assignee") == ASSIGNEE_GAIA or GAIA_TRACKED_LABEL in doc.get("labels", [])
+    return doc.get("assignee") == ASSIGNEE_GAIA
 
 
 async def _get_gaia_todo(todo_id: str, user_id: str) -> dict:
@@ -493,8 +506,54 @@ async def mark_execution_status(
     )
     if status == ExecutionStatus.DONE:
         track(user_id, "gaia_todo_completed", {"todo_id": todo_id})
+    if status == ExecutionStatus.NEEDS_YOU:
+        # Fires for both entry points into needs_you — the agent's ``block`` and
+        # the release honesty gate both route here, so a paused run always pings.
+        await _notify_needs_you(todo_id, user_id, blocker_question)
     await _broadcast_status(user_id, todo_id, status.value)
     schedule_gaia_tasks_sync(user_id)
+
+
+async def _notify_needs_you(todo_id: str, user_id: str, blocker_question: str | None) -> None:
+    """Push a notification when a run pauses on the user (default channel fan-out).
+
+    Best-effort: the transition is already persisted and broadcast over the
+    websocket, so a delivery failure only delays the ping — log it, never raise.
+    """
+    doc = await todos_collection.find_one(
+        {"_id": ObjectId(todo_id), "user_id": user_id}, {"title": 1}
+    )
+    title = (doc or {}).get("title", "your todo")
+    body = (blocker_question or "").strip() or "GAIA needs a decision from you to continue."
+    try:
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=user_id,
+                source=NotificationSourceEnum.AI_AGENT,
+                type=NotificationType.WARNING,
+                content=NotificationContent(
+                    title=f"GAIA needs you: {title}",
+                    body=body,
+                    actions=[
+                        NotificationAction(
+                            type=ActionType.REDIRECT,
+                            label="Open todo",
+                            style=ActionStyle.PRIMARY,
+                            config=ActionConfig(
+                                redirect=RedirectConfig(
+                                    url=f"/todos?todoId={todo_id}",
+                                    open_in_new_tab=False,
+                                    close_notification=True,
+                                )
+                            ),
+                        )
+                    ],
+                ),
+                metadata={"kind": NOTIFICATION_KIND_TODO_NEEDS_YOU, "todo_id": todo_id},
+            )
+        )
+    except Exception as e:
+        log.warning("gaia_todo.needs_you_notification_failed", todo_id=todo_id, error=str(e))
 
 
 async def block(todo_id: str, user_id: str, question: str) -> None:
@@ -553,6 +612,46 @@ async def answer(todo_id: str, user_id: str, answer_text: str, channel: str = "w
         todo_id, user_id, "answered", f"User answered via {channel}: {answer_text[:200]}"
     )
     track(user_id, "todo_answered", {"todo_id": todo_id, "channel": channel})
+    await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
+    schedule_gaia_tasks_sync(user_id)
+
+
+async def retry(todo_id: str, user_id: str, channel: str = "web") -> None:
+    """Re-run a failed todo: the only ``failed → queued`` path.
+
+    Clears the failure state the execution loop reads (the ``failed`` label and
+    ``error_message``) and resets ``gaia_retry_count`` so the re-run is a fresh
+    execution episode, not a one-shot that fails immediately. ``gaia_user_retry_count``
+    bounds how many times a human may retry a todo that keeps failing.
+    """
+    doc = await _require_status(todo_id, user_id, ExecutionStatus.FAILED, "retried")
+    user_retries = doc.get("gaia_user_retry_count", 0)
+    if user_retries >= MAX_GAIA_USER_RETRIES:
+        raise InvalidTransitionError(
+            f"This todo has already been retried {MAX_GAIA_USER_RETRIES} times and keeps "
+            "failing. Edit it or hand it off before retrying again."
+        )
+    now = datetime.now(UTC)
+    await todos_collection.update_one(
+        {"_id": ObjectId(todo_id), "user_id": user_id},
+        {
+            "$set": {
+                "execution_status": ExecutionStatus.QUEUED.value,
+                "scheduled_at": now,
+                "error_message": None,
+                "gaia_retry_count": 0,
+                "gaia_user_retry_count": user_retries + 1,
+            },
+            "$pull": {"labels": FAILED_LABEL},
+        },
+    )
+    await schedule_execution(todo_id, now)
+    await system_log(todo_id, user_id, "retry", f"User retried after failure via {channel}")
+    track(
+        user_id,
+        "todo_retried",
+        {"todo_id": todo_id, "channel": channel, "attempt": user_retries + 1},
+    )
     await _broadcast_status(user_id, todo_id, ExecutionStatus.QUEUED.value)
     schedule_gaia_tasks_sync(user_id)
 

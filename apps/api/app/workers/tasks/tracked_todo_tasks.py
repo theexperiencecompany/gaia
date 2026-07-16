@@ -17,14 +17,27 @@ from uuid import uuid4
 from bson import ObjectId
 
 from app.agents.core.agent import call_agent_silent
-from app.constants.todos import FACET_DELIVERABLE, FACET_LOG, FACET_NOTES
+from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_KIND_TODO_DONE
+from app.constants.todos import (
+    FACET_DELIVERABLE,
+    FACET_LOG,
+    FACET_NOTES,
+    FAILED_LABEL,
+    gaia_assigned_filter,
+)
 from app.db.mongodb.collections import todos_collection
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
+    ActionConfig,
+    ActionStyle,
+    ActionType,
+    ChannelConfig,
+    NotificationAction,
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
+    RedirectConfig,
 )
 from app.models.todo_models import ExecutionStatus
 from app.services.model_service import get_default_model
@@ -109,8 +122,9 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         )
         return f"expired:{todo_id}"
 
-    # Skip failed todos — user must manually reset before re-execution
-    if "failed" in doc.get("labels", []):
+    # Skip failed todos — the user must retry (POST /todos/{id}/retry clears this
+    # label) before re-execution.
+    if FAILED_LABEL in doc.get("labels", []):
         log.info("tracked_todo.execute_marked_failed", todo_id=todo_id)
         return f"skipped:{todo_id} (marked failed)"
 
@@ -129,7 +143,7 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
 
     try:
         await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.RUNNING)
-        await _run_execution(doc, user_id, user_data=user_data)
+        run_summary = await _run_execution(doc, user_id, user_data=user_data)
 
         # Resolve the post-run state. The agent may have completed the todo
         # mid-run (DONE), or turned it into a proposal awaiting approval, or hit
@@ -156,6 +170,10 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
                 await tracked_todo_service.complete_tracked_todo(
                     todo_id, user_id, summary="Completed overnight by GAIA."
                 )
+
+        # Ping the user when a run actually finished (DONE), scoped so goal-lane
+        # prep stays silent — the morning brief narrates those instead.
+        await _notify_done_if_scoped(todo_id, user_id, doc, run_summary)
 
         # Reset retry counter on success
         await todos_collection.update_one(
@@ -228,11 +246,11 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _run_execution(doc: dict, user_id: str, *, user_data: dict) -> None:
+async def _run_execution(doc: dict, user_id: str, *, user_data: dict) -> str | None:
     """
     Dispatch execution to the correct path:
-    - If the todo has a workflow_id, queue the workflow.
-    - Otherwise, run the agent directly.
+    - If the todo has a workflow_id, queue the workflow (no summary to return).
+    - Otherwise, run the agent directly and return its completion summary.
     """
     workflow_id: str | None = doc.get("workflow_id")
 
@@ -252,8 +270,8 @@ async def _run_execution(doc: dict, user_id: str, *, user_data: dict) -> None:
             workflow_id=workflow_id,
             todo_id=str(doc["_id"]),
         )
-    else:
-        await _execute_via_agent(doc, user_id, user_data=user_data)
+        return None
+    return await _execute_via_agent(doc, user_id, user_data=user_data)
 
 
 def _extract_learnings(ref_canvas: str) -> str | None:
@@ -295,10 +313,10 @@ async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
 # complete, kept apart from GAIA's scratch. This directive is what stops the
 # canvas from becoming a mixed blob of research + logs + half-drafts.
 _FACET_AUTHORING_DIRECTIVE = (
-    "This is a background prep run. Do the REAL work — research the web, draft, "
-    "compile — and never invent facts (no fabricated names, numbers, or quotes; "
+    "This is a background prep run. Do the REAL work (research the web, draft, "
+    "compile) and never invent facts (no fabricated names, numbers, or quotes; "
     "if you can't verify it, leave it out).\n\n"
-    "CRITICAL — this todo has SEPARATE facets, not one canvas with sections. "
+    "CRITICAL: this todo has SEPARATE facets, not one canvas with sections. "
     "Where results go decides whether the user ever sees them:\n"
     "- Your process (research, findings, drafts-in-progress, the plan) goes in "
     "NOTES: update_tracked_todo_canvas(todo_id, facet='notes', ...).\n"
@@ -306,38 +324,37 @@ _FACET_AUTHORING_DIRECTIVE = (
     "output to the DELIVERABLE facet as the final step:\n"
     "    update_tracked_todo_canvas(todo_id, facet='deliverable', mode='replace', "
     "content=<the whole finished result>)\n"
-    "  The deliverable is the actual thing the user uses or sends — the real code, "
-    "the real vetted list, the real drafts — complete, with NO placeholders like "
+    "  The deliverable is the actual thing the user uses or sends (the real code, "
+    "the real vetted list, the real drafts), complete, with NO placeholders like "
     "[Name] and NO research/log/'Work Order' sections mixed in. This is exactly "
     "what the user reads and what Approve releases.\n"
     "- Do NOT put a '## Deliverable' or '## Output' section inside notes. The "
     "finished output lives ONLY in the deliverable facet; notes must never hold it.\n"
     "- log: one short line of what you did this run.\n"
     '- Before finishing, end NOTES with a "## Learnings" section: 2-4 bullets a '
-    "FUTURE run on a similar task must know, written for a stranger — what worked, "
+    "FUTURE run on a similar task must know, written for a stranger: what worked, "
     'what to avoid, key contacts/links/IDs with dates (e.g. "Replies came only '
     'from subject lines naming their portfolio company", "foo@fund.com bounced '
-    '2026-07-09 — use their partner form"). Not a diary of this run; only reusable '
+    '2026-07-09, use their partner form"). Not a diary of this run; only reusable '
     "knowledge.\n\n"
     "Before you finish, check: is the complete finished result in the DELIVERABLE "
     "facet (not just notes)? If not, write it there now. If a real value doesn't "
-    "exist yet, do the work to get it — never ship a placeholder.\n\n"
+    "exist yet, do the work to get it; never ship a placeholder.\n\n"
     "THE BAR: the user must be able to tap Approve without editing a single word. "
-    "For each draft, match the target channel's real format — an email gets a "
+    "For each draft, match the target channel's real format: an email gets a "
     "specific subject line and a first line only its recipient could receive (a "
     "researched fact about them: their fund's recent investment, their post, their "
     "product); a LinkedIn post gets a hook line and short paragraphs; a tweet fits "
     "the length and reads native. Before writing the deliverable, do the "
     "recipient/audience research the draft depends on. Final check: read the "
-    "deliverable as the user would — if they would change anything before sending, "
+    "deliverable as the user would; if they would change anything before sending, "
     "fix it now, in this run.\n\n"
-    "Anything in the deliverable that a human will read (emails, posts, messages, "
-    "docs) must read like the USER wrote it, not an LLM: vary sentence length, "
-    "open on the point (no 'I hope this finds you well', no throat-clearing), "
-    "plain words over inflated ones, no 'delve'/'seamless'/'leverage'/'excited to "
-    "connect', and never an em dash. Take a position; don't hedge everything. "
-    "Don't overcorrect into forced quirkiness either — natural and specific, not "
-    "performative."
+    "Anything a human will read in the deliverable (emails, posts, messages, docs) "
+    "must sound like the USER wrote it, not an LLM: vary sentence length, open on "
+    "the point (no 'I hope this finds you well'), use plain words, take a position "
+    "instead of hedging, and never use an em dash or filler like 'delve', "
+    "'seamless', 'leverage', or 'excited to connect'. Keep it natural and specific, "
+    "not forced or quirky."
 )
 
 
@@ -345,24 +362,24 @@ _FACET_AUTHORING_DIRECTIVE = (
 # the (already-final) deliverable, not re-draft it. Without this an approved run
 # hits the prep directive above and just rewrites the draft, so nothing is sent.
 _RELEASE_DIRECTIVE = (
-    "The user has APPROVED this — your job now is to PERFORM the action, not to "
+    "The user has APPROVED this; your job now is to PERFORM the action, not to "
     "draft, plan, or propose it. Actually send the emails, post the content, or "
     "create the records described above, using the EXACT approved content in the "
     "deliverable and the appropriate connected integration (Gmail, LinkedIn, X, "
-    "etc.). Do NOT reword, re-draft, re-plan, or ask again — the content is final "
+    "etc.). Do NOT reword, re-draft, re-plan, or ask again: the content is final "
     "and approved. Send to EXACTLY the recipients/destinations named in the "
     "deliverable and no others.\n"
     "Sends are per-recipient. The send record above lists any recipient already "
-    "marked sent — those are DONE; never send to them again, even on a retry. As "
+    "marked sent; those are DONE, so never send to them again, even on a retry. As "
     "each send completes or fails, immediately append one line to the log facet "
     "(update_tracked_todo_canvas, facet='log'): recipient, outcome, confirmation "
-    "ID. One failure does not stop the rest — complete every remaining recipient, "
+    "ID. One failure does not stop the rest: complete every remaining recipient, "
     "then report the exact split ('sent 3 of 5: A, B, C; failed for D (bounce), E "
     "(rate limit)'). A partial send is reported as partial: never round it up to "
     "done, and never re-send a success to make the count clean. If the integration "
-    "is not connected at all, STOP and say so plainly — never claim anything was "
+    "is not connected at all, STOP and say so plainly; never claim anything was "
     "sent when it was not.\n"
-    "The log facet is the permanent record of this release — the briefing and "
+    "The log facet is the permanent record of this release: the briefing and "
     "every future follow-up run read it, so it must contain the full recipient "
     "list, timestamps, and confirmation IDs even when everything succeeded."
 )
@@ -630,6 +647,68 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     return complete_message[:200] if complete_message else ""
 
 
+async def _notify_done_if_scoped(
+    todo_id: str, user_id: str, doc: dict, run_summary: str | None
+) -> None:
+    """In-app ping when a run finished (DONE), scoped to work the user asked for.
+
+    Fires only for a release run (approved outward action) or a standalone todo
+    (no ``goal_id``). Goal-lane prep completions stay silent — the morning brief
+    narrates them. Explicit ``inapp`` channel so this never double-delivers over
+    chat (standalone chat delivery already happens in the run). Best-effort: the
+    completion is already persisted, so a delivery failure only drops the ping.
+
+    Workflow-backed todos are excluded: they carry their own completion
+    notification (WORKFLOW_DONE_COPY), so a second ping here would double up.
+    """
+    if doc.get("workflow_id"):
+        return
+    final = await todos_collection.find_one(
+        {"_id": ObjectId(todo_id)}, {"execution_status": 1, "title": 1}
+    )
+    if not final or final.get("execution_status") != ExecutionStatus.DONE.value:
+        return
+    if doc.get("execution_intent") != "release" and doc.get("goal_id"):
+        return
+
+    title: str = final.get("title") or "your todo"
+    body = (run_summary or "").strip()[:200] or "GAIA finished this and it's ready for you."
+    try:
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=user_id,
+                source=NotificationSourceEnum.BACKGROUND_JOB,
+                type=NotificationType.SUCCESS,
+                channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
+                content=NotificationContent(
+                    title=f"Shipped: {title}",
+                    body=body,
+                    actions=[
+                        NotificationAction(
+                            type=ActionType.REDIRECT,
+                            label="Open todo",
+                            style=ActionStyle.PRIMARY,
+                            config=ActionConfig(
+                                redirect=RedirectConfig(
+                                    url=f"/todos?todoId={todo_id}",
+                                    open_in_new_tab=False,
+                                    close_notification=True,
+                                )
+                            ),
+                        )
+                    ],
+                ),
+                metadata={"kind": NOTIFICATION_KIND_TODO_DONE, "todo_id": todo_id},
+            )
+        )
+    except Exception as notify_exc:
+        log.warning(
+            "tracked_todo.done_notification_failed",
+            todo_id=todo_id,
+            error=str(notify_exc),
+        )
+
+
 async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
     """
     Mark the todo as permanently failed by adding a 'failed' label,
@@ -638,7 +717,7 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
     await todos_collection.update_one(
         {"_id": ObjectId(todo_id)},
         {
-            "$addToSet": {"labels": "failed"},
+            "$addToSet": {"labels": FAILED_LABEL},
             "$set": {"updated_at": datetime.now(UTC)},
         },
     )
@@ -755,7 +834,7 @@ async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
     Queries todos where:
     - scheduled_at <= now
     - completed = False
-    - labels includes "gaia-tracked"
+    - assignee == "gaia"
     - gaia_retry_count < MAX_RETRY_ATTEMPTS
 
     For each, checks whether the execution lock already exists; if not,
@@ -769,7 +848,7 @@ async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
             {
                 "scheduled_at": {"$lte": now},
                 "completed": False,
-                "labels": "gaia-tracked",
+                **gaia_assigned_filter(),
                 "gaia_retry_count": {"$lt": MAX_RETRY_ATTEMPTS},
             }
         ).limit(100)

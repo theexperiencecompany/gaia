@@ -2,24 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "@/lib/toast";
 import { FIRST_STEPS, type FirstStepDefinition } from "../constants";
 import { useFirstStepsQuery } from "./useFirstStepsQuery";
-
-// Client-only: the backend contract only exposes per-step *completion*, not a
-// per-step dismissal endpoint. Hiding a single row without marking it complete
-// is therefore tracked locally per browser.
-const HIDDEN_STEPS_STORAGE_KEY = "gaia:first-steps:hidden-steps";
+import { useHideFirstStepMutation } from "./useHideFirstStepMutation";
 
 // Closing the widget minimizes it to the pill; that choice survives reloads.
 const COLLAPSED_STORAGE_KEY = "gaia:first-steps:collapsed";
-
-function readHiddenSteps(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(HIDDEN_STEPS_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
-  }
-}
 
 // The "all set up" celebration is a one-time event. The backend keeps reporting
 // every step complete forever, so without a persisted flag the in-memory guard
@@ -49,12 +35,11 @@ interface UseFirstStepsWidgetResult {
 
 export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
   const { data, isLoading } = useFirstStepsQuery();
+  const hideStepMutation = useHideFirstStepMutation();
   const [expanded, setExpandedState] = useState(true);
-  const [hiddenSteps, setHiddenSteps] = useState<string[]>([]);
   const hasCelebrated = useRef(false);
 
   useEffect(() => {
-    setHiddenSteps(readHiddenSteps());
     setExpandedState(
       window.localStorage.getItem(COLLAPSED_STORAGE_KEY) !== "true",
     );
@@ -69,14 +54,22 @@ export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
   };
 
   const completedAt = data?.steps ?? {};
-  const visibleSteps = FIRST_STEPS.filter(
+  const hiddenSteps = data?.hidden_steps ?? [];
+  const hasHadProposal = data?.has_had_proposal ?? false;
+
+  // The first_approve row is uncompletable until GAIA has ever proposed work,
+  // so it isn't part of the checklist until then.
+  const applicableSteps = FIRST_STEPS.filter(
+    (step) => step.key !== "first_approve" || hasHadProposal,
+  );
+  const visibleSteps = applicableSteps.filter(
     (step) => !hiddenSteps.includes(step.key),
   );
-  const completedCount = FIRST_STEPS.filter(
+  const completedCount = applicableSteps.filter(
     (step) => completedAt[step.key],
   ).length;
-  const allComplete =
-    FIRST_STEPS.length > 0 && completedCount === FIRST_STEPS.length;
+  const totalCount = applicableSteps.length;
+  const allComplete = totalCount > 0 && completedCount === totalCount;
 
   useEffect(() => {
     if (allComplete && !hasCelebrated.current) {
@@ -87,9 +80,7 @@ export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
   }, [allComplete]);
 
   const hideStep = (stepKey: string) => {
-    const next = [...hiddenSteps, stepKey];
-    setHiddenSteps(next);
-    window.localStorage.setItem(HIDDEN_STEPS_STORAGE_KEY, JSON.stringify(next));
+    hideStepMutation.mutate(stepKey);
   };
 
   const isReady = !isLoading && Boolean(data);
@@ -105,7 +96,7 @@ export const useFirstStepsWidget = (): UseFirstStepsWidgetResult => {
     visibleSteps,
     completedAt,
     completedCount,
-    totalCount: FIRST_STEPS.length,
+    totalCount,
     hideStep,
   };
 };

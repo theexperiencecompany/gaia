@@ -17,7 +17,6 @@ from langchain_core.tools import tool
 from app.constants.todos import (
     FACET_FIELDS,
     FACET_NOTES,
-    GAIA_TRACKED_LABEL,
     gaia_assigned_filter,
 )
 from app.db.mongodb.collections import todos_collection
@@ -362,7 +361,7 @@ def _format_tracked_todo_full(doc: dict, now: datetime) -> str:
     """Format one tracked-todo doc as the multi-line block used by list_tracked_todos."""
     todo_id = str(doc["_id"])
     title = doc.get("title", "Untitled")
-    labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
+    labels = doc.get("labels", [])
     labels_str = f" [{', '.join(labels)}]" if labels else ""
     priority = doc.get("priority", "none")
     age_days = (now - doc.get("created_at", now)).days
@@ -539,9 +538,9 @@ async def create_tracked_todo(
     tracked todo. Search existing tracked todos first (search_todo_context) and
     update a match instead of creating a duplicate.
 
-    IMPORTANT: Before creating a tracked todo with scheduling (scheduled_at, recurrence),
-    read the "tracked-todo-working-memory" skill first for scheduling best practices,
-    canvas template guidelines, and lifecycle rules.
+    IMPORTANT: Read the "tracked-todo-working-memory" skill for the search-first workflow,
+    canvas structure, and goal lanes before creating. Scheduling specifics live in the
+    scheduled_at / recurrence / expires_at args below.
 
     scheduled_at: ISO datetime with the user's timezone offset (e.g., "2026-03-20T09:00:00+05:30").
                   For a one-time run, or as the first-fire anchor for a delta recurrence
@@ -680,18 +679,13 @@ async def update_tracked_todo_canvas(
         "user-facing output to 'deliverable'.",
     ] = FACET_NOTES,
 ) -> str:
-    """Update a facet of an EXISTING tracked todo's workspace.
+    """Update a facet (notes / deliverable / log) of an EXISTING tracked todo.
 
-    PRECONDITION: only call this when you already have a tracked todo for THIS initiative —
-    one you created this turn (you hold its todo_id) or the run's "🎯 ACTIVE TODO". If no
-    tracked todo exists for the task (a one-off fetch / deploy / build / lookup / edit), do
-    NOT call this. Facets live on the todo, not the filesystem — never use read/write/edit.
-
-    Facets: notes (working memory), deliverable (send-ready output), log (activity).
-    Modes (once you have a todo_id):
-    append  → activity log entries, new context. No read needed.
-    section → update a single named section (e.g. Current State). No read needed.
-    replace → full rewrite. Only when restructuring the entire facet.
+    PRECONDITION: call this only when you already hold a tracked todo for THIS initiative,
+    one you created this turn or the run's "🎯 ACTIVE TODO". For a one-off fetch, deploy,
+    build, lookup, or edit with no tracked todo, do not call it. Facets live on the todo,
+    not the filesystem, so never reach for read/write/edit. See the `facet` and `mode` args
+    for which facet holds what and how each write mode behaves.
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:

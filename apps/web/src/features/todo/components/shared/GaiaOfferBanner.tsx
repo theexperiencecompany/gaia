@@ -3,34 +3,9 @@
 import { Button } from "@heroui/button";
 import { Cancel01Icon, SparklesIcon } from "@icons";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useDismissOffer } from "@/features/todo/hooks/useDismissOffer";
 import { useHandoffTodo } from "@/features/todo/hooks/useHandoffTodo";
-
-const DISMISSED_OFFERS_KEY = "gaia-todo-offers-dismissed";
-
-function readDismissedOffers(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    const raw = localStorage.getItem(DISMISSED_OFFERS_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function persistDismissedOffer(todoId: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    const dismissed = readDismissedOffers();
-    dismissed.add(todoId);
-    localStorage.setItem(
-      DISMISSED_OFFERS_KEY,
-      JSON.stringify(Array.from(dismissed)),
-    );
-  } catch {
-    // Local dismiss is a nice-to-have — silently no-op if storage is unavailable.
-  }
-}
 
 interface GaiaOfferBannerProps {
   todoId: string;
@@ -38,10 +13,9 @@ interface GaiaOfferBannerProps {
 }
 
 /**
- * Quiet, dismissible "GAIA can do this" affordance for a user-owned todo
- * with a `gaia_offer`. There's no per-offer-dismiss endpoint, so dismissal
- * is tracked client-side (localStorage), same as other locally-dismissed
- * one-off UI affordances in this codebase.
+ * Quiet, dismissible "GAIA can do this" affordance for a user-owned todo with a
+ * `gaia_offer`. Dismissal is persisted server-side (`gaia_offer_dismissed`) so
+ * the offer stays gone across every surface and reload.
  */
 export const GaiaOfferBanner: React.FC<GaiaOfferBannerProps> = ({
   todoId,
@@ -49,10 +23,7 @@ export const GaiaOfferBanner: React.FC<GaiaOfferBannerProps> = ({
 }) => {
   const [dismissed, setDismissed] = useState(false);
   const handoffTodo = useHandoffTodo();
-
-  useEffect(() => {
-    setDismissed(readDismissedOffers().has(todoId));
-  }, [todoId]);
+  const dismissOffer = useDismissOffer();
 
   if (dismissed) return null;
 
@@ -83,8 +54,10 @@ export const GaiaOfferBanner: React.FC<GaiaOfferBannerProps> = ({
           aria-label="Dismiss offer"
           className="size-7 min-w-0 text-zinc-500"
           onPress={() => {
-            persistDismissedOffer(todoId);
             setDismissed(true);
+            dismissOffer.mutate(todoId, {
+              onError: () => setDismissed(false),
+            });
           }}
         >
           <Cancel01Icon className="size-3.5" />

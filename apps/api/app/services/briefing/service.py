@@ -31,7 +31,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.constants.todos import FACET_DELIVERABLE, facet_from_doc
+from app.constants.todos import FACET_DELIVERABLE, PROPOSAL_TTL_HOURS, facet_from_doc
 from app.db.mongodb.collections import users_collection
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
 from app.models.message_models import MessageDict, MessageRequestWithHistory
@@ -39,6 +39,7 @@ from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
     ActionType,
+    ChannelConfig,
     NotificationAction,
     NotificationContent,
     NotificationRequest,
@@ -47,7 +48,7 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.models.todo_models import ExecutionStatus
-from app.services.briefing import chat_sync, context, dormancy, repository
+from app.services.briefing import chat_sync, context, delivery_channels, dormancy, repository
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
 from app.services.notification_service import notification_service
@@ -303,22 +304,30 @@ def _platform_parts(payload: BriefingPayload) -> list[str]:
 
 
 async def _deliver(
-    user_id: str, briefing: BriefingModel, payload: BriefingPayload, notification_kind: str
+    user_id: str,
+    user: dict,
+    briefing: BriefingModel,
+    payload: BriefingPayload,
+    notification_kind: str,
 ) -> list[str]:
     """Fan out the briefing via the notification orchestrator (in-app + platforms).
 
-    ``metadata.kind`` selects the email template and ``content.rich_content``
-    carries the full payload the email adapter renders — both are the delivery
-    contract the channels layer keys off (without them email falls back to the
-    plain template).
+    Channels are resolved to a single chat platform (per the user's priority) plus
+    in-app and email, then passed explicitly — which suppresses the orchestrator's
+    all-platforms auto-inject so one brief never triple-delivers. ``metadata.kind``
+    selects the email template and ``content.rich_content`` carries the full
+    payload the email adapter renders — both are the delivery contract the channels
+    layer keys off (without them email falls back to the plain template).
     """
     platform_parts = _platform_parts(payload)
+    resolved = await delivery_channels.resolve_briefing_channels(user_id, user)
     record = await notification_service.create_notification(
         NotificationRequest(
             user_id=user_id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
             type=NotificationType.INFO,
             priority=2,
+            channels=[ChannelConfig(channel_type=channel) for channel in resolved],
             content=NotificationContent(
                 title=payload.headline,
                 body=_delivery_body(payload),
@@ -350,8 +359,18 @@ async def _deliver(
     return channels or ["inapp"]
 
 
+def _expires_within_a_day(created_at: datetime | None, now: datetime) -> bool:
+    """True when a staged proposal's PROPOSAL_TTL expiry falls within 24h of now."""
+    if created_at is None:
+        return False
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    return created_at + timedelta(hours=PROPOSAL_TTL_HOURS) - now <= timedelta(hours=24)
+
+
 def _lane_items(lane: context.GoalLane) -> list[dict]:
     """Code-built items for one goal lane. Truth by construction."""
+    now = datetime.now(UTC)
     items: list[dict] = []
     for d in lane.completed:
         items.append(
@@ -362,9 +381,12 @@ def _lane_items(lane: context.GoalLane) -> list[dict]:
             }
         )
     for d in lane.staged:
+        expiry = (
+            " (expires within a day)" if _expires_within_a_day(d.get("created_at"), now) else ""
+        )
         items.append(
             {
-                "text": f"Staged and ready: {d.get('title')} — a reply releases it.",
+                "text": f"Staged and ready: {d.get('title')}{expiry} — a reply releases it.",
                 "todo_id": str(d["_id"]),
                 "kind": "proposal",
             }
@@ -645,7 +667,7 @@ async def run_daily_briefing(user_id: str) -> None:
     briefing = await repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_DAILY, payload
     )
-    channels = await _deliver(user_id, briefing, payload, NOTIFICATION_KIND_BRIEFING_DAILY)
+    channels = await _deliver(user_id, user, briefing, payload, NOTIFICATION_KIND_BRIEFING_DAILY)
     await repository.set_delivered_channels(user_id, clock.date_str, BRIEFING_KIND_DAILY, channels)
     # The bot's conversation must contain the brief it "sent", so replies like
     # "yeah send them" land with real context instead of a cold thread.
@@ -702,7 +724,7 @@ async def run_weekly_digest(user_id: str) -> None:
     briefing = await repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload
     )
-    channels = await _deliver(user_id, briefing, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY)
+    channels = await _deliver(user_id, user, briefing, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY)
     await repository.set_delivered_channels(user_id, clock.date_str, BRIEFING_KIND_WEEKLY, channels)
     await chat_sync.persist_delivered_brief(user_id, user, _platform_parts(payload), channels)
 

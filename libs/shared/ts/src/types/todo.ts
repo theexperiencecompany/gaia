@@ -62,6 +62,8 @@ export interface Todo {
   last_run_conversation_id?: string | null;
   /** Present on some user-owned todos GAIA is offering to take over. */
   gaia_offer?: string | null;
+  /** Set once the user dismisses GAIA's takeover offer — suppresses the affordance. */
+  gaia_offer_dismissed?: boolean;
   /** "task" (default) or "goal" — a long-lived lane whose canvas is its strategy. */
   kind?: "task" | "goal";
   /** For a task, the goal-todo it advances. */
