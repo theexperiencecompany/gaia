@@ -40,8 +40,12 @@ def resume() -> Any:
         patch(f"{MODULE}.prepare_run_from_item", new=AsyncMock(return_value=prepared)) as prepare,
         patch(f"{MODULE}.run_executor_background", new=AsyncMock()) as runner,
         patch(f"{MODULE}.mark_resumed", new=AsyncMock()) as resumed,
+        patch(f"{MODULE}.claim_resume_dispatch", new=AsyncMock(return_value=True)) as claim,
+        patch(f"{MODULE}.release_resume_dispatch", new=AsyncMock()) as release,
     ):
-        yield MagicMock(prepare=prepare, runner=runner, mark_resumed=resumed)
+        yield MagicMock(
+            prepare=prepare, runner=runner, mark_resumed=resumed, claim=claim, release=release
+        )
 
 
 class TestAuthorization:
@@ -131,6 +135,29 @@ class TestUnresumableRecords:
 
         assert resume.runner.call_count == 0
         assert resume.mark_resumed.await_count == 0
+        # The slot was claimed but no run will release it — the dispatch must.
+        assert resume.release.await_count == 1
+
+    async def test_a_lost_resume_slot_skips_dispatch_but_keeps_the_decision(
+        self, resume: Any
+    ) -> None:
+        # Two decisions on one batch land near-simultaneously. The loser must NOT
+        # start a second LangGraph run on the same executor thread (checkpoint
+        # corruption) — and must NOT stamp resumed_at, so the sweep can dispatch
+        # the decision later if the in-flight round misses it.
+        resume.claim.return_value = False
+        record = make_record()
+        with (
+            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
+        ):
+            await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
+
+        assert decided.await_count == 1  # the decision itself is durable
+        assert resume.prepare.await_count == 0
+        assert resume.runner.call_count == 0
+        assert resume.mark_resumed.await_count == 0
+        assert resume.release.await_count == 0  # never touch a slot we don't hold
 
 
 class TestDecisionSemantics:

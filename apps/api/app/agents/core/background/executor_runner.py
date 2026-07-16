@@ -55,6 +55,7 @@ from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.services.hil.approvals_store import set_resume_item
+from app.services.hil.resume_slot import release_resume_dispatch
 from app.utils.agent_utils import format_sse_data
 from shared.py.wide_events import log
 
@@ -106,33 +107,39 @@ async def run_executor_background(
         )
     finally:
         await _finalize_executor_run(run, task, result_text, result_type)
+        if resume is not None:
+            # This run held the conversation's resume slot (claimed at dispatch).
+            # Freeing it AFTER finalize means the next decision can dispatch only
+            # once this run's pause/completion bookkeeping is fully written.
+            await release_resume_dispatch(run.conversation_id)
 
 
 async def _record_pause(
-    run: ExecutorRun, task: str, configurable: dict[str, Any], approval_id: str
+    run: ExecutorRun, task: str, configurable: dict[str, Any], approval_ids: tuple[str, ...]
 ) -> bool:
-    """Attach this run's re-dispatch context to the approval it paused on.
+    """Attach this run's re-dispatch context to every approval it paused on.
 
-    Returns whether the write landed. It is the only thing that makes the pause
-    resumable, so a failure here is not something the run can carry on through — the
-    caller fails the run rather than parking it forever. Loud, never swallowed.
+    A batch pause (the wait_for_subagents join) carries several approvals; each
+    gets the same resume context so whichever decision lands first can re-dispatch
+    the run. Returns whether every write landed — it is the only thing that makes
+    the pause resumable, so a failure is not something the run can carry on
+    through: the caller fails the run rather than parking it forever.
     """
     try:
-        await set_resume_item(
-            approval_id,
-            build_run_item(
-                task=task,
-                task_id=run.task_id,
-                configurable=configurable,
-                conversation_id=run.conversation_id,
-                user_message_id=run.user_message_id,
-            ),
+        item = build_run_item(
+            task=task,
+            task_id=run.task_id,
+            configurable=configurable,
+            conversation_id=run.conversation_id,
+            user_message_id=run.user_message_id,
         )
+        for approval_id in approval_ids:
+            await set_resume_item(approval_id, item)
         return True
     except Exception as e:  # noqa: BLE001 — a lost pause must fail the run, not the process
         log.error(
             f"{LogTag.HIL} Could not record resume context; failing the paused run",
-            approval_id=approval_id,
+            approval_ids=list(approval_ids),
             stream_id=run.stream_id,
             task_id=run.task_id,
             error=str(e),
@@ -141,12 +148,24 @@ async def _record_pause(
 
 
 class _ExecutorResult(NamedTuple):
-    """One executor run's terminal shape; ``paused_on`` is the approval id when
-    the run stopped on a HIL interrupt instead of finishing."""
+    """One executor run's terminal shape; ``paused_on`` holds the approval id(s)
+    when the run stopped on a HIL interrupt instead of finishing — one for a
+    gate pause, several for a wait_for_subagents batch pause."""
 
     text: str
     type: str
-    paused_on: str = ""
+    paused_on: tuple[str, ...] = ()
+
+
+def _paused_approval_ids(payload: dict[str, Any]) -> tuple[str, ...]:
+    """Approval ids from an interrupt payload — batch shape first, then single."""
+    batch = payload.get("approval_ids")
+    if isinstance(batch, list):
+        ids = tuple(str(a) for a in batch if a)
+        if ids:
+            return ids
+    single = str(payload.get("approval_id", ""))
+    return (single,) if single else ()
 
 
 async def _execute_executor(
@@ -182,13 +201,13 @@ async def _execute_executor(
         writer = make_redis_stream_writer(stream_id)
         outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer, resume=resume)
         if outcome.paused:
-            approval_id = str((outcome.interrupt or {}).get("approval_id", ""))
-            if not approval_id:
+            approval_ids = _paused_approval_ids(outcome.interrupt or {})
+            if not approval_ids:
                 # Unresumable: nothing can ever re-dispatch this thread. Fail the
                 # run loudly rather than leave the conversation's lock held.
                 log.error(f"{LogTag.HIL} Executor paused with no approval_id", stream_id=stream_id)
                 return _ExecutorResult("Approval request was malformed", "error")
-            return _ExecutorResult("", EXECUTOR_PAUSED, approval_id)
+            return _ExecutorResult("", EXECUTOR_PAUSED, approval_ids)
         return _ExecutorResult(outcome.text, "final")
     except GraphRecursionError as e:
         # The executor exhausted its recursion budget. Log the real cause loudly,

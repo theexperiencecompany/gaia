@@ -88,6 +88,26 @@ HIL_RESUME_CONFIG_KEY = "hil_resume_replay"
 # turn still prompts. Generous enough to outlast a long-running executor turn.
 HIL_DECLINE_MEMORY_TTL_SECONDS = 1800
 
+# Background subagent results live in Redis, keyed by conversation (never
+# stream_id — it changes on resume): they must survive the executor's approval
+# pause, which the in-process session does not. TTL comfortably outlasts the
+# approval window plus a long executor turn.
+HIL_BG_RESULTS_KEY_PREFIX = "hil:bg_results:"
+HIL_BG_RESULTS_TTL_SECONDS = 7200
+
+# Interrupt payload type for the wait_for_subagents join pause. Carries the whole
+# batch of parked-subagent approvals, unlike the gate's single "hil_approval".
+HIL_BATCH_INTERRUPT_TYPE = "hil_approval_batch"
+
+# Debounce: at most one executor resume dispatch per conversation at a time. Two
+# LangGraph runs on one thread would corrupt its checkpoint, so a decision that
+# loses this claim skips dispatch — it is already durable on its record, and the
+# in-flight join round or the sweep collects it. TTL is crash insurance only
+# (aligned with the executor busy-lock TTL); the dispatched run deletes the flag
+# when it finalizes.
+HIL_RESUME_ACTIVE_KEY_PREFIX = "hil:resume_active:"
+HIL_RESUME_ACTIVE_TTL_SECONDS = 1800
+
 # Orchestration/plumbing tools that must never be gated (they don't touch the
 # outside world themselves; their inner tool calls are gated in the child graph).
 # These are the only names hardcoded here — everything else is registry-driven.

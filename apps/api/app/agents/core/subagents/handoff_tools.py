@@ -17,13 +17,19 @@ from typing import Annotated, Any
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool, tool
+from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
 from langgraph.store.base import BaseStore, PutOp
 from langgraph.types import Command, interrupt
 
-from app.agents.core.background.session import increment_pending_subagents
+from app.agents.core.background.bg_results import try_claim_bg_dispatch
+from app.agents.core.background.session import (
+    claim_bg_integration,
+    has_bg_integration,
+    increment_pending_subagents,
+    release_bg_integration,
+)
 from app.agents.core.background.subagent_runner import run_subagent_background
 from app.agents.core.subagents.provider_subagents import (
     SubagentUnavailableError,
@@ -48,7 +54,9 @@ from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
+from app.models.hil_models import HILApprovalRecord
 from app.services.connect_link_service import build_connect_link_url
+from app.services.hil.approvals_store import list_parked_subagents_for_conversation
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import (
@@ -516,6 +524,99 @@ async def _parked_interrupt(ctx: SubagentExecutionContext) -> dict[str, Any] | N
     return interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
 
 
+async def _has_parked_subagent(ctx: SubagentExecutionContext) -> bool:
+    """Whether an uncollected HIL-parked subagent owns this ctx's checkpoint thread.
+
+    Durable check (Mongo), so it holds across executor pause/resume and process
+    restarts — the session slot only tracks live tasks in this invocation.
+    """
+    conversation_id = str(ctx.configurable.get("conversation_id") or "")
+    thread_id = str(ctx.configurable.get("thread_id") or "")
+    if not conversation_id or not thread_id:
+        return False
+    records = await list_parked_subagents_for_conversation(conversation_id)
+    return any(record.subagent_thread_id == thread_id for record in records)
+
+
+async def resume_parked_subagent(
+    record: "HILApprovalRecord",
+    configurable: dict[str, Any],
+    stream_writer: Any,
+) -> SubagentOutcome:
+    """Resume a HIL-parked background subagent with its decided approval.
+
+    Everything is reconstructed from durable state — the approval record plus the
+    current executor configurable — because the run that parked it (its session,
+    stream and asyncio task) is gone. Crash-safe: a thread that already completed
+    (a prior collect crashed between resume and stamp) yields its checkpointed
+    final answer instead of being driven again, so the underlying action can
+    never re-execute.
+    """
+    agent_ref = record.subagent_agent_name or ""
+    graph, agent_name, int_id_or_error, _ = await _resolve_subagent(agent_ref, record.user_id)
+    if graph is None or agent_name is None or int_id_or_error is None:
+        return SubagentOutcome(
+            text=f"Error resuming {agent_ref}: {int_id_or_error or 'subagent not resolvable'}"
+        )
+
+    user = {
+        "user_id": record.user_id,
+        "email": configurable.get("email"),
+        "name": configurable.get("user_name"),
+    }
+    subagent_config = build_agent_config(
+        conversation_id=record.conversation_id,
+        user=user,
+        thread_id=record.subagent_thread_id,
+        base_configurable=configurable,
+        agent_name=agent_name,
+        subagent_id=agent_name,
+    )
+    ctx = SubagentExecutionContext(
+        subagent_graph=graph,
+        agent_name=agent_name,
+        config=subagent_config,
+        configurable=subagent_config.get("configurable", {}),
+        integration_id=int_id_or_error,
+        initial_state={},
+        user_id=record.user_id,
+        stream_id=str(configurable.get("stream_id") or "") or None,
+    )
+
+    snapshot = await ctx.subagent_graph.aget_state(ctx.config)
+    if not snapshot.next:
+        return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
+
+    decision = {
+        "status": _subagent_resume_status(record.status),
+        "feedback": record.feedback,
+        "scope": record.scope,
+    }
+    return await execute_subagent_stream(
+        ctx=ctx, stream_writer=stream_writer, resume=Command(resume=decision)
+    )
+
+
+def _subagent_resume_status(status: str) -> str:
+    """Map a record's terminal status onto the gate's resumable statuses.
+
+    ``abandoned`` resumes as a denial — the gate accepts only
+    approved/denied/timeout, and abandonment means "do not act."
+    """
+    if status in ("approved", "timeout"):
+        return status
+    return "denied"
+
+
+def _final_text_from_snapshot(snapshot: Any) -> str:
+    values = getattr(snapshot, "values", None) or {}
+    messages = values.get("messages") if isinstance(values, dict) else None
+    if not messages:
+        return ""
+    content = getattr(messages[-1], "content", "")
+    return content if isinstance(content, str) else str(content or "")
+
+
 @tool
 async def handoff(
     subagent_id: Annotated[
@@ -534,6 +635,7 @@ async def handoff(
         "Use for parallel subagent dispatch — call wait_for_subagents() after "
         "all background handoffs to collect results. Default False (blocking).",
     ] = False,
+    tool_call_id: Annotated[str, InjectedToolCallId] = "",
 ) -> str:
     """Delegate a task to a specialized subagent.
 
@@ -667,11 +769,31 @@ async def handoff(
 
         integration_metadata = await _build_integration_metadata(is_custom, integration_id)
 
+        # An uncollected parked subagent owns this integration's checkpoint thread.
+        # Running ANY new handoff on it (blocking or background) would feed fresh
+        # input to an interrupted thread — LangGraph discards the pending interrupt,
+        # orphaning the user's approval card. Refuse until the join collects it.
+        if await _has_parked_subagent(ctx):
+            return (
+                f"The {agent_name} subagent is paused waiting for the user's approval. "
+                "Call wait_for_subagents() to collect its outcome before sending it "
+                "new tasks."
+            )
+
+        # Same collision for a BLOCKING handoff while a live background task holds
+        # this integration's thread (the background branch guards itself via the
+        # session slot claim).
+        if not background and has_bg_integration(str(stream_id or ""), integration_id):
+            return (
+                f"A background {agent_name} subagent is already running on this "
+                "integration. Call wait_for_subagents() to collect it first."
+            )
+
         # Background mode: spawn subagent as asyncio task and return immediately.
         # Caller must use wait_for_subagents() to collect results.
         #
         # Requires stream_id to be propagated into the executor configurable so
-        # the result can be routed back via _bg_subagent_results[stream_id].
+        # the result can be routed back to this conversation's results bucket.
         if background:
             if not stream_id:
                 log.warning(
@@ -687,12 +809,36 @@ async def handoff(
                     f"{blocking_result}"
                 )
             sid: str = str(stream_id)
-            # A detached subagent has no pause path: nothing awaits its outcome,
-            # so a HIL interrupt could never be resumed. Mark it background so
-            # the gate skips it (same rule as workflow runs) instead of stranding
-            # an unanswerable approval card.
-            ctx.configurable["execution_mode"] = "background"
-            ctx.config.setdefault("configurable", {})["execution_mode"] = "background"
+            # execution_mode is inherited, NOT forced to "background": a detached
+            # subagent in a live conversation now has a pause path — its gate parks the
+            # subagent's own checkpointed thread and wait_for_subagents collects the
+            # approval into one executor pause. A genuinely headless run (workflow/cron)
+            # is already "background" in the parent configurable, so its subagents
+            # inherit that and the gate still fails closed (no live user to ask).
+            #
+            # One detached subagent per integration at a time: a concurrent duplicate
+            # would share the deterministic checkpoint thread id and corrupt it. A
+            # blocking run would collide identically, so refuse rather than fall back.
+            if not claim_bg_integration(sid, integration_id):
+                return (
+                    f"A background {agent_name} subagent is already running. Call "
+                    "wait_for_subagents() to collect it before sending it new tasks."
+                )
+            # Idempotent across node replays: when this handoff shares its node run
+            # with the wait_for_subagents interrupt, the node re-runs on resume and
+            # must not spawn the subagent a second time. tool_call_id is stable (it
+            # lives in the checkpointed AI message); the claim is durable in Redis.
+            conversation_id = str(ctx.configurable.get("conversation_id") or "")
+            if (
+                tool_call_id
+                and conversation_id
+                and not await try_claim_bg_dispatch(conversation_id, tool_call_id)
+            ):
+                release_bg_integration(sid, integration_id)
+                return (
+                    f"Subagent {agent_name} started in background. "
+                    "Call wait_for_subagents() when ready to collect results."
+                )
             bg_sa_id = str(uuid4())
             bg_display, bg_icon, bg_cat = _resolve_display_metadata(
                 integration_metadata, agent_name, integration_id
@@ -707,6 +853,7 @@ async def handoff(
                     display_name=bg_display,
                     tool_category=bg_cat,
                     icon_url=bg_icon,
+                    integration_id=integration_id,
                 )
             )
             _background_subagent_tasks.add(bg_task)

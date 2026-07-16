@@ -77,3 +77,15 @@ class HILApprovalRecord(BaseModel):
     # Stamped when the resume run is dispatched; a decided record without it is
     # a crashed resume the sweep re-dispatches.
     resumed_at: datetime | None = None
+    # Set only when a *detached background subagent* parked on this approval. The
+    # subagent's graph is checkpointed under this deterministic thread id, so the
+    # executor's wait_for_subagents join can rediscover and resume it after the
+    # executor's own pause — durable state, never the in-process session. ``None`` for
+    # every other approval (interactive tool calls, blocking handoffs).
+    subagent_thread_id: str | None = None
+    subagent_agent_name: str | None = None
+    # Stamped by the join once the parked subagent has been resumed and its result
+    # collected. Distinct from ``resumed_at`` (which records that a decision dispatched
+    # the *executor*): a batch decision wakes the executor once, then each parked
+    # subagent is collected individually across join rounds.
+    subagent_collected_at: datetime | None = None

@@ -12,15 +12,16 @@ from app.agents.core.background import session as sess
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
-    append_bg_subagent_result,
+    claim_bg_integration,
     create_session,
     decrement_pending_subagents,
-    drain_bg_subagent_results,
     get_or_create_session,
     get_pending_subagents,
     get_session,
+    has_bg_integration,
     increment_pending_subagents,
     mark_executor_spawned,
+    release_bg_integration,
     signal_executor_done,
     teardown_session,
     was_executor_spawned,
@@ -56,14 +57,14 @@ class TestSessionRegistry:
         create_session("s1", RunKind.QUEUED)
         mark_executor_spawned("s1")
         increment_pending_subagents("s1")
-        append_bg_subagent_result("s1", "agent", "result")
+        claim_bg_integration("s1", "gmail")
 
         teardown_session("s1")
 
         assert get_session("s1") is None
         assert was_executor_spawned("s1") is False
         assert get_pending_subagents("s1") == 0
-        assert drain_bg_subagent_results("s1") == []
+        assert has_bg_integration("s1", "gmail") is False
 
     def test_teardown_is_idempotent(self) -> None:
         create_session("s1", RunKind.LIVE)
@@ -192,18 +193,17 @@ class TestSubagentCoordination:
         assert get_pending_subagents("missing") == 0
         assert decrement_pending_subagents("missing") == 0
 
-    def test_results_drain_returns_and_clears(self) -> None:
+    def test_integration_slot_claim_is_exclusive_until_released(self) -> None:
+        # The slot is what stops two concurrent background handoffs to the same
+        # integration from sharing (and corrupting) one checkpoint thread.
         create_session("s1", RunKind.LIVE)
-        append_bg_subagent_result("s1", "researcher", "found it")
-        append_bg_subagent_result("s1", "writer", "wrote it")
+        assert claim_bg_integration("s1", "gmail") is True
+        assert claim_bg_integration("s1", "gmail") is False  # second claim loses
+        assert claim_bg_integration("s1", "slack") is True  # other integrations unaffected
 
-        results = drain_bg_subagent_results("s1")
+        release_bg_integration("s1", "gmail")
+        assert claim_bg_integration("s1", "gmail") is True  # reusable after release
 
-        assert results == [
-            {"agent": "researcher", "message": "found it"},
-            {"agent": "writer", "message": "wrote it"},
-        ]
-        assert drain_bg_subagent_results("s1") == []  # drained
-
-    def test_results_for_missing_session_empty(self) -> None:
-        assert drain_bg_subagent_results("missing") == []
+    def test_integration_slot_for_missing_session_is_safe(self) -> None:
+        release_bg_integration("missing", "gmail")  # must not raise
+        assert has_bg_integration("missing", "gmail") is False

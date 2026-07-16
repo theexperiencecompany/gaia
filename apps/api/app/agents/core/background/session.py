@@ -50,7 +50,11 @@ class StreamSession:
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     pending_subagents: int = 0
-    subagent_results: list[dict[str, str]] = field(default_factory=list)
+    # Integrations with a background handoff in flight this run. Guards against a
+    # second concurrent handoff to the same integration, whose subagent would share
+    # the deterministic checkpoint thread id and corrupt it. (Results live in Redis —
+    # see ``bg_results`` — because they must survive the executor's approval pause.)
+    bg_integrations: set[str] = field(default_factory=set)
     # Voice-mode streams: the executor's finalize step publishes a TTS-only
     # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
     voice_mode: bool = False
@@ -215,16 +219,28 @@ def get_pending_subagents(stream_id: str) -> int:
     return session.pending_subagents if session else 0
 
 
-def append_bg_subagent_result(stream_id: str, agent: str, result: str) -> None:
-    """Append a background subagent's final result for this stream."""
-    get_or_create_session(stream_id).subagent_results.append({"agent": agent, "message": result})
+def claim_bg_integration(stream_id: str, integration_id: str) -> bool:
+    """Claim the one background-handoff slot for an integration this run.
+
+    ``False`` means one is already in flight — the caller must fall back to a
+    blocking handoff, because a second detached subagent for the same integration
+    would share its deterministic checkpoint thread id.
+    """
+    session = get_or_create_session(stream_id)
+    if integration_id in session.bg_integrations:
+        return False
+    session.bg_integrations.add(integration_id)
+    return True
 
 
-def drain_bg_subagent_results(stream_id: str) -> list[dict[str, str]]:
-    """Return and clear all collected background subagent results for this stream."""
+def release_bg_integration(stream_id: str, integration_id: str) -> None:
+    """Release an integration's background-handoff slot (task finished or parked)."""
     session = _sessions.get(stream_id)
-    if session is None:
-        return []
-    results = list(session.subagent_results)
-    session.subagent_results.clear()
-    return results
+    if session is not None:
+        session.bg_integrations.discard(integration_id)
+
+
+def has_bg_integration(stream_id: str, integration_id: str) -> bool:
+    """Whether a background handoff for this integration is in flight this run."""
+    session = _sessions.get(stream_id)
+    return bool(session and integration_id in session.bg_integrations)

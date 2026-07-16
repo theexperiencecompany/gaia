@@ -23,7 +23,9 @@ from langgraph.types import Command
 
 from app.agents.core.background.executor_queue import prepare_run_from_item
 from app.agents.core.background.executor_runner import run_executor_background
-from app.constants.hil import HIL_DECIDED_UNRESUMED_GRACE_SECONDS
+from app.constants.hil import (
+    HIL_DECIDED_UNRESUMED_GRACE_SECONDS,
+)
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.services.hil.approvals_store import (
@@ -34,6 +36,7 @@ from app.services.hil.approvals_store import (
     mark_decided,
     mark_resumed,
 )
+from app.services.hil.resume_slot import claim_resume_dispatch, release_resume_dispatch
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -200,10 +203,25 @@ async def _dispatch_resume(
     frontend can watch it finish. ``mark_resumed`` stamps the record so the sweep
     knows this decision made it to a run; a crash before the stamp is re-dispatched
     by the sweep from ``resume_item``.
+
+    At most one resume runs per conversation: a batch pause has several approvals
+    sharing one executor thread, and two decisions landing close together must not
+    start two concurrent LangGraph runs on it (checkpoint corruption). The loser
+    of the claim skips dispatch — its decision is already durable on the record,
+    and the in-flight join round or the sweep collects it.
     """
+    if not await claim_resume_dispatch(record.conversation_id):
+        log.info(
+            f"{LogTag.HIL} Resume already in flight for conversation; decision will be "
+            "collected by the running round or the sweep",
+            approval_id=record.approval_id,
+        )
+        return
+
     prepared = await prepare_run_from_item(record.conversation_id, record.resume_item or {})
     if prepared is None:
         log.error(f"{LogTag.HIL} Could not prepare resume run", approval_id=record.approval_id)
+        await release_resume_dispatch(record.conversation_id)
         return
 
     resume: Command[Any] = Command(

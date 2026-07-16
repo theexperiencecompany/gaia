@@ -159,6 +159,54 @@ async def set_resume_item(approval_id: str, item: dict[str, Any]) -> None:
     await hil_approvals_collection.update_one({"_id": approval_id}, {"$set": {"resume_item": item}})
 
 
+async def stamp_subagent_resume(
+    approval_id: str, *, subagent_thread_id: str, subagent_agent_name: str
+) -> None:
+    """Record the parked background subagent's checkpoint thread on its approval.
+
+    The durable link the ``wait_for_subagents`` join uses to rediscover and resume this
+    subagent after the executor's own pause — the deterministic thread id survives the
+    resume where the in-process session does not.
+    """
+    await hil_approvals_collection.update_one(
+        {"_id": approval_id},
+        {
+            "$set": {
+                "subagent_thread_id": subagent_thread_id,
+                "subagent_agent_name": subagent_agent_name,
+            }
+        },
+    )
+
+
+async def list_parked_subagents_for_conversation(conversation_id: str) -> list[HILApprovalRecord]:
+    """A conversation's background-subagent approvals — the join's work list.
+
+    Records stamped with a ``subagent_thread_id`` (a detached subagent parked on them)
+    whose subagent has not yet been collected — ``pending`` (still awaiting a decision)
+    or decided (ready to resume). Filtered on ``subagent_collected_at``, NOT
+    ``resumed_at``: the latter records executor re-dispatch, which happens on the first
+    decision while other batch members are still uncollected. Conversation-scoped
+    because the executor busy lock guarantees one run per conversation; ``stream_id``
+    cannot be used — it changes on resume.
+    """
+    cursor = hil_approvals_collection.find(
+        {
+            "conversation_id": conversation_id,
+            "subagent_thread_id": {"$ne": None},
+            "subagent_collected_at": None,
+        }
+    ).sort("created_at", 1)
+    return [_hydrate(doc) async for doc in cursor]
+
+
+async def mark_subagent_collected(approval_id: str) -> None:
+    """Stamp that the join resumed this parked subagent and collected its result."""
+    await hil_approvals_collection.update_one(
+        {"_id": approval_id}, {"$set": {"subagent_collected_at": datetime.now(UTC)}}
+    )
+
+
 async def mark_resumed(approval_id: str) -> None:
     """Stamp that the decided run was re-dispatched (sweep skips it)."""
     await hil_approvals_collection.update_one(
