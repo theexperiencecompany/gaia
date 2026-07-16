@@ -1,0 +1,23 @@
+# worktrunk project config — provisions a new worktree so `mise dev` works immediately.
+# Docs: https://worktrunk.dev/hook/
+#
+# `pre-start` runs once, at worktree creation, blocking until every step completes.
+# Pipeline blocks ([[pre-start]]) run in order; multiple keys inside one block run
+# concurrently. We copy the gitignored secret files, allocate this worktree's own
+# ports, then install JS + Python deps (both fast: pnpm shared store + uv cache).
+#
+# Tool commands are wrapped in `mise exec --` so they resolve even when the hook
+# shell is not mise-activated. `wt` resolves natively inside its own hooks.
+
+# 1. Copy gitignored secrets from the main worktree (scoped by .worktreeinclude).
+[[pre-start]]
+copy-env = "wt step copy-ignored"
+
+# 2. Allocate deterministic per-worktree ports → .env.worktree.
+[[pre-start]]
+ports = "mise run wt:env"
+
+# 3. Install dependencies (independent, so run concurrently).
+[[pre-start]]
+install-js = "mise exec -- pnpm install"
+sync-py = "mise exec -- nx run api:sync"

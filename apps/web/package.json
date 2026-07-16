@@ -22,7 +22,7 @@
     "extract-blog": "node scripts/extract-blog-data.mjs",
     "prebuild": "npm run extract-icons && npm run extract-blog && npm run sync-wake-word-runtime",
     "predev": "npm run sync-wake-word-runtime",
-    "dev": "nx next:dev --turbopack",
+    "dev": "nx next:dev --turbopack --port=${WEB_PORT:-3000}",
     "dev:webpack": "nx next:dev",
     "build": "nx next:build",
     "start": "nx next:start",
