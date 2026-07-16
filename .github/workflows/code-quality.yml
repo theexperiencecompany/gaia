@@ -450,7 +450,7 @@ jobs:
   # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
   # lane. The scan is tightened to drop systematic false positives (tests,
   # Pydantic/dynamic-dispatch, framework-consumed files) — see config/knip.config.ts
-  # and apps/api/scripts/vulture-whitelist.py.
+  # and the [tool.vulture] ignore_names / ignore_decorators lists in pyproject.toml.
   dead-code:
     name: Dead code (knip + vulture, strict)
     runs-on: ubuntu-latest
