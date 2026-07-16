@@ -58,7 +58,12 @@ from app.services.hil.bridge import (
 from app.services.hil.intent import IntentDecision, judge_intent
 from app.services.hil.policy import GatingPolicy, has_other_gated_call, resolve_policy
 from app.services.hil.preferences import set_tool_override
-from app.services.hil.prompts import DENIED_TEMPLATE, GATE_ERROR_TEMPLATE, TIMEOUT_TEMPLATE
+from app.services.hil.prompts import (
+    DENIED_TEMPLATE,
+    GATE_ERROR_TEMPLATE,
+    TIMEOUT_TEMPLATE,
+    UNPAUSABLE_DENIAL_TEMPLATE,
+)
 from app.services.hil.utils import (
     GatedCall,
     configurable_of,
@@ -74,7 +79,7 @@ Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
 
 @dataclass(frozen=True)
 class GateContext:
-    """The interactive run's identity — who to ask, and what they actually asked for."""
+    """The run's identity — who to ask, what they asked for, and whether we can ask."""
 
     stream_id: str
     user_id: str
@@ -82,6 +87,9 @@ class GateContext:
     # The user's own recent turns, oldest first, the live request last. May be empty on
     # entry paths with no user message; the intent judge treats that as unverifiable.
     user_messages: list[str]
+    # Whether this run can pause for approval. A background/queued run carries an identity
+    # but has no live client to answer, so a gated call there is failed closed, not asked.
+    pausable: bool
 
 
 async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMessage | Command[Any]:
@@ -106,14 +114,22 @@ async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMess
 
     if policy == "allow":
         return await handler(request)
+    if not context.pausable:
+        # The call is gated and HIL is on, but this run (background subagent, workflow,
+        # scheduled task) has no live client to approve it. Fail closed: refuse rather
+        # than run it unapproved or stall on an interrupt nothing can resume.
+        log.info(f"{LogTag.HIL} Denying gated {call.name}: run cannot pause for approval")
+        return _unpausable_denial_message(call)
     return await _gate(request, handler, context, policy, call)
 
 
 def read_gate_context(request: ToolCallRequest) -> GateContext | None:
-    """The run's approval identity, or ``None`` when it cannot be gated.
+    """The run's approval identity, or ``None`` when the user cannot be identified.
 
-    Only interactive runs qualify: a background workflow or queued run carries a stream_id
-    but has no live client to approve, so gating it would just stall until timeout.
+    A background/queued run *is* returned (with ``pausable=False``): it has no live client
+    to approve, so the gate cannot ask — but a gated call there must be failed closed, not
+    silently allowed, which is why it is no longer discarded here. Only a run missing an
+    identity field is ``None``, since without a user there is no policy to resolve.
     """
     configurable = configurable_of(request)
     stream_id = configurable.get("stream_id")
@@ -124,13 +140,12 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     conversation_id = configurable.get("conversation_id")
     if not stream_id or not user_id or not conversation_id:
         return None
-    if configurable.get("execution_mode") == "background":
-        return None
+    pausable = configurable.get("execution_mode") != "background"
     # Inherited unchanged from comms (see build_agent_config): inside the executor or a
     # subagent the local task is an agent-authored paraphrase, never the user's words.
     raw = configurable.get("user_messages")
     turns = [text for text in raw if isinstance(text, str)] if isinstance(raw, list) else []
-    return GateContext(stream_id, user_id, conversation_id, turns)
+    return GateContext(stream_id, user_id, conversation_id, turns, pausable)
 
 
 async def _gate(
@@ -302,6 +317,11 @@ def _refusal_message(call: GatedCall, outcome: ApprovalOutcome) -> ToolMessage:
 def _gate_error_message(call: GatedCall) -> ToolMessage:
     """Tell the model the gate itself failed — the user was never asked."""
     return _tool_message(call, GATE_ERROR_TEMPLATE.format(tool=call.name), "error")
+
+
+def _unpausable_denial_message(call: GatedCall) -> ToolMessage:
+    """Tell the model a gated call was refused because this run cannot ask for approval."""
+    return _tool_message(call, UNPAUSABLE_DENIAL_TEMPLATE.format(tool=call.name), "denied")
 
 
 def _tool_message(call: GatedCall, content: str, status: HILToolMessageStatus) -> ToolMessage:

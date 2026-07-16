@@ -123,3 +123,13 @@ GATE_ERROR_TEMPLATE = (
     "action was NOT performed and the user was NOT asked. Tell the user a system "
     "error prevented the action and they can retry."
 )
+
+# A gated call reached a run that cannot pause for approval (a background subagent,
+# workflow, or scheduled run). It must not execute unapproved, so it is refused here.
+# The reader cannot itself ask, so it is told to surface the need for approval upward
+# rather than retry — the recovery is for the action to run where a user can confirm.
+UNPAUSABLE_DENIAL_TEMPLATE = (
+    "`{tool}` requires the user's approval before it can run, and this run cannot "
+    "pause to ask them. The action was NOT performed. Report that this action needs "
+    "the user's approval so it can be run where they can confirm it. Do not retry it here."
+)

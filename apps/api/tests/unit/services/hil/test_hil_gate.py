@@ -90,8 +90,9 @@ class TestGateContext:
         del configurable[missing]
         assert read_gate_context(make_request(configurable=configurable)) is None
 
-    def test_a_background_run_is_not_gated(self) -> None:
-        # No live client to approve — gating it would stall until timeout.
+    def test_a_background_run_is_identified_but_not_pausable(self) -> None:
+        # No live client to approve, but it is NOT discarded: a gated call here must be
+        # failed closed by the gate, not silently allowed. So it is returned, unpausable.
         request = make_request(
             configurable={
                 "stream_id": STREAM_ID,
@@ -100,7 +101,21 @@ class TestGateContext:
                 "execution_mode": "background",
             }
         )
-        assert read_gate_context(request) is None
+        context = read_gate_context(request)
+        assert context is not None
+        assert context.pausable is False
+
+    def test_an_interactive_run_is_pausable(self) -> None:
+        request = make_request(
+            configurable={
+                "stream_id": STREAM_ID,
+                "user_id": USER_ID,
+                "conversation_id": CONVERSATION_ID,
+            }
+        )
+        context = read_gate_context(request)
+        assert context is not None
+        assert context.pausable is True
 
     def test_an_empty_string_identity_is_treated_as_missing(self) -> None:
         request = make_request(

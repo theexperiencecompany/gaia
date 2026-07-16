@@ -42,6 +42,8 @@ from app.constants.llm import DEFAULT_MAX_TOKENS, SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.constants.summarization import COMPACTION_THRESHOLD, MAX_OUTPUT_CHARS
 from app.core.stream_manager import stream_manager
+from app.services.hil.policy import would_require_approval
+from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
 from app.utils.agent_utils import (
     StreamWriterCallable,
     emit_subagent_tool_calls,
@@ -433,6 +435,20 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         status="error",
                     )
                 try:
+                    # This lightweight loop has no graph/checkpointer, so it cannot pause
+                    # for HIL approval. A gated tool must not run here unapproved — fail
+                    # closed. (No-op for the common HIL-off user: this returns False.)
+                    if await would_require_approval(user_id, name, tools_by_name[name]):
+                        log.info(
+                            f"{LogTag.AGENT} HIL: denied gated tool {name} in spawn_subagent "
+                            "(run cannot pause for approval)"
+                        )
+                        return ToolMessage(
+                            content=UNPAUSABLE_DENIAL_TEMPLATE.format(tool=name),
+                            tool_call_id=tc_id,
+                            name=name,
+                            status="error",
+                        )
                     # Invoking with a tool_call returns a ToolMessage; the raw
                     # output is its .content (str(ToolMessage) would leak the
                     # message repr into the model's context).
