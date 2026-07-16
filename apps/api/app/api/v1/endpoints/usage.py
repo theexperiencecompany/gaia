@@ -2,6 +2,7 @@
 Usage tracking API endpoints.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -40,9 +41,11 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
         subscription = await payment_service.get_user_subscription_status(user_id)
         user_plan = subscription.plan_type or PlanType.FREE
 
-        # Get real-time usage data directly from Redis
-        features_formatted = await _get_realtime_usage(user_id, user_plan)
-        budget = await get_budget_status(user_id, user_plan)
+        # Both read independent Redis keys — issue them concurrently.
+        features_formatted, budget = await asyncio.gather(
+            _get_realtime_usage(user_id, user_plan),
+            get_budget_status(user_id, user_plan),
+        )
 
         log.set(period="realtime", result_count=len(features_formatted))
         log.set(outcome="success")

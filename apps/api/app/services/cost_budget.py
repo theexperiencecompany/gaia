@@ -16,6 +16,8 @@ helpers warn and no-op (enforcement fails open; startup ``verify_connection``
 is what fails hard in production).
 """
 
+import asyncio
+from collections.abc import Awaitable
 from typing import Any
 
 from app.config.rate_limits import (
@@ -72,21 +74,51 @@ def _budget_key(user_id: str, period: RateLimitPeriod) -> str:
     )
 
 
-async def add_cost(user_id: str, cost_usd: float) -> None:
-    """Add real LLM spend to the user's current day AND month windows."""
-    if cost_usd <= 0:
+async def record_model_call_usage(
+    user_id: str | None,
+    cost_usd: float,
+    root_request_id: str | None,
+    tokens: int,
+) -> None:
+    """Record one model call's spend and tokens in a single Redis round trip.
+
+    The single metering seam ``LLMAccountingMiddleware.aafter_model`` calls after
+    every model call on every execution path (chat, workflows, bots, voice,
+    subagents). Batches the day + month USD cost increments and the request
+    tree's aggregate token counter — each with its TTL — into one
+    non-transactional pipeline, and runs the durable Mongo cost rollup
+    concurrently. Fail-open: a Redis hiccup must never fail the model call.
+    """
+    record_spend = user_id is not None and cost_usd > 0
+    record_tokens = root_request_id is not None and tokens > 0
+    if not (record_spend or record_tokens):
         return
-    # Durable per-day rollup first — the Redis windows expire in ~26h, and this
-    # is the only cost history the usage charts can plot. Never raises.
-    await record_cost(user_id, cost_usd)
+
+    awaitables: list[Awaitable[Any]] = []
+
+    # Durable per-day rollup — the Redis windows expire in ~26h, so this is the
+    # only cost history the usage charts can plot. Never raises. Runs
+    # concurrently with the Redis pipeline below.
+    if record_spend and user_id is not None:
+        awaitables.append(record_cost(user_id, cost_usd))
+
     client = redis_cache.redis
     if client is None:
-        log.warning(f"{LogTag.STORAGE} Redis unavailable — cost budget not recorded.")
-        return
-    for period, ttl in _PERIOD_TTL_SECONDS.items():
-        key = _budget_key(user_id, period)
-        await client.incrbyfloat(key, cost_usd)
-        await client.expire(key, ttl)
+        log.warning(f"{LogTag.STORAGE} Redis unavailable — model call usage not recorded.")
+    else:
+        pipe = client.pipeline(transaction=False)
+        if record_spend and user_id is not None:
+            for period, ttl in _PERIOD_TTL_SECONDS.items():
+                key = _budget_key(user_id, period)
+                pipe.incrbyfloat(key, cost_usd)
+                pipe.expire(key, ttl)
+        if record_tokens and root_request_id is not None:
+            key = _REQUEST_TOKENS_KEY.format(root_request_id=root_request_id)
+            pipe.incrby(key, tokens)
+            pipe.expire(key, REQUEST_TOKEN_COUNTER_TTL_SECONDS)
+        awaitables.append(pipe.execute())
+
+    await asyncio.gather(*awaitables)
 
 
 async def get_cost(user_id: str, period: RateLimitPeriod) -> float:
@@ -97,20 +129,6 @@ async def get_cost(user_id: str, period: RateLimitPeriod) -> float:
         return 0.0
     raw = await client.get(_budget_key(user_id, period))
     return float(raw) if raw is not None else 0.0
-
-
-async def add_request_tokens(root_request_id: str, tokens: int) -> None:
-    """Add tokens to a request's aggregate counter (shared across the whole
-    comms -> executor -> subagent tree via the inherited ``root_request_id``)."""
-    if tokens <= 0:
-        return
-    client = redis_cache.redis
-    if client is None:
-        log.warning(f"{LogTag.STORAGE} Redis unavailable — request tokens not recorded.")
-        return
-    key = _REQUEST_TOKENS_KEY.format(root_request_id=root_request_id)
-    await client.incrby(key, tokens)
-    await client.expire(key, REQUEST_TOKEN_COUNTER_TTL_SECONDS)
 
 
 async def get_request_tokens(root_request_id: str) -> int:
@@ -146,18 +164,30 @@ async def get_budget_stop_reason(
         )
         return None
 
-    spent = await get_cost(user_id, RateLimitPeriod.DAY)
-    if spent >= get_daily_cost_budget_usd(plan_type):
-        return DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
+    daily_budget = get_daily_cost_budget_usd(plan_type)
 
+    # Missing root_request_id → only the daily read is needed, so skip the
+    # second round trip. The threading-gap warning stays scoped to a run that
+    # is otherwise proceeding (daily wall not bound), exactly as before.
     if root_request_id is None:
+        spent = await get_cost(user_id, RateLimitPeriod.DAY)
+        if spent >= daily_budget:
+            return DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
         log.warning(
             f"{LogTag.AGENT} Per-request ceiling skipped — missing root_request_id "
             "in configurable (threading gap?)."
         )
         return None
 
-    used = await get_request_tokens(root_request_id)
+    # Both reads are independent — issue them together so the hottest path (this
+    # runs before every model call) pays one round trip, not two. The daily wall
+    # still takes priority; the token read is harmless work when it binds.
+    spent, used = await asyncio.gather(
+        get_cost(user_id, RateLimitPeriod.DAY),
+        get_request_tokens(root_request_id),
+    )
+    if spent >= daily_budget:
+        return DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
     if used >= get_per_request_token_ceiling(plan_type):
         return REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
 
@@ -180,20 +210,18 @@ async def get_budget_status(user_id: str, plan_type: PlanType) -> dict[str, Any]
     windows the accounting middleware enforces, so the number shown is the number
     that gates them. Free has no monthly cost budget, so ``monthly`` is null there.
     """
-    daily = _allowance_used(
-        await get_cost(user_id, RateLimitPeriod.DAY),
-        get_daily_cost_budget_usd(plan_type),
-        RateLimitPeriod.DAY,
-    )
-    monthly = (
-        _allowance_used(
-            await get_cost(user_id, RateLimitPeriod.MONTH),
-            PRO_MONTHLY_COST_BUDGET_USD,
-            RateLimitPeriod.MONTH,
+    # Pro reads both windows concurrently (one round trip); Free reads only day.
+    if plan_type == PlanType.PRO:
+        daily_spent, monthly_spent = await asyncio.gather(
+            get_cost(user_id, RateLimitPeriod.DAY),
+            get_cost(user_id, RateLimitPeriod.MONTH),
         )
-        if plan_type == PlanType.PRO
-        else None
-    )
+        monthly = _allowance_used(monthly_spent, PRO_MONTHLY_COST_BUDGET_USD, RateLimitPeriod.MONTH)
+    else:
+        daily_spent = await get_cost(user_id, RateLimitPeriod.DAY)
+        monthly = None
+
+    daily = _allowance_used(daily_spent, get_daily_cost_budget_usd(plan_type), RateLimitPeriod.DAY)
     return {
         "daily": daily,
         "monthly": monthly,

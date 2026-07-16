@@ -8,7 +8,6 @@ data, not the short-lived Redis rate-limit counters.
 
 from datetime import UTC, datetime, timedelta
 import json
-import math
 from typing import Any, NamedTuple
 
 from bson import ObjectId
@@ -137,7 +136,17 @@ async def get_activity(user_id: str, days: int) -> dict[str, Any]:
         day_list.append({"date": _day(cursor), "count": c})
         cursor += timedelta(days=1)
 
-    percentile, tier = await _percentile_tier(user_id)
+    # Reuse the already-loaded window for the percentile total instead of a
+    # second find over the same rows — valid whenever this window fully covers
+    # the trailing 30 days (i.e. start is on or before window_start). Short
+    # windows (days <= 30) don't, so _percentile_tier reads it itself.
+    window_start = _percentile_window_start()
+    mine = (
+        sum(c for d, c in counts.items() if d >= window_start)
+        if _day(start) <= window_start
+        else None
+    )
+    percentile, tier = await _percentile_tier(user_id, window_start, mine)
     return {
         "days": day_list,
         "total": total,
@@ -147,19 +156,27 @@ async def get_activity(user_id: str, days: int) -> dict[str, Any]:
     }
 
 
-async def _percentile_tier(user_id: str) -> tuple[float | None, str | None]:
+def _percentile_window_start() -> str:
+    """First UTC day (inclusive) of the cross-user percentile comparison window."""
+    return _day(datetime.now(UTC) - timedelta(days=_PERCENTILE_WINDOW_DAYS))
+
+
+async def _percentile_tier(
+    user_id: str, window_start: str, mine: int | None
+) -> tuple[float | None, str | None]:
     """The user's activity percentile vs all users, and the badge tier it earns.
 
     Compares the user's 30-day total against cross-user thresholds that are
-    recomputed at most once a day (cached in Redis), so the per-request cost is
-    just reading the user's own recent rows.
+    recomputed at most once a day (cached in Redis). ``mine`` is that total when
+    the caller already has the window's rows loaded; pass None and it's read
+    here — either way the per-request cost is just the user's own recent rows.
     """
-    window_start = _day(datetime.now(UTC) - timedelta(days=_PERCENTILE_WINDOW_DAYS))
-    mine = 0
-    async for doc in usage_daily_collection.find(
-        {"user_id": user_id, "date": {"$gte": window_start}}, {"count": 1}
-    ):
-        mine += int(doc.get("count", 0))
+    if mine is None:
+        mine = 0
+        async for doc in usage_daily_collection.find(
+            {"user_id": user_id, "date": {"$gte": window_start}}, {"count": 1}
+        ):
+            mine += int(doc.get("count", 0))
     if mine <= 0:
         return None, None
 
@@ -172,6 +189,20 @@ async def _percentile_tier(user_id: str) -> tuple[float | None, str | None]:
     return _TIER_META[tier].percentile, tier
 
 
+# RANK-based cutoffs (top-X% fractions, keyed by the cached threshold): the
+# tier means "you are in the top X% of USERS", not "your total clears a value
+# quantile". Value quantiles break under heavy skew — one whale stretches the
+# p99 value past every other user, so the #2 most active user of hundreds would
+# rank below gold. Sorting totals descending and reading the value at each
+# top-X% rank position is robust to that.
+_TIER_RANK_FRACTIONS: dict[str, float] = {
+    "p999": 0.001,
+    "p99": 0.01,
+    "p90": 0.10,
+    "p75": 0.25,
+}
+
+
 async def _percentile_thresholds(window_start: str) -> dict[str, float]:
     client = redis_cache.redis
     if client is not None:
@@ -179,59 +210,45 @@ async def _percentile_thresholds(window_start: str) -> dict[str, float]:
         if cached:
             return json.loads(cached)
 
-    # RANK-based cutoffs, computed server-side in one sorted pass: the tier
-    # means "you are in the top X% of USERS", not "your total clears a value
-    # quantile". Value quantiles break under heavy skew — one whale stretches
-    # the p99 value past every other user, so the #2 most active user of
-    # hundreds would rank below gold. Sorting totals descending and reading
-    # the value at each top-X% rank position is robust to that, and nothing
-    # is transferred to app memory.
-    n_docs = [
-        d
-        async for d in usage_daily_collection.aggregate(
-            [
-                {"$match": {"date": {"$gte": window_start}}},
-                {"$group": {"_id": "$user_id"}},
-                {"$count": "n"},
+    # One server-side pass: sum each user's window total, sort descending, push
+    # the totals into a single Mongo-side array, then read the value at each
+    # top-X% rank position (0-based index ceil(fraction * n) - 1, floored at 0 —
+    # the same arithmetic the client used to do in Python). The sorted array is
+    # bounded by the 16MB BSON doc limit (fine for realistic user counts) and
+    # never leaves Mongo; only the four threshold scalars come back.
+    threshold_at = {
+        key: {
+            "$arrayElemAt": [
+                "$totals",
+                {
+                    "$toInt": {
+                        "$max": [
+                            0,
+                            {"$subtract": [{"$ceil": {"$multiply": [frac, "$n"]}}, 1]},
+                        ]
+                    }
+                },
             ]
-        )
-    ]
-    if not n_docs:
-        return {}
-    n = int(n_docs[0]["n"])
-
-    def _rank_index(top_fraction: float) -> int:
-        """0-based sorted-desc index of the last user inside the top X%."""
-        return max(0, math.ceil(top_fraction * n) - 1)
-
-    rank_indexes = {
-        "p999": _rank_index(0.001),
-        "p99": _rank_index(0.01),
-        "p90": _rank_index(0.10),
-        "p75": _rank_index(0.25),
+        }
+        for key, frac in _TIER_RANK_FRACTIONS.items()
     }
-    results = [
+    docs = [
         d
         async for d in usage_daily_collection.aggregate(
             [
                 {"$match": {"date": {"$gte": window_start}}},
                 {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
                 {"$sort": {"total": -1}},
-                {
-                    "$facet": {
-                        key: [{"$skip": idx}, {"$limit": 1}, {"$project": {"total": 1}}]
-                        for key, idx in rank_indexes.items()
-                    }
-                },
+                {"$group": {"_id": None, "totals": {"$push": "$total"}}},
+                {"$set": {"n": {"$size": "$totals"}}},
+                {"$project": {"_id": 0, **threshold_at}},
             ]
         )
     ]
-    if not results:
+    if not docs:
         return {}
-    facets = results[0]
-    thresholds = {
-        key: float(facets[key][0]["total"]) if facets[key] else 0.0 for key in rank_indexes
-    }
+    row = docs[0]
+    thresholds = {key: float(row[key]) for key in _TIER_RANK_FRACTIONS}
     if client is not None:
         await client.setex(_THRESHOLDS_KEY, _THRESHOLDS_TTL, json.dumps(thresholds))
     return thresholds
@@ -284,7 +301,7 @@ async def sync_activity_tiers(send_emails: bool = True) -> dict[str, int]:
     backfill so existing users' current standing doesn't trigger a mass blast;
     only promotions earned after that are emailed.
     """
-    window_start = _day(datetime.now(UTC) - timedelta(days=_PERCENTILE_WINDOW_DAYS))
+    window_start = _percentile_window_start()
     thresholds = await _percentile_thresholds(window_start)
     stats = {"scanned": 0, "promoted": 0, "emailed": 0}
     if not thresholds:

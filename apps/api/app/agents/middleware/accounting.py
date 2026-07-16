@@ -37,9 +37,8 @@ from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
 from app.services.cost_budget import (
-    add_cost,
-    add_request_tokens,
     get_budget_stop_reason,
+    record_model_call_usage,
 )
 from shared.py.wide_events import ModelContext, log
 
@@ -266,16 +265,18 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             total_cost = 0.0
 
         # Record real spend into the day/month budget windows and the request
-        # tree's aggregate token counter. This hook runs for every model call
-        # on every execution path (chat, workflows, bots, voice, subagents),
-        # making it the single metering seam. Fail-open: a Redis hiccup must
-        # never fail the model call.
+        # tree's aggregate token counter in a single Redis round trip. This hook
+        # runs for every model call on every execution path (chat, workflows,
+        # bots, voice, subagents), making it the single metering seam. Fail-open:
+        # a Redis hiccup must never fail the model call.
         root_request_id = configurable.get("root_request_id")
         try:
-            if user_id and total_cost > 0:
-                await add_cost(str(user_id), total_cost)
-            if root_request_id:
-                await add_request_tokens(str(root_request_id), input_tokens + output_tokens)
+            await record_model_call_usage(
+                str(user_id) if user_id else None,
+                total_cost,
+                str(root_request_id) if root_request_id else None,
+                input_tokens + output_tokens,
+            )
         except Exception as e:
             log.warning(f"{LogTag.AGENT} Cost/token budget recording failed: {e}")
 
