@@ -6,6 +6,7 @@ from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
 from app.config.settings import settings
+from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
@@ -106,15 +107,17 @@ async def get_current_user_ws(websocket: WebSocket):
         WebSocketException: Connection will be closed on auth failure
     """
     # Dev auth bypass — WebSockets never pass through WorkOSAuthMiddleware
-    # (BaseHTTPMiddleware only handles HTTP), so the bypass is mirrored here.
-    # get_settings() hard-fails if this is set in production.
+    # (BaseHTTPMiddleware only handles HTTP), so the bypass is mirrored here,
+    # including the X-Dev-User per-request impersonation header. get_settings()
+    # hard-fails if this is set in production.
     if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
-        user_data = await users_collection.find_one({"email": settings.DEV_AUTH_BYPASS_EMAIL})
+        target_email = websocket.headers.get(DEV_USER_HEADER) or settings.DEV_AUTH_BYPASS_EMAIL
+        user_data = await users_collection.find_one({"email": target_email})
         if user_data:
             return build_user_context(user_data, auth_provider="workos", dev_bypass=True)
         log.error(
-            f"{LogTag.OAUTH} DEV_AUTH_BYPASS_EMAIL is set to "
-            f"{settings.DEV_AUTH_BYPASS_EMAIL!r} but no such user exists in Mongo"
+            f"{LogTag.OAUTH} Dev bypass target {target_email!r} has no Mongo user — "
+            f"{DEV_USER_MISSING_HINT}"
         )
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}

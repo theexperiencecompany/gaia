@@ -1,0 +1,143 @@
+"""Dev-only identity + seeding service.
+
+Bootstraps users and sample data for agent-driven end-to-end testing. Every
+write reuses the real production path (``store_user_info``, ``create_todo``,
+``create_conversation_service``, ``PlatformLinkService.link_account``) so seeded
+shapes can never drift from what the app actually produces. Mounted only in
+development behind the auth bypass — see ``create_app``.
+"""
+
+from app.constants.auth import DEV_USER_MISSING_HINT
+from app.constants.log_tags import LogTag
+from app.db.mongodb.collections import (
+    conversations_collection,
+    projects_collection,
+    todos_collection,
+    users_collection,
+)
+from app.db.utils import serialize_document
+from app.models.chat_models import ConversationModel, ConversationSource
+from app.models.todo_models import TodoModel
+from app.services.conversation_service import create_conversation_service
+from app.services.oauth.oauth_service import store_user_info
+from app.services.platform_link_service import Platform, PlatformLinkService
+from app.services.todos.todo_service import create_todo
+from app.utils.errors import create_error
+from shared.py.wide_events import log
+
+
+async def _require_user(email: str) -> dict:
+    """Load a user by email or raise a 404 that points at the mint endpoint."""
+    user = await users_collection.find_one({"email": email})
+    if not user:
+        raise create_error(
+            message=f"No dev user exists for {email!r}",
+            why="the user has not been minted yet",
+            fix=DEV_USER_MISSING_HINT,
+            status_code=404,
+        )
+    return user
+
+
+async def mint_dev_user(email: str, name: str | None = None) -> dict:
+    """Idempotently find-or-create a dev user via the real signup path."""
+    resolved_name = name or email.split("@", 1)[0]
+    user_id, is_new = await store_user_info(name=resolved_name, email=email, picture_url=None)
+    log.info(f"{LogTag.DEV} minted dev user", email=email, user_id=str(user_id), is_new=is_new)
+    user_doc = await users_collection.find_one({"_id": user_id})
+    if not user_doc:
+        raise create_error(
+            message="Dev user creation did not persist",
+            why="store_user_info returned an id with no matching document",
+            status_code=500,
+        )
+    return serialize_document(user_doc)
+
+
+async def seed_dev_data(
+    email: str,
+    todos: int,
+    conversations: int,
+    platform_links: list[str],
+) -> dict:
+    """Create deterministic sample data for an existing dev user via real services."""
+    for platform in platform_links:
+        if not Platform.is_valid(platform):
+            raise create_error(
+                message=f"Unknown platform {platform!r}",
+                why="not one of the supported bot platforms",
+                fix=f"use one of: {', '.join(Platform.values())}",
+                status_code=400,
+            )
+
+    user = await _require_user(email)
+    user_id = str(user["_id"])
+
+    for i in range(todos):
+        await create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id)
+
+    for i in range(conversations):
+        await create_conversation_service(
+            ConversationModel(
+                conversation_id=f"dev-seed-{user_id}-{i + 1}",
+                description=f"Sample conversation {i + 1}",
+                source=ConversationSource.WEB,
+            ),
+            {"user_id": user_id},
+        )
+
+    for platform in platform_links:
+        await PlatformLinkService.link_account(
+            user_id=user_id,
+            platform=platform,
+            platform_user_id=f"dev-{platform}-{user_id}",
+            profile={"username": f"dev_{platform}", "display_name": user.get("name") or email},
+        )
+
+    log.info(
+        f"{LogTag.DEV} seeded dev data",
+        email=email,
+        user_id=user_id,
+        todos=todos,
+        conversations=conversations,
+        platforms=platform_links,
+    )
+    return {
+        "email": email,
+        "user_id": user_id,
+        "todos_created": todos,
+        "conversations_created": conversations,
+        "platforms_linked": platform_links,
+    }
+
+
+async def delete_dev_user(email: str) -> dict:
+    """Remove a dev user and the todos/conversations/projects it owns."""
+    user = await _require_user(email)
+    user_id = str(user["_id"])
+
+    todos_deleted = (await todos_collection.delete_many({"user_id": user_id})).deleted_count
+    conversations_deleted = (
+        await conversations_collection.delete_many({"user_id": user_id})
+    ).deleted_count
+    projects_deleted = (await projects_collection.delete_many({"user_id": user_id})).deleted_count
+    user_deleted = (await users_collection.delete_one({"_id": user["_id"]})).deleted_count
+
+    log.info(
+        f"{LogTag.DEV} deleted dev user",
+        email=email,
+        user_id=user_id,
+        todos=todos_deleted,
+        conversations=conversations_deleted,
+        projects=projects_deleted,
+    )
+    return {
+        "email": email,
+        "user_id": user_id,
+        "deleted": {
+            "todos": todos_deleted,
+            "conversations": conversations_deleted,
+            "projects": projects_deleted,
+            "user": user_deleted,
+        },
+    }

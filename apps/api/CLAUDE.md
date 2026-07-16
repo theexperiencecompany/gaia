@@ -269,7 +269,9 @@ See `apps/api/.env.example` or the `ProductionSettings` class in `app/config/set
 
 Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env` and every request is authenticated as that Mongo user with no WorkOS session — `WorkOSAuthMiddleware` short-circuits before any cookie handling. This is how agents (and you) drive the full app end to end locally without logging in: point `apps/web/.env.local` at `http://localhost:8000/api/v1/` and the web app just works.
 
-- The user must already exist (log in once normally to create it); a missing user logs an error on every request.
+- The user must exist in Mongo. Mint one without a WorkOS login via the dev router: `POST /api/v1/dev/users {"email": ...}` (idempotent; reuses the real signup path). A bypass target that resolves to no user fails loud with a 401 whose message names the fix ("mint it via POST /api/v1/dev/users") instead of a generic auth error.
+- Per-request impersonation: with the bypass active, an `X-Dev-User: <email>` request header authenticates as that user instead of `DEV_AUTH_BYPASS_EMAIL`, so one server can act as many users without restarts. Applies to HTTP (middleware) and WebSocket paths.
+- The dev router (`/api/v1/dev/*` — mint, seed, delete) is mounted only when `ENV=development` and `DEV_AUTH_BYPASS_EMAIL` is set; it 404s otherwise. It is excluded from the auth bypass so minting the first user is possible before any user exists.
 - Development only: `get_settings()` raises at startup if the var is set with `ENV=production` — never weaken that check.
 - The bypass user context carries `dev_bypass=True` for anything that needs to tell.
 - WorkOS is never called under the bypass, but `DevelopmentSettings` still requires the `WORKOS_*` keys — dummy values are fine locally.
