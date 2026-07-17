@@ -59,7 +59,7 @@ detect_secrets = "uvx detect-secrets scan --all-files"  # pragma: allowlist secr
 # This base table exists so the per-module strict overrides below are honored.
 ignore_missing_imports = true
 
-# Strict-mypy island — grows one domain per migration wave, never shrinks. The
+# Strict-mypy island — grows as each domain is migrated onto it, never shrinks. The
 # generics only bite (rejecting cross-domain confusion at the call site) when the
 # repositories and their document/update models are checked strictly.
 #

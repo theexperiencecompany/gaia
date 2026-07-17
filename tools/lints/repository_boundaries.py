@@ -15,11 +15,12 @@ three lines:
    Underscore-prefixed methods (the subclass seam) are exempt.
 
 Checks 1 and 2 carry ratchet ``ALLOWLIST``s of the call sites that predate the
-migration. Entries are removed as each domain's wave lands — never added. A new
-violation cannot be allowlisted away; it must be fixed, which is the point.
+repository layer. Entries are removed as each domain is migrated — never added. A
+new violation cannot be allowlisted away; it must be fixed, which is the point.
 
 (A fourth check — no ``get_cache``/``set_cache``/``delete_cache`` outside the
-allowed layers — is armed in Phase 3, once the domains stop caching by hand.)
+allowed layers — will be armed once the domains no longer cache repository-managed
+data by hand.)
 """
 
 from __future__ import annotations
@@ -40,8 +41,7 @@ _COLLECTIONS_ALLOWED_DIRS = ("db/repositories/", "db/mongodb/")
 _BSON_ALLOWED_DIRS = ("db/",)
 
 # Ratchet allowlist: files importing app.db.mongodb.collections that predate the
-# repository layer. Each is a pre-repository-layer call site, removed when its
-# domain's migration wave lands. Never add an entry.
+# repository layer. Each is removed when its domain is migrated. Never add an entry.
 COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
         # agents/

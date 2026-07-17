@@ -66,8 +66,8 @@ def get_async_collection(collection_name: str) -> AsyncIOMotorCollection[dict[st
     """Resolve a Motor collection by its Mongo name — the repository-layer accessor.
 
     Repositories declare only a ``collection_name`` and resolve their handle
-    through this one function, so the named module attributes can go private in
-    the Phase 3 lockdown without touching every call site.
+    through this one function — the single supported access path, so the named
+    module attributes can later be removed without touching call sites.
     """
     return _get_collection(collection_name)
 

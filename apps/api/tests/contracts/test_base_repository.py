@@ -1,4 +1,4 @@
-"""Phase-1 base repository verification against real Mongo + Redis.
+"""Base repository verification against real Mongo + Redis.
 
 A test-only ``_FixtureRepository`` (its own tiny document/update models and a
 throwaway collection) drives the whole base:

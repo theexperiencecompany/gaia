@@ -75,18 +75,18 @@ Reading the code is not enough to keep this boundary clean — so three mechanic
 layers hold it, each catching what the others cannot:
 
 1. **Strict-mypy island.** `app.db.repositories.*` (plus migrated document/update
-   models) is compiled under `strict = true` + `disallow_any_explicit`. This is
-   what makes the generics real: `todo_repository.update(...)` accepting only
-   `TodoUpdate` and returning only `TodoDocument | None` is enforced at the call
-   site, so cross-domain confusion is a type error, not a runtime surprise. The
-   island only grows per wave — a module is never removed from it.
+   models) is compiled under mypy's strict flags. This is what makes the generics
+   real: `todo_repository.update(...)` accepting only `TodoUpdate` and returning
+   only `TodoDocument | None` is enforced at the call site, so cross-domain
+   confusion is a type error, not a runtime surprise. The island only grows as
+   more repositories and models are migrated onto it — a module is never removed.
 
 2. **The `repository-boundaries` lint** (`tools/lints/`), because mypy strictness
    can be satisfied while types still leak. It bans `collections` imports outside
    this directory, `bson`/`ObjectId` outside `app/db/`, and `Any`/`dict[str, Any]`
    /missing annotations in **public** repository signatures (underscore-prefixed
    subclass primitives are the exempt internal seam). Its allowlist is a ratchet:
-   entries are removed as each wave migrates, never added.
+   entries are removed as each domain is migrated, never added.
 
 3. **Runtime Pydantic validation at both boundaries.** `model_validate` on every
    read means a corrupt or legacy document fails loud **here**, at the boundary,

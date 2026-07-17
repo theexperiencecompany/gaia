@@ -106,8 +106,9 @@ collection; keep `ObjectId` conversion inside the repository; annotate public
 repository methods with the domain's typed models.
 
 **Allowlist:** checks 1 and 2 each carry a ratchet `ALLOWLIST` of the call sites
-that predate the migration (grouped by top-level area). Entries are removed as
-each domain's wave lands — never added; a new violation must be fixed, not
+that predate the repository layer (grouped by top-level area). Entries are removed
+as each domain is migrated — never added; a new violation must be fixed, not
 allowlisted. Check 3 has no allowlist (the layer is new — it starts clean). A
 fourth check (no hand-rolled `get_cache`/`set_cache`/`delete_cache` for
-repository-managed data) is armed in Phase 3.
+repository-managed data) will be armed once the domains no longer cache
+repository-managed data by hand.
