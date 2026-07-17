@@ -19,10 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _common import Violation, display, iter_python_files  # noqa: E402
 import no_service_classes  # noqa: E402
+import repository_boundaries  # noqa: E402
 import route_contract  # noqa: E402
 import wide_events_logging  # noqa: E402
 
-RULES = (route_contract, no_service_classes, wide_events_logging)
+RULES = (route_contract, no_service_classes, wide_events_logging, repository_boundaries)
 
 
 def _report(module: object, violations: list[Violation]) -> None:
