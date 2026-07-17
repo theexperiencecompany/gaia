@@ -1,6 +1,6 @@
 """Request/response schemas for the dev-only identity + seeding endpoints."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class CreateDevUserRequest(BaseModel):
@@ -11,11 +11,8 @@ class CreateDevUserRequest(BaseModel):
 
 
 class DevUserResponse(BaseModel):
-    """The minted user document (Mongo fields spread through)."""
-
-    # The full user document is returned; only the identifying fields are typed
-    # so the OpenAPI schema stays honest while the dynamic Mongo doc passes through.
-    model_config = ConfigDict(extra="allow")
+    """Stable identity of the minted user (never the raw Mongo doc — internal
+    fields like datetimes are not part of this contract)."""
 
     id: str
     email: str

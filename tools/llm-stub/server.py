@@ -40,7 +40,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from directives import (  # noqa: E402
+    ChatRequest,
     DirectiveError,
+    _last_user_index,
+    _script_message_index,
+    message_text,
+    parse_directives,
     parse_request,
     resolve_response,
 )
@@ -59,9 +64,29 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "service": "llm-stub"}
 
 
+def _log_request(parsed: ChatRequest) -> None:
+    """One line per request so a sim run is debuggable from the stub's stdout:
+    role sequence, the resolved latest-user text, and the directives found."""
+    roles = ",".join(m.get("role", "?") for m in parsed.messages)
+    try:
+        script_idx = _script_message_index(parsed.messages)
+    except DirectiveError as exc:
+        print(f"[llm-stub] roles=[{roles}] MALFORMED directive: {exc}", flush=True)
+        return
+    idx = script_idx if script_idx is not None else _last_user_index(parsed.messages)
+    text = message_text(parsed.messages[idx]) if idx is not None else ""
+    directives = parse_directives(text) if script_idx is not None else []
+    print(
+        f"[llm-stub] roles=[{roles}] tools={len(parsed.available_tools)} "
+        f"directives={len(directives)} script_msg={text[:160]!r}",
+        flush=True,
+    )
+
+
 async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     body = await request.json()
     parsed = parse_request(body)
+    _log_request(parsed)
     try:
         response = resolve_response(parsed.messages, parsed.available_tools)
     except DirectiveError as exc:

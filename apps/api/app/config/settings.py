@@ -570,6 +570,13 @@ class DevelopmentSettings(CommonSettings):
     # start in production when this is set.
     OPENROUTER_BASE_URL: str | None = None
 
+    # Sim mode: every LLM factory in app/agents/llm/client.py resolves to the
+    # local scripted stub (tools/llm-stub), making the whole stack deterministic
+    # and credential-free. One switch — no per-provider key/url plumbing; real
+    # keys in .env stay untouched and unused. `mise dev:sim` sets this.
+    # get_settings() refuses to start in production when this is set.
+    GAIA_SIM_MODE: bool = False
+
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
@@ -667,6 +674,11 @@ def get_settings():
                 raise RuntimeError(
                     "OPENROUTER_BASE_URL is set but ENV=production — "
                     "the OpenRouter base-URL override is a development-only stub hook."
+                )
+            if os.getenv("GAIA_SIM_MODE"):
+                raise RuntimeError(
+                    "GAIA_SIM_MODE is set but ENV=production — "
+                    "sim mode routes every model call to a local scripted stub."
                 )
             settings_obj = ProductionSettings.from_env()
             log.info(f"{LogTag.STARTUP} Production settings initialized")

@@ -59,9 +59,20 @@ async def _client(app: FastAPI) -> httpx.AsyncClient:
 
 @pytest.mark.integration
 class TestDevRouterMounting:
-    async def test_dev_routes_absent_without_bypass(self, test_client):
-        """With no DEV_AUTH_BYPASS_EMAIL, the router is never mounted → 404."""
-        response = await test_client.post("/api/v1/dev/users", json={"email": DEV_EMAIL})
+    async def test_dev_routes_absent_without_bypass(self, monkeypatch):
+        """With no DEV_AUTH_BYPASS_EMAIL, the router is never mounted → 404.
+
+        Explicitly clears the bypass rather than relying on the developer's
+        ambient .env, which legitimately sets it in local dev.
+        """
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", None)
+        app = _build_app()
+
+        client = await _client(app)
+        async with client:
+            response = await client.post("/api/v1/dev/users", json={"email": DEV_EMAIL})
         assert response.status_code == 404
 
     async def test_dev_routes_mounted_with_bypass(self, monkeypatch):

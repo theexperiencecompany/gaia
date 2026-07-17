@@ -17,17 +17,25 @@ def _reset_settings_cache():
     get_settings.cache_clear()
 
 
+DEV_OVERRIDE_VARS = ("DEV_AUTH_BYPASS_EMAIL", "OPENROUTER_BASE_URL", "GAIA_SIM_MODE")
+
+
 @pytest.mark.parametrize(
     ("env_var", "value"),
     [
         ("DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local"),
         ("OPENROUTER_BASE_URL", "http://localhost:9797"),
+        ("GAIA_SIM_MODE", "1"),
     ],
 )
 def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
     from app.config.settings import get_settings
 
     monkeypatch.setenv("ENV", "production")
+    # Isolate from the developer's ambient .env: only the override under test
+    # may be present, or an earlier guard fires first and the match fails.
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv(env_var, value)
 
     with pytest.raises(RuntimeError, match=env_var):

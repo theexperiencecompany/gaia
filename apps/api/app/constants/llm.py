@@ -70,6 +70,13 @@ DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 DEFAULT_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
+# GAIA_SIM_MODE (see app/agents/llm/client.py): every model factory resolves to
+# the local scripted stub (tools/llm-stub) at this address. The model name is a
+# marker the stub ignores; the key satisfies client construction only.
+SIM_STUB_BASE_URL = "http://localhost:9797/api/v1"
+SIM_STUB_API_KEY = "sk-stub-dev"  # pragma: allowlist secret
+SIM_STUB_MODEL_NAME = "gaia-sim-stub"
+
 # Per-plan model policy (hardcoded; not user-selectable). Free accounts run the
 # default Gemini model above; every paid (non-free) plan runs a more capable
 # model via OpenRouter.

@@ -17,7 +17,6 @@ from app.db.mongodb.collections import (
     todos_collection,
     users_collection,
 )
-from app.db.utils import serialize_document
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.todo_models import TodoModel
 from app.models.user_models import BioStatus, OnboardingPhase, OnboardingPreferences
@@ -54,7 +53,13 @@ async def mint_dev_user(email: str, name: str | None = None) -> dict:
             why="store_user_info returned an id with no matching document",
             status_code=500,
         )
-    return serialize_document(user_doc)
+    # Stable JSON-safe contract only — the raw doc carries datetimes/ObjectIds
+    # that JSONResponse cannot serialize and internals no consumer should see.
+    return {
+        "id": str(user_doc["_id"]),
+        "email": user_doc["email"],
+        "name": user_doc.get("name"),
+    }
 
 
 async def seed_dev_data(
