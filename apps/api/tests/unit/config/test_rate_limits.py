@@ -221,6 +221,11 @@ class TestFeatureLimits:
     # Features intentionally restricted to paid-only (free limits are 0).
     PAID_ONLY_FEATURES = {"voice_mode"}
 
+    # Cost-walled features: no daily message-count wall on free (free.day == 0)
+    # because the rolling daily COST budget is the real wall. The monthly count
+    # survives only as an extreme abuse backstop.
+    COST_WALLED_FEATURES = {"chat_messages"}
+
     def test_free_limits_are_positive(self) -> None:
         """Non-paid-only features should have at least some free tier allowance."""
         for key, limits in FEATURE_LIMITS.items():
@@ -228,15 +233,23 @@ class TestFeatureLimits:
                 # Paid-only features deliberately have free.day == free.month == 0
                 assert limits.free.day == 0, f"{key}: expected free day == 0 (paid-only)"
                 assert limits.free.month == 0, f"{key}: expected free month == 0 (paid-only)"
+            elif key in self.COST_WALLED_FEATURES:
+                # Daily count wall removed — the cost budget gates daily use.
+                # Month stays as an abuse backstop, so free.month must be set.
+                assert limits.free.day == 0, f"{key}: expected free day == 0 (cost-walled)"
+                assert limits.free.month > 0, f"{key}: expected free month backstop"
             else:
                 assert limits.free.day > 0, f"{key}: free day is 0"
                 assert limits.free.month > 0, f"{key}: free month is 0"
 
     def test_specific_chat_messages_limits(self) -> None:
         chat = FEATURE_LIMITS["chat_messages"]
-        assert chat.free.day == 15
-        assert chat.free.month == 200
-        # Pro has no daily message count (0 = uncapped); only the monthly abuse backstop.
+        # No daily message-count wall on free — the rolling cost budget is the
+        # wall; the monthly count is only an extreme abuse backstop.
+        assert chat.free.day == 0
+        assert chat.free.month == 2000
+        # Pro also has no daily message count (0 = uncapped); only the monthly
+        # abuse backstop.
         assert chat.pro.day == 0
         assert chat.pro.month == 60000
 

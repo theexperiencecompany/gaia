@@ -69,7 +69,13 @@ class TieredRateLimits(BaseModel):
 FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     # CORE COMMUNICATION
     "chat_messages": TieredRateLimits(
-        free=RateLimitConfig(day=15, month=200),  # TUNE — hard daily wall for conversion
+        # Free has NO daily message count either: the rolling daily COST budget
+        # (FREE_DAILY_COST_BUDGET_USD) is the real wall, so a message tally
+        # would just double-wall the same thing less honestly. The monthly count
+        # stays only as an extreme abuse backstop a human can't reach before the
+        # cost wall stops them (day=0 = counted but not enforced, so day-by-day
+        # usage charts still get data).
+        free=RateLimitConfig(day=0, month=2000),  # TUNE — abuse backstop, not a wall
         # Pro has NO daily message count: usage is priced by the cost budgets
         # (daily abuse guard + monthly economic guard), not by counting
         # messages. The monthly count stays only as an extreme abuse backstop
@@ -310,6 +316,12 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
 }
 
 
+# The feature whose usage windows the usage UI leads with. Chat is the metered
+# surface every plan revolves around (its free wall is the daily cost budget),
+# so the dashboard headlines it. Single source of truth shared with the client.
+PRIMARY_METERED_FEATURE = "chat_messages"
+
+
 def get_feature_limits(feature_key: str) -> TieredRateLimits:
     """Get rate limits for a specific feature."""
     if feature_key not in FEATURE_LIMITS:
@@ -376,6 +388,15 @@ def get_feature_info(feature_key: str) -> dict[str, str]:
     }
 
 
+def _is_cost_walled(limits: TieredRateLimits) -> bool:
+    """A feature whose daily use is gated by the rolling cost budget, not a
+    message count: day == 0 on BOTH tiers (so the count never caps daily use)
+    while free still has monthly access. Chat is the canonical case — its free
+    wall is FREE_DAILY_COST_BUDGET_USD, not a per-day message tally.
+    """
+    return limits.free.day == 0 and limits.pro.day == 0 and limits.free.month > 0
+
+
 def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
     """One upsell bullet comparing free vs pro for a feature, or None.
 
@@ -383,14 +404,19 @@ def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
     strongest possible pitch.
     """
     limits = FEATURE_LIMITS[feature_key]
+    # Cost-walled feature (chat): daily use is capped by the rolling cost budget,
+    # never a message count, so the pitch stays qualitative and count-free.
+    # Naming a per-month number ("60,000 instead of 2,000") would be dishonest
+    # (the month is only an abuse backstop, not the wall a user feels) and
+    # off-strategy — Pro's real chat win is far more daily AI usage.
+    if _is_cost_walled(limits):
+        return {"title": limits.info.title, "detail": "unlimited daily messages"}
     if limits.free.day > 0:
         if limits.pro.day > 0:
             detail = f"{limits.pro.day:,} per day instead of {limits.free.day:,}"
         else:
-            # Unlimited-on-Pro: stay qualitative and never name the free daily
-            # count. The rolling cost budget can wall a free feature (chat)
-            # before its count limit, so "instead of N per day" would overstate
-            # the free allowance. Bounded deltas above keep their real numbers.
+            # Pro uncaps daily use while free stays count-bounded: stay
+            # qualitative and never name the free daily count.
             detail = "unlimited daily use"
         return {"title": limits.info.title, "detail": detail}
     if limits.free.month > 0 and limits.pro.month > 0:
@@ -406,9 +432,9 @@ def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, 
     the limits, so the promised benefits can never drift from reality.
 
     Order: (1) the feature the user just hit, (2) Pro-only features (no free
-    access at all), (3) features that become unlimited on Pro (free-capped
-    daily, no pro cap — e.g. chat messages), (4) the largest free->pro daily
-    multipliers.
+    access at all), (3) features whose daily use is not count-capped on Pro —
+    either free-capped daily with no pro cap, or cost-walled (day 0 on both
+    tiers, e.g. chat messages), (4) the largest free->pro daily multipliers.
     """
     benefits: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -428,14 +454,15 @@ def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, 
             benefits.append({"title": limits.info.title, "detail": "included with Pro"})
             seen.add(key)
 
-    # Unlimited-on-Pro features (free-capped daily, no pro daily cap) are the
+    # Features whose daily use is uncapped on Pro (pro.day == 0) are the
     # strongest non-gated pitch, but the multiplier section below can't reach
-    # them (pro.day == 0). Surface them explicitly so a wall on any feature
-    # still advertises e.g. unlimited chat messages.
+    # them (division by pro.day). This covers both free-capped-daily features
+    # and cost-walled ones (chat: day 0 on both tiers). Surface them explicitly
+    # so a wall on any feature still advertises e.g. unlimited chat messages.
     for key, limits in FEATURE_LIMITS.items():
         if key in seen:
             continue
-        if limits.free.day > 0 and limits.pro.day <= 0:
+        if limits.pro.day <= 0 and (limits.free.day > 0 or _is_cost_walled(limits)):
             delta = _free_pro_delta(key)
             if delta:
                 benefits.append(delta)

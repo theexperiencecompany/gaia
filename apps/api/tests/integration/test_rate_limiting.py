@@ -129,7 +129,10 @@ class TestRateLimitConfiguration:
 
     def test_get_feature_limits_returns_correct_config(self) -> None:
         result = get_feature_limits("chat_messages")
-        assert result.free.day == 15
+        # Chat is cost-walled: no free daily count (the cost budget is the wall),
+        # month is only an abuse backstop.
+        assert result.free.day == 0
+        assert result.free.month == 2000
         assert result.pro.month == 60000
 
     def test_get_feature_limits_raises_for_unknown(self) -> None:
@@ -496,8 +499,11 @@ class TestConcurrentRequests:
     async def test_concurrent_increments_are_atomic(self) -> None:
         """Fire exactly the daily allowance concurrently; every one succeeds and
         the counter lands precisely on the limit (no lost increments)."""
+        # Use a feature that still has an enforced daily count — chat is now
+        # cost-walled (free.day == 0), so it can't exercise the daily counter.
         # Derived from config so retuning the limit never makes this stale.
-        num_requests = get_limits_for_plan("chat_messages", PlanType.FREE).day
+        feature = "todo_operations"
+        num_requests = get_limits_for_plan(feature, PlanType.FREE).day
 
         with (
             frozen_time("2026-04-01T12:00:00"),
@@ -506,14 +512,14 @@ class TestConcurrentRequests:
             tasks = [
                 self.limiter.check_and_increment(
                     user_id="user1",
-                    feature_key="chat_messages",
+                    feature_key=feature,
                     user_plan=PlanType.FREE,
                 )
                 for _ in range(num_requests)
             ]
             await asyncio.gather(*tasks)
 
-            day_key = self.limiter._get_redis_key("user1", "chat_messages", RateLimitPeriod.DAY)
+            day_key = self.limiter._get_redis_key("user1", feature, RateLimitPeriod.DAY)
             counter = await self.fake_redis.get(day_key)
             assert int(counter) == num_requests
 

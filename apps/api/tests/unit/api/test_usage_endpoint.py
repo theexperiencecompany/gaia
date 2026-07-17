@@ -78,6 +78,8 @@ class TestGetUsageSummary:
         data = response.json()
         assert data["user_id"] == "507f1f77bcf86cd799439011"
         assert data["plan_type"] == "free"
+        # The usage UI leads with the cost-walled chat feature, sourced from config.
+        assert data["primary_feature"] == "chat_messages"
         assert "features" in data
         assert data["budget"] == _MOCK_BUDGET
         assert "last_updated" in data

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.rate_limits import (
     FEATURE_LIMITS,
+    PRIMARY_METERED_FEATURE,
     RateLimitPeriod,
     get_feature_info,
     get_limits_for_plan,
@@ -52,6 +53,9 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
         return {
             "user_id": user_id,
             "plan_type": user_plan.value if hasattr(user_plan, "value") else str(user_plan),
+            # The feature the usage UI leads with (its free wall is the cost
+            # budget) — sourced from config so client and server never drift.
+            "primary_feature": PRIMARY_METERED_FEATURE,
             "features": features_formatted,
             "budget": budget,
             "last_updated": datetime.now(UTC).isoformat(),
