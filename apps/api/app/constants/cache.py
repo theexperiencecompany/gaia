@@ -54,6 +54,18 @@ SUBAGENT_GRAPH_CACHE_MAX_SIZE = 100
 SUBAGENT_GRAPH_CACHE_TTL_SECONDS = TEN_MINUTES_TTL
 SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
 
+# Repository layer — semantic aliases over the shared TTLs (single source of
+# truth). Entity rows are hot and long-lived; query caches are shorter because
+# they fan out per argument set. The generation counter (not a TTL) is what
+# actually invalidates them, so these bounds only cap worst-case staleness.
+REPO_ENTITY_TTL = ONE_DAY_TTL
+REPO_QUERY_TTL = ONE_HOUR_TTL
+# Scope segment for non-user-scoped (global) repositories.
+REPO_GLOBAL_SCOPE = "global"
+# Debounce window for UserRepository.touch_last_active — one write per user per
+# minute (Redis SET NX EX gate), so per-request auth never storms Mongo.
+LAST_ACTIVE_DEBOUNCE_SECONDS = 60
+
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"

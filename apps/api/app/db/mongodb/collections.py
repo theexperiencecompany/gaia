@@ -24,6 +24,7 @@ Performance:
 
 from typing import Any
 
+from motor.motor_asyncio import AsyncIOMotorCollection
 import pymongo
 from pymongo.server_api import ServerApi
 
@@ -59,6 +60,16 @@ def _get_collection(collection_name: str):
         mongodb_instance = _get_mongodb_instance()
         _collections_cache[collection_name] = mongodb_instance.get_collection(collection_name)
     return _collections_cache[collection_name]
+
+
+def get_async_collection(collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
+    """Resolve a Motor collection by its Mongo name — the repository-layer accessor.
+
+    Repositories declare only a ``collection_name`` and resolve their handle
+    through this one function, so the named module attributes can go private in
+    the Phase 3 lockdown without touching every call site.
+    """
+    return _get_collection(collection_name)
 
 
 def _get_sync_db():

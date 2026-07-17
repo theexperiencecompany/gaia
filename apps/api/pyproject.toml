@@ -54,6 +54,44 @@ pip_audit = "uvx pip-audit"
 detect_secrets = "uvx detect-secrets scan --all-files"  # pragma: allowlist secret
 
 
+[tool.mypy]
+# The app runs under `mypy app --ignore-missing-imports` (non-strict) by default.
+# This base table exists so the per-module strict overrides below are honored.
+ignore_missing_imports = true
+
+# Strict-mypy island — grows one domain per migration wave, never shrinks. The
+# generics only bite (rejecting cross-domain confusion at the call site) when the
+# repositories and their document/update models are checked strictly.
+#
+# The strict flags are enumerated individually, NOT via `strict = true`: mypy
+# applies a bare `strict = true` inside a per-module override GLOBALLY (it turns
+# the whole app strict — 2000+ errors), whereas the individual flags are correctly
+# scoped to the matched module. This set is exactly what `--strict` enables, minus
+# `disallow_any_explicit`.
+#
+# `disallow_any_explicit` is deliberately omitted: subclassing `pydantic.BaseModel`
+# trips mypy's `explicit-any` at the class-definition line (BaseModel's own typing
+# carries an Any the check attributes to every subclass — the pydantic mypy plugin
+# does not change this), so the flag is incompatible with any module holding a
+# document/update model. The explicit `Any` / `dict[str, Any]` ban is instead
+# enforced on repository public signatures by the `repository-boundaries` lint
+# (Type-Safety Layer 2).
+[[tool.mypy.overrides]]
+module = ["app.db.repositories.*"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+check_untyped_defs = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+extra_checks = true
+warn_unused_ignores = true
+
+
 [dependency-groups]
 dev = [
   "mypy>=1.16.1",
