@@ -19,6 +19,14 @@ from app.utils.errors import EmptyUpdateError
 
 
 class UserScopedRepositoryContract:
+    async def list_via_cache(self, repo, user_id: str) -> list:
+        """Invoke the repository's cached list finder for a user.
+
+        Override per repository (e.g. ``return await repo.list_notes(user_id=user_id)``)
+        so the query-cache contract runs against that repository's real finder.
+        """
+        raise NotImplementedError("provide list_via_cache for the query-cache contract")
+
     # ------------------------------------------------------------------ CRUD
 
     async def test_create_returns_typed_document_with_string_id(self, repo, make_doc):
@@ -133,15 +141,16 @@ class UserScopedRepositoryContract:
 
     async def test_write_orphans_query_caches(self, repo, make_doc, raw_collection, redis):
         user = "orphan-user"
-        await repo.create(make_doc(user_id=user, title="a"))
-        await repo.create(make_doc(user_id=user, title="b"))
-        assert sorted(await repo.list_titles(user_id=user)) == ["a", "b"]
-        # No repo write → no generation bump → the direct insert stays invisible.
-        await raw_collection.insert_one({"user_id": user, "title": "ghost"})
-        assert sorted(await repo.list_titles(user_id=user)) == ["a", "b"]
-        # A repo write bumps the generation → the query cache is orphaned.
-        await repo.create(make_doc(user_id=user, title="c"))
-        assert sorted(await repo.list_titles(user_id=user)) == ["a", "b", "c", "ghost"]
+        await repo.create(make_doc(user_id=user))
+        await repo.create(make_doc(user_id=user))
+        assert len(await self.list_via_cache(repo, user)) == 2
+        # Direct insert, no repo write → no generation bump → stays invisible (cached).
+        await raw_collection.insert_one(make_doc(user_id=user).model_dump(exclude={"id"}))
+        assert len(await self.list_via_cache(repo, user)) == 2
+        # A repo write bumps the generation → the query cache is orphaned, both new
+        # documents (the repo one and the direct insert) become visible.
+        await repo.create(make_doc(user_id=user))
+        assert len(await self.list_via_cache(repo, user)) == 4
 
     async def test_redis_down_degrades_to_mongo_not_error(self, repo, make_doc, monkeypatch):
         from app.db.redis import redis_cache

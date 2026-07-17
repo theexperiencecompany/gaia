@@ -86,6 +86,9 @@ def make_update() -> Callable[..., _FixtureUpdate]:
 class TestFixtureRepository(UserScopedRepositoryContract):
     """Runs every inherited contract test against the fixture repository."""
 
+    async def list_via_cache(self, repo, user_id: str) -> list:
+        return await repo.list_titles(user_id=user_id)
+
 
 class TestBasePrimitives:
     async def test_find_filters_sorts_and_paginates(self, repo, make_doc):

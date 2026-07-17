@@ -66,6 +66,9 @@ REPO_GLOBAL_SCOPE = "global"
 # minute (Redis SET NX EX gate), so per-request auth never storms Mongo.
 LAST_ACTIVE_DEBOUNCE_SECONDS = 60
 
+# Per-repository cache-key prefixes (one namespace per domain).
+NOTE_CACHE_PREFIX = "note"
+
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
