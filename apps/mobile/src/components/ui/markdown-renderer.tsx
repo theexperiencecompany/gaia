@@ -144,8 +144,16 @@ function parseCodeBlockLines(
   };
 }
 
+// Unambiguous by construction (every \s* is anchored between mandatory
+// chars), so it cannot backtrack exponentially on adversarial input.
+const HR_LINE_REGEX = /^\s*[-*_](\s*[-*_]){2,}\s*$/;
+
+function isHrLine(line: string): boolean {
+  return HR_LINE_REGEX.test(line);
+}
+
 function parseHrLine(lines: string[], start: number): BlockParseResult | null {
-  if (!/^(\s*[-*_]\s*){3,}$/.test(lines[start])) return null;
+  if (!isHrLine(lines[start])) return null;
   return { block: { type: "hr" }, next: start + 1 };
 }
 
@@ -218,7 +226,7 @@ function isBlockBoundary(line: string): boolean {
     /^#{1,6}\s+/.test(line) ||
     /^\s*[-*+]\s+/.test(line) ||
     /^\s*\d+[.)]\s+/.test(line) ||
-    /^(\s*[-*_]\s*){3,}$/.test(line)
+    isHrLine(line)
   );
 }
 
