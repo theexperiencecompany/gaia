@@ -60,6 +60,13 @@ node_modules/
 # testing
 /coverage
 
+# playwright
+**/test-results/
+**/playwright-report/
+**/.playwright/
+**/blob-report/
+**/playwright/.cache/
+
 # next.js
 .next/
 /out/

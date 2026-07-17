@@ -225,6 +225,10 @@ OPENROUTER_API_KEY="sk-stub-dev" \
 nx run-many -t dev --projects=api,web --parallel=2
 '''
 
+[tasks."e2e:web"]
+description = "Run web Playwright e2e against a running dev stack. Start `mise dev:sim` (or `mise dev` with DEV_AUTH_BYPASS_EMAIL set) in another terminal first. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
+run = "nx run web:e2e"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DEVELOPMENT COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
