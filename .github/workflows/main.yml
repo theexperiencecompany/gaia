@@ -106,6 +106,8 @@ jobs:
             mypy-${{ runner.os }}-
       - name: Ruff lint
         run: npx nx run-many -t lint -p ${{ needs.detect.outputs.python_projects }} --parallel=3
+      - name: Custom Python lints
+        run: python3 tools/lints/run.py apps/api/app
       - name: mypy
         run: npx nx run-many -t type-check -p ${{ needs.detect.outputs.python_projects }} --parallel=3
 

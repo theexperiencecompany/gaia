@@ -85,7 +85,7 @@ Pre-model hooks in `app/agents/core/nodes/`:
 - No inline imports — all imports at the top of the file.
 - Use `ruff` for linting and formatting (not black/flake8/isort).
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
-- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit.
+- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
 
 ### Docstrings & Comments
 
@@ -129,7 +129,7 @@ One domain per file. Never let a file span multiple domains.
 
 One `APIRouter` per domain with `prefix` and `tags`. Every handler follows the same 3-step contract:
 
-1. `log.set()` with everything known at the start (user, operation, IDs).
+1. `log.set()` with everything known at the start (user, operation, IDs). Presence of this step is enforced by the `route-contract` lint (`tools/lints/README`).
 2. Delegate all work to a service function.
 3. `log.set()` again with result IDs, then return `JSONResponse`.
 
@@ -152,7 +152,7 @@ async def create_todo(
 
 Services are async module-level functions, not classes.
 
-- No service classes with `__init__`, instance methods, or injected dependencies. If grouping is needed, use a class with `@staticmethod` methods only — never `self`.
+- No service classes with `__init__`, instance methods, or injected dependencies. If grouping is needed, use a class with `@staticmethod` methods only — never `self`. Enforced for `*Service`-named classes by the `no-service-classes` lint (`tools/lints/README`).
 - Services access MongoDB collections directly via `app.db.mongodb.collections` — no repository layer.
 - Keep one-off query logic in the service function where it is used; return domain models, not raw DB documents.
 
