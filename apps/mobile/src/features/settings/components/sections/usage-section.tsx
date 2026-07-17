@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type {
+  BudgetWindow,
   UsagePeriod,
   UsageSummary,
 } from "@/features/settings/api/settings-api";
@@ -76,6 +77,57 @@ function UsageBar({ title, period }: UsageBarProps) {
   );
 }
 
+interface BudgetBarProps {
+  title: string;
+  window: BudgetWindow | null | undefined;
+  periodLabel: string;
+}
+
+/** The primary feature's meter is its cost-budget percentage, not a message
+ * count — chat is priced by usage now, so a raw "N / limit" would be a lie. */
+function BudgetBar({ title, window, periodLabel }: BudgetBarProps) {
+  const { spacing, fontSize } = useResponsive();
+  if (!window) return null;
+
+  const pct = Math.min(window.percentage, 100);
+
+  return (
+    <View style={{ gap: spacing.xs }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Text style={{ fontSize: fontSize.sm }}>{title}</Text>
+        <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+          {Math.round(window.percentage)}%
+        </Text>
+      </View>
+
+      <View
+        style={{
+          height: 6,
+          borderRadius: 3,
+          backgroundColor: "rgba(255,255,255,0.1)",
+          overflow: "hidden",
+        }}
+      >
+        <View
+          style={{
+            height: "100%",
+            width: `${pct}%`,
+            borderRadius: 3,
+            backgroundColor: barColor(window.percentage),
+          }}
+        />
+      </View>
+
+      <Text style={{ fontSize: fontSize.xs - 1, color: "#5a5a5e" }}>
+        of {periodLabel} allowance
+        {window.reset_time
+          ? ` · resets ${new Date(window.reset_time).toLocaleDateString()}`
+          : ""}
+      </Text>
+    </View>
+  );
+}
+
 export function UsageSection() {
   const { spacing, fontSize } = useResponsive();
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -126,7 +178,13 @@ export function UsageSection() {
     );
   }
 
-  const featureEntries = Object.entries(summary.features);
+  const primaryKey = summary.primary_feature;
+  const primaryTitle = summary.features[primaryKey]?.title ?? "AI Usage";
+  const budgetWindow =
+    periodKey === "day" ? summary.budget?.daily : summary.budget?.monthly;
+  const featureEntries = Object.entries(summary.features).filter(
+    ([key]) => key !== primaryKey,
+  );
   const isPro = summary.plan_type !== "free";
 
   return (
@@ -189,18 +247,22 @@ export function UsageSection() {
 
       <Card variant="secondary" className="rounded-2xl bg-surface">
         <Card.Body className="gap-5 px-4 py-4">
-          {featureEntries.length === 0 ? (
+          <BudgetBar
+            title={primaryTitle}
+            window={budgetWindow}
+            periodLabel={periodKey === "day" ? "daily" : "monthly"}
+          />
+          {featureEntries.map(([key, feature]) => (
+            <UsageBar
+              key={key}
+              title={feature.title}
+              period={feature.periods[periodKey]}
+            />
+          ))}
+          {!budgetWindow && featureEntries.length === 0 && (
             <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
               No feature usage data.
             </Text>
-          ) : (
-            featureEntries.map(([key, feature]) => (
-              <UsageBar
-                key={key}
-                title={feature.title}
-                period={feature.periods[periodKey]}
-              />
-            ))
           )}
         </Card.Body>
       </Card>

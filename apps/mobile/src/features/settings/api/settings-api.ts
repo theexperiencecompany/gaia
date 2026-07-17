@@ -2,6 +2,7 @@ import type { FeatureUsage, UsageSummary } from "@gaia/shared/types";
 import { apiService } from "@/lib/api";
 
 export type {
+  BudgetWindow,
   FeatureUsage,
   TokenUsage,
   TokenUsagePeriod,

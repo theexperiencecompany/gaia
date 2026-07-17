@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, ChartLineData02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type {
+  BudgetWindow,
   UsageHistoryEntry,
   UsageSummary,
 } from "@/features/settings/api/settings-api";
@@ -106,12 +107,16 @@ function SummaryCard({ summary, period }: SummaryCardProps) {
   const { spacing, fontSize } = useResponsive();
   const isPro = summary.plan_type !== "free";
 
-  // Aggregate totals across features for the selected period
+  // Aggregate totals across features for the selected period. The primary
+  // feature is cost-priced (its count "limit" is an abuse backstop, not a real
+  // allowance), so it must not pollute the API-calls total.
+  const primaryKey = summary.primary_feature;
   let _totalUsed = 0;
   let totalLimit = 0;
   let apiCalls = 0;
 
-  for (const feature of Object.values(summary.features)) {
+  for (const [key, feature] of Object.entries(summary.features)) {
+    if (key === primaryKey) continue;
     const p = feature.periods[period];
     if (p) {
       _totalUsed += p.used;
@@ -234,6 +239,51 @@ function SummaryCard({ summary, period }: SummaryCardProps) {
 
 // ─── Feature usage bars ───────────────────────────────────────────────────────
 
+interface BudgetRowProps {
+  title: string;
+  window: BudgetWindow;
+  periodLabel: string;
+}
+
+/** The primary feature's meter: its cost-budget percentage, not a message
+ * count (chat is priced by usage, so a raw "N / limit" would be a lie). */
+function BudgetRow({ title, window, periodLabel }: BudgetRowProps) {
+  const { spacing, fontSize } = useResponsive();
+  const pct = Math.min(window.percentage, 100);
+  return (
+    <View style={{ padding: spacing.md, gap: spacing.xs }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Text style={{ fontSize: fontSize.sm, color: C.text }}>{title}</Text>
+        <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+          {Math.round(window.percentage)}% of {periodLabel} allowance
+        </Text>
+      </View>
+      <View
+        style={{
+          height: 5,
+          borderRadius: 3,
+          backgroundColor: "rgba(255,255,255,0.08)",
+          overflow: "hidden",
+        }}
+      >
+        <View
+          style={{
+            height: "100%",
+            width: `${pct}%`,
+            borderRadius: 3,
+            backgroundColor: getBarColor(pct),
+          }}
+        />
+      </View>
+      {window.reset_time ? (
+        <Text style={{ fontSize: fontSize.xs - 1, color: C.textSubtle }}>
+          Resets {formatDate(window.reset_time)}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 interface FeatureBarsProps {
   summary: UsageSummary;
   period: PeriodKey;
@@ -241,11 +291,15 @@ interface FeatureBarsProps {
 
 function FeatureBars({ summary, period }: FeatureBarsProps) {
   const { spacing, fontSize } = useResponsive();
+  const primaryKey = summary.primary_feature;
+  const primaryTitle = summary.features[primaryKey]?.title ?? "AI Usage";
+  const budgetWindow =
+    period === "day" ? summary.budget?.daily : summary.budget?.monthly;
   const entries = Object.entries(summary.features).filter(
-    ([, f]) => f.periods[period],
+    ([key, f]) => key !== primaryKey && f.periods[period],
   );
 
-  if (entries.length === 0) {
+  if (!budgetWindow && entries.length === 0) {
     return (
       <View
         style={{
@@ -292,13 +346,21 @@ function FeatureBars({ summary, period }: FeatureBarsProps) {
         </Text>
       </View>
 
+      {budgetWindow ? (
+        <BudgetRow
+          title={primaryTitle}
+          window={budgetWindow}
+          periodLabel={period === "day" ? "daily" : "monthly"}
+        />
+      ) : null}
+
       {entries.map(([key, feature], index) => {
         const p = feature.periods[period];
         if (!p) return null;
         const pct = Math.min(p.percentage, 100);
         return (
           <View key={key}>
-            {index > 0 && (
+            {(index > 0 || !!budgetWindow) && (
               <View
                 style={{
                   height: 1,

@@ -74,6 +74,9 @@ export interface UsageActivity {
 export interface UsageSummary {
   user_id: string;
   plan_type: string;
+  /** Feature key the usage UI leads with (e.g. "chat_messages"). The backend
+   * designates the primary meter so the client never hard-codes it. */
+  primary_feature: string;
   features: Record<string, FeatureUsage>;
   budget: UsageBudget;
   last_updated: string;
