@@ -8,8 +8,6 @@ hard-walled mid-month. All other pro entitlements (rate limits, memory,
 per-request ceiling) stay intact; only the model changes.
 """
 
-import asyncio
-
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.constants.llm import (
     COMMS_REASONING,
@@ -35,12 +33,10 @@ from app.models.payment_models import PlanType
 from app.services.cost_budget import get_cost
 from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 _DEGRADE_NOTICE_KEY = "cost_budget_notified:{user_id}:{window}"
-
-# asyncio.create_task only keeps a weakref; hold refs so notices aren't GC'd mid-flight.
-_notice_tasks: set[asyncio.Task] = set()
 
 
 def _pin_model(configurable: dict, provider: str, model: str) -> None:
@@ -83,9 +79,7 @@ async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
             user_id=user_id,
             plan=plan.value,
         )
-        task = asyncio.create_task(_notify_degrade_once(user_id))
-        _notice_tasks.add(task)
-        task.add_done_callback(_notice_tasks.discard)
+        spawn_background_task(_notify_degrade_once(user_id))
     else:
         # Paid: MiniMax M3 via OpenRouter, comms-specific reasoning, first-party
         # provider pin. The executor + provider subagents inherit this model and the

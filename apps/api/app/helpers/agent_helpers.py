@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import json
 import re
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -13,6 +13,7 @@ from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
+from app.agents.core.agent_config_types import AgentConfigurable
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.config.langfuse import build_langfuse_callback
@@ -290,12 +291,21 @@ def build_agent_config(  # NOSONAR python:S107
     if not home_timezone:
         home_timezone = "UTC"
 
-    configurable = {
+    # One id for the WHOLE user turn: generated at the top-level call (no
+    # parent) and inherited by every child agent (executor, handoff subagents,
+    # spawn loops). The accounting middleware keys the request tree's aggregate
+    # token counter on it, so the per-request ceiling binds across the tree
+    # instead of resetting per graph. Included in the literal below so the typed
+    # AgentConfigurable enforces its presence — a run can never omit it.
+    root_request_id = inherited.get("root_request_id") or str(uuid4())
+
+    configurable: AgentConfigurable = {
         "thread_id": thread_id or conversation_id,
         "user_id": user.get("user_id"),
         "email": user.get("email"),
         "user_name": user.get("name", ""),
         "user_timezone": home_timezone,
+        "root_request_id": root_request_id,
         "provider": resolved["provider_name"],
         "max_tokens": resolved["max_tokens"],
         "model_name": resolved["model_name"],
@@ -313,13 +323,8 @@ def build_agent_config(  # NOSONAR python:S107
         "__pinned_skills__": resolved["pinned_skills"],
     }
 
-    # One id for the WHOLE user turn: generated at the top-level call (no
-    # parent) and inherited by every child agent (executor, handoff subagents,
-    # spawn loops). The accounting middleware keys the request tree's aggregate
-    # token counter on it, so the per-request ceiling binds across the tree
-    # instead of resetting per graph. plan_type is stamped by apply_plan_model
-    # on the top-level configurable and propagated the same way.
-    configurable["root_request_id"] = inherited.get("root_request_id") or str(uuid4())
+    # plan_type is stamped by apply_plan_model on the top-level configurable and
+    # propagated to children the same way root_request_id is.
     if inherited.get("plan_type"):
         configurable["plan_type"] = inherited["plan_type"]
 
@@ -338,7 +343,7 @@ def build_agent_config(  # NOSONAR python:S107
     if resolved.get("model_kwargs"):
         configurable["model_kwargs"] = resolved["model_kwargs"]
 
-    metadata: dict = {
+    metadata: dict[str, Any] = {
         "user_id": user.get("user_id"),
         "source_category": source_category,
         "source_channel": source_channel,

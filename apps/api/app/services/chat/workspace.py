@@ -35,6 +35,7 @@ from app.services.storage import (
     resolve_session_path,
     touch_session_last_active,
 )
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 
@@ -50,10 +51,6 @@ def _bot_source(source: str | None) -> ConversationSource | None:
     return cs if cs in OUTBOUND_QUEUES else None
 
 
-_last_active_tasks: set[asyncio.Task[None]] = set()
-_warm_tasks: set[asyncio.Task[None]] = set()
-
-
 def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
     """Fire-and-forget bump of the session's ``last_active`` for idle-prune.
 
@@ -64,7 +61,7 @@ def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
     session. Non-blocking; soft-fails when JuiceFS is unmounted (dev).
     """
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         return
 
@@ -76,9 +73,7 @@ def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
         except Exception as e:  # noqa: BLE001 — last_active bump must not affect chat
             log.warning(f"{LogTag.CHAT} last_active touch failed: {e}")
 
-    task = loop.create_task(_touch())
-    _last_active_tasks.add(task)
-    task.add_done_callback(_last_active_tasks.discard)
+    spawn_background_task(_touch())
 
 
 async def forward_artifact_events(
@@ -114,7 +109,6 @@ async def forward_artifact_events(
     # isn't visible to a bot user). Publish each path at most once per turn.
     bot_platform = _bot_source(source)
     published_files: set[str] = set()
-    publish_tasks: set[asyncio.Task[bool]] = set()
     try:
         await pubsub.subscribe(channel)
         async for message in pubsub.listen():
@@ -133,7 +127,6 @@ async def forward_artifact_events(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 published_files=published_files,
-                publish_tasks=publish_tasks,
             )
             entry = {
                 "tool_name": "artifact_data",
@@ -152,9 +145,7 @@ async def forward_artifact_events(
             # cache instead of a cold R2 read. Inlined files carry their body and
             # never hit the file endpoint, so they don't need warming.
             if event == "upsert" and path and not payload.get("body"):
-                warm = asyncio.create_task(_warm_artifact_cache(user_id, conversation_id, path))
-                _warm_tasks.add(warm)
-                warm.add_done_callback(_warm_tasks.discard)
+                spawn_background_task(_warm_artifact_cache(user_id, conversation_id, path))
     except asyncio.CancelledError:
         raise
     except Exception as e:  # noqa: BLE001 — log and exit; orchestrator cleans up
@@ -295,7 +286,6 @@ def _maybe_deliver_to_bot(
     user_id: str,
     conversation_id: str,
     published_files: set[str],
-    publish_tasks: set[asyncio.Task[bool]],
 ) -> None:
     """Push agent-generated artifacts to a bot user's outbound queue, at most once.
 
@@ -306,7 +296,7 @@ def _maybe_deliver_to_bot(
     ):
         return
     published_files.add(path)
-    pub_task = asyncio.create_task(
+    spawn_background_task(
         publish_outbound_file(
             platform=bot_platform,
             user_id=user_id,
@@ -316,5 +306,3 @@ def _maybe_deliver_to_bot(
             content_type=payload.get("content_type"),
         )
     )
-    publish_tasks.add(pub_task)
-    pub_task.add_done_callback(publish_tasks.discard)

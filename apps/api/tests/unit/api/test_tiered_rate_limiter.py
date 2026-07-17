@@ -128,7 +128,7 @@ class TestCheckAndIncrement:
         self.limiter.redis.redis = redis_mock
 
         with patch(
-            "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
+            "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
             side_effect=_noop_create_task,
         ):
             result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.PRO)
@@ -193,7 +193,7 @@ class TestCheckAndIncrement:
         self.limiter.redis.redis = redis_mock
 
         with patch(
-            "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
+            "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
             side_effect=_noop_create_task,
         ):
             result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.PRO)
@@ -269,7 +269,7 @@ class TestCheckAndIncrement:
         self.limiter.redis.redis = redis_mock
 
         with patch(
-            "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
+            "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
             side_effect=_noop_create_task,
         ):
             await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
@@ -307,7 +307,7 @@ class TestCheckAndIncrement:
         self.limiter.redis.redis = redis_mock
 
         with patch(
-            "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
+            "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
             side_effect=_noop_create_task,
         ):
             with pytest.raises(RateLimitExceededException):

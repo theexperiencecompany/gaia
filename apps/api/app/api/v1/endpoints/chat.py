@@ -25,10 +25,8 @@ from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import ChatContext, log
-
-# asyncio.create_task only keeps a weakref; without this set the task can be GC'd mid-flight.
-_background_tasks: set[asyncio.Task] = set()
 
 _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
@@ -150,7 +148,7 @@ async def chat_stream_endpoint(
         user_id=user_id,
     )
 
-    task = asyncio.create_task(
+    spawn_background_task(
         run_chat_stream_background(
             stream_id=stream_id,
             body=body,
@@ -159,8 +157,6 @@ async def chat_stream_endpoint(
             source=_resolve_source(request),
         )
     )
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
 
     # Don't set Access-Control-Allow-Origin here — CORSMiddleware echoes the
     # request Origin per-request against the allowlist; hardcoding it would

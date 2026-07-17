@@ -1,17 +1,13 @@
 """Global MCP tool storage. Redis-cached MongoDB storage for frontend tool visibility."""
 
-import asyncio
-
 from pymongo import UpdateOne
 
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import delete_cache, get_cache, set_cache
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
-
-# Module-level set to hold references to background tasks and prevent premature GC
-_background_tasks: set[asyncio.Task] = set()
 
 
 def _format_tools(tools: list[dict]) -> list[dict]:
@@ -46,9 +42,7 @@ class MCPToolsStore:
                 upsert=True,
             )
             await delete_cache(MCP_TOOLS_CACHE_KEY)
-            _task = asyncio.create_task(self._refresh_cache())
-            _background_tasks.add(_task)
-            _task.add_done_callback(_background_tasks.discard)
+            spawn_background_task(self._refresh_cache())
         except Exception as e:
             log.error(f"{LogTag.MCP} [{integration_id}] Error storing tools: {e}")
             raise
@@ -74,9 +68,7 @@ class MCPToolsStore:
         try:
             await integrations_collection.bulk_write(ops)
             await delete_cache(MCP_TOOLS_CACHE_KEY)
-            _task = asyncio.create_task(self._refresh_cache())
-            _background_tasks.add(_task)
-            _task.add_done_callback(_background_tasks.discard)
+            spawn_background_task(self._refresh_cache())
         except Exception as e:
             log.error(f"{LogTag.MCP} Error storing tools batch: {e}")
             raise

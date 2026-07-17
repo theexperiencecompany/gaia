@@ -6,7 +6,6 @@ background task that feeds the transcript through
 zero added latency on the turn.
 """
 
-import asyncio
 import contextlib
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
@@ -21,18 +20,10 @@ from app.constants.memory import (
 )
 from app.memory.engine import memory_engine
 from app.override.langgraph_bigtool.utils import State
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import UserContext, log, wide_task
 
 MAX_TOOL_OUTPUT_SIZE = 500
-
-# Module-level set to hold references to background tasks, preventing GC
-# Tasks are automatically removed from the set when they complete via done callback
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _task_done_callback(task: asyncio.Task) -> None:
-    """Callback to remove completed tasks from the background tasks set."""
-    _background_tasks.discard(task)
 
 
 def _get_user_id(config: RunnableConfig) -> str | None:
@@ -202,7 +193,7 @@ async def memory_node(
         return state
 
     if user_id:
-        task = asyncio.create_task(
+        task = spawn_background_task(
             _store_user_memory_background(
                 messages=messages,
                 user_id=user_id,
@@ -213,9 +204,6 @@ async def memory_node(
             ),
             name="user_memory",
         )
-
-        _background_tasks.add(task)
-        task.add_done_callback(_task_done_callback)
         log.debug(
             f"{LogTag.AGENT} Memory learning spawned ({subagent_id or 'agent'}): {task.get_name()}"
         )

@@ -56,8 +56,8 @@ class TestStoreTools:
                 new_callable=AsyncMock,
             ) as mock_delete,
             patch(
-                "app.services.mcp.mcp_tools_store.asyncio.create_task",
-                side_effect=lambda coro: (coro.close(), MagicMock())[1],
+                "app.services.mcp.mcp_tools_store.spawn_background_task",
+                side_effect=lambda coro, **kw: (coro.close(), MagicMock())[1],
             ),
         ):
             mock_coll.update_one = AsyncMock()
@@ -209,8 +209,8 @@ class TestStoreBatch:
                 new_callable=AsyncMock,
             ),
             patch(
-                "app.services.mcp.mcp_tools_store.asyncio.create_task",
-                side_effect=lambda coro: (coro.close(), MagicMock())[1],
+                "app.services.mcp.mcp_tools_store.spawn_background_task",
+                side_effect=lambda coro, **kw: (coro.close(), MagicMock())[1],
             ),
         ):
             mock_coll.bulk_write = AsyncMock()

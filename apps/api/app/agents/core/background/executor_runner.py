@@ -16,7 +16,6 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
-import asyncio
 from typing import Any
 
 from langgraph.errors import GraphRecursionError
@@ -46,10 +45,8 @@ from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE, MESSAGE_ID_KEY, 
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.utils.agent_utils import format_sse_data
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
-
-# Prevent GC of background tasks spawned from the queue
-_queued_executor_tasks: set[asyncio.Task] = set()
 
 
 @traceable(name="executor_background", run_type="chain")
@@ -275,15 +272,13 @@ async def _hand_off_queue(run: ExecutorRun) -> PreparedQueuedTask | None:
 
 def _spawn_queued_run(run: ExecutorRun, prepared: PreparedQueuedTask) -> None:
     """Spawn the next queued run as a GC-tracked background task."""
-    bg_task = asyncio.create_task(
+    spawn_background_task(
         run_executor_background(
             run=prepared.run,
             task=prepared.task,
             configurable=prepared.configurable,
         )
     )
-    _queued_executor_tasks.add(bg_task)
-    bg_task.add_done_callback(_queued_executor_tasks.discard)
 
     log.info(
         f"{LogTag.AGENT} Queued executor task spawned",

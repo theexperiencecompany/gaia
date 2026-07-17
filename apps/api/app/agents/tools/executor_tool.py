@@ -41,10 +41,8 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.decorators.rate_limiting import LangChainRateLimitException
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
-
-# Prevent GC of background tasks
-_executor_tasks: set[asyncio.Task[None]] = set()
 
 # A "stop X, do Y" redirect makes the comms model emit cancel_executor and
 # call_executor in ONE turn. The tool node runs both concurrently, so
@@ -261,15 +259,13 @@ async def _dispatch_executor(
         task_id=task_id,
         user_message_id=user_message_id,
     )
-    bg_task = asyncio.create_task(
+    spawn_background_task(
         run_executor_background(
             run=run,
             task=task,
             configurable=configurable,
         ),
     )
-    _executor_tasks.add(bg_task)
-    bg_task.add_done_callback(_executor_tasks.discard)
 
     log.info(
         f"{LogTag.TOOL} Executor dispatched to background",

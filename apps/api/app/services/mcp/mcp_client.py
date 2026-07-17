@@ -77,6 +77,7 @@ from app.services.mcp.token_management import (
     revoke_tokens,
     try_refresh_token,
 )
+from app.utils.background_tasks import spawn_background_task
 from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
     OAuthSecurityError,
@@ -188,14 +189,6 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
     return False
 
 
-# Strong references for fire-and-forget background tasks.
-# asyncio.create_task only holds a weak reference internally — if the
-# returned Task object is unreferenced, the GC can collect it mid-execution
-# and the work silently disappears. Tasks remove themselves from this set
-# via add_done_callback so the set stays bounded.
-_BG_TASKS: set[asyncio.Task] = set()
-
-
 async def _with_wide_event(coro: Any, label: str) -> None:
     """Run a background coroutine inside its own wide event boundary.
 
@@ -218,15 +211,11 @@ def _spawn_background(coro: Any, label: str) -> asyncio.Task | None:
     the caller will await inline instead).
     """
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         return None
 
-    task = loop.create_task(_with_wide_event(coro, label), name=f"mcp:{label}")
-    _BG_TASKS.add(task)
-
     def _on_done(t: asyncio.Task) -> None:
-        _BG_TASKS.discard(t)
         if t.cancelled():
             return
         exc = t.exception()
@@ -235,8 +224,9 @@ def _spawn_background(coro: Any, label: str) -> asyncio.Task | None:
                 f"{LogTag.MCP} background mcp task '{label}' raised: {type(exc).__name__}: {exc}"
             )
 
-    task.add_done_callback(_on_done)
-    return task
+    return spawn_background_task(
+        _with_wide_event(coro, label), name=f"mcp:{label}", on_done=_on_done
+    )
 
 
 def _parse_device_server_url(server_url: str) -> tuple[str, str]:

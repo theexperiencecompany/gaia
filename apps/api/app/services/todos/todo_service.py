@@ -40,6 +40,7 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.services.user_todos_fs import schedule_user_todos_sync
+from app.utils.background_tasks import spawn_background_task
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
     delete_todo_embedding,
@@ -93,10 +94,6 @@ async def _get_workflow_categories_for_todos(
             result[todo_id] = workflow_categories[workflow_id]
 
     return result
-
-
-# Module-level set to hold references to background tasks and prevent GC
-_background_tasks: set[asyncio.Task] = set()
 
 
 class TodoService:
@@ -347,7 +344,7 @@ class TodoService:
         try:
             from app.services.workflow.queue_service import WorkflowQueueService
 
-            _task = asyncio.create_task(
+            spawn_background_task(
                 WorkflowQueueService.queue_todo_workflow_generation(
                     todo_id=todo_id_str,
                     user_id=user_id,
@@ -355,8 +352,6 @@ class TodoService:
                     description=todo.description or "",
                 )
             )
-            _background_tasks.add(_task)
-            _task.add_done_callback(_background_tasks.discard)
             log.info(
                 "todo.workflow_generation_queued",
                 todo_id=todo_id_str,

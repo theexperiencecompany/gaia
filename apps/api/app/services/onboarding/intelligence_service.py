@@ -84,6 +84,7 @@ from app.services.workflow.integration_requirements import (
     compute_required_integrations,
 )
 from app.services.workflow.service import WorkflowService
+from app.utils.background_tasks import guard_task, spawn_background_task
 from app.utils.profile_card import (
     generate_holo_card_content,
     generate_profile_card_design,
@@ -142,10 +143,6 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
     except Exception as e:
         log.error(f"{LogTag.ONBOARDING} Node '{name}' failed: {e}", exc_info=True)
         return default
-
-
-# Module-level set prevents GC of fire-and-forget tasks
-_background_tasks: set[asyncio.Task] = set()
 
 
 @dataclass
@@ -234,9 +231,7 @@ def _start_gmail_branch(
     workflow provisioning task. Returns the shared inbox context and the
     provision future."""
     inbox_ctx = InboxScanContext()
-    scan_task = asyncio.create_task(_scan_then_enqueue_memory(user_id, inbox_ctx))
-    _background_tasks.add(scan_task)
-    scan_task.add_done_callback(_background_tasks.discard)
+    spawn_background_task(_scan_then_enqueue_memory(user_id, inbox_ctx))
     provision_future = asyncio.create_task(_run_provision_gmail(user_id))
     return inbox_ctx, provision_future
 
@@ -260,8 +255,7 @@ async def _persist_completion(
     )
 
     if provision_future is not None and not provision_future.done():
-        _background_tasks.add(provision_future)
-        provision_future.add_done_callback(_background_tasks.discard)
+        guard_task(provision_future)
 
 
 async def _finalize_onboarding(
@@ -350,8 +344,7 @@ async def _finish_early_phase(
         },
     )
     if provision_future is not None and not provision_future.done():
-        _background_tasks.add(provision_future)
-        provision_future.add_done_callback(_background_tasks.discard)
+        guard_task(provision_future)
 
 
 async def _social_then_holo(
