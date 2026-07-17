@@ -20,6 +20,8 @@ import asyncio
 from collections.abc import Awaitable
 from typing import Any
 
+from redis.exceptions import RedisError
+
 from app.config.rate_limits import (
     RateLimitPeriod,
     get_daily_cost_budget_usd,
@@ -36,6 +38,7 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
+from app.services.payments.payment_service import payment_service
 from app.services.usage_activity import record_cost
 from shared.py.wide_events import log
 
@@ -122,21 +125,37 @@ async def record_model_call_usage(
 
 
 async def get_cost(user_id: str, period: RateLimitPeriod) -> float:
-    """Return the current window's accumulated USD cost (0.0 if unset)."""
+    """Return the current window's accumulated USD cost (0.0 if unset).
+
+    Fails open (0.0) when Redis is missing OR unreachable — per the module
+    contract, a Redis blip must degrade enforcement, never fail the user's
+    request (a raise here would 500 the chat gate / fail a workflow run).
+    """
     client = redis_cache.redis
     if client is None:
         log.warning(f"{LogTag.STORAGE} Redis unavailable — cost budget reads 0.")
         return 0.0
-    raw = await client.get(_budget_key(user_id, period))
+    try:
+        raw = await client.get(_budget_key(user_id, period))
+    except (RedisError, OSError) as e:
+        log.warning(f"{LogTag.STORAGE} Cost budget read failed — reading 0: {e}")
+        return 0.0
     return float(raw) if raw is not None else 0.0
 
 
 async def get_request_tokens(root_request_id: str) -> int:
-    """Return the request tree's aggregate token count so far (0 if unset)."""
+    """Return the request tree's aggregate token count so far (0 if unset).
+
+    Fails open (0) on Redis errors — same contract as :func:`get_cost`.
+    """
     client = redis_cache.redis
     if client is None:
         return 0
-    raw = await client.get(_REQUEST_TOKENS_KEY.format(root_request_id=root_request_id))
+    try:
+        raw = await client.get(_REQUEST_TOKENS_KEY.format(root_request_id=root_request_id))
+    except (RedisError, OSError) as e:
+        log.warning(f"{LogTag.STORAGE} Request token read failed — reading 0: {e}")
+        return 0
     return int(raw) if raw is not None else 0
 
 
@@ -149,20 +168,41 @@ async def get_budget_stop_reason(
 
     Checked before every model call by ``LLMAccountingMiddleware`` — the one
     seam every execution path (chat, workflows, bots, voice, subagents) passes
-    through, so no entry point can route around it. Two walls:
+    through. The wall is self-sufficient: when ``plan_type`` was never stamped
+    onto the configurable (a background/subagent path that skipped
+    ``apply_plan_model``), it is derived here from the Redis-cached tier so no
+    entry point can be born unenforced. Two walls:
 
     1. Daily cost budget — catches entry points that skip the endpoint gate.
     2. Per-request aggregate token ceiling — stops runaway agentic loops.
 
-    Missing context fails open (never crash a turn on a threading gap) but
-    warns loudly so a broken config path is visible, not silent.
+    Fails open only when there is genuinely nothing to enforce against
+    (``user_id`` missing) or the plan lookup itself errors (infra hiccup) —
+    both warn loudly so the gap stays visible, never silently skipped.
     """
-    if user_id is None or plan_type is None:
+    if user_id is None:
         log.warning(
-            f"{LogTag.AGENT} Budget check skipped — missing user_id/plan_type in "
-            "configurable (threading gap?)."
+            f"{LogTag.AGENT} Budget check skipped — no user_id in configurable "
+            "(nothing to enforce against; threading gap?)."
         )
         return None
+
+    if plan_type is None:
+        # The stamp is missing (a path that skipped apply_plan_model). Derive the
+        # tier ourselves so the wall still binds; a lookup failure is the only
+        # thing that fails open here, and it warns loudly.
+        try:
+            plan_type = await payment_service.get_cached_plan_type(user_id)
+        except Exception as e:
+            log.warning(
+                f"{LogTag.AGENT} Budget check failing open — plan lookup failed "
+                f"for user {user_id}: {e}"
+            )
+            return None
+        log.warning(
+            f"{LogTag.AGENT} plan_type missing from configurable — derived via "
+            f"cached lookup for user {user_id} (upstream threading gap)."
+        )
 
     daily_budget = get_daily_cost_budget_usd(plan_type)
 

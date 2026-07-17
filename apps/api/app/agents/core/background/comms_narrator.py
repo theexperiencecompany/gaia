@@ -9,6 +9,7 @@ persona. This module owns that single invocation.
 from langchain_core.messages import HumanMessage
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
+from app.agents.llm.plan_model import apply_plan_model
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.constants.agents import (
     EXECUTOR_CANCELLED_MARKER,
@@ -70,6 +71,11 @@ async def narrate_executor_result(
             user=user,
             agent_name="comms_agent",
         )
+        # Fresh background task with no parent configurable to inherit from, so
+        # route the model by plan (Pro -> paid model, Free -> default) and stamp
+        # plan_type here — matching the interactive comms path and keeping the
+        # budget wall enforced on this turn.
+        await apply_plan_model(config["configurable"], user.get("user_id"))
         initial_state = {
             "messages": [
                 # MUST be a HumanMessage. The message type is load-bearing here:

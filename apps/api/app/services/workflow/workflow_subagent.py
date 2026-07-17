@@ -91,8 +91,15 @@ class WorkflowSubagentRunner:
         user_name: str | None = None,
         user_timezone: str | None = None,
         stream_writer=None,
+        base_configurable: dict | None = None,
     ) -> str:
-        """Execute the workflow subagent with streaming, returning the complete response text."""
+        """Execute the workflow subagent with streaming, returning the complete response text.
+
+        ``base_configurable`` is the parent (executor) configurable so the subagent
+        inherits its plan tier, plan-routed model, provider pin, and root_request_id
+        — keeping pro users on the paid model and the budget wall enforced across the
+        whole turn tree, exactly like other handoff subagents.
+        """
         subagent_graph = await get_workflow_subagent()
 
         # Build config
@@ -111,6 +118,7 @@ class WorkflowSubagentRunner:
             thread_id=subagent_thread_id,
             agent_name="workflow_agent",
             subagent_id="workflow_agent",
+            base_configurable=base_configurable,
         )
         configurable = config.get("configurable", {})
 

@@ -11,9 +11,11 @@ the user's day/month budget windows and its tokens into the request tree's
 aggregate counter (``app.services.cost_budget``), and ``awrap_model_call``
 short-circuits the invocation with a user-facing stop message when the daily
 cost budget or the per-request token ceiling is exhausted. This hook runs on
-every execution path (chat, workflows, bots, voice, subagents), so no entry
-point can bypass the walls — the endpoint-level 429 gates are the nice UX,
-this is the law.
+every execution path (chat, workflows, bots, voice, subagents), and the wall is
+self-sufficient — when a path never stamped ``plan_type`` onto the configurable,
+``get_budget_stop_reason`` derives it from the cached tier — so no entry point
+can bypass the walls. The endpoint-level 429 gates are the nice UX, this is the
+law.
 
 Runs as a LangChain :class:`AgentMiddleware` via `create_agent(middleware=...)`.
 """
@@ -194,6 +196,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         configurable = _current_config().get("configurable", {}) or {}
         user_id = configurable.get("user_id")
         root_request_id = configurable.get("root_request_id")
+        # plan_type is passed through when the path stamped it (the hot chat path,
+        # avoiding a Redis lookup); when it's absent or malformed we pass None and
+        # get_budget_stop_reason derives the tier from the cached plan itself.
         plan_raw = configurable.get("plan_type")
         plan_type: PlanType | None
         try:
