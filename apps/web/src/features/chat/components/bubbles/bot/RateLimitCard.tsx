@@ -7,8 +7,8 @@ import {
   Clock01Icon,
   UploadCircle01Icon,
 } from "@icons";
-import { formatPlanName } from "@shared/utils";
-import type { RateLimitData } from "@/config/registries/toolRegistry";
+import type { RateLimitData } from "@shared/chat";
+import { formatFeatureName, formatPlanName } from "@shared/utils";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 interface RateLimitCardProps {
@@ -40,14 +40,6 @@ function getResetInfo(
   };
 }
 
-function formatFeatureName(feature?: string): string {
-  if (!feature) return "This Feature";
-  return feature
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
 const PRO_BENEFITS = [
   "Much higher limits on every feature",
   "Unlimited chat messages",
@@ -63,6 +55,10 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
   const resetInfo = getResetInfo(reset_time);
   const featureName = formatFeatureName(feature);
   const planName = formatPlanName(plan_required);
+  // The footer is either an "Upgrade to X" CTA or a neutral "View Plans" link.
+  // A pro user hitting a daily cap has nothing to upgrade to, so the neutral
+  // link is noise — drop the whole footer for them.
+  const showFooter = isUpgradeRequired || !isPro;
 
   return (
     <div className="flex w-full max-w-md flex-col gap-0 rounded-3xl bg-zinc-800 backdrop-blur-lg overflow-hidden">
@@ -177,20 +173,24 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
         )}
       </div>
 
-      <Divider className="bg-zinc-700/50" />
+      {showFooter && (
+        <>
+          <Divider className="bg-zinc-700/50" />
 
-      {/* Footer CTA */}
-      <div className="p-3">
-        <Button
-          size="sm"
-          color="primary"
-          variant={isUpgradeRequired ? "solid" : "flat"}
-          onPress={openPricingModal}
-          className="w-full rounded-xl font-medium"
-        >
-          {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
-        </Button>
-      </div>
+          {/* Footer CTA */}
+          <div className="p-3">
+            <Button
+              size="sm"
+              color="primary"
+              variant={isUpgradeRequired ? "solid" : "flat"}
+              onPress={openPricingModal}
+              className="w-full rounded-xl font-medium"
+            >
+              {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

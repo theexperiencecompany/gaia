@@ -1,4 +1,8 @@
-import { formatPlanName, type RateLimitData } from "@gaia/shared";
+import {
+  formatFeatureName,
+  formatPlanName,
+  type RateLimitData,
+} from "@gaia/shared";
 import { Button, Chip } from "heroui-native";
 import { View } from "react-native";
 import {
@@ -44,14 +48,6 @@ function getResetInfo(resetTime?: string): ResetInfo | null {
   };
 }
 
-function formatFeatureName(feature?: string): string {
-  if (!feature) return "This Feature";
-  return feature
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
 const PRO_BENEFITS = [
   "Much higher limits on every feature",
   "Unlimited chat messages",
@@ -66,13 +62,17 @@ interface RateLimitCardProps {
 }
 
 export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
-  const { feature, plan_required, reset_time, current_plan } = data;
+  const { feature, plan_required, reset_time, current_plan, message } = data;
   const isUpgradeRequired = !!plan_required;
   // A user already on the top tier has nothing to upgrade to — hide the pitch.
   const isPro = current_plan === "pro";
   const resetInfo = getResetInfo(reset_time);
   const featureName = formatFeatureName(feature);
   const planName = formatPlanName(plan_required);
+  // The footer is either an "Upgrade to X" CTA or a neutral "View Plans" link.
+  // A pro user hitting a daily cap has nothing to upgrade to, so the neutral
+  // link is noise — drop the whole footer for them.
+  const showFooter = isUpgradeRequired || !isPro;
 
   return (
     <View className="mx-4 my-1 overflow-hidden rounded-2xl bg-zinc-800">
@@ -95,9 +95,11 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
               {featureName}
             </Text>
             <Text className="text-xs text-zinc-500 mt-0.5">
-              {isUpgradeRequired
-                ? `Requires ${planName} plan`
-                : "Daily limit reached"}
+              {message
+                ? "Free plan limit reached"
+                : isUpgradeRequired
+                  ? `Requires ${planName} plan`
+                  : "Daily limit reached"}
             </Text>
           </View>
         </View>
@@ -122,15 +124,22 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
       <View className="p-4 gap-3">
         {isUpgradeRequired ? (
           <>
-            {/* Explanation */}
-            <Text className="text-xs leading-relaxed text-zinc-400">
-              <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
-              is a{" "}
-              <Text className="font-medium text-amber-400">{planName}</Text>{" "}
-              feature and isn{"'"}t included in your current plan. Upgrade to
-              unlock it and get significantly higher limits across every
-              feature.
-            </Text>
+            {/* Explanation — backend copy wins when provided (capped feature),
+                otherwise the generic plan-gated copy applies. */}
+            {message ? (
+              <Text className="text-xs leading-relaxed text-zinc-400">
+                {message}
+              </Text>
+            ) : (
+              <Text className="text-xs leading-relaxed text-zinc-400">
+                <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
+                is a{" "}
+                <Text className="font-medium text-amber-400">{planName}</Text>{" "}
+                feature and isn{"'"}t included in your current plan. Upgrade to
+                unlock it and get significantly higher limits across every
+                feature.
+              </Text>
+            )}
 
             {/* Benefits */}
             <View className="gap-1.5">
@@ -192,22 +201,26 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
         )}
       </View>
 
-      {/* Divider */}
-      <View className="h-px bg-zinc-700/50" />
+      {showFooter && (
+        <>
+          {/* Divider */}
+          <View className="h-px bg-zinc-700/50" />
 
-      {/* Footer CTA — mirrors web `Button size="sm" color="primary" variant={solid|flat} className="w-full rounded-xl"` */}
-      <View className="p-3">
-        <Button
-          size="sm"
-          variant={isUpgradeRequired ? "primary" : "secondary"}
-          onPress={onUpgrade}
-          className="w-full rounded-xl"
-        >
-          <Button.Label>
-            {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
-          </Button.Label>
-        </Button>
-      </View>
+          {/* Footer CTA — mirrors web `Button size="sm" color="primary" variant={solid|flat} className="w-full rounded-xl"` */}
+          <View className="p-3">
+            <Button
+              size="sm"
+              variant={isUpgradeRequired ? "primary" : "secondary"}
+              onPress={onUpgrade}
+              className="w-full rounded-xl"
+            >
+              <Button.Label>
+                {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
+              </Button.Label>
+            </Button>
+          </View>
+        </>
+      )}
     </View>
   );
 }

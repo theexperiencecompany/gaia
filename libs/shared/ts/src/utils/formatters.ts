@@ -159,6 +159,20 @@ export function formatPlanName(plan?: string): string {
 }
 
 /**
+ * Title-case a feature identifier (e.g. "deep_research" -> "Deep Research")
+ * for display. Falls back to "This Feature" when no feature is provided. Use
+ * this for any user-facing render of a raw backend feature slug — never
+ * hand-roll the split/capitalize inline.
+ */
+export function formatFeatureName(feature?: string): string {
+  if (!feature) return "This Feature";
+  return feature
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
  * Format a monetary amount as a locale currency string.
  * Defaults to USD.
  */

@@ -1,4 +1,5 @@
 import type {
+  RateLimitData as SharedRateLimitData,
   SubagentGroupData as SharedSubagentGroupData,
   ToolCallEntry as SharedToolCallEntry,
 } from "@shared/chat";
@@ -137,22 +138,13 @@ export interface MCPAppData {
 // 3) If you stream or store this tool’s data in messages, no extra typing is required;
 //    the message schema derives from this registry.
 // 4) Optionally, add tests and docs/examples demonstrating the new tool.
-export interface RateLimitData {
-  feature: string;
-  plan_required?: string;
-  reset_time?: string;
-  /** The user's actual plan (e.g. "free", "pro"). Lets a card suppress the
-   *  upgrade pitch for a user already on the top tier. */
-  current_plan?: string;
-  /** Backend-provided explanation; overrides the card's generic copy (used
-   *  when a feature is capped rather than plan-gated, e.g. the memory cap). */
-  message?: string;
-}
 
-// The canonical ToolCallEntry / SubagentGroupData shapes live in @shared/chat
-// (they're what the shared turn accumulator assembles); re-exported here so
-// existing web imports keep one source of truth instead of a drifting copy.
+// The canonical RateLimitData / ToolCallEntry / SubagentGroupData shapes live
+// in @shared/chat (they're what the shared turn accumulator and backend
+// contract define); re-exported here so existing web imports keep one source
+// of truth instead of a drifting copy.
 export {
+  type RateLimitData,
   REASONING_TOOL_NAME,
   type SubagentGroupData,
   type ToolCallEntry,
@@ -190,7 +182,7 @@ export const TOOL_REGISTRY = {
   workflow_created: null as unknown as WorkflowCreatedData,
   mcp_app: null as unknown as MCPAppData,
   todo_progress: null as unknown as TodoProgressData,
-  rate_limit_data: null as unknown as RateLimitData,
+  rate_limit_data: null as unknown as SharedRateLimitData,
   artifact_data: null as unknown as ArtifactData[],
   screenshot_data: null as unknown as ScreenshotData,
   memory_data: null as unknown as MemoryData,
