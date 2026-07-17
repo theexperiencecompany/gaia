@@ -157,11 +157,15 @@ class TestDevServiceLogic:
         from app.services import dev_service
 
         oid = ObjectId()
+        mock_update = AsyncMock()
         with (
             patch.object(
                 dev_service,
                 "users_collection",
-                **{"find_one": AsyncMock(return_value={"_id": oid, "email": DEV_EMAIL})},
+                **{
+                    "find_one": AsyncMock(return_value={"_id": oid, "email": DEV_EMAIL}),
+                    "update_one": mock_update,
+                },
             ),
             patch.object(dev_service, "create_todo", new_callable=AsyncMock) as mock_todo,
             patch.object(
@@ -182,6 +186,15 @@ class TestDevServiceLogic:
         assert result["conversations_created"] == 2
         assert result["platforms_linked"] == ["telegram", "slack"]
         assert result["user_id"] == str(oid)
+
+        # Seeding marks onboarding complete, gated so it never clobbers a real
+        # onboarding subdoc.
+        onboarding_filter, onboarding_update = mock_update.await_args_list[0].args
+        assert onboarding_filter == {"_id": oid, "onboarding": {"$exists": False}}
+        assert onboarding_update["$set"]["onboarding.completed"] is True
+        assert (
+            onboarding_update["$set"]["onboarding.phase"] == dev_service.OnboardingPhase.COMPLETED
+        )
 
     async def test_seed_rejects_unknown_platform_before_writing(self):
         """An invalid platform aborts with 400 and writes nothing."""

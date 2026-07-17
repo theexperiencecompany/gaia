@@ -7,6 +7,8 @@ shapes can never drift from what the app actually produces. Mounted only in
 development behind the auth bypass — see ``create_app``.
 """
 
+from datetime import UTC, datetime
+
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
@@ -18,6 +20,7 @@ from app.db.mongodb.collections import (
 from app.db.utils import serialize_document
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.todo_models import TodoModel
+from app.models.user_models import BioStatus, OnboardingPhase, OnboardingPreferences
 from app.services.conversation_service import create_conversation_service
 from app.services.oauth.oauth_service import store_user_info
 from app.services.platform_link_service import Platform, PlatformLinkService
@@ -72,6 +75,29 @@ async def seed_dev_data(
 
     user = await _require_user(email)
     user_id = str(user["_id"])
+
+    # A seeded account must be ready to use: mark onboarding complete the same
+    # way complete_onboarding() does (same atomic $exists gate, terminal phase,
+    # NO_GMAIL bio placeholder), minus its background personalization jobs —
+    # seeding must not depend on Redis workers. Never clobbers real onboarding.
+    await users_collection.update_one(
+        {"_id": user["_id"], "onboarding": {"$exists": False}},
+        {
+            "$set": {
+                "onboarding.completed": True,
+                "onboarding.completed_at": datetime.now(UTC),
+                "onboarding.phase": OnboardingPhase.COMPLETED,
+                "onboarding.bio_status": BioStatus.NO_GMAIL,
+                "onboarding.preferences": OnboardingPreferences(
+                    profession="Developer",
+                    response_style="casual",
+                    custom_instructions=None,
+                ).model_dump(),
+                "onboarding.pipeline_mode": "full",
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
 
     for i in range(todos):
         await create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id)
