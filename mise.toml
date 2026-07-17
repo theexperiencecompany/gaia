@@ -212,6 +212,19 @@ echo ""
 echo "seeded $DEV_USER (set DEV_AUTH_BYPASS_EMAIL=$DEV_USER in apps/api/.env if not already)"
 '''
 
+[tasks."dev:sim"]
+description = "Deterministic sim stack: infra + scripted LLM stub (tools/llm-stub, port 9797) + API + web. No OpenRouter credentials or cost — model replies come from [[tool:...]]/[[say:...]] directives in the chat message. Run `mise seed` once the API is up."
+run = '''
+set -eu
+nx run docker:docker:up
+uv run tools/llm-stub/server.py &
+stub_pid=$!
+trap 'kill "$stub_pid" 2>/dev/null || true' EXIT INT TERM
+OPENROUTER_BASE_URL="http://localhost:${LLM_STUB_PORT:-9797}/api/v1" \
+OPENROUTER_API_KEY="sk-stub-dev" \
+nx run-many -t dev --projects=api,web --parallel=2
+'''
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DEVELOPMENT COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────

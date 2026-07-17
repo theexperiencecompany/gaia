@@ -115,6 +115,9 @@ def init_openrouter_llm():
     routing (the first-party MiniMax pin) rides `model_kwargs` (OpenRouter's
     `provider` request param). Both are per-request configurable.
     """
+    # Development-only redirect to a local scripted stub (tools/llm-stub); None in
+    # every other case, so production construction is byte-for-byte unchanged.
+    base_url = settings.OPENROUTER_BASE_URL if settings.ENV == "development" else None
     return ChatOpenRouter(
         model=PROVIDER_MODELS["openrouter"],
         temperature=DEFAULT_LLM_TEMPERATURE,
@@ -124,6 +127,7 @@ def init_openrouter_llm():
         # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
         max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
         api_key=settings.OPENROUTER_API_KEY,
+        base_url=base_url,
         # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
         # these as dedicated params (NOT `default_headers`, which it forwards to
         # send_async and crashes on). https://openrouter.ai/docs/app-attribution

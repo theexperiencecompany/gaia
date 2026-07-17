@@ -564,6 +564,12 @@ class DevelopmentSettings(CommonSettings):
     # production when this is set.
     DEV_AUTH_BYPASS_EMAIL: str | None = None
 
+    # Development-only OpenRouter base-URL override: points the OpenRouter client
+    # (init_openrouter_llm) at a local scripted stub (tools/llm-stub) for
+    # deterministic, credential-free full-stack runs. get_settings() refuses to
+    # start in production when this is set.
+    OPENROUTER_BASE_URL: str | None = None
+
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
@@ -653,6 +659,14 @@ def get_settings():
                 raise RuntimeError(
                     "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
                     "the dev auth bypass must never be enabled in production."
+                )
+            # Same policy as the auth bypass: the OpenRouter base-URL override
+            # redirects the model to a local scripted stub, so production must
+            # refuse to boot rather than run against it.
+            if os.getenv("OPENROUTER_BASE_URL"):
+                raise RuntimeError(
+                    "OPENROUTER_BASE_URL is set but ENV=production — "
+                    "the OpenRouter base-URL override is a development-only stub hook."
                 )
             settings_obj = ProductionSettings.from_env()
             log.info(f"{LogTag.STARTUP} Production settings initialized")
