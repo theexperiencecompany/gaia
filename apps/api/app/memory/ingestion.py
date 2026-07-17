@@ -16,6 +16,7 @@ from app.constants.memory import (
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
     EPISODE_ENTRY_TIME_FORMAT,
+    FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN,
     FREE_MEMORY_FACT_LIMIT,
     RECENT_FACTS_LIMIT,
     TRANSCRIPT_CHUNK_MAX_CHARS,
@@ -27,7 +28,7 @@ from app.constants.memory import (
     MemorySourceType,
     ReconcileOutcome,
 )
-from app.memory import chroma_store, pg_store
+from app.memory import cap_counter, chroma_store, pg_store
 from app.memory.chroma_store import ConversationChunkItem, EpisodeVectorItem, MemoryVectorItem
 from app.memory.consolidation import infer_doc_types, schedule_consolidation
 from app.memory.context import invalidate_user_memory_caches
@@ -63,13 +64,21 @@ class MemoryLimitReachedError(Exception):
         )
 
 
-async def _free_cap_remaining(user_id: str) -> int | None:
+async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
     """How many more live facts a FREE user may add, or ``None`` when uncapped.
 
     ``None`` means no cap applies — a paid plan, or an infra error during the
     plan lookup (fail open: memory must not stop working because the plan
     lookup hiccuped). For a free user it is ``max(0, limit - live count)``, so
     a batch that would cross the cap can be trimmed to land exactly at it.
+
+    ``growth`` is how many facts this call would add (the NEW/EXTENDS count for
+    a batch, 1 for a single add). The live count comes from the Redis counter
+    (``cap_counter``) on the hot path, avoiding a Postgres ``COUNT`` when a free
+    user sits far below the cap. The cache is trusted only when the remaining
+    budget clears ``growth`` plus a safety margin; when the batch might cross
+    the cap, the counter is missing, or Redis is down, it falls back to the
+    authoritative ``COUNT`` (and re-seeds the counter), so the hard cap is exact.
 
     Uses the cached plan lookup (Redis-backed) — retain() runs from many
     callers (chat turns, subagents, email ingestion, API endpoints), so
@@ -83,7 +92,17 @@ async def _free_cap_remaining(user_id: str) -> int | None:
         return None
     if plan != PlanType.FREE:
         return None
+
+    cached = await cap_counter.get_cached_live_count(user_id)
+    if cached is not None:
+        remaining = max(0, FREE_MEMORY_FACT_LIMIT - cached)
+        if remaining >= growth + FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN:
+            return remaining
+
+    # Near the cap, a cache miss, or Redis down: the COUNT is authoritative and
+    # exact. Re-seed the counter so subsequent turns stay on the hot path.
     live = await pg_store.count_live_memories(user_id)
+    await cap_counter.set_cached_live_count(user_id, live)
     return max(0, FREE_MEMORY_FACT_LIMIT - live)
 
 
@@ -231,7 +250,10 @@ async def retain(
     # reads are never gated — the cap blocks growth, it does not lobotomize.
     # Facts keep reconciliation order (input order), so earlier facts in the
     # transcript win the remaining slots deterministically.
-    remaining = await _free_cap_remaining(user_id)
+    growth = sum(
+        1 for item in reconciled if item.outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
+    )
+    remaining = await _free_cap_remaining(user_id, growth)
     if remaining is not None:
         reconciled, dropped = _enforce_free_cap(reconciled, remaining)
         if dropped:
@@ -312,7 +334,7 @@ async def retain_single(
     cap — explicit adds fail LOUD so the tool/endpoint can upsell, unlike
     passive ingestion which drops silently.
     """
-    remaining = await _free_cap_remaining(user_id)
+    remaining = await _free_cap_remaining(user_id, growth=1)
     if remaining is not None and remaining <= 0:
         raise MemoryLimitReachedError(FREE_MEMORY_FACT_LIMIT)
 
@@ -503,6 +525,12 @@ async def _apply_reconciled(
     await chroma_store.upsert_memories(vector_items)
 
     entities_linked, edges_added = await _apply_graph(user_id, inserted)
+
+    # Keep the free-cap counter in sync: NEW and EXTENDS grow the live set;
+    # UPDATES supersede (net zero) and DUPLICATEs add nothing. A no-op when the
+    # counter is unseeded (paid users) or Redis is down.
+    await cap_counter.adjust_live_count(user_id, new + extended)
+
     return _ApplyResult(
         inserted=inserted,
         duplicates=duplicates,
