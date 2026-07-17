@@ -13,11 +13,20 @@
 [[pre-start]]
 copy-env = "wt step copy-ignored"
 
-# 2. Allocate deterministic per-worktree ports → .env.worktree.
+# 2. Trust this worktree's mise config — a fresh worktree directory is untrusted,
+# so every later `mise run` / `mise exec` step would fail without this.
+[[pre-start]]
+trust = "mise trust --quiet"
+
+# 3. Allocate deterministic per-worktree ports → .env.worktree.
 [[pre-start]]
 ports = "mise run wt:env"
 
-# 3. Install dependencies (independent, so run concurrently).
+# 4. Install JS dependencies first — the Python sync runs through `nx`, whose
+# binary only exists after pnpm install. NOT concurrent.
 [[pre-start]]
 install-js = "mise exec -- pnpm install"
+
+# 5. Sync Python deps (needs node_modules/.bin/nx from the previous step).
+[[pre-start]]
 sync-py = "mise exec -- nx run api:sync"
