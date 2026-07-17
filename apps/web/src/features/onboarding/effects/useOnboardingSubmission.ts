@@ -96,7 +96,9 @@ export function useOnboardingSubmission(
           onSuccess?.(response.user);
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        /* fire-and-forget: submission errors are surfaced elsewhere */
+      })
       .finally(() => {
         inFlightRef.current = false;
       });

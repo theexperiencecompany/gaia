@@ -55,16 +55,34 @@ export default function DemoSettingsDropdown({
       key: "documentation",
       label: "Documentation",
       icon: BookBookmark02Icon,
-      action: () => {},
+      action: () => {
+        /* no-op: demo menu item */
+      },
     },
     {
       key: "changelog",
       label: "Changelog",
       icon: Layers01Icon,
-      action: () => {},
+      action: () => {
+        /* no-op: demo menu item */
+      },
     },
-    { key: "blog", label: "Blog", icon: QuillWrite01Icon, action: () => {} },
-    { key: "roadmap", label: "Roadmap", icon: MapsIcon, action: () => {} },
+    {
+      key: "blog",
+      label: "Blog",
+      icon: QuillWrite01Icon,
+      action: () => {
+        /* no-op: demo menu item */
+      },
+    },
+    {
+      key: "roadmap",
+      label: "Roadmap",
+      icon: MapsIcon,
+      action: () => {
+        /* no-op: demo menu item */
+      },
+    },
   ];
 
   const supportMenuItems = [
@@ -72,20 +90,42 @@ export default function DemoSettingsDropdown({
       key: "contact_support",
       label: "Contact Support",
       icon: BubbleChatQuestionIcon,
-      action: () => {},
+      action: () => {
+        /* no-op: demo menu item */
+      },
     },
     {
       key: "feature_request",
       label: "Request a Feature",
       icon: GitPullRequestIcon,
-      action: () => {},
+      action: () => {
+        /* no-op: demo menu item */
+      },
     },
   ];
 
   const downloadMenuItems = [
-    { key: "macos", label: "macOS", action: () => {} },
-    { key: "windows", label: "Windows", action: () => {} },
-    { key: "linux", label: "Linux", action: () => {} },
+    {
+      key: "macos",
+      label: "macOS",
+      action: () => {
+        /* no-op: demo menu item */
+      },
+    },
+    {
+      key: "windows",
+      label: "Windows",
+      action: () => {
+        /* no-op: demo menu item */
+      },
+    },
+    {
+      key: "linux",
+      label: "Linux",
+      action: () => {
+        /* no-op: demo menu item */
+      },
+    },
   ];
 
   return (

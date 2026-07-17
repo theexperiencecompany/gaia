@@ -6,7 +6,9 @@ export default function EmailComposeSection({
 }: {
   email_compose_data: EmailComposeData[];
 }) {
-  const handleEmailSent = () => {};
+  const handleEmailSent = () => {
+    /* no-op: onSent is required by EmailComposeCard but unused here */
+  };
 
   return (
     <div className="mt-3 w-full space-y-3">

@@ -1,1 +1,17 @@
-export * from "./types";
+export {
+  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
+  DESKTOP_TOOL_NAMES,
+  type DesktopAppIconOption,
+  type DesktopMediaAccessStatus,
+  type DesktopPermissionPane,
+  type DesktopPermissionStatus,
+  type DesktopScreenshotData,
+  type DesktopSettings,
+  type DesktopSettingsSnapshot,
+  type DesktopShortcutUpdateResult,
+  type DesktopToolName,
+  type DesktopToolRequest,
+  type DesktopToolResult,
+  type DesktopWindowInfo,
+  isDesktopToolName,
+} from "./types";

@@ -147,7 +147,9 @@ export function useBackendSync(
               stage: "holo_ready",
             });
           })
-          .catch(() => {});
+          .catch(() => {
+            /* fire-and-forget: snapshot sync is best-effort */
+          });
       },
       complete: (p) => {
         dispatchRef.current({
@@ -160,7 +162,9 @@ export function useBackendSync(
         // Prefetch the welcome conversation into IndexedDB so the post-
         // onboarding /c/{id} mount doesn't flash the generic starter.
         if (p.conversation_id) {
-          void syncSingleConversation(p.conversation_id).catch(() => {});
+          void syncSingleConversation(p.conversation_id).catch(() => {
+            /* fire-and-forget: prefetch into IndexedDB is best-effort */
+          });
         }
         finish();
       },
@@ -224,7 +228,9 @@ export function useBackendSync(
           synthesizeCompletedStages(data);
           if (data.first_message_conversation_id) stopPoll();
         })
-        .catch(() => {});
+        .catch(() => {
+          /* fire-and-forget: poll is best-effort, retries next tick */
+        });
     };
 
     const synthesizeCompletedStages = (data: PersonalizationData): void => {

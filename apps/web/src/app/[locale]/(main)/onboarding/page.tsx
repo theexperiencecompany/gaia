@@ -76,7 +76,9 @@ function clearIntroSeen(userId: string): void {
   if (!key) return;
   try {
     window.localStorage.removeItem(key);
-  } catch {}
+  } catch {
+    /* no-op: localStorage may be unavailable (private mode/quota) */
+  }
 }
 
 export default function Onboarding() {

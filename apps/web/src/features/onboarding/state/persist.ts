@@ -94,12 +94,16 @@ export function savePersisted(state: OnboardingState): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pick(state)));
-  } catch {}
+  } catch {
+    /* no-op: localStorage may be unavailable (private mode/quota) */
+  }
 }
 
 export function clearPersisted(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(STORAGE_KEY);
-  } catch {}
+  } catch {
+    /* no-op: localStorage may be unavailable (private mode/quota) */
+  }
 }

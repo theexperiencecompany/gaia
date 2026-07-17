@@ -530,7 +530,9 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
     return filtered;
   }, [selectedCategory, searchQuery]);
 
-  const handleToolClick = (_toolName: string) => {};
+  const handleToolClick = (_toolName: string) => {
+    /* no-op: demo dropdown */
+  };
 
   return (
     <AnimatePresence>

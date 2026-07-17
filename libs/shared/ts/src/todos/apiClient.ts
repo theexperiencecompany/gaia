@@ -84,7 +84,7 @@ export interface TodoApiClient {
     todoId: string,
     subtaskId: string,
     completed: boolean,
-  ) => Promise<SubTask | void>;
+  ) => Promise<SubTask | undefined>;
   deleteSubtask: (todoId: string, subtaskId: string) => Promise<void>;
 
   // Projects

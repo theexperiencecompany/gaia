@@ -410,7 +410,9 @@ export function VoiceControlBarContainer({
       // seconds later (post-connect, post-TTS) — far outside Chrome's
       // activation window — so without this the browser silently blocks
       // playback and the StartAudio fallback pill has to appear.
-      room.startAudio().catch(() => {});
+      room.startAudio().catch(() => {
+        /* fire-and-forget: playback unlock is best-effort */
+      });
       Promise.all([
         room.localParticipant.setMicrophoneEnabled(true, undefined, {
           preConnectBuffer: true,

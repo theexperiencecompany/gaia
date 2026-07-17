@@ -56,12 +56,13 @@ export function WritingStyleRevealCard({
         .then((res) => {
           if (res.example) setCurrentExample(res.example);
         })
-        .catch(() => {})
+        .catch(() => {
+          /* fire-and-forget: apiService already surfaces the error via toast */
+        })
         .finally(() => {
           setIsRegenerating(false);
         });
     }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs on mount only
   }, []);
 
   const isTooShort = summaryValue.trim().length < MIN_LENGTH;
@@ -88,6 +89,7 @@ export function WritingStyleRevealCard({
         setCurrentExample(res.example);
       }
     } catch {
+      /* no-op: apiService already surfaces the error via toast */
     } finally {
       setIsSaving(false);
       setIsRegenerating(false);
@@ -150,7 +152,6 @@ export function WritingStyleRevealCard({
                 inputWrapper: "bg-zinc-800 shadow-none",
                 input: "text-sm text-zinc-200 leading-relaxed",
               }}
-              // biome-ignore lint/a11y/noAutofocus: intentional focus on edit
               autoFocus
             />
             <div className="flex items-center justify-end gap-2 mt-2">

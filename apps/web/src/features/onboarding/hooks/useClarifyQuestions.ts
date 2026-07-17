@@ -40,7 +40,9 @@ export function useClarifyQuestions(
         if (!res?.questions?.length) return;
         dispatch({ type: "clarifyLoaded", questions: res.questions });
       })
-      .catch(() => {})
+      .catch(() => {
+        /* fire-and-forget: clarify questions are optional */
+      })
       .finally(() => {
         inFlightRef.current = false;
       });

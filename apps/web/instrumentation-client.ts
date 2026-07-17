@@ -47,7 +47,9 @@ if (typeof window !== "undefined") {
               const client = Sentry.getClient();
               if (client) client.addIntegration(replayIntegration());
             })
-            .catch(() => {});
+            .catch(() => {
+              /* fire-and-forget: replay is best-effort */
+            });
         };
         const interactionEvents = [
           "pointerdown",

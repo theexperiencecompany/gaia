@@ -103,8 +103,6 @@ export async function createSSEConnection(
 
     controller.signal.addEventListener("abort", handleAbort);
 
-    es.addEventListener("open", () => {});
-
     es.addEventListener("message", (event) => {
       if (controller.signal.aborted || isDone) return;
       if (event.data) {

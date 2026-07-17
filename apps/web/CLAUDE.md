@@ -199,5 +199,6 @@ Use `loadFeatureTranslations` to lazy-load per-feature message files rather than
 - Do not create test cases unless explicitly asked.
 - **Do not run `nx build web` or `pnpm build`** unless explicitly asked — builds are slow and not needed during development.
 - Biome handles both linting and formatting — do not add ESLint or Prettier config.
+- Lint warnings are debt, not noise — fix each one in the change that surfaces it (decompose the over-complex function, name the empty block, drop the dead re-export). Never leave a Biome warning behind, downgrade a rule, or suppress what is fixable. A targeted `// biome-ignore` with a reason, or a file-scoped config override, is allowed ONLY when the warning is provably unfixable (e.g. an authed dynamic `<img>` next/image cannot optimize, an override stylesheet whose job is beating inline styles, re-exporting an external package's surface) — the justification must live at the suppression site.
 - Strict TypeScript (`strict: true`). Path alias `@/` maps to `src/`.
 - `@shared/*` maps to `libs/shared/ts/src/` for shared TypeScript utilities.

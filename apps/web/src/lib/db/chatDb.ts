@@ -74,7 +74,9 @@ class MessageQueue {
 
   async enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.queue.then(operation);
-    this.queue = result.catch(() => {}); // Don't propagate errors to queue
+    this.queue = result.catch(() => {
+      /* swallow: errors surface via the returned promise, not the queue */
+    });
     return result;
   }
 }

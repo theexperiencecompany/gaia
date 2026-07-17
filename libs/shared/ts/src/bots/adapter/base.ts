@@ -536,9 +536,13 @@ export abstract class BaseBotAdapter {
     sendTyping: () => Promise<unknown>,
     refreshMs: number,
   ): () => void {
-    void sendTyping().catch(() => {});
+    void sendTyping().catch(() => {
+      /* no-op: transient typing-indicator send failures are non-fatal */
+    });
     const interval = setInterval(() => {
-      void sendTyping().catch(() => {});
+      void sendTyping().catch(() => {
+        /* no-op: transient typing-indicator send failures are non-fatal */
+      });
     }, refreshMs);
     return () => clearInterval(interval);
   }

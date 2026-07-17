@@ -106,8 +106,12 @@ export const filterEmptyMessagePairs = (
           ...baseFields,
           text: nextMessage.response || "",
           loading: nextMessage.loading,
-          setOpenImage: () => {},
-          setImageData: () => {},
+          setOpenImage: () => {
+            /* no-op: image handlers unused in this emptiness check */
+          },
+          setImageData: () => {
+            /* no-op: image handlers unused in this emptiness check */
+          },
           systemPurpose,
           isConvoSystemGenerated,
         };
@@ -136,8 +140,12 @@ export const filterEmptyMessagePairs = (
         ...baseFields,
         text: currentMessage.response || "",
         loading: currentMessage.loading,
-        setOpenImage: () => {},
-        setImageData: () => {},
+        setOpenImage: () => {
+          /* no-op: image handlers unused in this emptiness check */
+        },
+        setImageData: () => {
+          /* no-op: image handlers unused in this emptiness check */
+        },
         systemPurpose,
         isConvoSystemGenerated,
       };

@@ -102,7 +102,9 @@ function RenameModal({
             width: "100%",
             maxWidth: 360,
           }}
-          onPress={() => {}}
+          onPress={() => {
+            /* no-op: swallow taps so they don't dismiss the modal backdrop */
+          }}
         >
           <Text
             style={{

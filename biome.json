@@ -172,11 +172,11 @@
   ],
   "overrides": [
     {
-      "includes": ["apps/mobile/src/components/icons/index.ts"],
+      "includes": ["apps/web/src/features/desktop-popup/desktop-popup.css"],
       "linter": {
         "rules": {
-          "performance": {
-            "noReExportAll": "off"
+          "complexity": {
+            "noImportantStyles": "off"
           }
         }
       }

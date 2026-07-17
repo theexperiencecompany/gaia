@@ -198,6 +198,7 @@ function FileViewerBody({
   if (isImage) {
     return (
       <div className="flex h-full items-center justify-center bg-zinc-950 p-4">
+        {/* biome-ignore lint/performance/noImgElement: dynamic authenticated artifact URL — next/image can't optimize it and remotePatterns forbids the dev host */}
         <img
           src={sessionFilesApi.artifactUrl(conversationId, path)}
           alt={filename}

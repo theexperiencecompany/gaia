@@ -20,6 +20,66 @@ interface RightSideProps {
   onVoiceModeHover?: () => void;
 }
 
+// Format tool name to be more readable (e.g. "web_search" -> "Web Search").
+function formatToolName(tool: string): string {
+  return tool
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+interface SendWithHintParams {
+  hasText: boolean;
+  hasSelectedTool: boolean;
+  hasSelectedWorkflow: boolean;
+  hasSelectedCalendarEvent: boolean;
+  hasFiles: boolean;
+  selectedTool?: string | null;
+  selectedWorkflow: ReturnType<typeof useWorkflowSelection>["selectedWorkflow"];
+  selectedCalendarEvent: ReturnType<
+    typeof useCalendarEventSelection
+  >["selectedCalendarEvent"];
+  uploadedFilesCount: number;
+}
+
+// The "Send with <X>" hint shown when the composer holds a single non-text
+// attachment (calendar event, workflow, tool, or files) and nothing else.
+function resolveSendWithHint({
+  hasText,
+  hasSelectedTool,
+  hasSelectedWorkflow,
+  hasSelectedCalendarEvent,
+  hasFiles,
+  selectedTool,
+  selectedWorkflow,
+  selectedCalendarEvent,
+  uploadedFilesCount,
+}: SendWithHintParams): string | null {
+  if (hasSelectedCalendarEvent && !hasText && !hasSelectedTool && !hasFiles) {
+    return `Send with calendar event: ${selectedCalendarEvent?.summary}`;
+  }
+
+  if (hasSelectedWorkflow && !hasText && !hasSelectedTool && !hasFiles) {
+    return `Send with ${selectedWorkflow?.title}`;
+  }
+
+  if (hasSelectedTool && !hasText && !hasFiles) {
+    return `Send with ${selectedTool ? formatToolName(selectedTool) : undefined}`;
+  }
+
+  if (
+    hasFiles &&
+    !hasText &&
+    !hasSelectedTool &&
+    !hasSelectedWorkflow &&
+    !hasSelectedCalendarEvent
+  ) {
+    return `Send with ${uploadedFilesCount} file${uploadedFilesCount > 1 ? "s" : ""}`;
+  }
+
+  return null;
+}
+
 export default function RightSide({
   handleFormSubmit,
   searchbarText,
@@ -64,32 +124,18 @@ export default function RightSide({
       );
     }
 
-    if (hasSelectedCalendarEvent && !hasText && !hasSelectedTool && !hasFiles) {
-      return `Send with calendar event: ${selectedCalendarEvent?.summary}`;
-    }
-
-    if (hasSelectedWorkflow && !hasText && !hasSelectedTool && !hasFiles) {
-      return `Send with ${selectedWorkflow?.title}`;
-    }
-
-    if (hasSelectedTool && !hasText && !hasFiles) {
-      // Format tool name to be more readable
-      const formattedToolName = selectedTool
-        ?.split("_")
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ");
-      return `Send with ${formattedToolName}`;
-    }
-
-    if (
-      hasFiles &&
-      !hasText &&
-      !hasSelectedTool &&
-      !hasSelectedWorkflow &&
-      !hasSelectedCalendarEvent
-    ) {
-      return `Send with ${uploadedFiles.length} file${uploadedFiles.length > 1 ? "s" : ""}`;
-    }
+    const sendWithHint = resolveSendWithHint({
+      hasText,
+      hasSelectedTool,
+      hasSelectedWorkflow,
+      hasSelectedCalendarEvent,
+      hasFiles,
+      selectedTool,
+      selectedWorkflow,
+      selectedCalendarEvent,
+      uploadedFilesCount: uploadedFiles.length,
+    });
+    if (sendWithHint) return sendWithHint;
 
     if (!hasContent) {
       return "Message requires content";

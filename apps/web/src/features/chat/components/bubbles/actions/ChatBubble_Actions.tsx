@@ -106,7 +106,9 @@ export default function ChatBubble_Actions({
     // Forward to Langfuse via the backend. Errors are silent — PostHog has
     // already recorded the event so we never want to make the user feel
     // their thumbs didn't register.
-    chatApi.submitMessageFeedback(message_id, isPositive).catch(() => {});
+    chatApi.submitMessageFeedback(message_id, isPositive).catch(() => {
+      /* fire-and-forget: feedback errors are intentionally silent */
+    });
     if (isPositive) {
       toast.success("Thanks for your feedback!");
     } else {

@@ -342,4 +342,8 @@ export const chatApi = {
   submitMessageFeedback,
 };
 
-export * from "./chat-stream";
+export {
+  type ChatStreamRequest,
+  fetchChatStream,
+  type StreamCallbacks,
+} from "./chat-stream";
