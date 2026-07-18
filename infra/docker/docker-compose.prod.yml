@@ -103,6 +103,8 @@ services:
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
+      STEEL_API_URL: http://steel:3000
+      STEEL_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
     secrets:
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
@@ -186,6 +188,8 @@ services:
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
+      STEEL_API_URL: http://steel:3000
+      STEEL_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
     secrets:
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
@@ -1174,6 +1178,64 @@ services:
         limits:
           memory: 600m
           cpus: "1.0"
+      placement:
+        constraints:
+          - node.role == manager
+
+  # Steel — self-hosted browser infrastructure for the browser-automation tool.
+  steel:
+    image: ghcr.io/steel-dev/steel-browser-api:latest
+    environment:
+      DOMAIN: steel:3000
+      CDP_DOMAIN: steel:9223
+    shm_size: "2gb"
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - steel
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.5"
+      placement:
+        constraints:
+          - node.role == manager
+
+  # Steel UI — serves the live-view. The host Nginx reverse-proxies
+  # browser.heygaia.io → this service (published on the routing mesh) so
+  # live-view links stay on our domain (STEEL_LIVE_VIEW_BASE_URL).
+  steel-ui:
+    image: ghcr.io/steel-dev/steel-browser-ui:latest
+    environment:
+      API_URL: http://steel:3000
+    ports:
+      - target: 80
+        published: 5173
+        mode: ingress
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - steel-ui
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
       placement:
         constraints:
           - node.role == manager

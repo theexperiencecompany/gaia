@@ -186,6 +186,69 @@ class CommonSettings(BaseAppSettings):
     # the endpoint above). An explicit selector choice still wins.
     DEV_DEFAULT_MODEL: str | None = None
 
+    # Steel + Browser-Use (autonomous browser automation)
+    # ----------------------------------------------
+    # Self-hosted Steel browser infra (ghcr.io/steel-dev/steel-browser-api).
+    # In docker the API reaches it by service name; locally override to
+    # http://localhost:3000. All browser settings are optional so the feature
+    # degrades to a clean "not configured" message when Steel is absent.
+    STEEL_API_URL: str = "http://steel:3000"  # NOSONAR python:S5332 — internal docker service, plain HTTP on the private network by design (TLS terminates at the edge)
+    STEEL_API_KEY: str | None = None
+    # Override the CDP websocket base used to attach the agent to a Steel
+    # session. Leave unset to use the ``websocketUrl`` Steel returns on create
+    # (correct inside docker); set it only when the reachable host differs from
+    # what Steel advertises (e.g. driving a dockered Steel from a native API).
+    STEEL_CDP_CONNECT_URL: str | None = None
+
+    # Steel live-view: base URL the browser session viewer is served from. Set
+    # to our own subdomain (e.g. https://browser.heygaia.io) which reverse-
+    # proxies the Steel UI, so live-view links stay on our domain. When unset,
+    # the ``sessionViewerUrl`` Steel returns is used as-is.
+    STEEL_LIVE_VIEW_BASE_URL: str | None = None
+
+    # Master switch. When false the tool is registered but reports unavailable
+    # instead of spinning up a browser.
+    BROWSER_USE_ENABLED: bool = True
+    # Cap on concurrent Steel sessions this deployment will run — each is a real
+    # Chromium instance (~0.5-1.5GB RAM). Excess tasks fail fast with a clear
+    # message rather than thrash the Steel container.
+    BROWSER_USE_MAX_CONCURRENT_SESSIONS: int = 3
+
+    # LLM that drives the browser agent — decoupled from the chat harness so
+    # browser work uses a deliberately-chosen, vision-capable model. Provider:
+    # openai | anthropic | google | openrouter. The key is sourced from the
+    # matching GAIA setting (OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY
+    # / OPENROUTER_API_KEY) unless BROWSER_USE_LLM_API_KEY is set. Defaults to a
+    # cheap, vision-capable model to keep per-task token cost low.
+    BROWSER_USE_LLM_PROVIDER: str = "google"
+    BROWSER_USE_LLM_MODEL: str = "gemini-2.5-flash"
+    BROWSER_USE_LLM_API_KEY: str | None = None
+    BROWSER_USE_LLM_BASE_URL: str | None = None
+    # Vision (screenshots to the model) is the biggest cost driver — keep it on
+    # for reliability, but a deployment optimizing cost can disable it.
+    BROWSER_USE_VISION: bool = True
+
+    # Hard limits — everything is bounded so no browser task can run away.
+    BROWSER_USE_MAX_STEPS: int = 25
+    BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
+    BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
+    BROWSER_USE_SESSION_TTL_SECONDS: int = 900
+    BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
+    # Stream per-step screenshots into the chat card / bot messages.
+    BROWSER_USE_STREAM_SCREENSHOTS: bool = True
+
+    # Steel automatic CAPTCHA solving (reCAPTCHA/hCaptcha under CDP).
+    BROWSER_USE_SOLVE_CAPTCHA: bool = True
+
+    # Mid-run sensitive-action policy. Per category: "handoff" (pause → user
+    # completes it in live-view → continue), "proceed" (agent does it), "abort".
+    # Safe defaults hand off. BROWSER_USE_AUTONOMOUS_SENSITIVE=true lets a user
+    # who has set up an agent-usable payment method skip handoffs entirely.
+    BROWSER_USE_AUTONOMOUS_SENSITIVE: bool = False
+    BROWSER_USE_PAYMENT_STRATEGY: str = "handoff"
+    BROWSER_USE_CREDENTIALS_STRATEGY: str = "handoff"
+    BROWSER_USE_IRREVERSIBLE_STRATEGY: str = "handoff"
+
     # ----------------------------------------------
     # GitHub Integration (for Skill Discovery)
     # ----------------------------------------------

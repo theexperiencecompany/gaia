@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     approvals,
     blog,
     bot,
+    browser,
     calendar,
     chat,
     conversations,
@@ -52,6 +53,7 @@ router = APIRouter()
 
 router.include_router(voice.router, tags=["Voice"])
 router.include_router(chat.router, tags=["Chat"])
+router.include_router(browser.router)
 router.include_router(desktop.router)
 router.include_router(device.router)
 router.include_router(device_ws.router)

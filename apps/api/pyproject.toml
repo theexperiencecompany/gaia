@@ -197,6 +197,11 @@ backend = [
   "prometheus-fastapi-instrumentator>=7.0.0",
   "prometheus-client>=0.20.0",
   "pyarrow>=25.0.0",
+  # Browser automation: Browser-Use agent layer + self-hosted Steel infra.
+  # Pinned to 0.11.13 — later releases exact-pin openai==2.16, which conflicts
+  # with litellm's openai>=2.20 requirement. The tool imports it lazily.
+  "browser-use==0.11.13",
+  "steel-sdk>=0.19.0",
 ]
 
 [tool.uv.sources]

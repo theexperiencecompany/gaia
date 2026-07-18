@@ -52,6 +52,10 @@ services:
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
+      # Self-hosted Steel — browser infra for the browser-automation tool.
+      STEEL_API_URL: http://steel:3000
+      # Live-view (Steel UI). In prod this is https://browser.heygaia.io.
+      STEEL_LIVE_VIEW_BASE_URL: ${STEEL_LIVE_VIEW_BASE_URL:-http://localhost:5173}
       # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
       # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
       # unset — the storage helper short-circuits gracefully in that case).
@@ -719,6 +723,51 @@ services:
     restart: unless-stopped
     mem_limit: 600m
     cpus: "1.0"
+
+  # ---------------------------------------------------------------------------
+  # Steel — self-hosted browser infrastructure for the browser-automation tool.
+  # The API (Browser-Use) attaches to sessions over CDP at http://steel:3000.
+  # ---------------------------------------------------------------------------
+  steel:
+    image: ghcr.io/steel-dev/steel-browser-api:latest
+    container_name: steel
+    ports:
+      - "${STEEL_HOST_PORT:-3000}:3000"
+      - "${STEEL_CDP_HOST_PORT:-9223}:9223"
+    environment:
+      # Advertise the docker-network hostname so the websocketUrl Steel returns
+      # is reachable from the API container.
+      DOMAIN: ${STEEL_DOMAIN:-steel:3000}
+      CDP_DOMAIN: ${STEEL_CDP_DOMAIN:-steel:9223}
+    # Chromium needs shared memory well beyond the 64MB docker default.
+    shm_size: "2gb"
+    networks:
+      - gaia_network
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    mem_limit: 2g
+    cpus: "1.5"
+
+  # Steel UI — serves the live-view (session viewer) the browser card embeds.
+  # In prod, browser.heygaia.io reverse-proxies this service.
+  steel-ui:
+    image: ghcr.io/steel-dev/steel-browser-ui:latest
+    container_name: steel-ui
+    ports:
+      - "${STEEL_UI_HOST_PORT:-5173}:80"
+    environment:
+      API_URL: http://steel:3000
+    depends_on:
+      - steel
+    networks:
+      - gaia_network
+    restart: on-failure
+    mem_limit: 256m
+    cpus: "0.5"
 
 volumes:
   chroma_data:

@@ -257,6 +257,17 @@ class SettingsValidator:
             )
         )
 
+        # Browser Automation
+        self.register_group(
+            SettingsGroup(
+                name="Steel Browser",
+                keys=["STEEL_API_URL"],
+                description="Self-hosted Steel browser infrastructure + Browser-Use agent",
+                affected_features="Autonomous browser automation (the browser_task tool)",
+                docs_url="https://docs.steel.dev/",
+            )
+        )
+
         # Payment Processing
         self.register_group(
             SettingsGroup(

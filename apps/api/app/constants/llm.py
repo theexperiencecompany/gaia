@@ -122,6 +122,7 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
         "handoff",
         "wait_for_subagents",
         "deep_research",
+        "browser_task",
     }
 )
 

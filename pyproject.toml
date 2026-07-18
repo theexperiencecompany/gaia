@@ -55,6 +55,7 @@ ignore_decorators = [
   "@router.*",
   "@app.exception_handler",
   "@composio.tools.custom_tool",
+  "@tools.action",  # Browser-Use custom actions (@tools.action on a Tools() instance)
   "@register_before_hook",
   "@register_after_hook",
   "@register_schema_modifier",
