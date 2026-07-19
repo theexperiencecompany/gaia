@@ -144,7 +144,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "utils/embedding_utils.py",
         "utils/internet_utils.py",
         "utils/notification/channel_preferences.py",
-        "utils/notification/storage.py",
         "utils/profile_card.py",
         "utils/seeding_utils.py",
         "utils/todo_vector_utils.py",

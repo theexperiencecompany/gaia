@@ -3,7 +3,9 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.db.repositories.base import UserScopedDocument
 
 
 class NotificationType(str, Enum):
@@ -185,8 +187,12 @@ class ChannelDeliveryStatus(BaseModel):
     skipped: bool = False
 
 
-class NotificationRecord(BaseModel):
-    """Persisted notification with its original request and per-channel statuses."""
+class NotificationRecord(UserScopedDocument):
+    """Persisted notification with its original request and per-channel statuses.
+
+    Identity is the UUID ``id`` (not Mongo's ``_id``); the notification repository
+    sets ``identity_field = "id"``.
+    """
 
     id: str
     user_id: str
@@ -218,6 +224,21 @@ class NotificationRecord(BaseModel):
             if action.id == action_id:
                 return action
         return None
+
+
+class NotificationUpdate(BaseModel):
+    """Typed status/timestamp fields for a notification update.
+
+    Free-form patches (e.g. an action result's arbitrary field set) go through
+    the repository's ``update_fields`` instead.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: NotificationStatus | None = None
+    delivered_at: datetime | None = None
+    read_at: datetime | None = None
+    archived_at: datetime | None = None
 
 
 class ActionResult(BaseModel):
