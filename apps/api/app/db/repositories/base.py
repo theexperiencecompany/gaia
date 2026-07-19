@@ -108,6 +108,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     update_model: type[TUpdate]
     uses_object_id: ClassVar[bool]
     cache_policy: ClassVar[CachePolicy | None] = None
+    # The document's identity field. Defaults to Mongo's ``_id``; a domain keyed
+    # by a business field (e.g. ``conversation_id``, a UUID ``id``) sets this so
+    # get/update/delete filter on it and ``_id`` stays incidental.
+    identity_field: ClassVar[str] = "_id"
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -130,12 +134,25 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     # ---- id / model conversion (the one place ObjectId and _id are handled) ----
 
     def _id_value(self, doc_id: str) -> object:
-        return ObjectId(doc_id) if self.uses_object_id else doc_id
+        # Only the Mongo ``_id`` identity is wrapped as an ObjectId; a business-key
+        # identity (conversation_id, a UUID id) is matched as the plain string.
+        if self.identity_field == "_id" and self.uses_object_id:
+            return ObjectId(doc_id)
+        return doc_id
+
+    def _identity_filter(self, doc_id: str) -> dict[str, object]:
+        return {self.identity_field: self._id_value(doc_id)}
+
+    def _doc_identity(self, doc: TDoc) -> str:
+        return doc.id if self.identity_field == "_id" else str(getattr(doc, self.identity_field))
 
     def _to_model(self, raw: Mapping[str, object]) -> TDoc:
         data = dict(raw)
         identifier = data.pop("_id", None)
-        if identifier is not None:
+        # Map ``_id`` onto the model's ``id`` only when ``_id`` is the identity;
+        # for a business-key identity the model already carries its own id field
+        # and the incidental ObjectId is dropped.
+        if self.identity_field == "_id" and identifier is not None:
             data["id"] = str(identifier) if self.uses_object_id else identifier
         return self.document_model.model_validate(data)
 
@@ -148,7 +165,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         policy = self.cache_policy
         if policy is not None:
             await set_cache(
-                policy.entity_key(scope, doc.id),
+                policy.entity_key(scope, self._doc_identity(doc)),
                 doc,
                 ttl=policy.entity_ttl,
                 model=self.document_model,
@@ -201,7 +218,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             if cached is not None:
                 return cast(TDoc, cached)
         collection = get_async_collection(self.collection_name)
-        raw = await collection.find_one({"_id": self._id_value(doc_id), **extra_filter})
+        raw = await collection.find_one({**self._identity_filter(doc_id), **extra_filter})
         if raw is None:
             return None
         doc = self._to_model(raw)
@@ -227,7 +244,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         if "updated_at" in self.document_model.model_fields:
             set_fields["updated_at"] = datetime.now(UTC)
         raw = await get_async_collection(self.collection_name).find_one_and_update(
-            {"_id": self._id_value(doc_id), **extra_filter},
+            {**self._identity_filter(doc_id), **extra_filter},
             {"$set": set_fields},
             return_document=ReturnDocument.AFTER,
         )
@@ -240,7 +257,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
 
     async def _remove(self, doc_id: str, scope: str, extra_filter: Mapping[str, object]) -> bool:
         result = await get_async_collection(self.collection_name).delete_one(
-            {"_id": self._id_value(doc_id), **extra_filter}
+            {**self._identity_filter(doc_id), **extra_filter}
         )
         deleted = result.deleted_count > 0
         if deleted:
@@ -327,7 +344,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
                 raise EmptyUpdateError(message=f"bulk update for {doc_id} has no fields to set")
             if stamp_updated_at:
                 set_fields["updated_at"] = now
-            operations.append(UpdateOne({"_id": self._id_value(doc_id)}, {"$set": set_fields}))
+            operations.append(UpdateOne(self._identity_filter(doc_id), {"$set": set_fields}))
         result = await get_async_collection(self.collection_name).bulk_write(operations)
         modified = result.modified_count
         if modified:
@@ -346,7 +363,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         extra_filter: Mapping[str, object] | None = None,
     ) -> TDoc | None:
         raw = await get_async_collection(self.collection_name).find_one_and_update(
-            {"_id": self._id_value(doc_id), **(extra_filter or {})},
+            {**self._identity_filter(doc_id), **(extra_filter or {})},
             {"$inc": {field: by}},
             return_document=ReturnDocument.AFTER,
         )

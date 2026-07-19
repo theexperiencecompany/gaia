@@ -227,3 +227,53 @@ class TestGlobalRepository:
         await global_repo.create(_GlobalDocument(name="a"))
         await global_repo.create(_GlobalDocument(name="b"))
         assert await global_repo.count() == 2
+
+
+class _KeyedDocument(MongoDocument):
+    ref: str
+    label: str = ""
+
+
+class _KeyedUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = None
+
+
+class _KeyedRepository(MongoRepository[_KeyedDocument, _KeyedUpdate]):
+    """Identity is a business field (``ref``), not ``_id`` — the Wave-D shape."""
+
+    collection_name = "contract_fixture"
+    document_model = _KeyedDocument
+    update_model = _KeyedUpdate
+    uses_object_id = True
+    identity_field = "ref"
+    cache_policy = None
+
+
+@pytest.fixture
+def keyed_repo(raw_collection) -> _KeyedRepository:
+    return _KeyedRepository()
+
+
+class TestBusinessKeyIdentity:
+    async def test_get_update_delete_by_business_key(self, keyed_repo, raw_collection):
+        created = await keyed_repo.create(_KeyedDocument(ref="abc", label="first"))
+        assert created.ref == "abc"
+        # get keys on ``ref``, not ``_id`` — the incidental ObjectId is dropped.
+        fetched = await keyed_repo.get("abc")
+        assert fetched is not None and fetched.ref == "abc" and fetched.label == "first"
+        # the stored doc really does carry a distinct ObjectId _id
+        raw = await raw_collection.find_one({"ref": "abc"})
+        assert raw["_id"] != "abc"
+
+        updated = await keyed_repo.update("abc", _KeyedUpdate(label="second"))
+        assert updated is not None and updated.label == "second"
+        assert await keyed_repo.delete("abc") is True
+        assert await keyed_repo.get("abc") is None
+
+    async def test_business_key_is_not_clobbered_by_object_id(self, keyed_repo):
+        created = await keyed_repo.create(_KeyedDocument(ref="uuid-xyz"))
+        # MongoDocument.id must remain the model default, not str(_id).
+        assert created.ref == "uuid-xyz"
+        assert (await keyed_repo.get("uuid-xyz")).ref == "uuid-xyz"
