@@ -9,21 +9,21 @@ the request boundary, and a text description for models that can't see at all.
 
 from app.agents.llm.vision.adapter import MediaAdapter, adapt_media_for_model
 from app.agents.llm.vision.capability import (
-    VisionCapability,
+    MediaDelivery,
     active_lane,
     model_can_view_images,
-    resolve_vision_capability,
+    resolve_media_delivery,
 )
 from app.agents.llm.vision.describe import describe_image
 from app.agents.llm.vision.tool_media import describe_tool_media
 
 __all__ = [
     "MediaAdapter",
-    "VisionCapability",
+    "MediaDelivery",
     "active_lane",
     "adapt_media_for_model",
     "describe_image",
     "describe_tool_media",
     "model_can_view_images",
-    "resolve_vision_capability",
+    "resolve_media_delivery",
 ]

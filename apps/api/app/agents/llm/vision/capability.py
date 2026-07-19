@@ -1,4 +1,4 @@
-"""What kind of inline media, if any, the active model lane can receive."""
+"""How the active model lane takes delivery of a tool result's inline images."""
 
 from enum import Enum
 
@@ -13,12 +13,20 @@ from app.constants.llm import (
 )
 
 
-class VisionCapability(Enum):
-    """How a lane takes delivery of inline media, from most to least direct."""
+class MediaDelivery(Enum):
+    """The transform ``MediaAdapter`` applies to a *tool result's* images for the
+    active lane — one strategy per lane, picked from what that lane's model can
+    see. Images the user themselves attached are never touched; this only governs
+    media a tool produced.
+    """
 
-    TOOL_MESSAGE_BLOCKS = "tool_message_blocks"
-    USER_MESSAGE_BLOCKS = "user_message_blocks"
-    TEXT_ONLY = "text_only"
+    # Leave them in the tool result — the model reads them there (direct Gemini).
+    KEEP_IN_TOOL_RESULTS = "keep_in_tool_results"
+    # Move them into a user message after the tool run — the model can't see
+    # images inside tool results, only in user messages (multimodal OpenRouter).
+    MOVE_TO_USER_MESSAGE = "move_to_user_message"
+    # Replace each with a text description — the model can't see images at all.
+    REPLACE_WITH_TEXT = "replace_with_text"
 
 
 def active_lane(config: RunnableConfig) -> tuple[str, str]:
@@ -33,22 +41,22 @@ def active_lane(config: RunnableConfig) -> tuple[str, str]:
     return provider, model
 
 
-async def resolve_vision_capability(config: RunnableConfig) -> VisionCapability:
-    """Resolve the active lane's media capability.
+async def resolve_media_delivery(config: RunnableConfig) -> MediaDelivery:
+    """The delivery strategy for the active lane's tool-result images.
 
     Direct Gemini is multimodal all the way down into tool results. OpenRouter
     models are looked up in the live catalog. Unknown providers and catalog
-    misses are treated as text-only — fail safe to the description fallback,
-    never to a provider request that will be rejected.
+    misses fall back to the text description — never to a provider request that
+    will be rejected.
     """
     provider, model = active_lane(config)
     if provider == GEMINI_PROVIDER:
-        return VisionCapability.TOOL_MESSAGE_BLOCKS
+        return MediaDelivery.KEEP_IN_TOOL_RESULTS
     if provider == OPENROUTER_PROVIDER and await openrouter_catalog.accepts_images(model):
-        return VisionCapability.USER_MESSAGE_BLOCKS
-    return VisionCapability.TEXT_ONLY
+        return MediaDelivery.MOVE_TO_USER_MESSAGE
+    return MediaDelivery.REPLACE_WITH_TEXT
 
 
 async def model_can_view_images(config: RunnableConfig) -> bool:
     """Whether the active model can see pixels at all, however they're delivered."""
-    return await resolve_vision_capability(config) is not VisionCapability.TEXT_ONLY
+    return await resolve_media_delivery(config) is not MediaDelivery.REPLACE_WITH_TEXT

@@ -6,7 +6,7 @@ from typing import TypeGuard, cast
 from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
-from app.agents.llm.vision.capability import VisionCapability, resolve_vision_capability
+from app.agents.llm.vision.capability import MediaDelivery, resolve_media_delivery
 from app.constants.media import (
     MAX_INLINE_MEDIA_BLOCKS,
     MEDIA_DESCRIPTIONS_KEY,
@@ -41,8 +41,8 @@ async def adapt_media_for_model(
     """
     if not any(_carries_media(msg) for msg in messages):
         return list(messages)
-    capability = await resolve_vision_capability(config)
-    return MediaAdapter(capability).adapt(messages)
+    delivery = await resolve_media_delivery(config)
+    return MediaAdapter(delivery).adapt(messages)
 
 
 class MediaAdapter:
@@ -69,18 +69,19 @@ class MediaAdapter:
 
     def __init__(
         self,
-        capability: VisionCapability,
+        delivery: MediaDelivery,
         max_blocks: int = MAX_INLINE_MEDIA_BLOCKS,
     ) -> None:
-        self._capability = capability
+        self._delivery = delivery
         self._max_blocks = max_blocks
 
     def adapt(self, messages: Sequence[AnyMessage]) -> list[AnyMessage]:
-        if self._capability is VisionCapability.TEXT_ONLY:
+        """Rewrite the tool-result media in ``messages``, one branch per strategy."""
+        if self._delivery is MediaDelivery.REPLACE_WITH_TEXT:
             return self._strip(messages)
 
         admitted = self._within_budget(messages)
-        if self._capability is VisionCapability.TOOL_MESSAGE_BLOCKS:
+        if self._delivery is MediaDelivery.KEEP_IN_TOOL_RESULTS:
             return self._keep_in_tool_results(messages, admitted)
         return self._repack_into_user_messages(messages, admitted)
 
@@ -166,6 +167,7 @@ class MediaAdapter:
 
 
 def _carries_media(msg: AnyMessage) -> TypeGuard[ToolMessage]:
+    """True for a tool result that still holds inline image blocks."""
     return isinstance(msg, ToolMessage) and has_media_blocks(msg.content)
 
 
@@ -179,6 +181,7 @@ def _admitted_blocks(
     m_idx: int,
     admitted: set[BlockRef],
 ) -> list[ContentBlock]:
+    """This message's media blocks that made the per-request budget, in order."""
     return [
         block
         for b_idx, block in enumerate(_blocks(msg))
