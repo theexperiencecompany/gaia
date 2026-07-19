@@ -27,7 +27,7 @@ def active_lane(config: RunnableConfig) -> tuple[str, str]:
     Gemini binds its model from ``model_name`` and OpenRouter from ``model``, so
     ``plan_model._pin_model`` writes both and either key answers the question.
     """
-    configurable = config.get("configurable", {})
+    configurable = config.get("configurable") or {}
     provider = configurable.get("provider") or DEFAULT_LLM_PROVIDER
     model = configurable.get("model") or configurable.get("model_name") or DEFAULT_MODEL_NAME
     return provider, model

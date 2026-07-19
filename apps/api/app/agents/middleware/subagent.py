@@ -521,7 +521,9 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         # no tools here (none are needed for the final answer).
         final = await ainvoke_llm(
             llm,
-            messages,
+            # Fit inline media to the active lane here too — the max-turn final
+            # request carries the same canonical blocks as the loop above.
+            await adapt_media_for_model(messages, config),
             fallback=lambda: fallback_llm,
             config=config,
             label="subagent_final",

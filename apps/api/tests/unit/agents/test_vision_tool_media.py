@@ -6,6 +6,7 @@ and cost) on every plain-text tool result. Its caching is equally load-bearing â
 without it the same image is re-described on every turn, forever.
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import ToolMessage
@@ -30,7 +31,9 @@ def _tool_msg(*blocks, name: str = "read", **kwargs) -> ToolMessage:
     return ToolMessage(content=content, tool_call_id="c1", name=name, **kwargs)
 
 
-def _patch_lane(*, can_see: bool, description: str | None = "A red login screen."):
+def _patch_lane(
+    *, can_see: bool, description: str | None = "A red login screen."
+) -> tuple[Any, Any]:
     """Patch the two boundaries: the lane lookup and the vision API call."""
     return (
         patch(f"{_MOD}.model_can_view_images", AsyncMock(return_value=can_see)),
@@ -38,6 +41,7 @@ def _patch_lane(*, can_see: bool, description: str | None = "A red login screen.
     )
 
 
+@pytest.mark.asyncio
 @pytest.mark.unit
 class TestNoOpGuards:
     async def test_a_plain_text_result_is_not_described(self):
@@ -79,6 +83,7 @@ class TestNoOpGuards:
             mock_lane.assert_not_called()
 
 
+@pytest.mark.asyncio
 @pytest.mark.unit
 class TestDescribing:
     async def test_the_description_is_cached_on_the_message(self):
@@ -142,6 +147,7 @@ class TestDescribing:
         assert "/workspace/shot.png" in prompt
 
 
+@pytest.mark.asyncio
 @pytest.mark.unit
 class TestFailurePaths:
     async def test_a_failed_vision_call_degrades_instead_of_failing_the_tool(self):
@@ -162,6 +168,7 @@ class TestFailurePaths:
         assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == ["good", MEDIA_DESCRIBE_FAILED]
 
 
+@pytest.mark.asyncio
 @pytest.mark.unit
 class TestMediaDescriptionMiddleware:
     async def test_it_describes_the_tool_result_it_wraps(self):

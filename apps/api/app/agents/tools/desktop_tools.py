@@ -139,10 +139,18 @@ async def take_screenshot(
     except InvalidImage as e:
         return f"Could not read the captured screen: {e}"
 
+    # Persisting the capture is best-effort: the pixels are already captured and
+    # shown to the user, so a workspace write failure (no session, or storage I/O)
+    # must not discard an otherwise-valid screenshot — it only costs the ability to
+    # `read` the path back later.
     try:
         path = await _save_screenshot(config, image)
-    except ValueError as e:
-        return f"Could not save the captured screen: {e}"
+        location_note = f"saved to {path} — read that path to look at it again later"
+    except Exception:
+        log.exception(f"{LogTag.TOOL} Failed to persist screenshot to the workspace")
+        location_note = (
+            "not saved to the workspace, so it cannot be re-read later — answer from it now"
+        )
 
     # The pixels go to the model as-is. A lane that cannot see them gets a text
     # description attached at execution time (MediaDescriptionMiddleware), which
@@ -150,8 +158,7 @@ async def take_screenshot(
     # that returns media.
     return [
         text_content_block(
-            f"Screenshot of the user's screen, saved to {path} — read that path to "
-            f"look at it again later. Looking for: {query}\n\n"
+            f"Screenshot of the user's screen, {location_note}. Looking for: {query}\n\n"
             "The screenshot is already shown to the user; answer their request from "
             "it rather than describing it back to them verbatim."
         ),

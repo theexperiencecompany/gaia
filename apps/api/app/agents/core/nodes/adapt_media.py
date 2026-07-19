@@ -6,7 +6,7 @@ lane can actually receive — see `app/agents/llm/vision/`. Hook output feeds th
 model request only; persisted history keeps the canonical block shape.
 """
 
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import MessagesState
@@ -22,4 +22,4 @@ async def adapt_media_node(state: T, config: RunnableConfig, store: BaseStore) -
     adapted = await adapt_media_for_model(messages, config)
     if len(adapted) == len(messages) and all(new is old for new, old in zip(adapted, messages)):
         return state
-    return {**state, "messages": adapted}  # type: ignore[return-value]
+    return cast(T, {**state, "messages": adapted})

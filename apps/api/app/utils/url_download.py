@@ -54,23 +54,26 @@ async def download_public_url(url: str, *, max_bytes: int = MAX_DOWNLOAD_BYTES) 
     async with httpx.AsyncClient(
         timeout=DOWNLOAD_TIMEOUT_SECONDS, follow_redirects=False, headers=headers
     ) as client:
-        for _ in range(MAX_HTTPX_REDIRECTS + 1):
-            await _assert_allowed(url)
-            async with client.stream("GET", url) as response:
-                if response.is_redirect:
-                    location = response.headers.get("location")
-                    if not location:
-                        break
-                    url = str(response.url.join(location))
-                    continue
-                try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as exc:
-                    raise DownloadError(
-                        f"server returned {response.status_code} for {url}"
-                    ) from exc
-                data = await _read_capped(response, max_bytes, url)
-                return DownloadedFile(data=data, content_type=_content_type(response))
+        try:
+            for _ in range(MAX_HTTPX_REDIRECTS + 1):
+                await _assert_allowed(url)
+                async with client.stream("GET", url) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise DownloadError(f"redirect missing location header for {url}")
+                        url = str(response.url.join(location))
+                        continue
+                    try:
+                        response.raise_for_status()
+                    except httpx.HTTPStatusError as exc:
+                        raise DownloadError(
+                            f"server returned {response.status_code} for {url}"
+                        ) from exc
+                    data = await _read_capped(response, max_bytes, url)
+                    return DownloadedFile(data=data, content_type=_content_type(response))
+        except httpx.RequestError as exc:
+            raise DownloadError(f"network error fetching {url}: {exc}") from exc
     raise DownloadError(f"too many redirects fetching {url}")
 
 

@@ -103,11 +103,12 @@ class OpenRouterModelCatalog:
     @staticmethod
     def _parse(payload: dict[str, Any]) -> dict[str, bool]:
         models: dict[str, bool] = {}
-        for entry in payload.get("data", []):
+        for entry in payload.get("data") or []:
             model_id = entry.get("id")
             if not isinstance(model_id, str):
                 continue
-            modalities = entry.get("architecture", {}).get("input_modalities", [])
+            architecture = entry.get("architecture") or {}
+            modalities = architecture.get("input_modalities") or []
             models[model_id] = _IMAGE_MODALITY in modalities
         return models
 

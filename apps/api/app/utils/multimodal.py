@@ -9,7 +9,7 @@ Image encoding and transcoding live in ``app/utils/image_codec.py``; per-lane
 delivery lives in ``app/agents/llm/vision/``.
 """
 
-from typing import Any
+from typing import Any, TypeAlias, TypeGuard
 
 from langchain_core.messages import is_data_content_block
 
@@ -18,32 +18,43 @@ from app.constants.media import MEDIA_BLOCK_TOKEN_ESTIMATE
 # Chars a media block stands in for when estimating context from string length.
 _MEDIA_BLOCK_CHARS = MEDIA_BLOCK_TOKEN_ESTIMATE * 4
 
+# A single content block: an arbitrary string-keyed JSON object. Values stay
+# ``Any`` because provider and LangChain data blocks are genuinely heterogeneous
+# third-party shapes — this is the one place that ``Any`` is unavoidable. The
+# blocks this codebase itself produces (text / image) follow a fixed schema.
+ContentBlock: TypeAlias = dict[str, Any]
+# One entry in a structured content list: a bare string or a block.
+ContentItem: TypeAlias = str | ContentBlock
+# A message's ``content``: plain text, or a list of items. Mirrors the shape of
+# ``BaseMessage.content`` (``str | list[str | dict]``).
+MessageContent: TypeAlias = str | list[ContentItem]
 
-def text_content_block(text: str) -> dict[str, Any]:
+
+def text_content_block(text: str) -> ContentBlock:
     return {"type": "text", "text": text}
 
 
-def image_content_block(base64_data: str, mime_type: str) -> dict[str, Any]:
+def image_content_block(base64_data: str, mime_type: str) -> ContentBlock:
     """The canonical inline-image block, from already-base64-encoded data."""
     return {"type": "image", "base64": base64_data, "mime_type": mime_type}
 
 
-def is_media_block(block: Any) -> bool:
+def is_media_block(block: object) -> TypeGuard[ContentBlock]:
     return isinstance(block, dict) and is_data_content_block(block)
 
 
-def media_blocks(content: Any) -> list[dict[str, Any]]:
+def media_blocks(content: MessageContent) -> list[ContentBlock]:
     """The inline-media blocks in ``content``, in order; empty for text content."""
     if not isinstance(content, list):
         return []
     return [block for block in content if is_media_block(block)]
 
 
-def has_media_blocks(content: Any) -> bool:
+def has_media_blocks(content: MessageContent) -> bool:
     return bool(media_blocks(content))
 
 
-def extract_text_content(content: Any) -> str:
+def extract_text_content(content: MessageContent) -> str:
     """The text of message content that may be a list of blocks.
 
     Non-text blocks (inline media, base64 payloads) are dropped, so callers that
@@ -58,13 +69,13 @@ def extract_text_content(content: Any) -> str:
             if isinstance(item, str):
                 text_parts.append(item)
             elif isinstance(item, dict) and item.get("type") == "text":
-                text_parts.append(item.get("text", ""))
+                text_parts.append(str(item.get("text") or ""))
         return " ".join(text_parts)
 
     return str(content)
 
 
-def approx_content_chars(content: Any) -> int:
+def approx_content_chars(content: MessageContent) -> int:
     """Char length of message content for context estimation.
 
     Media blocks are charged a flat cost rather than their base64 length (~350k

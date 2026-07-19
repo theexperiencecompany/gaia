@@ -255,10 +255,14 @@ async def read_user_file_bytes(
         target = _contained(base, rel, root_label="workspace root")
         if not target.is_file():
             raise FileNotFoundError(workspace_rel_path)
-        size = target.stat().st_size
-        if size > max_bytes:
-            raise ValueError(f"file is {size} bytes; exceeds the {max_bytes}-byte limit")
-        return target.read_bytes()
+        # Enforce the cap while reading rather than off a preflight stat(): the
+        # file can grow between the two, and read_bytes() would then allocate the
+        # whole oversized body past the limit.
+        with target.open("rb") as handle:
+            data = handle.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise ValueError(f"file exceeds the {max_bytes}-byte limit")
+        return data
 
     return await asyncio.to_thread(_read)
 

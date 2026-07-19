@@ -21,7 +21,7 @@ from app.agents.workspace.paths import (
 from app.constants.download import DOWNLOAD_HTML_REJECTED, HTML_CONTENT_TYPES
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
-from app.services.storage import FsOps, fs_timer, write_session_file
+from app.services.storage import write_session_file
 from app.services.storage.juicefs import user_owns_regular_file
 from app.templates.docstrings.download_tool_docs import DOWNLOAD_TOOL
 from app.utils.url_download import (
@@ -66,8 +66,7 @@ async def download(
             return _abs_path(session_id, rel)
 
     try:
-        async with fs_timer(FsOps.TOOL_READ):
-            result = await download_public_url(url)
+        result = await download_public_url(url)
     except DownloadError as e:
         return f"Error: {e}"
 

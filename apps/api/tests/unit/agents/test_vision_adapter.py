@@ -6,7 +6,15 @@ it is a 400 that kills the conversation. So these tests assert the shape that
 actually reaches the wire, not just that "some media survived".
 """
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from collections.abc import Sequence
+
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 import pytest
 
 from app.agents.llm.vision.adapter import MediaAdapter
@@ -36,7 +44,7 @@ def _ai_call(call_id: str = "c1") -> AIMessage:
     return AIMessage(content="", tool_calls=[{"name": "read", "args": {}, "id": call_id}])
 
 
-def _all_images(messages) -> list[dict]:
+def _all_images(messages: Sequence[AnyMessage]) -> list[dict]:
     return [b for m in messages for b in media_blocks(m.content)]
 
 

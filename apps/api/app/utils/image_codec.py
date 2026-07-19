@@ -16,7 +16,6 @@ import base64
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import Any
 
 from PIL import Image, UnidentifiedImageError
 
@@ -32,7 +31,7 @@ from app.constants.media import (
     TRANSCODE_MIME,
     TRANSCODE_QUALITY,
 )
-from app.utils.multimodal import image_content_block
+from app.utils.multimodal import ContentBlock, image_content_block
 
 # base64 encodes 3 bytes as 4 chars; used to reject an oversized payload before
 # allocating the decoded copy of it.
@@ -57,7 +56,7 @@ class InlineImage:
         emits a provider-safe MIME."""
         return IMAGE_EXTENSION_BY_MIME[self.mime_type]
 
-    def to_block(self) -> dict[str, Any]:
+    def to_block(self) -> ContentBlock:
         return image_content_block(self.base64, self.mime_type)
 
 

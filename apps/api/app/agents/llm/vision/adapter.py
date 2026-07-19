@@ -1,7 +1,7 @@
 """Fit the inline media in a message list to what the active model lane accepts."""
 
 from collections.abc import Sequence
-from typing import Any, TypeGuard, cast
+from typing import TypeGuard, cast
 
 from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -16,6 +16,8 @@ from app.constants.media import (
     REPACKED_MEDIA_HEADER,
 )
 from app.utils.multimodal import (
+    ContentBlock,
+    ContentItem,
     extract_text_content,
     has_media_blocks,
     is_media_block,
@@ -108,7 +110,7 @@ class MediaAdapter:
                 adapted.append(msg)
                 continue
             blocks = _blocks(msg)
-            kept: list[Any] = [
+            kept: list[ContentItem] = [
                 block
                 for b_idx, block in enumerate(blocks)
                 if not is_media_block(block) or (m_idx, b_idx) in admitted
@@ -131,7 +133,7 @@ class MediaAdapter:
         the model can attribute each image to the result it came from.
         """
         adapted: list[AnyMessage] = []
-        pending: list[dict[str, Any]] = []
+        pending: list[ContentItem] = []
 
         def flush() -> None:
             if pending:
@@ -167,16 +169,16 @@ def _carries_media(msg: AnyMessage) -> TypeGuard[ToolMessage]:
     return isinstance(msg, ToolMessage) and has_media_blocks(msg.content)
 
 
-def _blocks(msg: ToolMessage) -> list[Any]:
+def _blocks(msg: ToolMessage) -> list[ContentItem]:
     """The block list of a message ``_carries_media`` has already vouched for."""
-    return cast(list[Any], msg.content)
+    return cast(list[ContentItem], msg.content)
 
 
 def _admitted_blocks(
     msg: ToolMessage,
     m_idx: int,
     admitted: set[BlockRef],
-) -> list[dict[str, Any]]:
+) -> list[ContentBlock]:
     return [
         block
         for b_idx, block in enumerate(_blocks(msg))

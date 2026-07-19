@@ -198,7 +198,7 @@ class SanitizingLangChainAdapter(LangChainAdapter):
                     try:
                         return await _tool_result_to_content(tool_result)
                     except Exception as e:
-                        return format_error(e, tool=self.name, tool_content=tool_result.content)
+                        return format_error(e, tool=self.name)
                 except Exception as e:
                     if self.handle_tool_error:
                         return format_error(e, tool=self.name)

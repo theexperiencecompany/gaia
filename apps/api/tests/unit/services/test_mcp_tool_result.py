@@ -12,6 +12,7 @@ Two guards live here, both of which failed in review:
 
 import base64
 import io
+from typing import Any
 
 from mcp.types import (
     CallToolResult,
@@ -43,18 +44,18 @@ def _text(text: str) -> TextContent:
     return TextContent(type="text", text=text)
 
 
-def _result(*items) -> CallToolResult:
+def _result(*items: Any) -> CallToolResult:
     return CallToolResult(content=list(items))
 
 
 @pytest.mark.unit
 class TestToolResultToContent:
-    async def test_text_only_result_collapses_to_a_plain_string(self):
+    async def test_text_only_result_collapses_to_a_plain_string(self) -> None:
         out = await _tool_result_to_content(_result(_text("line one"), _text("line two")))
 
         assert out == "line one\nline two"
 
-    async def test_an_embedded_text_resource_yields_its_text_not_a_pydantic_repr(self):
+    async def test_an_embedded_text_resource_yields_its_text_not_a_pydantic_repr(self) -> None:
         """Filesystem and database MCP servers routinely return EmbeddedResource.
         `str(item)` gives `type='resource' resource=TextResourceContents(...)`."""
         embedded = EmbeddedResource(
@@ -68,12 +69,12 @@ class TestToolResultToContent:
         assert "TextResourceContents" not in out
         assert "resource=" not in out
 
-    async def test_an_empty_result_says_so_rather_than_returning_nothing(self):
+    async def test_an_empty_result_says_so_rather_than_returning_nothing(self) -> None:
         """A void MCP action (a delete) legally returns no content. An empty
         ToolMessage tells the model nothing and some providers reject it."""
         assert await _tool_result_to_content(_result()) == EMPTY_TOOL_RESULT
 
-    async def test_an_image_becomes_a_media_block_carrying_real_pixels(self):
+    async def test_an_image_becomes_a_media_block_carrying_real_pixels(self) -> None:
         out = await _tool_result_to_content(_result(_text("here"), _image()))
 
         assert isinstance(out, list)
@@ -81,19 +82,19 @@ class TestToolResultToContent:
         assert len(images) == 1
         assert Image.open(io.BytesIO(base64.b64decode(images[0]["base64"]))).format == "PNG"
 
-    async def test_a_result_carrying_an_image_stays_a_block_list(self):
+    async def test_a_result_carrying_an_image_stays_a_block_list(self) -> None:
         """Collapsing to a string here would destroy the image entirely."""
         out = await _tool_result_to_content(_result(_image()))
 
         assert isinstance(out, list)
 
-    async def test_images_beyond_the_budget_are_dropped(self):
+    async def test_images_beyond_the_budget_are_dropped(self) -> None:
         over = MAX_MEDIA_BLOCKS_PER_TOOL_RESULT + 2
         out = await _tool_result_to_content(_result(*[_image() for _ in range(over)]))
 
         assert len([b for b in out if b["type"] == "image"]) == MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
 
-    async def test_the_dropped_notice_is_emitted_once_with_a_count(self):
+    async def test_the_dropped_notice_is_emitted_once_with_a_count(self) -> None:
         """One notice per dropped image spams the context with identical lines."""
         over = MAX_MEDIA_BLOCKS_PER_TOOL_RESULT + 3
         out = await _tool_result_to_content(_result(*[_image() for _ in range(over)]))
@@ -102,14 +103,14 @@ class TestToolResultToContent:
         assert len(notices) == 1
         assert "3" in notices[0]["text"]
 
-    async def test_exactly_at_the_budget_nothing_is_dropped(self):
+    async def test_exactly_at_the_budget_nothing_is_dropped(self) -> None:
         at = MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
         out = await _tool_result_to_content(_result(*[_image() for _ in range(at)]))
 
         assert len([b for b in out if b["type"] == "image"]) == at
         assert not [b for b in out if b["type"] == "text"]
 
-    async def test_an_undecodable_image_degrades_to_a_note_and_keeps_the_text(self):
+    async def test_an_undecodable_image_degrades_to_a_note_and_keeps_the_text(self) -> None:
         """A hostile or buggy server must not be able to fail the whole tool call
         — the text half of the result is usually what the model needed."""
         broken = ImageContent(type="image", data="!!!not base64!!!", mimeType="image/png")
@@ -122,7 +123,7 @@ class TestToolResultToContent:
 
 @pytest.mark.unit
 class TestJsonSafeToolResult:
-    def test_a_media_block_list_is_stripped_to_its_text(self):
+    def test_a_media_block_list_is_stripped_to_its_text(self) -> None:
         """The iframe payload is JSON-serialized into the SSE event. Media blocks
         are plain dicts, so json.dumps happily embeds a megabyte of base64."""
         big = "QUJD" * 50_000
@@ -136,24 +137,24 @@ class TestJsonSafeToolResult:
         assert out == "Image file shot.png"
         assert big not in str(out)
 
-    def test_a_plain_string_is_returned_unchanged(self):
+    def test_a_plain_string_is_returned_unchanged(self) -> None:
         assert _json_safe_tool_result("some tool output") == "some tool output"
 
-    def test_a_serializable_dict_is_preserved_for_the_iframe(self):
+    def test_a_serializable_dict_is_preserved_for_the_iframe(self) -> None:
         """The MCP-UI iframe renders structured data — it must not be flattened."""
         payload = {"rows": [{"id": 1}], "total": 1}
 
         assert _json_safe_tool_result(payload) == payload
 
-    def test_a_text_only_block_list_is_preserved(self):
+    def test_a_text_only_block_list_is_preserved(self) -> None:
         """No media, so nothing to strip — the iframe still gets its structure."""
         content = [{"type": "text", "text": "hi"}]
 
         assert _json_safe_tool_result(content) == content
 
-    def test_a_non_serializable_object_is_coerced_rather_than_raising(self):
+    def test_a_non_serializable_object_is_coerced_rather_than_raising(self) -> None:
         class Weird:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.a = 1
 
         out = _json_safe_tool_result(Weird())

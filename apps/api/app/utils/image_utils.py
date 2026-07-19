@@ -3,6 +3,7 @@ import httpx
 
 from app.agents.llm.vision import describe_image
 from app.agents.prompts.image_prompts import IMAGE_TO_TEXT_PROMPT
+from app.constants.media import MAX_IMAGE_FILE_BYTES
 from app.utils.image_codec import ImageCodec, InvalidImage
 
 http_async_client = httpx.AsyncClient(timeout=1000)
@@ -26,8 +27,11 @@ async def convert_image_to_text(image: UploadFile, message: str) -> str:
     upload's declared ``content_type`` is ignored — the codec sniffs the real
     format from the bytes and transcodes anything a provider won't take.
     """
+    data = await image.read(MAX_IMAGE_FILE_BYTES + 1)
+    if len(data) > MAX_IMAGE_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="Image exceeds the upload limit.")
     try:
-        inline = await ImageCodec.from_bytes(await image.read())
+        inline = await ImageCodec.from_bytes(data)
     except InvalidImage as exc:
         raise HTTPException(status_code=400, detail=f"Unreadable image: {exc}") from exc
 
