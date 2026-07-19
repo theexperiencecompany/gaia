@@ -180,7 +180,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return await self._insert(doc, self._doc_scope(doc))
 
     async def _insert(self, doc: TDoc, scope: str) -> TDoc:
-        data = doc.model_dump(exclude={"id"})
+        # exclude_none so unset optionals are ABSENT (not stored as null) — nested
+        # dotted $set and $exists gates depend on missing-vs-null. Reads are
+        # unaffected: a missing field validates back to its model default.
+        data = doc.model_dump(exclude={"id"}, exclude_none=True)
         now = datetime.now(UTC)
         fields = self.document_model.model_fields
         if "created_at" in fields:
@@ -342,6 +345,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         *,
         scope: str,
         extra_filter: Mapping[str, object] | None = None,
+        return_document: bool = True,
         array_filters: Sequence[Mapping[str, object]] | None = None,
     ) -> TDoc | None:
         """Apply a raw Mongo update to one document, then refresh the entity cache
@@ -353,7 +357,8 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         ``array_filters``, and ``$unset``. ``updated_at`` is stamped into ``$set``
         automatically when the document declares it. ``scope`` names the cache scope
         (usually the owning ``user_id``); ``extra_filter`` adds guards (e.g. a
-        ``vfs_path`` existence check) to ``filter_``.
+        ``vfs_path`` existence check) to ``filter_``. ``return_document`` selects the
+        AFTER (default) or BEFORE image.
         """
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
         if "updated_at" in self.document_model.model_fields:
@@ -363,7 +368,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             {**dict(filter_), **(extra_filter or {})},
             ops,
             array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
-            return_document=ReturnDocument.AFTER,
+            return_document=ReturnDocument.AFTER if return_document else ReturnDocument.BEFORE,
         )
         if raw is None:
             return None
