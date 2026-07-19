@@ -1,11 +1,8 @@
 from datetime import UTC, datetime
 
-from bson import ObjectId
-
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
-from app.db.mongodb.collections import todos_collection
-from app.db.utils import serialize_document
+from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoResponse
 from shared.py.wide_events import log
 
@@ -196,19 +193,19 @@ async def semantic_search_todos(
         todo_ids = []
         for doc, score in results:
             if hasattr(doc, "metadata") and "todo_id" in doc.metadata:
-                todo_ids.append(ObjectId(doc.metadata["todo_id"]))
+                todo_ids.append(doc.metadata["todo_id"])
 
         if not todo_ids:
             # No vector results found
             log.info(f"{LogTag.CHROMA} No vector results for query '{query}'")
             return []
 
-        # Fetch full todo documents from MongoDB in the order of similarity
+        # Fetch full todo documents in the order of similarity
         todos = []
         for todo_id in todo_ids:
-            todo_doc = await todos_collection.find_one({"_id": todo_id, "user_id": user_id})
+            todo_doc = await todo_repository.get(todo_id, user_id=user_id)
             if todo_doc:
-                todos.append(TodoResponse(**serialize_document(todo_doc)))
+                todos.append(TodoResponse.from_document(todo_doc))
 
         log.info(f"{LogTag.CHROMA} Semantic search returned {len(todos)} todos for query '{query}'")
         return todos

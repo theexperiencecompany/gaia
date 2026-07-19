@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 import pytest
 
-from app.models.todo_models import Priority, TodoResponse
+from app.models.todo_models import Priority, TodoDocument, TodoResponse
 from app.utils.todo_vector_utils import (
     create_todo_content_for_embedding,
     delete_todo_embedding,
@@ -387,33 +387,29 @@ class TestSemanticSearchTodos:
             return_value=self.mock_collection,
         )
         patcher_log = patch("app.utils.todo_vector_utils.log", new_callable=MagicMock)
-        patcher_todos_col = patch(
-            "app.utils.todo_vector_utils.todos_collection",
-            new_callable=AsyncMock,
-        )
-        patcher_serialize = patch(
-            "app.utils.todo_vector_utils.serialize_document",
-            side_effect=lambda doc: {
-                "id": str(doc["_id"]),
-                "user_id": doc["user_id"],
-                "title": doc.get("title", "Test"),
-                "priority": doc.get("priority", "none"),
-                "completed": doc.get("completed", False),
-                "subtasks": doc.get("subtasks", []),
-                "labels": doc.get("labels", []),
-                "created_at": NOW,
-                "updated_at": NOW,
-            },
-        )
+        patcher_repo = patch("app.utils.todo_vector_utils.todo_repository", new_callable=MagicMock)
         self.mock_chroma = patcher_chroma.start()
         self.mock_log = patcher_log.start()
-        self.mock_todos_col = patcher_todos_col.start()
-        self.mock_serialize = patcher_serialize.start()
+        self.mock_repo = patcher_repo.start()
+        self.mock_repo.get = AsyncMock(return_value=None)
         yield
         patcher_chroma.stop()
         patcher_log.stop()
-        patcher_todos_col.stop()
-        patcher_serialize.stop()
+        patcher_repo.stop()
+
+    def _todo_doc(self, todo_id: str, **overrides: object) -> TodoDocument:
+        return TodoDocument.model_validate(
+            {
+                "id": todo_id,
+                "user_id": USER_ID,
+                "title": "Test",
+                "priority": "none",
+                "completed": False,
+                "created_at": NOW,
+                "updated_at": NOW,
+                **overrides,
+            }
+        )
 
     def _make_search_result(self, todo_id: str, score: float = 0.9) -> tuple:
         """Create a (Document, score) tuple mimicking ChromaDB results."""
@@ -426,16 +422,8 @@ class TestSemanticSearchTodos:
         self.mock_collection.similarity_search_with_score.return_value = [
             self._make_search_result(str(oid), 0.95),
         ]
-        self.mock_todos_col.find_one = AsyncMock(
-            return_value={
-                "_id": oid,
-                "user_id": USER_ID,
-                "title": "Matched todo",
-                "priority": "high",
-                "completed": False,
-                "subtasks": [],
-                "labels": [],
-            }
+        self.mock_repo.get = AsyncMock(
+            return_value=self._todo_doc(str(oid), title="Matched todo", priority="high")
         )
 
         results = await semantic_search_todos("groceries", USER_ID)
@@ -463,7 +451,7 @@ class TestSemanticSearchTodos:
         self.mock_collection.similarity_search_with_score.return_value = [
             self._make_search_result(str(oid), 0.9),
         ]
-        self.mock_todos_col.find_one = AsyncMock(return_value=None)
+        self.mock_repo.get = AsyncMock(return_value=None)
 
         results = await semantic_search_todos("query", USER_ID)
         assert results == []
@@ -545,31 +533,14 @@ class TestSemanticSearchTodos:
             self._make_search_result(str(oid2), 0.80),
         ]
 
-        async def _find_one(query: dict) -> dict | None:
-            oid = query["_id"]
-            if oid == oid1:
-                return {
-                    "_id": oid1,
-                    "user_id": USER_ID,
-                    "title": "First",
-                    "priority": "high",
-                    "completed": False,
-                    "subtasks": [],
-                    "labels": [],
-                }
-            if oid == oid2:
-                return {
-                    "_id": oid2,
-                    "user_id": USER_ID,
-                    "title": "Second",
-                    "priority": "low",
-                    "completed": False,
-                    "subtasks": [],
-                    "labels": [],
-                }
+        async def _get(todo_id: str, *, user_id: str) -> TodoDocument | None:
+            if todo_id == str(oid1):
+                return self._todo_doc(str(oid1), title="First", priority="high")
+            if todo_id == str(oid2):
+                return self._todo_doc(str(oid2), title="Second", priority="low")
             return None
 
-        self.mock_todos_col.find_one = AsyncMock(side_effect=_find_one)
+        self.mock_repo.get = AsyncMock(side_effect=_get)
 
         results = await semantic_search_todos("query", USER_ID)
         assert len(results) == 2

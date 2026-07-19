@@ -52,7 +52,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "agents/skills/registry.py",
         "agents/tools/file_tools.py",
         "agents/tools/integration_tool.py",
-        "agents/tools/tracked_todo_tools.py",
         # api/
         "api/v1/dependencies/oauth_dependencies.py",
         "api/v1/endpoints/file.py",
@@ -61,7 +60,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "api/v1/endpoints/notification.py",
         "api/v1/endpoints/onboarding.py",
         "api/v1/endpoints/sessions.py",
-        "api/v1/endpoints/todos.py",
         "api/v1/endpoints/user.py",
         "api/v1/endpoints/workflows.py",
         "api/v1/middleware/auth.py",
@@ -84,7 +82,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/device/device_service.py",
         "services/feedback_service.py",
         "services/file_service.py",
-        "services/gaia_tasks_fs.py",
         "services/integration_instructions_service.py",
         "services/integrations/community_service.py",
         "services/integrations/custom_crud.py",
@@ -114,10 +111,8 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/startup_validation.py",
         "services/support_service.py",
         "services/system_workflows/provisioner.py",
-        "services/todo_canvas_storage.py",
-        "services/todos/todo_bulk_service.py",
+        # todo_service still reads workflows_collection (workflows domain, later wave)
         "services/todos/todo_service.py",
-        "services/tracked_todo_service.py",
         "services/triggers/base.py",
         "services/triggers/handlers/asana.py",
         "services/triggers/handlers/calendar.py",
@@ -131,7 +126,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/triggers/handlers/todoist.py",
         "services/usage_service.py",
         "services/user_service.py",
-        "services/user_todos_fs.py",
         "services/voice_service.py",
         "services/workflow/conversation_service.py",
         "services/workflow/execution_service.py",
@@ -148,7 +142,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "utils/notification/storage.py",
         "utils/profile_card.py",
         "utils/seeding_utils.py",
-        "utils/todo_vector_utils.py",
         "utils/workflow_utils.py",
         # workers/
         "workers/tasks/checkpoint_retention_tasks.py",
@@ -158,9 +151,7 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "workers/tasks/onboarding_tasks.py",
         "workers/tasks/reminder_tasks.py",
         "workers/tasks/sandbox_tasks.py",
-        "workers/tasks/tracked_todo_tasks.py",
         "workers/tasks/user_tasks.py",
-        "workers/tasks/workflow_tasks.py",
     }
 )
 
@@ -170,13 +161,11 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
         # agents/
         "agents/memory/email_processor.py",
-        "agents/tools/tracked_todo_tools.py",
         # api/
         "api/v1/dependencies/oauth_dependencies.py",
         "api/v1/endpoints/integrations/config.py",
         "api/v1/endpoints/notification.py",
         "api/v1/endpoints/onboarding.py",
-        "api/v1/endpoints/todos.py",
         "api/v1/endpoints/user.py",
         "api/v1/middleware/auth.py",
         # helpers/
@@ -202,23 +191,16 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/platform_link_service.py",
         "services/provider_metadata_service.py",
         "services/reminder_service.py",
-        "services/todo_canvas_storage.py",
-        "services/todos/todo_bulk_service.py",
-        "services/todos/todo_service.py",
-        "services/tracked_todo_service.py",
         "services/user_service.py",
         "services/voice_service.py",
         # utils/
         "utils/embedding_utils.py",
         "utils/notification/channel_preferences.py",
         "utils/profile_card.py",
-        "utils/todo_vector_utils.py",
         # workers/
         "workers/tasks/maintenance_sweep_tasks.py",
         "workers/tasks/memory_backfill_tasks.py",
         "workers/tasks/onboarding_tasks.py",
-        "workers/tasks/tracked_todo_tasks.py",
-        "workers/tasks/workflow_tasks.py",
     }
 )
 
