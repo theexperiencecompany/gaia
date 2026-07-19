@@ -410,6 +410,7 @@ function consolidateToolData(toolData: ToolDataEntry[]): ToolDataEntry[] {
         timestamp: firstToolCallsTimestamp,
       });
       toolCallsBuffer = [];
+      idToIndex.clear();
       firstToolCallsTimestamp = undefined;
     }
   };

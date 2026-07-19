@@ -223,7 +223,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
     # Launch background task
     def _log_stream_failure(t: asyncio.Task):
-        if t.exception():
+        if not t.cancelled() and t.exception():
             log.error(f"{LogTag.API} Background stream task failed: {t.exception()}")
 
     spawn_background_task(

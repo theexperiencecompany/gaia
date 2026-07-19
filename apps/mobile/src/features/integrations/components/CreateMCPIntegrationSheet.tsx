@@ -68,6 +68,9 @@ function validateForm(form: FormState, isEditing: boolean): string | null {
   if (!isEditing) {
     if (!form.serverUrl.trim()) return "Server URL is required.";
     if (!validateUrl(form.serverUrl)) return INVALID_URL_MESSAGE;
+    if (form.authType === "bearer" && !form.bearerToken.trim()) {
+      return "Bearer token is required.";
+    }
   } else if (form.serverUrl.trim() && !validateUrl(form.serverUrl)) {
     return INVALID_URL_MESSAGE;
   }

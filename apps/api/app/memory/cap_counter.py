@@ -21,7 +21,10 @@ The counter is an OPTIMISTIC cache, never the source of truth:
 
 The enforcement path (``ingestion._free_cap_remaining``) still falls back to
 the authoritative ``COUNT`` whenever the cached budget is close enough to the
-cap that a batch might cross it, keeping the hard 50-fact maximum exact.
+cap that a batch might cross it, keeping the cap exact per batch. Concurrent
+same-user batches are not serialized (enforcement is fail-open by design), so
+a small transient overshoot is possible before growth stops converging back
+at the cap.
 
 Redis-unavailable is not fatal: reads return ``None`` (a miss, so the caller
 COUNTs) and writes no-op. The cap stays exact by falling back to Postgres.

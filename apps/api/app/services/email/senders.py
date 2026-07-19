@@ -228,7 +228,7 @@ async def send_badge_earned_email(
             reply_to=CONTACT_EMAIL,
         )
     )
-    log.info(f"{LogTag.MAIL} Badge earned ({tier}) email sent to {user_email}")
+    log.info(f"{LogTag.MAIL} Badge earned ({tier}) email sent")
 
 
 async def send_limit_reached_email(
@@ -278,5 +278,5 @@ async def send_limit_reached_email(
         {"_id": ObjectId(user_id)},
         {"$set": {"last_limit_email_sent": now}},
     )
-    log.info(f"{LogTag.MAIL} Limit-reached upsell email sent to {user['email']}")
+    log.info(f"{LogTag.MAIL} Limit-reached upsell email sent to user {user_id}")
     return True

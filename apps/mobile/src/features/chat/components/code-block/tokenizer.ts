@@ -495,7 +495,7 @@ const STRING_PATTERNS: Record<string, RegExp> = {
 };
 
 const NUMBER_PATTERN =
-  /^0[xX][0-9a-fA-F_]+|^0[bB][01_]+|^0[oO][0-7_]+|^\d[\d_]*\.?[\d_]*(?:[eE][+-]?\d+)?/;
+  /^0[xX][0-9a-fA-F_]+|^0[bB][01_]+|^0[oO][0-7_]+|^\d[\d_]*\.?[\d_]*(?:[eE][+-]?\d+)?|^\.\d[\d_]*(?:[eE][+-]?\d+)?/;
 
 const OPERATOR_PATTERN =
   /^(?:===|!==|==|!=|<=|>=|=>|&&|\|\||<<|>>|>>>|\?\?|\?\.|\.\.\.|\*\*|[+\-*/<>!&|?^~%=])/;
@@ -662,7 +662,9 @@ export function tokenizeLine(line: string, language: string): Token[] {
 
   while (i < line.length) {
     // Order matters: comments before operators, property access before
-    // punctuation. Mirrors the original single-pass precedence exactly.
+    // punctuation, and JSX tags before operators so `<Component>` is not eaten
+    // as a `<` operator (a spaced comparison like `a < b` still falls through
+    // to scanOperator since scanJsxTag requires a letter right after `<`).
     const result =
       scanLineComment(line, i) ??
       scanBlockComment(line, i) ??
@@ -671,9 +673,9 @@ export function tokenizeLine(line: string, language: string): Token[] {
       scanNumber(line, i) ??
       scanWord(line, i, keywords, caseSensitive) ??
       scanPropertyAccess(line, i) ??
+      scanJsxTag(line, i) ??
       scanOperator(line, i) ??
-      scanPunctuation(line, i) ??
-      scanJsxTag(line, i);
+      scanPunctuation(line, i);
 
     if (result) {
       tokens.push(...result.tokens);

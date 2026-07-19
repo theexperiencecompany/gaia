@@ -252,6 +252,7 @@ function TriggerFieldControl({
   };
 
   if (schema.type === "boolean") {
+    const value = Boolean(currentValue ?? schema.default);
     return (
       <View
         style={{
@@ -265,13 +266,13 @@ function TriggerFieldControl({
         }}
       >
         <Text style={{ fontSize: fontSize.sm, color: "#d4d4d8" }}>
-          {currentValue ? "Enabled" : "Disabled"}
+          {value ? "Enabled" : "Disabled"}
         </Text>
         <Switch
-          value={Boolean(currentValue ?? schema.default)}
+          value={value}
           onValueChange={(val) => onChange(val)}
           trackColor={{ false: "#3f3f46", true: "#0077aa" }}
-          thumbColor={currentValue ? "#00bbff" : "#71717a"}
+          thumbColor={value ? "#00bbff" : "#71717a"}
         />
       </View>
     );

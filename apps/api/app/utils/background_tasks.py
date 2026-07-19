@@ -28,7 +28,15 @@ def spawn_background_task(
     ``on_done`` runs as an additional done-callback once the task finishes — use
     it to log the task's outcome, which a detached task cannot surface otherwise.
     """
-    task = asyncio.create_task(coro, name=name)
+    try:
+        task = asyncio.create_task(coro, name=name)
+    except RuntimeError:
+        # No running loop: create_task never took ownership of ``coro``, so it
+        # would leak as an un-awaited coroutine. Close it before re-raising so
+        # callers still see the RuntimeError but get no "coroutine was never
+        # awaited" warning.
+        coro.close()
+        raise
     guard_task(task)
     if on_done is not None:
         task.add_done_callback(on_done)

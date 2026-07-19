@@ -97,13 +97,14 @@ async def record_model_call_usage(
     if not (record_spend or record_tokens):
         return
 
-    awaitables: list[Awaitable[Any]] = []
+    # (operation label, awaitable) so a per-op failure can be logged by name.
+    labeled: list[tuple[str, Awaitable[Any]]] = []
 
     # Durable per-day rollup — the Redis windows expire in ~26h, so this is the
-    # only cost history the usage charts can plot. Never raises. Runs
-    # concurrently with the Redis pipeline below.
+    # only cost history the usage charts can plot. Runs concurrently with the
+    # Redis pipeline below.
     if record_spend and user_id is not None:
-        awaitables.append(record_cost(user_id, cost_usd))
+        labeled.append(("mongo_cost_rollup", record_cost(user_id, cost_usd)))
 
     client = redis_cache.redis
     if client is None:
@@ -119,9 +120,19 @@ async def record_model_call_usage(
             key = _REQUEST_TOKENS_KEY.format(root_request_id=root_request_id)
             pipe.incrby(key, tokens)
             pipe.expire(key, REQUEST_TOKEN_COUNTER_TTL_SECONDS)
-        awaitables.append(pipe.execute())
+        labeled.append(("redis_usage_pipeline", pipe.execute()))
 
-    await asyncio.gather(*awaitables)
+    # Fail-open per op: a Redis or Mongo write failure here must never fail the
+    # already-completed model call. ``return_exceptions`` keeps both writes
+    # running to completion and lets us log each failure by name instead of one
+    # aborting the other or bubbling out to the caller.
+    results = await asyncio.gather(*(aw for _, aw in labeled), return_exceptions=True)
+    for (name, _), result in zip(labeled, results):
+        if isinstance(result, Exception):
+            log.warning(
+                f"{LogTag.STORAGE} Model call usage write failed for {name} "
+                f"(failing open): {result}"
+            )
 
 
 async def get_cost(user_id: str, period: RateLimitPeriod) -> float:

@@ -13,6 +13,7 @@ from typing import Any, NamedTuple
 from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo import ReturnDocument
+from pymongo.errors import PyMongoError
 
 from app.config.rate_limits import FEATURE_LIMITS
 from app.constants.log_tags import LogTag
@@ -74,7 +75,7 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
             {"$inc": {"count": amount}},
             upsert=True,
         )
-    except Exception as e:
+    except PyMongoError as e:
         log.warning(f"{LogTag.MONGO} record_activity failed for {user_id}: {e}")
 
 
@@ -93,7 +94,7 @@ async def record_cost(user_id: str, cost_usd: float) -> None:
             {"$inc": {"cost": cost_usd}},
             upsert=True,
         )
-    except Exception as e:
+    except PyMongoError as e:
         log.warning(f"{LogTag.MONGO} record_cost failed for {user_id}: {e}")
 
 
@@ -157,8 +158,14 @@ async def get_activity(user_id: str, days: int) -> dict[str, Any]:
 
 
 def _percentile_window_start() -> str:
-    """First UTC day (inclusive) of the cross-user percentile comparison window."""
-    return _day(datetime.now(UTC) - timedelta(days=_PERCENTILE_WINDOW_DAYS))
+    """First UTC day (inclusive) of the cross-user percentile comparison window.
+
+    Mongo matches this boundary with an inclusive ``$gte``, so the window spans
+    exactly ``_PERCENTILE_WINDOW_DAYS`` calendar days (today plus the prior
+    ``_PERCENTILE_WINDOW_DAYS - 1``) — subtracting the full count would include
+    one extra day.
+    """
+    return _day(datetime.now(UTC) - timedelta(days=_PERCENTILE_WINDOW_DAYS - 1))
 
 
 async def _percentile_tier(
@@ -335,5 +342,5 @@ async def sync_activity_tiers(send_emails: bool = True) -> dict[str, int]:
             # One bounced address must not abort the whole sweep; the tier is
             # already recorded, so this user simply misses the (nice-to-have)
             # email rather than risking a duplicate on retry.
-            log.error(f"{LogTag.MAIL} badge email failed for {user['email']}: {e!s}")
+            log.error(f"{LogTag.MAIL} badge email failed for user {user['_id']} ({tier}): {e!s}")
     return stats

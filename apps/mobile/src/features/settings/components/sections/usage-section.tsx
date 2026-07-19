@@ -183,7 +183,7 @@ export function UsageSection() {
   const budgetWindow =
     periodKey === "day" ? summary.budget?.daily : summary.budget?.monthly;
   const featureEntries = Object.entries(summary.features).filter(
-    ([key]) => key !== primaryKey,
+    ([key, feature]) => key !== primaryKey && feature.periods[periodKey],
   );
   const isPro = summary.plan_type !== "free";
 

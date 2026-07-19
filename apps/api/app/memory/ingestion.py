@@ -242,10 +242,13 @@ async def retain(
     reconciled = await reconcile(user_id, batch.facts, embeddings)
     timings["reconcile_ms"] = _elapsed_ms(stage)
 
-    # Free-plan cap (50 is a HARD maximum): passive ingestion admits only as
-    # many growth facts (NEW/EXTENDS) as fit under the cap and silently drops
-    # the rest, so a batch that crosses the cap lands EXACTLY at it rather than
-    # overshooting (48 live + 10 new must not become 58). UPDATES still
+    # Free-plan cap: passive ingestion admits only as many growth facts
+    # (NEW/EXTENDS) as fit under the cap and silently drops the rest, so a
+    # batch that crosses the cap lands exactly at it rather than overshooting
+    # (48 live + 10 new must not become 58). Concurrent same-user batches can
+    # transiently exceed the cap by a few facts (the check is not a reservation
+    # by design — enforcement stays fail-open), after which growth stops, so
+    # the cap is exact per batch and convergent, not globally atomic. UPDATES
     # supersede (net count unchanged) so what GAIA knows stays current, and
     # reads are never gated — the cap blocks growth, it does not lobotomize.
     # Facts keep reconciliation order (input order), so earlier facts in the
@@ -330,19 +333,24 @@ async def retain_single(
     full extraction prompt is tuned to filter conversational noise and
     could drop an explicitly requested fact, so it is not reused here.
 
-    Raises ``MemoryLimitReachedError`` when a free user is at the live-fact
-    cap — explicit adds fail LOUD so the tool/endpoint can upsell, unlike
-    passive ingestion which drops silently.
+    Raises ``MemoryLimitReachedError`` when a free user at the live-fact cap
+    tries to add a fact that would GROW the set — explicit adds fail LOUD so
+    the tool/endpoint can upsell, unlike passive ingestion which drops
+    silently. A DUPLICATE or UPDATES resolves to zero growth and stays allowed
+    at the cap, so the outcome is known only after reconciliation.
     """
-    remaining = await _free_cap_remaining(user_id, growth=1)
-    if remaining is not None and remaining <= 0:
-        raise MemoryLimitReachedError(FREE_MEMORY_FACT_LIMIT)
-
     now = datetime.now(UTC)
     fact = await _build_single_fact(user_id, content, category_path, now)
 
     embeddings = await embed_batch([fact.content])
     reconciled = await reconcile(user_id, [fact], embeddings)
+
+    is_growth = reconciled[0].outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
+    if is_growth:
+        remaining = await _free_cap_remaining(user_id, growth=1)
+        if remaining is not None and remaining <= 0:
+            raise MemoryLimitReachedError(FREE_MEMORY_FACT_LIMIT)
+
     applied = await _apply_reconciled(user_id, reconciled, source_type=source_type, source_id=None)
     await invalidate_user_memory_caches(user_id)
     await _schedule_post_ingest(

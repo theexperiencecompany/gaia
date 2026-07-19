@@ -150,8 +150,6 @@ export const cronToHumanReadable = (expression: string): string => {
   }
 };
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-
 function dailyRuns(
   now: Date,
   hour: number,
@@ -159,15 +157,15 @@ function dailyRuns(
   count: number,
 ): Date[] {
   const runs: Date[] = [];
-  let candidate = new Date(now);
+  const candidate = new Date(now);
   candidate.setSeconds(0, 0);
   candidate.setHours(hour, minute);
   if (candidate <= now) {
-    candidate = new Date(candidate.getTime() + ONE_DAY_MS);
+    candidate.setDate(candidate.getDate() + 1);
   }
   for (let i = 0; i < count; i++) {
     runs.push(new Date(candidate));
-    candidate = new Date(candidate.getTime() + ONE_DAY_MS);
+    candidate.setDate(candidate.getDate() + 1);
   }
   return runs;
 }
@@ -180,14 +178,14 @@ function weeklyRuns(
   count: number,
 ): Date[] {
   const runs: Date[] = [];
-  let candidate = new Date(now);
+  const candidate = new Date(now);
   candidate.setSeconds(0, 0);
   candidate.setHours(hour, minute);
   while (runs.length < count) {
     if (candidate.getDay() === targetDow && candidate > now) {
       runs.push(new Date(candidate));
     }
-    candidate = new Date(candidate.getTime() + ONE_DAY_MS);
+    candidate.setDate(candidate.getDate() + 1);
   }
   return runs;
 }

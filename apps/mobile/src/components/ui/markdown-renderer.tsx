@@ -144,9 +144,11 @@ function parseCodeBlockLines(
   };
 }
 
-// Unambiguous by construction (every \s* is anchored between mandatory
+// Captures the first marker and requires every repeat to match it, so mixed
+// sequences like "- * _" stay text (CommonMark only treats a uniform run as a
+// rule). Unambiguous by construction (every \s* is anchored between mandatory
 // chars), so it cannot backtrack exponentially on adversarial input.
-const HR_LINE_REGEX = /^\s*[-*_](\s*[-*_]){2,}\s*$/;
+const HR_LINE_REGEX = /^\s*([-*_])(?:\s*\1){2,}\s*$/;
 
 function isHrLine(line: string): boolean {
   return HR_LINE_REGEX.test(line);

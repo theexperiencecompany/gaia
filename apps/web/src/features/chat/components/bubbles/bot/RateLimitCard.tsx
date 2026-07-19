@@ -81,7 +81,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
             </span>
             <span className="text-xs text-zinc-500">
               {message
-                ? "Free plan limit reached"
+                ? `${formatPlanName(current_plan ?? "free")} plan limit reached`
                 : isUpgradeRequired
                   ? `Requires ${planName} plan`
                   : "Daily limit reached"}
