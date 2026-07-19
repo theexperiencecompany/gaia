@@ -18,6 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langgraph.errors import GraphRecursionError
 
 from app.agents.core.agent import call_agent
 from app.agents.core.background.executor_capture import (
@@ -31,10 +32,16 @@ from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
 from app.models.message_models import MessageRequestWithHistory
+from app.models.stream_events import (
+    ConversationDescriptionFrame,
+    ConversationInitializedFrame,
+    ErrorFrame,
+)
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
     save_conversation_async,
+    user_message_content_from,
 )
 from app.services.chat.state import (
     aggregate_usage_metadata,
@@ -58,12 +65,12 @@ async def run_chat_stream_background(
     user: dict,
     conversation_id: str,
     source: str | None = None,
-    start_event: asyncio.Event | None = None,
 ) -> None:
     """Run chat streaming in the background, publishing chunks to Redis.
 
     Independent of the HTTP request lifecycle — progress is saved to MongoDB on
-    completion even if the client disconnects.
+    completion even if the client disconnects. Frames land in a replayable
+    event log, so publish/subscribe timing needs no coordination.
     """
     async with wide_task(
         "chat_stream",
@@ -76,7 +83,6 @@ async def run_chat_stream_background(
             user=user,
             conversation_id=conversation_id,
             source=source,
-            start_event=start_event,
         )
 
 
@@ -92,6 +98,7 @@ class _StreamState:
     __slots__ = (
         "bot_message_id",
         "complete_message",
+        "error",
         "follow_up_actions",
         "is_cancelled",
         "saved",
@@ -103,7 +110,7 @@ class _StreamState:
         "user_message_id",
     )
 
-    def __init__(self) -> None:
+    def __init__(self, turn_id: str | None = None) -> None:
         self.complete_message: str = ""
         self.tool_data: dict[str, Any] = {"tool_data": []}
         self.tool_outputs: dict[str, str] = {}
@@ -111,10 +118,17 @@ class _StreamState:
         self.follow_up_actions: list[str] = []
         self.usage_metadata: dict[str, Any] = {}
         self.is_cancelled: bool = False
+        # Terminal error for this turn, persisted onto the bot message so a
+        # reload shows what happened instead of an empty bubble.
+        self.error: str = ""
         # Whether the turn was persisted in the try block (early save). When
         # False, the finally block does a fallback save.
         self.saved: bool = False
-        self.user_message_id: str = str(uuid4())
+        # The client's send id IS the user message id (single identity — the
+        # client's optimistic record and the persisted message share one key,
+        # so there is nothing to reconcile after a reload or sync). Clients
+        # that don't send one (bots) get a server-minted id.
+        self.user_message_id: str = turn_id or str(uuid4())
         self.bot_message_id: str = str(uuid4())
         # When comms finished — stamped before any voice-mode executor wait so
         # the saved user/comms messages keep timestamps EARLIER than a delegated
@@ -128,9 +142,8 @@ async def _run_chat_stream(
     user: dict,
     conversation_id: str,
     source: str | None = None,
-    start_event: asyncio.Event | None = None,
 ) -> None:
-    state = _StreamState()
+    state = _StreamState(turn_id=body.turn_id)
     is_new_conversation = body.conversation_id is None
     user_id = user.get("user_id")
     artifact_task: asyncio.Task[None] | None = None
@@ -152,7 +165,6 @@ async def _run_chat_stream(
             conversation_id,
             stream_id,
             state,
-            start_event,
             is_new_conversation,
         )
 
@@ -200,8 +212,10 @@ async def _run_chat_stream(
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
 
-    except Exception as e:  # noqa: BLE001 — surface to client + flag the stream
-        await _handle_stream_error(stream_id, e, start_event)
+    except Exception as e:  # surface to client + flag the stream
+        # Persist the SAME user-facing text we stream (friendly for a recursion
+        # stop), not the raw exception — a reload shows what the user saw.
+        state.error = await _handle_stream_error(stream_id, e)
     finally:
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
 
@@ -266,25 +280,11 @@ async def _publish_description_if_ready(
         description = description_task.result()
         await stream_manager.publish_chunk(
             stream_id,
-            f"""data: {json.dumps({"conversation_description": description})}\n\n""",
+            f"data: {json.dumps(ConversationDescriptionFrame(conversation_description=description).model_dump())}\n\n",
         )
-    except Exception as e:  # noqa: BLE001 — description is non-critical
+    except Exception as e:  # description is non-critical
         log.error(f"{LogTag.CHAT} Failed to get conversation description: {e}")
     return None
-
-
-async def _wait_for_http_subscriber(
-    start_event: asyncio.Event | None,
-    stream_id: str,
-) -> None:
-    """Block until the HTTP handler has subscribed to the Redis channel (or
-    5s timeout)."""
-    if not start_event or start_event.is_set():
-        return
-    try:
-        await asyncio.wait_for(start_event.wait(), timeout=5.0)
-    except TimeoutError:
-        log.warning(f"{LogTag.CHAT} Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
 
 
 async def _publish_init_chunk(
@@ -293,10 +293,13 @@ async def _publish_init_chunk(
     conversation_id: str,
     stream_id: str,
     state: _StreamState,
-    start_event: asyncio.Event | None,
     is_new_conversation: bool,
 ) -> None:
-    """Send the first SSE frame (conversation id + message ids) to the client."""
+    """Append the identity frame (conversation id + message ids) to the log.
+
+    No subscriber coordination needed: frames land in a replayable event log,
+    so a client attaching at any point receives this frame first.
+    """
     if is_new_conversation:
         init_data = await initialize_new_conversation(
             body=body,
@@ -307,14 +310,17 @@ async def _publish_init_chunk(
             stream_id=stream_id,
         )
     else:
-        init_payload = {
-            "user_message_id": state.user_message_id,
-            "bot_message_id": state.bot_message_id,
-            "stream_id": stream_id,
-        }
+        init_frame = ConversationInitializedFrame(
+            user_message_id=state.user_message_id,
+            user_message_content=user_message_content_from(body),
+            bot_message_id=state.bot_message_id,
+            stream_id=stream_id,
+        )
+        init_payload = init_frame.model_dump(
+            exclude={"conversation_id", "conversation_description"}
+        )
         init_data = f"data: {json.dumps(init_payload)}\n\n"
 
-    await _wait_for_http_subscriber(start_event, stream_id)
     await stream_manager.publish_chunk(stream_id, init_data)
 
 
@@ -343,10 +349,15 @@ async def _consume_agent_stream(
         bot_message_id=state.bot_message_id,
         source=source,
     ):
-        if await stream_manager.is_cancelled(stream_id):
+        # Cancellation is detected and terminated by the inner graph driver
+        # (execute_graph_streaming), which owns the checkpoint write that
+        # records the interruption for the model. Breaking here would abandon
+        # that generator mid-suspend and race the record away — note the flag
+        # for bookkeeping and keep consuming; the driver ends the stream with
+        # a `cancelled` nostream marker within one graph event.
+        if not state.is_cancelled and await stream_manager.is_cancelled(stream_id):
             state.is_cancelled = True
             log.info(f"{LogTag.CHAT} Stream {stream_id} cancelled by user")
-            break
 
         # Skip [DONE] marker — we send it after description generation.
         if chunk == "data: [DONE]\n\n":
@@ -355,8 +366,19 @@ async def _consume_agent_stream(
         description_task = await _publish_description_if_ready(stream_id, description_task)
 
         if chunk.startswith("nostream: "):
-            state.complete_message = _parse_complete_message(chunk)
+            state.complete_message, was_cancelled = _parse_complete_message(chunk)
+            state.is_cancelled = state.is_cancelled or was_cancelled
             continue
+
+        if chunk.startswith("data: ") and '"error"' in chunk:
+            # Errors reach this loop two ways: raised exceptions (caught by the
+            # orchestrator, which sets state.error) and error frames YIELDED by
+            # call_agent's setup guard. Record the latter so the persisted bot
+            # message carries the failure instead of an empty bubble.
+            with contextlib.suppress(json.JSONDecodeError):
+                payload = json.loads(chunk[len("data: ") :])
+                if isinstance(payload, dict) and payload.get("error"):
+                    state.error = str(payload["error"])
 
         if chunk.startswith("data: "):
             try:
@@ -368,7 +390,7 @@ async def _consume_agent_stream(
                     state.todo_progress_accumulated,
                     state.follow_up_actions,
                 )
-            except Exception as e:  # noqa: BLE001 — fall back to passthrough
+            except Exception as e:  # fall back to passthrough
                 log.error(f"{LogTag.CHAT} Error processing chunk: {e}")
                 await stream_manager.publish_chunk(stream_id, chunk)
         else:
@@ -376,12 +398,14 @@ async def _consume_agent_stream(
     return description_task
 
 
-def _parse_complete_message(chunk: str) -> str:
-    """Pull the ``complete_message`` field out of a ``nostream: {...}`` marker."""
-    nostream_json = json.loads(chunk.replace("nostream: ", ""))
-    if isinstance(nostream_json, dict) and "complete_message" in nostream_json:
-        return str(nostream_json["complete_message"])
-    return ""
+def _parse_complete_message(chunk: str) -> tuple[str, bool]:
+    """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker."""
+    nostream_json = json.loads(chunk.removeprefix("nostream: "))
+    if isinstance(nostream_json, dict):
+        return str(nostream_json.get("complete_message", "")), bool(
+            nostream_json.get("cancelled", False)
+        )
+    return "", False
 
 
 def _log_usage_summary(state: _StreamState) -> None:
@@ -426,26 +450,37 @@ async def _finalize_description(
         description = await description_task
         await stream_manager.publish_chunk(
             stream_id,
-            f"""data: {json.dumps({"conversation_description": description})}\n\n""",
+            f"data: {json.dumps(ConversationDescriptionFrame(conversation_description=description).model_dump())}\n\n",
         )
-    except Exception as e:  # noqa: BLE001 — description is non-critical
+    except Exception as e:  # description is non-critical
         log.error(f"{LogTag.CHAT} Failed to get conversation description: {e}")
 
 
 async def _handle_stream_error(
     stream_id: str,
     error: Exception,
-    start_event: asyncio.Event | None,
-) -> None:
-    """Publish the error to the client and flag the stream as failed.
+) -> str:
+    """Publish the error to the client, flag the stream as failed, and return
+    the user-facing message so the caller can persist the SAME text.
 
     Order matters: ``set_error`` publishes the ``STREAM_ERROR_SIGNAL`` which
     breaks the subscriber loop, so the error chunk must go on the wire first.
     """
     log.error(f"{LogTag.CHAT} Background stream error for {stream_id}: {error}")
-    await _wait_for_http_subscriber(start_event, stream_id)
-    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'error': str(error)})}\n\n")
-    await stream_manager.set_error(stream_id, str(error))
+    # A recursion-limit stop is an expected degradation, not an infrastructure
+    # failure - never show the raw "Recursion limit of N reached..." internals.
+    if isinstance(error, GraphRecursionError):
+        user_error = (
+            "I hit my step limit on this one before finishing. "
+            "Ask me to continue and I'll pick up where I left off."
+        )
+    else:
+        user_error = str(error)
+    await stream_manager.publish_chunk(
+        stream_id, f"data: {json.dumps(ErrorFrame(error=user_error).model_dump())}\n\n"
+    )
+    await stream_manager.set_error(stream_id, user_error)
+    return user_error
 
 
 async def _persist_turn(
@@ -477,6 +512,7 @@ async def _persist_turn(
         user_message_id=state.user_message_id,
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
+        error=state.error or None,
     )
     state.saved = True
 
@@ -520,7 +556,7 @@ async def _attach_executor_tool_data(
             },
             {"$push": {"messages.$.tool_data": {"$each": executor_td}}},
         )
-    except Exception as e:  # noqa: BLE001 — executor tool_data attach is best-effort
+    except Exception as e:  # executor tool_data attach is best-effort
         log.error(f"{LogTag.CHAT} Failed to update bot message tool_data: {e}")
 
 
@@ -552,7 +588,7 @@ async def _finalize_stream(
             # Gated on ``not state.saved`` so this never double-attaches with the
             # happy/cancel path, which always runs the attach itself.
             await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
-        except Exception as save_err:  # noqa: BLE001 — best-effort fallback save
+        except Exception as save_err:  # best-effort fallback save
             log.error(f"{LogTag.CHAT} Fallback save failed for stream {stream_id}: {save_err}")
 
     # Teardown must come AFTER the fallback save: the backstop attach drains the

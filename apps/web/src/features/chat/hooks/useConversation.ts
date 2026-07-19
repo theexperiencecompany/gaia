@@ -38,6 +38,7 @@ const mapStoredMessageToConversationMessage = (
     todo_progress: message.todo_progress ?? undefined,
     pinned: message.pinned ?? undefined,
     isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
+    error: message.error ?? undefined,
     replyToMessage: message.replyToMessageData ?? undefined,
   } as MessageType;
 
@@ -96,21 +97,5 @@ export const useConversation = () => {
     return messages;
   }, [activeConversationId, messagesByConversation, optimisticMessage]);
 
-  const updateConvoMessages = (): void => {
-    console.warn(
-      "updateConvoMessages is deprecated. Use IndexedDB directly via chatStore.",
-    );
-  };
-
-  const clearMessages = (): void => {
-    console.warn(
-      "clearMessages is deprecated. Use IndexedDB directly via chatStore.",
-    );
-  };
-
-  return {
-    convoMessages,
-    updateConvoMessages,
-    clearMessages,
-  };
+  return { convoMessages };
 };

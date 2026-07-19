@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No email, calendar, or task integration for automatic knowledge capture",
     "Performance has degraded over the years; app feels slow on mobile",
   ],
-  metaTitle: "Best Evernote Alternative in 2026 | GAIA",
+  metaTitle: "Best Evernote Alternative in 2026",
   metaDescription:
     "Evernote's pricing has ballooned and it still has no proactive AI. GAIA manages your notes, email, tasks, and calendar automatically. Free tier + self-hosting.",
   keywords: [

@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Collaborative design tool with Figma AI for UI generation",
   description:
     "Figma is the industry-standard collaborative design tool featuring Figma AI for UI generation and design suggestions. GAIA is a proactive AI productivity assistant that manages the project workflows, tasks, and communications surrounding design work.",
-  metaTitle: "Figma Alternative for Design Workflow Automation | GAIA vs Figma",
+  metaTitle: "Figma Alternative for Design Workflow Automation — GAIA vs Figma",
   metaDescription:
     "Figma AI handles UI design but not the project management around it. GAIA is an open-source alternative that automates tasks, emails, and workflows across design and engineering teams with 50+ integrations.",
   keywords: [

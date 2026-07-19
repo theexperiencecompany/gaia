@@ -102,6 +102,12 @@ class CommonSettings(BaseAppSettings):
         return v.rstrip("/") if isinstance(v, str) else v
 
     # ----------------------------------------------
+    # Outbound Email
+    # ----------------------------------------------
+    # Key into the provider registry in app/services/email/providers.
+    EMAIL_PROVIDER: str = "resend"
+
+    # ----------------------------------------------
     # Observability
     # ----------------------------------------------
     # Secret token Prometheus sends as "Authorization: Bearer <token>" when
@@ -277,7 +283,7 @@ class ProductionSettings(CommonSettings):
     # Webhook Secrets & Security
     # ----------------------------------------------
     COMPOSIO_WEBHOOK_SECRET: str
-    DODO_WEBHOOK_PAYMENTS_SECRET: str = ""
+    DODO_WEBHOOK_PAYMENTS_SECRET: str
 
     # ----------------------------------------------
     # Content Management
@@ -552,6 +558,12 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     DEBUG_EMAIL_PROCESSING: bool = False
 
+    # Development-only auth bypass: every request is authenticated as this
+    # user (must exist in Mongo) with no WorkOS session, so agents and tools
+    # can drive the app end to end. get_settings() refuses to start in
+    # production when this is set.
+    DEV_AUTH_BYPASS_EMAIL: str | None = None
+
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
@@ -633,6 +645,15 @@ def get_settings():
         if env == "development":
             settings_obj = DevelopmentSettings.from_env()
         else:
+            # Hard block, not a warning: the dev auth bypass authenticates
+            # every request as a fixed user, so production must refuse to
+            # boot rather than run with it. Checked via os.getenv because
+            # from_env() downgrades pydantic validation errors to warnings.
+            if os.getenv("DEV_AUTH_BYPASS_EMAIL"):
+                raise RuntimeError(
+                    "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
+                    "the dev auth bypass must never be enabled in production."
+                )
             settings_obj = ProductionSettings.from_env()
             log.info(f"{LogTag.STARTUP} Production settings initialized")
 

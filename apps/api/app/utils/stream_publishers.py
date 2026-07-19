@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from app.core.stream_manager import stream_manager
+from app.models.stream_events import FollowUpActionsFrame
 
 
 def accumulate_todo_progress(
@@ -32,7 +33,7 @@ async def publish_other_data(
         follow_up_actions = other_data_dict["follow_up_actions"]
         await stream_manager.publish_chunk(
             stream_id,
-            f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
+            f"data: {json.dumps(FollowUpActionsFrame(follow_up_actions=follow_up_actions).model_dump())}\n\n",
         )
     return follow_up_actions
 

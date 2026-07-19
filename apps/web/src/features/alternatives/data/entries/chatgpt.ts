@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Cannot take actions on your behalf — only generates text responses",
     "Subscription costs stack up when combining ChatGPT Plus with other tools",
   ],
-  metaTitle: "Best ChatGPT Alternative in 2026 | GAIA",
+  metaTitle: "Best ChatGPT Alternative in 2026",
   metaDescription:
     "ChatGPT can't read your email or manage your calendar. GAIA is a proactive AI assistant that actually connects to your tools and takes action for you. Free tier available.",
   keywords: [

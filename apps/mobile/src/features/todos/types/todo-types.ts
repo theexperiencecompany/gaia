@@ -1,7 +1,6 @@
 import type { SubTask } from "@gaia/shared/types";
 import { Priority } from "@gaia/shared/types";
 
-export { Priority };
 export type {
   PaginationMeta,
   Project,
@@ -11,6 +10,7 @@ export type {
   TodoListResponse,
   TodoUpdate,
 } from "@gaia/shared/types";
+export { Priority };
 
 export interface TodoCreate {
   title: string;

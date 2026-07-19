@@ -6,6 +6,7 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 - RFC 8414 Authorization Server Metadata discovery
 """
 
+from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
 from app.constants.mcp import COMPOSIO_MCP_HOST
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
@@ -21,6 +22,7 @@ from app.utils.mcp_oauth_utils import (
     validate_https_url,
     validate_oauth_endpoints,
 )
+from app.utils.url_safety import assert_public_http_url
 from mcp.shared.auth import OAuthMetadata
 from shared.py.wide_events import log
 
@@ -122,7 +124,16 @@ async def discover_oauth_config(
 
 async def probe_mcp_connection(server_url: str) -> dict:
     """Probe an MCP server to determine auth requirements."""
+    # Device-tunnel servers are reached over the WebSocket, not HTTP: there is no
+    # URL to auth-probe, and the SSRF guard below rightly rejects the device://
+    # scheme. They are always unauthenticated from the cloud's side.
+    if server_url.startswith(f"{DEVICE_TRANSPORT}://"):
+        return {"requires_auth": False, "auth_type": "none"}
     try:
+        # SSRF re-check before the outbound probe (DNS-rebinding defense). A raised
+        # ValueError is caught below and surfaced through the existing error dict.
+        await assert_public_http_url(server_url)
+
         challenge = await extract_auth_challenge(server_url)
 
         # Empty dict => the probe got a non-401 response: no auth required.

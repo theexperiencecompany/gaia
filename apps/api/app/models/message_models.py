@@ -70,6 +70,12 @@ class MessageRequestWithHistory(BaseModel):
     selectedWorkflow: SelectedWorkflowData | None = None
     selectedCalendarEvent: SelectedCalendarEventData | None = None
     replyToMessage: ReplyToMessageData | None = None
+    # Client-generated id for this SEND, stable across retries. Two jobs: the
+    # idempotency key (a duplicate POST gets a 409) and the USER MESSAGE ID
+    # itself — single identity means the client's optimistic record and the
+    # persisted message share one key, so nothing needs reconciling after a
+    # reload or sync. Path-safe: message ids appear in URL paths (pin route).
+    turn_id: SafePathId | None = None
     is_onboarding_demo: bool = False
     # Voice sessions set this so the stream holds open until a delegated
     # executor delivers its narrated answer (pushed as a `voice_tts` SSE frame

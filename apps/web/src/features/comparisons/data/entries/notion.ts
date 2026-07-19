@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "The connected workspace for notes, docs, and projects",
   description:
     "Notion is an all-in-one workspace for docs, wikis, databases, and project tracking. GAIA is a proactive AI assistant that orchestrates your email, calendar, tasks, and 50+ tools — and integrates directly with Notion to read and write your pages and databases.",
-  metaTitle: "Open Source Notion Alternative with AI Email | GAIA vs Notion",
+  metaTitle: "Open Source Notion Alternative with AI Email — GAIA vs Notion",
   metaDescription:
     "Notion organizes docs and projects beautifully but waits for you to open it. GAIA is a free, open-source Notion alternative with AI email management, calendar automation, and workflow orchestration across 50+ tools — with native Notion integration.",
   keywords: [

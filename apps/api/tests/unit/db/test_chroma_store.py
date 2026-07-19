@@ -370,13 +370,15 @@ class TestFilterItems:
         result = await store._filter_items(op, col)
         assert result == []
 
-    async def test_returns_empty_on_exception(self):
+    async def test_reraises_on_exception(self):
         col = AsyncMock()
         col.get = AsyncMock(side_effect=Exception("fail"))
         store = _make_store(collection=col)
         op = SearchOp(namespace_prefix=("a",), filter=None, query=None, limit=10, offset=0)
-        result = await store._filter_items(op, col)
-        assert result == []
+        # Infra errors now propagate so an unreachable ChromaDB isn't mistaken for
+        # an empty namespace (same contract as the write path).
+        with pytest.raises(Exception, match="fail"):
+            await store._filter_items(op, col)
 
     async def test_applies_filter_conditions(self):
         col = _make_collection(
@@ -747,7 +749,7 @@ class TestAbatch:
 
 @pytest.mark.unit
 class TestBatchSearch:
-    async def test_vector_search_error_returns_empty(self):
+    async def test_vector_search_error_reraises(self):
         col = AsyncMock()
         col.query = AsyncMock(side_effect=Exception("search fail"))
         col.get = AsyncMock(
@@ -778,8 +780,10 @@ class TestBatchSearch:
             )
         }
         results: list = [None]
-        await store._batch_search(ops, results, col)
-        assert results[0] == []
+        # Vector-search infra errors now propagate instead of masquerading as
+        # zero search hits (same contract as the write path).
+        with pytest.raises(Exception, match="search fail"):
+            await store._batch_search(ops, results, col)
 
     async def test_search_with_filter_and_namespace(self):
         now = datetime.now(UTC).isoformat()

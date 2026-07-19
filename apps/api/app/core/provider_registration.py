@@ -166,36 +166,19 @@ def _spawn_background_services(
     _spawn_background_task(name, _run_all)
 
 
-async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
+def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
+    """Register all lazy providers (dormant until first access).
+
+    Always fast — no I/O, just decorator bookkeeping — so it's safe to call on
+    every process start. Split out from `unified_startup` so callers that only
+    need the provider registry populated (e.g. a test harness exercising one
+    feature that doesn't want the full eager-service startup, which requires
+    RabbitMQ/Mongo/etc. to be live) can do so without the rest of startup.
+
+    Gotcha: many providers are authored as `async def` and decorated with
+    `@lazy_provider(...)`. The decorator replaces the async function with a
+    sync registration function, so these calls are intentionally NOT awaited.
     """
-    Unified startup function for both FastAPI and ARQ worker contexts.
-
-    Handles complete initialization flow:
-    1. Lazy provider registration (databases, AI models, tools)
-    2. Context-specific eager service initialization
-    3. Parallel execution with error handling
-
-    Args:
-        context: "main_app" for FastAPI, "arq_worker" for background tasks
-
-    Raises:
-        RuntimeError: If any critical service fails to initialize
-    """
-    # WORKER_TYPE is the single source of truth for is_main_app(), which routes
-    # WebSocket broadcasts (direct in-process send vs RabbitMQ hand-off to the main
-    # app). Derive it from the declared startup context so it can't drift from
-    # reality: docker sets it via env, but native dev does not — leaving it
-    # "unknown", which makes the main app misroute its own broadcasts through
-    # RabbitMQ instead of delivering them straight to the held socket.
-    settings.WORKER_TYPE = context
-
-    log.info(f"{LogTag.STARTUP} Starting {context} with unified provider system...")
-
-    # Register lazy providers (dormant until first access).
-    #
-    # Gotcha: many providers are authored as `async def` and decorated with
-    # `@lazy_provider(...)`. The decorator replaces the async function with a
-    # sync registration function, so these calls are intentionally NOT awaited.
     log.info(f"{LogTag.STARTUP} Registering lazy providers for {context}...")
 
     registrations: tuple[Callable[[], object], ...] = (
@@ -222,6 +205,34 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     for register in registrations:
         register()
     log.info(f"{LogTag.STARTUP} All lazy providers registered successfully for {context}")
+
+
+async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
+    """
+    Unified startup function for both FastAPI and ARQ worker contexts.
+
+    Handles complete initialization flow:
+    1. Lazy provider registration (databases, AI models, tools)
+    2. Context-specific eager service initialization
+    3. Parallel execution with error handling
+
+    Args:
+        context: "main_app" for FastAPI, "arq_worker" for background tasks
+
+    Raises:
+        RuntimeError: If any critical service fails to initialize
+    """
+    # WORKER_TYPE is the single source of truth for is_main_app(), which routes
+    # WebSocket broadcasts (direct in-process send vs RabbitMQ hand-off to the main
+    # app). Derive it from the declared startup context so it can't drift from
+    # reality: docker sets it via env, but native dev does not — leaving it
+    # "unknown", which makes the main app misroute its own broadcasts through
+    # RabbitMQ instead of delivering them straight to the held socket.
+    settings.WORKER_TYPE = context
+
+    log.info(f"{LogTag.STARTUP} Starting {context} with unified provider system...")
+
+    register_lazy_providers(context)
 
     # Services we typically want running in-process.
     #

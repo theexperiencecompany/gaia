@@ -11,13 +11,18 @@ from langchain_core.tools import BaseTool
 from app.agents.llm.client import get_default_llm
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.settings import settings
-from app.constants.llm import DEFAULT_MAX_TOKENS
+from app.constants.llm import (
+    AGENT_RECURSION_LIMIT,
+    DEFAULT_MAX_TOKENS,
+    EXECUTOR_RECURSION_LIMIT,
+)
 from app.constants.log_tags import LogTag
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
@@ -32,6 +37,15 @@ from shared.py.wide_events import log
 # so the compaction middleware should leave them alone.
 CODING_TOOL_NAMES = {"bash", "read", "write", "edit"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
+
+# Loop-guard hard-stop is OFF by default: it must never silently abandon a tool
+# call in an interactive run where the user is watching and can intervene. It is
+# only safe to enable for unattended (silent / workflow) runs. Because the
+# executor graph — and therefore its middleware — is a single per-process
+# instance shared by BOTH interactive and workflow runs, we cannot select
+# hard-stop per run at graph-build time; flipping this constant would enable it
+# for every run on the graph. See create_middleware_stack for the wiring note.
+LOOP_GUARD_HARD_STOP = False
 
 _summarization_llm: BaseChatModel | None = None
 
@@ -59,6 +73,7 @@ def get_summarization_llm() -> BaseChatModel | None:
 def create_middleware_stack(
     *,
     agent_name: str = "agent",
+    recursion_limit: int = AGENT_RECURSION_LIMIT,
     enable_accounting: bool = True,
     enable_summarization: bool = True,
     enable_compaction: bool = True,
@@ -76,6 +91,8 @@ def create_middleware_stack(
     enable_archive: bool = True,
     compaction_excluded_tools: set[str] | None = None,
     summarization_excluded_tools: set[str] | None = None,
+    enable_loop_guard: bool = True,
+    loop_guard_hard_stop: bool = LOOP_GUARD_HARD_STOP,
 ) -> list[Any]:
     """
     Create the standard middleware stack for agents.
@@ -116,7 +133,9 @@ def create_middleware_stack(
     # ``caching_debug`` flips on a second diagnostic instance that runs LAST,
     # so we can compare state.messages before vs. after other middleware.
     if enable_accounting:
-        middleware.append(LLMAccountingMiddleware(agent_name=agent_name))
+        middleware.append(
+            LLMAccountingMiddleware(agent_name=agent_name, recursion_limit=recursion_limit)
+        )
         log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled for {agent_name}")
         log.set(
             middleware_stack={
@@ -168,6 +187,16 @@ def create_middleware_stack(
         middleware.append(compaction)
         log.debug(f"{LogTag.AGENT} Compaction middleware enabled: threshold={compaction_threshold}")
 
+    # Loop-guard middleware — added LAST so it sits innermost and observes the
+    # raw tool result before compaction/summarization transform it, counting the
+    # tool's actual failures. warn-only unless hard_stop is enabled.
+    if enable_loop_guard:
+        middleware.append(LoopGuardMiddleware(hard_stop=loop_guard_hard_stop))
+        log.debug(
+            f"{LogTag.AGENT} Loop guard middleware enabled for {agent_name}: "
+            f"hard_stop={loop_guard_hard_stop}"
+        )
+
     return middleware
 
 
@@ -201,6 +230,7 @@ def create_executor_middleware(
     """
     return create_middleware_stack(
         agent_name="executor_agent",
+        recursion_limit=EXECUTOR_RECURSION_LIMIT,
         enable_subagent=True,
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,

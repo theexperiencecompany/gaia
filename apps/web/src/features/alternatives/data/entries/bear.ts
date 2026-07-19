@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No email, calendar, or task integration",
     "Beautiful but passive — Bear never helps you do anything automatically",
   ],
-  metaTitle: "Best Bear App Alternative in 2026 | GAIA",
+  metaTitle: "Best Bear App Alternative in 2026",
   metaDescription:
     "Bear is Apple-only with no proactive AI. GAIA is a cross-platform AI assistant that manages notes, email, tasks, and calendar automatically. Free tier + self-hosting.",
   keywords: [

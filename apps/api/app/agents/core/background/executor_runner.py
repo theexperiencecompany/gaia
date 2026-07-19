@@ -19,8 +19,10 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 import asyncio
 from typing import Any
 
+from langgraph.errors import GraphRecursionError
 from langsmith import traceable
 
+from app.agents.core.background.comms_narrator import record_executor_cancellation
 from app.agents.core.background.executor_capture import (
     build_returned_to_frontend_note,
     teardown_executor_capture,
@@ -40,7 +42,7 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.constants.executor import MESSAGE_ID_KEY, VOICE_TTS_KEY
+from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE, MESSAGE_ID_KEY, VOICE_TTS_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.utils.agent_utils import format_sse_data
@@ -79,7 +81,7 @@ async def run_executor_background(
             stream_id=run.stream_id,
         )
     finally:
-        await _finalize_executor_run(run, result_text, result_type)
+        await _finalize_executor_run(run, task, result_text, result_type)
 
 
 async def _execute_executor(
@@ -108,6 +110,16 @@ async def _execute_executor(
         writer = make_redis_stream_writer(stream_id)
         result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
         return result_text, "final"
+    except GraphRecursionError as e:
+        # The executor exhausted its recursion budget. Log the real cause loudly,
+        # but hand comms a friendly message instead of the raw traceback string so
+        # the user sees actionable guidance rather than an internal error.
+        log.error(
+            f"{LogTag.AGENT} Executor hit recursion limit",
+            stream_id=stream_id,
+            error=str(e),
+        )
+        return EXECUTOR_STEP_LIMIT_MESSAGE, "error"
     except Exception as e:
         log.error(f"{LogTag.AGENT} Executor run failed", stream_id=stream_id, error=str(e))
         return str(e), "error"
@@ -115,6 +127,7 @@ async def _execute_executor(
 
 async def _finalize_executor_run(
     run: ExecutorRun,
+    task: str,
     result_text: str,
     result_type: str,
 ) -> None:
@@ -134,7 +147,9 @@ async def _finalize_executor_run(
     # queue handoff below, or queued tasks strand and the busy lock leaks until
     # its TTL. The lock lifecycle is the load-bearing step — always run it.
     try:
-        await _deliver_terminal_outcome(run, result_text, result_type, was_cancelled, returned_note)
+        await _deliver_terminal_outcome(
+            run, task, result_text, result_type, was_cancelled, returned_note
+        )
         await _close_queued_stream(run, was_cancelled)
     except Exception as e:  # noqa: BLE001 — never let delivery failure strand the queue
         log.error(
@@ -151,6 +166,7 @@ async def _finalize_executor_run(
 
 async def _deliver_terminal_outcome(
     run: ExecutorRun,
+    task: str,
     result_text: str,
     result_type: str,
     was_cancelled: bool,
@@ -164,6 +180,10 @@ async def _deliver_terminal_outcome(
     completed run with text narrates and delivers.
     """
     if was_cancelled:
+        # Regardless of who owns the tool_data, comms' context must record the
+        # cancellation — otherwise its last knowledge stays 'Task accepted...
+        # I'm on it' and later turns claim the task is still running or done.
+        await record_executor_cancellation(run.conversation_id, run.task_id, task)
         if run.executor_owns_tool_data:
             await persist_cancelled_run(run)
         else:

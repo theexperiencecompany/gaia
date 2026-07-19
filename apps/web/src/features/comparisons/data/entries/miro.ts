@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
   description:
     "Miro is a leading online collaborative whiteboard platform used by teams for brainstorming, sprint planning, journey mapping, and workshop facilitation. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations — turning plans into automated action.",
   metaTitle:
-    "Miro Alternative with AI Task Management & Workflow Automation | GAIA vs Miro",
+    "Miro Alternative with AI Task Management & Workflow Automation — GAIA vs Miro",
   metaDescription:
     "Miro is the gold standard for visual collaboration but doesn't manage your workflow. GAIA is a free, open-source Miro alternative with proactive AI email management, calendar automation, and task orchestration across 50+ integrations.",
   keywords: [

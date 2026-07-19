@@ -18,8 +18,10 @@ from app.workers.tasks import (
     generate_workflow_steps,
     process_gmail_emails_to_memory,
     process_onboarding_intelligence_task,
+    process_onboarding_workflows_task,
     process_reminder,
     process_workflow_generation_task,
+    prune_checkpoint_versions,
     prune_inactive_sessions,
     regenerate_workflow_steps,
     sweep_idle_sandboxes,
@@ -43,11 +45,13 @@ _regenerate_workflow_steps = instrument_task(regenerate_workflow_steps)
 _generate_workflow_steps = instrument_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory)
 _process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
+_process_onboarding_workflows_task = instrument_task(process_onboarding_workflows_task)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
 _backfill_active_users = instrument_task(backfill_active_users)
 _backfill_user_memories = instrument_task(backfill_user_memories)
 _sweep_idle_sandboxes = instrument_task(sweep_idle_sandboxes)
 _prune_inactive_sessions = instrument_task(prune_inactive_sessions)
+_prune_checkpoint_versions = instrument_task(prune_checkpoint_versions)
 _execute_tracked_todo = instrument_task(execute_tracked_todo)
 _safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
@@ -62,9 +66,11 @@ WorkerSettings.functions = [
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
     _process_onboarding_intelligence_task,
+    _process_onboarding_workflows_task,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
     _prune_inactive_sessions,
+    _prune_checkpoint_versions,
     _execute_tracked_todo,
     _backfill_active_users,
     _backfill_user_memories,
@@ -97,6 +103,12 @@ WorkerSettings.cron_jobs = [
         _prune_inactive_sessions,
         hour=3,  # Daily at 03:00 UTC
         minute=0,
+        second=0,
+    ),
+    cron(
+        _prune_checkpoint_versions,
+        hour=4,  # Daily at 04:30 UTC (low traffic, after session prune)
+        minute=30,
         second=0,
     ),
     cron(_safety_net_check_orphaned_todos, minute={0, 30}, second=0),

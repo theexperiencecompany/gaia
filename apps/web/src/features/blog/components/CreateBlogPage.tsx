@@ -159,9 +159,6 @@ Happy writing! 🚀`,
     }
   };
 
-  // Check if bearer token is configured
-  const bearerToken = process.env.NEXT_PUBLIC_BLOG_BEARER_TOKEN;
-
   const onSubmit = (data: BlogFormData) => {
     startSubmitTransition(async () => {
       try {
@@ -183,7 +180,7 @@ Happy writing! 🚀`,
           formData.append("image", selectedFile);
         }
 
-        await blogApi.createBlogWithFormData(formData, bearerToken!);
+        await blogApi.createBlogWithFormData(formData);
         toast.success("Blog post created successfully!");
         router.push("/blog");
       } catch (error) {
@@ -192,38 +189,6 @@ Happy writing! 🚀`,
       }
     });
   };
-
-  if (!bearerToken) {
-    return (
-      <div className="container mx-auto flex min-h-screen max-w-2xl items-center justify-center px-4 py-8">
-        <Card className="text-center">
-          <CardBody className="py-12">
-            <File01Icon className="mx-auto mb-4 h-12 w-12 text-foreground-400" />
-            <h1 className="mb-2 text-xl font-bold">
-              Blog Management Not Configured
-            </h1>
-            <p className="mb-4 text-foreground-600">
-              The blog management feature requires authentication configuration.
-            </p>
-            <p className="text-sm text-foreground-500">
-              Please set the{" "}
-              <code className="rounded bg-zinc-100 px-2 py-1 dark:bg-zinc-800">
-                NEXT_PUBLIC_BLOG_BEARER_TOKEN
-              </code>{" "}
-              environment variable.
-            </p>
-            <Button
-              className="mt-6"
-              variant="flat"
-              onPress={() => router.back()}
-            >
-              Go Back
-            </Button>
-          </CardBody>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">

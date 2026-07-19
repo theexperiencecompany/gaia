@@ -6,7 +6,7 @@ import { inter } from "./inter";
 import { ppEditorialNew } from "./pp-editorial-new";
 
 // Export fonts
-export { aeonik, geistMono, ppEditorialNew, instrumentSerif, inter };
+export { aeonik, geistMono, instrumentSerif, inter, ppEditorialNew };
 
 // Set Inter as the default font
 export const defaultFont = inter;

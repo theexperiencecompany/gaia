@@ -80,6 +80,9 @@ class MessageModel(BaseModel):
     follow_up_actions: list[str] | None = None
     metadata: dict | None = None
     replyToMessage: ReplyToMessageData | None = None
+    # Terminal stream error for a bot turn that produced no response — rendered
+    # on reload instead of an empty bubble.
+    error: str | None = None
 
 
 class SystemPurpose(str, Enum):

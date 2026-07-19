@@ -351,6 +351,9 @@ class TestSubagentExecutionContext:
             ctx.initial_state,
             stream_mode=["messages", "custom", "updates"],
             config=ctx.config,
+            # The executor/subagent path now persists checkpoints only on exit,
+            # not after every step, to cut Postgres checkpoint churn.
+            durability="exit",
         )
 
 

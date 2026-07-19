@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Team inbox and collaborative email client for shared communication",
   description:
     "Missive is a collaborative email client that turns your inbox into a shared workspace — with shared inboxes, in-thread team chat, assignment rules, and integrations with CRMs and project tools. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and 50+ integrations autonomously, built for individuals and teams who want an AI to handle the administrative layer, not just a better place to read email together.",
-  metaTitle: "Missive Alternative for Personal Productivity | GAIA vs Missive",
+  metaTitle: "Missive Alternative for Personal Productivity — GAIA vs Missive",
   metaDescription:
     "Compare GAIA and Missive. Missive excels at team inbox collaboration, but GAIA manages email, calendar, tasks, and cross-tool workflows proactively — acting before you ask.",
   keywords: [

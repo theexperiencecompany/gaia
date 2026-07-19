@@ -7,6 +7,7 @@ LangChain adapter schema sanitization, and resilient adapter retry/skip logic.
 """
 
 import asyncio
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import json
@@ -18,12 +19,14 @@ from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 import pytest
 
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
+from app.models.device import Device
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
     DCRNotSupportedException,
     MCPClient,
     StepUpAuthRequired,
+    _parse_device_server_url,
     get_mcp_client,
 )
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
@@ -334,6 +337,15 @@ class TestMCPClientConnect:
 
 @pytest.mark.unit
 class TestMCPClientDoConnect:
+    @pytest.fixture(autouse=True)
+    def _mock_ssrf_guard(self) -> Iterator[None]:
+        """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
+        with patch(
+            "app.services.mcp.mcp_client.assert_public_http_url",
+            new_callable=AsyncMock,
+        ):
+            yield
+
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
     @patch("app.services.mcp.mcp_client.BaseMCPClient")
     @patch("app.services.mcp.mcp_client.ResilientLangChainAdapter")
@@ -479,6 +491,82 @@ class TestMCPClientDoConnect:
             await client._do_connect(INTEGRATION_ID)
 
         mock_base_client.close_all_sessions.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestParseDeviceServerUrl:
+    def test_parses_device_id_and_server_key(self):
+        device_id, server_key = _parse_device_server_url("device://dev-123/filesystem")
+        assert device_id == "dev-123"
+        assert server_key == "filesystem"
+
+    def test_rejects_non_device_scheme(self):
+        with pytest.raises(ValueError, match="Not a device server URL"):
+            _parse_device_server_url("https://example.com/dev-123/filesystem")
+
+    def test_rejects_missing_server_key(self):
+        with pytest.raises(ValueError, match="Malformed device server URL"):
+            _parse_device_server_url("device://dev-123")
+
+    def test_rejects_missing_device_id(self):
+        with pytest.raises(ValueError, match="Malformed device server URL"):
+            _parse_device_server_url("device://")
+
+
+@pytest.mark.unit
+class TestMCPClientBuildDeviceClient:
+    """The hard cross-user isolation gate: a device session must never build for a device the caller does not own."""
+
+    def _device_config(self, device_id: str = "dev-123", server_key: str = "filesystem"):
+        return _make_mcp_config(server_url=f"device://{device_id}/{server_key}", transport="device")
+
+    async def test_raises_when_device_not_found(self):
+        client = MCPClient(user_id=USER_ID)
+        with patch(
+            "app.services.device.device_service.get_active_device",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            with pytest.raises(ValueError, match="not an active device owned by"):
+                await client._build_device_client(INTEGRATION_ID, self._device_config())
+
+    async def test_raises_when_device_owned_by_different_user(self):
+        """A valid, active device that simply belongs to someone else must still be rejected."""
+        client = MCPClient(user_id=USER_ID)
+        someone_elses_device = MagicMock(spec=Device)
+        someone_elses_device.user_id = "a_completely_different_user"
+        with patch(
+            "app.services.device.device_service.get_active_device",
+            new_callable=AsyncMock,
+            return_value=someone_elses_device,
+        ):
+            with pytest.raises(ValueError, match="not an active device owned by"):
+                await client._build_device_client(INTEGRATION_ID, self._device_config())
+
+    async def test_succeeds_when_device_owned_by_caller(self):
+        client = MCPClient(user_id=USER_ID)
+        own_device = MagicMock(spec=Device)
+        own_device.user_id = USER_ID
+
+        mock_session = AsyncMock()
+        with (
+            patch(
+                "app.services.device.device_service.get_active_device",
+                new_callable=AsyncMock,
+                return_value=own_device,
+            ),
+            patch("app.services.mcp.mcp_client.DeviceConnector") as mock_connector_cls,
+            patch(
+                "app.services.mcp.mcp_client.MCPSession", return_value=mock_session
+            ) as mock_session_cls,
+        ):
+            result = await client._build_device_client(INTEGRATION_ID, self._device_config())
+
+            mock_connector_cls.assert_called_once_with("dev-123", "filesystem")
+            mock_session_cls.assert_called_once()
+            mock_session.initialize.assert_awaited_once()
+            assert result.sessions[INTEGRATION_ID] is mock_session
+            assert INTEGRATION_ID in result.active_sessions
 
 
 @pytest.mark.unit
@@ -1754,6 +1842,15 @@ class TestDiscoverOAuthConfig:
 
 @pytest.mark.unit
 class TestProbeMcpConnection:
+    @pytest.fixture(autouse=True)
+    def _mock_ssrf_guard(self) -> Iterator[None]:
+        """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
+        with patch(
+            "app.services.mcp.oauth_discovery.assert_public_http_url",
+            new_callable=AsyncMock,
+        ):
+            yield
+
     async def test_auth_required(self):
         with patch(
             "app.services.mcp.oauth_discovery.extract_auth_challenge",
@@ -3203,3 +3300,65 @@ class TestMCPToolsStoreGetAll:
 
         assert "int1" in result
         assert result["int1"]["name"] == "Integration 1"
+
+
+@pytest.mark.unit
+class TestMCPClientDoConnectSSRF:
+    """The connect path must run the real SSRF guard (no autouse mock here).
+
+    Regression fence for the connect-time DNS-rebinding re-check: a config whose
+    server_url points at the cloud-metadata / a private address must be refused
+    *before* any MCP client is constructed or any outbound connection is made.
+    """
+
+    @patch("app.services.mcp.mcp_client.BaseMCPClient")
+    @patch("app.services.mcp.mcp_client.IntegrationResolver")
+    async def test_private_server_url_blocked_before_connect(
+        self, mock_resolver, mock_base_client_cls
+    ):
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(server_url="https://169.254.169.254/mcp")
+        resolved.source = "platform"
+        resolved.custom_doc = None
+        mock_resolver.resolve = AsyncMock(return_value=resolved)
+
+        client = MCPClient(user_id=USER_ID)
+
+        with pytest.raises(ValueError, match="non-public"):
+            await client._do_connect(INTEGRATION_ID)
+
+        # The guard fired first: no outbound MCP client was ever built.
+        mock_base_client_cls.assert_not_called()
+
+    @patch("app.services.mcp.mcp_client.BaseMCPClient")
+    @patch("app.services.mcp.mcp_client.IntegrationResolver")
+    async def test_loopback_server_url_blocked_before_connect(
+        self, mock_resolver, mock_base_client_cls
+    ):
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(server_url="https://127.0.0.1:8000/mcp")
+        resolved.source = "platform"
+        resolved.custom_doc = None
+        mock_resolver.resolve = AsyncMock(return_value=resolved)
+
+        client = MCPClient(user_id=USER_ID)
+
+        with pytest.raises(ValueError, match="non-public"):
+            await client._do_connect(INTEGRATION_ID)
+
+        mock_base_client_cls.assert_not_called()
+
+
+@pytest.mark.unit
+class TestProbeMcpConnectionSSRF:
+    """probe_mcp_connection must run the real SSRF guard before probing."""
+
+    @patch("app.services.mcp.oauth_discovery.extract_auth_challenge", new_callable=AsyncMock)
+    async def test_private_url_is_refused_without_probing(self, mock_extract):
+        result = await probe_mcp_connection("https://169.254.169.254/mcp")
+
+        # The guard rejected it: surfaced as an error, and no outbound probe ran.
+        assert result["auth_type"] == "unknown"
+        assert result["requires_auth"] is False
+        assert "error" in result
+        mock_extract.assert_not_awaited()

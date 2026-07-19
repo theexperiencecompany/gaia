@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Basecamp is an opinionated all-in-one platform for team project management, combining to-do lists, message boards, group chats, file storage, and schedules into a single calm workspace. GAIA is a proactive AI assistant that manages your email, calendar, and tasks across 50+ integrations — bringing intelligent automation to the coordination that Basecamp handles manually.",
   metaTitle:
-    "GAIA vs Basecamp: Proactive AI Assistant vs Team Collaboration Platform | GAIA",
+    "GAIA vs Basecamp: Proactive AI Assistant vs Team Collaboration Platform",
   metaDescription:
     "Compare GAIA and Basecamp. Basecamp brings team projects into one calm workspace. GAIA reads your email, manages your calendar, and automates workflows proactively across 50+ tools.",
   keywords: [

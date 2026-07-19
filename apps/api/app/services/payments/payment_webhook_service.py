@@ -26,8 +26,8 @@ from app.services.analytics_service import (
     track_payment_event,
     track_subscription_event,
 )
+from app.services.email import send_pro_subscription_email
 from app.services.payments.payment_service import payment_service
-from app.utils.email_utils import send_pro_subscription_email
 from shared.py.wide_events import log
 
 
@@ -70,15 +70,8 @@ class PaymentWebhookService:
             headers: Dictionary of headers from the webhook request
         """
         if not self.webhook_verifier:
-            log.warning(
-                f"{LogTag.PAYMENT} No webhook verifier configured - skipping signature verification"
-            )
-            return True
-
-        # Skip verification in development
-        if settings.ENV != "production":
-            log.info(f"{LogTag.PAYMENT} Development mode - skipping webhook signature verification")
-            return True
+            log.error(f"{LogTag.PAYMENT} No webhook verifier configured - rejecting webhook")
+            return False
 
         try:
             log.info(

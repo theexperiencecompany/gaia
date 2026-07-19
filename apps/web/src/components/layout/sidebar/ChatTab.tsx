@@ -5,7 +5,7 @@ import Link from "next/link";
 import React, { type FC, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { usePathname } from "@/i18n/navigation";
-import { useChatStore } from "@/stores/chatStore";
+import { useIsConversationStreaming } from "@/stores/streamStore";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
@@ -31,11 +31,8 @@ export const ChatTab: FC<ChatTabProps> = ({
   const pathname = usePathname();
   const [buttonHovered, setButtonHovered] = useState(false);
 
-  // Check if this conversation is currently streaming
-  const streamingConversationId = useChatStore(
-    (state) => state.streamingConversationId,
-  );
-  const isStreaming = streamingConversationId === id;
+  // Per-conversation: multiple conversations can stream concurrently.
+  const isStreaming = useIsConversationStreaming(id);
 
   // Derive current conversation ID from pathname during render
   const pathParts = pathname.split("/");

@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Open-source workflow automation with a visual flow builder",
   description:
     "Activepieces is an open-source, no-code automation platform built as a Zapier alternative. It lets you connect 440+ apps through a visual flow builder and rule-based triggers. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously — acting on your behalf without you needing to define every rule.",
-  metaTitle: "Activepieces Alternative with AI Email | GAIA vs Activepieces",
+  metaTitle: "Activepieces Alternative with AI Email — GAIA vs Activepieces",
   metaDescription:
     "Activepieces is a solid open-source automation platform but requires you to build every rule manually. GAIA is an open-source Activepieces alternative with AI email integration and autonomous decision-making — no flow builder needed to automate your workflows.",
   keywords: [

@@ -1,11 +1,13 @@
 """Unit tests for search service operations."""
 
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
 import pytest
 
 from app.services.search_service import search_messages
+from tests.unit.services.regex_helpers import collect_regex_values
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -419,3 +421,50 @@ class TestSearchMessagesEdgeCases:
 
         # Only one message has "message" key, so convert_legacy is called once
         assert mock_convert_legacy.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# search_messages — ReDoS / regex-injection hardening ($regex escaping)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSearchMessagesRegexEscaping:
+    async def test_user_query_is_regex_escaped_in_every_regex_stage(
+        self,
+        mock_conversations_collection,
+        mock_notes_collection,
+        mock_convert_legacy,
+        mock_get_context_window,
+    ):
+        """A query full of regex metacharacters must reach Mongo as a literal.
+
+        If a future edit drops ``re.escape`` and passes the raw query into
+        ``$regex``, an attacker-controlled pattern like ``.*`` or a catastrophic
+        backtracking bomb would run against the collection. Every ``$regex``
+        value in both the conversation and notes pipelines must equal the
+        escaped query, never the raw one.
+        """
+
+        conv_cursor = MagicMock()
+        conv_cursor.to_list = AsyncMock(return_value=[{"messages": [], "conversations": []}])
+        mock_conversations_collection.aggregate.return_value = conv_cursor
+
+        notes_cursor = MagicMock()
+        notes_cursor.to_list = AsyncMock(return_value=[])
+        mock_notes_collection.aggregate.return_value = notes_cursor
+
+        raw_query = "a.*(b|c)+[x]$"
+        escaped = re.escape(raw_query)
+        assert escaped != raw_query, "query must contain metacharacters for this to be meaningful"
+
+        await search_messages(raw_query, FAKE_USER_ID)
+
+        conv_pipeline = mock_conversations_collection.aggregate.call_args[0][0]
+        notes_pipeline = mock_notes_collection.aggregate.call_args[0][0]
+        regex_values = collect_regex_values(conv_pipeline) + collect_regex_values(notes_pipeline)
+
+        assert regex_values, "expected at least one $regex stage to be exercised"
+        for value in regex_values:
+            assert value == escaped
+            assert value != raw_query

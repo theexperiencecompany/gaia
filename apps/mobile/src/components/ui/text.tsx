@@ -52,5 +52,5 @@ function Text({ className, variant = "default", ...props }: TextProps) {
   );
 }
 
-export { Text, TextClassContext, textVariants };
 export type { TextProps, TextVariantProps };
+export { Text, TextClassContext, textVariants };

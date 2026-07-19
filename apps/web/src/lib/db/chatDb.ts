@@ -55,6 +55,8 @@ export interface IMessage {
   // Message metadata
   pinned?: boolean;
   isConvoSystemGenerated?: boolean;
+  // Present when a bot turn died with no response text (persisted server-side).
+  error?: string | null;
   metadata?: Record<string, unknown>;
   optimistic?: boolean; // Temporary message waiting for backend ID
 
@@ -318,10 +320,12 @@ class ChatDexie extends Dexie {
     }
   }
 
+  /** Merge `updates` into an existing message. Returns the updated record,
+   *  or `undefined` when no record with that id exists (nothing is written). */
   public async updateMessage(
     messageId: string,
     updates: Partial<IMessage>,
-  ): Promise<void> {
+  ): Promise<IMessage | undefined> {
     let updatedMessage: IMessage | undefined;
     await messageQueue.enqueue(async () => {
       const message = await this.messages.get(messageId);
@@ -337,6 +341,7 @@ class ChatDexie extends Dexie {
     if (updatedMessage) {
       dbEventEmitter.emitMessageUpserted(updatedMessage);
     }
+    return updatedMessage;
   }
 
   public async updateMessageStatus(
