@@ -17,7 +17,14 @@ from app.agents.llm.vision import adapt_media_for_model
 T = TypeVar("T", bound=MessagesState)
 
 
-async def adapt_media_node(state: T, config: RunnableConfig, store: BaseStore) -> T:
+async def adapt_media_node(
+    state: T,
+    config: RunnableConfig,
+    # Unused here, but execute_hooks() calls every pre-model hook as
+    # (state, config, store) — the 3-arg signature is mandatory, so dropping
+    # this would be a runtime TypeError, not a cleanup.
+    store: BaseStore,  # NOSONAR python:S1172
+) -> T:
     messages = state["messages"]
     adapted = await adapt_media_for_model(messages, config)
     if len(adapted) == len(messages) and all(new is old for new, old in zip(adapted, messages)):

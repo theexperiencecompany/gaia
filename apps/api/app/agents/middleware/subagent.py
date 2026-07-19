@@ -461,22 +461,22 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         compaction_threshold=COMPACTION_THRESHOLD,
                         status=tool_status,
                     )
-                    tool_message = (
-                        compacted
-                        if compacted is not None
-                        else ToolMessage(
-                            # Preserve block-list content (inline media) — str()
-                            # would destroy it; only non-message shapes stringify.
-                            content=(
-                                raw_content
-                                if isinstance(raw_content, str | list)
-                                else str(raw_content)
-                            ),
+                    if compacted is not None:
+                        tool_message = compacted
+                    else:
+                        # Preserve block-list content (inline media) — str() would
+                        # destroy it; only non-message shapes stringify.
+                        content = (
+                            raw_content
+                            if isinstance(raw_content, str | list)
+                            else str(raw_content)
+                        )
+                        tool_message = ToolMessage(
+                            content=content,
                             tool_call_id=tc_id,
                             name=name,
                             status=tool_status,
                         )
-                    )
                     # This loop runs outside the middleware stack, so it calls the
                     # description helper directly — same split as compaction above.
                     described = await describe_tool_media(tool_message, config)

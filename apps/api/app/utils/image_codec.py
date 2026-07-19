@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 from app.constants.media import (
     DOWNSCALE_LONGEST_EDGE,
@@ -124,7 +124,7 @@ class ImageCodec:
                 sniffed = MIME_BY_PILLOW_FORMAT.get(image.format or "")
                 size = image.size
                 image.verify()  # invalidates `image` — read anything else first
-        except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+        except (OSError, Image.DecompressionBombError) as exc:
             raise InvalidImage(f"not a decodable image: {exc}") from exc
         return sniffed, size
 
@@ -138,7 +138,7 @@ class ImageCodec:
             )
             output = BytesIO()
             image.save(output, format=TRANSCODE_FORMAT, optimize=True, quality=TRANSCODE_QUALITY)
-        except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+        except (OSError, Image.DecompressionBombError) as exc:
             # `verify()` in `_probe` only reads the header — a truncated or
             # corrupt file gets past it and blows up here, on the full decode.
             raise InvalidImage(f"image could not be re-encoded: {exc}") from exc

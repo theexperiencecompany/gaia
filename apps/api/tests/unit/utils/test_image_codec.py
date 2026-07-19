@@ -127,7 +127,7 @@ class TestDecodeFailuresAreTyped:
         with pytest.raises(InvalidImage):
             await ImageCodec.from_base64("!!! not base64 !!!")
 
-    async def test_invalid_image_is_catchable_as_value_error(self) -> None:
+    def test_invalid_image_is_catchable_as_value_error(self) -> None:
         """Callers that catch ValueError (read_tool's size guard) must still work."""
         assert issubclass(InvalidImage, ValueError)
 
