@@ -23,6 +23,7 @@ from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 from langsmith import traceable
 
+from app.agents.core.background.bg_results import has_bg_subagent_results
 from app.agents.core.background.comms_narrator import record_executor_cancellation
 from app.agents.core.background.executor_capture import (
     build_returned_to_frontend_note,
@@ -32,6 +33,7 @@ from app.agents.core.background.executor_queue import (
     LockState,
     PreparedQueuedTask,
     build_run_item,
+    enqueue_collection_run,
     get_lock_state,
     pop_next_queued_run,
     reclaim_stranded_task,
@@ -54,7 +56,10 @@ from app.constants.executor import (
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
-from app.services.hil.approvals_store import set_resume_item
+from app.services.hil.approvals_store import (
+    list_parked_subagents_for_conversation,
+    set_resume_item,
+)
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.utils.agent_utils import format_sse_data
 from shared.py.wide_events import log
@@ -262,9 +267,43 @@ async def _finalize_executor_run(
             error=str(e),
         )
 
+    # A terminal run that leaves landed-but-uncollected subagent work (a parked
+    # approval, or results the model never joined on) queues a collection turn
+    # NOW, so the very hand-off below pops and runs it. Without this, a card
+    # parked mid-turn has no live collector until some later landing wakes one —
+    # and decisions on it would be refused in the meantime.
+    await _queue_collection_if_uncollected(run, task)
+
     prepared = await _hand_off_queue(run)
     if prepared is not None:
         _spawn_queued_run(run, prepared)
+
+
+async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
+    """Best-effort wake at turn end; the marker dedups against landing-time wakes."""
+    del task
+    if run.workflow_id is not None:
+        return  # headless: the gate denied destructive work; nothing parked to collect
+    try:
+        uncollected = await has_bg_subagent_results(run.conversation_id) or bool(
+            await list_parked_subagents_for_conversation(run.conversation_id)
+        )
+        if uncollected:
+            await enqueue_collection_run(
+                run.conversation_id,
+                {
+                    "user_id": run.user.get("user_id", ""),
+                    "email": run.user.get("email", ""),
+                    "user_name": run.user.get("name", ""),
+                    "user_timezone": run.user.get("timezone"),
+                },
+            )
+    except Exception as e:  # noqa: BLE001 — a failed wake must not strand the queue handoff
+        log.error(
+            f"{LogTag.AGENT} Post-run collection check failed",
+            conversation_id=run.conversation_id,
+            error=str(e),
+        )
 
 
 async def _finalize_paused_run(run: ExecutorRun) -> None:

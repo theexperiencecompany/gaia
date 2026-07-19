@@ -36,3 +36,18 @@ EXECUTOR_PAUSED = "paused"
 EXECUTOR_APPROVAL_LOST_MESSAGE = (
     "I couldn't set up the approval for that action, so I've stopped. Please try again."
 )
+
+# Task text for the wake-up turn queued when background-subagent work lands after
+# the executor rested (finished its turn without collecting). The queued run's
+# join gathers results and pauses for any approvals; SubagentJoinMiddleware
+# backstops it if the model tries to end without collecting.
+EXECUTOR_COLLECTION_TASK = (
+    "Background subagent work has finished or is waiting for the user's approval. "
+    "Call wait_for_subagents() to collect the outcomes, then report them to the user."
+)
+
+# Dedup marker: at most one queued collection turn per conversation at a time.
+# Set when a collection run is enqueued; cleared when a join actually runs. TTL
+# is crash insurance so a lost run can't suppress wake-ups forever.
+EXECUTOR_COLLECT_MARKER_PREFIX = "executor:collect_queued:"
+EXECUTOR_COLLECT_MARKER_TTL = 600

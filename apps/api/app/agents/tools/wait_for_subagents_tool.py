@@ -29,6 +29,7 @@ from app.agents.core.background.bg_results import (
     append_bg_subagent_result,
     drain_bg_subagent_results,
 )
+from app.agents.core.background.executor_queue import clear_collection_marker
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import get_pending_subagents
 from app.agents.core.subagents.handoff_tools import resume_parked_subagent
@@ -72,6 +73,11 @@ async def wait_for_subagents(
 
     if not stream_id:
         return "No active stream — cannot wait for subagents."
+
+    if conversation_id:
+        # This join IS the collection a queued wake-up would have provided —
+        # clear the dedup marker so later landings can queue a fresh one.
+        await clear_collection_marker(conversation_id)
 
     await _poll_live_tasks(stream_id, timeout)
 

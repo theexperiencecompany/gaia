@@ -13,6 +13,7 @@ HIL approval — pause the executor once for the whole batch.
 import time
 
 from app.agents.core.background.bg_results import append_bg_subagent_result
+from app.agents.core.background.executor_queue import enqueue_collection_run, is_executor_busy
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import (
     decrement_pending_subagents,
@@ -118,6 +119,31 @@ async def run_subagent_background(
         # wait_for_subagents that wakes on the count change sees this subagent's
         # terminal state.
         decrement_pending_subagents(stream_id)
+        await _wake_if_executor_rested(conversation_id, ctx.configurable)
+
+
+async def _wake_if_executor_rested(conversation_id: str, configurable: dict) -> None:
+    """Queue a collection turn when this landing has no live executor to collect it.
+
+    The executor may legitimately end its turn while background subagents run
+    ("dispatched — I'll report when it's done"). This is the notification that
+    makes that safe: the queued turn joins, gathers results, and pauses for any
+    approvals. Busy executor → it will collect itself; headless run → nothing to
+    wake (the gate denied any destructive work, results have no live audience).
+    Best-effort: a wake failure must not crash the task — the marker TTL and the
+    next landing retry it.
+    """
+    if not conversation_id or str(configurable.get("execution_mode") or "") == "background":
+        return
+    try:
+        if not await is_executor_busy(conversation_id):
+            await enqueue_collection_run(conversation_id, configurable)
+    except Exception as e:  # noqa: BLE001 — create_task coroutine must not raise
+        log.error(
+            f"{LogTag.AGENT} Could not queue collection wake-up",
+            conversation_id=conversation_id,
+            error=str(e),
+        )
 
 
 async def _park(

@@ -210,6 +210,16 @@ class TestBackgroundParking:
             configurable={"conversation_id": CONV, "thread_id": "gmail_executor_conv-1"},
         )
 
+    @pytest.fixture(autouse=True)
+    def _live_executor(self):
+        """Wake seam: a busy executor means landing work queues nothing."""
+        with (
+            patch(f"{RUNNER}.is_executor_busy", AsyncMock(return_value=True)),
+            patch(f"{RUNNER}.enqueue_collection_run", AsyncMock()) as enqueue,
+        ):
+            self.enqueue = enqueue
+            yield
+
     async def test_a_paused_subagent_parks_durably_instead_of_raising(self) -> None:
         paused = SubagentOutcome(text="", interrupt={"approval_id": "a1"})
         with (
@@ -245,6 +255,34 @@ class TestBackgroundParking:
         assert stamp.await_count == 0  # nothing resumable was recorded
         assert "unresumable" in append.await_args.args[2]
         decrement.assert_called_once()
+
+    async def test_a_landing_with_no_live_executor_queues_a_collection_turn(self) -> None:
+        # The "rest" contract: the executor answered and moved on; this landing
+        # must wake a collection turn or its result (or park) is stranded.
+        done = SubagentOutcome(text="done")
+        with (
+            patch(f"{RUNNER}.make_redis_stream_writer", MagicMock()),
+            patch(f"{RUNNER}.execute_subagent_stream", AsyncMock(return_value=done)),
+            patch(f"{RUNNER}.append_bg_subagent_result", AsyncMock()),
+            patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()),
+            patch(f"{RUNNER}.is_executor_busy", AsyncMock(return_value=False)),
+            patch(f"{RUNNER}.enqueue_collection_run", AsyncMock()) as enqueue,
+        ):
+            await run_subagent_background(self._ctx(), STREAM)
+
+        enqueue.assert_awaited_once()
+
+    async def test_a_landing_with_a_live_executor_queues_nothing(self) -> None:
+        done = SubagentOutcome(text="done")
+        with (
+            patch(f"{RUNNER}.make_redis_stream_writer", MagicMock()),
+            patch(f"{RUNNER}.execute_subagent_stream", AsyncMock(return_value=done)),
+            patch(f"{RUNNER}.append_bg_subagent_result", AsyncMock()),
+            patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()),
+        ):
+            await run_subagent_background(self._ctx(), STREAM)
+
+        assert self.enqueue.await_count == 0
 
     async def test_the_counter_decrements_even_when_everything_fails(self) -> None:
         with (

@@ -39,6 +39,11 @@ async def try_claim_bg_dispatch(conversation_id: str, tool_call_id: str) -> bool
     return bool(await redis_cache.client.set(key, "1", nx=True, ex=HIL_BG_RESULTS_TTL_SECONDS))
 
 
+async def has_bg_subagent_results(conversation_id: str) -> bool:
+    """Whether uncollected background subagent results exist (no drain)."""
+    return bool(await redis_cache.client.llen(_key(conversation_id)))
+
+
 async def drain_bg_subagent_results(conversation_id: str) -> list[dict[str, str]]:
     """Return and clear all collected background subagent results, oldest first."""
     key = _key(conversation_id)

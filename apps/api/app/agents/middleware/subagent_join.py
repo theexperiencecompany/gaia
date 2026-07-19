@@ -25,6 +25,7 @@ from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage
 from langgraph.runtime import Runtime, get_config
 
+from app.agents.core.background.bg_results import has_bg_subagent_results
 from app.agents.core.background.session import get_pending_subagents
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
@@ -52,15 +53,19 @@ class SubagentJoinMiddleware(AgentMiddleware):
         conversation_id = str(configurable.get("conversation_id") or "")
         if not stream_id or not conversation_id:
             return None
-        if configurable.get("execution_mode") == "background":
-            # Headless runs have no approval path (the gate denies instead of
-            # parking), so there is nothing a forced join could collect that the
-            # in-process counter doesn't already cover.
-            if get_pending_subagents(stream_id) == 0:
-                return None
-        elif get_pending_subagents(stream_id) == 0 and not (
-            await list_parked_subagents_for_conversation(conversation_id)
-        ):
+        # Still-running subagents never force a join: the model may legitimately
+        # rest ("dispatched — I'll report when it's done") and their landing
+        # queues a collection turn (see enqueue_collection_run). Forcing here
+        # would trap the executor in a blocking-poll loop for long-running work.
+        if get_pending_subagents(stream_id) > 0:
+            return None
+        # Everything has landed — force the join only if something is actually
+        # uncollected. Collection is then instant (results ready) or a deliberate
+        # pause (parked approvals); it never blocks on running work.
+        uncollected = await has_bg_subagent_results(conversation_id)
+        if not uncollected and configurable.get("execution_mode") != "background":
+            uncollected = bool(await list_parked_subagents_for_conversation(conversation_id))
+        if not uncollected:
             return None
 
         dropped = [call.get("name", "") for call in response.tool_calls]

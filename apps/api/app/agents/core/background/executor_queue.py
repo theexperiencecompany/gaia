@@ -26,6 +26,11 @@ from app.constants.cache import (
     EXECUTOR_QUEUE_PREFIX,
     EXECUTOR_QUEUE_TTL,
 )
+from app.constants.executor import (
+    EXECUTOR_COLLECT_MARKER_PREFIX,
+    EXECUTOR_COLLECT_MARKER_TTL,
+    EXECUTOR_COLLECTION_TASK,
+)
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
@@ -221,6 +226,52 @@ async def enqueue_task(
     if redis_cache.client:
         await redis_cache.client.rpush(queue_key, queue_item)
         await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
+
+
+async def enqueue_collection_run(conversation_id: str, base_configurable: dict) -> bool:
+    """Queue a wake-up turn to collect landed background-subagent work.
+
+    The "rest" contract: an executor may end its turn while background subagents
+    are still running; when their work lands (result or HIL park) with no
+    executor alive to collect it, this queues a fresh turn whose task is to join
+    and report. The SETNX marker keeps it to one queued collection at a time —
+    the join clears it when it actually runs. Returns whether a run was queued.
+
+    ``thread_id`` is forced back to the conversation id: a subagent's
+    configurable carries the SUBAGENT thread, and the collection turn must run
+    on the executor's own thread.
+    """
+    if not redis_cache.client:
+        return False
+    marker = f"{EXECUTOR_COLLECT_MARKER_PREFIX}{conversation_id}"
+    claimed = await redis_cache.client.set(marker, "1", nx=True, ex=EXECUTOR_COLLECT_MARKER_TTL)
+    if not claimed:
+        return False
+    configurable = {
+        **safe_configurable(base_configurable),
+        "thread_id": conversation_id,
+        "execution_mode": "interactive",
+    }
+    configurable.pop("subagent_id", None)
+    await enqueue_task(
+        queue_key=f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}",
+        task=EXECUTOR_COLLECTION_TASK,
+        task_id=str(uuid4()),
+        configurable=configurable,
+        conversation_id=conversation_id,
+        user_message_id=None,
+    )
+    log.info(
+        f"{LogTag.AGENT} Queued background-subagent collection turn",
+        conversation_id=conversation_id,
+    )
+    return True
+
+
+async def clear_collection_marker(conversation_id: str) -> None:
+    """A join is running — future landings may queue a fresh collection turn."""
+    if redis_cache.client:
+        await redis_cache.client.delete(f"{EXECUTOR_COLLECT_MARKER_PREFIX}{conversation_id}")
 
 
 def decode_raw_item(raw: bytes | memoryview | str) -> str:
