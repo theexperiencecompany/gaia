@@ -140,9 +140,7 @@ class TestUnresumableRecords:
         assert resume.prepare.await_count == 0  # nothing to wake — executor is running
         assert resume.mark_resumed.await_count == 0  # no dispatch happened, none stamped
 
-    async def test_an_early_decision_with_no_live_executor_fails_loudly(
-        self, resume: Any
-    ) -> None:
+    async def test_an_early_decision_with_no_live_executor_fails_loudly(self, resume: Any) -> None:
         # Fire-and-forget: the executor finished without ever joining, so nobody
         # will collect this decision. Accepting it would tell the user "going
         # ahead" for an action that never runs — refuse instead; the sweep
