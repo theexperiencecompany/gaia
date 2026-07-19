@@ -77,7 +77,7 @@ ignore_missing_imports = true
 # enforced on repository public signatures by the `repository-boundaries` lint
 # (Type-Safety Layer 2).
 [[tool.mypy.overrides]]
-module = ["app.db.repositories.*", "app.models.notes_models"]
+module = ["app.db.repositories.*", "app.models.notes_models", "app.models.mail_models"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_untyped_calls = true
