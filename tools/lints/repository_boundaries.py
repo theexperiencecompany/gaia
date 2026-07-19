@@ -54,7 +54,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "agents/tools/integration_tool.py",
         "agents/tools/tracked_todo_tools.py",
         # api/
-        "api/v1/dependencies/oauth_dependencies.py",
         "api/v1/endpoints/file.py",
         "api/v1/endpoints/integrations/config.py",
         "api/v1/endpoints/integrations/public.py",
@@ -64,7 +63,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "api/v1/endpoints/todos.py",
         "api/v1/endpoints/user.py",
         "api/v1/endpoints/workflows.py",
-        "api/v1/middleware/auth.py",
         # helpers/
         "helpers/agent_helpers.py",
         "helpers/email_helpers.py",
@@ -98,6 +96,9 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/mcp/mcp_tools_store.py",
         "services/model_service.py",
         "services/oauth/oauth_service.py",
+        # Migrated off users_collection in the users wave; still allowlisted here
+        # for their other collections (todos/workflows/conversations), pending
+        # those domains' waves.
         "services/onboarding/intelligence_job.py",
         "services/onboarding/intelligence_service.py",
         "services/onboarding/onboarding_service.py",
@@ -140,7 +141,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/workspace_sync.py",
         # utils/
         "utils/agent_utils.py",
-        "utils/auth_utils.py",
         "utils/embedding_utils.py",
         "utils/internet_utils.py",
         "utils/notification/channel_preferences.py",
@@ -171,13 +171,11 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "agents/memory/email_processor.py",
         "agents/tools/tracked_todo_tools.py",
         # api/
-        "api/v1/dependencies/oauth_dependencies.py",
         "api/v1/endpoints/integrations/config.py",
         "api/v1/endpoints/notification.py",
         "api/v1/endpoints/onboarding.py",
         "api/v1/endpoints/todos.py",
         "api/v1/endpoints/user.py",
-        "api/v1/middleware/auth.py",
         # helpers/
         "helpers/email_helpers.py",
         "helpers/message_helpers.py",
@@ -190,9 +188,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/integrations/marketplace.py",
         "services/integrations/user_integrations.py",
         "services/oauth/oauth_service.py",
-        "services/onboarding/intelligence_job.py",
-        "services/onboarding/intelligence_service.py",
-        "services/onboarding/onboarding_service.py",
         "services/onboarding/post_onboarding_service.py",
         "services/onboarding/social_profile_service.py",
         "services/onboarding/writing_style_service.py",

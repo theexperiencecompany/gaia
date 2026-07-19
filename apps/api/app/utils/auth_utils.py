@@ -4,7 +4,8 @@ from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
+from app.models.user_models import user_to_legacy_dict
 from shared.py.wide_events import log
 
 # T is the return type of the wrapped function
@@ -116,9 +117,9 @@ async def authenticate_workos_session(
         try:
             user_email = workos_user.email
             log.set(auth_provider="workos", user_email=user_email)
-            user_data = await users_collection.find_one({"email": user_email})
+            user_doc = await user_repository.get_by_email(user_email)
 
-            if not user_data:
+            if user_doc is None:
                 # User doesn't exist in our database
                 log.warning(
                     f"{LogTag.AGENT} User {user_email} authenticated but not found in database"
@@ -126,7 +127,7 @@ async def authenticate_workos_session(
                 return {}, new_session
 
             # Prepare user info for return
-            user_info = build_user_context(user_data, auth_provider="workos")
+            user_info = build_user_context(user_to_legacy_dict(user_doc), auth_provider="workos")
             return user_info, new_session
 
         except Exception as e:

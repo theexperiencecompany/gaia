@@ -262,12 +262,14 @@ class UserDocument(MongoDocument):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     last_active_at: datetime | None = None
-    onboarding: dict[str, object] | None = None
-    provider_metadata: dict[str, object] | None = None
-    hil_preferences: dict[str, object] | None = None
-    notification_channel_prefs: dict[str, object] | None = None
-    platform_links: dict[str, object] | None = None
-    platform_links_connected_at: dict[str, object] | None = None
+    # These nested subdocuments are schemaless-ish and read via chained `.get`
+    # across many callers; typed as Any (not a sub-model) per this wave's scope.
+    onboarding: dict[str, Any] | None = None
+    provider_metadata: dict[str, Any] | None = None
+    hil_preferences: dict[str, Any] | None = None
+    notification_channel_prefs: dict[str, Any] | None = None
+    platform_links: dict[str, Any] | None = None
+    platform_links_connected_at: dict[str, Any] | None = None
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
 
@@ -284,3 +286,10 @@ class UserUpdate(BaseModel):
     name: str | None = None
     timezone: str | None = None
     picture: str | None = None
+
+
+def user_to_legacy_dict(user: UserDocument) -> dict[str, Any]:
+    """Raw-style user dict (string ``_id``) for consumers not yet migrated off
+    the pre-repository dict shape — auth context building, bot resolution. A
+    transitional bridge; removed once those consumers take ``UserDocument``."""
+    return {**user.model_dump(exclude={"id"}, exclude_none=True), "_id": user.id}

@@ -13,12 +13,7 @@ from enum import Enum
 from typing import Any
 
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserDocument
-
-
-def _legacy_user_dict(user: UserDocument) -> dict[str, Any]:
-    """The raw-style user dict bot consumers still expect (string ``_id``)."""
-    return {**user.model_dump(exclude={"id"}, exclude_none=True), "_id": user.id}
+from app.models.user_models import user_to_legacy_dict
 
 
 class Platform(str, Enum):
@@ -53,7 +48,7 @@ class PlatformLinkService:
     ) -> dict[str, Any] | None:
         """Find a GAIA user by their platform account ID (queries the nested .id field)."""
         user = await user_repository.get_by_platform_id(platform, platform_user_id)
-        return _legacy_user_dict(user) if user else None
+        return user_to_legacy_dict(user) if user else None
 
     @staticmethod
     async def list_platform_user_ids(platform: str, limit: int = 500) -> list[str]:

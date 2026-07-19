@@ -1,18 +1,15 @@
 import asyncio
-from datetime import UTC, datetime
 from typing import Any
 
-from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
-from pymongo import ReturnDocument
 
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     conversations_collection,
     todos_collection,
     user_integrations_collection,
-    users_collection,
 )
+from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
 from app.models.user_models import (
     BioStatus,
@@ -21,6 +18,7 @@ from app.models.user_models import (
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
+    UserDocument,
 )
 from app.services.integrations.integration_connection_service import (
     disconnect_integration,
@@ -37,11 +35,12 @@ from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
 
-def _serialize_user(user_doc: dict[str, Any]) -> dict[str, Any]:
-    """Stringify `_id` / `user_id` so the doc is JSON-serializable."""
-    user_doc["_id"] = str(user_doc["_id"])
-    user_doc["user_id"] = user_doc["_id"]
-    return user_doc
+def _serialize_user(user: UserDocument) -> dict[str, Any]:
+    """The JSON-serializable user dict the onboarding endpoints return."""
+    data = user.model_dump(mode="json", exclude={"id"})
+    data["_id"] = user.id
+    data["user_id"] = user.id
+    return data
 
 
 async def complete_onboarding(
@@ -54,33 +53,15 @@ async def complete_onboarding(
     log.set(auth={"user_id": user_id})
 
     try:
-        user_object_id = ObjectId(user_id)
-
         preferences = OnboardingPreferences(
             profession=onboarding_data.profession,
             response_style="casual",  # Default response style
             custom_instructions=None,
         )
 
-        update_fields: dict[str, Any] = {
-            "name": onboarding_data.name.strip(),
-            "onboarding.completed": True,
-            "onboarding.completed_at": datetime.now(UTC),
-            "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING,
-            "onboarding.bio_status": BioStatus.PENDING,
-            "onboarding.preferences": preferences.model_dump(),
-            "onboarding.pipeline_mode": ("split" if onboarding_data.defer_workflows else "full"),
-            "updated_at": datetime.now(UTC),
-        }
-
-        if onboarding_data.timezone:
-            update_fields["timezone"] = onboarding_data.timezone.strip()
-
-        if onboarding_data.focus and onboarding_data.focus.strip():
-            update_fields["onboarding.focus"] = onboarding_data.focus.strip()
-
+        clarify_answers: list[dict[str, object]] | None = None
         if onboarding_data.clarify_answers:
-            kept = [
+            kept: list[dict[str, object]] = [
                 {
                     "id": a.id,
                     "kind": a.kind,
@@ -90,32 +71,41 @@ async def complete_onboarding(
                 for a in onboarding_data.clarify_answers
                 if a.value and a.value.strip()
             ]
-            if kept:
-                update_fields["onboarding.clarify_answers"] = kept
+            clarify_answers = kept or None
 
-        # Already lowercased, stripped, and deduped by the IntegrationSlug type on
-        # OnboardingRequest.selected_integrations — store as-is.
-        if onboarding_data.selected_integrations:
-            update_fields["onboarding.selected_integrations"] = (
-                onboarding_data.selected_integrations
-            )
+        focus = None
+        if onboarding_data.focus and onboarding_data.focus.strip():
+            focus = onboarding_data.focus.strip()
 
-        # Atomic gate: only the request that creates the `onboarding` subdoc
-        # wins; concurrent POSTs and replays get None and fall through.
-        updated_user = await users_collection.find_one_and_update(
-            {"_id": user_object_id, "onboarding": {"$exists": False}},
-            {"$set": update_fields},
-            return_document=ReturnDocument.AFTER,
+        # Atomic gate inside the repository: only the request that creates the
+        # `onboarding` subdoc wins; concurrent POSTs and replays get None.
+        # selected_integrations is already lowercased/stripped/deduped by the
+        # IntegrationSlug type on OnboardingRequest — store as-is.
+        updated_user = await user_repository.complete_onboarding(
+            user_id,
+            name=onboarding_data.name.strip(),
+            timezone=onboarding_data.timezone.strip() if onboarding_data.timezone else None,
+            phase=OnboardingPhase.PERSONALIZATION_PENDING,
+            bio_status=BioStatus.PENDING,
+            pipeline_mode="split" if onboarding_data.defer_workflows else "full",
+            preferences=preferences.model_dump(),
+            focus=focus,
+            clarify_answers=clarify_answers,
+            selected_integrations=(
+                list(onboarding_data.selected_integrations)
+                if onboarding_data.selected_integrations
+                else None
+            ),
         )
 
         if updated_user is None:
-            existing = await users_collection.find_one({"_id": user_object_id})
-            if not existing:
+            existing = await user_repository.get(user_id)
+            if existing is None:
                 raise HTTPException(status_code=404, detail="User not found")
             log.info(
                 f"{LogTag.ONBOARDING} complete_onboarding replay — onboarding already submitted",
                 user_id=user_id,
-                phase=(existing.get("onboarding") or {}).get("phase"),
+                phase=(existing.onboarding or {}).get("phase"),
             )
             return _serialize_user(existing)
 
@@ -129,10 +119,7 @@ async def complete_onboarding(
                 exc_info=True,
             )
             try:
-                await users_collection.update_one(
-                    {"_id": user_object_id},
-                    {"$unset": {"onboarding": ""}},
-                )
+                await user_repository.clear_onboarding(user_id)
             except Exception as rollback_error:
                 log.error(
                     f"{LogTag.ONBOARDING} Rollback also failed for user {user_id}: {rollback_error}",
@@ -166,11 +153,11 @@ async def submit_onboarding_integrations(
     job. Only valid for split-mode onboarding; idempotent under retries."""
     log.set(auth={"user_id": user_id})
 
-    user_doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {"onboarding": 1})
-    if not user_doc:
+    user = await user_repository.get(user_id)
+    if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
-    onboarding = user_doc.get("onboarding") or {}
+    onboarding = user.onboarding or {}
     if not onboarding:
         raise HTTPException(status_code=409, detail="Onboarding has not been submitted yet")
     if onboarding.get("pipeline_mode") != "split":
@@ -185,15 +172,7 @@ async def submit_onboarding_integrations(
         log.info(f"{LogTag.ONBOARDING} integrations replay — workflows job already running")
         return OnboardingIntegrationsStatus.ALREADY_RUNNING
 
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {
-            "$set": {
-                "onboarding.selected_integrations": selected_integrations,
-                "updated_at": datetime.now(UTC),
-            }
-        },
-    )
+    await user_repository.set_selected_integrations(user_id, list(selected_integrations))
 
     job_id = await enqueue_workflows_job(user_id)
     if job_id is None:
@@ -221,13 +200,12 @@ async def get_user_onboarding_status(user_id: str) -> dict[str, Any]:
         Dictionary with onboarding status and preferences
     """
     try:
-        user_object_id = ObjectId(user_id)
-        user = await users_collection.find_one({"_id": user_object_id})
+        user = await user_repository.get(user_id)
 
-        if not user:
+        if user is None:
             raise HTTPException(status_code=404, detail="User not found")
 
-        onboarding_data = user.get("onboarding", {})
+        onboarding_data = user.onboarding or {}
 
         return {
             "completed": onboarding_data.get("completed", False),
@@ -265,8 +243,6 @@ async def update_onboarding_preferences(
         HTTPException: If user not found or update fails
     """
     try:
-        user_object_id = ObjectId(user_id)
-
         # PATCH semantics: write only the fields the caller actually sent, each at
         # its own dotted path. Different settings surfaces (Preferences vs. Custom
         # Instructions) own disjoint fields, so a partial save from one can no
@@ -274,30 +250,21 @@ async def update_onboarding_preferences(
         # by the OnboardingPreferences validators (empty string -> None, length
         # capped), so they can be persisted as-is.
         provided = preferences.model_dump(exclude_unset=True)
-        set_ops: dict[str, Any] = {"updated_at": datetime.now(UTC)}
-        for field in ("profession", "response_style", "custom_instructions"):
-            if field in provided:
-                set_ops[f"onboarding.preferences.{field}"] = getattr(preferences, field)
+        patch: dict[str, object] = {
+            field: getattr(preferences, field)
+            for field in ("profession", "response_style", "custom_instructions")
+            if field in provided
+        }
 
-        # Atomic update with user existence check
-        updated_user = await users_collection.find_one_and_update(
-            {"_id": user_object_id},
-            {"$set": set_ops},
-            return_document=ReturnDocument.AFTER,
-        )
-
-        if not updated_user:
+        updated_user = await user_repository.update_onboarding_preferences(user_id, patch)
+        if updated_user is None:
             raise HTTPException(status_code=404, detail="User not found")
-
-        # Convert ObjectId to string for JSON serialization
-        updated_user["_id"] = str(updated_user["_id"])
-        updated_user["user_id"] = updated_user["_id"]
 
         log.info(
             f"{LogTag.ONBOARDING} Onboarding preferences updated successfully for user {user_id}"
         )
 
-        return updated_user
+        return _serialize_user(updated_user)
 
     except HTTPException:
         raise
@@ -314,13 +281,9 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
     Returns counts of what was deleted."""
     log.set(auth={"user_id": user_id}, onboarding={"operation": "reset"})
 
-    user_object_id = ObjectId(user_id)
-    user_doc = await users_collection.find_one(
-        {"_id": user_object_id},
-        {"onboarding": 1},
-    )
+    user = await user_repository.get(user_id)
 
-    if not user_doc:
+    if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Abort any in-flight pipeline first so it can't emit stage events
@@ -340,7 +303,7 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
             f"{LogTag.ONBOARDING} reset_onboarding failed to abort workflows job: {workflows_result}"
         )
 
-    onboarding = user_doc.get("onboarding", {}) or {}
+    onboarding = user.onboarding or {}
     workflow_ids: list[Any] = onboarding.get("suggested_workflows", []) or []
     first_conversation_id = onboarding.get("first_message_conversation_id")
 
@@ -390,13 +353,7 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
     integrations_disconnected = await _disconnect_user_integrations(user_id)
     memories_cleared = await _clear_user_memories(user_id)
 
-    await users_collection.update_one(
-        {"_id": user_object_id},
-        {
-            "$unset": {"onboarding": ""},
-            "$set": {"updated_at": datetime.now(UTC)},
-        },
-    )
+    await user_repository.reset_onboarding(user_id)
 
     counts = {
         "workflows_deleted": workflows_deleted,
