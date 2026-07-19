@@ -68,6 +68,8 @@ LAST_ACTIVE_DEBOUNCE_SECONDS = 60
 
 # Per-repository cache-key prefixes (one namespace per domain).
 NOTE_CACHE_PREFIX = "note"
+TODO_CACHE_PREFIX = "todo"
+PROJECT_CACHE_PREFIX = "project"
 
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"

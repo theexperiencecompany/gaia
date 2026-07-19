@@ -142,6 +142,16 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     def _doc_scope(self, doc: TDoc) -> str:
         return REPO_GLOBAL_SCOPE
 
+    def _scope_filter(self, scope: str) -> dict[str, object]:
+        """Extra Mongo filter constraining an operation to ``scope``.
+
+        Empty for a global repository; ``{"user_id": scope}`` for a user-scoped
+        one, so the multi-document primitives (``_bulk_set``, ``_bulk_delete``,
+        ``_apply_ops``) never reach across users the way a raw ``{"_id": ...}``
+        filter would.
+        """
+        return {}
+
     # ---- cache helpers ----
 
     async def _cache_store(self, scope: str, doc: TDoc) -> None:
@@ -268,6 +278,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         raw_docs = await cursor.to_list(length=limit or None)
         return [self._to_model(raw) for raw in raw_docs]
 
+    async def _find_one(self, filter_: Mapping[str, object]) -> TDoc | None:
+        raw = await get_async_collection(self.collection_name).find_one(dict(filter_))
+        return self._to_model(raw) if raw is not None else None
+
     async def _aggregate(
         self, pipeline: Sequence[Mapping[str, object]], result_model: type[TResult]
     ) -> list[TResult]:
@@ -284,6 +298,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             return 0
         stamp_updated_at = "updated_at" in self.document_model.model_fields
         now = datetime.now(UTC)
+        scope_filter = self._scope_filter(scope)
         operations: list[UpdateOne] = []
         for doc_id, update in updates:
             set_fields = update.model_dump(exclude_unset=True)
@@ -291,7 +306,9 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
                 raise EmptyUpdateError(message=f"bulk update for {doc_id} has no fields to set")
             if stamp_updated_at:
                 set_fields["updated_at"] = now
-            operations.append(UpdateOne({"_id": self._id_value(doc_id)}, {"$set": set_fields}))
+            operations.append(
+                UpdateOne({"_id": self._id_value(doc_id), **scope_filter}, {"$set": set_fields})
+            )
         result = await get_async_collection(self.collection_name).bulk_write(operations)
         modified = result.modified_count
         if modified:
@@ -299,6 +316,61 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
                 await self._cache_evict(scope, doc_id)
             await self._invalidate(scope)
         return modified
+
+    async def _bulk_delete(self, doc_ids: Sequence[str], *, scope: str) -> int:
+        """Delete many documents in one round trip. All ids must share ``scope``
+        (the caller's user) so one generation bump invalidates them together."""
+        if not doc_ids:
+            return 0
+        result = await get_async_collection(self.collection_name).delete_many(
+            {
+                "_id": {"$in": [self._id_value(doc_id) for doc_id in doc_ids]},
+                **self._scope_filter(scope),
+            }
+        )
+        deleted = result.deleted_count
+        if deleted:
+            for doc_id in doc_ids:
+                await self._cache_evict(scope, doc_id)
+            await self._invalidate(scope)
+        return deleted
+
+    async def _apply_raw_update(
+        self,
+        filter_: Mapping[str, object],
+        update: Mapping[str, Mapping[str, object]],
+        *,
+        scope: str,
+        extra_filter: Mapping[str, object] | None = None,
+        array_filters: Sequence[Mapping[str, object]] | None = None,
+    ) -> TDoc | None:
+        """Apply a raw Mongo update to one document, then refresh the entity cache
+        and bump the generation exactly like the typed ``update`` path.
+
+        The typed ``$set``-from-model path (public ``update``) is preferred; this is
+        the internal seam for the operators a typed model cannot express —
+        ``$push``/``$pull``/``$addToSet`` on arrays, positional ``$set`` with
+        ``array_filters``, and ``$unset``. ``updated_at`` is stamped into ``$set``
+        automatically when the document declares it. ``scope`` names the cache scope
+        (usually the owning ``user_id``); ``extra_filter`` adds guards (e.g. a
+        ``vfs_path`` existence check) to ``filter_``.
+        """
+        ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
+        if "updated_at" in self.document_model.model_fields:
+            ops.setdefault("$set", {})["updated_at"] = datetime.now(UTC)
+        collection = get_async_collection(self.collection_name)
+        raw = await collection.find_one_and_update(
+            {**dict(filter_), **(extra_filter or {})},
+            ops,
+            array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
+            return_document=ReturnDocument.AFTER,
+        )
+        if raw is None:
+            return None
+        doc = self._to_model(raw)
+        await self._cache_store(scope, doc)
+        await self._invalidate(scope)
+        return doc
 
     async def _increment(
         self,
@@ -358,6 +430,9 @@ class UserScopedRepository(_BaseRepository[TUserDoc, TUpdate], abstract=True):
 
     def _doc_scope(self, doc: TUserDoc) -> str:
         return doc.user_id
+
+    def _scope_filter(self, scope: str) -> dict[str, object]:
+        return {"user_id": scope}
 
     async def get(self, doc_id: str, *, user_id: str) -> TUserDoc | None:
         return await self._fetch(doc_id, user_id, {"user_id": user_id})
