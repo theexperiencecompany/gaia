@@ -170,7 +170,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return await self._insert(doc, self._doc_scope(doc))
 
     async def _insert(self, doc: TDoc, scope: str) -> TDoc:
-        data = doc.model_dump(exclude={"id"})
+        # exclude_none so an unset optional field is absent, not stored as null:
+        # a later nested `$set` (onboarding.x) or `{$exists: false}` gate needs the
+        # container field absent, and absent reads back identically to null anyway.
+        data = doc.model_dump(exclude={"id"}, exclude_none=True)
         now = datetime.now(UTC)
         fields = self.document_model.model_fields
         if "created_at" in fields:
@@ -250,6 +253,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
 
     # ---- subclass-only primitives (never called outside a repository) ----
 
+    async def _find_one(self, filter_: Mapping[str, object]) -> TDoc | None:
+        raw = await get_async_collection(self.collection_name).find_one(dict(filter_))
+        return None if raw is None else self._to_model(raw)
+
     async def _find(
         self,
         filter_: Mapping[str, object],
@@ -267,6 +274,35 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             cursor = cursor.limit(limit)
         raw_docs = await cursor.to_list(length=limit or None)
         return [self._to_model(raw) for raw in raw_docs]
+
+    async def _apply_raw_update(
+        self,
+        filter_: Mapping[str, object],
+        update: Mapping[str, object],
+        *,
+        scope: str,
+        extra_filter: Mapping[str, object] | None = None,
+        return_document: bool = True,
+    ) -> TDoc | None:
+        """Apply an arbitrary Mongo update ($set/$unset/…) assembled inside a
+        repository method, keeping the cache coherent.
+
+        Always runs ``find_one_and_update`` returning the AFTER image, so the
+        write refreshes the entity cache and bumps the generation. Returns the
+        updated document, or ``None`` when nothing matched ``filter_`` +
+        ``extra_filter`` (e.g. an ``$exists`` gate missed); ``return_document=False``
+        still performs the write and cache refresh but returns ``None``.
+        """
+        full_filter = {**filter_, **(extra_filter or {})}
+        raw = await get_async_collection(self.collection_name).find_one_and_update(
+            full_filter, dict(update), return_document=ReturnDocument.AFTER
+        )
+        if raw is None:
+            return None
+        doc = self._to_model(raw)
+        await self._cache_store(scope, doc)
+        await self._invalidate(scope)
+        return doc if return_document else None
 
     async def _aggregate(
         self, pipeline: Sequence[Mapping[str, object]], result_model: type[TResult]

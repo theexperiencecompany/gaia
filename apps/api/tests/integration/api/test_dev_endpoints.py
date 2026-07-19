@@ -132,7 +132,9 @@ class TestDevServiceLogic:
         from app.services import dev_service
 
         oid = ObjectId()
-        user_doc = {"_id": oid, "email": DEV_EMAIL, "name": "dev"}
+        user = dev_service.UserDocument.model_validate(
+            {"id": str(oid), "email": DEV_EMAIL, "name": "dev"}
+        )
 
         with (
             patch.object(
@@ -141,11 +143,10 @@ class TestDevServiceLogic:
                 new_callable=AsyncMock,
                 side_effect=[(oid, True), (oid, False)],
             ),
-            patch.object(dev_service, "users_collection") as mock_users,
+            patch.object(
+                dev_service.user_repository, "get", new_callable=AsyncMock, return_value=user
+            ),
         ):
-            # Fresh copy per call — serialize_document mutates its input (pops _id).
-            mock_users.find_one = AsyncMock(side_effect=lambda *a, **k: dict(user_doc))
-
             first = await dev_service.mint_dev_user(DEV_EMAIL)
             second = await dev_service.mint_dev_user(DEV_EMAIL)
 
@@ -157,16 +158,16 @@ class TestDevServiceLogic:
         from app.services import dev_service
 
         oid = ObjectId()
-        mock_update = AsyncMock()
+        user = dev_service.UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL})
+        mock_complete = AsyncMock()
         with (
             patch.object(
-                dev_service,
-                "users_collection",
-                **{
-                    "find_one": AsyncMock(return_value={"_id": oid, "email": DEV_EMAIL}),
-                    "update_one": mock_update,
-                },
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
             ),
+            patch.object(dev_service.user_repository, "complete_onboarding", mock_complete),
             patch.object(dev_service, "create_todo", new_callable=AsyncMock) as mock_todo,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock
@@ -187,25 +188,22 @@ class TestDevServiceLogic:
         assert result["platforms_linked"] == ["telegram", "slack"]
         assert result["user_id"] == str(oid)
 
-        # Seeding marks onboarding complete, gated so it never clobbers a real
-        # onboarding subdoc.
-        onboarding_filter, onboarding_update = mock_update.await_args_list[0].args
-        assert onboarding_filter == {"_id": oid, "onboarding": {"$exists": False}}
-        assert onboarding_update["$set"]["onboarding.completed"] is True
-        assert (
-            onboarding_update["$set"]["onboarding.phase"] == dev_service.OnboardingPhase.COMPLETED
-        )
+        # Seeding marks onboarding complete via the gated repository method.
+        assert mock_complete.await_args.args[0] == str(oid)
+        assert mock_complete.await_args.kwargs["phase"] == dev_service.OnboardingPhase.COMPLETED
 
     async def test_seed_rejects_unknown_platform_before_writing(self):
         """An invalid platform aborts with 400 and writes nothing."""
         from app.services import dev_service
         from app.utils.errors import AppError
 
+        user = dev_service.UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
         with (
             patch.object(
-                dev_service,
-                "users_collection",
-                **{"find_one": AsyncMock(return_value={"_id": ObjectId(), "email": DEV_EMAIL})},
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
             ),
             patch.object(dev_service, "create_todo", new_callable=AsyncMock) as mock_todo,
         ):
@@ -222,9 +220,7 @@ class TestDevServiceLogic:
         from app.utils.errors import AppError
 
         with patch.object(
-            dev_service,
-            "users_collection",
-            **{"find_one": AsyncMock(return_value=None)},
+            dev_service.user_repository, "get_by_email", new_callable=AsyncMock, return_value=None
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(

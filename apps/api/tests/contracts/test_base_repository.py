@@ -160,6 +160,32 @@ class TestBasePrimitives:
         assert len(results) == 1
         assert results[0].total == 5
 
+    async def test_apply_raw_update_sets_and_keeps_cache_coherent(self, repo, make_doc, redis):
+        created = await repo.create(make_doc(user_id="u", count=1))
+        gen_key = repo.cache_policy.generation_key("u")
+        gen_before = int(await redis.get(gen_key))
+        updated = await repo._apply_raw_update(
+            {"_id": repo._id_value(created.id)}, {"$set": {"count": 9}}, scope="u"
+        )
+        assert updated is not None and updated.count == 9
+        ent = await redis.get(repo.cache_policy.entity_key("u", created.id))
+        assert repo.document_model.model_validate_json(ent).count == 9  # cache refreshed
+        assert int(await redis.get(gen_key)) == gen_before + 1  # generation bumped
+
+    async def test_apply_raw_update_unset_and_gate_miss(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u", count=5))
+        unset = await repo._apply_raw_update(
+            {"_id": repo._id_value(created.id)}, {"$unset": {"count": ""}}, scope="u"
+        )
+        assert unset is not None and unset.count == 0  # field removed → model default
+        missed = await repo._apply_raw_update(
+            {"_id": repo._id_value(created.id)},
+            {"$set": {"count": 1}},
+            scope="u",
+            extra_filter={"count": 999},
+        )
+        assert missed is None  # extra_filter gate did not match
+
 
 class _GlobalDocument(MongoDocument):
     name: str

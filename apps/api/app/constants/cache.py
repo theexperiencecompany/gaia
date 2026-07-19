@@ -68,6 +68,8 @@ LAST_ACTIVE_DEBOUNCE_SECONDS = 60
 
 # Per-repository cache-key prefixes (one namespace per domain).
 NOTE_CACHE_PREFIX = "note"
+# Redis SET NX EX gate that debounces UserRepository.touch_last_active.
+LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
 
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"

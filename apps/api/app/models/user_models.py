@@ -3,8 +3,9 @@ from enum import Enum
 import re
 from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
+from app.db.repositories.base import MongoDocument
 from app.utils.timezone import is_valid_timezone
 
 # Lowercased, bounded slug for request-supplied integration ids.
@@ -237,3 +238,49 @@ def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
             seen.add(slug)
             out.append(slug)
     return out
+
+
+class UserDocument(MongoDocument):
+    """A user as stored in MongoDB.
+
+    ``extra="allow"`` (not the usual ``ignore``): the auth layer's
+    ``build_user_context`` spreads the *entire* user document into
+    ``request.state.user``, and the agent's dynamic context reads arbitrary
+    fields off it (custom instructions, writing style, preferences). Dropping
+    undeclared fields here would silently strip those downstream. Declared fields
+    are all Optional so a legacy/partial row never fails an auth read. (Relaxes to
+    ``ignore`` once every writer is migrated and the field inventory is complete —
+    see the users-cleanup follow-up.)
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    email: str | None = None
+    name: str | None = None
+    picture: str | None = None
+    timezone: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    last_active_at: datetime | None = None
+    onboarding: dict[str, object] | None = None
+    provider_metadata: dict[str, object] | None = None
+    hil_preferences: dict[str, object] | None = None
+    notification_channel_prefs: dict[str, object] | None = None
+    platform_links: dict[str, object] | None = None
+    platform_links_connected_at: dict[str, object] | None = None
+    starred_voice_ids: list[str] | None = None
+    selected_voice_id: str | None = None
+
+
+class UserUpdate(BaseModel):
+    """Flat top-level user fields updatable through the generic ``update`` path.
+
+    Nested ``onboarding.*`` / ``platform_links.*`` changes go through the
+    repository's named methods, not this model.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    timezone: str | None = None
+    picture: str | None = None
