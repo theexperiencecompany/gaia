@@ -18,7 +18,7 @@ from langchain_core.messages import (
 import pytest
 
 from app.agents.llm.vision.adapter import MediaAdapter
-from app.agents.llm.vision.capability import VisionCapability
+from app.agents.llm.vision.capability import MediaDelivery
 from app.constants.media import (
     MAX_INLINE_MEDIA_BLOCKS,
     MEDIA_DESCRIPTIONS_KEY,
@@ -58,7 +58,7 @@ class TestToolMessageBlocksLane:
     def test_image_stays_inside_the_tool_message(self):
         msgs = [_ai_call(), _tool_msg({"type": "text", "text": "shot.png"}, _img())]
 
-        out = MediaAdapter(VisionCapability.TOOL_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)
 
         assert isinstance(out[1], ToolMessage)
         assert has_media_blocks(out[1].content)
@@ -69,14 +69,14 @@ class TestToolMessageBlocksLane:
         Gemini would put a spurious user turn into the conversation."""
         msgs = [_ai_call(), _tool_msg(_img())]
 
-        out = MediaAdapter(VisionCapability.TOOL_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)
 
         assert not any(isinstance(m, HumanMessage) for m in out)
 
     def test_messages_without_media_are_returned_untouched(self):
         msgs = [SystemMessage(content="sys"), HumanMessage(content="hi"), AIMessage(content="yo")]
 
-        out = MediaAdapter(VisionCapability.TOOL_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)
 
         assert out == msgs
 
@@ -93,7 +93,7 @@ class TestUserMessageBlocksLane:
         tool result is silently unusable. It must be repacked into a user turn."""
         msgs = [_ai_call(), _tool_msg({"type": "text", "text": "shot.png"}, _img())]
 
-        out = MediaAdapter(VisionCapability.USER_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
 
         tool_msgs = [m for m in out if isinstance(m, ToolMessage)]
         human_msgs = [m for m in out if isinstance(m, HumanMessage)]
@@ -111,7 +111,7 @@ class TestUserMessageBlocksLane:
             AIMessage(content="done"),
         ]
 
-        out = MediaAdapter(VisionCapability.USER_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
         kinds = [type(m).__name__ for m in out]
 
         assert kinds == ["AIMessage", "ToolMessage", "ToolMessage", "HumanMessage", "AIMessage"]
@@ -121,7 +121,7 @@ class TestUserMessageBlocksLane:
         only happened on a following non-tool message, the image would vanish."""
         msgs = [_ai_call(), _tool_msg(_img())]
 
-        out = MediaAdapter(VisionCapability.USER_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
 
         assert isinstance(out[-1], HumanMessage)
         assert len(media_blocks(out[-1].content)) == 1
@@ -129,7 +129,7 @@ class TestUserMessageBlocksLane:
     def test_the_tool_result_keeps_its_text_and_gains_a_pointer_notice(self):
         msgs = [_ai_call(), _tool_msg({"type": "text", "text": "shot.png header"}, _img())]
 
-        out = MediaAdapter(VisionCapability.USER_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
         tool_content = next(m for m in out if isinstance(m, ToolMessage)).content
 
         assert "shot.png header" in tool_content
@@ -142,7 +142,7 @@ class TestUserMessageBlocksLane:
             _tool_msg(_img("B"), name="browser", call_id="c2"),
         ]
 
-        out = MediaAdapter(VisionCapability.USER_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
         human = next(m for m in out if isinstance(m, HumanMessage))
         labels = " ".join(b["text"] for b in human.content if b["type"] == "text")
 
@@ -161,7 +161,7 @@ class TestTextOnlyLane:
     def test_no_image_block_survives(self):
         msgs = [_ai_call(), _tool_msg({"type": "text", "text": "shot.png"}, _img())]
 
-        out = MediaAdapter(VisionCapability.TEXT_ONLY).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.REPLACE_WITH_TEXT).adapt(msgs)
 
         assert not _all_images(out)
         assert "BASE64-A" not in str(out[1].content)
@@ -175,7 +175,7 @@ class TestTextOnlyLane:
             additional_kwargs={MEDIA_DESCRIPTIONS_KEY: ["A login screen with a red banner."]},
         )
 
-        out = MediaAdapter(VisionCapability.TEXT_ONLY).adapt([_ai_call(), msg])
+        out = MediaAdapter(MediaDelivery.REPLACE_WITH_TEXT).adapt([_ai_call(), msg])
 
         assert "A login screen with a red banner." in out[1].content
         assert MEDIA_OMITTED_NOTICE not in out[1].content
@@ -187,7 +187,7 @@ class TestTextOnlyLane:
             additional_kwargs={MEDIA_DESCRIPTIONS_KEY: ["first image", "second image"]},
         )
 
-        out = MediaAdapter(VisionCapability.TEXT_ONLY).adapt([_ai_call(), msg])
+        out = MediaAdapter(MediaDelivery.REPLACE_WITH_TEXT).adapt([_ai_call(), msg])
 
         assert "first image" in out[1].content
         assert "second image" in out[1].content
@@ -195,14 +195,14 @@ class TestTextOnlyLane:
     def test_a_message_with_no_cached_description_falls_back_to_the_notice(self):
         """Produced on a vision lane, replayed on a text-only one — there is
         nothing to spend, and the model must at least be told it is blind."""
-        out = MediaAdapter(VisionCapability.TEXT_ONLY).adapt([_ai_call(), _tool_msg(_img())])
+        out = MediaAdapter(MediaDelivery.REPLACE_WITH_TEXT).adapt([_ai_call(), _tool_msg(_img())])
 
         assert MEDIA_OMITTED_NOTICE in out[1].content
 
     def test_an_empty_description_list_falls_back_rather_than_rendering_nothing(self):
         msg = _tool_msg(_img(), additional_kwargs={MEDIA_DESCRIPTIONS_KEY: []})
 
-        out = MediaAdapter(VisionCapability.TEXT_ONLY).adapt([_ai_call(), msg])
+        out = MediaAdapter(MediaDelivery.REPLACE_WITH_TEXT).adapt([_ai_call(), msg])
 
         assert MEDIA_OMITTED_NOTICE in out[1].content
 
@@ -221,7 +221,7 @@ class TestBudget:
             _tool_msg(_img(str(i)), call_id=f"c{i}") for i in range(MAX_INLINE_MEDIA_BLOCKS + 3)
         ]
 
-        out = MediaAdapter(VisionCapability.TOOL_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)
 
         assert len(_all_images(out)) == MAX_INLINE_MEDIA_BLOCKS
 
@@ -231,7 +231,7 @@ class TestBudget:
             _tool_msg(_img(str(i)), call_id=f"c{i}") for i in range(MAX_INLINE_MEDIA_BLOCKS + 2)
         ]
 
-        out = MediaAdapter(VisionCapability.TOOL_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)
         kept = {b["base64"] for b in _all_images(out)}
 
         assert "BASE64-0" not in kept, "oldest image should have been evicted"
@@ -243,7 +243,7 @@ class TestBudget:
             _tool_msg(_img(str(i)), call_id=f"c{i}") for i in range(MAX_INLINE_MEDIA_BLOCKS + 1)
         ]
 
-        out = MediaAdapter(VisionCapability.TOOL_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)
 
         assert any(MEDIA_EVICTED_NOTICE in str(m.content) for m in out)
 
@@ -251,7 +251,7 @@ class TestBudget:
         """Boundary: `>=` vs `>` in the budget check."""
         msgs = [_tool_msg(_img(str(i)), call_id=f"c{i}") for i in range(MAX_INLINE_MEDIA_BLOCKS)]
 
-        out = MediaAdapter(VisionCapability.TOOL_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)
 
         assert len(_all_images(out)) == MAX_INLINE_MEDIA_BLOCKS
         assert not any(MEDIA_EVICTED_NOTICE in str(m.content) for m in out)
@@ -262,7 +262,7 @@ class TestBudget:
             _tool_msg(_img(str(i)), call_id=f"c{i}") for i in range(MAX_INLINE_MEDIA_BLOCKS + 3)
         ]
 
-        out = MediaAdapter(VisionCapability.USER_MESSAGE_BLOCKS).adapt(msgs)
+        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
 
         assert len(_all_images(out)) == MAX_INLINE_MEDIA_BLOCKS
 
@@ -270,6 +270,6 @@ class TestBudget:
         """One tool result carrying many images must still be capped."""
         many = _tool_msg(*[_img(str(i)) for i in range(MAX_INLINE_MEDIA_BLOCKS + 4)])
 
-        out = MediaAdapter(VisionCapability.TOOL_MESSAGE_BLOCKS).adapt([many])
+        out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt([many])
 
         assert len(_all_images(out)) == MAX_INLINE_MEDIA_BLOCKS
