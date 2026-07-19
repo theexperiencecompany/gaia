@@ -59,9 +59,23 @@ PROVIDER_SAFE_IMAGE_MIMES = frozenset({PNG_MIME, JPEG_MIME, WEBP_MIME})
 TRANSCODE_MIME = JPEG_MIME
 TRANSCODE_FORMAT = "JPEG"
 TRANSCODE_QUALITY = 80
+# Fall back to progressively lower quality when the primary still busts
+# TARGET_INLINE_IMAGE_BYTES: a dense 1568px image (a detailed screenshot, a noisy
+# photo) can exceed the byte budget even after downscaling, and that payload is
+# persisted in every Postgres checkpoint. The last step is the floor — best effort.
+TRANSCODE_QUALITY_STEPS = (TRANSCODE_QUALITY, 60, 40)
 
 # Refuse image data larger than this outright, before decoding it.
 MAX_IMAGE_FILE_BYTES = 10 * 1024 * 1024
+# Refuse images above this pixel area before re-encoding. DOWNSCALE_LONGEST_EDGE
+# bounds the *output*, but `_transcode` must decode the full-resolution source into
+# an RGB buffer (width x height x 3 bytes) before it can downscale — a flat, highly
+# compressible PNG can stay under MAX_IMAGE_FILE_BYTES while carrying enough pixels
+# to spike hundreds of MB on a shared worker. Sits above the legitimately-large
+# images the byte/edge budgets already downscale and below Pillow's own
+# decompression-bomb ceiling, so an oversized source is rejected as InvalidImage
+# rather than materialized first.
+MAX_IMAGE_PIXELS = 100_000_000
 # Re-encode images above this size so the base64 payload stays small in the
 # provider request and in the Postgres checkpointer, which persists the full
 # ToolMessage on every checkpoint.

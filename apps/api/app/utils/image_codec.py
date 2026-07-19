@@ -24,12 +24,13 @@ from app.constants.media import (
     IMAGE_EXTENSION_BY_MIME,
     IMAGE_MIME_BY_EXTENSION,
     MAX_IMAGE_FILE_BYTES,
+    MAX_IMAGE_PIXELS,
     MIME_BY_PILLOW_FORMAT,
     PROVIDER_SAFE_IMAGE_MIMES,
     TARGET_INLINE_IMAGE_BYTES,
     TRANSCODE_FORMAT,
     TRANSCODE_MIME,
-    TRANSCODE_QUALITY,
+    TRANSCODE_QUALITY_STEPS,
 )
 from app.utils.multimodal import ContentBlock, image_content_block
 
@@ -96,6 +97,11 @@ class ImageCodec:
                 f"image is {len(data)} bytes; exceeds the {MAX_IMAGE_FILE_BYTES}-byte inline limit"
             )
         mime_type, (width, height) = cls._probe(data)
+        if width * height > MAX_IMAGE_PIXELS:
+            raise InvalidImage(
+                f"image is {width}x{height} ({width * height} pixels); "
+                f"exceeds the {MAX_IMAGE_PIXELS}-pixel inline limit"
+            )
 
         # Bytes and pixels are separate budgets, and either one alone can blow up
         # a request: providers bill images by pixel area, so a flat 8000x8000 PNG
@@ -130,19 +136,32 @@ class ImageCodec:
 
     @staticmethod
     def _transcode(data: bytes) -> bytes:
-        """Downscale and re-encode as JPEG (animated formats keep frame one)."""
+        """Downscale and re-encode as JPEG under the inline byte budget.
+
+        Animated formats keep frame one. Quality steps down until the payload fits
+        ``TARGET_INLINE_IMAGE_BYTES`` — a dense 1568px image can still exceed it at
+        full quality, and that payload is persisted in every checkpoint. The last
+        step is the floor: it ships even if still over budget, rather than failing
+        the turn over an unusually dense image.
+        """
         try:
             image = Image.open(BytesIO(data)).convert("RGB")
             image.thumbnail(
                 (DOWNSCALE_LONGEST_EDGE, DOWNSCALE_LONGEST_EDGE), Image.Resampling.LANCZOS
             )
-            output = BytesIO()
-            image.save(output, format=TRANSCODE_FORMAT, optimize=True, quality=TRANSCODE_QUALITY)
         except (OSError, Image.DecompressionBombError) as exc:
             # `verify()` in `_probe` only reads the header — a truncated or
             # corrupt file gets past it and blows up here, on the full decode.
             raise InvalidImage(f"image could not be re-encoded: {exc}") from exc
-        return output.getvalue()
+
+        encoded = b""
+        for quality in TRANSCODE_QUALITY_STEPS:
+            output = BytesIO()
+            image.save(output, format=TRANSCODE_FORMAT, optimize=True, quality=quality)
+            encoded = output.getvalue()
+            if len(encoded) <= TARGET_INLINE_IMAGE_BYTES:
+                break
+        return encoded
 
     @staticmethod
     def _encode(data: bytes, mime_type: str) -> InlineImage:
