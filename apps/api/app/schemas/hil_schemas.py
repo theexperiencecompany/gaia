@@ -22,6 +22,36 @@ class ApprovalDecisionResponse(BaseModel):
     success: bool
 
 
+class BatchDecisionItem(BaseModel):
+    """One approval's decision within a batch."""
+
+    approval_id: str
+    decision: Literal["approve", "deny"]
+    feedback: str | None = Field(None, max_length=2000)
+
+
+class BatchApprovalDecisionRequest(BaseModel):
+    """Body for deciding several pending approvals in one submission."""
+
+    decisions: list[BatchDecisionItem] = Field(min_length=1, max_length=25)
+
+
+class BatchDecisionOutcome(BaseModel):
+    """Per-approval outcome of a batch decision."""
+
+    approval_id: str
+    resolved: bool
+    # Set when resolved is False: "not_found" (already decided/expired),
+    # "forbidden", or "not_resumable".
+    reason: str | None = None
+
+
+class BatchApprovalDecisionResponse(BaseModel):
+    """Result of a batch decision: each approval's individual outcome."""
+
+    outcomes: list[BatchDecisionOutcome]
+
+
 class HILPreferencesResponse(HILPreferences):
     """A user's HIL preferences as returned by the preferences endpoints."""
 

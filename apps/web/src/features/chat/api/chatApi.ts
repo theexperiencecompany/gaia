@@ -2,7 +2,11 @@ import {
   type EventSourceMessage,
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
-import type { ApprovalDecisionPayload } from "@shared/chat";
+import type {
+  ApprovalDecisionPayload,
+  BatchApprovalDecisionPayload,
+  BatchApprovalDecisionResponse,
+} from "@shared/chat";
 
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { apiService } from "@/lib/api/service";
@@ -496,5 +500,20 @@ export const chatApi = {
       if (status === HTTP_GONE) return;
       throw error;
     }
+  },
+
+  /**
+   * Decide several pending approvals in one submission (the batch review's
+   * "Approve all"/"Decline all"). Per-approval outcomes come back in the
+   * response — an already-resolved item never fails the rest.
+   */
+  postApprovalBatchDecision: async (
+    payload: BatchApprovalDecisionPayload,
+  ): Promise<BatchApprovalDecisionResponse> => {
+    return apiService.post<BatchApprovalDecisionResponse>(
+      "/approvals/batch-decision",
+      payload,
+      { silent: true },
+    );
   },
 };

@@ -105,6 +105,34 @@ async def resolve_approval(
     return await _resolve_record(record, user_id=user_id, kind=kind, feedback=feedback, scope=scope)
 
 
+async def resolve_approvals_batch(
+    user_id: str, decisions: list[tuple[str, DecisionKind, str | None]]
+) -> list[dict[str, Any]]:
+    """Apply several decisions in one submission — the web batch review's backend.
+
+    Each approval still transitions exactly once; the per-conversation resume slot
+    means only the first decision actually dispatches the executor, and the join
+    round it wakes collects the rest. One failed item never blocks the others —
+    its outcome is reported instead.
+    """
+    outcomes: list[dict[str, Any]] = []
+    for approval_id, kind, feedback in decisions:
+        try:
+            await resolve_approval(
+                approval_id=approval_id, user_id=user_id, kind=kind, feedback=feedback
+            )
+            outcomes.append({"approval_id": approval_id, "resolved": True, "reason": None})
+        except ApprovalRequestNotFound:
+            outcomes.append({"approval_id": approval_id, "resolved": False, "reason": "not_found"})
+        except ApprovalRequestForbidden:
+            outcomes.append({"approval_id": approval_id, "resolved": False, "reason": "forbidden"})
+        except ApprovalNotResumable:
+            outcomes.append(
+                {"approval_id": approval_id, "resolved": False, "reason": "not_resumable"}
+            )
+    return outcomes
+
+
 async def abandon_conversation_approvals(
     conversation_id: str, user_id: str, feedback: str
 ) -> list[str]:
@@ -171,7 +199,13 @@ async def _resolve_record(
     # Checked BEFORE the decided-transition: a decision we cannot act on must
     # fail the request (record stays pending; the sweep expires it), never
     # report success for an action that will silently not run.
-    if record.resume_item is None:
+    #
+    # Exception: a parked-subagent record (stamped ``subagent_thread_id``) decided
+    # BEFORE the executor reaches its join has no resume context yet — and needs
+    # none. The executor is still running; the join reads the decided status
+    # durably and collects the subagent without any wake-up. Refusing here would
+    # 503 the quick-fingered user for answering promptly.
+    if record.resume_item is None and record.subagent_thread_id is None:
         log.error(f"{LogTag.HIL} No resume context on record", approval_id=record.approval_id)
         raise ApprovalNotResumable()
 
@@ -189,6 +223,13 @@ async def _resolve_record(
 
     log.set(hil={"approval_id": record.approval_id, "decision": kind, "tool": record.tool_name})
     resume_status = "denied" if kind == "abandon" else _TERMINAL_STATUS[kind]
+    if record.resume_item is None:
+        # Decided pre-join: nothing to dispatch, the running executor collects it.
+        log.info(
+            f"{LogTag.HIL} Early decision on parked subagent; join will collect",
+            approval_id=record.approval_id,
+        )
+        return record
     await _dispatch_resume(record, resume_status=resume_status, feedback=feedback, scope=scope)
     return record
 

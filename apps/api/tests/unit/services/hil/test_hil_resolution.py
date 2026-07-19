@@ -18,6 +18,7 @@ from app.services.hil.resolution import (
     ApprovalRequestNotFound,
     abandon_conversation_approvals,
     resolve_approval,
+    resolve_approvals_batch,
     sweep_approvals,
 )
 
@@ -120,6 +121,23 @@ class TestUnresumableRecords:
         assert decided.await_count == 0  # stays pending; the sweep will expire it
         assert resume.prepare.await_count == 0
 
+    async def test_an_early_decision_on_a_parked_subagent_decides_without_dispatch(
+        self, resume: Any
+    ) -> None:
+        # The user answers a parked subagent's card BEFORE the executor reaches its
+        # join (so no resume_item exists yet). The decision must land — the running
+        # executor collects it durably — and must NOT dispatch or stamp a resume.
+        record = make_record(resume_item=None, subagent_thread_id="gmail_executor_conv-1")
+        with (
+            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
+        ):
+            await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
+
+        assert decided.await_count == 1  # the decision is durable
+        assert resume.prepare.await_count == 0  # nothing to wake — executor is running
+        assert resume.mark_resumed.await_count == 0  # no dispatch happened, none stamped
+
     async def test_a_failed_run_preparation_leaves_the_record_unstamped_for_the_sweep(
         self, resume: Any
     ) -> None:
@@ -199,6 +217,35 @@ class TestDecisionSemantics:
 
         assert decided.await_args.args[1] == "abandoned"
         assert resume.runner.call_args.kwargs["resume"].resume["status"] == "denied"
+
+
+class TestBatchDecisions:
+    async def test_one_failed_item_never_blocks_the_rest(self, resume: Any) -> None:
+        # The batch review submits N decisions; an already-decided approval (double
+        # click, resolved elsewhere) must be reported per-item, not abort the batch.
+        good = make_record(approval_id="a-good")
+        gone = make_record(approval_id="a-gone")
+
+        async def load(approval_id: str) -> Any:
+            return {"a-good": good, "a-gone": gone}[approval_id]
+
+        async def transition(approval_id: str, *args: Any, **kwargs: Any) -> bool:
+            return approval_id == "a-good"  # "a-gone" was already decided
+
+        with (
+            patch(f"{MODULE}.get_approval", new=AsyncMock(side_effect=load)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(side_effect=transition)),
+        ):
+            outcomes = await resolve_approvals_batch(
+                USER_ID,
+                [("a-good", "approve", None), ("a-gone", "deny", None)],
+            )
+
+        assert outcomes == [
+            {"approval_id": "a-good", "resolved": True, "reason": None},
+            {"approval_id": "a-gone", "resolved": False, "reason": "not_found"},
+        ]
+        assert resume.prepare.await_count == 1  # only the real transition dispatched
 
 
 class TestAbandonConversation:

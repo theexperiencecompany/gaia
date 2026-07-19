@@ -8,6 +8,9 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
     ApprovalDecisionResponse,
+    BatchApprovalDecisionRequest,
+    BatchApprovalDecisionResponse,
+    BatchDecisionOutcome,
     HILPreferencesResponse,
     SetToolOverrideRequest,
     UpdateHILPreferencesRequest,
@@ -17,7 +20,7 @@ from app.services.hil.preferences import (
     set_tool_override,
     update_hil_preferences,
 )
-from app.services.hil.resolution import resolve_approval
+from app.services.hil.resolution import resolve_approval, resolve_approvals_batch
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -48,6 +51,34 @@ async def post_approval_decision(
     )
     log.set(hil={"resolved": True})
     return ApprovalDecisionResponse(success=True)
+
+
+@router.post("/batch-decision")
+async def post_batch_decision(
+    payload: BatchApprovalDecisionRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> BatchApprovalDecisionResponse:
+    """Decide several pending approvals in one submission (the batch review).
+
+    Per-item outcomes: one already-decided or expired approval never fails the
+    rest. Only the first resolvable decision dispatches the paused executor; the
+    join round it wakes collects the remaining decisions durably.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
+    log.set(
+        user={"id": user_id},
+        hil={"operation": "batch_decision", "count": len(payload.decisions)},
+    )
+    outcomes = await resolve_approvals_batch(
+        user_id,
+        [(item.approval_id, item.decision, item.feedback) for item in payload.decisions],
+    )
+    log.set(hil={"resolved": sum(1 for o in outcomes if o["resolved"])})
+    return BatchApprovalDecisionResponse(
+        outcomes=[BatchDecisionOutcome(**outcome) for outcome in outcomes]
+    )
 
 
 @router.get("/preferences")

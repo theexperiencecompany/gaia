@@ -43,6 +43,30 @@ export interface ApprovalDecisionPayload {
   scope?: ApprovalScope;
 }
 
+/** One approval's decision within POST /approvals/batch-decision. */
+export interface BatchDecisionItem {
+  approval_id: string;
+  decision: ApprovalDecision;
+  feedback?: string;
+}
+
+/** Body of POST /approvals/batch-decision — decide several approvals at once. */
+export interface BatchApprovalDecisionPayload {
+  decisions: BatchDecisionItem[];
+}
+
+/** Per-approval outcome of a batch decision. */
+export interface BatchDecisionOutcome {
+  approval_id: string;
+  resolved: boolean;
+  reason: string | null;
+}
+
+/** Response of POST /approvals/batch-decision. */
+export interface BatchApprovalDecisionResponse {
+  outcomes: BatchDecisionOutcome[];
+}
+
 /** One approval card, as streamed to the client. */
 export interface ApprovalRequestData {
   approval_id: string;
