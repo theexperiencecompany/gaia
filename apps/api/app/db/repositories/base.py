@@ -187,13 +187,18 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return await self._insert(doc, self._doc_scope(doc))
 
     async def _insert(self, doc: TDoc, scope: str) -> TDoc:
-        # exclude_none so an unset optional field is absent, not stored as null:
-        # a later nested `$set` (onboarding.x) or `{$exists: false}` gate needs the
-        # container field absent, and absent reads back identically to null anyway.
-        data = doc.model_dump(exclude={"id"}, exclude_none=True)
+        # Drop the placeholder ``id`` (it mirrors ``_id``) — but keep it when ``id``
+        # is itself the business identity (a caller-provided UUID). exclude_none so
+        # an unset optional field is absent, not stored as null: a later nested
+        # `$set` (onboarding.x) or `{$exists: false}` gate needs the container field
+        # absent, and absent reads back identically to null anyway.
+        exclude = set() if self.identity_field == "id" else {"id"}
+        data = doc.model_dump(exclude=exclude, exclude_none=True)
         now = datetime.now(UTC)
         fields = self.document_model.model_fields
-        if "created_at" in fields:
+        # Stamp created_at only when the caller didn't provide it (some domains,
+        # e.g. notifications, set their own creation time); always stamp updated_at.
+        if "created_at" in fields and data.get("created_at") is None:
             data["created_at"] = now
         if "updated_at" in fields:
             data["updated_at"] = now
