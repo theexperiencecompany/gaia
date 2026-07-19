@@ -159,6 +159,9 @@ const config: KnipConfig = {
     "check",
     "fix",
     "format",
+    // Provided by @playwright/test (declared in apps/web) but invoked from an
+    // nx project.json target, which knip can't associate with the dependency.
+    "playwright",
     "type",
     "type-check",
     "deploy-commands",

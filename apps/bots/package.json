@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@grammyjs/types": "^3.28.0",
+    "hono": "^4.12.29",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"
   }
