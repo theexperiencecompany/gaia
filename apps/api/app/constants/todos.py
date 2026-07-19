@@ -12,3 +12,11 @@ ONBOARDING_TODO_LIMIT = 3
 # Kept here (not in tracked_todo_service) so the VFS sync glue can import it
 # without creating a circular dependency.
 GAIA_TRACKED_LABEL: Final[str] = "gaia-tracked"
+
+# Label added by the worker when a tracked todo exhausts its retry budget — the
+# execution path skips todos carrying it until the user manually resets.
+FAILED_LABEL: Final[str] = "failed"
+
+# Label added by the maintenance sweep to an overdue todo with no scheduled
+# follow-up, so the UI can surface it for attention.
+NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
