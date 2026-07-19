@@ -467,9 +467,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         # Preserve block-list content (inline media) — str() would
                         # destroy it; only non-message shapes stringify.
                         content = (
-                            raw_content
-                            if isinstance(raw_content, str | list)
-                            else str(raw_content)
+                            raw_content if isinstance(raw_content, str | list) else str(raw_content)
                         )
                         tool_message = ToolMessage(
                             content=content,
