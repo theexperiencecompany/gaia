@@ -14,6 +14,7 @@ from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.middleware.subagent_join import SubagentJoinMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
@@ -94,6 +95,7 @@ def create_middleware_stack(
     summarization_excluded_tools: set[str] | None = None,
     enable_loop_guard: bool = True,
     loop_guard_hard_stop: bool = LOOP_GUARD_HARD_STOP,
+    enable_subagent_join: bool = False,
 ) -> list[Any]:
     """
     Create the standard middleware stack for agents.
@@ -205,6 +207,15 @@ def create_middleware_stack(
             f"hard_stop={loop_guard_hard_stop}"
         )
 
+    # Subagent-join enforcement (executor only) — after everything else so it
+    # sees the response other after_model hooks may have adjusted. Rewrites a
+    # turn-ending response into a wait_for_subagents call while background
+    # subagents are uncollected; collection must never depend on the model
+    # remembering to call the join.
+    if enable_subagent_join:
+        middleware.append(SubagentJoinMiddleware())
+        log.debug(f"{LogTag.AGENT} SubagentJoinMiddleware enabled for {agent_name}")
+
     return middleware
 
 
@@ -246,6 +257,7 @@ def create_executor_middleware(
         subagent_excluded_tools=subagent_excluded_tools,
         subagent_tool_runtime_config=subagent_tool_runtime_config,
         compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
+        enable_subagent_join=True,
     )
 
 

@@ -125,11 +125,13 @@ class TestUnresumableRecords:
         self, resume: Any
     ) -> None:
         # The user answers a parked subagent's card BEFORE the executor reaches its
-        # join (so no resume_item exists yet). The decision must land — the running
-        # executor collects it durably — and must NOT dispatch or stamp a resume.
+        # join (so no resume_item exists yet). With a live executor (busy lock held)
+        # the decision must land — the running executor collects it durably — and
+        # must NOT dispatch or stamp a resume.
         record = make_record(resume_item=None, subagent_thread_id="gmail_executor_conv-1")
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
+            patch(f"{MODULE}.is_executor_busy", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
         ):
             await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
@@ -137,6 +139,25 @@ class TestUnresumableRecords:
         assert decided.await_count == 1  # the decision is durable
         assert resume.prepare.await_count == 0  # nothing to wake — executor is running
         assert resume.mark_resumed.await_count == 0  # no dispatch happened, none stamped
+
+    async def test_an_early_decision_with_no_live_executor_fails_loudly(
+        self, resume: Any
+    ) -> None:
+        # Fire-and-forget: the executor finished without ever joining, so nobody
+        # will collect this decision. Accepting it would tell the user "going
+        # ahead" for an action that never runs — refuse instead; the sweep
+        # expires the record as a visible timeout.
+        record = make_record(resume_item=None, subagent_thread_id="gmail_executor_conv-1")
+        with (
+            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
+            patch(f"{MODULE}.is_executor_busy", new=AsyncMock(return_value=False)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
+            pytest.raises(ApprovalNotResumable),
+        ):
+            await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
+
+        assert decided.await_count == 0  # stays pending for the sweep's loud timeout
+        assert resume.prepare.await_count == 0
 
     async def test_a_failed_run_preparation_leaves_the_record_unstamped_for_the_sweep(
         self, resume: Any

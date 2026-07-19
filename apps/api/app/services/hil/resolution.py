@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from langgraph.types import Command
 
-from app.agents.core.background.executor_queue import prepare_run_from_item
+from app.agents.core.background.executor_queue import is_executor_busy, prepare_run_from_item
 from app.agents.core.background.executor_runner import run_executor_background
 from app.constants.hil import (
     HIL_DECIDED_UNRESUMED_GRACE_SECONDS,
@@ -202,12 +202,19 @@ async def _resolve_record(
     #
     # Exception: a parked-subagent record (stamped ``subagent_thread_id``) decided
     # BEFORE the executor reaches its join has no resume context yet — and needs
-    # none. The executor is still running; the join reads the decided status
-    # durably and collects the subagent without any wake-up. Refusing here would
-    # 503 the quick-fingered user for answering promptly.
-    if record.resume_item is None and record.subagent_thread_id is None:
-        log.error(f"{LogTag.HIL} No resume context on record", approval_id=record.approval_id)
-        raise ApprovalNotResumable()
+    # none, PROVIDED a collector is actually alive. The busy lock is that proof:
+    # held means an executor run (running or parked) will reach a join and read
+    # this decision durably. A finished executor (fire-and-forget dispatch, or
+    # one that never called wait_for_subagents) means nobody will ever collect —
+    # accepting the decision then is a false "going ahead" for an action that
+    # will never run, so it must fail loudly instead.
+    if record.resume_item is None:
+        collector_alive = record.subagent_thread_id is not None and await is_executor_busy(
+            record.conversation_id
+        )
+        if not collector_alive:
+            log.error(f"{LogTag.HIL} No resume context on record", approval_id=record.approval_id)
+            raise ApprovalNotResumable()
 
     decided_by = None if kind == "timeout" else user_id
     transitioned = await mark_decided(

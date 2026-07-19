@@ -142,6 +142,18 @@ async def get_lock_state(conversation_id: str, stream_id: str, task_id: str | No
     return LockState.FOREIGN
 
 
+async def is_executor_busy(conversation_id: str) -> bool:
+    """Whether ANY executor run (running or parked) holds this conversation's lock.
+
+    Redis-unavailable degrades to ``False``: the caller (HIL early-decision) must
+    treat "cannot tell" as "no collector is alive" and fail closed — recording a
+    decision nobody will act on is a false promise to the user.
+    """
+    if not redis_cache.client:
+        return False
+    return await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}") is not None
+
+
 async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: str | None) -> None:
     """Delete the busy lock only while this run still owns it.
 
