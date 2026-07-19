@@ -143,10 +143,8 @@ async function runRun(args: ParsedArgs): Promise<number> {
 
   const raw = await readFile(scenarioPath, "utf8");
   const scenario = parseYaml(raw) as Scenario;
-  if (!scenario?.emulate || !isEmulatablePlatform(scenario.emulate)) {
-    log(`Error: scenario "emulate" must be a supported platform`);
-    return 1;
-  }
+  // Platform validation is runScenario's job (single authoritative guard);
+  // its throw is caught and reported by main().
 
   const apiUrl = resolveApiUrl(args.flags.api);
   warnIfNoBroker();

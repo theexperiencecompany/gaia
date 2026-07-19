@@ -7,6 +7,7 @@ shapes can never drift from what the app actually produces. Mounted only in
 development behind the auth bypass — see ``create_app``.
 """
 
+import asyncio
 from datetime import UTC, datetime
 
 from app.constants.auth import DEV_USER_MISSING_HINT
@@ -44,7 +45,14 @@ async def _require_user(email: str) -> dict:
 async def mint_dev_user(email: str, name: str | None = None) -> dict:
     """Idempotently find-or-create a dev user via the real signup path."""
     resolved_name = name or email.split("@", 1)[0]
-    user_id, is_new = await store_user_info(name=resolved_name, email=email, picture_url=None)
+    user_id, is_new = await store_user_info(
+        name=resolved_name,
+        email=email,
+        picture_url=None,
+        # Same stored shape as real signup, but a minted dev user must never
+        # send a welcome email, join the marketing audience, or hit PostHog.
+        external_side_effects=False,
+    )
     log.info(f"{LogTag.DEV} minted dev user", email=email, user_id=str(user_id), is_new=is_new)
     user_doc = await users_collection.find_one({"_id": user_id})
     if not user_doc:
@@ -104,26 +112,37 @@ async def seed_dev_data(
         },
     )
 
-    for i in range(todos):
-        await create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id)
+    # The seeded platform_user_id is part of the seed CONTRACT (harness clients
+    # inject messages as it) — it is returned in the response, never re-derived
+    # by consumers.
+    platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
 
-    for i in range(conversations):
-        await create_conversation_service(
-            ConversationModel(
-                conversation_id=f"dev-seed-{user_id}-{i + 1}",
-                description=f"Sample conversation {i + 1}",
-                source=ConversationSource.WEB,
-            ),
-            {"user_id": user_id},
-        )
-
-    for platform in platform_links:
-        await PlatformLinkService.link_account(
-            user_id=user_id,
-            platform=platform,
-            platform_user_id=f"dev-{platform}-{user_id}",
-            profile={"username": f"dev_{platform}", "display_name": user.get("name") or email},
-        )
+    await asyncio.gather(
+        *(create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id) for i in range(todos)),
+        *(
+            create_conversation_service(
+                ConversationModel(
+                    conversation_id=f"dev-seed-{user_id}-{i + 1}",
+                    description=f"Sample conversation {i + 1}",
+                    source=ConversationSource.WEB,
+                ),
+                {"user_id": user_id},
+            )
+            for i in range(conversations)
+        ),
+        *(
+            PlatformLinkService.link_account(
+                user_id=user_id,
+                platform=platform,
+                platform_user_id=platform_user_id,
+                profile={
+                    "username": f"dev_{platform}",
+                    "display_name": user.get("name") or email,
+                },
+            )
+            for platform, platform_user_id in platform_user_ids.items()
+        ),
+    )
 
     log.info(
         f"{LogTag.DEV} seeded dev data",
@@ -139,6 +158,7 @@ async def seed_dev_data(
         "todos_created": todos,
         "conversations_created": conversations,
         "platforms_linked": platform_links,
+        "platform_user_ids": platform_user_ids,
     }
 
 

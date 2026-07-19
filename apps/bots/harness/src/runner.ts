@@ -67,15 +67,25 @@ export async function linkDevUser(
   platform: PlatformName,
 ): Promise<LinkedDevUser> {
   const user = await postJson<DevUser>(`${apiUrl}/api/v1/dev/users`, { email });
-  await postJson(`${apiUrl}/api/v1/dev/seed`, {
-    email,
-    platform_links: [platform],
-  });
+  const seeded = await postJson<{ platform_user_ids: Record<string, string> }>(
+    `${apiUrl}/api/v1/dev/seed`,
+    {
+      email,
+      platform_links: [platform],
+    },
+  );
+  // The seeded id is the seed endpoint's contract — never re-derive its format.
+  const platformUserId = seeded.platform_user_ids[platform];
+  if (!platformUserId) {
+    throw new Error(
+      `/dev/seed did not return a platform_user_id for '${platform}' — got: ${JSON.stringify(seeded.platform_user_ids)}`,
+    );
+  }
   return {
     userId: user.id,
     email: user.email,
     name: user.name,
-    platformUserId: `dev-${platform}-${user.id}`,
+    platformUserId,
   };
 }
 
@@ -193,6 +203,13 @@ function evaluateAssertion(
 ): string[] {
   const failures: string[] = [];
   const sends = events.filter((e) => e.type === "send");
+  // Text assertions must only see DELIVERED output — the inbound event carries
+  // the user's own message, which would make `contains` pass trivially and
+  // `maxBubbleLength` fail on long inputs.
+  const delivered = events.filter(
+    (e) =>
+      e.type === "send" || e.type === "edit" || e.type === "outbound-delivery",
+  );
 
   if (
     assertion.bubbleCount !== undefined &&
@@ -211,7 +228,7 @@ function evaluateAssertion(
     );
   }
   if (assertion.contains !== undefined) {
-    const found = events.some((e) =>
+    const found = delivered.some((e) =>
       eventText(e)?.includes(assertion.contains as string),
     );
     if (!found) {
@@ -219,7 +236,7 @@ function evaluateAssertion(
     }
   }
   if (assertion.maxBubbleLength !== undefined) {
-    const over = events.filter((e) => {
+    const over = delivered.filter((e) => {
       const text = eventText(e);
       return (
         text !== null && text.length > (assertion.maxBubbleLength as number)

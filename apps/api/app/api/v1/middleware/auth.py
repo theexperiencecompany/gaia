@@ -17,7 +17,11 @@ from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
-from app.utils.auth_utils import authenticate_workos_session, build_user_context
+from app.utils.auth_utils import (
+    authenticate_workos_session,
+    build_user_context,
+    resolve_dev_bypass_user,
+)
 from shared.py.wide_events import log
 
 
@@ -205,14 +209,11 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         request.state.authenticated = False
         request.state.new_session = None
 
-        impersonated_email = request.headers.get(DEV_USER_HEADER)
-        target_email = impersonated_email or self.dev_bypass_email
-
-        user_data = await users_collection.find_one({"email": target_email})
+        target_email, user_data = await resolve_dev_bypass_user(request.headers)
         if not user_data:
             log.error(
                 f"{LogTag.API} Dev bypass target {target_email!r} has no Mongo user",
-                dev_impersonated=bool(impersonated_email),
+                dev_impersonated=bool(request.headers.get(DEV_USER_HEADER)),
             )
             return JSONResponse(
                 status_code=401,

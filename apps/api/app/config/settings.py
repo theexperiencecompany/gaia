@@ -75,6 +75,19 @@ class CommonSettings(BaseAppSettings):
     """Common settings required for all environments."""
 
     # ----------------------------------------------
+    # Dev-only overrides — declared on the COMMON base so production code can
+    # safely read them (app/agents/llm/client.py evaluates GAIA_SIM_MODE in
+    # decorator args at import time; an AttributeError there crashes prod boot).
+    # get_settings() refuses to start in production when either is enabled.
+    # ----------------------------------------------
+    # Sim mode: every LLM factory resolves to the local scripted stub
+    # (tools/llm-stub) for deterministic, credential-free runs. `mise dev:sim`.
+    GAIA_SIM_MODE: bool = False
+    # Where the scripted stub lives when sim mode is on; consumed only by
+    # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
+    OPENROUTER_BASE_URL: str | None = None
+
+    # ----------------------------------------------
     # Database Connections
     # ----------------------------------------------
     MONGO_DB: str
@@ -564,18 +577,8 @@ class DevelopmentSettings(CommonSettings):
     # production when this is set.
     DEV_AUTH_BYPASS_EMAIL: str | None = None
 
-    # Development-only OpenRouter base-URL override: points the OpenRouter client
-    # (init_openrouter_llm) at a local scripted stub (tools/llm-stub) for
-    # deterministic, credential-free full-stack runs. get_settings() refuses to
-    # start in production when this is set.
-    OPENROUTER_BASE_URL: str | None = None
-
-    # Sim mode: every LLM factory in app/agents/llm/client.py resolves to the
-    # local scripted stub (tools/llm-stub), making the whole stack deterministic
-    # and credential-free. One switch — no per-provider key/url plumbing; real
-    # keys in .env stay untouched and unused. `mise dev:sim` sets this.
-    # get_settings() refuses to start in production when this is set.
-    GAIA_SIM_MODE: bool = False
+    # GAIA_SIM_MODE and OPENROUTER_BASE_URL are declared on CommonSettings (the
+    # production import path reads them) — see the note there.
 
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
@@ -675,7 +678,16 @@ def get_settings():
                     "OPENROUTER_BASE_URL is set but ENV=production — "
                     "the OpenRouter base-URL override is a development-only stub hook."
                 )
-            if os.getenv("GAIA_SIM_MODE"):
+            # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
+            # legitimate way to DISABLE sim mode and must not trip the guard
+            # (unlike the string-valued overrides above, where set == enabled).
+            if os.getenv("GAIA_SIM_MODE", "").strip().lower() not in (
+                "",
+                "0",
+                "false",
+                "no",
+                "off",
+            ):
                 raise RuntimeError(
                     "GAIA_SIM_MODE is set but ENV=production — "
                     "sim mode routes every model call to a local scripted stub."

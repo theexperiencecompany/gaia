@@ -54,7 +54,7 @@ def test_openrouter_base_url_allowed_in_development(monkeypatch):
     assert settings_obj.OPENROUTER_BASE_URL == "http://localhost:9797"
 
 
-def test_init_openrouter_forwards_base_url_in_development(monkeypatch):
+def test_init_openrouter_omits_base_url_outside_sim_dev(monkeypatch):
     from app.agents.llm import client
 
     captured: dict[str, object] = {}
@@ -68,15 +68,19 @@ def test_init_openrouter_forwards_base_url_in_development(monkeypatch):
 
     monkeypatch.setattr(client, "ChatOpenRouter", _FakeChatOpenRouter)
     monkeypatch.setattr(client.settings, "ENV", "development")
+    monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     monkeypatch.setattr(client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797")
     monkeypatch.setattr(client.settings, "OPENROUTER_API_KEY", "sk-stub-not-used")
 
     client.init_openrouter_llm().loader_func()
 
-    assert captured["base_url"] == "http://localhost:9797"
+    # Outside sim mode base_url must not be passed AT ALL — passing None would
+    # override ChatOpenRouter's OPENROUTER_API_BASE env default_factory.
+    # Redirecting to the stub is sim mode's job (_sim_llm).
+    assert "base_url" not in captured
 
 
-def test_init_openrouter_never_forwards_base_url_in_production(monkeypatch):
+def test_init_openrouter_omits_base_url_in_production(monkeypatch):
     from app.agents.llm import client
 
     captured: dict[str, object] = {}
@@ -90,6 +94,7 @@ def test_init_openrouter_never_forwards_base_url_in_production(monkeypatch):
 
     monkeypatch.setattr(client, "ChatOpenRouter", _FakeChatOpenRouter)
     monkeypatch.setattr(client.settings, "ENV", "production")
+    monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     # Even if the override leaks into a production settings object, it is ignored.
     monkeypatch.setattr(
         client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797", raising=False
@@ -98,4 +103,18 @@ def test_init_openrouter_never_forwards_base_url_in_production(monkeypatch):
 
     client.init_openrouter_llm().loader_func()
 
-    assert captured["base_url"] is None
+    # Production construction is identical to pre-sim behavior: no base_url
+    # kwarg, so ChatOpenRouter's own OPENROUTER_API_BASE env default applies.
+    assert "base_url" not in captured
+
+
+def test_dev_override_fields_exist_on_all_settings_classes():
+    """client.py reads GAIA_SIM_MODE in decorator args at import time — the
+    fields must exist on EVERY settings class or production boot crashes with
+    AttributeError before any provider initializes (regression: they were once
+    declared only on DevelopmentSettings)."""
+    from app.config.settings import CommonSettings, DevelopmentSettings, ProductionSettings
+
+    for cls in (CommonSettings, DevelopmentSettings, ProductionSettings):
+        assert "GAIA_SIM_MODE" in cls.model_fields, cls.__name__
+        assert "OPENROUTER_BASE_URL" in cls.model_fields, cls.__name__

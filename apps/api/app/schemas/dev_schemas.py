@@ -39,6 +39,9 @@ class SeedDevDataResponse(BaseModel):
     todos_created: int
     conversations_created: int
     platforms_linked: list[str]
+    # Contract for harness clients: inject messages as these ids — never
+    # re-derive the format client-side.
+    platform_user_ids: dict[str, str]
 
 
 class DeleteDevUserResponse(BaseModel):

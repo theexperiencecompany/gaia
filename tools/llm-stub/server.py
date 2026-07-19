@@ -18,10 +18,12 @@ Run (no repo venv coupling — uv resolves the inline deps into an ephemeral env
     uv run tools/llm-stub/server.py                 # default port 9797
     LLM_STUB_PORT=9797 uv run tools/llm-stub/server.py
 
-Wire it into GAIA (development only):
+Wire it into GAIA (development only) with the one canonical switch:
 
-    OPENROUTER_BASE_URL=http://localhost:9797   # apps/api/.env
-    OPENROUTER_API_KEY=sk-stub-not-used         # any non-empty value; the stub ignores it
+    GAIA_SIM_MODE=1        # `mise dev:sim` sets this; every LLM factory
+                           # resolves to this stub (see app/agents/llm/client.py)
+    OPENROUTER_BASE_URL=…  # optional: only to point sim mode at a non-default
+                           # stub address (defaults to http://localhost:9797/api/v1)
 
 Both ``/chat/completions`` and ``/api/v1/chat/completions`` are served so the
 override URL works with or without the ``/api/v1`` suffix.

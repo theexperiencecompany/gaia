@@ -291,7 +291,9 @@ class TestDevUserImpersonation:
         mock_users = MagicMock()
         mock_users.find_one = AsyncMock(side_effect=fake_find_one)
 
-        with patch("app.api.v1.middleware.auth.users_collection", mock_users):
+        # Bypass resolution lives in the shared helper (auth_utils), not the
+        # middleware module — patch the collection where the lookup happens.
+        with patch("app.utils.auth_utils.users_collection", mock_users):
             app = _build_bypass_probe_app()
             client = await _client(app)
             async with client:
