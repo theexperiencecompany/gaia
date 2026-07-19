@@ -156,19 +156,26 @@ E2E_SIM=1 mise e2e:web   # also runs the scripted-chat spec (needs `mise dev:sim
 
 `gaia-sim` (package `@gaia/bot-harness`, `apps/bots/harness`) is a fifth `BaseBotAdapter` that runs the **real** shared bot pipeline against the running API while emulating a platform's real limits/converters, and writes a JSONL transcript you assert on. It exercises platform-link, streaming, splitting, and formatting paths without a real Telegram/Slack/WhatsApp connection.
 
-CLI contract (from the plan — the harness is being built now; **verify exact flags with `gaia-sim --help` once the package exists**, and read `apps/bots/harness/src/cli.ts`):
+Run it via the nx `sim` target (or `pnpm --filter @gaia/bot-harness dev`). The one-shot `send` mints + links the dev user for you (`POST /api/v1/dev/users` + `/dev/seed`) — no separate `mise seed` needed — then injects the message as `dev-<platform>-<userId>`:
 
 ```bash
-# one-shot: send one message as a seeded user, emulating a platform
-gaia-sim send --emulate telegram --user dev@gaia.local "remind me tomorrow"
-# multi-turn scenario with transcript assertions
-gaia-sim run scenario.yaml
+# one-shot: mint+link the dev user, inject one message emulating a platform,
+# print the JSONL transcript (and write it to --out)
+nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --out t.jsonl "remind me tomorrow"
+
+# multi-turn YAML scenario with transcript assertions (exits non-zero on failure)
+nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml --out run.jsonl
 ```
 
-- `--emulate <platform>` pulls that platform's real `PLATFORM_LIMITS` / `STREAMING_DEFAULTS` / markdown converter from `libs/shared/ts/src/bots/` — no harness-specific behavior tables.
-- Requires a running API (real LLM, or the `dev:sim` stub via §3) and a seeded user (`mise seed`).
-- Transcript is JSONL events (`send`, `edit`, `typing`, `ephemeral`, `split`, `outbound-delivery`, …) with final rendered payloads — assert on that, not on logs.
-- A golden conformance suite (`apps/bots/__tests__/harness/`, wired into `mise test:bots`) fails CI if harness output ever diverges from the real adapter's. See `apps/bots/CLAUDE.md`.
+Flags (see `apps/bots/harness/src/cli.ts`):
+- `send`: `--emulate <discord|slack|telegram|whatsapp>` (required), `--user <email>` (required), `--out <file>` (optional), `--api <url>` (optional; default `$GAIA_API_URL` → `http://localhost:8000`), `--channel <id>` (optional). The message is the trailing positional arg.
+- `run <scenario.yaml>`: `--out <file>`, `--api <url>`. Scenario schema lives in `apps/bots/harness/src/scenario.types.ts`; starters are in `apps/bots/harness/scenarios/` (`plain-reply.yaml`, `tool-call.yaml`, `multi-turn.yaml`).
+
+Details:
+- `--emulate <platform>` pulls that platform's real `PLATFORM_LIMITS` / `STREAMING_DEFAULTS` / markdown converter from `libs/shared/ts/src/bots/` — the only residual is a conformance-locked `supportsEdit` map (`apps/bots/harness/src/emulation.ts`).
+- Requires the same `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`, `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`) and a running API (real LLM, or the `dev:sim` stub via §3). Set `RABBITMQ_URL` to record proactive `outbound-delivery` events through the real outbound consumer (a loud warning prints when it is unset).
+- Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
+- A golden conformance suite (`apps/bots/__tests__/harness/conformance.test.ts`, wired into `mise test:bots`) drives the harness and the real adapter with only the SDK faked and fails CI if their output diverges. WhatsApp webhook replay lives in `apps/bots/__tests__/whatsapp/webhook-replay.e2e.test.ts`. See `apps/bots/CLAUDE.md`.
 
 ---
 
