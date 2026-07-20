@@ -27,25 +27,6 @@ from app.services.reminder_service import ReminderScheduler
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
 
-class _AsyncCursorMock:
-    """Mock for MongoDB async cursor that supports async iteration."""
-
-    def __init__(self, documents: list) -> None:
-        self._documents = documents
-        self._index = 0
-
-    def __aiter__(self):
-        self._index = 0
-        return self
-
-    async def __anext__(self):
-        if self._index >= len(self._documents):
-            raise StopAsyncIteration
-        doc = self._documents[self._index]
-        self._index += 1
-        return doc
-
-
 @pytest.fixture
 def mock_reminders_collection():
     with patch("app.services.reminder_service.reminders_collection") as mock_col:
@@ -574,37 +555,46 @@ class TestUpdateTaskStatus:
 
 @pytest.mark.unit
 class TestGetPendingTask:
-    async def test_returns_pending_reminders(
-        self, scheduler, mock_reminders_collection, sample_reminder_doc
-    ):
-        mock_reminders_collection.find.return_value = _AsyncCursorMock([sample_reminder_doc])
+    """The due-scan (and its ObjectId->string mapping) now lives on
+    ``reminder_repository.find_pending_before`` — contract-tested against real Mongo
+    in tests/contracts/test_reminders_repository.py. Here we verify the scheduler
+    delegates to it and passes the scan time through."""
 
-        now = datetime.now(UTC)
-        result = await scheduler.get_pending_task(now)
+    async def test_returns_pending_reminders(self, scheduler, future_time, sample_payload):
+        reminder = ReminderModel(
+            user_id=FAKE_USER_ID,
+            agent=AgentType.STATIC,
+            payload=sample_payload,
+            scheduled_at=future_time,
+        )
+        with patch(
+            "app.services.reminder_service.reminder_repository.find_pending_before",
+            AsyncMock(return_value=[reminder]),
+        ):
+            result = await scheduler.get_pending_task(datetime.now(UTC))
 
         assert len(result) == 1
         assert isinstance(result[0], ReminderModel)
 
-    async def test_returns_empty_when_no_pending(self, scheduler, mock_reminders_collection):
-        mock_reminders_collection.find.return_value = _AsyncCursorMock([])
-
-        now = datetime.now(UTC)
-        result = await scheduler.get_pending_task(now)
+    async def test_returns_empty_when_no_pending(self, scheduler):
+        with patch(
+            "app.services.reminder_service.reminder_repository.find_pending_before",
+            AsyncMock(return_value=[]),
+        ):
+            result = await scheduler.get_pending_task(datetime.now(UTC))
 
         assert result == []
 
-    async def test_converts_objectid_to_string(
-        self, scheduler, mock_reminders_collection, sample_reminder_doc
-    ):
-        oid = ObjectId()
-        doc = {**sample_reminder_doc, "_id": oid}
+    async def test_passes_scan_time_to_repository(self, scheduler):
+        find_pending = AsyncMock(return_value=[])
+        with patch(
+            "app.services.reminder_service.reminder_repository.find_pending_before",
+            find_pending,
+        ):
+            now = datetime.now(UTC)
+            await scheduler.get_pending_task(now)
 
-        mock_reminders_collection.find.return_value = _AsyncCursorMock([doc])
-
-        now = datetime.now(UTC)
-        result = await scheduler.get_pending_task(now)
-
-        assert result[0].id == str(oid)
+        find_pending.assert_awaited_once_with(now)
 
 
 # ---------------------------------------------------------------------------

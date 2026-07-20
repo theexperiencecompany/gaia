@@ -2019,67 +2019,34 @@ class TestWorkflowScheduler:
         result = await scheduler.reschedule_workflow(WORKFLOW_ID, new_time)
         assert result is False
 
-    @patch("app.services.workflow.scheduler.workflows_collection")
-    async def test_get_pending_task_returns_workflows(self, mock_collection):
-        doc = _workflow_doc(_make_workflow())
-        mock_cursor = MagicMock()
-        mock_cursor.__aiter__ = MagicMock(return_value=iter([doc]))
-
-        # Make it async iterable
-        async def async_iter():
-            yield doc
-
-        mock_cursor.__aiter__ = lambda self: async_iter()
-
-        mock_collection.find = MagicMock(return_value=mock_cursor)
-
-        scheduler = WorkflowScheduler()
-        # Use a proper async iterator mock
-        async_docs = [doc]
-
-        class AsyncIterator:
-            def __init__(self, items):
-                self.items = iter(items)
-
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                try:
-                    return next(self.items)
-                except StopIteration:
-                    raise StopAsyncIteration
-
-        mock_collection.find = MagicMock(return_value=AsyncIterator(async_docs))
+    # The recurring-due scan (status=scheduled, scheduled_at<=now, activated,
+    # repeat) now lives on workflow_repository.find_pending_before — contract-tested
+    # against real Mongo in tests/contracts/test_workflows_repository.py. Here we
+    # verify the scheduler delegates to it and passes the scan time through.
+    @patch("app.services.workflow.scheduler.workflow_repository.find_pending_before")
+    async def test_get_pending_task_returns_workflows(self, mock_find_pending):
+        mock_find_pending.return_value = [_make_workflow()]
 
         now = datetime.now(UTC)
-        result = await scheduler.get_pending_task(now)
+        result = await WorkflowScheduler().get_pending_task(now)
         assert len(result) == 1
+        mock_find_pending.assert_awaited_once_with(now)
 
-    @patch("app.services.workflow.scheduler.workflows_collection")
-    async def test_get_pending_task_empty(self, mock_collection):
-        class EmptyAsyncIterator:
-            def __aiter__(self):
-                return self
+    @patch("app.services.workflow.scheduler.workflow_repository.find_pending_before")
+    async def test_get_pending_task_empty(self, mock_find_pending):
+        mock_find_pending.return_value = []
 
-            async def __anext__(self):
-                raise StopAsyncIteration
-
-        mock_collection.find = MagicMock(return_value=EmptyAsyncIterator())
-
-        scheduler = WorkflowScheduler()
-        now = datetime.now(UTC)
-        result = await scheduler.get_pending_task(now)
+        result = await WorkflowScheduler().get_pending_task(datetime.now(UTC))
         assert result == []
 
-    @patch("app.services.workflow.scheduler.workflows_collection")
-    async def test_get_pending_task_db_error(self, mock_collection):
-        mock_collection.find = MagicMock(side_effect=Exception("DB error"))
+    @patch("app.services.workflow.scheduler.workflow_repository.find_pending_before")
+    async def test_get_pending_task_propagates_db_error(self, mock_find_pending):
+        # Fail-loud: the repository no longer swallows a scan failure into an empty
+        # list (the old _query_pending_tasks did). A DB error propagates.
+        mock_find_pending.side_effect = Exception("DB error")
 
-        scheduler = WorkflowScheduler()
-        now = datetime.now(UTC)
-        result = await scheduler.get_pending_task(now)
-        assert result == []
+        with pytest.raises(Exception, match="DB error"):
+            await WorkflowScheduler().get_pending_task(datetime.now(UTC))
 
     async def test_execute_task_with_workflow(self):
         """execute_task with a valid Workflow should attempt execution."""

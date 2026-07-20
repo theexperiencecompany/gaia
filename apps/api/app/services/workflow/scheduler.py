@@ -9,6 +9,7 @@ from arq.connections import RedisSettings
 
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import (
     BaseScheduledTask,
     ScheduleConfig,
@@ -203,21 +204,14 @@ class WorkflowScheduler(BaseSchedulerService):
         integration and todo workflows all do). Without ``repeat``, the recovery scan
         would match those non-scheduled workflows and re-run the agent on every pass.
         ``repeat`` (the cron the scheduler actually re-arms on) is the precise,
-        serialization-robust discriminator for "scheduler-managed".
+        serialization-robust discriminator for "scheduler-managed". The
+        ``status="scheduled"`` and ``scheduled_at <= now`` due-filter lives on the
+        repository (``find_pending_before``), sharing the ``$lte`` semantics with the
+        reminder scan.
         """
-        return await self._query_pending_tasks(
-            workflows_collection,
-            current_time,
-            self._doc_to_workflow,
-            extra_filter={"activated": True, "repeat": {"$nin": [None, ""]}},
-        )
-
-    @staticmethod
-    def _doc_to_workflow(doc: dict[str, Any]) -> Workflow:
-        """Transform a MongoDB document into a Workflow (string ``_id`` -> ``id``)."""
-        doc["id"] = doc.get("_id")
-        doc.pop("_id", None)
-        return Workflow(**doc)
+        pending: list[BaseScheduledTask] = []
+        pending.extend(await workflow_repository.find_pending_before(current_time))
+        return pending
 
     async def schedule_workflow_execution(
         self,

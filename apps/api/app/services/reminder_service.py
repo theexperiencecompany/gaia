@@ -9,6 +9,7 @@ from arq.connections import RedisSettings
 from bson import ObjectId
 
 from app.db.mongodb.collections import reminders_collection
+from app.db.repositories.reminders import reminder_repository
 from app.models.reminder_models import (
     CreateReminderRequest,
     ReminderModel,
@@ -209,20 +210,13 @@ class ReminderScheduler(BaseSchedulerService):
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         """Reminders that are scheduled and due (scheduled_at <= now).
 
-        Delegates the due-query to the shared base implementation so the
-        recovery scan can't diverge from the workflow scan (it previously used
-        ``$gte`` and silently dropped overdue reminders).
+        The due-scan lives on the repository (``find_pending_before``) with the same
+        ``$lte`` semantics the workflow scan uses, so the two can't diverge (reminders
+        once used ``$gte`` and silently dropped overdue tasks).
         """
-        return await self._query_pending_tasks(
-            reminders_collection, current_time, self._doc_to_reminder
-        )
-
-    @staticmethod
-    def _doc_to_reminder(doc: dict) -> ReminderModel:
-        """Transform a MongoDB document into a ReminderModel (ObjectId ``_id`` -> str)."""
-        if "_id" in doc:
-            doc["_id"] = str(doc["_id"])
-        return ReminderModel(**doc)
+        pending: list[BaseScheduledTask] = []
+        pending.extend(await reminder_repository.find_pending_before(current_time))
+        return pending
 
     def _serialize_reminder(self, reminder: ReminderModel) -> dict:
         """Serialize a ReminderModel to a dict for MongoDB storage."""
