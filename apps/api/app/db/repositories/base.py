@@ -331,9 +331,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             if stamp_updated_at:
                 set_fields["updated_at"] = now
             operations.append(
-                UpdateOne(
-                    {**self._identity_filter(doc_id), **scope_filter}, {"$set": set_fields}
-                )
+                UpdateOne({**self._identity_filter(doc_id), **scope_filter}, {"$set": set_fields})
             )
         result = await get_async_collection(self.collection_name).bulk_write(operations)
         modified = result.modified_count
@@ -360,6 +358,18 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
                 await self._cache_evict(scope, doc_id)
             await self._invalidate(scope)
         return deleted
+
+    async def _delete_many(self, filter_: Mapping[str, object], *, scope: str) -> int:
+        """Delete every document matching ``filter_`` in one round trip, then bump
+        ``scope``'s generation. The caller owns the filter (repository-internal) — for
+        the global-collection-with-a-guard case (e.g. ``{_id: {$in}, user_id}``) that
+        ``_bulk_delete`` (id-only + scope filter) cannot express. Entity keys for the
+        removed ids are not individually evicted: prefer ``_bulk_delete`` when a
+        cache-enabled repository deletes by known id."""
+        result = await get_async_collection(self.collection_name).delete_many(dict(filter_))
+        if result.deleted_count:
+            await self._invalidate(scope)
+        return result.deleted_count
 
     async def _apply_raw_update(
         self,

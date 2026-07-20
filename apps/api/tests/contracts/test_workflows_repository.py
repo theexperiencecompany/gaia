@@ -1,0 +1,388 @@
+"""Contract tests for WorkflowsRepository (global, string business-key id = _id).
+
+Runs against real Mongo (never mocks). Every fixture id is per-run unique so a
+concurrent run against the shared test DB can't collide.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+import uuid
+
+import pytest
+
+from app.db.repositories.workflows import WorkflowsRepository
+from app.models.scheduler_models import ScheduledTaskStatus
+from app.models.workflow_models import (
+    TriggerConfig,
+    TriggerType,
+    WorkflowDocument,
+    WorkflowStep,
+    WorkflowUpdate,
+)
+
+
+def _uid(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+
+def _workflow(**overrides: object) -> WorkflowDocument:
+    data: dict[str, object] = {
+        "user_id": _uid("u"),
+        "title": "Test Workflow",
+        "prompt": "do the thing",
+        "steps": [WorkflowStep(title="step", category="gmail", description="d")],
+        "trigger_config": TriggerConfig(type=TriggerType.MANUAL),
+    }
+    data.update(overrides)
+    return WorkflowDocument(**data)
+
+
+@pytest.fixture
+def repo(raw_collection) -> WorkflowsRepository:
+    return WorkflowsRepository()
+
+
+class TestWorkflowsCore:
+    async def test_create_preserves_string_id_and_reads_back(self, repo, raw_collection):
+        doc = _workflow()
+        created = await repo.create(doc)
+        assert created.id == doc.id and created.id.startswith("wf_")
+        # The persisted _id IS the business key (string), not an ObjectId.
+        raw = await raw_collection.find_one({"_id": doc.id})
+        assert raw is not None and raw["_id"] == doc.id
+        fetched = await repo.get(doc.id)
+        assert fetched is not None and fetched.id == doc.id
+
+    async def test_create_then_get_roundtrips(self, repo):
+        created = await repo.create(_workflow(title="Round", description="desc"))
+        fetched = await repo.get(created.id)
+        assert fetched is not None
+        assert fetched.title == "Round"
+        assert fetched.description == "desc"
+        assert fetched.user_id == created.user_id
+
+    async def test_get_missing_returns_none(self, repo):
+        assert await repo.get(_uid("missing")) is None
+
+    async def test_reads_legacy_iso_string_datetimes_as_tz_aware(self, repo, raw_collection):
+        # A handful of legacy rows persist created_at/scheduled_at as ISO strings.
+        wid = _uid("wf")
+        await raw_collection.insert_one(
+            {
+                "_id": wid,
+                "id": wid,
+                "user_id": _uid("u"),
+                "title": "Legacy",
+                "prompt": "p",
+                "steps": [],
+                "trigger_config": {"type": "manual", "enabled": True},
+                "created_at": "2026-05-04T20:00:55.367416+00:00",
+                "scheduled_at": "2026-05-04T20:00:55.367381+00:00",
+                "updated_at": datetime.now(UTC),
+                "status": "scheduled",
+                "activated": True,
+            }
+        )
+        doc = await repo.get(wid)
+        assert doc is not None
+        assert isinstance(doc.created_at, datetime) and doc.created_at.tzinfo is not None
+        assert isinstance(doc.scheduled_at, datetime) and doc.scheduled_at.tzinfo is not None
+
+
+class TestWorkflowsOwnedCrud:
+    async def test_get_for_user_isolates(self, repo):
+        created = await repo.create(_workflow(user_id="owner"))
+        assert await repo.get_for_user(created.id, "owner") is not None
+        assert await repo.get_for_user(created.id, "attacker") is None
+
+    async def test_update_for_user_partial_and_scoped(self, repo):
+        created = await repo.create(_workflow(user_id="owner", title="Old", prompt="keep"))
+        before = created.updated_at
+        updated = await repo.update_for_user(created.id, "owner", WorkflowUpdate(title="New"))
+        assert updated is not None
+        assert updated.title == "New"
+        assert updated.prompt == "keep"  # untouched field preserved
+        assert updated.updated_at >= before
+        # cross-user update is a no-op
+        assert await repo.update_for_user(created.id, "attacker", WorkflowUpdate(title="X")) is None
+        assert (await repo.get(created.id)).title == "New"
+
+    async def test_delete_for_user_scoped(self, repo):
+        created = await repo.create(_workflow(user_id="owner"))
+        assert await repo.delete_for_user(created.id, "attacker") is False
+        assert await repo.get(created.id) is not None
+        assert await repo.delete_for_user(created.id, "owner") is True
+        assert await repo.get(created.id) is None
+
+    async def test_delete_many_for_user(self, repo):
+        owner = _uid("owner")
+        a = await repo.create(_workflow(user_id=owner))
+        b = await repo.create(_workflow(user_id=owner))
+        other = await repo.create(_workflow(user_id=_uid("other")))
+        deleted = await repo.delete_many_for_user([a.id, b.id, other.id], owner)
+        assert deleted == 2  # other user's row is not touched
+        assert await repo.get(other.id) is not None
+
+    async def test_list_for_user_newest_first_excludes_todo(self, repo):
+        owner = _uid("owner")
+        older = await repo.create(
+            _workflow(user_id=owner, created_at=datetime.now(UTC) - timedelta(hours=1))
+        )
+        newer = await repo.create(_workflow(user_id=owner, created_at=datetime.now(UTC)))
+        await repo.create(_workflow(user_id=owner, is_todo_workflow=True))
+        await repo.create(_workflow(user_id=_uid("other")))
+        listed = await repo.list_for_user(owner)
+        assert [w.id for w in listed] == [newer.id, older.id]
+        # opt-in includes the todo workflow
+        assert len(await repo.list_for_user(owner, exclude_todo_workflows=False)) == 3
+
+    async def test_find_by_ids_variants(self, repo):
+        owner = _uid("owner")
+        a = await repo.create(_workflow(user_id=owner))
+        b = await repo.create(_workflow(user_id=_uid("other")))
+        assert {w.id for w in await repo.find_by_ids([a.id, b.id])} == {a.id, b.id}
+        assert {w.id for w in await repo.find_by_ids_for_user([a.id, b.id], owner)} == {a.id}
+        assert await repo.find_by_ids([]) == []
+
+
+class TestWorkflowsScheduler:
+    async def test_find_pending_before_only_due_recurring_active(self, repo):
+        now = datetime.now(UTC)
+        due = await repo.create(
+            _workflow(
+                scheduled_at=now - timedelta(minutes=5),
+                repeat="0 9 * * *",
+                activated=True,
+                status=ScheduledTaskStatus.SCHEDULED,
+            )
+        )
+        # future — not due
+        await repo.create(
+            _workflow(scheduled_at=now + timedelta(hours=1), repeat="0 9 * * *", activated=True)
+        )
+        # not recurring — excluded even though due
+        await repo.create(
+            _workflow(scheduled_at=now - timedelta(minutes=5), repeat=None, activated=True)
+        )
+        # deactivated — excluded
+        await repo.create(
+            _workflow(scheduled_at=now - timedelta(minutes=5), repeat="0 9 * * *", activated=False)
+        )
+        pending = await repo.find_pending_before(now)
+        assert [w.id for w in pending] == [due.id]
+
+    async def test_claim_for_execution_is_atomic(self, repo):
+        wf = await repo.create(_workflow(activated=True, status=ScheduledTaskStatus.SCHEDULED))
+        assert await repo.claim_for_execution(wf.id) is True
+        # second claim fails — already EXECUTING
+        assert await repo.claim_for_execution(wf.id) is False
+        assert (await repo.get(wf.id)).status == ScheduledTaskStatus.EXECUTING
+
+    async def test_claim_rejects_deactivated(self, repo):
+        wf = await repo.create(_workflow(activated=False, status=ScheduledTaskStatus.SCHEDULED))
+        assert await repo.claim_for_execution(wf.id) is False
+
+    async def test_find_stale_executing(self, repo, raw_collection):
+        now = datetime.now(UTC)
+        stale = await repo.create(_workflow(activated=True, status=ScheduledTaskStatus.EXECUTING))
+        # ``_insert`` always stamps updated_at=now, so age the stale row directly.
+        await raw_collection.update_one(
+            {"_id": stale.id}, {"$set": {"updated_at": now - timedelta(hours=2)}}
+        )
+        # fresh executing — not stale
+        await repo.create(_workflow(activated=True, status=ScheduledTaskStatus.EXECUTING))
+        found = await repo.find_stale_executing(now - timedelta(hours=1))
+        assert [w.id for w in found] == [stale.id]
+
+
+class TestWorkflowsTriggersAndSystem:
+    async def test_count_trigger_references(self, repo):
+        tid = _uid("trig")
+        a = await repo.create(
+            _workflow(
+                trigger_config=TriggerConfig(
+                    type=TriggerType.INTEGRATION, composio_trigger_ids=[tid]
+                )
+            )
+        )
+        await repo.create(
+            _workflow(
+                trigger_config=TriggerConfig(
+                    type=TriggerType.INTEGRATION, composio_trigger_ids=[tid]
+                )
+            )
+        )
+        assert await repo.count_trigger_references(tid) == 2
+        assert await repo.count_trigger_references(tid, excluding_workflow_id=a.id) == 1
+        assert await repo.count_trigger_references(_uid("none")) == 0
+
+    async def test_find_active_integration_workflows(self, repo):
+        owner = _uid("owner")
+        match = await repo.create(
+            _workflow(
+                user_id=owner,
+                activated=True,
+                trigger_config=TriggerConfig(
+                    type=TriggerType.INTEGRATION, enabled=True, trigger_name="gmail_new_message"
+                ),
+            )
+        )
+        # wrong trigger_name
+        await repo.create(
+            _workflow(
+                user_id=owner,
+                activated=True,
+                trigger_config=TriggerConfig(
+                    type=TriggerType.INTEGRATION, enabled=True, trigger_name="github_commit"
+                ),
+            )
+        )
+        # deactivated
+        await repo.create(
+            _workflow(
+                user_id=owner,
+                activated=False,
+                trigger_config=TriggerConfig(
+                    type=TriggerType.INTEGRATION, enabled=True, trigger_name="gmail_new_message"
+                ),
+            )
+        )
+        found = await repo.find_active_integration_workflows(owner, ["gmail_new_message"])
+        assert [w.id for w in found] == [match.id]
+        assert await repo.find_active_integration_workflows(owner, []) == []
+
+    async def test_set_composio_trigger_ids(self, repo):
+        wf = await repo.create(
+            _workflow(
+                trigger_config=TriggerConfig(
+                    type=TriggerType.INTEGRATION, composio_trigger_ids=["old"]
+                )
+            )
+        )
+        updated = await repo.set_composio_trigger_ids(wf.id, ["new1", "new2"])
+        assert updated is not None
+        assert updated.trigger_config.composio_trigger_ids == ["new1", "new2"]
+
+    async def test_system_workflow_finders(self, repo):
+        owner = _uid("owner")
+        key = _uid("key")
+        sys_wf = await repo.create(
+            _workflow(user_id=owner, is_system_workflow=True, system_workflow_key=key)
+        )
+        assert (await repo.find_system_workflow(owner, key)).id == sys_wf.id
+        assert await repo.find_system_workflow("other", key) is None
+        assert (await repo.get_system_workflow_for_user(sys_wf.id, owner)).id == sys_wf.id
+        # a non-system workflow is not resettable
+        plain = await repo.create(_workflow(user_id=owner))
+        assert await repo.get_system_workflow_for_user(plain.id, owner) is None
+
+    async def test_reset_system_workflow(self, repo):
+        wf = await repo.create(
+            _workflow(title="Old", description="old desc", is_system_workflow=True)
+        )
+        updated = await repo.reset_system_workflow(
+            wf.id,
+            title="Fresh",
+            description="fresh desc",
+            steps=[WorkflowStep(title="s2", category="notion", description="d2")],
+            trigger_config=TriggerConfig(
+                type=TriggerType.SCHEDULE, enabled=True, cron_expression="0 9 * * *"
+            ),
+            composio_trigger_ids=["t1"],
+        )
+        assert updated is not None
+        assert updated.title == "Fresh"
+        assert updated.description == "fresh desc"
+        assert [s.title for s in updated.steps] == ["s2"]
+        assert updated.trigger_config.type == TriggerType.SCHEDULE
+        assert updated.trigger_config.composio_trigger_ids == ["t1"]
+
+
+class TestWorkflowsPublishAndWrites:
+    async def test_find_public_slug_conflict(self, repo):
+        slug = _uid("slug")
+        pub = await repo.create(_workflow(is_public=True, slug=slug))
+        assert (await repo.find_public_slug_conflict(slug)).id == pub.id
+        assert await repo.find_public_slug_conflict(slug, exclude_id=pub.id) is None
+        assert await repo.find_public_slug_conflict(_uid("free")) is None
+
+    async def test_publish_unpublish(self, repo):
+        wf = await repo.create(_workflow(is_public=False))
+        slug = _uid("slug")
+        published = await repo.publish(wf.id, created_by=wf.user_id, slug=slug)
+        assert published is not None
+        assert published.is_public is True and published.slug == slug
+        assert published.created_by == wf.user_id
+        unpublished = await repo.unpublish(wf.id)
+        assert unpublished is not None and unpublished.is_public is False
+
+    async def test_backfill_public_slug_races(self, repo):
+        wf = await repo.create(_workflow(is_public=True, slug=None))
+        slug = _uid("slug")
+        first = await repo.backfill_public_slug(wf.id, slug)
+        assert first is not None and first.slug == slug
+        # slug now set — a second backfill matches nothing (race lost)
+        assert await repo.backfill_public_slug(wf.id, _uid("other")) is None
+
+    async def test_activate_deactivate(self, repo):
+        owner = _uid("owner")
+        wf = await repo.create(_workflow(user_id=owner, activated=False))
+        run_at = datetime.now(UTC) + timedelta(hours=1)
+        activated = await repo.activate(wf.id, owner, trigger_ids=["t1"], next_run=run_at)
+        assert activated is not None
+        assert activated.activated is True
+        assert activated.trigger_config.enabled is True
+        assert activated.trigger_config.composio_trigger_ids == ["t1"]
+        assert activated.status == ScheduledTaskStatus.SCHEDULED
+        deactivated = await repo.deactivate(wf.id, owner)
+        assert deactivated is not None
+        assert deactivated.activated is False
+        assert deactivated.trigger_config.enabled is False
+        assert deactivated.trigger_config.composio_trigger_ids == []
+
+    async def test_mark_activated_with_triggers(self, repo):
+        wf = await repo.create(_workflow(activated=False))
+        updated = await repo.mark_activated_with_triggers(wf.id, trigger_ids=["t1", "t2"])
+        assert updated is not None
+        assert updated.activated is True
+        assert updated.trigger_config.enabled is True
+        assert updated.trigger_config.composio_trigger_ids == ["t1", "t2"]
+
+    async def test_record_execution(self, repo):
+        owner = _uid("owner")
+        wf = await repo.create(_workflow(user_id=owner))
+        assert await repo.record_execution(wf.id, owner, successful=True) is True
+        assert await repo.record_execution(wf.id, owner, successful=False) is True
+        fetched = await repo.get(wf.id)
+        assert fetched.total_executions == 2
+        assert fetched.successful_executions == 1
+        assert fetched.last_executed_at is not None
+        assert await repo.record_execution(_uid("missing"), owner) is False
+
+    async def test_set_steps_and_deactivate(self, repo):
+        owner = _uid("owner")
+        wf = await repo.create(_workflow(user_id=owner, activated=True))
+        updated = await repo.set_steps(
+            wf.id,
+            owner,
+            [WorkflowStep(title="new", category="todos", description="d")],
+            deactivate=True,
+            selected_integrations=["gmail"],
+        )
+        assert updated is not None
+        assert [s.title for s in updated.steps] == ["new"]
+        assert updated.activated is False
+        assert updated.trigger_config.enabled is False
+        assert updated.selected_integrations == ["gmail"]
+
+    async def test_touch_and_mark_error(self, repo):
+        owner = _uid("owner")
+        wf = await repo.create(_workflow(user_id=owner, activated=True))
+        touched = await repo.touch(wf.id, owner)
+        assert touched is not None and touched.updated_at >= wf.updated_at
+        errored = await repo.mark_error(wf.id, owner, deactivate=True)
+        assert errored is not None and errored.activated is False
+        with_msg = await repo.set_error_message(wf.id, owner, "boom")
+        assert with_msg is not None and with_msg.error_message == "boom"
+        assert await repo.touch(_uid("missing"), owner) is None

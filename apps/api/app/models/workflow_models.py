@@ -18,7 +18,8 @@ from pydantic import (
     model_validator,
 )
 
-from app.models.scheduler_models import BaseScheduledTask
+from app.db.repositories.base import MongoDocument
+from app.models.scheduler_models import BaseScheduledTask, ScheduledTaskStatus
 from app.models.trigger_configs import TriggerConfigData
 from app.utils.cron_utils import get_next_run_time, validate_cron_expression
 from app.utils.timezone import Timezone
@@ -575,3 +576,52 @@ class GenerateWorkflowPromptResponse(BaseModel):
 
     prompt: str
     suggested_trigger: SuggestedTrigger | None = None
+
+
+# Repository persistence models (Wave E migration)
+
+
+class WorkflowDocument(Workflow, MongoDocument):
+    """A workflow as stored in MongoDB.
+
+    Identity is the string business key ``id`` (persisted as ``_id``; the two are
+    equal ``wf_…`` UUIDs). Extends ``Workflow`` so it doubles as the read model —
+    the service wraps it in ``WorkflowWithIntegrations`` only to attach computed
+    integration fields. ``extra="ignore"`` (from ``MongoDocument``) tolerates
+    legacy stray fields; the ISO-string ``created_at``/``scheduled_at`` values a
+    handful of legacy rows still carry are coerced to tz-aware datetimes by the
+    inherited ``BaseScheduledTask`` validators.
+    """
+
+    # Resolve the ``Workflow.id`` (``str | None``, alias ``_id``) vs
+    # ``MongoDocument.id`` (``str``) diamond: a persisted workflow always has its
+    # ``wf_…`` id, so the stored document is non-optional. The repository keys on
+    # ``_id`` directly, so no alias is needed here.
+    id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
+
+
+class WorkflowUpdate(BaseModel):
+    """Partial ``$set`` update for a workflow — the flat, top-level fields the
+    owned-CRUD paths mutate. Nested (``trigger_config.*``) and operator
+    (``$inc`` stats, atomic status claim) writes are named repository methods that
+    use the raw-update seam, not this model.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    description: str | None = None
+    prompt: str | None = None
+    steps: list[WorkflowStep] | None = None
+    trigger_config: TriggerConfig | None = None
+    activated: bool | None = None
+    notify_on_completion: bool | None = None
+    selected_integrations: list[str] | None = None
+    status: ScheduledTaskStatus | None = None
+    scheduled_at: datetime | None = None
+    repeat: str | None = None
+    error_message: str | None = None
+    current_step_index: int | None = None
+    is_public: bool | None = None
+    slug: str | None = None
+    created_by: str | None = None
