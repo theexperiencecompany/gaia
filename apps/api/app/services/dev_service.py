@@ -10,10 +10,10 @@ development behind the auth bypass — see ``create_app``.
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
-    conversations_collection,
     projects_collection,
     todos_collection,
 )
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.todo_models import TodoModel
@@ -138,9 +138,7 @@ async def delete_dev_user(email: str) -> dict:
     user_id = user.id
 
     todos_deleted = (await todos_collection.delete_many({"user_id": user_id})).deleted_count
-    conversations_deleted = (
-        await conversations_collection.delete_many({"user_id": user_id})
-    ).deleted_count
+    conversations_deleted = len(await conversation_repository.delete_all_for_user(user_id))
     projects_deleted = (await projects_collection.delete_many({"user_id": user_id})).deleted_count
     user_deleted = int(await user_repository.delete(user_id))
 

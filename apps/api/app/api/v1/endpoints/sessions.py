@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.services.storage import (
     JuiceFSUnavailable,
@@ -64,11 +64,7 @@ class PinRequest(BaseModel):
 
 async def _assert_owns(user_id: str, conv_id: str) -> None:
     """403 unless (user_id, conv_id) is a conversation owned by this user."""
-    doc = await conversations_collection.find_one(
-        {"user_id": user_id, "conversation_id": conv_id},
-        projection={"_id": 1},
-    )
-    if doc is None:
+    if not await conversation_repository.exists(conv_id, user_id=user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Conversation not found or not owned by this user",

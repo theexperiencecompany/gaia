@@ -19,6 +19,7 @@ clock bumps ``updatedAt`` explicitly.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 
 from bson import ObjectId
@@ -30,7 +31,6 @@ from app.models.chat_models import (
     ConversationSyncItem,
     MessageModel,
     SystemPurpose,
-    ToolDataEntry,
 )
 from app.models.conversation_models import (
     ConversationDocument,
@@ -204,7 +204,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         *,
         user_id: str,
         message_id: str,
-        entries: list[ToolDataEntry],
+        entries: Sequence[Mapping[str, object]],
     ) -> bool:
         """Append tool-data entries onto one message. Does not advance ``updatedAt``
         (matches the legacy executor/artifact writes)."""

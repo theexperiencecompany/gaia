@@ -24,11 +24,11 @@ from app.agents.workspace.paths import (
     session_dir,
 )
 from app.db.mongodb.collections import (
-    conversations_collection,
     todos_collection,
     users_collection,
 )
 from app.db.redis import get_cache, set_cache
+from app.db.repositories.conversations import conversation_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.message_models import (
@@ -704,11 +704,8 @@ async def get_onboarding_system_prompt_if_applicable(
 ) -> str | None:
     """Return the onboarding system prompt for onboarding/demo turns, else ``None``."""
     try:
-        conv = await conversations_collection.find_one(
-            {"conversation_id": conversation_id},
-            {"is_onboarding_conversation": 1, "messages": 1},
-        )
-        is_tagged_onboarding = bool(conv and conv.get("is_onboarding_conversation"))
+        probe = await conversation_repository.get_onboarding_probe(conversation_id)
+        is_tagged_onboarding = bool(probe and probe.is_onboarding_conversation)
         is_run_now_demo = bool(
             latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
         )
@@ -717,7 +714,7 @@ async def get_onboarding_system_prompt_if_applicable(
             return None
 
         if is_tagged_onboarding:
-            message_count = len(conv.get("messages", [])) if conv else 0
+            message_count = probe.message_count if probe else 0
             if message_count >= 7:
                 await users_collection.update_one(
                     {"_id": ObjectId(user_id)},

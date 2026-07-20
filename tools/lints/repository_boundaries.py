@@ -52,12 +52,10 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "agents/tools/file_tools.py",
         "agents/tools/integration_tool.py",
         # api/
-        "api/v1/endpoints/file.py",
         "api/v1/endpoints/integrations/config.py",
         "api/v1/endpoints/integrations/public.py",
         "api/v1/endpoints/notification.py",
         "api/v1/endpoints/onboarding.py",
-        "api/v1/endpoints/sessions.py",
         "api/v1/endpoints/user.py",
         "api/v1/endpoints/workflows.py",
         # helpers/
@@ -72,11 +70,8 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/blog_service.py",
         "services/bot_service.py",
         "services/calendar_service.py",
-        "services/chat/stream.py",
-        "services/chat/workspace.py",
         "services/dev_service.py",
         "services/device/device_service.py",
-        "services/feedback_service.py",
         "services/file_service.py",
         "services/integration_instructions_service.py",
         "services/integrations/community_service.py",
@@ -134,7 +129,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "utils/internet_utils.py",
         "utils/notification/channel_preferences.py",
         "utils/profile_card.py",
-        "utils/seeding_utils.py",
         "utils/workflow_utils.py",
         # workers/
         "workers/tasks/cleanup_tasks.py",

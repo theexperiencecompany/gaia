@@ -5,7 +5,15 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 import pytest
 
+from app.models.conversation_models import ConversationDocument
 from app.services.bot_service import BOT_RATE_LIMIT, BOT_RATE_WINDOW, BotService
+
+
+def _conv(messages: list[dict]) -> ConversationDocument:
+    return ConversationDocument.model_validate(
+        {"user_id": "user1", "conversation_id": "conv1", "messages": messages}
+    )
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -21,9 +29,9 @@ def mock_bot_sessions():
 
 @pytest.fixture
 def mock_conversations():
-    """Patch the conversations_collection so conversation reads are mocked."""
-    with patch("app.services.bot_service.conversations_collection") as mock_col:
-        yield mock_col
+    """Patch the conversation_repository so conversation reads are mocked."""
+    with patch("app.services.bot_service.conversation_repository") as mock_repo:
+        yield mock_repo
 
 
 @pytest.fixture
@@ -159,7 +167,7 @@ class TestGetOrCreateSession:
         mock_bot_sessions.find_one_and_update = AsyncMock(
             return_value=self._existing_session("conv-existing")
         )
-        mock_conversations.find_one = AsyncMock(return_value={"_id": "some-id"})
+        mock_conversations.exists = AsyncMock(return_value=True)
 
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
@@ -175,7 +183,7 @@ class TestGetOrCreateSession:
         # find_one_and_update inserts a fresh session (returns the $setOnInsert id).
         mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
         # No conversation document exists yet for the freshly-minted id.
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_conversations.exists = AsyncMock(return_value=False)
 
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
@@ -193,7 +201,7 @@ class TestGetOrCreateSession:
         """The created bot conversation must carry the platform as its source so the
         web list query's $nin filter excludes it."""
         mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_conversations.exists = AsyncMock(return_value=False)
 
         await BotService.get_or_create_session("whatsapp", "user123", None, sample_user)
 
@@ -214,7 +222,7 @@ class TestGetOrCreateSession:
         mock_bot_sessions.find_one_and_update = AsyncMock(
             return_value=self._existing_session("conv-deleted")
         )
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_conversations.exists = AsyncMock(return_value=False)
 
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
@@ -236,7 +244,7 @@ class TestGetOrCreateSession:
         mock_bot_sessions.find_one_and_update = AsyncMock(
             return_value=self._existing_session("conv-deleted")
         )
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_conversations.exists = AsyncMock(return_value=False)
 
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
@@ -253,7 +261,7 @@ class TestGetOrCreateSession:
         """User dict with _id but no user_id should be normalized."""
         user = {"_id": "507f1f77bcf86cd799439011", "email": "test@example.com"}
         mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_conversations.exists = AsyncMock(return_value=False)
 
         result = await BotService.get_or_create_session("discord", "user123", None, user)
 
@@ -268,7 +276,7 @@ class TestGetOrCreateSession:
         sample_user,
     ):
         mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_conversations.exists = AsyncMock(return_value=False)
 
         await BotService.get_or_create_session("telegram", "user123", None, sample_user)
 
@@ -297,7 +305,7 @@ class TestResetSession:
         mock_bot_sessions.find_one_and_update = AsyncMock(
             side_effect=TestGetOrCreateSession._inserted_session
         )
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_conversations.exists = AsyncMock(return_value=False)
 
         result = await BotService.reset_session("discord", "user123", None, sample_user)
 
@@ -315,7 +323,7 @@ class TestResetSession:
         mock_bot_sessions.find_one_and_update = AsyncMock(
             side_effect=TestGetOrCreateSession._inserted_session
         )
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_conversations.exists = AsyncMock(return_value=False)
 
         await BotService.reset_session("slack", "user123", "channel789", sample_user)
 
@@ -334,33 +342,22 @@ class TestLoadConversationHistory:
     """Tests for load_conversation_history mapping stored messages to roles and applying the limit."""
 
     async def test_returns_empty_when_no_conv(self, mock_conversations):
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_conversations.get = AsyncMock(return_value=None)
 
         result = await BotService.load_conversation_history("conv1", "user1")
 
         assert result == []
 
     async def test_returns_empty_when_no_messages(self, mock_conversations):
-        mock_conversations.find_one = AsyncMock(return_value={"messages": []})
-
-        result = await BotService.load_conversation_history("conv1", "user1")
-
-        assert result == []
-
-    async def test_returns_empty_when_messages_key_missing(self, mock_conversations):
-        mock_conversations.find_one = AsyncMock(return_value={})
+        mock_conversations.get = AsyncMock(return_value=_conv([]))
 
         result = await BotService.load_conversation_history("conv1", "user1")
 
         assert result == []
 
     async def test_maps_user_messages(self, mock_conversations):
-        mock_conversations.find_one = AsyncMock(
-            return_value={
-                "messages": [
-                    {"type": "user", "response": "Hello"},
-                ]
-            }
+        mock_conversations.get = AsyncMock(
+            return_value=_conv([{"type": "user", "response": "Hello"}])
         )
 
         result = await BotService.load_conversation_history("conv1", "user1")
@@ -369,12 +366,8 @@ class TestLoadConversationHistory:
         assert result[0] == {"role": "user", "content": "Hello"}
 
     async def test_maps_bot_messages(self, mock_conversations):
-        mock_conversations.find_one = AsyncMock(
-            return_value={
-                "messages": [
-                    {"type": "bot", "response": "Hi there!"},
-                ]
-            }
+        mock_conversations.get = AsyncMock(
+            return_value=_conv([{"type": "bot", "response": "Hi there!"}])
         )
 
         result = await BotService.load_conversation_history("conv1", "user1")
@@ -383,13 +376,13 @@ class TestLoadConversationHistory:
         assert result[0] == {"role": "assistant", "content": "Hi there!"}
 
     async def test_skips_unknown_message_types(self, mock_conversations):
-        mock_conversations.find_one = AsyncMock(
-            return_value={
-                "messages": [
+        mock_conversations.get = AsyncMock(
+            return_value=_conv(
+                [
                     {"type": "system", "response": "System msg"},
                     {"type": "user", "response": "Hello"},
                 ]
-            }
+            )
         )
 
         result = await BotService.load_conversation_history("conv1", "user1")
@@ -399,7 +392,7 @@ class TestLoadConversationHistory:
 
     async def test_respects_limit(self, mock_conversations):
         messages = [{"type": "user", "response": f"msg{i}"} for i in range(30)]
-        mock_conversations.find_one = AsyncMock(return_value={"messages": messages})
+        mock_conversations.get = AsyncMock(return_value=_conv(messages))
 
         result = await BotService.load_conversation_history("conv1", "user1", limit=5)
 
@@ -407,14 +400,8 @@ class TestLoadConversationHistory:
         assert len(result) == 5
         assert result[0]["content"] == "msg25"
 
-    async def test_handles_missing_response_field(self, mock_conversations):
-        mock_conversations.find_one = AsyncMock(
-            return_value={
-                "messages": [
-                    {"type": "user"},
-                ]
-            }
-        )
+    async def test_handles_empty_response_field(self, mock_conversations):
+        mock_conversations.get = AsyncMock(return_value=_conv([{"type": "user", "response": ""}]))
 
         result = await BotService.load_conversation_history("conv1", "user1")
 
