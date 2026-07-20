@@ -27,7 +27,10 @@ from app.models.payment_models import PlanType
 
 os.environ["ENV"] = "development"
 # The unit suite must be deterministic regardless of a developer's dev-bypass .env.
-os.environ.pop("DEV_AUTH_BYPASS_EMAIL", None)
+# Force an empty (falsy) value rather than popping: an empty value keeps the
+# prod-guard off, and because the key is now present, load_dotenv(override=False)
+# — called at settings import — will not re-inject a value from the developer's .env.
+os.environ["DEV_AUTH_BYPASS_EMAIL"] = ""
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",
