@@ -3,9 +3,9 @@ from datetime import UTC, datetime
 import math
 import uuid
 
-from app.db.mongodb.collections import workflows_collection
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkOperationResponse,
@@ -45,25 +45,20 @@ async def _get_workflow_categories_for_todos(
 ) -> dict[str, list[str]]:
     """Fetch workflow step categories for todos that have linked workflows.
 
-    Returns a dict mapping todo_id -> list of unique tool categories. The
-    workflows collection is a different domain (its own repository lands in a
-    later wave); this reads it directly until then.
-    """
+    Returns a dict mapping todo_id -> list of unique tool categories (cross-domain
+    read via the workflow repository)."""
     workflow_ids = [todo.workflow_id for todo in todos if todo.workflow_id]
     if not workflow_ids:
         return {}
 
-    workflows = await workflows_collection.find(
-        {"_id": {"$in": workflow_ids}, "user_id": user_id}
-    ).to_list(length=None)
+    workflows = await workflow_repository.find_by_ids_for_user(workflow_ids, user_id)
 
     workflow_categories: dict[str, list[str]] = {}
     for workflow in workflows:
-        steps = workflow.get("steps", [])
-        categories = list(
-            dict.fromkeys(step.get("category") for step in steps if step.get("category"))
-        )[:3]
-        workflow_categories[workflow.get("_id")] = categories
+        categories = list(dict.fromkeys(step.category for step in workflow.steps if step.category))[
+            :3
+        ]
+        workflow_categories[workflow.id] = categories
 
     result: dict[str, list[str]] = {}
     for todo in todos:

@@ -109,8 +109,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/startup_validation.py",
         "services/support_service.py",
         "services/system_workflows/provisioner.py",
-        # todo_service still reads workflows_collection (workflows domain, later wave)
-        "services/todos/todo_service.py",
         "services/triggers/base.py",
         "services/triggers/handlers/asana.py",
         "services/triggers/handlers/calendar.py",

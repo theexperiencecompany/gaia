@@ -8,7 +8,7 @@ and the ProjectService guards.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
@@ -139,12 +139,35 @@ def mock_project_repo():
 
 
 @pytest.fixture
-def mock_workflows_collection():
-    with patch("app.services.todos.todo_service.workflows_collection") as mock_col:
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(return_value=[])
-        mock_col.find = MagicMock(return_value=mock_cursor)
-        yield mock_col
+def mock_workflow_repo():
+    """Patch the cross-domain workflow repository read the todo enrichment uses."""
+    with patch(
+        "app.services.todos.todo_service.workflow_repository.find_by_ids_for_user",
+        new_callable=AsyncMock,
+        return_value=[],
+    ) as m:
+        yield m
+
+
+def _workflow_doc(wf_id: str, categories: list[str]):
+    from app.models.workflow_models import (
+        TriggerConfig,
+        TriggerType,
+        WorkflowDocument,
+        WorkflowStep,
+    )
+
+    return WorkflowDocument(
+        id=wf_id,
+        user_id=FAKE_USER_ID,
+        title="wf",
+        prompt="p",
+        steps=[
+            WorkflowStep(title=f"s{i}", description="d", category=c)
+            for i, c in enumerate(categories)
+        ],
+        trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+    )
 
 
 @pytest.fixture
@@ -181,42 +204,29 @@ def mock_workflow_queue():
 
 @pytest.mark.unit
 class TestGetWorkflowCategories:
-    async def test_no_todos_with_workflow_returns_empty(self, mock_workflows_collection):
+    async def test_no_todos_with_workflow_returns_empty(self, mock_workflow_repo):
         todos = [_make_todo_doc(workflow_id=None)]
         result = await _get_workflow_categories_for_todos(todos, FAKE_USER_ID)
         assert result == {}
+        mock_workflow_repo.assert_not_awaited()  # no linked workflows → no repo hit
 
-    async def test_returns_categories_for_linked_workflows(self, mock_workflows_collection):
+    async def test_returns_categories_for_linked_workflows(self, mock_workflow_repo):
         todo = _make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"_id": "wf1", "steps": [{"category": "email"}, {"category": "calendar"}]}
-            ]
-        )
-        mock_workflows_collection.find = MagicMock(return_value=mock_cursor)
+        mock_workflow_repo.return_value = [_workflow_doc("wf1", ["email", "calendar"])]
         result = await _get_workflow_categories_for_todos([todo], FAKE_USER_ID)
         assert result[FAKE_TODO_ID] == ["email", "calendar"]
+        mock_workflow_repo.assert_awaited_once_with(["wf1"], FAKE_USER_ID)
 
-    async def test_categories_limited_to_three(self, mock_workflows_collection):
+    async def test_categories_limited_to_three(self, mock_workflow_repo):
         todo = _make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"_id": "wf1", "steps": [{"category": c} for c in ["a", "b", "c", "d", "e"]]}
-            ]
-        )
-        mock_workflows_collection.find = MagicMock(return_value=mock_cursor)
+        mock_workflow_repo.return_value = [_workflow_doc("wf1", ["a", "b", "c", "d", "e"])]
         result = await _get_workflow_categories_for_todos([todo], FAKE_USER_ID)
         assert result[FAKE_TODO_ID] == ["a", "b", "c"]
 
-    async def test_skips_steps_without_category(self, mock_workflows_collection):
+    async def test_dedupes_and_skips_empty_categories(self, mock_workflow_repo):
         todo = _make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[{"_id": "wf1", "steps": [{"category": "email"}, {"name": "no-cat"}]}]
-        )
-        mock_workflows_collection.find = MagicMock(return_value=mock_cursor)
+        # An empty-string category is filtered; duplicates collapse to one.
+        mock_workflow_repo.return_value = [_workflow_doc("wf1", ["email", "", "email"])]
         result = await _get_workflow_categories_for_todos([todo], FAKE_USER_ID)
         assert result[FAKE_TODO_ID] == ["email"]
 
@@ -271,16 +281,12 @@ class TestGetTodo:
         assert result.id == FAKE_TODO_ID
 
     async def test_enriches_workflow_categories(
-        self, mock_todo_repo, mock_project_repo, mock_workflows_collection
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
     ):
         mock_todo_repo.get = AsyncMock(
             return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
         )
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[{"_id": "wf1", "steps": [{"category": "email"}]}]
-        )
-        mock_workflows_collection.find = MagicMock(return_value=mock_cursor)
+        mock_workflow_repo.return_value = [_workflow_doc("wf1", ["email"])]
         result = await TodoService.get_todo(FAKE_TODO_ID, FAKE_USER_ID)
         assert result.workflow_categories == ["email"]
 
@@ -288,7 +294,7 @@ class TestGetTodo:
 @pytest.mark.unit
 class TestListTodos:
     async def test_delegates_to_list_page(
-        self, mock_todo_repo, mock_project_repo, mock_workflows_collection
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
     ):
         from app.models.todo_models import TodoPage
 
@@ -517,7 +523,7 @@ class TestCompatibilityWrappers:
         mock_project_repo.delete.assert_awaited_once()
 
     async def test_get_all_todos_wrapper(
-        self, mock_todo_repo, mock_project_repo, mock_workflows_collection
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
     ):
         from app.models.todo_models import TodoPage
 
