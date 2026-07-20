@@ -6,8 +6,9 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Union
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
+from app.db.repositories.base import MongoDocument
 from app.models.scheduler_models import BaseScheduledTask, ScheduledTaskStatus
 from app.utils.cron_utils import validate_cron_expression
 from app.utils.timezone import Timezone
@@ -372,3 +373,38 @@ class ReminderResponse(BaseModel):
         if value is not None:
             return value.isoformat()
         return None
+
+
+# Repository persistence models (Wave E migration)
+
+
+class ReminderDocument(ReminderModel, MongoDocument):
+    """A reminder as stored in MongoDB.
+
+    Identity is Mongo's ``ObjectId`` ``_id`` (stringified into ``id`` on read).
+    Extends ``ReminderModel`` so it doubles as the read model. ``extra="ignore"``
+    (from ``MongoDocument``) tolerates legacy stray fields.
+    """
+
+    # Resolve the ``ReminderModel.id`` (``str | None``, alias ``_id``) vs
+    # ``MongoDocument.id`` (``str``) diamond: the repository stringifies the
+    # ObjectId ``_id`` into ``id`` on every read, so a loaded document always
+    # carries a non-optional id.
+    id: str = ""
+
+
+class ReminderUpdate(BaseModel):
+    """Partial ``$set`` update for a reminder — the fields the update and
+    scheduler-status paths mutate. All optional, ``extra="forbid"``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent: AgentType | None = None
+    repeat: str | None = None
+    scheduled_at: datetime | None = None
+    status: ReminderStatus | None = None
+    max_occurrences: int | None = None
+    stop_after: datetime | None = None
+    payload: StaticReminderPayload | None = None
+    occurrence_count: int | None = None
+    timezone: str | None = None
