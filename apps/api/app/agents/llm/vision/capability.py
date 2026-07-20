@@ -4,7 +4,7 @@ from enum import Enum
 
 from langchain_core.runnables import RunnableConfig
 
-from app.agents.llm.model_catalog import openrouter_catalog
+from app.agents.llm.model_catalog import get_openrouter_catalog
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL_NAME,
@@ -52,8 +52,10 @@ async def resolve_media_delivery(config: RunnableConfig) -> MediaDelivery:
     provider, model = active_lane(config)
     if provider == GEMINI_PROVIDER:
         return MediaDelivery.KEEP_IN_TOOL_RESULTS
-    if provider == OPENROUTER_PROVIDER and await openrouter_catalog.accepts_images(model):
-        return MediaDelivery.MOVE_TO_USER_MESSAGE
+    if provider == OPENROUTER_PROVIDER:
+        catalog = await get_openrouter_catalog()
+        if await catalog.accepts_images(model):
+            return MediaDelivery.MOVE_TO_USER_MESSAGE
     return MediaDelivery.REPLACE_WITH_TEXT
 
 

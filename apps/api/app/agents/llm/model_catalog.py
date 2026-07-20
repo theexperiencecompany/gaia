@@ -27,6 +27,7 @@ from app.constants.llm import (
     OPENROUTER_MODELS_URL,
 )
 from app.constants.log_tags import LogTag
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
 _IMAGE_MODALITY = "image"
@@ -113,4 +114,26 @@ class OpenRouterModelCatalog:
         return models
 
 
-openrouter_catalog = OpenRouterModelCatalog()
+OPENROUTER_MODEL_CATALOG_PROVIDER = "openrouter_model_catalog"
+
+
+@lazy_provider(name=OPENROUTER_MODEL_CATALOG_PROVIDER, strategy=MissingKeyStrategy.ERROR)
+def init_openrouter_model_catalog() -> OpenRouterModelCatalog:
+    """Register the catalog as a sync provider.
+
+    The loader is deliberately sync: `accepts_images` is awaited from the
+    pre-model hook, which `sync_execute_hooks` runs under a fresh, short-lived
+    event loop each turn. An async provider guards initialization with an
+    `asyncio.Lock` bound to the loop it was first used on, which would then fail
+    against those later loops; a sync loader uses a thread lock and a lock-free
+    fast path once initialized, so it is loop-agnostic.
+    """
+    return OpenRouterModelCatalog()
+
+
+async def get_openrouter_catalog() -> OpenRouterModelCatalog:
+    """Resolve the process-wide catalog from the provider registry."""
+    catalog = await providers.aget(OPENROUTER_MODEL_CATALOG_PROVIDER)
+    if catalog is None:
+        raise RuntimeError("OpenRouter model catalog provider is not available")
+    return catalog
