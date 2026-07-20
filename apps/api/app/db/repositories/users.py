@@ -100,7 +100,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """
         now = datetime.now(UTC)
         set_fields: dict[str, object] = {
-            "updated_at": now,
             "onboarding.completed": True,
             "onboarding.completed_at": completed_at or now,
             "onboarding.phase": phase,
@@ -128,7 +127,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def set_selected_integrations(self, user_id: str, integrations: list[str]) -> None:
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.selected_integrations": integrations, "updated_at": _now()}},
+            {"$set": {"onboarding.selected_integrations": integrations}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
@@ -136,7 +135,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def update_onboarding_preferences(
         self, user_id: str, preferences_patch: dict[str, object]
     ) -> UserDocument | None:
-        set_fields: dict[str, object] = {"updated_at": _now()}
+        set_fields: dict[str, object] = {}
         for field, value in preferences_patch.items():
             set_fields[f"onboarding.preferences.{field}"] = value
         return await self._apply_raw_update(
@@ -146,7 +145,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def reset_onboarding(self, user_id: str) -> None:
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$unset": {"onboarding": ""}, "$set": {"updated_at": _now()}},
+            {"$unset": {"onboarding": ""}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
@@ -165,7 +164,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def set_pipeline_completion(
         self, user_id: str, *, phase: str, conversation_id: str | None = None
     ) -> None:
-        set_fields: dict[str, object] = {"onboarding.phase": phase, "updated_at": _now()}
+        set_fields: dict[str, object] = {"onboarding.phase": phase}
         if conversation_id is not None:
             set_fields["onboarding.first_message_conversation_id"] = conversation_id
         await self._apply_raw_update(
@@ -186,7 +185,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def mark_early_intelligence_done(self, user_id: str) -> None:
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.early_intelligence_done_at": _now(), "updated_at": _now()}},
+            {"$set": {"onboarding.early_intelligence_done_at": _now()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
