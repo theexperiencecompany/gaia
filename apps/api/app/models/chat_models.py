@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Union
+from typing import NotRequired, Union
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -20,7 +20,9 @@ class ToolDataEntry(TypedDict):
 
     tool_name: str
     data: Union[dict, list, str, int, float, bool]
-    timestamp: str | None
+    # Optional: emitters always stamp it, but legacy stored entries predate the
+    # field, so a read must tolerate its absence rather than fail validation.
+    timestamp: NotRequired[str | None]
 
 
 tool_fields = [
@@ -83,6 +85,9 @@ class MessageModel(BaseModel):
     # Terminal stream error for a bot turn that produced no response — rendered
     # on reload instead of an empty bubble.
     error: str | None = None
+    # Set by the pin-message endpoint on the embedded message; absent on most
+    # messages, so it reads back as None unless the user pinned this one.
+    pinned: bool | None = None
 
 
 class SystemPurpose(str, Enum):

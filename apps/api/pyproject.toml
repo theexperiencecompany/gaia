@@ -82,6 +82,7 @@ module = [
     "app.models.notes_models",
     "app.models.todo_models",
     "app.models.mail_models",
+    "app.models.conversation_models",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
