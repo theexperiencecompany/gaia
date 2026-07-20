@@ -131,6 +131,25 @@ class TestRemindersUpdate:
             is None
         )
 
+    async def test_delete_finished_before(self, repo, raw_collection):
+        now = datetime.now(UTC)
+        old_done = await repo.create(_reminder(status=ReminderStatus.COMPLETED))
+        old_cancelled = await repo.create(_reminder(status=ReminderStatus.CANCELLED))
+        active = await repo.create(_reminder(status=ReminderStatus.SCHEDULED))
+        # base._insert stamps updated_at=now, so age the rows directly. The active
+        # one is old too — proving the status filter, not just the date, gates it.
+        await raw_collection.update_many(
+            {"_id": {"$in": [repo._id_value(r.id) for r in (old_done, old_cancelled, active)]}},
+            {"$set": {"updated_at": now - timedelta(days=40)}},
+        )
+        # A recently-finished reminder (updated_at=now) must survive the cutoff.
+        recent_done = await repo.create(_reminder(status=ReminderStatus.COMPLETED))
+
+        deleted = await repo.delete_finished_before(now - timedelta(days=30))
+        assert deleted == 2
+        assert await repo.get(active.id) is not None
+        assert await repo.get(recent_done.id) is not None
+
     async def test_update_replaces_payload(self, repo):
         owner = _uid("owner")
         rem = await repo.create(_reminder(user_id=owner))

@@ -98,5 +98,16 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
         )
         return result is not None
 
+    async def delete_finished_before(self, cutoff: datetime) -> int:
+        """Delete completed/cancelled reminders last updated before ``cutoff`` — the
+        cleanup cron. Returns the count deleted."""
+        return await self._delete_many(
+            {
+                "status": {"$in": [ReminderStatus.COMPLETED.value, ReminderStatus.CANCELLED.value]},
+                "updated_at": {"$lt": cutoff},
+            },
+            scope=REPO_GLOBAL_SCOPE,
+        )
+
 
 reminder_repository = RemindersRepository()

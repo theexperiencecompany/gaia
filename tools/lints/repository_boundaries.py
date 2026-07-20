@@ -104,7 +104,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/payments/payment_service.py",
         "services/payments/payment_webhook_service.py",
         "services/provider_metadata_service.py",
-        "services/reminder_service.py",
         "services/sandbox/lifecycle.py",
         "services/search_service.py",
         "services/startup_validation.py",
@@ -145,7 +144,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "workers/tasks/maintenance_sweep_tasks.py",
         "workers/tasks/memory_backfill_tasks.py",
         "workers/tasks/onboarding_tasks.py",
-        "workers/tasks/reminder_tasks.py",
         "workers/tasks/sandbox_tasks.py",
         "workers/tasks/user_tasks.py",
     }
@@ -180,7 +178,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/payments/payment_service.py",
         "services/payments/payment_webhook_service.py",
         "services/provider_metadata_service.py",
-        "services/reminder_service.py",
         "services/user_service.py",
         "services/voice_service.py",
         # utils/

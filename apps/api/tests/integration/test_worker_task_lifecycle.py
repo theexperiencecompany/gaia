@@ -87,25 +87,20 @@ class TestReminderTaskExecution:
 
     @freeze_time("2026-04-01T12:00:00Z")
     async def test_cleanup_expired_reminders_deletes_old_completed(self):
-        """cleanup_expired_reminders should delete completed/cancelled reminders older than 30 days."""
+        """cleanup_expired_reminders delegates to the repository with a 30-day cutoff.
+        (The completed/cancelled status filter is the repository's contract.)"""
 
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 5
-
-        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
-            mock_col.delete_many = AsyncMock(return_value=mock_delete_result)
-
+        with patch(
+            "app.workers.tasks.reminder_tasks.reminder_repository.delete_finished_before",
+            new_callable=AsyncMock,
+            return_value=5,
+        ) as mock_delete:
             result = await cleanup_expired_reminders(ARQ_CTX)
 
-            mock_col.delete_many.assert_awaited_once()
-            call_filter = mock_col.delete_many.call_args[0][0]
-
-            # Verify the query targets completed/cancelled statuses
-            assert call_filter["status"]["$in"] == ["completed", "cancelled"]
-
-            # Verify the cutoff date is 30 days ago from the frozen time
+            mock_delete.assert_awaited_once()
+            # Cutoff is 30 days before the frozen time.
             expected_cutoff = datetime(2026, 3, 2, 12, 0, 0, tzinfo=UTC)
-            actual_cutoff = call_filter["updated_at"]["$lt"]
+            actual_cutoff = mock_delete.call_args.args[0]
             assert abs((actual_cutoff - expected_cutoff).total_seconds()) < 2
 
             assert "5" in result
@@ -115,12 +110,11 @@ class TestReminderTaskExecution:
     async def test_cleanup_expired_reminders_zero_deleted(self):
         """When no expired reminders exist, report zero deleted."""
 
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 0
-
-        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
-            mock_col.delete_many = AsyncMock(return_value=mock_delete_result)
-
+        with patch(
+            "app.workers.tasks.reminder_tasks.reminder_repository.delete_finished_before",
+            new_callable=AsyncMock,
+            return_value=0,
+        ):
             result = await cleanup_expired_reminders(ARQ_CTX)
             assert "0" in result
 
