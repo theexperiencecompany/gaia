@@ -17,7 +17,7 @@ from shared.py.wide_events import log
 
 
 def domain_of(url: str | None) -> str | None:
-    """Registrable host of a URL, used as the profile key. None if not a URL."""
+    """Lowercased hostname of a URL, used as the profile key. None if not a URL."""
     if not url:
         return None
     try:

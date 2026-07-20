@@ -9,6 +9,13 @@ from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.session import resolve_cdp_url, steel_session
 
 
+@pytest.fixture(autouse=True)
+def _no_cdp_override(monkeypatch):
+    """Pin the CDP override off so lifecycle assertions on ``cdp_url`` don't
+    depend on an ambient ``STEEL_CDP_CONNECT_URL`` (e.g. a dev ``.env``)."""
+    monkeypatch.setattr(session_mod.settings, "STEEL_CDP_CONNECT_URL", None)
+
+
 def _fake_client() -> MagicMock:
     client = MagicMock()
     created = MagicMock()

@@ -40,11 +40,9 @@ interface FoldedState {
   result?: BrowserResultSnapshot;
 }
 
-type UiStatus = BrowserSessionStatus | "paused";
-
 // Machine states → plain language the user understands at a glance.
 const STATUS_META: Record<
-  UiStatus,
+  BrowserSessionStatus,
   {
     label: string;
     color: "default" | "primary" | "success" | "danger" | "warning";

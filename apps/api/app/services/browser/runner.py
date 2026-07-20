@@ -68,8 +68,6 @@ class BrowserTaskRunner:
         use_vision: bool,
         solve_captcha: bool,
         autonomous_override: bool | None = None,
-        sensitive_data: dict[str, Any] | None = None,
-        allowed_domains: list[str] | None = None,
     ) -> None:
         self._session = session
         self._llm = llm
@@ -83,8 +81,6 @@ class BrowserTaskRunner:
         self._use_vision = use_vision
         self._solve_captcha = solve_captcha
         self._autonomous = autonomous_override
-        self._sensitive_data = sensitive_data
-        self._allowed_domains = allowed_domains
         self._agent: Any = None
         self._stopped = False
         self._handed_off = False
@@ -102,10 +98,7 @@ class BrowserTaskRunner:
             )
         )
 
-        browser_kwargs: dict[str, Any] = {"cdp_url": self._session.cdp_url}
-        if self._allowed_domains:
-            browser_kwargs["allowed_domains"] = self._allowed_domains
-        browser = Browser(**browser_kwargs)
+        browser = Browser(cdp_url=self._session.cdp_url)
 
         agent_kwargs: dict[str, Any] = {
             "task": task,
@@ -118,8 +111,6 @@ class BrowserTaskRunner:
         }
         if self._solve_captcha:
             agent_kwargs["tools"] = build_tools(self._session.session_id)
-        if self._sensitive_data:
-            agent_kwargs["sensitive_data"] = self._sensitive_data
         self._agent = Agent(**agent_kwargs)
 
         try:
