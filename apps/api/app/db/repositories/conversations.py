@@ -27,6 +27,7 @@ from app.db.repositories.base import UserScopedRepository
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
     ConversationSource,
+    ConversationSyncItem,
     MessageModel,
     SystemPurpose,
     ToolDataEntry,
@@ -300,6 +301,32 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
         return await self._find({"user_id": user_id}, sort=[("createdAt", -1)], limit=limit)
+
+    async def find_updated_since(
+        self, user_id: str, items: list[ConversationSyncItem]
+    ) -> list[ConversationDocument]:
+        """Batch-fetch the named conversations whose ``updatedAt`` is newer than the
+        client's last-seen timestamp (or which have none) — the client-sync read.
+        A missing/unparseable timestamp includes the conversation unconditionally."""
+        conditions: list[dict[str, object]] = []
+        for item in items:
+            condition: dict[str, object] = {
+                "user_id": user_id,
+                "conversation_id": item.conversation_id,
+            }
+            if item.last_updated:
+                try:
+                    cutoff = datetime.fromisoformat(item.last_updated.replace("Z", "+00:00"))
+                    condition["$or"] = [
+                        {"updatedAt": {"$gt": cutoff}},
+                        {"updatedAt": {"$exists": False}},
+                    ]
+                except (ValueError, AttributeError):
+                    pass
+            conditions.append(condition)
+        if not conditions:
+            return []
+        return await self._find({"$or": conditions})
 
     # ---- search / pinned aggregations ----
 

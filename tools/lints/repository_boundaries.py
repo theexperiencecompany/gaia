@@ -75,7 +75,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/calendar_service.py",
         "services/chat/stream.py",
         "services/chat/workspace.py",
-        "services/conversation_service.py",
         "services/dev_service.py",
         "services/device/device_service.py",
         "services/feedback_service.py",
@@ -171,7 +170,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         # models/
         "models/blog_models.py",
         # services/
-        "services/conversation_service.py",
         "services/integrations/marketplace.py",
         "services/integrations/user_integrations.py",
         "services/oauth/oauth_service.py",

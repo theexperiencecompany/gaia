@@ -353,6 +353,31 @@ class TestSearchAndSweeps:
         assert await repo.get(keep.conversation_id, user_id=user) is not None
         assert await repo.get(demo.conversation_id, user_id=user) is None
 
+    async def test_find_updated_since(self, repo):
+        from app.models.chat_models import ConversationSyncItem
+
+        user = _uid()
+        fresh = _doc(user_id=user)
+        stale = _doc(user_id=user)
+        await repo.create(fresh)
+        await repo.create(stale)
+        # Bump only `fresh` so it gets an updatedAt after the cutoff.
+        await repo.set_starred(fresh.conversation_id, user_id=user, starred=True)
+        cutoff = datetime.now(UTC).isoformat()
+        await repo.set_description(stale.conversation_id, user_id=user, description="old")
+        # Ask for both since `cutoff`: fresh was bumped before it (excluded), stale
+        # after it (included); a conversation with no updatedAt is always included.
+        never = _doc(user_id=user)
+        await repo.create(never)
+        items = [
+            ConversationSyncItem(conversation_id=fresh.conversation_id, last_updated=cutoff),
+            ConversationSyncItem(conversation_id=stale.conversation_id, last_updated=cutoff),
+            ConversationSyncItem(conversation_id=never.conversation_id, last_updated=cutoff),
+        ]
+        found = {d.conversation_id for d in await repo.find_updated_since(user, items)}
+        assert stale.conversation_id in found  # updated after cutoff
+        assert never.conversation_id in found  # no updatedAt → always included
+
     async def test_all_conversation_ids_and_active_users(self, repo):
         user = _uid()
         doc = _doc(user_id=user)
