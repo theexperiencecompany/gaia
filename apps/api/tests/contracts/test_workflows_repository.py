@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import uuid
 
+from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.repositories.workflows import WorkflowsRepository
@@ -386,3 +387,55 @@ class TestWorkflowsPublishAndWrites:
         with_msg = await repo.set_error_message(wf.id, owner, "boom")
         assert with_msg is not None and with_msg.error_message == "boom"
         assert await repo.touch(_uid("missing"), owner) is None
+
+
+class TestWorkflowsUniqueIndexSurface:
+    """The concurrency-guard indexes live on the real collection, not the ephemeral
+    fixture — recreate them here to prove the exact DuplicateKeyError surface the
+    provisioner / publish paths depend on (they catch pymongo's DuplicateKeyError)."""
+
+    async def _create_indexes(self, raw_collection) -> None:
+        # Mirrors app/db/mongodb/indexes.py::create_workflow_indexes.
+        await raw_collection.create_index(
+            [("user_id", 1), ("system_workflow_key", 1)],
+            unique=True,
+            partialFilterExpression={"system_workflow_key": {"$type": 2}},
+        )
+        await raw_collection.create_index(
+            [("slug", 1)],
+            unique=True,
+            partialFilterExpression={"is_public": True, "slug": {"$type": 2}},
+            name="slug_public_unique_idx",
+        )
+
+    async def test_create_duplicate_system_workflow_key_raises(self, repo, raw_collection):
+        await self._create_indexes(raw_collection)
+        owner = _uid("owner")
+        key = _uid("key")
+        await repo.create(
+            _workflow(user_id=owner, is_system_workflow=True, system_workflow_key=key)
+        )
+        # Same (user_id, system_workflow_key) → the provisioner relies on this raising.
+        with pytest.raises(DuplicateKeyError):
+            await repo.create(
+                _workflow(user_id=owner, is_system_workflow=True, system_workflow_key=key)
+            )
+
+    async def test_publish_duplicate_public_slug_raises(self, repo, raw_collection):
+        await self._create_indexes(raw_collection)
+        slug = _uid("slug")
+        a = await repo.create(_workflow(is_public=False))
+        b = await repo.create(_workflow(is_public=False))
+        assert await repo.publish(a.id, created_by=a.user_id, slug=slug) is not None
+        # Second publish onto the same public slug → the endpoint retries on this.
+        with pytest.raises(DuplicateKeyError):
+            await repo.publish(b.id, created_by=b.user_id, slug=slug)
+
+    async def test_backfill_duplicate_public_slug_raises(self, repo, raw_collection):
+        await self._create_indexes(raw_collection)
+        slug = _uid("slug")
+        # An existing public workflow already holds the slug.
+        await repo.create(_workflow(is_public=True, slug=slug))
+        pending = await repo.create(_workflow(is_public=True, slug=None))
+        with pytest.raises(DuplicateKeyError):
+            await repo.backfill_public_slug(pending.id, slug)
