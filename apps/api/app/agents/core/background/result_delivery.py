@@ -29,7 +29,7 @@ from app.agents.core.background.workflow_platform_delivery import (
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
     ConversationSource,
     MessageModel,
@@ -181,7 +181,7 @@ async def _narrate_and_deliver(
     show_reply_quote = run.is_queued and bool(run.user_message_id)
     if show_reply_quote:
         user_msg_content = await _lookup_user_message_content(
-            run.conversation_id, run.user_message_id
+            run.conversation_id, run.user_message_id, user_id
         )
         bot_message.replyToMessage = ReplyToMessageData(
             id=run.user_message_id,
@@ -459,15 +459,10 @@ async def _persist_follow_up_actions(
             conversation_id=conversation_id,
         )
         return False
-    result = await conversations_collection.update_one(
-        {
-            "user_id": user_id,
-            "conversation_id": conversation_id,
-            "messages.message_id": message_id,
-        },
-        {"$set": {"messages.$.follow_up_actions": follow_up_actions}},
+    matched = await conversation_repository.set_message_follow_up_actions(
+        conversation_id, user_id=user_id, message_id=message_id, actions=follow_up_actions
     )
-    if result.matched_count == 0:
+    if not matched:
         log.error(
             f"{LogTag.AGENT} _persist_follow_up_actions: no message matched, dropping follow-ups",
             conversation_id=conversation_id,
@@ -595,18 +590,17 @@ async def _broadcast_message(user_id: str, ws_event: dict[str, Any]) -> None:
 async def _lookup_user_message_content(
     conversation_id: str,
     user_message_id: str | None,
+    user_id: str,
 ) -> str:
     """Look up the first 150 chars of a user message for reply-to preview."""
+    if not user_message_id:
+        return ""
     try:
-        conv_doc = await conversations_collection.find_one(
-            {
-                "conversation_id": conversation_id,
-                "messages.message_id": user_message_id,
-            },
-            {"messages.$": 1},
+        message = await conversation_repository.get_message(
+            conversation_id, user_message_id, user_id=user_id
         )
-        if conv_doc and conv_doc.get("messages"):
-            return conv_doc["messages"][0].get("response", "")[:150]
+        if message is not None:
+            return (message.response or "")[:150]
     except Exception as e:
         log.warning(f"{LogTag.AGENT} _lookup_user_message_content: failed", error=str(e))
     return ""
@@ -621,11 +615,7 @@ async def _get_conversation_source(conversation_id: str, user_id: str) -> Conver
     that platform). Returns None on miss/error — treated as a non-bot conversation.
     """
     try:
-        doc = await conversations_collection.find_one(
-            {"conversation_id": conversation_id, "user_id": user_id},
-            {"source": 1},
-        )
+        return await conversation_repository.get_source(conversation_id, user_id=user_id)
     except Exception as e:
         log.warning(f"{LogTag.AGENT} _get_conversation_source: lookup failed", error=str(e))
         return None
-    return ConversationSource.coerce(doc.get("source")) if doc else None

@@ -25,7 +25,8 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
-from app.db.mongodb.collections import conversations_collection, users_collection
+from app.db.mongodb.collections import users_collection
+from app.db.repositories.conversations import conversation_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
 from app.models.notification.notification_models import (
@@ -110,12 +111,12 @@ async def backfill_user_memories(ctx: dict, user_id: str) -> str:
         user_name = user.get("name") or "the user"
         # Most-recent conversations, replayed oldest-first so journal dates and
         # recency-based reconciliation land on the right days.
-        docs = (
-            await conversations_collection.find({"user_id": user_id})
-            .sort("createdAt", -1)
-            .limit(MEMORY_BACKFILL_MAX_CONVERSATIONS)
-            .to_list(length=MEMORY_BACKFILL_MAX_CONVERSATIONS)
-        )
+        docs = [
+            conversation.model_dump(mode="json")
+            for conversation in await conversation_repository.recent_for_user(
+                user_id, limit=MEMORY_BACKFILL_MAX_CONVERSATIONS
+            )
+        ]
         docs.reverse()
 
         facts = 0

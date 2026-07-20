@@ -292,6 +292,13 @@ class TestWorkflowAndOnboarding:
         )
         assert await repo.get_source(_cid(), user_id=doc.user_id) is None
 
+    async def test_get_source_coerces_unknown_stored_value_to_none(self, repo, raw_collection):
+        cid, uid = _cid(), _uid()
+        await raw_collection.insert_one(
+            {"user_id": uid, "conversation_id": cid, "source": "legacy_garbage"}
+        )
+        assert await repo.get_source(cid, user_id=uid) is None
+
     async def test_mark_and_probe_onboarding(self, repo):
         doc = _doc()
         await repo.create(doc)
@@ -357,26 +364,30 @@ class TestSearchAndSweeps:
         from app.models.chat_models import ConversationSyncItem
 
         user = _uid()
-        fresh = _doc(user_id=user)
-        stale = _doc(user_id=user)
-        await repo.create(fresh)
-        await repo.create(stale)
-        # Bump only `fresh` so it gets an updatedAt after the cutoff.
-        await repo.set_starred(fresh.conversation_id, user_id=user, starred=True)
-        cutoff = datetime.now(UTC).isoformat()
-        await repo.set_description(stale.conversation_id, user_id=user, description="old")
-        # Ask for both since `cutoff`: fresh was bumped before it (excluded), stale
-        # after it (included); a conversation with no updatedAt is always included.
+        past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        future = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+
+        recent = _doc(user_id=user)
+        seen = _doc(user_id=user)
         never = _doc(user_id=user)
-        await repo.create(never)
+        for d in (recent, seen, never):
+            await repo.create(d)
+        # `recent` and `seen` both get an updatedAt around now.
+        await repo.set_starred(recent.conversation_id, user_id=user, starred=True)
+        await repo.set_starred(seen.conversation_id, user_id=user, starred=True)
+
         items = [
-            ConversationSyncItem(conversation_id=fresh.conversation_id, last_updated=cutoff),
-            ConversationSyncItem(conversation_id=stale.conversation_id, last_updated=cutoff),
-            ConversationSyncItem(conversation_id=never.conversation_id, last_updated=cutoff),
+            # updatedAt (~now) is after `past` → included.
+            ConversationSyncItem(conversation_id=recent.conversation_id, last_updated=past),
+            # updatedAt (~now) is before `future` → excluded.
+            ConversationSyncItem(conversation_id=seen.conversation_id, last_updated=future),
+            # no updatedAt at all → always included, whatever the cutoff.
+            ConversationSyncItem(conversation_id=never.conversation_id, last_updated=future),
         ]
         found = {d.conversation_id for d in await repo.find_updated_since(user, items)}
-        assert stale.conversation_id in found  # updated after cutoff
-        assert never.conversation_id in found  # no updatedAt → always included
+        assert recent.conversation_id in found
+        assert never.conversation_id in found
+        assert seen.conversation_id not in found
 
     async def test_all_conversation_ids_and_active_users(self, repo):
         user = _uid()

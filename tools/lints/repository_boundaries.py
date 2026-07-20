@@ -45,7 +45,6 @@ _BSON_ALLOWED_DIRS = ("db/",)
 COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
         # agents/
-        "agents/core/background/result_delivery.py",
         "agents/core/subagents/handoff_tools.py",
         "agents/core/subagents/provider_subagents.py",
         "agents/memory/email_processor.py",
@@ -138,7 +137,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "utils/seeding_utils.py",
         "utils/workflow_utils.py",
         # workers/
-        "workers/tasks/checkpoint_retention_tasks.py",
         "workers/tasks/cleanup_tasks.py",
         "workers/tasks/maintenance_sweep_tasks.py",
         "workers/tasks/memory_backfill_tasks.py",
