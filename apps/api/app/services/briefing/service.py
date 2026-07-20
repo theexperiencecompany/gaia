@@ -421,6 +421,7 @@ def _build_facts(
     lanes: list[context.GoalLane],
     curation_note: str,
     artifacts: dict[str, _ArtifactFact],
+    user_todos_note: str,
 ) -> tuple[list[dict], list[dict], str]:
     """Assemble sections + stats deterministically from lane state.
 
@@ -469,7 +470,11 @@ def _build_facts(
                 line += f" | link: {art.link}"
             fact_lines.append(line)
     if not sections:
-        fact_lines.append("No goal lanes have any work or results to report.")
+        fact_lines.append(
+            "No goal lanes exist and no background work ran. Do not claim anything "
+            "ran, finished, or is pending beyond what is stated here."
+        )
+    fact_lines.append(user_todos_note)
     return sections, stats, "\n".join(fact_lines)
 
 
@@ -624,7 +629,17 @@ async def run_daily_briefing(user_id: str) -> None:
     # Facts are assembled by code from lane state; the model only voices them.
     lanes = await context.gather_goal_lanes(user_id, since)
     artifacts = await _gather_artifacts(user_id, lanes)
-    sections, stats, facts_block = _build_facts(lanes, _format_curation(expired), artifacts)
+    open_count, open_titles = await context.user_open_todo_summary(user_id)
+    user_todos_note = (
+        f"The user's own open todo list holds {open_count} item(s)"
+        + (f" (first few: {'; '.join(open_titles)})" if open_titles else "")
+        + ". Only a count of 0 may be voiced as a clear or empty list."
+        if open_count
+        else "The user's own todo list is empty."
+    )
+    sections, stats, facts_block = _build_facts(
+        lanes, _format_curation(expired), artifacts, user_todos_note
+    )
 
     # Idle ladder: nothing to advance (no lanes, no goal knowledge) escalates
     # from the goal question to a plain warning to one goodbye, then dormancy.

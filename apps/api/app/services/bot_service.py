@@ -70,7 +70,12 @@ class BotService:
         Returns:
             Unique session key string
         """
-        suffix = channel_id or "dm"
+        # A DM's channel id equals the user's own id on chat platforms (Telegram
+        # chat.id, WhatsApp jid), while server-side writers (briefing chat_sync)
+        # pass None for a DM. Normalize both to "dm" so the brief and the user's
+        # reply land in ONE conversation — split sessions strand replies with no
+        # context.
+        suffix = "dm" if not channel_id or channel_id == platform_user_id else channel_id
         return f"{platform}:{platform_user_id}:{suffix}"
 
     @staticmethod

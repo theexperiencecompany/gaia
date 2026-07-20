@@ -350,6 +350,20 @@ async def format_todos_block(user_id: str) -> str:
     return "\n\n".join(parts)
 
 
+async def user_open_todo_summary(user_id: str) -> tuple[int, list[str]]:
+    """Count + first titles of the user's own open todos, for the brief's facts.
+
+    The voice pass gets these so an empty-lane day can't be voiced as "all
+    clear" while the user's own list still has work in it.
+    """
+    cursor = todos_collection.find(
+        {"user_id": user_id, "completed": False, **user_assigned_filter()},
+        {"title": 1},
+    ).limit(50)
+    titles = [d.get("title", "untitled") async for d in cursor]
+    return len(titles), titles[:5]
+
+
 async def format_lookback_block(
     user_id: str, yesterday_payload: dict | None, since: datetime
 ) -> str:

@@ -177,7 +177,19 @@ question, only when the facts genuinely raise one (a staged proposal needs a
 call, a failed todo needs a decision, a lane's work has clearly shifted). Ground
 it in a named fact and make it answerable in one word. Never "anything
 else you need?", never two questions, and skip the bubble entirely when nothing
-needs deciding.
+needs deciding. ONE question across the WHOLE brief: if the goal question below
+applies, that is your one ask, nothing else gets asked.
+
+EMPTY DAYS STAY TRUE: when the facts show no lanes and no results, say only what
+the facts say. Never claim "no pending actions", "your list is clean", or "all
+clear" unless the facts explicitly state the user's own open todos are zero;
+never mention workflows, runs, or "everything ran smoothly" unless the facts
+name a workflow. A reassuring line about things that do not exist is a lie the
+user can check in one tap.
+
+WORDS: never say "lane" to the user (internal term; say you'll track it as a
+goal, or just name the work). Never use em dashes or en dashes anywhere in any
+string; use commas, periods, or parentheses.
 """.strip()
 
 
@@ -264,8 +276,11 @@ actually changed in response.
 {winback_note}{first_note}{wind_down_note}
 If no goal lane exists but the goal knowledge above names something specific, the
 whole brief is one short honest message plus ONE confirming question that quotes
-it and offers to open the lane ("You mentioned <specific thing> [on <date>], want
-me to make that a lane and start on <first concrete deliverable> tonight?"). Weigh
+it and offers to start ("You mentioned <specific thing> [on <date>], want me to
+take that on and start with <first concrete deliverable> tonight?"). EXCEPTION,
+absolute: if the user's replies above ALREADY answered this with a yes, never ask
+it again in any wording. Acknowledge their yes plainly instead ("you said go
+ahead on the investor list, that's in motion") and say nothing more about it. Weigh
 the bracketed dates: a goal [mentioned] months ago with no activity since is
 probably stale; ask whether it is still live rather than acting on it. Only when
 the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
@@ -438,11 +453,14 @@ def build_day_zero_hello_prompt(*, first_name: str, goal_block: str, has_goal: b
 
     if has_goal:
         task = f"""Say hi to {first_name} by name, warm and quick. Then, from what you know
-about their goal below, name that goal in plain words and offer ONE specific
-thing you'll have ready by their first brief tomorrow morning. Make the offer
-concrete and grounded in their actual goal ("I'll pull together a shortlist of
-seed funds that back API startups so you can start reaching out"), never a vague
-"I'll help you get started". One clear offer, not a menu."""
+about their goal below, name that goal in plain words and OFFER one specific
+first deliverable as a QUESTION they can answer with one word ("want me to pull
+together a shortlist of seed funds that back API startups tonight?"). Concrete
+and grounded in their actual goal, never a vague "want me to help you get
+started?". One clear offer, not a menu.
+NEVER promise finished work ("I'll have X ready by tomorrow"): nothing runs
+until they say yes, so a promise here is a lie they discover in the morning.
+The question IS the point, their yes is what starts the work."""
     else:
         task = f"""Say hi to {first_name} by name, warm and quick. You don't know their goal
 yet, so ask ONE specific question that gets you there, grounded in anything you
