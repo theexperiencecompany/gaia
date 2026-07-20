@@ -3,7 +3,7 @@
 from app.constants.cache import NOTE_CACHE_PREFIX
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
-from app.models.notes_models import NoteDocument, NoteUpdate
+from app.models.notes_models import NoteDocument, NoteSearchHit, NoteUpdate
 
 
 class NotesRepository(UserScopedRepository[NoteDocument, NoteUpdate]):
@@ -17,6 +17,16 @@ class NotesRepository(UserScopedRepository[NoteDocument, NoteUpdate]):
     async def list_notes(self, *, user_id: str) -> list[NoteDocument]:
         """All of a user's notes — cached, orphaned automatically on any write."""
         return await self._find({"user_id": user_id})
+
+    async def search_by_plaintext(self, user_id: str, *, pattern: str) -> list[NoteSearchHit]:
+        """Notes whose plaintext matches a regex ``pattern`` (caller escapes it)."""
+        return await self._aggregate(
+            [
+                {"$match": {"user_id": user_id, "plaintext": {"$regex": pattern, "$options": "i"}}},
+                {"$project": {"_id": 0, "id": {"$toString": "$_id"}, "note_id": 1, "plaintext": 1}},
+            ],
+            NoteSearchHit,
+        )
 
 
 note_repository = NotesRepository()

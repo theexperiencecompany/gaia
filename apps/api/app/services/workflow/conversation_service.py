@@ -3,7 +3,7 @@ Workflow conversation service for managing single conversations per workflow.
 """
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import MessageModel, SystemPurpose, UpdateMessagesRequest
 from app.services.conversation_service import (
     create_system_conversation,
@@ -31,19 +31,10 @@ async def get_or_create_workflow_conversation(
     Returns:
         dict: Existing or newly created workflow conversation
     """
-    # Try to find existing workflow conversation
-    existing_conversation = await conversations_collection.find_one(
-        {
-            "user_id": user_id,
-            "is_system_generated": True,
-            "system_purpose": SystemPurpose.WORKFLOW_EXECUTION,
-            "metadata.workflow_id": workflow_id,
-        }
-    )
-
-    if existing_conversation:
-        existing_conversation["_id"] = str(existing_conversation["_id"])
-        return existing_conversation
+    # Reuse the existing workflow conversation if one already exists.
+    existing = await conversation_repository.find_workflow_conversation(user_id, workflow_id)
+    if existing is not None:
+        return {"conversation_id": existing.conversation_id}
 
     conversation = await create_system_conversation(
         user_id=user_id,
@@ -51,19 +42,12 @@ async def get_or_create_workflow_conversation(
         system_purpose=SystemPurpose.WORKFLOW_EXECUTION,
     )
 
-    # Add workflow metadata and source tag to conversation
-    await conversations_collection.update_one(
-        {"conversation_id": conversation["conversation_id"]},
-        {
-            "$set": {
-                "source": "workflow_system",
-                "metadata": {
-                    "workflow_id": workflow_id,
-                    "workflow_title": workflow_title,
-                    "created_by": "workflow_system",
-                },
-            }
-        },
+    # Tag the new conversation with its workflow binding (source + metadata).
+    await conversation_repository.set_workflow_binding(
+        conversation["conversation_id"],
+        user_id=user_id,
+        workflow_id=workflow_id,
+        workflow_title=workflow_title,
     )
 
     return conversation

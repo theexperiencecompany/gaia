@@ -44,3 +44,11 @@ class NoteUpdate(BaseModel):
 
     content: str | None = None
     plaintext: str | None = None
+
+
+class NoteSearchHit(BaseModel):
+    """A note matched by a plaintext search (the id is the stringified ``_id``)."""
+
+    id: str
+    note_id: str | None = None
+    plaintext: str
