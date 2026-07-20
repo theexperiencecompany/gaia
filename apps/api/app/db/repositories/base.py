@@ -360,14 +360,29 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return deleted
 
     async def _delete_many(self, filter_: Mapping[str, object], *, scope: str) -> int:
-        """Delete every document matching ``filter_`` in one round trip, then bump
-        ``scope``'s generation. The caller owns the filter (repository-internal) — for
-        the global-collection-with-a-guard case (e.g. ``{_id: {$in}, user_id}``) that
-        ``_bulk_delete`` (id-only + scope filter) cannot express. Entity keys for the
-        removed ids are not individually evicted: prefer ``_bulk_delete`` when a
-        cache-enabled repository deletes by known id."""
-        result = await get_async_collection(self.collection_name).delete_many(dict(filter_))
+        """Delete every document matching ``filter_`` in one round trip, then evict
+        each removed doc's entity-cache key and bump ``scope``'s generation. The
+        caller owns the filter (repository-internal) — for the global-collection-with
+        -a-guard case (e.g. ``{_id: {$in}, user_id}``) that ``_bulk_delete`` (id-only
+        + scope filter) cannot express.
+
+        Structurally cache-safe on any repository: when an entity cache exists, the
+        matched ids are resolved first, then deleted, then their entity keys evicted
+        — so the generation bump (which only orphans query caches) can't leave a
+        stale by-id read served from the entity cache. When ``cache_policy is None``
+        there is no entity cache and no id pre-fetch: a single ``delete_many``."""
+        collection = get_async_collection(self.collection_name)
+        # Resolve ids before the delete so we know what to evict; evict AFTER the
+        # delete so a concurrent read-through can't re-populate an entity we then
+        # leave stale (a post-delete get misses Mongo and never re-caches).
+        ids: list[str] = []
+        if self.cache_policy is not None:
+            async for raw in collection.find(dict(filter_)):
+                ids.append(self._doc_identity(self._to_model(raw)))
+        result = await collection.delete_many(dict(filter_))
         if result.deleted_count:
+            for doc_id in ids:
+                await self._cache_evict(scope, doc_id)
             await self._invalidate(scope)
         return result.deleted_count
 

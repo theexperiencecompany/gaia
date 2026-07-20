@@ -147,6 +147,22 @@ class TestBasePrimitives:
         still = await repo.get(created.id, user_id="u")
         assert still is not None and still.title == "orig"  # served stale from cache
 
+    async def test_delete_many_evicts_entity_cache_no_stale_read(self, repo, make_doc, redis):
+        # On a CACHE-ENABLED repository _delete_many must evict each removed doc's
+        # entity key, not just bump the generation (which only orphans query caches).
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        b = await repo.create(make_doc(user_id="u", title="b"))
+        await repo.get(a.id, user_id="u")  # populate entity cache
+        await repo.get(b.id, user_id="u")
+        assert await redis.get(repo.cache_policy.entity_key("u", a.id)) is not None
+
+        deleted = await repo._delete_many({"user_id": "u"}, scope="u")
+        assert deleted == 2
+        # Entity keys evicted — a by-id read can't be served the deleted doc.
+        assert await redis.get(repo.cache_policy.entity_key("u", a.id)) is None
+        assert await redis.get(repo.cache_policy.entity_key("u", b.id)) is None
+        assert await repo.get(a.id, user_id="u") is None
+
     async def test_aggregate_returns_typed_results(self, repo, make_doc):
         await repo.create(make_doc(user_id="u", count=2))
         await repo.create(make_doc(user_id="u", count=3))
