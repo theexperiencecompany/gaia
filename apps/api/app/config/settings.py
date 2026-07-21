@@ -295,6 +295,12 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     E2B_API_KEY: str
     E2B_TEMPLATE_ID: str  # gaia-coder template ID (run scripts/build_e2b_template.py)
+    # E2B cluster the SDK talks to. Like E2B_API_KEY, the SDK reads this
+    # straight from the process env (`e2b.ConnectionConfig._domain()`), so it is
+    # never passed at a call site — declared here so it shows up in the settings
+    # surface and in the sandbox logs. API key, template and domain are
+    # per-cluster: a template built against one domain does not exist on another.
+    E2B_DOMAIN: str = "e2b.app"
     # Idle window before a sandbox is paused. A paused sandbox must resume +
     # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
     # most expensive step in an acquire (the metadata engine is remote). At 60s,
@@ -488,6 +494,7 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     E2B_API_KEY: str | None = None
     E2B_TEMPLATE_ID: str | None = None
+    E2B_DOMAIN: str = "e2b.app"
     # Idle window before a sandbox is paused. A paused sandbox must resume +
     # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
     # most expensive step in an acquire (the metadata engine is remote). At 60s,
