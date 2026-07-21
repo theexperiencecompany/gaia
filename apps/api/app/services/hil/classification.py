@@ -16,7 +16,6 @@ Any failure — registry unavailable, LLM error, or a tool absent from every
 source — resolves to destructive (fail closed).
 """
 
-import asyncio
 import hashlib
 
 from langchain_core.tools import BaseTool
@@ -108,14 +107,12 @@ async def _cached_classification(tool_name: str, description_hash: str) -> bool 
 
 
 async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResult:
-    async with asyncio.timeout(HIL_LLM_TIMEOUT_SECONDS):
-        return await ainvoke_structured(
-            _ClassifyResult,
-            TOOL_CLASSIFY_PROMPT.format(
-                name=tool_name, description=description or "(none provided)"
-            ),
-            label="hil_tool_classification",
-        )
+    return await ainvoke_structured(
+        _ClassifyResult,
+        TOOL_CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
+        label="hil_tool_classification",
+        timeout=HIL_LLM_TIMEOUT_SECONDS,
+    )
 
 
 async def _persist_classification(

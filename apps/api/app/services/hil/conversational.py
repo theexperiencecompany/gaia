@@ -14,7 +14,6 @@ exist only on web/mobile. An item the reply doesn't address stays pending for
 the buttons or the timeout sweep.
 """
 
-import asyncio
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -134,12 +133,12 @@ async def interpret_batch_decision_message(
     never toward acting, and never toward abandoning on an LLM hiccup.
     """
     try:
-        async with asyncio.timeout(HIL_LLM_TIMEOUT_SECONDS):
-            return await ainvoke_structured(
-                BatchDecisionResult,
-                _batch_prompt(message, pending_summaries),
-                label="hil_conversational_resolve_batch",
-            )
+        return await ainvoke_structured(
+            BatchDecisionResult,
+            _batch_prompt(message, pending_summaries),
+            label="hil_conversational_resolve_batch",
+            timeout=HIL_LLM_TIMEOUT_SECONDS,
+        )
     except Exception as e:
         log.warning(f"{LogTag.HIL} Batch conversational resolve failed, leaving pending: {e}")
         return BatchDecisionResult(unrelated=False)
@@ -149,12 +148,12 @@ async def interpret_decision_message(message: str, pending_summaries: list[str])
     """Classify a chat reply against pending approvals. Fails toward ``unrelated``
     (normal chat), never toward silently executing an action."""
     try:
-        async with asyncio.timeout(HIL_LLM_TIMEOUT_SECONDS):
-            return await ainvoke_structured(
-                DecisionResult,
-                _prompt(message, pending_summaries),
-                label="hil_conversational_resolve",
-            )
+        return await ainvoke_structured(
+            DecisionResult,
+            _prompt(message, pending_summaries),
+            label="hil_conversational_resolve",
+            timeout=HIL_LLM_TIMEOUT_SECONDS,
+        )
     except Exception as e:
         log.warning(f"{LogTag.HIL} Conversational resolve failed, treating as unrelated: {e}")
         return DecisionResult(action="unrelated")
