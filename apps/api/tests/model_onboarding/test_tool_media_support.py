@@ -50,6 +50,13 @@ _FOREGROUND = (255, 220, 0)  # yellow
 
 
 def _seeded_openrouter_models() -> list[str]:
+    """Read straight from the seed script — never keep a model list in this file.
+
+    A new model is declared in one place, ``get_models_configuration()`` in
+    ``scripts/seed_models.py``, and this test picks it up from there. A copy here
+    would drift the moment someone seeds a model without touching the tests, and
+    the model this gate exists to catch would be the one it silently skips.
+    """
     return [
         model["provider_model_name"]
         for model in get_models_configuration()
@@ -58,6 +65,11 @@ def _seeded_openrouter_models() -> list[str]:
 
 
 def _models_under_test() -> list[str]:
+    """Seeded models by default; ``GAIA_ONBOARD_MODELS`` to vet one before seeding it.
+
+    The override is for the order this actually happens in — you check a
+    candidate first, then add it to the seed script once it passes.
+    """
     override = os.environ.get("GAIA_ONBOARD_MODELS", "").strip()
     if override:
         return [name.strip() for name in override.split(",") if name.strip()]

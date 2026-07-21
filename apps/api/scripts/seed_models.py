@@ -82,6 +82,10 @@ def get_models_configuration() -> list[dict[str, Any]]:
     than working around it. Its tool results would 400 mid-turn. Supporting such
     a model needs a per-model delivery path, which is a deliberate decision — not
     something to add silently alongside a seed entry.
+
+    Once it passes, add the model to the list below and nowhere else. The test
+    parameterises itself off this function, so a seeded model is covered from
+    then on with no second list to keep in sync.
     """
     return [
         # Default model — available to all users, model selector is disabled.
