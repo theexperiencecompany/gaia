@@ -86,6 +86,14 @@ HANDOFF_POLL_INTERVAL_SECONDS = 1.0
 HANDOFF_KEY_TTL_SECONDS = 3600
 
 # ---------------------------------------------------------------------------
+# Concurrency registry. A Redis sorted set (member = slot id, score = expiry
+# deadline) is the cluster-wide source of truth for how many browser sessions
+# are live, so the cap holds across workers/replicas. A crashed worker's slot
+# self-heals: its member expires by score and is pruned on the next acquire.
+# ---------------------------------------------------------------------------
+BROWSER_ACTIVE_SESSIONS_KEY = "browser:active_sessions"
+
+# ---------------------------------------------------------------------------
 # Steel REST API paths (self-hosted Steel, ghcr.io/steel-dev/steel-browser-api).
 # ---------------------------------------------------------------------------
 STEEL_SESSIONS_PATH = "/v1/sessions"
