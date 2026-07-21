@@ -13,6 +13,7 @@ from typing import Literal, TypedDict, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
+from app.db.repositories.base import UserScopedDocument
 from app.helpers.integration_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent, OAuthIntegration
@@ -115,6 +116,26 @@ class UserIntegration(BaseModel):
     connected_at: datetime | None = Field(None, description="When OAuth/auth was completed")
 
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+
+
+class UserIntegrationDocument(UserScopedDocument):
+    """Storage model for the ``user_integrations`` collection — one document per
+    ``(user_id, integration_id)`` (unique index). The Mongo ``_id`` (ObjectId) is
+    incidental; access is always by the business pair."""
+
+    integration_id: str
+    status: Literal["created", "connected"] = "created"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    connected_at: datetime | None = None
+
+
+class UserIntegrationUpdate(BaseModel):
+    """Typed ``$set`` fields for a user-integration record (the auth transition)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["created", "connected"] | None = None
+    connected_at: datetime | None = None
 
 
 class AddUserIntegrationRequest(BaseModel):
