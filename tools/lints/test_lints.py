@@ -266,3 +266,37 @@ def test_repository_fully_typed_method_is_clean(tmp_path: Path) -> None:
     )
     path = _write(tmp_path, "app/db/repositories/todo.py", src)
     assert repository_boundaries.check([path]) == []
+
+
+def test_cache_helper_import_outside_layers_is_flagged(tmp_path: Path) -> None:
+    src = "from app.db.redis import get_cache, set_cache\n"
+    path = _write(tmp_path, "app/services/brand_new_service.py", src)
+    violations = repository_boundaries.check([path])
+    assert len(violations) == 1
+    assert "entity-cache helpers outside the cache layers" in violations[0].detail
+
+
+def test_cache_helper_import_allowlisted_is_clean(tmp_path: Path) -> None:
+    # mcp_tools_service is the non-entity MCP-tools rollup cache (Decision 2).
+    src = "from app.db.redis import get_cache, set_cache, delete_cache\n"
+    path = _write(tmp_path, "app/services/mcp/mcp_tools_service.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
+def test_cache_helper_import_inside_db_is_clean(tmp_path: Path) -> None:
+    src = "from app.db.redis import get_cache, set_cache\n"
+    path = _write(tmp_path, "app/db/repositories/base.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
+def test_cache_helper_import_inside_decorators_is_clean(tmp_path: Path) -> None:
+    src = "from app.db.redis import get_cache, set_cache, delete_cache\n"
+    path = _write(tmp_path, "app/decorators/caching.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
+def test_raw_redis_cache_client_import_is_not_flagged(tmp_path: Path) -> None:
+    # redis_cache is the raw client (locks / rate-limits), not an entity-cache helper.
+    src = "from app.db.redis import redis_cache\n"
+    path = _write(tmp_path, "app/services/brand_new_service.py", src)
+    assert repository_boundaries.check([path]) == []

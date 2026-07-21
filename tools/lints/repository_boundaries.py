@@ -4,7 +4,7 @@
 repositories; raw ``ObjectId``, Mongo filters, and dict-shaped documents never
 cross that boundary. mypy strictness alone cannot catch a leak (a strict module
 can still hand a ``dict[str, Any]`` outward), so this AST rule mechanically holds
-three lines:
+four lines:
 
 1. ``app.db.mongodb.collections`` may be imported only inside ``app/db/repositories/``
    and ``app/db/mongodb/`` — everywhere else goes through a repository.
@@ -13,14 +13,19 @@ three lines:
 3. Public methods of classes in ``app/db/repositories/`` must be fully annotated
    with no ``Any`` / ``dict[str, Any]`` — the typed boundary is the whole point.
    Underscore-prefixed methods (the subclass seam) are exempt.
+4. The entity-cache helpers (``get_cache`` / ``set_cache`` / ``delete_cache`` /
+   ``delete_cache_by_pattern`` / ``get_and_delete_cache``) may be imported only
+   inside ``app/db/`` (the repository ``CachePolicy`` machinery) and
+   ``app/decorators/`` (the ``@Cacheable`` / ``@CacheInvalidator`` machinery) —
+   plus a ratchet allowlist of the *non-entity* caches that legitimately cache by
+   hand (aggregate rollups, tokens, external-data / derived-display caches). This
+   stops a NEW service from hand-caching a repository-managed entity behind the
+   repository's back, where it would drift from the entity CachePolicy. The raw
+   ``redis_cache`` client (locks / rate-limits) is a different concern, not banned.
 
-Checks 1 and 2 carry ratchet ``ALLOWLIST``s of the call sites that predate the
+Checks 1, 2 and 4 carry ratchet ``ALLOWLIST``s of the call sites that predate the
 repository layer. Entries are removed as each domain is migrated — never added. A
 new violation cannot be allowlisted away; it must be fixed, which is the point.
-
-(A fourth check — no ``get_cache``/``set_cache``/``delete_cache`` outside the
-allowed layers — will be armed once the domains no longer cache repository-managed
-data by hand.)
 """
 
 from __future__ import annotations
@@ -40,36 +45,22 @@ _COLLECTIONS_MODULE = "app.db.mongodb.collections"
 _COLLECTIONS_ALLOWED_DIRS = ("db/repositories/", "db/mongodb/")
 _BSON_ALLOWED_DIRS = ("db/",)
 
-# Ratchet allowlist: files importing app.db.mongodb.collections that predate the
-# repository layer. Each is removed when its domain is migrated. Never add an entry.
+# Ratchet allowlist: files still importing app.db.mongodb.collections. Every domain
+# wave is complete; the legitimate remainder below is grouped by WHY it survives.
+# Entries are removed as each remaining reader migrates — never added.
 COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
-        # agents/
+        # -- (1) Raw `users` reads. A UsersRepository exists, but these callers still
+        #    read the users collection directly — cross-domain reads (auth, payments,
+        #    notifications, onboarding, workers) plus a few user-domain stragglers.
+        #    Retired by a follow-up users-read cleanup, not by a domain wave.
         "agents/memory/email_processor.py",
-        # api/
         "api/v1/endpoints/integrations/config.py",
         "api/v1/endpoints/notification.py",
-        "api/v1/endpoints/onboarding.py",
         "api/v1/endpoints/user.py",
-        # helpers/
         "helpers/email_helpers.py",
-        "helpers/message_helpers.py",
-        # memory/
         "memory/consolidation.py",
-        # scripts/
-        "scripts/backfill_public_workflow_descriptions.py",
-        # services/
-        "services/dev_service.py",
-        "services/file_service.py",
-        "services/integrations/marketplace.py",
-        "services/integrations/user_integrations.py",
         "services/oauth/oauth_service.py",
-        # Migrated off users_collection in the users wave; still allowlisted here
-        # for their other collections (todos/workflows/conversations), pending
-        # those domains' waves.
-        "services/onboarding/intelligence_job.py",
-        "services/onboarding/intelligence_service.py",
-        "services/onboarding/onboarding_service.py",
         "services/onboarding/post_onboarding_service.py",
         "services/onboarding/social_profile_service.py",
         "services/onboarding/writing_style_service.py",
@@ -79,16 +70,29 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/user_service.py",
         "services/voice_service.py",
         "services/workspace_sync.py",
-        # utils/
-        "utils/embedding_utils.py",
         "utils/notification/channel_preferences.py",
         "utils/profile_card.py",
-        # workers/
         "workers/tasks/cleanup_tasks.py",
-        "workers/tasks/maintenance_sweep_tasks.py",
         "workers/tasks/memory_backfill_tasks.py",
         "workers/tasks/onboarding_tasks.py",
         "workers/tasks/user_tasks.py",
+        # -- (2) `users` creator-join for the integrations marketplace — reads the
+        #    users collection (a users-domain concern), not their own collection.
+        "services/integrations/marketplace.py",
+        "services/integrations/user_integrations.py",
+        # -- (3) Cross-domain reads of an already-migrated collection: these files
+        #    belong to another domain (onboarding / helpers / workers / dev seed) and
+        #    read todos/projects/notes/files raw instead of via that domain's repo.
+        "api/v1/endpoints/onboarding.py",
+        "helpers/message_helpers.py",
+        "services/dev_service.py",
+        "services/onboarding/intelligence_job.py",
+        "services/onboarding/intelligence_service.py",
+        "services/onboarding/onboarding_service.py",
+        "utils/embedding_utils.py",
+        "workers/tasks/maintenance_sweep_tasks.py",
+        # -- (4) One-shot backfill script reading workflows for a data migration.
+        "scripts/backfill_public_workflow_descriptions.py",
     }
 )
 
@@ -133,6 +137,55 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     }
 )
 
+# The entity-cache helpers that must not be hand-called outside the cache layers.
+# (``redis_cache`` — the raw client for locks / rate-limits — is deliberately absent.)
+_CACHE_MODULE = "app.db.redis"
+_CACHE_FUNCS = frozenset(
+    {"get_cache", "set_cache", "delete_cache", "delete_cache_by_pattern", "get_and_delete_cache"}
+)
+_CACHE_ALLOWED_DIRS = ("db/", "decorators/")
+
+# Ratchet allowlist: the NON-entity caches that legitimately call the cache helpers
+# by hand — aggregate rollups, tokens, and external-data / derived-display caches.
+# None of these cache a repository-managed entity (those live in the repos'
+# CachePolicy). Entries are removed if a cache is retired; new ones are not added —
+# a new hand-cache in a service must justify itself, not be allowlisted away.
+CACHE_CALL_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # agents/ + helpers/ + utils/ — subagent/handoff display metadata (name/icon)
+        "agents/core/subagents/handoff_tools.py",
+        "helpers/agent_helpers.py",
+        "helpers/message_helpers.py",
+        "utils/agent_utils.py",
+        # external-data / derived caches (web, weather, favicon, research)
+        "agents/tools/research_tool.py",
+        "utils/favicon_utils.py",
+        "utils/internet_utils.py",
+        "utils/weather_utils.py",
+        # memory retrieval / context / consolidation caches (not entity docs)
+        "memory/consolidation.py",
+        "memory/context.py",
+        "memory/retrieval.py",
+        # tokens / auth / short-lived handshake caches
+        "core/bot_auth_middleware.py",
+        "services/connect_link_service.py",
+        "services/mcp/mcp_token_store.py",
+        # per-user / derived aggregate caches + their imperative invalidations
+        "api/v1/endpoints/todos.py",
+        "services/device/device_service.py",
+        "services/email_profile_service.py",
+        "services/onboarding/inbox_scan_cache.py",
+        # marketplace / MCP-tools aggregate rollups + their cache-busts (Decision 2)
+        "services/integrations/community_service.py",
+        "services/integrations/custom_crud.py",
+        "services/integrations/integration_connection_service.py",
+        "services/integrations/publish_service.py",
+        "services/integrations/user_integrations.py",
+        "services/mcp/mcp_client.py",
+        "services/mcp/mcp_tools_service.py",
+    }
+)
+
 
 def _app_relative(path: Path) -> str | None:
     """Path relative to the ``app/`` package root, e.g. ``services/notes_service.py``."""
@@ -170,6 +223,17 @@ def _bson_imports(tree: ast.Module) -> list[tuple[int, str]]:
             for alias in node.names:
                 if alias.name.split(".")[0] == "bson":
                     hits.append((node.lineno, f"import {alias.name}"))
+    return hits
+
+
+def _cache_imports(tree: ast.Module) -> list[tuple[int, str]]:
+    """Imports of the banned entity-cache helpers from ``app.db.redis``."""
+    hits: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == _CACHE_MODULE:
+            banned = sorted(a.name for a in node.names if a.name in _CACHE_FUNCS)
+            if banned:
+                hits.append((node.lineno, f"from app.db.redis import {', '.join(banned)}"))
     return hits
 
 
@@ -280,5 +344,19 @@ def check(files: list[Path]) -> list[Violation]:
         if app_rel.startswith("db/repositories/"):
             for line, detail, fix in _signature_violations(tree):
                 violations.append(Violation(path=path, line=line, detail=detail, fix=fix))
+
+        if not any(app_rel.startswith(d) for d in _CACHE_ALLOWED_DIRS):
+            for line, detail in _cache_imports(tree):
+                if app_rel in CACHE_CALL_ALLOWLIST:
+                    continue
+                violations.append(
+                    Violation(
+                        path=path,
+                        line=line,
+                        detail=f"hand-calls the entity-cache helpers outside the cache layers ({detail})",
+                        fix="cache repository-managed entities via the repository CachePolicy or the "
+                        "@Cacheable/@CacheInvalidator decorators, not raw get_cache/set_cache/delete_cache",
+                    )
+                )
 
     return violations
