@@ -19,7 +19,7 @@ import time
 from typing import Any, Literal, Self
 
 from dotenv import load_dotenv
-from pydantic import computed_field, field_validator
+from pydantic import computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.config.secrets import inject_infisical_secrets
@@ -267,6 +267,24 @@ class CommonSettings(BaseAppSettings):
         if v is not None and (not v or v != v.strip()):
             raise ValueError("E2B_DOMAIN must be non-empty and free of surrounding whitespace")
         return v
+
+    @model_validator(mode="after")
+    def _require_browser_live_view_in_prod(self) -> "CommonSettings":
+        """When browser automation is enabled in production, the live-view base
+        URL must be set — otherwise a sensitive-step handoff renders a dead card
+        the user can never act on. Fail at startup, not mid-task."""
+        if (
+            self.ENV == "production"
+            and self.BROWSER_USE_ENABLED
+            and not self.STEEL_LIVE_VIEW_BASE_URL
+        ):
+            raise ValueError(
+                "STEEL_LIVE_VIEW_BASE_URL is required when BROWSER_USE_ENABLED is true in "
+                "production (the browser handoff live-view depends on it). Set it to the "
+                "domain that serves the Steel UI (e.g. https://browser.heygaia.io), or set "
+                "BROWSER_USE_ENABLED=false."
+            )
+        return self
 
     # ----------------------------------------------
     # Computed Properties
